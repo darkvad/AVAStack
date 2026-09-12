@@ -1,0 +1,13 @@
+﻿The suggested edit adds avastack_*/ after astrolivestack_*/. Output complete file.```text .gitignore
+# Environnement virtuel Python
+venv/
+
+# Cache Python
+__pycache__/
+*.pyc
+
+# Diagnostics / sorties temporaires
+*_LAST_DIAG.json
+astrolivestack_*/
+avastack_*/
+

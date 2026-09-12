@@ -1,0 +1,200 @@
+﻿# CLAUDE.md
+
+## Projet
+
+AVAStack — application Python unique (`AVAStack.py`, interface
+Tkinter) de live stacking : empilement temps réel des brutes
+pendant l acquisition. Sources : ciel simulé (démo sans matériel), dossier
+surveillé (les brutes FITS/PNG/TIFF écrites par le logiciel d acquisition au
+fur et a mesure), webcams/cartes OpenCV, caméras ZWO ASI (SDK).
+Anciennement AstroLiveStack (renommé AVAStack pour éviter la confusion
+avec ALS).
+
+Pipeline : Acquisition → Calibration (dark/flat) → Alignement (ORB + RANSAC,
+repli corrélation de phase) → Empilement avec rejet kappa-sigma → Étirement
+temps réel (auto STF ou manuel) → Affichage + histogramme → Sauvegarde
+FITS/TIFF/PNG. Traitement externe optionnel (GraXpert, BlurXTerminator) sur
+un INSTANTANÉ de l empilement, dans un thread séparé — l empilement accumulé
+reste linéaire et intact.
+
+Alain (utilisateur/mainteneur) est amateur d astrophotographie, pas
+développeur professionnel — explique les changements en français clair, sans
+jargon inutile. Alain utilise divers logiciels pour l acquisition (N.I.N.A.,
+APT, SGP, ASI Air…) — ne jamais présumer du logiciel de capture a partir
+d une capture d écran sans vérification.
+
+**Environnement** : cible multiplateforme Windows / Linux / macOS (contrainte
+posée par Alain — l application doit tourner sur les trois). Le venv local de
+dev Windows reste `C:\Astro\astrolivestack\venv` (le dossier n a PAS ete
+renomme), mais AUCUN chemin specifique a un OS ne doit etre code en dur dans
+le code sans repli — contrairement a la regle anterieure « Windows
+uniquement » qui n est plus valable.
+
+## Commandes essentielles (Windows, PowerShell)
+
+```powershell
+# Activer le venv
+C:\Astro\astrolivestack\venv\Scripts\Activate.ps1
+
+# Vérifier la syntaxe avant toute livraison (TOUJOURS)
+python -c "import ast; ast.parse(open('AVAStack.py', encoding='utf-8').read())"
+
+# Lancer l application
+python AVAStack.py
+
+# Installer / mettre a jour les dépendances (venv activé)
+pip install -r requirements.txt
+```
+
+`requirements.txt` = dépendances de `AVAStack.py`. Toute nouvelle
+dépendance ajoutée au script doit y être ajoutée — cf. Conventions
+non-négociables.
+
+## Conventions non-négociables
+
+- Commentaires et docstrings **en français**, cohérents avec l existant.
+- Toute modification d `AVAStack.py` : bump `AVASTACK_VERSION`
+  + entrée de changelog en tête de fichier expliquant le **constat réel** qui
+  a motivé le changement (pattern établi : `CORRECTION (constat Alain, run
+  réel - ...)`). Ne jamais casser un défaut existant sans y être invité —
+  privilégier une option/variable qui préserve le comportement actuel si non
+  précisé. (La variable s appelait `ASTROLIVESTACK_VERSION` dans la
+  convention d origine, mais n a été réellement créée qu au renommage en
+  AVAStack, v1.0.0.)
+- Toute nouvelle dépendance Python (`import` d un paquet pip pas déjà utilisé
+  dans le fichier) : **toujours signaler explicitement à Alain dans la
+  réponse** ET l ajouter au `requirements.txt`. Ne pas décider unilatéralement
+  de l éviter/la remplacer sans le dire — c est à Alain de trancher.
+- Vérifier la syntaxe (`ast.parse`) après CHAQUE édition avant de la
+  considérer terminée.
+
+## Fichier tiers : veralux_core_headless.py (GPL-3.0-or-later)
+
+`veralux_core_headless.py` (moteur d étirement hyperbolique VeraLux, extrait
+headless de VeraLux_HyperMetric_Stretch.py de Riccardo Paterniti) est copié
+dans ce dépôt **tel quel**, sous licence GPL-3.0-or-later — c est du code
+tiers, PAS du code du projet. Il n importe que numpy (aucune dépendance
+Siril : le wrapper pyscript Siril du projet d origine n a PAS été copié).
+Utilisation : `solve_and_stretch(img_data, ...)` → (image étirée, log_d,
+diagnostics), avec profils capteur `SENSOR_PROFILES` (Rec.709 par défaut,
+IMX585, IMX662, IMX533, IMX571/2600, IMX294). L image en entrée peut être
+2D (H,W) mono ou (H,W,3) RGB (retransposée automatiquement).
+
+**Ne jamais reproduire ni modifier `veralux_core_headless.py` à la légère.**
+Tout besoin d adaptation (ex : câblage dans DisplayProcessor) se fait dans
+un fichier séparé du projet, jamais par édition du fichier tiers.
+
+## Doc outils externes (CLI)
+
+### GraXpert CLI
+
+Syntaxe (le flag `-cli` est INDISPENSABLE en ligne de commande) :
+
+```
+graxpert.exe <image> -cli -cmd background-extraction|denoising
+            [-correction Subtraction|Division] [-smoothing 0..1]
+            [-output <nom_sans_extension>] [-bg] [-ai_version X]
+```
+
+Pièges :
+- `-correction` est **SENSIBLE À LA CASSE** (`Subtraction`/`Division`,
+  S et D majuscules — une casse différente échoue silencieusement ou avec
+  une erreur obscure).
+- `-output` attend un chemin **SANS extension** (GraXpert choisit lui-même
+  l extension de sortie, souvent avec un suffixe `_GraXpert`).
+- Les modèles IA sont téléchargés au premier usage de chaque fonction
+  (`-ai_version` sélectionne la version) — un premier lancement peut être
+  long et nécessiter Internet.
+
+### RC-Astro CLI (BlurXTerminator / StarXTerminator)
+
+Un seul exécutable `rc-astro.exe` pour tous les outils RC-Astro ; le premier
+argument choisit l outil (`bxt`, `sxt`, `nxt`) :
+
+```
+rc-astro.exe bxt <image> -o <sortie> --overwrite
+             [--ss 0..0.7] [--sn 0..1] [--correct-only] [--device gpu]
+```
+
+Pièges :
+- BXT et SXT sont deux **licences payantes séparées** malgré le même
+  exécutable — avoir installé le logiciel ne garantit pas les deux licences.
+- Bornes officielles : `--ss` (sharpness stars) 0–0.7, `--sn` 0–1,
+  halos -0.5–0.5. Les dépasser donne des résultats imprévisibles, pas une
+  erreur claire.
+- La licence RC-Astro est liée **par utilisateur** (pas par machine) :
+  si l outil est lancé sous un autre compte que celui où la licence a été
+  activée, il répond « not licensed on this computer » — constaté en prod
+  sur le projet pipeline siril (compte système systemd vs compte personnel).
+- Au premier lancement sous un nouveau compte, rc-astro peut devoir
+  recontacter les serveurs RC-Astro et télécharger ses modèles IA (~300 Mo)
+  — prévoir un accès réseau une fois, ensuite c est mis en cache local.
+- La sortie (`-o`) peut porter un suffixe différent de la demande selon
+  l outil — toujours rechercher le fichier réellement produit, jamais
+  présumer du nom exact.
+
+### Pièges généraux des outils externes (leçons du projet pipeline siril)
+
+- **Détecter un échec par simple sous-chaîne du stdout ("erreur"/"échoué")
+  est structurellement fragile** : mots accentués non normalisés par
+  `.lower()`, compteurs (« 0 en échec » = succès), variantes selon version.
+  Au moindre doute, instrumenter (faire dire au code quel motif a matché)
+  plutôt que deviner une nouvelle hypothèse sans preuve. Préférer le code
+  de retour du process + l existence réelle du fichier de sortie.
+- **Un symptôme anormal en aval peut venir d une étape très en amont** :
+  vérifier la chaîne complète (données d entrée) avant de soupçonner
+  l outil/l étape qui manifeste le symptôme.
+- **Rejouer le même test sur un état de code déjà validé** (version d avant
+  la modification suspectée) avant de conclure que la modification récente
+  est la cause.
+- Sur une cible difficile, plusieurs problèmes indépendants peuvent se
+  manifester EN MÊME TEMPS — isoler UNE SEULE variable à la fois.
+- **Une fonctionnalité optionnelle à risque non nul, même faible, gagne à
+  rester opt-in (désactivée par défaut)** plutôt qu opt-out.
+
+## Leçons générales transposables (projet pipeline siril)
+
+- **Toute fonction opérant sur des données image : vérifier si elle suppose
+  implicitement un nombre de canaux fixe** avant de la réutiliser sur un
+  chemin mono/narrowband (bug réel : tableau (H,W) mono indexé comme
+  (3,H,W) → image noire, sans aucune erreur).
+- **Une formule "purement additive" reste fausse si une entrée peut être
+  négative** : une donnée passée par interpolation/recalage géométrique ne
+  doit jamais être supposée rester dans [0,1] sans clip explicite (artefact
+  en anneaux noirs, constat réel).
+- **Une propriété mathématique d une formule n est garantie que si le
+  DOMAINE de ses entrées est lui-même garanti.**
+- **Vérifier l existence d un mécanisme natif dans l outil sous-jacent avant
+  d investir dans le raffinement itératif d un contournement maison**, même
+  après plusieurs itérations "presque bonnes".
+- **Un `%` littéral non échappé (`%%`) dans un texte d aide `argparse`**
+  plante tout le script au démarrage sur Python 3.14+ (validation eager),
+  invisiblement sur 3.13 — et `ast.parse()` NE DÉTECTE PAS ce bug.
+- **Un fichier de sortie à nom stable peut être mis en cache navigateur** :
+  ajouter un paramètre `?v=<mtime>` aux URL si exposition web un jour.
+- **`subprocess` sans `shell=True` protège l OS, pas le système de fichiers
+  applicatif** : toute valeur provenant de l extérieur et utilisée comme
+  chemin doit être validée contre la racine attendue AVANT usage. Et valider
+  le CHEMIN ne protège pas des CARACTÈRES du nom lui-même (guillemets,
+  sauts de ligne…) s il est ensuite interpolé dans un autre langage de
+  script — les deux vérifications sont indépendantes.
+
+## Maintenance des fichiers de connaissance (CLAUDE.md)
+
+Ce fichier sert de mémoire à long terme pour les agents IA. **Règle
+fondamentale : l agent ne modifie JAMAIS ce fichier de son propre chef.** Il
+doit : (1) identifier une information digne d être retenue, (2) proposer la
+mise à jour dans la conversation avec le texte exact, (3) attendre la
+confirmation explicite d Alain avant d agir, (4) confirmer l action réalisée.
+
+Déclencheurs de proposition : nouvelle erreur récurrente, nouveau
+comportement inattendu, découverte architecturale, modification importante
+du code, piège rencontré sur un outil externe. Cible : section « Pièges »
+(à créer le cas échéant) ou ajustement des conventions.
+
+**Exemple de dialogue** :
+
+> **Agent** : « J ai constaté que [constat]. Je propose d ajouter à CLAUDE.md :
+> [texte]. Puis-je procéder ? »
+> **Alain** : « Oui, ajoute-le. »
+> **Agent** : « ✅ Entrée ajoutée. »
