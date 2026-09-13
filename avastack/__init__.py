@@ -14,9 +14,30 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.2.0"
+AVASTACK_VERSION = "2.2.2"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.2.2 : CORRECTION (constat Alain, run réel - 2026) : « Lecture impossible »
+#          au chargement d'un master dark, et empilement dossier surveillé
+#          muet (toutes les brutes comptées illisibles). Cause : OpenCV 5
+#          REFUSE de débayeriser une image flottante (depth == CV_8U ||
+#          CV_16U exigé) — or la devinette Bayer (_guess_bayer, chemin CFA
+#          « Auto » sans BAYERPAT dans l'en-tête, cas des caméras mono comme
+#          la QHYminiCam8M) passait une copie float32 à _debayer → exception
+#          → fichier déclaré illisible. Bug latent depuis l'origine, révélé
+#          par la mise à jour opencv-python 5.0.0. Correction dans
+#          avastack/images.py :
+#          - _guess_bayer : une image flottante (master dark/flat,
+#            empilement, sortie outil externe) n'est jamais une brute Bayer
+#            → traitée comme mono sans tenter la devinette ;
+#          - _guess_bayer : la devinette débayerise l'image ENTIÈRE
+#            d'origine (uint8/uint16), jamais la copie flottante.
+#          Vérifié : master dark float32 + brutes uint16 N.I.N.A. chargent
+#          et s'empilent. NB lancement Windows : utiliser `python
+#          AVAStack.py` — `python3` désigne le Python du Microsoft Store
+#          (hors venv) même avec le venv activé.
+# v2.2.1 : qhyccd installe par defaut (etait en commentaire -> absent des
+#          miniPC) [commit ef2e943, changelog non reporté ici].
 # v2.2.0 : NOUVELLES CAMERAS TOUPTEK/ALTAIR + SVBONY (demande Alain, il
 #          possede les deux) :
 #          - avastack/cameras/touptek.py : ctypes sur toupcam.dll (SDK
@@ -74,3 +95,4 @@ AVASTACK_VERSION = "2.2.0"
 #          AVAStack.py, titre de fenêtre, préfixe des dossiers temporaires
 #          (avastack_), variable AVASTACK_VERSION créée (n'existait pas
 #          auparavant malgré la convention CLAUDE.md).
+

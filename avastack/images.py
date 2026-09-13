@@ -37,6 +37,12 @@ def _guess_bayer(a):
     Renvoie 'RGGB'/'BGGR'/'GRBG'/'GBRG', ou None si l'image ne présente
     aucune signature de matrice couleur (caméra mono, image déjà en niveaux
     de gris) → dans ce cas il ne faut surtout pas débayeriser."""
+    # OpenCV ne débayerise que du 8/16 bits ENTIERS : une image flottante
+    # (master dark/flat, empilement, sortie d'outil externe) n'est jamais une
+    # brute Bayer → la traiter comme mono sans rien tenter (sinon cv2.error
+    # et fichier déclaré illisible).
+    if a.dtype not in (np.uint8, np.uint16):
+        return None
     f = a.astype(np.float32)
     mask = f > np.percentile(f, 99.9)
     if int(mask.sum()) < 100:              # pas assez d'étoiles → ne rien risquer
@@ -44,7 +50,9 @@ def _guess_bayer(a):
     star = float(np.median(f[mask]))       # luminosité typique des étoiles
     colorations = {}
     for pat in ("RGGB", "BGGR", "GRBG", "GBRG"):
-        px = _debayer(f, pat)[mask]
+        # _debayer exige du 8/16 bits entiers (limite OpenCV) : on repasse
+        # par l'image ENTIÈRE d'origine, jamais par la copie flottante.
+        px = _debayer(a, pat)[mask]
         colorations[pat] = float(np.median(px.max(axis=1) - px.min(axis=1)))
     pat = min(colorations, key=colorations.get)
     c_min, c_max = min(colorations.values()), max(colorations.values())
@@ -166,3 +174,4 @@ def auto_unflip(proc, ref):
         return proc
     except Exception:
         return proc
+
