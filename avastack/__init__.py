@@ -14,9 +14,25 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.0.0"
+AVASTACK_VERSION = "2.1.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.1.0 : NOUVELLES CAMERAS QHYCCD + PLAYER ONE (demande Alain, il possede
+#          les deux ; Touptek/Altair + SVBONY suivront) :
+#          - avastack/cameras/qhy.py : via le paquet PyPI officiel `qhyccd`
+#            (SDK natif inclus, `pip install qhyccd`) — NOUVELLE DEPENDANCE
+#            OPTIONNELLE (ajoutee en commentaire dans requirements.txt) ;
+#          - avastack/cameras/playerone.py : ctypes sur le SDK officiel
+#            PlayerOneCamera.dll (telecharge sur player-one-astronomy.com),
+#            derive du wrapper pyPOACamera.py (poa_view, Filipe Maia,
+#            BSD-2-Clause) ;
+#          - avastack/cameras/sdk_loader.py : chargement des SDK natifs
+#            (variable d'env dediee AVASTACK_<MARQUE>_DIR, dossier projet,
+#            PATH) — les SDK binaires proprietaires restent HORS du depot.
+#          - Une seule classe par marque : N'IMPORTE QUELLE camera de la
+#            marque (fiche lue sur la camera, rien en dur). Mono → 2D
+#            (RAW16), couleur → RGB24 debayerise par la camera.
+#          Sources 'QHY (SDK)' et 'Player One (SDK)' ajoutees au menu.
 # v2.0.0 : REFACTORING MODULAIRE (demande Alain, préparation aux futures
 #          fonctionnalités : nouvelles caméras à driver, nouveaux outils…) :
 #          le fichier unique (~1500 lignes) est déplacé dans le package

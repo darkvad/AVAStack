@@ -20,7 +20,7 @@ from PIL import Image, ImageTk
 from ..compat import IS_WINDOWS
 from ..config import CONFIG, sauver_config
 from ..images import CFA_MODE, load_image, save_image, find_output, auto_unflip
-from ..cameras import SOURCES, SimulatedCamera, OpenCVCamera, ZWOASICamera, FolderCamera
+from ..cameras import SOURCES, SimulatedCamera, OpenCVCamera, ZWOASICamera, FolderCamera, QHYCamera, PlayerOneCamera
 from ..processing import Calibrator, StarAligner, LiveStacker, DisplayProcessor
 from ..external.detection import (
     DEFAULT_CMD_GRAXPERT, DEFAULT_CMD_BXT,
@@ -437,6 +437,10 @@ class App:
             return FolderCamera(folder, process_existing=self.var_process_existing.get())
         if key.startswith("OpenCV"):
             return OpenCVCamera(int(key.split()[-1]))
+        if key.startswith("QHY"):
+            return QHYCamera()
+        if key.startswith("Player One"):
+            return PlayerOneCamera()
         return ZWOASICamera()
 
     def _pick_folder(self):
@@ -963,5 +967,12 @@ class App:
         self.lbl_status.config(
             text=f"{st['cam']}  |  {st['fps']:.1f} fps  |  "
                  f"{st['frames']} frames empilées (intégration cumulée)")
+
+
+def main():
+    """Point d'entrée : ouvre la fenêtre principale."""
+    root = tk.Tk()
+    App(root)
+    root.mainloop()
 
 

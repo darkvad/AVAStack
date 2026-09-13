@@ -11,8 +11,10 @@ from .simulated import SimulatedCamera
 from .opencv_cam import OpenCVCamera
 from .zwo import ZWOASICamera
 from .folder import FolderCamera
+from .qhy import QHYCamera
+from .playerone import PlayerOneCamera
 
 # Libellés du menu déroulant de l'interface (ordre d'affichage)
 SOURCES = ["Simulée (démo)",
            "Dossier surveillé (brutes FITS/PNG/TIFF…)",
-           "OpenCV 0", "OpenCV 1", "ZWO ASI (SDK)"]
+           "OpenCV 0", "OpenCV 1", "ZWO ASI (SDK)", "QHY (SDK)", "Player One (SDK)"]
