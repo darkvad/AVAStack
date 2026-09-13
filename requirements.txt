@@ -15,3 +15,11 @@ astropy
 # Optionnel - cameras Player One (necessite en plus la DLL PlayerOneCamera.dll
 # du SDK officiel, telechargee sur player-one-astronomy.com et a placer dans
 # le dossier du projet) - pas de paquet pip, integration ctypes directe.
+
+# Optionnel - cameras Touptek / Altair / clones OEM (necessite en plus la DLL
+# toupcam.dll du SDK officiel, telechargee sur touptek.com et a placer dans le
+# dossier du projet) - pas de paquet pip, integration ctypes directe.
+
+# Optionnel - cameras SVBONY (necessite en plus la DLL SVBCameraSDK.dll du
+# SDK officiel, telechargee sur svbony.com et a placer dans le dossier du
+# projet) - pas de paquet pip, integration ctypes directe.

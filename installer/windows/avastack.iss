@@ -13,7 +13,7 @@
 
 #define RepoRoot "..\.."
 #define AppName "AVAStack"
-#define AppVersion "2.1.0"
+#define AppVersion "2.2.0"
 #define MinPythonMajor 3
 #define MinPythonMinor 10
 #define PythonInstallerUrl "https://www.python.org/ftp/python/3.12.7/python-3.12.7-amd64.exe"

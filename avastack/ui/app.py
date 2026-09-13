@@ -20,7 +20,9 @@ from PIL import Image, ImageTk
 from ..compat import IS_WINDOWS
 from ..config import CONFIG, sauver_config
 from ..images import CFA_MODE, load_image, save_image, find_output, auto_unflip
-from ..cameras import SOURCES, SimulatedCamera, OpenCVCamera, ZWOASICamera, FolderCamera, QHYCamera, PlayerOneCamera
+from ..cameras import (SOURCES, SimulatedCamera, OpenCVCamera, ZWOASICamera,
+                       FolderCamera, QHYCamera, PlayerOneCamera,
+                       TouptekCamera, SVBonyCamera)
 from ..processing import Calibrator, StarAligner, LiveStacker, DisplayProcessor
 from ..external.detection import (
     DEFAULT_CMD_GRAXPERT, DEFAULT_CMD_BXT,
@@ -436,11 +438,15 @@ class App:
                 raise RuntimeError("Choisissez d'abord le dossier à surveiller (bouton …)")
             return FolderCamera(folder, process_existing=self.var_process_existing.get())
         if key.startswith("OpenCV"):
-            return OpenCVCamera(int(key.split()[-1]))
+                        return OpenCVCamera(int(key.split()[-1]))
         if key.startswith("QHY"):
             return QHYCamera()
         if key.startswith("Player One"):
             return PlayerOneCamera()
+        if key.startswith("Touptek"):
+            return TouptekCamera()
+        if key.startswith("SVBONY"):
+            return SVBonyCamera()
         return ZWOASICamera()
 
     def _pick_folder(self):

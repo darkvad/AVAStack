@@ -13,8 +13,11 @@ from .zwo import ZWOASICamera
 from .folder import FolderCamera
 from .qhy import QHYCamera
 from .playerone import PlayerOneCamera
+from .touptek import TouptekCamera
+from .svbony import SVBonyCamera
 
 # Libellés du menu déroulant de l'interface (ordre d'affichage)
 SOURCES = ["Simulée (démo)",
            "Dossier surveillé (brutes FITS/PNG/TIFF…)",
-           "OpenCV 0", "OpenCV 1", "ZWO ASI (SDK)", "QHY (SDK)", "Player One (SDK)"]
+           "OpenCV 0", "OpenCV 1", "ZWO ASI (SDK)", "QHY (SDK)",
+           "Player One (SDK)", "Touptek/Altair (SDK)", "SVBONY (SDK)"]

@@ -30,6 +30,8 @@ constructeur est inclus ou à installer toi-même :
               copie "PlayerOneCamera.dll" (version x64) dans CE dossier.
   - Touptek / Altair : télécharge le SDK sur touptek.com,
               copie "toupcam.dll" (version x64) dans CE dossier.
+              (fonctionne aussi pour les clones : Altair et autres
+              marques revendant l'électronique ToupCam)
   - SVBONY : télécharge le SDK sur svbony.com,
               copie "SVBCameraSDK.dll" (version x64) dans CE dossier.
 

@@ -14,11 +14,24 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.1.0"
+AVASTACK_VERSION = "2.2.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.2.0 : NOUVELLES CAMERAS TOUPTEK/ALTAIR + SVBONY (demande Alain, il
+#          possede les deux) :
+#          - avastack/cameras/touptek.py : ctypes sur toupcam.dll (SDK
+#            officiel touptek.com), derive du wrapper NMGRL/toupcam
+#            (Apache-2.0, Jake Ross). Couvre AUSSI les clones OEM (Altair
+#            et autres marques revendant l'electronique ToupCam). Mode
+#            "pull" evenementiel du SDK adapte a l'interface read()
+#            synchrone de CameraBase (derniere frame + verrou + compteur).
+#          - avastack/cameras/svbony.py : ctypes sur SVBCameraSDK.dll
+#            (SDK officiel svbony.com), API quasi-clone de ZWO — derive des
+#            wrappers MIT pysvbony (ssmichael1) / pysvb (olosnet).
+#          Sources 'Touptek/Altair (SDK)' et 'SVBONY (SDK)' ajoutees au
+#          menu (9 sources au total).
 # v2.1.0 : NOUVELLES CAMERAS QHYCCD + PLAYER ONE (demande Alain, il possede
-#          les deux ; Touptek/Altair + SVBONY suivront) :
+#          les deux) :
 #          - avastack/cameras/qhy.py : via le paquet PyPI officiel `qhyccd`
 #            (SDK natif inclus, `pip install qhyccd`) — NOUVELLE DEPENDANCE
 #            OPTIONNELLE (ajoutee en commentaire dans requirements.txt) ;
