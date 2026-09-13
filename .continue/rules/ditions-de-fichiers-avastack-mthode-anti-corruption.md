@@ -1,6 +1,6 @@
 ---
 description: S'applique à toute édition de fichier du projet AVAStack
-  (AVAStack.py, CLAUDE.md, requirements.txt)
+  (AVAStack.py, avastack/**, CLAUDE.md, requirements.txt)
 alwaysApply: false
 ---
 
@@ -10,3 +10,9 @@ alwaysApply: false
 3. Après CHAQUE édition, exécuter automatiquement, SANS demander l'autorisation d'Alain : (a) la vérification ast.parse de AVAStack.py, (b) en cas d'échec, localiser la ligne fautive, corriger directement (script Python ponctuel si nécessaire), revérifier — sans demander validation.
 4. Les commandes shell de vérification/correction ne demandent JAMAIS de confirmation : Alain a explicitement donné son accord (session du renommage v1.1.0).
 5. Si une édition échoue 2 fois de suite (chaîne introuvable), relire le fichier entier avant de réessayer — ne jamais enchaîner les essais à l'aveugle.
+6. (Constat v2.2.2) Ne JAMAIS passer par edit_existing_file avec un
+   new_string contenant du texte hors code (explications, balises
+   ```python) : le texte a déjà été écrit TEL QUEL dans le fichier,
+   le corrompant. Si le fichier est corrompu par une édition, relire
+   le fichier, retirer le texte parasite en tête, puis réappliquer la
+   modification avec single_find_and_replace ciblé.

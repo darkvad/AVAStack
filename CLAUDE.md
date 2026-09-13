@@ -46,6 +46,15 @@ python AVAStack.py
 pip install -r requirements.txt
 ```
 
+**PIÈGE LANCEMENT (constat réel)** : sur la machine d'Alain, `python3` ne
+pointe PAS vers le venv — même avec le venv activé, `python3` lance le
+Python du Microsoft Store (3.13, sans les paquets du projet). Le venv
+n'a d'ailleurs pas de `python3.exe`. Toujours lancer avec `python
+AVAStack.py`. Symptôme si mauvais interpréteur : l'appli démarre mais
+comportements incohérents (dark « illisible », empilement sans effet) —
+vérifier `python -c "import sys; print(sys.executable)"` avant de
+soupçonner le code.
+
 `requirements.txt` = dépendances de `AVAStack.py`. Toute nouvelle
 dépendance ajoutée au script doit y être ajoutée — cf. Conventions
 non-négociables.
@@ -151,6 +160,20 @@ Pièges :
   manifester EN MÊME TEMPS — isoler UNE SEULE variable à la fois.
 - **Une fonctionnalité optionnelle à risque non nul, même faible, gagne à
   rester opt-in (désactivée par défaut)** plutôt qu opt-out.
+
+## Pièges (leçons du projet AVAStack)
+
+- **OpenCV 5 refuse de débayeriser une image flottante** (`depth == CV_8U
+  || CV_16U` exigé, sinon `cv2.error`). Toute image float32/float64
+  (master dark/flat, empilement, sortie GraXpert/BXT) doit être traitée
+  comme mono sans tenter de débayerisation — et la devinette Bayer doit
+  opérer sur l'image ENTIÈRE d'origine, jamais sur une copie flottante.
+  (Constat v2.2.2 : « Lecture impossible » sur master dark float32 et
+  brutes uint16 comptées illisibles — bug latent révélé par la montée
+  d'opencv-python en 5.0.0.)
+- **Un symptôme anormal peut venir de l'interpréteur, pas du code** :
+  sur Windows, `python3` ≠ `python` (Store vs venv). Vérifier
+  `sys.executable` avant de chercher un bug applicatif.
 
 ## Leçons générales transposables (projet pipeline siril)
 
