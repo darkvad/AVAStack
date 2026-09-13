@@ -11,3 +11,6 @@ __pycache__/
 astrolivestack_*/
 avastack_*/
 
+
+# Artefacts d'installateur
+installer/windows/output/

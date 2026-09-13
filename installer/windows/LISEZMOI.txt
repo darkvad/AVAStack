@@ -1,0 +1,58 @@
+AVAStack — Live stacking
+========================
+
+Merci d'avoir installé AVAStack !
+
+LANCEMENT
+---------
+Double-clique sur le raccourci "AVAStack" (Bureau ou Menu Démarrer),
+ou sur lancer_avastack.bat dans ce dossier.
+
+SUPPORT DES CAMÉRAS
+-------------------
+AVAStack gère plusieurs marques de caméras. Selon la marque, le SDK
+constructeur est inclus ou à installer toi-même :
+
+✅ INCLUS D'OFFICE (aucune action) :
+  - QHYCCD  : le SDK est embarqué dans l'installation (paquet qhyccd).
+              Branche simplement ta caméra, choisis "QHY (SDK)" dans
+              l'application, et c'est parti.
+  - Simulée : ciel de démo, sans matériel.
+  - Dossier surveillé : empile les FITS/PNG/TIFF que ton logiciel
+              d'acquisition (N.I.N.A., APT, SharpCap...) écrit dans un dossier.
+  - OpenCV : webcams / cartes d'acquisition génériques.
+
+⚠️ À INSTALLER TOI-MÊME (SDK propriétaire, gratuit, à télécharger) :
+  - ZWO ASI : télécharge le SDK sur astronomy-imaging-camera.com,
+              décompresse, et copie "ASICamera2.dll" (version x64) dans
+              CE dossier.
+  - Player One : télécharge le SDK sur player-one-astronomy.com,
+              copie "PlayerOneCamera.dll" (version x64) dans CE dossier.
+  - Touptek / Altair : télécharge le SDK sur touptek.com,
+              copie "toupcam.dll" (version x64) dans CE dossier.
+  - SVBONY : télécharge le SDK sur svbony.com,
+              copie "SVBCameraSDK.dll" (version x64) dans CE dossier.
+
+Une fois la DLL en place, relance AVAStack : la source correspondante
+apparaît/est opérationnelle dans le menu déroulant.
+
+REMARQUE : si tu préfères ne pas toucher au dossier d'installation, tu peux
+définir une variable d'environnement pointant vers le dossier contenant la
+DLL, par exemple AVASTACK_PLAYERONE_DIR=C:\chemin\vers\SDK\PlayerOne.
+
+TRAIEMENT EXTERNE (optionnel)
+-----------------------------
+GraXpert et BlurXTerminator (rc-astro.exe) sont détectés automatiquement
+s'ils sont installés, sinon indique leur chemin dans l'application
+(bouton "…" de la section "Traitement externe"). Ces réglages sont
+mémorisés.
+
+FICHIERS DE CONFIGURATION
+-------------------------
+Tes réglages sont mémorisés dans :
+  %APPDATA%\AVAStack\config.json
+
+DÉSINSTALLATION
+---------------
+Menu Démarrer > AVAStack > Désinstaller AVAStack
+(les images et réglages que tu as créés ne sont pas supprimés).
