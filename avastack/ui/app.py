@@ -24,6 +24,7 @@ from ..cameras import (SOURCES, SimulatedCamera, OpenCVCamera, ZWOASICamera,
                        FolderCamera, QHYCamera, PlayerOneCamera,
                        TouptekCamera, SVBonyCamera)
 from ..processing import Calibrator, StarAligner, LiveStacker, DisplayProcessor
+from ..processing import veralux as veralux_moteur
 from ..external.detection import (
     DEFAULT_CMD_GRAXPERT, DEFAULT_CMD_BXT,
     commande_par_defaut_graxpert, commande_par_defaut_bxt)
@@ -256,6 +257,18 @@ class App:
         # --- Affichage
         box = ttk.LabelFrame(left, text="Affichage (temps réel)", padding=6)
         box.pack(fill="x", pady=3)
+        # Moteur d'étirement : STF intégré (défaut, inchangé) ou VeraLux
+        # (moteur tiers, opt-in). Le calcul VeraLux part dans un thread
+        # dédié côté DisplayProcessor : l'interface n'est jamais bloquée.
+        rowm = ttk.Frame(box)
+        rowm.pack(fill="x", pady=(0, 2))
+        ttk.Label(rowm, text="Moteur d'étirement :").pack(side="left")
+        self.var_moteur = tk.StringVar(value="STF")
+        self.cb_moteur = ttk.Combobox(rowm, textvariable=self.var_moteur,
+                                      state="readonly", width=9,
+                                      values=["STF", "VeraLux"])
+        self.cb_moteur.pack(side="left", padx=4)
+        self.cb_moteur.bind("<<ComboboxSelected>>", lambda e: self._on_moteur())
         self.var_auto = tk.BooleanVar(value=True)
         ttk.Checkbutton(box, text="Auto-stretch STF (fond calé sur la cible)",
                         variable=self.var_auto, command=self._on_auto).pack(anchor="w")
@@ -289,6 +302,22 @@ class App:
         self._add_slider(box, "Saturation", vs, 0.0, 3.0, 0.05,
                          lambda: (setattr(self.disp, "saturation", vs.get()),
                                   self._refresh_preview()), "{:.2f}")
+
+        # --- VeraLux (moteur tiers) — caché tant que « STF » est sélectionné
+        self.frm_veralux = ttk.Frame(box)
+        ttk.Label(self.frm_veralux, text="Résolution du logD :").pack(anchor="w")
+        self.var_vl_mode_res = tk.StringVar(value="logD forcé")
+        # jalon 3 ajoutera « fond cible (target_bg) » à cette liste
+        ttk.Combobox(self.frm_veralux, textvariable=self.var_vl_mode_res,
+                     state="readonly", width=14, values=["logD forcé"]).pack(anchor="w")
+        self.var_vl_logd = tk.DoubleVar(value=veralux_moteur.LOG_D_PAR_DEFAUT)
+        self._add_slider(self.frm_veralux, "logD forcé",
+                         self.var_vl_logd, 0.0, 7.0, 0.05,
+                         lambda: (setattr(self.disp, "vl_log_d", self.var_vl_logd.get()),
+                                  self._refresh_preview()), "{:.2f}")
+        self.lbl_vl = ttk.Label(self.frm_veralux, text="—",
+                                foreground="#888888", wraplength=310)
+        self.lbl_vl.pack(anchor="w")
 
         # --- Traitement externe (instantané de l'empilement)
         box = ttk.LabelFrame(left, text="Traitement externe (instantané)", padding=6)
@@ -401,6 +430,29 @@ class App:
             self.var_white.set(round(self.disp.last_hi, 4))
             self.scl_black.set(self.var_black.get())
             self.scl_white.set(self.var_white.get())
+        self._refresh_preview()
+
+    def _on_moteur(self):
+        """Bascule du moteur d'étirement : STF intégré ou VeraLux (tiers).
+        VeraLux est opt-in et n'écrit JAMAIS dans black/white/gamma : il
+        produit sa propre image étirée, gamma/saturation s'appliquent après
+        comme pour le STF."""
+        if self.var_moteur.get() == "VeraLux" \
+                and not veralux_moteur.moteur_disponible():
+            messagebox.showerror(
+                "VeraLux",
+                "Moteur veralux_core_headless.py introuvable à la racine du "
+                "projet — le STF est conservé.")
+            self.var_moteur.set("STF")
+        veralux_actif = self.var_moteur.get() == "VeraLux"
+        self.disp.stretch = "veralux" if veralux_actif else "stf"
+        if veralux_actif:
+            self.frm_veralux.pack(fill="x", pady=(4, 0))
+            self.disp.vl_log_d = self.var_vl_logd.get()
+            self.lbl_vl.config(text="Calcul en cours…", foreground="#c98a00")
+        else:
+            self.frm_veralux.pack_forget()
+            self.lbl_vl.config(text="—", foreground="#888888")
         self._refresh_preview()
 
     def _on_view(self):
@@ -807,6 +859,19 @@ class App:
                     self._show_image(self.disp.process(show))
         except queue.Empty:
             pass
+        if self.disp.vl_new:      # résultat du solveur VeraLux (thread dédié)
+            self.disp.vl_new = False
+            if self.var_moteur.get() == "VeraLux":
+                self._refresh_preview()
+                if self.disp.vl_error:
+                    self.lbl_vl.config(text=self.disp.vl_error,
+                                       foreground="#d04040")
+                elif self.disp.vl_diagnostics is not None:
+                    d = self.disp.vl_diagnostics
+                    self.lbl_vl.config(
+                        text=f"logD {self.disp.vl_log_d_resolu:.2f} · "
+                             f"fond {d['median_luminance_finale']:.3f}",
+                        foreground="#1d7f1d")
         if self.proc_new:
             self.proc_new = False
             self.btn_save_proc.config(state="normal")

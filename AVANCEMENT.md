@@ -83,6 +83,15 @@ validée.
   ~20-50 ms sur l'aperçu), UI « Auto-stretch : STF / VeraLux » + slider
   logD forcé (0-7). VeraLux ne touche JAMAIS à black/white/gamma ;
   gamma/saturation communs appliqués après, comme pour le STF.
+  ✅ 14/09/2026 (code + tests headless OK) : calcul en thread solveur dédié
+  avec cache par image + clé de réglages (même en logD forcé, ~196 ms à
+  1600×1000 → trop pour le thread UI), fallback STF au 1er calcul, jobs
+  remplacés (jamais empilés), flag `vl_new` lu par `_tick` (aucun appel Tk
+  hors thread UI). UI : combobox « Moteur d'étirement » + cadre VeraLux
+  (slider logD, label logD/fond/erreur).
+  ✅ **VALIDÉ PAR ALAIN le 14/09/2026 (test visuel, source simulée)** :
+  « tout est bon » — UI non figée, slider logD réactif, STF par défaut
+  inchangé, black/white/gamma intacts. Commité (v2.2.4).
 - **Jalon 3** — Mode target_bg + solveur par frame : thread dédié
   déclenché à CHAQUE nouvel empilement (frames espacées de ≥1 s, souvent
   bien plus → le rythme des frames EST le cooldown ; résoudre toujours le

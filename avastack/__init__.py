@@ -14,9 +14,27 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.2.3"
+AVASTACK_VERSION = "2.2.4"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.2.4 : JALON 2 de l'intégration VeraLux (affichage, mode logD forcé) :
+#          - avastack/processing/display.py : DisplayProcessor gagne un
+#            mode "veralux" (opt-in, défaut "stf" STRICTEMENT inchangé).
+#            Le calcul (~200 ms à taille aperçu) part dans un thread solveur
+#            dédié (daemon) : résultat CACHÉ par image + clé de réglages ;
+#            l'UI rend le dernier résultat terminé, fallback STF le temps du
+#            1er calcul ; les jobs intermédiaires sont remplacés (jamais
+#            empilés) → anti-blocage et anti-pompage. VeraLux n'écrit JAMAIS
+#            dans black/white/gamma ; gamma/saturation communs appliqués
+#            après, comme pour le STF. Flag vl_new lu par l'UI (aucun appel
+#            Tk depuis le thread).
+#          - avastack/ui/app.py : combobox « Moteur d'étirement : STF /
+#            VeraLux » + cadre VeraLux (mode « logD forcé » seul au jalon 2,
+#            slider logD 0-7, label d'état logD/fond/erreur). Repli STF +
+#            message si le moteur tiers est introuvable.
+#          - _test_veralux_jalon2.py : headless OK (fallback STF, cache,
+#            recalcul logD, fond calé sur 0.20, black/white intacts, gamma,
+#            RGB, retour STF).
 # v2.2.3 : JALON 1 de l'intégration VeraLux (adaptateur, non câblé) :
 #          - avastack/processing/veralux.py : import du moteur tiers
 #            veralux_core_headless.py (GPL-3.0, JAMAIS modifié — racine du
