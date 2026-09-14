@@ -7,9 +7,13 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
 
 ## État actuel (base stable)
 
-- **Version stable : AVAStack v2.2.2** (`avastack/__init__.py`,
-  `AVASTACK_VERSION = "2.2.2"`), branche `master`, HEAD = commit `5f6895d`
-  (Docs — pièges OpenCV 5 et python3 vs python).
+- **Version stable : AVAStack v2.2.5** (`avastack/__init__.py`,
+  `AVASTACK_VERSION = "2.2.5"`), branche `master`. Jalon 3 VeraLux validé
+  par Alain (test visuel) et committé le 14/09/2026.
+- **Prochaine session : commencer au JALON 4** — GraXpert live (opt-in),
+  cf. plan détaillé ci-dessous. Les stashes `stash@{0}`/`stash@{1}` sont
+  toujours en place : ne rien dropper tant que la fonctionnalité n'est pas
+  entièrement validée (jalons 4-6 restants).
 - Arbre de travail **propre** : la tentative abandonnée d'intégration VeraLux
   a été mise de côté par `git stash -u` (elle n'est plus dans les sources).
 - Ce qui fonctionne (validé en réel) :
@@ -23,6 +27,11 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
     (med − k·σ → p99.9, MTF calant le fond sur 0.25, stats lissées EMA
     anti-pompage) et mode MANUEL (black/white point), gamma et saturation
     communs. UI dans `avastack/ui/app.py` (case « Auto-stretch STF »).
+  - Étirement VeraLux (moteur tiers, opt-in, validé en réel sur source
+    simulée) : modes « fond cible (auto) » — le moteur résout le logD à
+    CHAQUE nouvel empilement (thread dédié, dernier job gagnant, fallback
+    STF) avec curseur « Luminosité du fond visée » — et « logD forcé »
+    (curseur + bouton 🔒 de verrouillage du logD résolu).
   - Traitement externe optionnel sur INSTANTANÉ (GraXpert, BlurXTerminator)
     dans un thread séparé ; l'empilement accumulé reste linéaire et intact.
   - Installateur Windows Inno Setup (v2.1.0).
@@ -36,8 +45,11 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
   diagnostics)`, profils capteur `SENSOR_PROFILES` (Rec.709 par défaut,
   IMX585/662/533/571-2600/294). N'importe numpy uniquement → **aucune
   dépendance pip nouvelle**.
-- Ce fichier n'est **pas encore câblé** dans l'application : la tâche en
-  cours est précisément de l'intégrer comme **choix d'auto-stretch**.
+- Ce fichier est **câblé depuis les jalons 1-3** : adaptateur
+  `avastack/processing/veralux.py` (jalon 1, import robuste, clip [0,1]),
+  affichage dans `DisplayProcessor` + UI (jalons 2-3). Tâche en cours :
+  **jalon 4 — GraXpert live** (dans le même thread solveur, AVANT
+  l'étirement).
 - La tentative précédente (autre outil) est dans les stashes :
   - `stash@{0}` « WIP on master: 5f6895d » : modifications de
     `avastack/ui/app.py`, `avastack/processing/display.py`,
@@ -98,6 +110,26 @@ validée.
   DERNIER empilement, jamais une file d'attente), fallback STF le temps du
   1er calcul, bouton « 🔒 Verrouiller le logD résolu » (capte la dernière
   valeur résolue → calcul direct déterministe et réactif).
+  🔧 14/09/2026 (code + tests headless OK) :
+  `display.py` : `vl_mode_res = MODE_TARGET_BG` par défaut, `notify_new_stack()`
+  (drapeau `_vl_force` consommé SEULEMENT quand un job est réellement soumis ;
+  l'objet image nouveau à chaque tick UI ne déclenche plus rien — le worker
+  pousse ~20 im/s même sans nouvelle frame), `reset()` vide aussi le cache
+  VeraLux. `app.py` : combobox « Résolution du logD : fond cible (auto) /
+  logD forcé » (défaut = fond cible) + curseur « Luminosité du fond visée
+  (VeraLux) » 0.10-0.45 (recalcul immédiat : vl_target_bg fait partie de la
+  clé), `_tick` surveille `st["frames"]` →
+  `notify_new_stack()`, bouton 🔒 (capte `vl_log_d_resolu` via le curseur →
+  mode logD forcé ; 🔓 = retour fond cible). `_test_veralux_jalon3.py` :
+  18 vérifications OK (fond calé 0.20, aucun recalcul entre deux frames,
+  dernier empilement gagnant sans file, verrouillage = déterminisme
+  écart max 0.0000, reset, black/white intacts). **`_test_veralux_jalon2.py`
+  adapté** : il doit forcer `vl_mode_res = MODE_LOG_D` (le comportement
+  « logD forcé » n'est plus le défaut).
+  ✅ **VALIDÉ PAR ALAIN le 14/09/2026 (test visuel, source simulée)** :
+  curseur « Luminosité du fond visée » réactif (ajouté après son premier
+  retour — il manquait), UI jamais figée, verrouillage logD opérationnel.
+  Commité (v2.2.5).
 - **Jalon 4** — GraXpert live (opt-in) : case « GraXpert live (avant
   étirement) » ; chaîne stack → GraXpert → VeraLux dans le thread solveur
   (ordre photométrique correct). BXT reste manuel (bouton ⚡, inchangé).
