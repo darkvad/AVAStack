@@ -72,7 +72,12 @@ validée.
   `normalize_input` : float avec max > 1.1 → divisé par 65535 !), mono
   (H,W) et RGB (H,W,3)↔(C,H,W), API `etirer(...)` → (image étirée, log_d,
   diagnostics). Test headless mono PUIS RGB avant tout câblage. L'appli
-  reste inchangée à ce stade.
+  reste inchangée à ce stade. ✅ 14/09/2026 : test headless OK (mono, RGB,
+  non-mutation, clip, déterminisme logD, petite image, repli profil).
+  **Chronos mesurés à 1600×1000** : target_bg ≈ 264 ms, logD forcé
+  ≈ 196 ms (et 124 ms à 800×1200 en logD) → pour les jalons 2-3 : résultat
+  VeraLux CACHÉ par image (recalcul à chaque nouvel empilement, jamais à
+  chaque tick UI ~30 ms) et slider logD débouncé (~150 ms).
 - **Jalon 2** — Affichage VeraLux, mode logD forcé : mode opt-in dans
   `DisplayProcessor` (calcul direct dans `process()` : pure fonction,
   ~20-50 ms sur l'aperçu), UI « Auto-stretch : STF / VeraLux » + slider

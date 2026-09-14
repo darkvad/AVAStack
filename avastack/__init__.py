@@ -14,9 +14,29 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.2.2"
+AVASTACK_VERSION = "2.2.3"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.2.3 : JALON 1 de l'intégration VeraLux (adaptateur, non câblé) :
+#          - avastack/processing/veralux.py : import du moteur tiers
+#            veralux_core_headless.py (GPL-3.0, JAMAIS modifié — racine du
+#            projet déduite de __file__, pas du répertoire courant,
+#            compatible installateur) ; API etirer(img, mode, ...) →
+#            (image étirée, log_d, diagnostics) ; modes target_bg
+#            (résolution auto du logD) et log_d (logD forcé, déterministe) ;
+#            copie défensive + clip [0,1] en entrée (piège normalize_input :
+#            float avec max > 1.1 → divisé par 65535) ; le moteur renvoie le
+#            RGB en (3,H,W) → transposé en (H,W,3) ; mono (H,W) inchangé ;
+#            repli silencieux sur Rec.709 si profil inconnu ; le module
+#            reste importable même si le moteur tiers est absent
+#            (MOTEUR_DISPONIBLE = False, RuntimeError à l'appel) ;
+#          - _test_veralux_jalon1.py : test headless (mono, RGB, non
+#            mutation, clip > 1.1, déterminisme logD, petite image, chrono).
+#          Constat réel : « bug latent ligne ~276 » du tiers = FAUX POSITIF
+#          (ligne apply_mtf complète). Chronos mesurés à 1600x1000 :
+#          target_bg ≈ 264 ms, logD forcé ≈ 196 ms → l'étirement sera caché
+#          par image (recalcul à chaque nouvel empilement, PAS à chaque tick
+#          UI), slider logD « débouncé ».
 # v2.2.2 : CORRECTION (constat Alain, run réel - 2026) : « Lecture impossible »
 #          au chargement d'un master dark, et empilement dossier surveillé
 #          muet (toutes les brutes comptées illisibles). Cause : OpenCV 5
