@@ -14,9 +14,32 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.2.4"
+AVASTACK_VERSION = "2.2.5"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.2.5 : JALON 3 de l'intégration VeraLux (mode target_bg + solveur par
+#          frame) :
+#          - avastack/processing/display.py : mode de résolution du logD
+#            « target_bg » par DÉFAUT (le moteur résout lui-même le logD pour
+#            amener le fond du ciel à la cible) ; nouveau notify_new_stack() :
+#            la résolution est relancée à CHAQUE NOUVEL empilement (le rythme
+#            des frames, ≥ 1 s, EST le cooldown — aucun calcul entre deux
+#            frames, le worker ne garde que le DERNIER job, aucune file
+#            d'attente) ; reset() vide aussi le cache VeraLux et force une
+#            résolution au prochain rendu.
+#          - avastack/ui/app.py : combobox « Résolution du logD : fond cible
+#            (auto) / logD forcé » + curseur « Luminosité du fond visée »
+#            (cible target_bg 0.10-0.45, recalcul immédiat via la clé) +
+#            bouton « 🔒 Verrouiller le logD résolu »
+#            (capte la dernière valeur résolue → calcul direct déterministe
+#            et réactif ; 🔓 = retour à la résolution auto). Le nombre de
+#            frames empilées est surveillé dans _tick pour déclencher
+#            notify_new_stack() (le worker pousse ~20 im/s même sans nouvelle
+#            frame : l'objet image seul ne peut plus déclencher de calcul).
+#          - _test_veralux_jalon3.py : headless OK (défaut target_bg, fond
+#            calé, aucun recalcul entre deux frames, dernier empilement
+#            gagnant, verrouillage = déterminisme logD, reset, black/white
+#            intacts).
 # v2.2.4 : JALON 2 de l'intégration VeraLux (affichage, mode logD forcé) :
 #          - avastack/processing/display.py : DisplayProcessor gagne un
 #            mode "veralux" (opt-in, défaut "stf" STRICTEMENT inchangé).

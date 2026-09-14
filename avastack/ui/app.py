@@ -46,6 +46,7 @@ class App:
         self.aligner = StarAligner()
         self.calib = Calibrator()
         self.disp = DisplayProcessor()
+        self._vl_frames = None        # nb de frames du dernier empilement affiché
         self.kappa = 3.0
         self.pending_settings = None
         self.reset_request = self.ref_request = False
@@ -306,15 +307,34 @@ class App:
         # --- VeraLux (moteur tiers) — caché tant que « STF » est sélectionné
         self.frm_veralux = ttk.Frame(box)
         ttk.Label(self.frm_veralux, text="Résolution du logD :").pack(anchor="w")
-        self.var_vl_mode_res = tk.StringVar(value="logD forcé")
-        # jalon 3 ajoutera « fond cible (target_bg) » à cette liste
-        ttk.Combobox(self.frm_veralux, textvariable=self.var_vl_mode_res,
-                     state="readonly", width=14, values=["logD forcé"]).pack(anchor="w")
-        self.var_vl_logd = tk.DoubleVar(value=veralux_moteur.LOG_D_PAR_DEFAUT)
-        self._add_slider(self.frm_veralux, "logD forcé",
-                         self.var_vl_logd, 0.0, 7.0, 0.05,
-                         lambda: (setattr(self.disp, "vl_log_d", self.var_vl_logd.get()),
+        self.var_vl_mode_res = tk.StringVar(value="fond cible (auto)")
+        # Jalon 3 : « fond cible (auto) » = le moteur résout lui-même le logD
+        # pour amener le fond à la cible, à CHAQUE nouvel empilement (le
+        # rythme des frames est le cooldown) ; « logD forcé » = déterministe
+        # et réactif (curseur ou bouton 🔒).
+        self.cb_vl_mode = ttk.Combobox(self.frm_veralux,
+                                       textvariable=self.var_vl_mode_res,
+                                       state="readonly", width=16,
+                                       values=["fond cible (auto)", "logD forcé"])
+        self.cb_vl_mode.pack(anchor="w")
+        self.cb_vl_mode.bind("<<ComboboxSelected>>",
+                             lambda e: self._on_vl_mode())
+        self.var_vl_target = tk.DoubleVar(value=veralux_moteur.TARGET_BG_PAR_DEFAUT)
+        self._add_slider(self.frm_veralux, "Luminosité du fond visée (VeraLux)",
+                         self.var_vl_target, 0.10, 0.45, 0.01,
+                         lambda: (setattr(self.disp, "vl_target_bg",
+                                          self.var_vl_target.get()),
                                   self._refresh_preview()), "{:.2f}")
+        self.var_vl_logd = tk.DoubleVar(value=veralux_moteur.LOG_D_PAR_DEFAUT)
+        self.scl_vl_logd = self._add_slider(
+            self.frm_veralux, "logD forcé",
+            self.var_vl_logd, 0.0, 7.0, 0.05,
+            lambda: (setattr(self.disp, "vl_log_d", self.var_vl_logd.get()),
+                     self._refresh_preview()), "{:.2f}")
+        self.btn_vl_lock = ttk.Button(self.frm_veralux,
+                                      text="🔒 Verrouiller le logD résolu",
+                                      command=self._on_vl_lock)
+        self.btn_vl_lock.pack(anchor="w", pady=(2, 0))
         self.lbl_vl = ttk.Label(self.frm_veralux, text="—",
                                 foreground="#888888", wraplength=310)
         self.lbl_vl.pack(anchor="w")
@@ -448,11 +468,49 @@ class App:
         self.disp.stretch = "veralux" if veralux_actif else "stf"
         if veralux_actif:
             self.frm_veralux.pack(fill="x", pady=(4, 0))
-            self.disp.vl_log_d = self.var_vl_logd.get()
+            self._sync_vl_mode()
             self.lbl_vl.config(text="Calcul en cours…", foreground="#c98a00")
         else:
             self.frm_veralux.pack_forget()
             self.lbl_vl.config(text="—", foreground="#888888")
+        self._refresh_preview()
+
+    def _sync_vl_mode(self):
+        """Répercute la combobox « Résolution du logD » (jalon 3) dans le
+        DisplayProcessor et ajuste le libellé du bouton de verrouillage."""
+        forcer = self.var_vl_mode_res.get() == "logD forcé"
+        self.disp.vl_mode_res = (veralux_moteur.MODE_LOG_D if forcer
+                                 else veralux_moteur.MODE_TARGET_BG)
+        self.disp.vl_log_d = self.var_vl_logd.get()
+        self.btn_vl_lock.config(text="🔓 Déverrouiller (fond cible)" if forcer
+                                     else "🔒 Verrouiller le logD résolu")
+
+    def _on_vl_mode(self):
+        """Changement de mode de résolution du logD (jalon 3) : « fond cible
+        (auto) » = le moteur résout le logD à chaque nouvel empilement ;
+        « logD forcé » = calcul direct déterministe et réactif."""
+        self._sync_vl_mode()
+        self._refresh_preview()
+
+    def _on_vl_lock(self):
+        """Bouton 🔒 (jalon 3) : capte le dernier logD résolu par le mode
+        « fond cible » et bascule en « logD forcé » — déterministe et réactif
+        (plus de résolution itérative). 🔓 : retour à la résolution auto."""
+        if self.var_vl_mode_res.get() == "logD forcé":
+            self.var_vl_mode_res.set("fond cible (auto)")
+            self._sync_vl_mode()
+            self._refresh_preview()
+            return
+        if self.disp.vl_log_d_resolu is None:
+            self.lbl_vl.config(text="Aucun logD résolu pour l'instant — "
+                                    "attendez le premier calcul.",
+                               foreground="#c98a00")
+            return
+        # Le curseur met à jour la variable, le label de valeur ET
+        # disp.vl_log_d via son callback (_add_slider) :
+        self.scl_vl_logd.set(round(self.disp.vl_log_d_resolu, 3))
+        self.var_vl_mode_res.set("logD forcé")
+        self._sync_vl_mode()
         self._refresh_preview()
 
     def _on_view(self):
@@ -520,6 +578,7 @@ class App:
         self.aligner = StarAligner()
         self.stacker = None
         self.disp.reset()                      # stats d'affichage repartent de zéro
+        self._vl_frames = None                 # le 1er empilement relancera le solveur
         self.bad_frames, self.fps = 0, 0.0
         self.show_stack = None
         self.last_show = None
@@ -852,6 +911,13 @@ class App:
             while True:
                 show, hist, st = self.q.get_nowait()
                 self.show_stack = show
+                if st["frames"] != self._vl_frames:
+                    # Jalon 3 : un NOUVEL empilement vient d'être produit —
+                    # le solveur VeraLux relance la résolution (le rythme des
+                    # frames est le cooldown ; aucun calcul entre deux frames,
+                    # et le solveur ne garde que le DERNIER empilement).
+                    self._vl_frames = st["frames"]
+                    self.disp.notify_new_stack()
                 self._update_status(st)
                 self._draw_hist(hist)
                 if self.var_view.get() == "pile":     # la vue traitée garde son instantané

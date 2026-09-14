@@ -24,10 +24,18 @@ class DisplayProcessor:
 
     Mode VERALUX (self.stretch == "veralux", opt-in) — étirement hyperbolique
     du moteur tiers `veralux_core_headless.py`, via l'adaptateur
-    `avastack.processing.veralux`. Le calcul (~200 ms à taille aperçu) part
-    dans un thread dédié : le résultat est CACHÉ par image et les réglages
-    sont comparés par clé — l'UI n'est jamais bloquée, et tant que le calcul
-    n'est pas terminé, le STF sert d'image d'attente. VeraLux n'écrit JAMAIS
+    `avastack.processing.veralux`. Deux modes de résolution du logD :
+      - MODE_TARGET_BG (défaut, jalon 3) : le moteur résout lui-même le logD
+        pour amener le fond du ciel à vl_target_bg ;
+      - MODE_LOG_D : logD imposé (curseur ou bouton 🔒 de l'UI) — calcul
+        direct, déterministe, réactif.
+    Le calcul (~200 ms à taille aperçu) part dans un thread dédié, déclenché
+    par notify_new_stack() à CHAQUE nouvel empilement — le rythme des frames
+    (≥ 1 s, souvent bien plus) EST le cooldown, aucun calcul entre deux
+    frames — et le worker ne garde que le DERNIER job (aucune file
+    d'attente). Le résultat est CACHÉ par image et les réglages sont comparés
+    par clé — l'UI n'est jamais bloquée, et tant que le calcul n'est pas
+    terminé, le STF sert d'image d'attente. VeraLux n'écrit JAMAIS
     dans black/white/gamma (leçon de la 1re tentative) : ces réglages et les
     curseurs gamma/saturation restent la propriété des modes STF/manuel, et
     gamma/saturation s'appliquent après l'étirement, comme pour le STF.
@@ -48,7 +56,9 @@ class DisplayProcessor:
 
         # --- VeraLux (moteur tiers) -----------------------------------------
         self.stretch = "stf"          # "stf" (défaut, inchangé) | "veralux"
-        self.vl_mode_res = _veralux.MODE_LOG_D   # jalon 3 ajoutera MODE_TARGET_BG
+        self.vl_mode_res = _veralux.MODE_TARGET_BG  # jalon 3 : résolution auto
+                                      # du logD (fond calé sur vl_target_bg) ;
+                                      # MODE_LOG_D = logD forcé (bouton 🔒)
         self.vl_target_bg = _veralux.TARGET_BG_PAR_DEFAUT
         self.vl_log_d = _veralux.LOG_D_PAR_DEFAUT
         self.vl_profil = _veralux.PROFIL_PAR_DEFAUT
@@ -58,6 +68,7 @@ class DisplayProcessor:
         self._vl_result = None        # (clé, image étirée) du dernier calcul TERMINÉ
         self._vl_job = None           # (copie image, params, clé) en attente
         self._vl_pending = False      # un calcul est en cours
+        self._vl_force = False        # un NOUVEL empilement attend la résolution
         self._vl_lock = threading.Lock()
         self._vl_wake = threading.Event()
         self.vl_new = False           # un résultat vient d'arriver (lu par l'UI)
@@ -68,8 +79,12 @@ class DisplayProcessor:
         self._vl_thread.start()
 
     def reset(self):
-        """Oublie les stats lissées (nouvel empilement / changement de vue)."""
+        """Oublie les stats lissées et le cache VeraLux (nouvelle session /
+        changement de vue) : le prochain process() relance une résolution."""
         self._stats = None
+        with self._vl_lock:
+            self._vl_result = None
+            self._vl_force = True
 
     @staticmethod
     def _mtf(x, m):
@@ -105,6 +120,15 @@ class DisplayProcessor:
         hi = max(p999, med + 10.0 * sigma, lo + 1e-8)        # hautes lumières réelles
         m = self._solve_m((med - lo) / (hi - lo), self.target)
         return lo, hi, m
+
+    def notify_new_stack(self):
+        """Signale qu'un NOUVEL empilement vient d'être produit (une frame de
+        plus a été empilée) : le thread solveur relance la résolution. Le
+        rythme des frames (≥ 1 s, souvent bien plus) EST le cooldown — aucun
+        calcul entre deux frames, et le worker ne garde que le DERNIER job
+        (aucune file d'attente). Appelé depuis l'UI, jamais bloquant."""
+        with self._vl_lock:
+            self._vl_force = True
 
     def _vl_params(self):
         """Clé de hachage des réglages VeraLux (recalcul si elle change)."""
@@ -145,17 +169,24 @@ class DisplayProcessor:
         image d'attente) et soumet un calcul si l'image ou les réglages ont
         changé. Jamais bloquant : aucun calcul ici, seulement une copie."""
         key = self._vl_params()
-        if self._vl_src is not img or self._vl_key != key:
-            self._vl_src, self._vl_key = img, key
+        with self._vl_lock:
+            force = self._vl_force
+        # Jalon 3 : on ne soumet QUE si l'empilement a changé
+        # (notify_new_stack) ou si les réglages ont changé — l'objet image
+        # change à chaque tick UI sans nouvel empilement, il ne doit PAS
+        # déclencher de recalcul.
+        if force or self._vl_key != key:
             params = dict(mode=self.vl_mode_res, target_bg=self.vl_target_bg,
                           log_d=self.vl_log_d, profil=self.vl_profil)
             with self._vl_lock:
                 if not self._vl_pending:
                     self._vl_pending = True
+                    self._vl_force = False   # consommé : job réellement soumis
                     # copie défensive : img appartient à l'UI et peut être
                     # remplacée pendant le calcul
                     self._vl_job = (img.astype(np.float32).copy(), params, key)
                     self._vl_wake.set()
+            self._vl_src, self._vl_key = img, key
         with self._vl_lock:
             res = self._vl_result \
                 if (self._vl_result is not None

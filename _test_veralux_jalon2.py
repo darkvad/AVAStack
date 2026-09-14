@@ -8,6 +8,7 @@ import numpy as np
 sys.path.insert(0, r"c:\Astro\AstroLiveStack")
 
 from avastack.processing.display import DisplayProcessor
+from avastack.processing import veralux as vl
 
 rng = np.random.default_rng(0)
 y, x = np.mgrid[0:400, 0:600]
@@ -35,6 +36,9 @@ def verifie(cond, msg):
 
 
 d = DisplayProcessor()
+d.vl_mode_res = vl.MODE_LOG_D   # jalon 2 : logD forcé seul — le jalon 3 a fait
+                                # de target_bg le défaut (testé dans
+                                # _test_veralux_jalon3.py)
 
 # --- 1. mode STF inchangé -----------------------------------------------------
 print("[1] Mode STF (défaut)")
