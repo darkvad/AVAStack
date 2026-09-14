@@ -30,6 +30,24 @@ renomme), mais AUCUN chemin specifique a un OS ne doit etre code en dur dans
 le code sans repli — contrairement a la regle anterieure « Windows
 uniquement » qui n est plus valable.
 
+## AVANCEMENT.md — mémoire de session (court terme)
+
+`AVANCEMENT.md` (racine du dépôt) suit l'état courant du développement :
+version stable de référence, tâche en cours découpée en étapes, décisions,
+pièges récents. CLAUDE.md reste la mémoire de LONG terme ; AVANCEMENT.md la
+mémoire de COURT terme.
+
+- **En début de session (ou en reprenant une tâche)** : lire AVANCEMENT.md
+  AVANT de travailler, pour reprendre exactement où l'on s'était arrêté.
+- **Tenir AVANCEMENT.md à jour** :
+  - à chaque **jalon** (étape terminée, décision tranchée, test réel passé
+    ou échoué) ;
+  - **sur demande** d'Alain ;
+  - quand **Alain indique la fin de session** (consigner l'état exact et
+    la prochaine étape avant de s'arrêter).
+- Ne pas y dupliquer ce qui appartient à CLAUDE.md ; les leçons durables
+  remontent vers CLAUDE.md via la procédure de proposition décrite plus bas.
+
 ## Commandes essentielles (Windows, PowerShell)
 
 ```powershell

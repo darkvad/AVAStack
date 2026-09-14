@@ -1,0 +1,16 @@
+# Règles de session — lues automatiquement par Cline au démarrage de CHAQUE session.
+
+## Lecture obligatoire avant toute action
+
+En début de session (et avant de répondre à la moindre demande, même simple) :
+
+1. Lire `CLAUDE.md` (racine du dépôt) — mémoire LONG terme : conventions
+   non-négociables, pièges, doc des outils externes, procédure de
+   maintenance de CLAUDE.md.
+2. Lire `AVANCEMENT.md` (racine du dépôt) — mémoire COURT terme : version
+   stable de référence, tâche en cours et prochaine étape, décisions,
+   pièges récents. Reprendre le travail LÀ où il s'était arrêté.
+
+Ne jamais commencer à coder sans avoir lu ces deux fichiers, et tenir
+`AVANCEMENT.md` à jour aux jalons, sur demande, ou en fin de session
+(cf. section correspondante de CLAUDE.md).
