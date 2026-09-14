@@ -14,9 +14,30 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.2.5"
+AVASTACK_VERSION = "2.2.6"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.2.6 : JALON 4 de l'intégration VeraLux (GraXpert live, opt-in) :
+#          - avastack/external/live.py : exécution du CLI GraXpert sur
+#            l'APERÇU de l'empilement (FITS temporaire → commande configurée
+#            {input}/{output}/{outbase} → relecture normalisée [0..1],
+#            auto_unflip, contrôle des dimensions). Erreurs non fatales :
+#            repli sur l'image brute + message.
+#          - avastack/processing/display.py : le thread solveur enchaîne
+#            stack → GraXpert → VeraLux quand vl_graxpert est True (ordre
+#            photométrique correct, décision d'Alain) ; résultat GraXpert en
+#            cache par CONTENU d'image (empreinte SHA-1) → bouger un curseur
+#            VeraLux ne relance PAS GraXpert ; réglages GraXpert captés côté
+#            UI dans le job (jamais lus depuis le thread) ; reset() vide le
+#            cache ; erreurs "GraXpert live : …" affichées, étirement de
+#            l'image brute en repli. BXT inchangé (manuel, bouton ⚡).
+#          - avastack/ui/app.py : case « GraXpert live (avant étirement) »
+#            dans le cadre VeraLux (refus + avertissement si la commande est
+#            incomplète), synchro de la commande éditée dans _tick, label
+#            d'état préfixé « GX ✓ · » quand le mode est actif.
+#          - _test_graxpert_live_jalon4.py + _gx_factice.py : headless OK
+#            (défaut inactif, chaîne appliquée, cache, erreur non fatale,
+#            désactivation, reset, black/white intacts).
 # v2.2.5 : JALON 3 de l'intégration VeraLux (mode target_bg + solveur par
 #          frame) :
 #          - avastack/processing/display.py : mode de résolution du logD

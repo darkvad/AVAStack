@@ -10,6 +10,10 @@ import time
 
 import numpy as np
 
+# Sortie redirigée (fichier/pipe) → cp1252 ne sait pas encoder →/— des prints
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(errors="replace")
+
 sys.path.insert(0, r"c:\Astro\AstroLiveStack")
 
 from avastack.processing import veralux as vl

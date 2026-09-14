@@ -6,6 +6,7 @@ import threading
 import numpy as np
 import cv2
 
+from ..external import live as _gx_live
 from . import veralux as _veralux
 
 
@@ -40,6 +41,16 @@ class DisplayProcessor:
     curseurs gamma/saturation restent la propriété des modes STF/manuel, et
     gamma/saturation s'appliquent après l'étirement, comme pour le STF.
 
+    Mode VERALUX + GRAXPERT LIVE (jalon 4, opt-in) : si self.vl_graxpert est
+    True, le thread solveur enchaîne stack → GraXpert (CLI, via
+    avastack.external.live, sur un FITS temporaire de l'aperçu) → VeraLux —
+    l'ordre photométrique correct : le gradient est retiré AVANT l'étirement.
+    Le résultat GraXpert est mis en cache par CONTENU d'image (empreinte) :
+    bouger un curseur VeraLux ne relance PAS GraXpert. En cas d'échec
+    (binaire absent, timeout…), l'erreur est signalée dans vl_error et
+    l'image brute est étirée en repli — l'UI n'est jamais bloquée, le BXT
+    reste entièrement manuel (bouton ⚡, inchangé).
+
     Dans tous les modes, `process()` reçoit une image LINÉAIRE [0..1] et
     renvoie un uint8 affichable ; les données sauvegardées ne passent jamais
     par ici.
@@ -62,6 +73,11 @@ class DisplayProcessor:
         self.vl_target_bg = _veralux.TARGET_BG_PAR_DEFAUT
         self.vl_log_d = _veralux.LOG_D_PAR_DEFAUT
         self.vl_profil = _veralux.PROFIL_PAR_DEFAUT
+        # --- GraXpert live (jalon 4, opt-in) --------------------------------
+        self.vl_graxpert = False      # GraXpert AVANT l'étirement VeraLux
+        self.vl_graxpert_cmd = ""     # commande GraXpert ({input}/{outbase}…)
+        self._gx_cache = None         # (empreinte image, image traitée) —
+                                      # utilisé par le thread solveur SEUL
         # cache + solveur (thread dédié, jamais le thread UI)
         self._vl_src = None           # dernière image soumise (comparaison d'objet)
         self._vl_key = None           # clé des réglages du dernier calcul lancé
@@ -82,6 +98,7 @@ class DisplayProcessor:
         """Oublie les stats lissées et le cache VeraLux (nouvelle session /
         changement de vue) : le prochain process() relance une résolution."""
         self._stats = None
+        self._gx_cache = None         # oublie aussi le résultat GraXpert live
         with self._vl_lock:
             self._vl_result = None
             self._vl_force = True
@@ -133,10 +150,12 @@ class DisplayProcessor:
     def _vl_params(self):
         """Clé de hachage des réglages VeraLux (recalcul si elle change)."""
         return (self.vl_mode_res, round(self.vl_target_bg, 4),
-                round(self.vl_log_d, 3), self.vl_profil)
+                round(self.vl_log_d, 3), self.vl_profil,
+                self.vl_graxpert, self.vl_graxpert_cmd)
 
     def _vl_worker(self):
-        """Thread solveur VeraLux : calcule le DERNIER job demandé (les jobs
+        """Thread solveur : enchaîne (jalon 4) GraXpert live — si activé —
+        PUIS l'étirement VeraLux, sur le DERNIER job demandé (les jobs
         intermédiaires — slider bougé, frame remplacée — sont simplement
         remplacés, jamais empilés). Écrit le résultat sous verrou."""
         while True:
@@ -147,19 +166,37 @@ class DisplayProcessor:
                 self._vl_job = None
             if job is None:
                 continue
-            img, params, key = job
+            img, params, key, (gx_actif, gx_cmd) = job
+            # --- GraXpert live (opt-in) : retrait de gradient AVANT l'étirement
+            # Cache indexé par (CONTENU de l'image, commande) : une nouvelle
+            # frame relance l'outil, mais pas un simple curseur VeraLux ; et
+            # modifier la commande GraXpert invalide le résultat caché.
+            img_gx, err_gx = img, ""
+            if gx_actif:
+                cle = (_gx_live.cle_image(img), gx_cmd)
+                if self._gx_cache is not None and self._gx_cache[0] == cle:
+                    img_gx = self._gx_cache[1]   # curseur bougé : GraXpert
+                else:                            # n'est PAS relancé
+                    img_gx, err_gx = _gx_live.appliquer(img, gx_cmd)
+                    if err_gx:
+                        img_gx = img             # repli : étirement de l'image
+                        self._gx_cache = None    # brute, erreur signalée
+                    else:
+                        self._gx_cache = (cle, img_gx)
             try:
-                result, log_d_util, diag = _veralux.etirer(img, **params)
+                result, log_d_util, diag = _veralux.etirer(img_gx, **params)
             except Exception as exc:      # moteur absent, image dégénérée…
                 with self._vl_lock:
                     self._vl_pending = False
-                    self.vl_error = f"VeraLux : {exc}"
+                    self.vl_error = (f"GraXpert live : {err_gx} ; VeraLux : {exc}"
+                                     if err_gx else f"VeraLux : {exc}")
                     self.vl_new = True
                 continue
             with self._vl_lock:
                 self._vl_pending = False
                 self._vl_result = (key, result)
-                self.vl_error = ""
+                self.vl_error = (f"GraXpert live : {err_gx}"
+                                 if err_gx else "")
                 self.vl_log_d_resolu = log_d_util
                 self.vl_diagnostics = diag
                 self.vl_new = True
@@ -178,13 +215,15 @@ class DisplayProcessor:
         if force or self._vl_key != key:
             params = dict(mode=self.vl_mode_res, target_bg=self.vl_target_bg,
                           log_d=self.vl_log_d, profil=self.vl_profil)
+            gx = (self.vl_graxpert, self.vl_graxpert_cmd)   # capté côté UI
             with self._vl_lock:
                 if not self._vl_pending:
                     self._vl_pending = True
                     self._vl_force = False   # consommé : job réellement soumis
                     # copie défensive : img appartient à l'UI et peut être
                     # remplacée pendant le calcul
-                    self._vl_job = (img.astype(np.float32).copy(), params, key)
+                    self._vl_job = (img.astype(np.float32).copy(), params,
+                                    key, gx)
                     self._vl_wake.set()
             self._vl_src, self._vl_key = img, key
         with self._vl_lock:

@@ -192,6 +192,23 @@ Pièges :
 - **Un symptôme anormal peut venir de l'interpréteur, pas du code** :
   sur Windows, `python3` ≠ `python` (Store vs venv). Vérifier
   `sys.executable` avant de chercher un bug applicatif.
+- **GraXpert (CLI 3.1.0rc2) lit les FITS couleur avec les canaux sur
+  NAXIS3** (astropy data = (C, H, W)), alors que la convention astropy
+  standard écrit NAXIS1=3. Un RGB « standard » est déformé à la lecture :
+  crash `cv2.resize !dsize.empty()` (boîte de dialogue modale cx_Freeze)
+  avec l'interpolation AI, ou sortie dégénérée (W, 3) avec RBF ; le mono 2D
+  n'est pas concerné (d'où des succès intermittents trompeurs). Parade dans
+  `avastack/external/live.py` : entrée RGB écrite canaux-en-tête
+  (`_ecrire_entree`) + sortie retransposée (`_lire_sortie`). NB : l'entrée
+  TIFF plante aussi chez GraXpert (imagecodecs LZW absent de leur build).
+- **subprocess + boîte de dialogue modale cx_Freeze** : quand un outil
+  packagé cx_Freeze plante, sa boîte d'erreur MODALE bloque le processus
+  jusqu'au clic ; avec `subprocess.run(capture_output=True)` les tubes
+  restent ouverts et `communicate()` ne revient JAMAIS, même après le
+  timeout (le kill ne touche que cmd.exe, pas l'outil). Parade : sorties
+  écrites dans des FICHIERS + Popen + `taskkill /F /T /PID` au délai (tue
+  l'arborescence et la dialogue) — cf. `_run_bloquant_survivable` dans
+  `avastack/external/live.py`.
 
 ## Leçons générales transposables (projet pipeline siril)
 

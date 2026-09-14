@@ -7,15 +7,17 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
 
 ## État actuel (base stable)
 
-- **Version stable : AVAStack v2.2.5** (`avastack/__init__.py`,
-  `AVASTACK_VERSION = "2.2.5"`), branche `master`. Jalon 3 VeraLux validé
-  par Alain (test visuel) et committé le 14/09/2026.
-- **Prochaine session : commencer au JALON 4** — GraXpert live (opt-in),
-  cf. plan détaillé ci-dessous. Les stashes `stash@{0}`/`stash@{1}` sont
-  toujours en place : ne rien dropper tant que la fonctionnalité n'est pas
-  entièrement validée (jalons 4-6 restants).
-- Arbre de travail **propre** : la tentative abandonnée d'intégration VeraLux
-  a été mise de côté par `git stash -u` (elle n'est plus dans les sources).
+- **Version stable : AVAStack v2.2.6** (`avastack/__init__.py`,
+  `AVASTACK_VERSION = "2.2.6"`), branche `master`. Jalon 4 (GraXpert
+  live) validé par Alain (test visuel) et committé le 14/09/2026.
+- **Prochaine session : commencer au JALON 5** — « 💾 Enregistrer tel
+  que vu (étiré) », cf. plan détaillé ci-dessous. Les stashes
+  `stash@{0}`/`stash@{1}` sont toujours en place : ne rien dropper tant
+  que la fonctionnalité n'est pas entièrement validée (jalons 5-6
+  restants).
+- Arbre de travail **propre** au 14/09/2026 (fin de session) : jalon 4
+  commité, rien en suspens ; la tentative abandonnée d'intégration VeraLux
+  reste de côté dans `git stash -u` (plus dans les sources).
 - Ce qui fonctionne (validé en réel) :
   - Pipeline complet : acquisition (sources simulées / dossier surveillé /
     OpenCV / ZWO ASI / QHYCCD / Player One / Touptek-Altair / SVBONY) →
@@ -133,6 +135,41 @@ validée.
 - **Jalon 4** — GraXpert live (opt-in) : case « GraXpert live (avant
   étirement) » ; chaîne stack → GraXpert → VeraLux dans le thread solveur
   (ordre photométrique correct). BXT reste manuel (bouton ⚡, inchangé).
+  ✅ **VALIDÉ PAR ALAIN le 14/09/2026 (test visuel, source simulée RGB)**
+  puis commité (v2.2.6). Détails du code (14/09/2026) :
+  `avastack/external/live.py` : `appliquer(img, cmd, timeout=300)` →
+  (image traitée, ""), (image, erreur) en cas d'échec ; FITS temporaire →
+  commande configurée ({input}/{output}/{outbase}, MÊME commande que le
+  traitement manuel) → `find_output` + `load_image` + `auto_unflip` +
+  contrôle des dimensions ; `commande_valide()`, `cle_image()` (SHA-1).
+  **Exécution robuste** (`_run_bloquant_survivable`) : sorties dans des
+  FICHIERS (pas de tubes) + Popen + `taskkill /F /T` au délai — sinon la
+  boîte de dialogue modale cx_Freeze d'un crash GraXpert garde les tubes
+  ouverts et BLOQUE le thread solveur même après le timeout (constaté en
+  réel). **FITS RGB canaux-en-tête** (`_ecrire_entree`/`_lire_sortie`) :
+  cf. piège ci-dessous (crash AI sur RGB corrigé).
+  `display.py` : `vl_graxpert` / `vl_graxpert_cmd` (captés côté UI dans le
+  job, jamais lus depuis le thread) ; le worker enchaîne GraXpert PUIS
+  `_veralux.etirer` ; cache GraXpert indexé par (CONTENU image, COMMANDE) —
+  bouger un curseur VeraLux ne relance PAS GraXpert, mais changer la
+  commande l'invalide (bug évité au test) ; erreur → vl_error
+  « GraXpert live : … » + étirement de l'image BRUTE en repli ; `reset()`
+  vide le cache. `_vl_params()` intègre les réglages GraXpert.
+  `app.py` : case dans le cadre VeraLux (refus + avertissement si commande
+  incomplète), synchro de la commande éditée dans `_tick`, label préfixé
+  « GX ✓ · ». Version 2.2.6 + changelog. `_test_graxpert_live_jalon4.py` +
+  `_gx_factice.py` : 24 vérifications OK (défaut inactif, chaîne, cache,
+  erreur non fatale, désactivation, reset, round-trip FITS, black/white
+  intacts). Jalons 1-3 relancés : TOUS LES TESTS PASSENT.
+  ✅ Test RÉEL (`_diag_gx_reel.py`, GraXpert 3.1.0rc2 installé) :
+  mono 960×640 (3,4 s), RGB 960×640 (3,4 s), RGB 1600×1000 (3,6 s) —
+  tous OK, interpolation AI, aucune erreur. Nettoyage des fichiers de
+  diagnostic fait (gardé : `_diag_gx_reel.py` uniquement).
+  ⚠️ Limites connues : GraXpert CLI recharge son modèle IA à CHAQUE
+  appel → plusieurs secondes par frame possible ; le solveur « dernier
+  job gagnant » absorbe le retard, l'UI reste fluide (STF d'attente).
+  GraXpert clamp aussi sa sortie RGB à [0, 1] (étoiles > 1 légèrement
+  écrêtées dans l'aperçu live — sans conséquence pour l'affichage).
 - **Jalon 5** — « 💾 Enregistrer tel que vu (étiré) » : vue « empilement » →
   stack linéaire pleine résolution + GraXpert live + étirement PLEINE
   résolution (jamais l'aperçu 1600 px) ; vue « traitée » → inclut le
@@ -243,3 +280,25 @@ Constats propres à cette tâche (exploration du 14/09/2026) :
   d'entiers « oubliés de normaliser »). Un empilement avec quelques
   pixels > 1.1 (flat mal appliqué, hot pixel) serait écrasé. L'adaptateur
   clippe donc l'entrée à [0, 1] avant tout appel.
+- **PIÈGE convention d'axes FITS couleur (GraXpert 3.1.0rc2, diagnostiqué
+  le 14/09/2026)** : le lecteur FITS de GraXpert suppose les canaux sur
+  NAXIS3 (astropy data = (C, H, W)), alors que `save_image` écrit la
+  convention astropy standard (data (H, W, C) → NAXIS1=3). Un aperçu RGB
+  mal lu est déformé : crash cv2.resize « !dsize.empty() » (boîte de
+  dialogue modale cx_Freeze) avec l'interpolation AI, ou sortie dégénérée
+  (W, 3) avec RBF. Le mono 2D n'est pas concerné (d'où des succès
+  manuels sporadiques). Parade dans `avastack/external/live.py` : écrire
+  l'entrée RGB canaux-en-tête (`_ecrire_entree`, transpose (2,0,1)) et
+  retransposer la sortie (3, H, W) → (H, W, 3) (`_lire_sortie`). Avec ça,
+  l'AI fonctionne sur RGB (test réel mono/RGB/RGB 1600×1000 OK en ~3,5 s).
+  NB : l'entrée TIFF plante aussi chez GraXpert (imagecodecs LZW absent
+  de leur build) → ne PAS passer de TIFF à GraXpert.
+- **PIÈGE subprocess + boîte de dialogue cx_Freeze (14/09/2026)** : quand
+  GraXpert plante, cx_Freeze affiche une boîte MODALE qui bloque le
+  processus jusqu'au clic ; avec subprocess.run(capture_output=True) les
+  tubes restent ouverts et communicate() ne revient JAMAIS, même après le
+  timeout (le kill ne touche que cmd.exe). Parade : sorties dans des
+  fichiers + Popen + `taskkill /F /T /PID` au délai (tue l'arborescence,
+  la dialogue disparaît, le thread solveur repart). Cf.
+  `_run_bloquant_survivable` dans `avastack/external/live.py`.
+

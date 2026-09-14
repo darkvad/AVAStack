@@ -24,6 +24,7 @@ from ..cameras import (SOURCES, SimulatedCamera, OpenCVCamera, ZWOASICamera,
                        FolderCamera, QHYCamera, PlayerOneCamera,
                        TouptekCamera, SVBonyCamera)
 from ..processing import Calibrator, StarAligner, LiveStacker, DisplayProcessor
+from ..external import live as gx_live
 from ..processing import veralux as veralux_moteur
 from ..external.detection import (
     DEFAULT_CMD_GRAXPERT, DEFAULT_CMD_BXT,
@@ -335,6 +336,15 @@ class App:
                                       text="🔒 Verrouiller le logD résolu",
                                       command=self._on_vl_lock)
         self.btn_vl_lock.pack(anchor="w", pady=(2, 0))
+        # Jalon 4 : GraXpert « live » — appliqué AVANT l'étirement VeraLux,
+        # dans le thread solveur, à chaque nouvel empilement (opt-in). Le BXT
+        # reste manuel (bouton ⚡ de la section Traitement externe).
+        self.var_vl_graxpert = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self.frm_veralux,
+                        text="GraXpert live (avant étirement)",
+                        variable=self.var_vl_graxpert,
+                        command=self._on_vl_graxpert).pack(anchor="w",
+                                                           pady=(2, 0))
         self.lbl_vl = ttk.Label(self.frm_veralux, text="—",
                                 foreground="#888888", wraplength=310)
         self.lbl_vl.pack(anchor="w")
@@ -511,6 +521,27 @@ class App:
         self.scl_vl_logd.set(round(self.disp.vl_log_d_resolu, 3))
         self.var_vl_mode_res.set("logD forcé")
         self._sync_vl_mode()
+        self._refresh_preview()
+
+    def _on_vl_graxpert(self):
+        """Case « GraXpert live » (jalon 4) : enchaîne stack → GraXpert →
+        VeraLux dans le thread solveur, à chaque nouvel empilement. Refusé
+        si la commande GraXpert n'est pas utilisable (placeholders)."""
+        actif = self.var_vl_graxpert.get()
+        if actif:
+            cmd = self.var_cmd_graxpert.get().strip()
+            if not gx_live.commande_valide(cmd):
+                self.var_vl_graxpert.set(False)
+                messagebox.showwarning(
+                    "GraXpert live",
+                    "Commande GraXpert absente ou incomplète.\n"
+                    "Vérifiez la commande dans « Traitement externe » "
+                    "(elle doit contenir {input} et {output} ou {outbase}).")
+                return
+            self.disp.vl_graxpert_cmd = cmd
+            self.lbl_vl.config(text="GraXpert live activé — calcul en cours…",
+                               foreground="#c98a00")
+        self.disp.vl_graxpert = actif
         self._refresh_preview()
 
     def _on_view(self):
@@ -925,6 +956,12 @@ class App:
                     self._show_image(self.disp.process(show))
         except queue.Empty:
             pass
+        if self.disp.vl_graxpert:      # jalon 4 : la commande GraXpert peut
+                                       # être éditée pendant la session →
+                                       # synchro permanente (thread UI seul)
+            cmd = self.var_cmd_graxpert.get().strip()
+            if cmd != self.disp.vl_graxpert_cmd:
+                self.disp.vl_graxpert_cmd = cmd
         if self.disp.vl_new:      # résultat du solveur VeraLux (thread dédié)
             self.disp.vl_new = False
             if self.var_moteur.get() == "VeraLux":
@@ -934,8 +971,9 @@ class App:
                                        foreground="#d04040")
                 elif self.disp.vl_diagnostics is not None:
                     d = self.disp.vl_diagnostics
+                    prefixe = "GX ✓ · " if self.disp.vl_graxpert else ""
                     self.lbl_vl.config(
-                        text=f"logD {self.disp.vl_log_d_resolu:.2f} · "
+                        text=f"{prefixe}logD {self.disp.vl_log_d_resolu:.2f} · "
                              f"fond {d['median_luminance_finale']:.3f}",
                         foreground="#1d7f1d")
         if self.proc_new:
