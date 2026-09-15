@@ -14,9 +14,19 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.3.0"
+AVASTACK_VERSION = "2.3.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.3.1 : Jalon 6, demande d'Alain AVANT son test réel — boutons « - »/« + »
+#          sur TOUS les curseurs (_add_slider, avastack/ui/app.py) : réglage
+#          fin sans viser à la souris. Un clic = ±1 pas du curseur (res),
+#          recalé sur la grille (une valeur glissée à la main est réalignée) ;
+#          clic MAINTENU = répétition (400 ms puis 80 ms) pour parcourir une
+#          grande plage (exposition 5-1000 ms) sans cliquer 200 fois ;
+#          annulation au relâchement/à la sortie du bouton, clamp aux
+#          bornes, callback du curseur appelé exactement comme un
+#          déplacement (rien d'autre ne change). Test UI
+#          _test_sliders_jalon6.py (9 vérifications, fenêtre réelle).
 # v2.3.0 : JALON 6 de l'intégration VeraLux (finitions) :
 #          - REJET DES SATELLITES : LiveStacker (avastack/processing/
 #            stacking.py) propose deux méthodes — « kappa » (kappa-sigma

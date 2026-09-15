@@ -543,6 +543,11 @@ class App:
         self.cv_img.bind("<Configure>", lambda e: self._render())
 
     def _add_slider(self, parent, label, var, frm, to, res, onchange=None, fmt="{:g}"):
+        """Curseur + étiquette de valeur + boutons « - »/« + » (demande
+        d'Alain, jalon 6) : réglage FIN sans devoir viser à la souris.
+        Un clic = ±1 pas (res), aligné sur la grille du curseur ; clic
+        MAINTENU = répétition (400 ms puis toutes les 80 ms) pour parcourir
+        une grande plage sans cliquer 200 fois. Clamps aux bornes frm/to."""
         row = ttk.Frame(parent)
         row.pack(fill="x", pady=1)
         head = ttk.Frame(row)
@@ -557,8 +562,47 @@ class App:
             if onchange:
                 onchange()
 
-        s = ttk.Scale(row, from_=frm, to=to, value=var.get(), command=cmd)
-        s.pack(fill="x")
+        ligne = ttk.Frame(row)
+        ligne.pack(fill="x")
+        job = [None]                     # after() de la répétition en cours
+
+        def pas(delta):
+            v = var.get() + delta * res
+            v = min(max(v, frm), to)                 # bornes
+            v = frm + round((v - frm) / res) * res   # grille du curseur
+            s.set(round(v, 6))   # s.set rappelle cmd() → var + label + onchange
+
+        def repeter(delta):
+            try:
+                pas(delta)
+                job[0] = ligne.after(80, lambda: repeter(delta))
+            except tk.TclError:      # fenêtre détruite pendant l'appui
+                job[0] = None
+
+        def appui(delta):
+            pas(delta)
+            job[0] = ligne.after(400, lambda: repeter(delta))
+
+        def relache(_e=None):
+            if job[0] is not None:
+                try:
+                    ligne.after_cancel(job[0])
+                except tk.TclError:
+                    pass
+                job[0] = None
+
+        b_moins = ttk.Button(ligne, text="-", width=3, takefocus=False)
+        b_moins.pack(side="left")
+        s = ttk.Scale(ligne, from_=frm, to=to, value=var.get(), command=cmd)
+        s.pack(side="left", fill="x", expand=True, padx=3)
+        b_plus = ttk.Button(ligne, text="+", width=3, takefocus=False)
+        b_plus.pack(side="left")
+        for bouton, delta in ((b_moins, -1.0), (b_plus, 1.0)):
+            bouton.bind("<ButtonPress-1>", lambda _e, d=delta: appui(d))
+            bouton.bind("<ButtonRelease-1>", relache)
+            bouton.bind("<Leave>", relache)
+        s._pas = pas                 # accès pour les tests
+        s._boutons = (b_moins, b_plus)
         return s
 
     # ------------------------------------------------------------ callbacks UI

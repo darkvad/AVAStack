@@ -7,7 +7,7 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
 
 ## État actuel (base stable)
 
-- **Version : AVAStack v2.3.0** (`avastack/__init__.py`,
+- **Version : AVAStack v2.3.1** (`avastack/__init__.py`,
   `AVASTACK_VERSION = "2.3.0"`), branche `master`. Jalon 5 validé par
   Alain (14/09/2026) ; jalon 6 CODÉ ET COMMITÉ le 15/09/2026.
 - **⚠️ RESTE À FAIRE pour clore le jalon 6 : le TEST RÉEL complet par
@@ -65,6 +65,18 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
   clés, restauration complète (variables UI ET état du
   DisplayProcessor), réglages invalides → défauts sans crash.
   Jalons 1-5 relancés : TOUS PASSENT.
+- **Jalon 6 — boutons « - »/« + » sur les curseurs (demande d'Alain,
+  15/09/2026, avant son test réel) : ✅ CODÉ et commité (v2.3.1).**
+  `_add_slider` (app.py) ajoute deux petits boutons autour de CHAQUE
+  curseur (exposition, gain, black/white, gamma, saturation, fond visée,
+  logD… — tous les sliders passent par cette fabrique) : clic = ±1 pas
+  (res) recalé sur la grille du curseur (une valeur glissée à la main est
+  réalignée) ; clic MAINTENU = répétition (400 ms puis 80 ms), annulée au
+  relâchement ou en sortant du bouton ; clamp aux bornes frm/to ; le
+  callback du curseur est appelé exactement comme lors d'un déplacement
+  (aucun autre comportement changé). Test `_test_sliders_jalon6.py`
+  (9 vérifications, fenêtre réelle). Jalons 1-5 + config relancés :
+  TOUS PASSENT.
 - Les stashes `stash@{0}`/`stash@{1}` sont toujours en place : ne rien
   dropper tant que la fonctionnalité n'est pas entièrement validée
   (jalon 6 restant).
