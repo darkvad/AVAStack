@@ -8,20 +8,15 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
 ## État actuel (base stable)
 
 - **Version : AVAStack v2.3.1** (`avastack/__init__.py`,
-  `AVASTACK_VERSION = "2.3.0"`), branche `master`. Jalon 5 validé par
-  Alain (14/09/2026) ; jalon 6 CODÉ ET COMMITÉ le 15/09/2026.
-- **⚠️ RESTE À FAIRE pour clore le jalon 6 : le TEST RÉEL complet par
-  Alain (vraies brutes)** : (a) une session avec satellites — vérifier
-  que le mode « Winsorized (satellites) » efface les traces ; (b)
-  quitter et relancer l'appli — vérifier que TOUS les réglages sont
-  retrouvés (VeraLux : moteur, mode de résolution, fond visée, logD,
-  profil capteur, GX live ; empilement : kappa, méthode + fenêtre de
-  rejet) ; (c) les stashes stash@{0}/stash@{1} ne seront droppés
-  qu'après cette validation. (Historique : deux points du jalon 6
-  avaient déjà été faits au jalon 5 sur demande d'Alain — combobox
-  « Profil capteur », masquage des réglages STF en mode VeraLux.)
+  `AVASTACK_VERSION = "2.3.1"`), branche `master`. Jalon 5 validé par
+  Alain (14/09/2026) ; **jalon 6 VALIDÉ PAR ALAIN le 15/09/2026** (test
+  réel avec vraies brutes) et commité.
+- **✅ JALON 6 VALIDÉ PAR ALAIN le 15/09/2026** (test réel, vraies
+  brutes) : rejet des satellites (Winsorized), persistance config.json,
+  boutons « - »/« + » des curseurs — tout est bon. Aucune tâche en
+  suspens : la prochaine étape est à définir avec Alain.
 - **Jalon 6 — rejet des satellites (demande d'Alain, 15/09/2026) : ✅
-  CODÉ et commité le 15/09/2026 (commit « Jalon 6 (1/3) »).** `avastack/processing/stacking.py` :
+  CODÉ, commité puis VALIDÉ PAR ALAIN le 15/09/2026 (commit « Jalon 6 (1/3) »).** `avastack/processing/stacking.py` :
   `LiveStacker` a 2 méthodes de rejet — `method="kappa"` (comportement
   historique STRICTEMENT inchangé, régression testée bit-à-bit) et
   `method="winsorized"` : adaptation live du Winsorized Sigma Clipping
@@ -45,7 +40,8 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
   étoiles/champ intacts ; RGB OK ; chunks OK ; jalons 1-5 relancés :
   TOUS PASSENT. (La persistance de ces réglages a été faite ensuite —
   cf. bullet suivant.)
-- **Jalon 6 — persistance config.json (15/09/2026) : ✅ CODÉ et commité.**
+- **Jalon 6 — persistance config.json (15/09/2026) : ✅ CODÉ, commité
+  puis VALIDÉ PAR ALAIN le 15/09/2026.**
   `avastack/ui/app.py` : `_sauver_config_app` écrit désormais `kappa`,
   `rejet_methode`, `rejet_fenetre`, `moteur`, `vl_mode_res`, `vl_target`,
   `vl_logd`, `vl_profil`, `vl_graxpert` — booléen stocké EXPLICITEMENT
@@ -66,7 +62,8 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
   DisplayProcessor), réglages invalides → défauts sans crash.
   Jalons 1-5 relancés : TOUS PASSENT.
 - **Jalon 6 — boutons « - »/« + » sur les curseurs (demande d'Alain,
-  15/09/2026, avant son test réel) : ✅ CODÉ et commité (v2.3.1).**
+  15/09/2026, avant son test réel) : ✅ CODÉ, commité (v2.3.1) puis
+  VALIDÉ PAR ALAIN le 15/09/2026.**
   `_add_slider` (app.py) ajoute deux petits boutons autour de CHAQUE
   curseur (exposition, gain, black/white, gamma, saturation, fond visée,
   logD… — tous les sliders passent par cette fabrique) : clic = ±1 pas
@@ -77,9 +74,10 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
   (aucun autre comportement changé). Test `_test_sliders_jalon6.py`
   (9 vérifications, fenêtre réelle). Jalons 1-5 + config relancés :
   TOUS PASSENT.
-- Les stashes `stash@{0}`/`stash@{1}` sont toujours en place : ne rien
-  dropper tant que la fonctionnalité n'est pas entièrement validée
-  (jalon 6 restant).
+- **Stashes `stash@{0}`/`stash@{1}` DROPPÉS le 15/09/2026** (jalon 6
+  validé ; la fonctionnalité VeraLux avait été réécrite proprement aux
+  jalons 1-3, leur contenu n'était qu'une « inspiration » — rien à
+  récupérer).
 - **Jalon 5 — « 💾 Enregistrer tel que vu (étiré) » : ✅ VALIDÉ PAR ALAIN
   et commité (v2.2.7, 14/09/2026).** Détails du code :
   `display.py` : `rendu_pleine_resolution(img, reglages=None)` — rendu
@@ -113,9 +111,9 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
   Tests : `_test_save_asseen_jalon5.py` (16 vérifications, headless),
   `_test_ui_jalon5.py` (15 vérifications, fenêtre Tkinter réelle) ;
   jalons 1-4 relancés : TOUS LES TESTS PASSENT.
-- Arbre de travail **propre** au 14/09/2026 (fin de session) : jalon 4
-  commité, rien en suspens ; la tentative abandonnée d'intégration VeraLux
-  reste de côté dans `git stash -u` (plus dans les sources).
+- Arbre de travail **propre** au 15/09/2026 : jalon 6 validé et commité,
+  rien en suspens ; les stashes de la tentative abandonnée ont été
+  droppés (la fonctionnalité a été réécrite proprement aux jalons 1-3).
 - Ce qui fonctionne (validé en réel) :
   - Pipeline complet : acquisition (sources simulées / dossier surveillé /
     OpenCV / ZWO ASI / QHYCCD / Player One / Touptek-Altair / SVBONY) →
@@ -152,33 +150,26 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
   dépendance pip nouvelle**.
 - Ce fichier est **câblé depuis les jalons 1-3** : adaptateur
   `avastack/processing/veralux.py` (jalon 1, import robuste, clip [0,1]),
-  affichage dans `DisplayProcessor` + UI (jalons 2-3). Tâche en cours :
-  **jalon 4 — GraXpert live** (dans le même thread solveur, AVANT
-  l'étirement).
-- La tentative précédente (autre outil) est dans les stashes :
-  - `stash@{0}` « WIP on master: 5f6895d » : modifications de
-    `avastack/ui/app.py`, `avastack/processing/display.py`,
-    `avastack/__init__.py` + fichier **non suivi**
-    `avastack/processing/veralux.py` (233 lignes, adaptateur d'import du
-    moteur tiers, mapping nom de caméra → profil capteur). Récupérable via
-    `git show 'stash@{0}^3:avastack/processing/veralux.py'` (fichiers non
-    suivis = 3e parent du stash) et `git stash show -p 'stash@{0}'`.
-  - `stash@{1}` « WIP veralux - a reprendre proprement » : essai antérieur,
-    `app.py` uniquement (45 insertions).
-  - **Ne rien dropper tant que la fonctionnalité n'est pas validée.**
-  - Le contenu des stashes a été écrit par l'outil précédent « aux
-    incohérences » : à considérer comme une **inspiration, pas comme du
-    code de confiance** — tout rélire et revalider avant réemploi.
+  affichage dans `DisplayProcessor` + UI (jalons 2-3). La chaîne complète
+  est câblée et VALIDÉE (jalons 1-6) : fond cible + verrouillage logD,
+  GraXpert live, sauvegarde « tel que vu », rejet des satellites
+  (Winsorized), persistance config.json, boutons fins des curseurs.
+- La tentative précédente (autre outil) était conservée dans les stashes
+  `stash@{0}`/`stash@{1}` — **droppés le 15/09/2026** après validation du
+  jalon 6 : la fonctionnalité avait été réécrite proprement (adaptateur
+  `avastack/processing/veralux.py` du jalon 1) et le contenu des stashes,
+  écrit « aux incohérences » par l'outil précédent, n'a jamais été
+  réemployé (simple inspiration).
 
 
-## À faire ensuite (tâche : auto-stretch VeraLux — PLAN VALIDÉ par Alain le 14/09/2026)
+## Historique : tâche « auto-stretch VeraLux » — PLAN VALIDÉ par Alain le 14/09/2026, TERMINÉE le 15/09/2026
 
 Procéder **PAR JALONS** (leçon de la 1re tentative « grosse modification »
 perdue) : un jalon = `ast.parse` après chaque édition, lancement de l'appli,
 test par Alain quand l'affichage est touché, **commit avant de passer au
 suivant**. Bump `AVASTACK_VERSION` + changelog à chaque jalon touchant le
-code. Les stashes ne sont pas touchés tant que la fonctionnalité n'est pas
-validée.
+code. (Les stashes ont été droppés le 15/09/2026, après validation du
+jalon 6.)
 
 - **Jalon 0** — Mémoire : ce fichier mis à jour (plan + jalons), commit
   AVANCEMENT.md seul. ✅ 14/09/2026.
@@ -288,8 +279,10 @@ validée.
   jalon 5), ~~curseurs STF grisés en mode VeraLux~~ (✅ FAIT au jalon 5 :
   masqués, décision d'Alain), ~~rejet des satellites~~ (✅ CODÉ le
   15/09/2026, ajouté au jalon sur demande d'Alain), ~~changelog final,
-  version 2.3.0~~ (✅ FAIT le 15/09/2026). ⚠️ RESTE : test réel complet
-  par Alain (vraies brutes) avant de marquer le jalon VALIDÉ.
+  version 2.3.0~~ (✅ FAIT le 15/09/2026), ~~boutons « - »/« + » des
+  curseurs~~ (✅ CODÉ le 15/09/2026, demande d'Alain).
+  ✅ **VALIDÉ PAR ALAIN le 15/09/2026 (test réel, vraies brutes)** —
+  jalon clos, stashes droppés, aucune tâche en suspens.
 
 ### Décisions d'Alain (14/09/2026)
 
@@ -341,16 +334,14 @@ Constats propres à cette tâche (exploration du 14/09/2026) :
 
 - **`.clinerules` créé à la racine (14/09/2026)** : il impose la lecture de
   CLAUDE.md + AVANCEMENT.md à chaque nouvelle session (mécanisme de règles
-  automatiques de Cline). ATTENTION : le stash@{0} contient aussi un
-  `.clinerules` non suivi (1 ligne, de l'outil précédent) — un futur
-  `git stash pop/apply` échouera ou conflituera sur ce fichier ; au moment
-  de récupérer le stash, restaurer les fichiers voulus un par un
-  (`git checkout 'stash@{0}^3' -- avastack/processing/veralux.py` etc.)
-  plutôt qu'un pop global.
+  automatiques de Cline). (NB 15/09/2026 : le `.clinerules` non suivi de
+  l'outil précédent est parti avec stash@{0}, droppé — plus aucun risque
+  de conflit.)
 
-- **Deux stashes coexistent** (`stash@{0}` dernière tentative avec
-  `veralux.py` non suivi, `stash@{1}` essai antérieur) : ne pas confondre,
-  ne rien dropper avant validation de la fonctionnalité. Les fichiers non
+- **Deux stashes coexistaient** (`stash@{0}` dernière tentative avec
+  `veralux.py` non suivi, `stash@{1}` essai antérieur) : **droppés le
+  15/09/2026 après validation du jalon 6** (fonctionnalité réécrite
+  proprement, rien à récupérer). Leçon conservée : les fichiers non
   suivis d'un stash vivent dans son **3e parent** (`stash@{0}^3`), pas dans
   le diff principal.
 - **« Bug latent ligne ~276 » du fichier tiers : FAUX POSITIF (fichier relu
