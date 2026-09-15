@@ -111,6 +111,25 @@ IMX585, IMX662, IMX533, IMX571/2600, IMX294). L image en entrée peut être
 Tout besoin d adaptation (ex : câblage dans DisplayProcessor) se fait dans
 un fichier séparé du projet, jamais par édition du fichier tiers.
 
+## Sauvegardes : linéaire vs « tel que vu » (v2.2.7)
+
+Trois boutons d enregistrement aux rôles DISTINCTS — ne jamais fusionner :
+
+- **« 💾 Enregistrer l'empilement (linéaire)… »** et **« 💾 Enregistrer le
+  résultat traité (linéaire)… »** : sauvegardent l image LINÉAIRE (pile
+  brute, ou résultat GraXpert/BXT sans étirement) — voulu, pour retraitement
+  ultérieur dans un logiciel dédié. Comportement historique, inchangé.
+- **« 💾 Enregistrer tel que vu (étiré)… »** : SEUL bouton qui applique la
+  chaîne d étirement complète en PLEINE résolution (jamais l aperçu
+  1600 px) : `DisplayProcessor.rendu_pleine_resolution()` — fonction PURE
+  (aucun état partagé : pas de stats EMA, pas de solveur, jamais
+  black/white/gamma). VeraLux y réutilise le DERNIER logD résolu (rendu
+  identique à l écran, sans re-résolution). GraXpert live ne s applique
+  qu en vue « empilement » (en vue « traitée », l image a déjà subi le
+  traitement externe — le relancer ferait un DEUXIÈME traitement ; synchro
+  `_sync_vl_graxpert_vue`). Les réglages STF sont MASQUÉS (pas grisés) en
+  mode VeraLux — ils n y ont aucun effet.
+
 ## Doc outils externes (CLI)
 
 ### GraXpert CLI
@@ -209,6 +228,12 @@ Pièges :
   écrites dans des FICHIERS + Popen + `taskkill /F /T /PID` au délai (tue
   l'arborescence et la dialogue) — cf. `_run_bloquant_survivable` dans
   `avastack/external/live.py`.
+- **Sortie Python pipée/redirigée sur Windows = cp1252 en mode strict** :
+  un `print` contenant un caractère hors cp1252 (→, ≠, …) fait CRASHER le
+  script, alors que la même sortie dans la console passe (console = UTF-8).
+  Constaté sur les scripts de test : un test qui réussit en direct peut
+  « échouer » via un pipe (`| Select-Object`). Parade : en tête des scripts
+  de test, `sys.stdout.reconfigure(encoding="utf-8", errors="replace")`.
 
 ## Leçons générales transposables (projet pipeline siril)
 

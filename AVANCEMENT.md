@@ -7,14 +7,56 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
 
 ## État actuel (base stable)
 
-- **Version stable : AVAStack v2.2.6** (`avastack/__init__.py`,
-  `AVASTACK_VERSION = "2.2.6"`), branche `master`. Jalon 4 (GraXpert
-  live) validé par Alain (test visuel) et committé le 14/09/2026.
-- **Prochaine session : commencer au JALON 5** — « 💾 Enregistrer tel
-  que vu (étiré) », cf. plan détaillé ci-dessous. Les stashes
-  `stash@{0}`/`stash@{1}` sont toujours en place : ne rien dropper tant
-  que la fonctionnalité n'est pas entièrement validée (jalons 5-6
-  restants).
+- **Version stable : AVAStack v2.2.7** (`avastack/__init__.py`,
+  `AVASTACK_VERSION = "2.2.7"`), branche `master`. Jalon 5 (« 💾
+  Enregistrer tel que vu ») validé par Alain et commité le 14/09/2026.
+- **Prochaine session : JALON 6 — finitions**, cf. plan ci-dessous.
+  ⚠️ Deux points du jalon 6 sont DÉJÀ FAITS (intégrés au jalon 5 sur
+  demande d'Alain) : **la combobox « Profil capteur »** (dans le cadre
+  VeraLux, alimente `disp.vl_profil`, fait partie de la clé des réglages,
+  6 profils du moteur) et **le masquage des réglages STF en mode VeraLux**
+  (sous-cadre `frm_stf` caché, plus fort que « grisés » — décision
+  d'Alain après constat qu'ils restaient visibles sans effet). Il reste :
+  persistance config.json de TOUS les réglages VeraLux (mode de
+  résolution, fond visée, logD, profil capteur, GraXpert live + commande),
+  changelog final, version 2.3.0, test réel complet par Alain (vraies
+  brutes) avant commit final.
+- Les stashes `stash@{0}`/`stash@{1}` sont toujours en place : ne rien
+  dropper tant que la fonctionnalité n'est pas entièrement validée
+  (jalon 6 restant).
+- **Jalon 5 — « 💾 Enregistrer tel que vu (étiré) » : ✅ VALIDÉ PAR ALAIN
+  et commité (v2.2.7, 14/09/2026).** Détails du code :
+  `display.py` : `rendu_pleine_resolution(img, reglages=None)` — rendu
+  « tel que vu » d'une image linéaire PLEINE résolution, fonction PURE
+  (aucun état partagé : pas de stats EMA, pas de solveur, jamais
+  black/white/gamma) ; STF/manuel recalculé sur l'image complète, VeraLux
+  avec le DERNIER logD résolu (rendu identique à l'écran, sans
+  re-résolution ; replis target_bg si aucun logD connu / STF si moteur
+  absent) ; gamma/saturation via `_gamma_saturation` et stats via
+  `_calc_stats` (refactors neutres de `process()`/`_auto_params`).
+  `app.py` : bouton « 💾 Enregistrer tel que vu (étiré)… » dans le cadre
+  Sortie ; `_save_asseen()` capture (chemin, vue, réglages) côté UI ;
+  `_worker` lance `_save_asseen_thread` (pattern `_run_external`,
+  acquisition continue) : vue « pile » → stack pleine résolution →
+  GraXpert live si activé (échec = sauvegarde abandonnée, message clair) ;
+  vue « traitée » → `proc_full` (a déjà subi GraXpert/BXT) ; puis rendu +
+  `save_image` ; résultat consommé par `_tick` (bouton grisé +
+  messagebox). Libellés des boutons linéaires clarifiés (« (linéaire) »).
+  Corrections sur retours d'Alain (test visuel) : (1) GraXpert live
+  limité à la vue « empilement » (`_sync_vl_graxpert_vue`, synchro dans
+  `_tick`/`_on_view`/`_on_vl_graxpert` + message explicite) — en vue
+  « traitée » l'image a déjà subi le traitement externe, le relancer
+  faisait un DEUXIÈME traitement ; (2) combobox « Profil capteur » dans
+  le cadre VeraLux (avancé du jalon 6 demandé par Alain — 6 profils, fait
+  partie de la clé → re-résolution au changement) ; (3) réglages STF
+  regroupés dans `frm_stf` MASQUÉ en mode VeraLux (aucun effet dans ce
+  mode), remis au retour STF ; gamma/saturation dans `frm_communs`
+  (toujours visibles). Précision d'Alain : il avait utilisé « Enregistrer
+  le résultat traité… » (linéaire, voulu) d'où sa question — libellés
+  clarifiés, comportements inchangés.
+  Tests : `_test_save_asseen_jalon5.py` (16 vérifications, headless),
+  `_test_ui_jalon5.py` (15 vérifications, fenêtre Tkinter réelle) ;
+  jalons 1-4 relancés : TOUS LES TESTS PASSENT.
 - Arbre de travail **propre** au 14/09/2026 (fin de session) : jalon 4
   commité, rien en suspens ; la tentative abandonnée d'intégration VeraLux
   reste de côté dans `git stash -u` (plus dans les sources).
@@ -36,6 +78,11 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
     (curseur + bouton 🔒 de verrouillage du logD résolu).
   - Traitement externe optionnel sur INSTANTANÉ (GraXpert, BlurXTerminator)
     dans un thread séparé ; l'empilement accumulé reste linéaire et intact.
+  - Sauvegarde « 💾 Enregistrer tel que vu (étiré)… » (jalon 5, v2.2.7) :
+    vue courante rendue comme à l'écran en pleine résolution (chaîne
+    complète : GraXpert live si activé → étirement STF/manuel ou VeraLux
+    avec le dernier logD résolu → gamma/saturation) ; les deux autres
+    boutons d'enregistrement restent LINÉAIRES (voulu).
   - Installateur Windows Inno Setup (v2.1.0).
 
 ## Le code VeraLux : où il en est
@@ -175,10 +222,16 @@ validée.
   résolution (jamais l'aperçu 1600 px) ; vue « traitée » → inclut le
   résultat BXT (décision Alain). Gamma/saturation tels qu'affichés inclus.
   Le bouton d'enregistrement linéaire actuel reste inchangé.
+  ✅ **VALIDÉ PAR ALAIN le 14/09/2026 puis commité (v2.2.7)** — cf.
+  détails dans « État actuel » ci-dessus. Corrections intégrées : GX live
+  limité à la vue « empilement », combobox profil capteur (avancé du
+  jalon 6), réglages STF masqués en mode VeraLux, libellés « (linéaire) »
+  clarifiés.
 - **Jalon 6** — Finitions : persistance config.json de tous les réglages
-  VeraLux, combobox profil capteur, curseurs STF grisés en mode VeraLux,
-  changelog final, version 2.3.0, test réel complet par Alain (vraies
-  brutes) avant commit final.
+  VeraLux, ~~combobox profil capteur~~ (✅ FAIT au jalon 5), ~~curseurs
+  STF grisés en mode VeraLux~~ (✅ FAIT au jalon 5 : masqués, décision
+  d'Alain), changelog final, version 2.3.0, test réel complet par Alain
+  (vraies brutes) avant commit final.
 
 ### Décisions d'Alain (14/09/2026)
 

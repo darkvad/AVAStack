@@ -116,12 +116,19 @@ class DisplayProcessor:
         m = x * (1.0 - t) / (t + x - 2.0 * t * x)
         return min(max(m, 0.001), 0.98)
 
-    def _auto_params(self, img, live=True):
+    @staticmethod
+    def _calc_stats(img):
+        """Statistiques d'étirement (médiane, σ robuste MAD, p99.9) d'une
+        image linéaire — fonction PURE : aucune mutation d'état (le
+        sous-échantillonnage la garde rapide même en pleine résolution)."""
         mono = img.mean(axis=2) if img.ndim == 3 else img
         s = mono[::max(1, mono.shape[0] // 512), ::max(1, mono.shape[1] // 512)]
         med = float(np.median(s))
         sigma = max(float(np.median(np.abs(s - med))) * 1.4826, 1e-8)  # σ robuste (MAD)
-        p999 = float(np.percentile(s, 99.9))
+        return med, sigma, float(np.percentile(s, 99.9))
+
+    def _auto_params(self, img, live=True):
+        med, sigma, p999 = self._calc_stats(img)
 
         # Lissage temporel des STATS (pas des paramètres) : les curseurs restent
         # réactifs, mais l'image ne « pompe » pas entre deux frames.
@@ -237,6 +244,20 @@ class DisplayProcessor:
         lo, hi, m = self._auto_params(img, live=live)
         return self._mtf(np.clip((img - lo) / (hi - lo), 0.0, 1.0), m)
 
+    @staticmethod
+    def _gamma_saturation(x, rgb, gamma, saturation):
+        """Gamma et saturation COMMUNS — appliqués après l'étirement, quel que
+        soit le mode (STF, manuel, VeraLux). Factorisés pour que le rendu
+        « tel que vu » de la sauvegarde (jalon 5) soit strictement identique
+        à l'affichage."""
+        if abs(gamma - 1.0) > 1e-3:
+            x = np.power(x, 1.0 / max(gamma, 0.05))
+        if rgb and abs(saturation - 1.0) > 1e-3:
+            hsv = cv2.cvtColor(np.clip(x, 0.0, 1.0), cv2.COLOR_RGB2HSV)
+            hsv[..., 1] = np.clip(hsv[..., 1] * saturation, 0.0, 1.0)
+            x = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+        return np.clip(x, 0.0, 1.0)
+
     def process(self, img, live=True):
         img = img.astype(np.float32, copy=False)
         if self.stretch == "veralux" and _veralux.moteur_disponible():
@@ -255,10 +276,59 @@ class DisplayProcessor:
                 if hi - lo < 1e-6:
                     hi = lo + 1e-6
                 x = np.clip((img - lo) / (hi - lo), 0.0, 1.0)
-        if abs(self.gamma - 1.0) > 1e-3:
-            x = np.power(x, 1.0 / max(self.gamma, 0.05))
-        if img.ndim == 3 and abs(self.saturation - 1.0) > 1e-3:
-            hsv = cv2.cvtColor(np.clip(x, 0.0, 1.0), cv2.COLOR_RGB2HSV)
-            hsv[..., 1] = np.clip(hsv[..., 1] * self.saturation, 0.0, 1.0)
-            x = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
-        return (np.clip(x, 0.0, 1.0) * 255).astype(np.uint8)
+        x = self._gamma_saturation(x, img.ndim == 3, self.gamma, self.saturation)
+        return (x * 255).astype(np.uint8)
+
+    # ------------------------------------------------------------- jalon 5
+    def rendu_pleine_resolution(self, img, reglages=None):
+        """Rendu « tel que vu » (jalon 5) d'une image LINÉAIRE PLEINE
+        résolution — empilement complet ou résultat traité — pour la
+        sauvegarde « 💾 Enregistrer tel que vu ». Reproduit l'étirement
+        affiché : STF/manuel recalculé sur l'image complète, ou VeraLux
+        avec le DERNIER logD résolu (rendu identique à l'écran, sans
+        re-résolution ; repli sur une résolution target_bg si aucun logD
+        n'a encore été résolu, et repli STF/manuel si le moteur tiers est
+        absent — comme l'affichage) — PUIS gamma/saturation communs.
+
+        Appelé depuis un thread de travail, JAMAIS le thread UI : ne touche
+        à AUCUN état partagé (pas de stats EMA, pas de solveur, pas de
+        cache, jamais black/white/gamma). Les réglages sont lus dans
+        reglages (dict capturé côté UI) ou, à défaut, dans les attributs
+        courants. Renvoie un float [0..1] de mêmes dimensions ; lève une
+        exception en cas d'échec — l'appelant gère l'erreur.
+
+        NB : GraXpert live n'est PAS appliqué ici — l'appelant l'enchaîne
+        AVANT (vue « empilement ») ; en vue « traitée », l'image a déjà
+        subi le traitement externe (GraXpert/BXT manuels).
+        """
+        r = (reglages or {}).get
+        stretch = r("stretch", self.stretch)
+        if stretch == "veralux" and _veralux.moteur_disponible():
+            img = np.clip(img.astype(np.float32), 0.0, 1.0)
+            if r("vl_mode_res", self.vl_mode_res) == _veralux.MODE_LOG_D:
+                log_d = r("vl_log_d", self.vl_log_d)
+            elif r("vl_log_d_resolu", self.vl_log_d_resolu) is not None:
+                log_d = r("vl_log_d_resolu", self.vl_log_d_resolu)
+            else:
+                log_d = None
+            params = dict(profil=r("vl_profil", self.vl_profil))
+            if log_d is None:
+                params.update(mode=_veralux.MODE_TARGET_BG,
+                              target_bg=r("vl_target_bg", self.vl_target_bg))
+            else:
+                params.update(mode=_veralux.MODE_LOG_D, log_d=log_d)
+            x, _, _ = _veralux.etirer(img, **params)
+        elif r("auto", self.auto):
+            med, sigma, p999 = self._calc_stats(img)
+            lo = med - r("sigma_k", self.sigma_k) * sigma
+            hi = max(p999, med + 10.0 * sigma, lo + 1e-8)
+            m = self._solve_m((med - lo) / (hi - lo), r("target", self.target))
+            x = self._mtf(np.clip((img - lo) / (hi - lo), 0.0, 1.0), m)
+        else:
+            lo, hi = r("black", self.black), r("white", self.white)
+            if hi - lo < 1e-6:
+                hi = lo + 1e-6
+            x = np.clip((img - lo) / (hi - lo), 0.0, 1.0)
+        return self._gamma_saturation(x, img.ndim == 3,
+                                      r("gamma", self.gamma),
+                                      r("saturation", self.saturation))

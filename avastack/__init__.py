@@ -14,9 +14,49 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.2.6"
+AVASTACK_VERSION = "2.2.7"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.2.7 : JALON 5 de l'intégration VeraLux (« 💾 Enregistrer tel que vu ») :
+#          - avastack/processing/display.py : nouveau rendu_pleine_resolution()
+#            — reproduit l'étirement affiché sur une image LINÉAIRE PLEINE
+#            résolution (jamais l'aperçu 1600 px) : STF/manuel recalculé sur
+#            l'image complète, VeraLux avec le DERNIER logD résolu (rendu
+#            identique à l'écran, sans re-résolution ; repli target_bg si
+#            aucun logD connu, repli STF/manuel si moteur absent), puis
+#            gamma/saturation. Fonction PURE (aucun état partagé : pas de
+#            stats EMA, pas de solveur, jamais black/white/gamma) — appelée
+#            depuis un thread de travail. Refactor neutre : _calc_stats()
+#            (stats STF sans lissage) et _gamma_saturation() (communs aux
+#            deux chemins, rendu strictement identique à l'affichage).
+#          - avastack/ui/app.py : bouton « 💾 Enregistrer tel que vu
+#            (étiré)… » dans le cadre Sortie — vue « empilement » = chaîne
+#            complète stack pleine résolution → GraXpert live si activé →
+#            étirement → gamma/saturation ; vue « traitée » = proc_full
+#            (résultat externe, déjà GraXpert/BXT) → étirement →
+#            gamma/saturation. Réglages captés côté UI ; rendu + écriture
+#            dans un thread dédié (comme _run_external), résultat consommé
+#            par _tick (bouton grisé + messagebox, aucun appel Tk hors
+#            thread UI). Échec GraXpert live = échec de la sauvegarde (pas
+#            d'image « presque comme vue »). Le bouton d'enregistrement
+#            linéaire reste inchangé.
+#          - Retours d'Alain sur la 1re passe (corrigés dans la foulée) :
+#            (1) GraXpert live ne s'applique plus QUE sur la vue
+#            « empilement » — en vue « traitée » l'image a déjà subi le
+#            traitement externe, le relancer (case laissée cochée) faisait
+#            un DEUXIÈME traitement (_sync_vl_graxpert_vue, synchro dans
+#            _tick/_on_view/_on_vl_graxpert, message explicite) ;
+#            (2) combobox « Profil capteur » dans le cadre VeraLux
+#            (avancé du jalon 6 demandé par Alain) — fait partie de la clé
+#            des réglages, changement = re-résolution ;
+#            (3) les réglages STF (case auto, coupure du bruit, fond,
+#            black/white) sont regroupés dans un sous-cadre MASQUÉ en mode
+#            VeraLux (ils n'ont aucun effet dans ce mode) ; gamma/saturation
+#            restent visibles (communs aux deux moteurs).
+#          - _test_save_asseen_jalon5.py : headless OK (STF pur =
+#            process() au 1er rendu, aucune mutation d'état, manuel,
+#            VeraLux logD forcé = etirer direct, fond cible = dernier logD
+#            résolu, gamma/saturation, mono/RGB, repli moteur absent).
 # v2.2.6 : JALON 4 de l'intégration VeraLux (GraXpert live, opt-in) :
 #          - avastack/external/live.py : exécution du CLI GraXpert sur
 #            l'APERÇU de l'empilement (FITS temporaire → commande configurée

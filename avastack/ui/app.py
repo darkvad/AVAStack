@@ -71,6 +71,9 @@ class App:
         self.proc_show = None           # aperçu traité (réduit, pour affichage)
         self.proc_full = None           # résultat traité pleine résolution (sauvegarde)
         self.proc_new = False           # un nouveau résultat vient d'arriver
+        self.save_asseen_request = None  # (chemin, vue, réglages) — jalon 5, capté côté UI
+        self.asseen_busy = False        # sauvegarde « tel que vu » en cours (thread dédié)
+        self.asseen_result = None       # chemin ou "ERREUR: …" — écrit par le thread, lu par _tick
         self.ext_msg = "—"              # message d'état (écrit par le thread, lu par _tick)
         self._ext_shown = None
         self.ext_state = "idle"         # idle | busy | ok | error
@@ -262,7 +265,7 @@ class App:
         # Moteur d'étirement : STF intégré (défaut, inchangé) ou VeraLux
         # (moteur tiers, opt-in). Le calcul VeraLux part dans un thread
         # dédié côté DisplayProcessor : l'interface n'est jamais bloquée.
-        rowm = ttk.Frame(box)
+        rowm = self.rowm = ttk.Frame(box)
         rowm.pack(fill="x", pady=(0, 2))
         ttk.Label(rowm, text="Moteur d'étirement :").pack(side="left")
         self.var_moteur = tk.StringVar(value="STF")
@@ -271,37 +274,46 @@ class App:
                                       values=["STF", "VeraLux"])
         self.cb_moteur.pack(side="left", padx=4)
         self.cb_moteur.bind("<<ComboboxSelected>>", lambda e: self._on_moteur())
+        # Réglages propres au STF — regroupés pour être MASQUÉS en mode
+        # VeraLux (sinon ils restent visibles et laissés « cochés », sans
+        # aucun effet sur l'image : source de confusion).
+        self.frm_stf = ttk.Frame(box)
+        self.frm_stf.pack(fill="x")
         self.var_auto = tk.BooleanVar(value=True)
-        ttk.Checkbutton(box, text="Auto-stretch STF (fond calé sur la cible)",
+        ttk.Checkbutton(self.frm_stf, text="Auto-stretch STF (fond calé sur la cible)",
                         variable=self.var_auto, command=self._on_auto).pack(anchor="w")
         self.var_sigk = tk.DoubleVar(value=2.8)
-        self._add_slider(box, "Coupure du bruit (k·σ sous le fond)",
+        self._add_slider(self.frm_stf, "Coupure du bruit (k·σ sous le fond)",
                          self.var_sigk, 0.5, 5.0, 0.1,
                          lambda: (setattr(self.disp, "sigma_k", self.var_sigk.get()),
                                   self._refresh_preview()), "{:.1f}")
         self.var_target = tk.DoubleVar(value=0.25)
-        self._add_slider(box, "Luminosité du fond du ciel",
+        self._add_slider(self.frm_stf, "Luminosité du fond du ciel",
                          self.var_target, 0.10, 0.45, 0.01,
                          lambda: (setattr(self.disp, "target", self.var_target.get()),
                                   self._refresh_preview()), "{:.2f}")
-        ttk.Separator(box).pack(fill="x", pady=4)
-        ttk.Label(box, text="Manuel (si auto décoché) :").pack(anchor="w")
+        ttk.Separator(self.frm_stf).pack(fill="x", pady=4)
+        ttk.Label(self.frm_stf, text="Manuel (si auto décoché) :").pack(anchor="w")
         self.var_black = tk.DoubleVar(value=0.0)
         self.var_white = tk.DoubleVar(value=1.0)
-        self.scl_black = self._add_slider(box, "Black point", self.var_black, 0.0, 1.0, 0.005,
+        self.scl_black = self._add_slider(self.frm_stf, "Black point", self.var_black, 0.0, 1.0, 0.005,
                                           lambda: (setattr(self.disp, "black", self.var_black.get()),
                                                    self._refresh_preview()), "{:.3f}")
-        self.scl_white = self._add_slider(box, "White point", self.var_white, 0.0, 2.0, 0.005,
+        self.scl_white = self._add_slider(self.frm_stf, "White point", self.var_white, 0.0, 2.0, 0.005,
                                           lambda: (setattr(self.disp, "white", self.var_white.get()),
                                                                                                       self._refresh_preview()), "{:.3f}")
+        # Gamma / saturation : COMMUNS aux deux moteurs (toujours visibles,
+        # appliqués après l'étirement quel que soit le mode).
+        self.frm_communs = ttk.Frame(box)
+        self.frm_communs.pack(fill="x")
         vg = tk.DoubleVar(value=1.0)
         self.var_gamma = vg
-        self._add_slider(box, "Gamma (les 2 modes)", vg, 0.2, 4.0, 0.05,
+        self._add_slider(self.frm_communs, "Gamma (les 2 moteurs)", vg, 0.2, 4.0, 0.05,
                          lambda: (setattr(self.disp, "gamma", vg.get()),
                                   self._refresh_preview()), "{:.2f}")
         vs = tk.DoubleVar(value=1.0)
         self.var_saturation = vs
-        self._add_slider(box, "Saturation", vs, 0.0, 3.0, 0.05,
+        self._add_slider(self.frm_communs, "Saturation", vs, 0.0, 3.0, 0.05,
                          lambda: (setattr(self.disp, "saturation", vs.get()),
                                   self._refresh_preview()), "{:.2f}")
 
@@ -348,6 +360,18 @@ class App:
         self.lbl_vl = ttk.Label(self.frm_veralux, text="—",
                                 foreground="#888888", wraplength=310)
         self.lbl_vl.pack(anchor="w")
+        # Jalon 5 : profil capteur du moteur VeraLux (réponse couleur du
+        # capteur — Rec.709 par défaut). Fait partie de la clé des réglages :
+        # changer de profil relance la résolution au prochain rendu.
+        ttk.Label(self.frm_veralux, text="Profil capteur :").pack(anchor="w")
+        self.var_vl_profil = tk.StringVar(value=veralux_moteur.PROFIL_PAR_DEFAUT)
+        self.cb_vl_profil = ttk.Combobox(self.frm_veralux,
+                                         textvariable=self.var_vl_profil,
+                                         state="readonly",
+                                         values=list(veralux_moteur.profils_disponibles()))
+        self.cb_vl_profil.pack(anchor="w")
+        self.cb_vl_profil.bind("<<ComboboxSelected>>",
+                               lambda e: self._on_vl_profil())
 
         # --- Traitement externe (instantané de l'empilement)
         box = ttk.LabelFrame(left, text="Traitement externe (instantané)", padding=6)
@@ -388,7 +412,7 @@ class App:
         self.btn_ext = ttk.Button(box, text="⚡ Traiter l'empilement courant",
                                   command=self._request_ext)
         self.btn_ext.pack(fill="x", pady=2)
-        self.btn_save_proc = ttk.Button(box, text="💾 Enregistrer le résultat traité…",
+        self.btn_save_proc = ttk.Button(box, text="💾 Enregistrer le résultat traité (linéaire)…",
                                         command=self._save_proc, state="disabled")
         self.btn_save_proc.pack(fill="x")
         self.lbl_ext = ttk.Label(box, text="—", foreground="#888888", wraplength=310)
@@ -397,7 +421,15 @@ class App:
         # --- Sortie
         box = ttk.LabelFrame(left, text="Sortie", padding=6)
         box.pack(fill="x", pady=3)
-        ttk.Button(box, text="💾 Enregistrer l'empilement…", command=self._save).pack(fill="x")
+        ttk.Button(box, text="💾 Enregistrer l'empilement (linéaire)…",
+                   command=self._save).pack(fill="x")
+        # Jalon 5 : sauvegarde « tel que vu » — la vue courante rendue comme
+        # à l'écran (étirement + gamma/saturation), en PLEINE résolution.
+        # Les autres boutons d'enregistrement restent LINÉAIRES (inchangés).
+        self.btn_save_asseen = ttk.Button(
+            box, text="💾 Enregistrer tel que vu (étiré)…",
+            command=self._save_asseen)
+        self.btn_save_asseen.pack(fill="x")
 
         # --- Panneau droit
         right = ttk.Frame(main)
@@ -477,11 +509,13 @@ class App:
         veralux_actif = self.var_moteur.get() == "VeraLux"
         self.disp.stretch = "veralux" if veralux_actif else "stf"
         if veralux_actif:
-            self.frm_veralux.pack(fill="x", pady=(4, 0))
+            self.frm_stf.pack_forget()                    # réglages STF masqués
+            self.frm_veralux.pack(fill="x", pady=(4, 0), after=self.rowm)
             self._sync_vl_mode()
             self.lbl_vl.config(text="Calcul en cours…", foreground="#c98a00")
         else:
             self.frm_veralux.pack_forget()
+            self.frm_stf.pack(fill="x", after=self.rowm)  # position d'origine
             self.lbl_vl.config(text="—", foreground="#888888")
         self._refresh_preview()
 
@@ -541,13 +575,35 @@ class App:
             self.disp.vl_graxpert_cmd = cmd
             self.lbl_vl.config(text="GraXpert live activé — calcul en cours…",
                                foreground="#c98a00")
-        self.disp.vl_graxpert = actif
+        self._sync_vl_graxpert_vue()
+        if actif and self.var_view.get() == "traitée":
+            self.lbl_vl.config(
+                text="Vue « traitée » : GraXpert live ignoré — l'image a déjà "
+                     "été traitée (il s'appliquera en vue « empilement »).",
+                foreground="#c98a00")
         self._refresh_preview()
+
+    def _on_vl_profil(self):
+        """Changement du profil capteur VeraLux : fait partie de la clé des
+        réglages → le solveur relance la résolution au prochain rendu."""
+        self.disp.vl_profil = self.var_vl_profil.get()
+        self._refresh_preview()
+
+    def _sync_vl_graxpert_vue(self):
+        """GraXpert live ne s'applique QUE sur la vue « empilement » : en vue
+        « traitée », l'image a déjà subi le traitement externe (GraXpert/BXT
+        manuels via ⚡) — le relancer ferait un DEUXIÈME traitement. La case
+        reste cochée : c'est l'état passé au solveur (disp.vl_graxpert) qui
+        suit la vue (retour à la case au retour en vue « empilement »)."""
+        actif = self.var_vl_graxpert.get() and self.var_view.get() != "traitée"
+        if actif != self.disp.vl_graxpert:
+            self.disp.vl_graxpert = actif   # la clé change → re-résolution
 
     def _on_view(self):
         """Bascule empilement ↔ résultat traité (stats d'étirement réinitialisées :
         les niveaux après GraXpert/BXT ne sont pas les mêmes)."""
         self.disp.reset()
+        self._sync_vl_graxpert_vue()
         if self.var_view.get() == "traitée":
             if self.proc_show is not None:
                 self.last_show = self.proc_show
@@ -616,6 +672,9 @@ class App:
         self._session += 1                     # invalide tout traitement externe en vol
         self.proc_show = self.proc_full = None
         self.proc_new = False
+        self.save_asseen_request = None       # sauvegarde « tel que vu » annulée
+        self.asseen_busy = False
+        self.asseen_result = None
         self.ext_request = False
         self.ext_busy = False
         self.ext_state = "idle"
@@ -657,6 +716,81 @@ class App:
             filetypes=[("FITS", "*.fits"), ("TIFF 16 bits", "*.tif"), ("PNG 16 bits", "*.png")])
         if path:
             self.save_request = path  # la sauvegarde est faite par le thread d'acquisition
+
+    def _save_asseen(self):
+        """Jalon 5 — « 💾 Enregistrer tel que vu (étiré) » : sauvegarde la vue
+        courante (empilement ou traitée) RENDUE comme à l'écran, en PLEINE
+        résolution (jamais l'aperçu 1600 px) : chaîne complète stack →
+        GraXpert live si activé (vue « empilement » ; en vue « traitée »,
+        l'image a déjà subi le traitement externe) → étirement STF/manuel ou
+        VeraLux → gamma/saturation. Le bouton d'enregistrement LINÉAIRE
+        reste inchangé. Le rendu (plusieurs secondes possibles) part dans un
+        thread dédié via _worker — comme un traitement externe."""
+        if self.asseen_busy or self.save_asseen_request is not None:
+            messagebox.showinfo("Enregistrer tel que vu",
+                                "Un enregistrement est déjà en cours — patientez.")
+            return
+        if not self.running or self.stacker is None or self.stacker.n == 0:
+            messagebox.showinfo("Enregistrer tel que vu",
+                                "Aucun empilement à enregistrer.")
+            return
+        vue = self.var_view.get()
+        if vue == "traitée" and self.proc_full is None:
+            messagebox.showinfo(
+                "Enregistrer tel que vu",
+                "Aucun résultat traité — cliquez d'abord « ⚡ Traiter "
+                "l'empilement courant ».")
+            return
+        if (self.disp.stretch == "veralux" and self.disp.vl_graxpert
+                and not gx_live.commande_valide(self.disp.vl_graxpert_cmd)):
+            messagebox.showwarning(
+                "GraXpert live",
+                "Commande GraXpert absente ou incomplète — impossible de "
+                "reproduire la chaîne live.\nVérifiez la commande dans "
+                "« Traitement externe ».")
+            return
+        path = filedialog.asksaveasfilename(
+            defaultextension=".fits",
+            filetypes=[("FITS", "*.fits"), ("TIFF 16 bits", "*.tif"),
+                       ("PNG 16 bits", "*.png")])
+        if not path:
+            return
+        # Capture des réglages ICI (thread principal) : le thread de
+        # sauvegarde ne lira jamais les variables Tkinter, et l'état de disp
+        # (curseurs, solveur) continue de vivre pendant le rendu.
+        d = self.disp
+        reglages = dict(
+            stretch=d.stretch, auto=d.auto, sigma_k=d.sigma_k, target=d.target,
+            black=d.black, white=d.white, gamma=d.gamma, saturation=d.saturation,
+            vl_mode_res=d.vl_mode_res, vl_target_bg=d.vl_target_bg,
+            vl_log_d=d.vl_log_d, vl_profil=d.vl_profil,
+            vl_log_d_resolu=d.vl_log_d_resolu,
+            vl_graxpert=d.vl_graxpert, vl_graxpert_cmd=d.vl_graxpert_cmd)
+        self.save_asseen_request = (path, vue, reglages)
+
+    def _save_asseen_thread(self, path, vue, source, reglages, session):
+        """Thread de sauvegarde « tel que vu » (jalon 5) : GraXpert live si
+        activé (vue « empilement » uniquement), puis rendu pleine résolution
+        identique à l'affichage, puis écriture du fichier. AUCUN appel Tk
+        ici : le résultat est consommé par _tick (messagebox thread-safe)."""
+        try:
+            if vue == "pile" and reglages.get("vl_graxpert"):
+                gx, err = gx_live.appliquer(source, reglages["vl_graxpert_cmd"])
+                if err:
+                    # On ne sauvegarde PAS une image « presque comme vue » :
+                    # échec GraXpert = échec de la sauvegarde (message clair).
+                    self.asseen_result = f"ERREUR: GraXpert live : {err}"
+                    return
+                source = gx
+            rendu = self.disp.rendu_pleine_resolution(source, reglages)
+            if session != self._session:    # session relancée entre-temps
+                return
+            save_image(path, rendu)
+            self.asseen_result = path
+        except Exception as e:
+            self.asseen_result = f"ERREUR: {e}"
+        finally:
+            self.asseen_busy = False
 
     def _load_dark(self):
         p = filedialog.askopenfilename(filetypes=[
@@ -868,6 +1002,28 @@ class App:
                                      args=(stack_now, self.stacker.n, self._session),
                                      daemon=True).start()
 
+            # Sauvegarde « tel que vu » (jalon 5) → thread dédié, l'acquisition
+            # continue : le rendu pleine résolution (GraXpert live + étirement)
+            # peut prendre plusieurs secondes.
+            if (self.save_asseen_request is not None and self.stacker is not None
+                    and self.stacker.n > 0 and not self.asseen_busy):
+                path, vue, reglages = self.save_asseen_request
+                self.save_asseen_request = None
+                if vue == "traitée" and self.proc_full is None:
+                    self.asseen_result = ("ERREUR: aucun résultat traité à "
+                                          "enregistrer")
+                else:
+                    if vue == "traitée":
+                        # copie défensive : proc_full peut être remplacé
+                        source = self.proc_full.astype(np.float32).copy()
+                    else:
+                        source = self.stacker.mean()  # pleine résolution, linéaire
+                    self.asseen_busy = True
+                    threading.Thread(
+                        target=self._save_asseen_thread,
+                        args=(path, vue, source, reglages, self._session),
+                        daemon=True).start()
+
             frame = self.camera.read()
             if frame is None:
                 time.sleep(0.005)
@@ -962,6 +1118,9 @@ class App:
             cmd = self.var_cmd_graxpert.get().strip()
             if cmd != self.disp.vl_graxpert_cmd:
                 self.disp.vl_graxpert_cmd = cmd
+        # Jalon 5 : GraXpert live = vue « empilement » uniquement (synchro
+        # permanente : la case peut être cochée même en vue « traitée »)
+        self._sync_vl_graxpert_vue()
         if self.disp.vl_new:      # résultat du solveur VeraLux (thread dédié)
             self.disp.vl_new = False
             if self.var_moteur.get() == "VeraLux":
@@ -1002,6 +1161,18 @@ class App:
                 messagebox.showerror("Enregistrer", p)
             else:
                 messagebox.showinfo("Enregistrer", f"Empilement sauvegardé :\n{p}")
+        # Jalon 5 : état de la sauvegarde « tel que vu » (thread dédié)
+        self.btn_save_asseen.config(
+            state="disabled"
+            if (self.asseen_busy or self.save_asseen_request is not None)
+            else "normal")
+        if self.asseen_result:
+            p, self.asseen_result = self.asseen_result, None
+            if p.startswith("ERREUR"):
+                messagebox.showerror("Enregistrer tel que vu", p)
+            else:
+                messagebox.showinfo("Enregistrer tel que vu",
+                                    f"Image « tel que vu » sauvegardée :\n{p}")
         self.root.after(30, self._tick)
 
     def _show_image(self, disp):
