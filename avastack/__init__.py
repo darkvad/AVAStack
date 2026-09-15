@@ -14,9 +14,41 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.2.7"
+AVASTACK_VERSION = "2.3.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.3.0 : JALON 6 de l'intégration VeraLux (finitions) :
+#          - REJET DES SATELLITES : LiveStacker (avastack/processing/
+#            stacking.py) propose deux méthodes — « kappa » (kappa-sigma
+#            séquentiel historique, STRICTEMENT inchangé) et « winsorized » :
+#            adaptation au live stacking du Winsorized Sigma Clipping de
+#            PixInsight — chaque frame est comparée à la MÉDIANE et au MAD
+#            (sigma robuste = 1,4826×MAD) d'une fenêtre glissante des
+#            dernières frames alignées (défaut 8, réglable 4-16) ; REJEU DU
+#            WARMUP : quand la fenêtre se remplit pour la 1re fois
+#            (elle contient alors toutes les frames), l'accumulation est
+#            reconstruite avec les poids robustes — une trace passée pendant
+#            le warmup est effacée, pas seulement diluée (le kappa cumulé
+#            gonfle sigma pour toujours et masque ensuite les traces
+#            faibles aux mêmes pixels) ; set_rejet() change méthode/fenêtre
+#            à chaud sans perdre l'accumulation ; traitement par bandes de
+#            lignes (_CHUNK_PX) pour borner la mémoire des temporaires.
+#            UI (cadre Empilement) : combobox « Méthode de rejet »
+#            (kappa-sigma / Winsorized satellites) + « Fenêtre de référence
+#            (frames) » grisée en mode kappa. Test headless
+#            _test_rejet_satellites_jalon6.py (21 vérifications ; scénario
+#            poison : résidu kappa ~10e-3 vs winsorized ~0,01e-3).
+#          - PERSISTANCE config.json : réglages VeraLux (moteur d'étirement,
+#            mode de résolution du logD, fond visée, logD forcé, profil
+#            capteur, GraXpert live) et d'empilement (kappa, méthode +
+#            fenêtre de rejet), sauvegardés à la fermeture et restaurés au
+#            démarrage (moteur VeraLux en dernier ; GX live seulement si la
+#            commande est utilisable, sans popup) ; restauration TOLÉRANTE :
+#            toute valeur inconnue/hors bornes laisse le défaut (config
+#            corrompue = jamais de crash) ; booléens stockés
+#            explicitement (True comme False). Test UI
+#            _test_config_jalon6.py (sauver_config intercepté : le vrai
+#            config.json n'est jamais touché par les tests).
 # v2.2.7 : JALON 5 de l'intégration VeraLux (« 💾 Enregistrer tel que vu ») :
 #          - avastack/processing/display.py : nouveau rendu_pleine_resolution()
 #            — reproduit l'étirement affiché sur une image LINÉAIRE PLEINE

@@ -129,6 +129,57 @@ class App:
                 var.set(float(v))
         self.disp.sigma_k = self.var_sigk.get()
         self.disp.target = self.var_target.get()
+        # --- Jalon 6 : réglages d'empilement (kappa, méthode/fenêtre rejet)
+        if "kappa" in c:
+            v = c.get("kappa")
+            v = None if v is None else round(float(v), 1)
+            etiquette = {None: "Off", 2.0: "2σ", 3.0: "3σ",
+                         4.0: "4σ", 5.0: "5σ"}.get(v)
+            if etiquette:
+                self.var_kappa.set(etiquette)
+                self.kappa = None if etiquette == "Off" else float(v)
+        methode = c.get("rejet_methode")
+        if methode in ("kappa", "winsorized"):
+            self.rejet_methode = methode
+            self.var_rejet.set("Winsorized (satellites)"
+                               if methode == "winsorized"
+                               else "kappa-sigma (rapide)")
+            self.cb_fenetre.configure(
+                state="readonly" if methode == "winsorized" else "disabled")
+        fen = c.get("rejet_fenetre")
+        if isinstance(fen, int) and not isinstance(fen, bool) \
+                and str(fen) in self.cb_fenetre["values"]:
+            self.rejet_fenetre = fen
+            self.var_fenetre.set(str(fen))
+        # --- Jalon 6 : réglages VeraLux (moteur tiers opt-in)
+        mode_res = c.get("vl_mode_res")
+        if mode_res in ("fond cible (auto)", "logD forcé"):
+            self.var_vl_mode_res.set(mode_res)
+            self._sync_vl_mode()   # répercute dans disp + libellé bouton 🔒
+        v = c.get("vl_target")
+        if isinstance(v, (int, float)) and not isinstance(v, bool) \
+                and 0.10 <= float(v) <= 0.45:
+            self.var_vl_target.set(float(v))
+            self.disp.vl_target_bg = float(v)
+        v = c.get("vl_logd")
+        if isinstance(v, (int, float)) and not isinstance(v, bool) \
+                and 0.0 <= float(v) <= 7.0:
+            self.var_vl_logd.set(float(v))
+            self.disp.vl_log_d = float(v)
+        profil = c.get("vl_profil")
+        if profil and profil in self.cb_vl_profil["values"]:
+            self.var_vl_profil.set(profil)
+            self.disp.vl_profil = profil
+        if c.get("vl_graxpert") and gx_live.commande_valide(
+                self.var_cmd_graxpert.get().strip()):
+            self.var_vl_graxpert.set(True)
+            self._on_vl_graxpert()   # sans popup : commande validée avant
+        # Moteur d'étirement en DERNIER : la bascule VeraLux masque les
+        # réglages STF et affiche le cadre VeraLux avec les valeurs ci-dessus.
+        # (moteur indisponible → STF conservé, sans popup)
+        if c.get("moteur") == "VeraLux" and veralux_moteur.moteur_disponible():
+            self.var_moteur.set("VeraLux")
+            self._on_moteur()
 
     def _sauver_config_app(self):
         """Persiste les réglages de l'interface dans config.json (appelé à la
@@ -153,6 +204,18 @@ class App:
         c["target"] = self.var_target.get()
         c["gamma"] = self.var_gamma.get()
         c["saturation"] = self.var_saturation.get()
+        # Jalon 6 : réglages d'empilement et VeraLux. Les booléens sont
+        # stockés EXPLICITEMENT (True comme False) : une case décochée ne
+        # doit pas hériter d'un True d'une session précédente.
+        c["kappa"] = self.kappa                  # None → null JSON (« Off »)
+        c["rejet_methode"] = self.rejet_methode
+        c["rejet_fenetre"] = int(self.rejet_fenetre)
+        c["moteur"] = self.var_moteur.get()
+        c["vl_mode_res"] = self.var_vl_mode_res.get()
+        c["vl_target"] = self.var_vl_target.get()
+        c["vl_logd"] = self.var_vl_logd.get()
+        c["vl_profil"] = self.var_vl_profil.get()
+        c["vl_graxpert"] = bool(self.var_vl_graxpert.get())
         sauver_config(c)
 
     # ------------------------------------------------------------ construction UI

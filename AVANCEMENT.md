@@ -7,23 +7,21 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
 
 ## État actuel (base stable)
 
-- **Version stable : AVAStack v2.2.7** (`avastack/__init__.py`,
-  `AVASTACK_VERSION = "2.2.7"`), branche `master`. Jalon 5 (« 💾
-  Enregistrer tel que vu ») validé par Alain et commité le 14/09/2026.
-- **Prochaine session : JALON 6 — finitions**, cf. plan ci-dessous.
-  ⚠️ Deux points du jalon 6 sont DÉJÀ FAITS (intégrés au jalon 5 sur
-  demande d'Alain) : **la combobox « Profil capteur »** (dans le cadre
-  VeraLux, alimente `disp.vl_profil`, fait partie de la clé des réglages,
-  6 profils du moteur) et **le masquage des réglages STF en mode VeraLux**
-  (sous-cadre `frm_stf` caché, plus fort que « grisés » — décision
-  d'Alain après constat qu'ils restaient visibles sans effet). Il reste :
-  persistance config.json de TOUS les réglages VeraLux (mode de
-  résolution, fond visée, logD, profil capteur, GraXpert live + commande)
-  ET des réglages d'empilement (méthode + fenêtre de rejet, kappa),
-  changelog final, version 2.3.0, test réel complet par Alain (vraies
-  brutes) avant commit final.
-- **Jalon 6 — rejet des satellites (demande d'Alain, 15/09/2026) : CODE
-  FAIT, en attente du test réel.** `avastack/processing/stacking.py` :
+- **Version : AVAStack v2.3.0** (`avastack/__init__.py`,
+  `AVASTACK_VERSION = "2.3.0"`), branche `master`. Jalon 5 validé par
+  Alain (14/09/2026) ; jalon 6 CODÉ ET COMMITÉ le 15/09/2026.
+- **⚠️ RESTE À FAIRE pour clore le jalon 6 : le TEST RÉEL complet par
+  Alain (vraies brutes)** : (a) une session avec satellites — vérifier
+  que le mode « Winsorized (satellites) » efface les traces ; (b)
+  quitter et relancer l'appli — vérifier que TOUS les réglages sont
+  retrouvés (VeraLux : moteur, mode de résolution, fond visée, logD,
+  profil capteur, GX live ; empilement : kappa, méthode + fenêtre de
+  rejet) ; (c) les stashes stash@{0}/stash@{1} ne seront droppés
+  qu'après cette validation. (Historique : deux points du jalon 6
+  avaient déjà été faits au jalon 5 sur demande d'Alain — combobox
+  « Profil capteur », masquage des réglages STF en mode VeraLux.)
+- **Jalon 6 — rejet des satellites (demande d'Alain, 15/09/2026) : ✅
+  CODÉ et commité le 15/09/2026 (commit « Jalon 6 (1/3) »).** `avastack/processing/stacking.py` :
   `LiveStacker` a 2 méthodes de rejet — `method="kappa"` (comportement
   historique STRICTEMENT inchangé, régression testée bit-à-bit) et
   `method="winsorized"` : adaptation live du Winsorized Sigma Clipping
@@ -45,9 +43,28 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
   Test : `_test_rejet_satellites_jalon6.py` (21 vérifications, headless)
   — scénario poison : résidu kappa ~10,0e-3 vs winsorized ~0,01e-3 ;
   étoiles/champ intacts ; RGB OK ; chunks OK ; jalons 1-5 relancés :
-  TOUS PASSENT. ⚠️ Ne PAS oublier dans la persistance config.json
-  (point restant du jalon 6) : `rejet_methode`, `rejet_fenetre` (+ le
-  `kappa` existant). Test réel par Alain avant validation/commit.
+  TOUS PASSENT. (La persistance de ces réglages a été faite ensuite —
+  cf. bullet suivant.)
+- **Jalon 6 — persistance config.json (15/09/2026) : ✅ CODÉ et commité.**
+  `avastack/ui/app.py` : `_sauver_config_app` écrit désormais `kappa`,
+  `rejet_methode`, `rejet_fenetre`, `moteur`, `vl_mode_res`, `vl_target`,
+  `vl_logd`, `vl_profil`, `vl_graxpert` — booléen stocké EXPLICITEMENT
+  (True comme False : une case décochée n'hérite pas d'un True ancien).
+  `_restaurer_config` les relit au démarrage : kappa mappé sur les
+  étiquettes Off/2σ-5σ ; méthode + fenêtre de rejet (état grisé
+  synchronisé) ; réglages VeraLux restaurés AVANT le moteur (la bascule
+  affiche le cadre avec les bonnes valeurs) ; moteur « VeraLux »
+  SEULEMENT si le moteur tiers est disponible (aucun popup au démarrage) ;
+  GX live SEULEMENT si la commande est utilisable (aucun popup) ;
+  restauration TOLÉRANTE — kappa hors {2,3,4,5} → 3σ, fenêtre hors liste
+  → 8, cible hors [0.10, 0.45] / logD hors [0, 7] / profil inconnu /
+  mode inconnu → défauts (config corrompue = jamais de crash).
+  Test `_test_config_jalon6.py` (19 vérifications, fenêtre Tkinter
+  réelle ; `sauver_config` intercepté + `CONFIG` simulé : le VRAI
+  config.json n'est jamais touché par les tests) : sauvegarde des 9
+  clés, restauration complète (variables UI ET état du
+  DisplayProcessor), réglages invalides → défauts sans crash.
+  Jalons 1-5 relancés : TOUS PASSENT.
 - Les stashes `stash@{0}`/`stash@{1}` sont toujours en place : ne rien
   dropper tant que la fonctionnalité n'est pas entièrement validée
   (jalon 6 restant).
@@ -254,11 +271,13 @@ validée.
   limité à la vue « empilement », combobox profil capteur (avancé du
   jalon 6), réglages STF masqués en mode VeraLux, libellés « (linéaire) »
   clarifiés.
-- **Jalon 6** — Finitions : persistance config.json de tous les réglages
-  VeraLux, ~~combobox profil capteur~~ (✅ FAIT au jalon 5), ~~curseurs
-  STF grisés en mode VeraLux~~ (✅ FAIT au jalon 5 : masqués, décision
-  d'Alain), changelog final, version 2.3.0, test réel complet par Alain
-  (vraies brutes) avant commit final.
+- **Jalon 6** — Finitions : ~~persistance config.json~~ (✅ CODÉ le
+  15/09/2026, cf. « État actuel »), ~~combobox profil capteur~~ (✅ FAIT au
+  jalon 5), ~~curseurs STF grisés en mode VeraLux~~ (✅ FAIT au jalon 5 :
+  masqués, décision d'Alain), ~~rejet des satellites~~ (✅ CODÉ le
+  15/09/2026, ajouté au jalon sur demande d'Alain), ~~changelog final,
+  version 2.3.0~~ (✅ FAIT le 15/09/2026). ⚠️ RESTE : test réel complet
+  par Alain (vraies brutes) avant de marquer le jalon VALIDÉ.
 
 ### Décisions d'Alain (14/09/2026)
 
