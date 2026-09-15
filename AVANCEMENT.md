@@ -114,6 +114,10 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
 - Arbre de travail **propre** au 15/09/2026 : jalon 6 validé et commité,
   rien en suspens ; les stashes de la tentative abandonnée ont été
   droppés (la fonctionnalité a été réécrite proprement aux jalons 1-3).
+- **Dépôt distant créé (15/09/2026)** : `origin` =
+  https://github.com/darkvad/AVAStack.git — `master` poussé et suivi
+  (`git push` seul suffit désormais). Aucun fichier sensible suivi
+  (pas de config.json, ni venv, ni build).
 - Ce qui fonctionne (validé en réel) :
   - Pipeline complet : acquisition (sources simulées / dossier surveillé /
     OpenCV / ZWO ASI / QHYCCD / Player One / Touptek-Altair / SVBONY) →
