@@ -234,6 +234,21 @@ Pièges :
   Constaté sur les scripts de test : un test qui réussit en direct peut
   « échouer » via un pipe (`| Select-Object`). Parade : en tête des scripts
   de test, `sys.stdout.reconfigure(encoding="utf-8", errors="replace")`.
+- **Live stacking, rejet des traînées de satellites** : le kappa-sigma
+  CUMULÉ gonfle σ pour toujours (les pixels de la trace entrent dans les
+  sommes de référence). La méthode robuste est celle type PixInsight :
+  référence = **médiane / MAD d'une fenêtre glissante** (σ = 1,4826 × MAD),
+  et **rejouer le warmup** (reconstruire sum/sumsq/wsum avec les poids
+  robustes) quand la fenêtre se remplit — sinon le σ gonflé initial reste
+  à vie. Implémentation : `LiveStacker` (avastack/processing/stacking.py),
+  jalon 6 / v2.3.x.
+- **Persistance de configuration au démarrage : restaurer de façon
+  TOLÉRANTE** — chaque valeur lue est validée (bornes, énumération) et
+  retombe sur le défaut si invalide. Une config.json corrompue, incomplète
+  ou d'une version antérieure ne doit JAMAIS provoquer de crash ni de
+  popup au lancement. Ordre de restauration parfois significatif : ici,
+  VeraLux est restauré AVANT le moteur pour que la dépendance
+  (GX live n'a de sens qu'avec le bon moteur) soit satisfaite.
 
 ## Leçons générales transposables (projet pipeline siril)
 
