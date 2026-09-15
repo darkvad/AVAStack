@@ -30,6 +30,12 @@ renomme), mais AUCUN chemin specifique a un OS ne doit etre code en dur dans
 le code sans repli — contrairement a la regle anterieure « Windows
 uniquement » qui n est plus valable.
 
+**Dépôt distant** : `origin` = https://github.com/darkvad/AVAStack.git
+(GitHub, créé le 15/09/2026). Branche unique `master`, poussée et en suivi
+(`git push` seul suffit, pas besoin de préciser origin/master). Aucun
+fichier sensible ou volumineux n'est suivi (ni config.json, ni venv, ni
+build/dist) — garder ainsi lors des futurs ajouts au `.gitignore`.
+
 ## AVANCEMENT.md — mémoire de session (court terme)
 
 `AVANCEMENT.md` (racine du dépôt) suit l'état courant du développement :
