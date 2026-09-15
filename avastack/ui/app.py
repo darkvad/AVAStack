@@ -49,6 +49,8 @@ class App:
         self.disp = DisplayProcessor()
         self._vl_frames = None        # nb de frames du dernier empilement affiché
         self.kappa = 3.0
+        self.rejet_methode = "kappa"     # "kappa" ou "winsorized" (satellites)
+        self.rejet_fenetre = 8           # frames de la fenêtre glissante
         self.pending_settings = None
         self.reset_request = self.ref_request = False
         self.save_request = self.saved_path = None
@@ -258,6 +260,27 @@ class App:
                           values=["Off", "2σ", "3σ", "4σ", "5σ"])
         cb.pack(anchor="w")
         cb.bind("<<ComboboxSelected>>", lambda e: self._on_kappa())
+        # Méthode de rejet : kappa-sigma séquentiel (rapide, historique) ou
+        # Winsorized (adaptation live du Winsorized Sigma Clipping de
+        # PixInsight) — médiane/MAD d'une fenêtre glissante de frames
+        # alignées, robuste aux traînées de satellites/météores.
+        ttk.Label(box, text="Méthode de rejet :").pack(anchor="w")
+        self.var_rejet = tk.StringVar(value="kappa-sigma (rapide)")
+        self.cb_rejet = ttk.Combobox(box, textvariable=self.var_rejet, state="readonly",
+                                     width=24,
+                                     values=["kappa-sigma (rapide)",
+                                             "Winsorized (satellites)"])
+        self.cb_rejet.pack(anchor="w")
+        self.cb_rejet.bind("<<ComboboxSelected>>", lambda e: self._on_rejet())
+        rowwin = ttk.Frame(box)
+        rowwin.pack(fill="x", pady=2)
+        ttk.Label(rowwin, text="Fenêtre de référence (frames) :").pack(side="left")
+        self.var_fenetre = tk.StringVar(value=str(self.rejet_fenetre))
+        self.cb_fenetre = ttk.Combobox(rowwin, textvariable=self.var_fenetre,
+                                       state="disabled", width=3,
+                                       values=["4", "6", "8", "12", "16"])
+        self.cb_fenetre.pack(side="left", padx=4)
+        self.cb_fenetre.bind("<<ComboboxSelected>>", lambda e: self._on_rejet())
 
         # --- Affichage
         box = ttk.LabelFrame(left, text="Affichage (temps réel)", padding=6)
@@ -480,6 +503,23 @@ class App:
         self.kappa = {"Off": None, "2σ": 2.0, "3σ": 3.0, "4σ": 4.0, "5σ": 5.0}[self.var_kappa.get()]
         if self.stacker:
             self.stacker.k = self.kappa
+
+    def _on_rejet(self):
+        """Bascule de la méthode de rejet (kappa-sigma / Winsorized) et de
+        la taille de la fenêtre de référence. Appliqué à chaud au stacker
+        (l'accumulation en cours est préservée, seule la fenêtre est vidée)."""
+        self.rejet_methode = ("winsorized" if "Winsorized" in self.var_rejet.get()
+                              else "kappa")
+        try:
+            self.rejet_fenetre = int(self.var_fenetre.get())
+        except ValueError:
+            self.rejet_fenetre = 8
+        # La fenêtre glissante n'a de sens qu'en mode Winsorized : grisée sinon.
+        self.cb_fenetre.configure(
+            state="readonly" if self.rejet_methode == "winsorized" else "disabled")
+        if self.stacker:
+            self.stacker.set_rejet(method=self.rejet_methode,
+                                   window=self.rejet_fenetre)
 
     def _on_cfa(self, *args):
         import avastack.images as _images
@@ -1033,7 +1073,9 @@ class App:
             # (re)création de l'empilement / nouvelle référence
             if self.reset_request or self.stacker is None or self.stacker.shape != frame.shape:
                 self.reset_request = False
-                self.stacker = LiveStacker(frame.shape, k=self.kappa)
+                self.stacker = LiveStacker(frame.shape, k=self.kappa,
+                                           method=self.rejet_methode,
+                                           window=self.rejet_fenetre)
                 self.aligner.reset()
                 self.aligner.set_reference(frame)
                 self.disp.reset()          # stats d'affichage repartent de zéro

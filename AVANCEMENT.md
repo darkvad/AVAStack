@@ -18,9 +18,36 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
   (sous-cadre `frm_stf` caché, plus fort que « grisés » — décision
   d'Alain après constat qu'ils restaient visibles sans effet). Il reste :
   persistance config.json de TOUS les réglages VeraLux (mode de
-  résolution, fond visée, logD, profil capteur, GraXpert live + commande),
+  résolution, fond visée, logD, profil capteur, GraXpert live + commande)
+  ET des réglages d'empilement (méthode + fenêtre de rejet, kappa),
   changelog final, version 2.3.0, test réel complet par Alain (vraies
   brutes) avant commit final.
+- **Jalon 6 — rejet des satellites (demande d'Alain, 15/09/2026) : CODE
+  FAIT, en attente du test réel.** `avastack/processing/stacking.py` :
+  `LiveStacker` a 2 méthodes de rejet — `method="kappa"` (comportement
+  historique STRICTEMENT inchangé, régression testée bit-à-bit) et
+  `method="winsorized"` : adaptation live du Winsorized Sigma Clipping
+  de PixInsight — chaque frame est comparée à la MÉDIANE et au MAD
+  (σ_robuste = 1,4826×MAD) d'une fenêtre glissante des dernières frames
+  alignées (`window`, défaut 8 ; RAM ≈ window × frame en float32).
+  REJEU DU WARMUP : quand la fenêtre se remplit pour la 1re fois (elle
+  contient alors TOUTES les frames accumulées), l'accumulation est
+  RECONSTRUITE avec les poids robustes — une trace passée pendant le
+  warmup est effacée, pas seulement diluée (le kappa-sigma cumulé gonfle
+  σ pour toujours via sumsq et masque ensuite les traces faibles aux
+  mêmes pixels). `set_rejet(method=, window=)` change à chaud SANS
+  perdre l'accumulation (seule la fenêtre est vidée). Traitement par
+  bandes de lignes (`_CHUNK_PX`) pour borner les temporaires mémoire.
+  `app.py` : cadre Empilement — combobox « Méthode de rejet »
+  (« kappa-sigma (rapide) » / « Winsorized (satellites) ») + combobox
+  « Fenêtre de référence (frames) » (4/6/8/12/16, grisée en mode kappa) ;
+  appliqué à la création du stacker et à chaud (`_on_rejet`).
+  Test : `_test_rejet_satellites_jalon6.py` (21 vérifications, headless)
+  — scénario poison : résidu kappa ~10,0e-3 vs winsorized ~0,01e-3 ;
+  étoiles/champ intacts ; RGB OK ; chunks OK ; jalons 1-5 relancés :
+  TOUS PASSENT. ⚠️ Ne PAS oublier dans la persistance config.json
+  (point restant du jalon 6) : `rejet_methode`, `rejet_fenetre` (+ le
+  `kappa` existant). Test réel par Alain avant validation/commit.
 - Les stashes `stash@{0}`/`stash@{1}` sont toujours en place : ne rien
   dropper tant que la fonctionnalité n'est pas entièrement validée
   (jalon 6 restant).
