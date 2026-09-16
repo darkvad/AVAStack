@@ -56,6 +56,10 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
   Test `_test_sharp_live_jalon12.py` (66 vérifications, fenêtre réelle
   incluse) ; détail : § « Netteté live » → « Câblage live (jalon 12) ».
   ⏳ **PAS ENCORE VALIDÉ SUR DE VRAIES IMAGES** (c'est la prochaine étape).
+   ✅ Smoke test de bout en bout (16/09/2026, source simulée, 8 s) : netteté
+   activée à 3 it, PSF du seeing transmise au solveur (FWHM 3,19 px ·
+   135 étoiles), étiquette « Netteté active · 3 it · PSF du seeing mesuré »,
+   image nette ≠ brute (écart max 0,181), AUCUNE erreur.
 - **✅ JALON 10 « seeing live » : FAIT, VALIDÉ EN RÉEL par Alain le
   16/09/2026, COMMITÉ ET POUSSÉ (v2.3.5, `0adc69d`)** — module
   `avastack/processing/stars.py` (détecteur d'étoiles + PSF/FWHM,
@@ -263,6 +267,15 @@ Test `_test_sharp_live_jalon12.py` (66 vérifications, fenêtre réelle incluse)
 **les 17 fichiers `_test_*.py` PASSENT**. Détail : § « Netteté live » →
 « Câblage live (jalon 12) » et changelog de `avastack/__init__.py`.
 
+**Smoke test de bout en bout : PASSÉ le 16/09/2026** — la chaîne live RÉELLE
+(fenêtre Tk, source simulée, 8 s d'empilement) avec la netteté ACTIVÉE (3 it)
+n'a produit AUCUNE exception ni AUCUN message d'erreur : la PSF du seeing est
+bien transmise au solveur (FWHM 3,19 px · 135 étoiles), l'étiquette affiche
+« Netteté active · 3 it · PSF du seeing mesuré », l'image nette diffère de la
+brute (écart max 0,181), `vl_error` vide. Ce test ne remplace PAS la
+validation sur VRAIES images (leçon du « léopard ») : elle reste la PROCHAINE
+ÉTAPE UNIQUE.
+
 **PROCHAINE ÉTAPE UNIQUE = RÉGLAGE SUR DE VRAIES IMAGES** (leçon du
 « léopard » : jamais de validation sur du synthétique — les réglages agressifs
 y paraissent toujours meilleurs). À vérifier en réel, dans l'ordre :
@@ -283,7 +296,10 @@ sont FAITS. Rien d'autre n'est en attente.
 ⚠️ État de l'arbre : les modifications du jalon 12
 (`avastack/processing/display.py`, `avastack/ui/app.py`, `avastack/__init__.py`
 (v2.3.7), `_test_sharp_live_jalon12.py`, `_test_denoise_live_jalon9.py`,
-`AVANCEMENT.md`) sont **COMMITÉES ET POUSSÉES** (`2051a38`).
+`AVANCEMENT.md`) sont **COMMITÉES ET POUSSÉES** (`2051a38`, puis docs
+`0564a08`) ; le smoke test de bout en bout (script JETABLE
+`_smoke_nettete_live.py`, jamais versionné) a été passé puis SUPPRIMÉ,
+résultat consigné ci-dessus.
 
 **Demande d'Alain (16/09/2026)** : « remettre les fonctions de
 denoise, graxpert dans traitement externe, et les 2 autres [ondelettes à
@@ -611,7 +627,8 @@ et GraXpert CLI (-strength pour le débruitage, -smoothing = gradient).
 VALIDÉ EN RÉEL par Alain le 16/09/2026, v2.3.5) ; jalon 11 = module
 Richardson-Lucy headless (✅ FAIT et TESTÉ le 16/09/2026, v2.3.6) ; jalon 12
 = câblage live (✅ FAIT et TESTÉ le 16/09/2026, v2.3.7 : UI + config +
-« tel que vu », dans un cadre INDÉPENDANT du moteur d'étirement) ; il reste
+« tel que vu », dans un cadre INDÉPENDANT du moteur d'étirement ; smoke test
+de bout en bout PASSÉ le 16/09/2026) ; il reste
 réglage sur de VRAIES images** (détail et état : « ⏭ TÂCHE EN COURS » en
 tête de fichier, et § « Câblage live (jalon 12) » plus bas).
 
