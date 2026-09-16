@@ -327,6 +327,30 @@ Pièges :
   GraXpert 3.1.0rc2 → rester en Subtraction. (Constat Alain 16/09/2026 :
   coussin disparu après recadrage manuel dans Siril ; recadrage auto
   validé par Alain, v2.3.3.)
+- **Un « bruit × » mesuré par l'écart-type GLOBAL d'une image d'étoiles n'est
+  pas du bruit** (constat réel du 16/09/2026, jalon 11 « netteté ») : un
+  filtre d'accentuation NON LINÉAIRE laisse le FOND intact — voire le lisse
+  un peu (Richardson-Lucy : MAD du fond ×0,92 et hautes fréquences ×0,89 à
+  5 it) — alors que l'écart-type global monte ×1,32, uniquement parce que les
+  PICS D'ÉTOILES sont amplifiés (pic ×2,35 pour un flux total conservé à
+  ×1,000). Le « bruit ×1,14-1,39 » d'un banc d'essai jetable a donc été mal
+  interprété et a coûté une ré-analyse. Règle : mesurer le bruit TOUJOURS sur
+  une zone de FOND (MAD hors étoiles) et/ou en hautes fréquences (1re couche
+  de la transformée starlet, cf. `denoise.estimer_sigma`) — et **noter la
+  MÉTHODE de mesure à côté du chiffre** : un facteur de bruit sans sa
+  définition est inexploitable. Corollaire : sur une image accentuée, ce
+  qu'il faut surveiller à l'œil, ce sont les halos autour des étoiles, pas le
+  fond.
+- **Opération par pixel entre une image COULEUR et une carte 2D en numpy :
+  `gain[..., None]` obligatoire** (constat réel du 16/09/2026, jalon 11) :
+  `(H,W,3) * (H,W)` ne diffuse PAS — numpy aligne les DERNIÈRES dimensions —
+  et l'erreur était SILENCIEUSE parce qu'enveloppée dans un repli sûr (le
+  module renvoyait l'image d'entrée avec un message : la netteté ne
+  s'appliquait tout simplement pas en couleur). Deux règles : multiplier par
+  `gain[..., None]` et tester le mono ET la couleur ; et un test de
+  fonctionnalité doit vérifier que le résultat est bien MODIFIÉ, pas
+  seulement l'absence d'exception — un « repli sûr » peut masquer un bug de
+  forme.
 
 ## Leçons générales transposables (projet pipeline siril)
 
@@ -369,6 +393,14 @@ Pièges :
   profil était net — il faut interpoler vers le dernier bin FINI au-dessus du
   seuil, pas vers le bin voisin immédiat ; un échantillonnage par anneaux est
   clairsemé par nature dès que le rayon grandit).
+- **Toute implémentation d'un algorithme connu doit être confrontée à une
+  RÉFÉRENCE INDÉPENDANTE**, et cette comparaison doit RESTER dans les tests
+  permanents (constat réel du 16/09/2026, jalon 11 : la Richardson-Lucy du
+  projet coïncide à moins de 1e-5 avec une RL écrite en numpy pur —
+  convolution 2D explicite, bords réfléchis — à 1, 3, 5 et 10 itérations).
+  Sans cette référence, un « ça marche » visuel ne distingue pas la vraie
+  formule d'une variante approximative (damping, ordre des convolutions,
+  normalisation du noyau, gestion des bords).
 
 ## Maintenance des fichiers de connaissance (CLAUDE.md)
 

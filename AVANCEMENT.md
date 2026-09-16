@@ -285,12 +285,22 @@ travail 1600 px, coût, PSF) :
 - **v2.3.6 : JALON 11 CODÉ ET TESTÉ le 16/09/2026** (module RL
   `avastack/processing/sharpness.py` + test `_test_rl_jalon11.py`), commité
   et poussé en fin de jalon ; bases VALIDÉES par Alain : v2.3.5 (jalon 10
-  validé en réel), v2.3.4, v2.3.3 et v2.3.2 ; cf. « État
+  validé en réel), v2.3.4, v2.3.3 et v2.3.2 (cf. « État
   actuel » en tête de fichier). **tests : LES 16 fichiers `_test_*.py`
   PASSENT** (code de sortie 0), lancés UN PAR UN avec le venv :
   `C:/Astro/astrolivestack/venv/Scripts/python.exe _test_xxx.py`
   (dont `_test_stars_jalon10.py`, 27 vérifications, et le nouveau
   `_test_rl_jalon11.py`, 43 vérifications).
+- **CLAUDE.md : 3 leçons du jalon 11 ajoutées le 16/09/2026, PROPOSÉES puis
+  APPROUVÉES par Alain** (texte exact présenté avant écriture) :
+  (1) « un “bruit ×” mesuré par l'écart-type GLOBAL n'est pas du bruit »
+  (§ Pièges, avec les chiffres du jalon 11) ; (2) « opération par pixel entre
+  une image COULEUR et une carte 2D : `gain[..., None]` obligatoire » +
+  « un test doit vérifier que le résultat est bien MODIFIÉ (un repli sûr peut
+  masquer un bug de forme) » (§ Pièges) ; (3) « toute implémentation d'un
+  algorithme connu doit être confrontée à une RÉFÉRENCE INDÉPENDANTE, et
+  cette comparaison reste dans les tests permanents » (§ Leçons générales
+  transposables).
 - **débruitage : PLUS RIEN EN ATTENTE.** Test réel d'Alain (16/09/2026) :
   « pas top » après retrait de gradient, « mieux mais pas parfait » sans —
   décision : **on garde le code tel quel, cases décochées** (aucun
