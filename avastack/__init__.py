@@ -14,9 +14,45 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.3.6"
+AVASTACK_VERSION = "2.3.7"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.3.7 : JALON 12 — NETTETÉ LIVE CÂBLÉE (Richardson-Lucy en direct).
+#          Nouveau cadre « Netteté live (Richardson-Lucy) », INDÉPENDANT du
+#          moteur d'étirement (demande d'Alain) : la netteté s'applique AVANT
+#          l'étirement en STF/manuel comme en VeraLux. Case à cocher + curseur
+#          d'ITÉRATIONS (1 à 10, défaut 5, « 3-5 = réglage utile ») et
+#          étiquette d'état qui dit l'état RÉEL (active + provenance de la
+#          PSF / refusée avec la raison / ignorée en vue « traitée »).
+#          Position dans la chaîne : APRÈS le débruitage (on lisse d'abord, on
+#          restaure ensuite), AVANT l'étirement.
+#          DEUX CHEMINS, MÊMES RÉGLAGES ET MÊME MODULE : en mode VeraLux la
+#          netteté est la dernière étape du solveur existant (elle y est donc
+#          bien APRÈS GraXpert/débruitage : gradient → débruitage → netteté →
+#          étirement) ; en STF/manuel, un second solveur DÉDIÉ (thread, dernier
+#          job gagnant) la calcule sur l'aperçu, l'UI affichant l'image
+#          d'attente NON nette — jamais bloquée. Le résultat mémorise l'objet
+#          image déconvolué : jamais l'image nette d'un AUTRE empilement à
+#          l'écran ; un REFUS est mémorisé lui aussi (sinon chaque tick d'UI
+#          resoumettrait un job refusé, 30 fois par seconde). Les DEUX chemins
+#          enveloppent l'appel du module d'un try/except : le module ne lève
+#          jamais (contrat), mais un thread solveur MORT figerait l'aperçu pour
+#          toujours — repli sur l'image non nette + raison remontée.
+#          LA PSF EST CELLE DU SEEING MESURÉ (jalon 10) : la mesure du thread
+#          d'acquisition est transmise au solveur (`vl_seeing`) — aucune 2e
+#          détection d'étoiles, et la netteté suit le seeing réel de la nuit.
+#          « 💾 tel que vu » reproduit la netteté en PLEINE RÉSOLUTION avec une
+#          PSF MESURÉE sur le fichier (celle du live est exprimée en pixels de
+#          l'APERÇU, réduit sur gros capteur : la réutiliser fausserait la
+#          déconvolution du fichier).
+#          Persistance : `vl_sharp` (booléen explicite) + `vl_sharp_iterations`
+#          (entier ; hors [1, 10] → défaut 5, jamais de valeur bricolée en
+#          silence). Vue « traitée » = netteté ignorée (même règle que
+#          GraXpert/débruitage live : l'image a déjà subi le traitement
+#          externe). Le job du solveur VeraLux passe de 5 à 6 éléments (les
+#          réglages de netteté en dernier) → _test_denoise_live_jalon9.py mis à
+#          jour. Test _test_sharp_live_jalon12.py (66 vérifications : fenêtre
+#          réelle + solveurs réels) ; les 16 tests existants repassent au vert.
 # v2.3.6 : JALON 11 — NETTETÉ LIVE, MODULE RICHARDSON-LUCY (module SEUL,
 #          sans UI : le câblage live — case, curseur, cache du solveur,
 #          « tel que vu », config — est le jalon 12). Nouveau module

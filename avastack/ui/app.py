@@ -26,6 +26,7 @@ from ..cameras import (SOURCES, SimulatedCamera, OpenCVCamera, ZWOASICamera,
 from ..processing import Calibrator, StarAligner, LiveStacker, DisplayProcessor
 from ..processing import denoise as denoiser_local
 from ..processing import stars as seeing_live
+from ..processing import sharpness as nettete_live
 from ..external import live as gx_live
 from ..processing import veralux as veralux_moteur
 from ..external.detection import (
@@ -246,6 +247,21 @@ class App:
         if c.get("vl_denoise"):
             self.var_vl_dn.set(True)
             self._on_vl_denoise()    # sans popup : aucun outil externe requis
+        # --- Jalon 12 : netteté live (cadre INDÉPENDANT du moteur
+        # d'étirement : elle s'applique en STF/manuel comme en VeraLux).
+        # Itérations restaurées seulement si elles sont dans les bornes du
+        # module : une valeur aberrante (99) n'est pas « rabattue »
+        # silencieusement, le défaut (5) reste. scl_sharp.set() → passe par le
+        # callback du curseur (valeur + étiquette + disp, une seule voie).
+        v = c.get("vl_sharp_iterations")
+        if isinstance(v, int) and not isinstance(v, bool) \
+                and 1 <= v <= nettete_live.ITERATIONS_MAX:
+            self.scl_sharp.set(float(v))
+        self.disp.vl_sharp_iterations = int(round(self.var_vl_sharp_iter.get()))
+        if c.get("vl_sharp"):
+            self.var_vl_sharp.set(True)
+            self._on_vl_sharp()      # sans popup : aucun outil externe requis
+        self._maj_lbl_sharp()        # étiquette juste dès le démarrage
         # Moteur d'étirement en DERNIER : la bascule VeraLux masque les
         # réglages STF et affiche le cadre VeraLux avec les valeurs ci-dessus.
         # (moteur indisponible → STF conservé, sans popup)
@@ -301,6 +317,11 @@ class App:
         c["vl_denoise_methode"] = self.VL_DN_CODES.get(
             self.var_vl_dn_methode.get(), "nlm")
         c["vl_denoise_force"] = self.var_vl_dn_force.get()
+        # Jalon 12 : netteté live — booléen explicite (comme vl_graxpert/
+        # vl_denoise) et itérations en ENTIER borné par le module. La PSF n'est
+        # pas persistée : elle vient de la mesure de seeing de la session.
+        c["vl_sharp"] = bool(self.var_vl_sharp.get())
+        c["vl_sharp_iterations"] = int(self.disp.vl_sharp_iterations)
         sauver_config(c)
 
     # ------------------------------------------------------------ construction UI
@@ -570,6 +591,30 @@ class App:
         self.cb_vl_profil.pack(anchor="w")
         self.cb_vl_profil.bind("<<ComboboxSelected>>",
                                lambda e: self._on_vl_profil())
+
+        # --- Netteté live (jalon 12) : cadre INDÉPENDANT du moteur
+        # d'étirement (demande d'Alain) — Richardson-Lucy s'applique AVANT
+        # l'étirement, en STF/manuel comme en VeraLux. Position dans la
+        # chaîne : après le débruitage (on lisse d'abord, on restaure
+        # ensuite), avant l'étirement. PSF = seeing mesuré (jalon 10) ; la
+        # netteté est calculée dans un thread dédié, jamais dans l'UI.
+        self.frm_sharp = ttk.LabelFrame(left, text="Netteté live (Richardson-Lucy)",
+                                        padding=6)
+        self.frm_sharp.pack(fill="x", pady=3)
+        self.var_vl_sharp = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self.frm_sharp, text="Netteté live (avant étirement)",
+                        variable=self.var_vl_sharp,
+                        command=self._on_vl_sharp).pack(anchor="w")
+        self.var_vl_sharp_iter = tk.DoubleVar(
+            value=float(nettete_live.ITERATIONS_DEFAUT))
+        self.scl_sharp = self._add_slider(
+            self.frm_sharp, "Itérations (3-5 = réglage utile)",
+            self.var_vl_sharp_iter, 1.0,
+            float(nettete_live.ITERATIONS_MAX), 1.0,
+            self._on_vl_sharp, "{:.0f}")
+        self.lbl_sharp = ttk.Label(self.frm_sharp, text="Netteté désactivée",
+                                   foreground="#888888", wraplength=310)
+        self.lbl_sharp.pack(anchor="w", pady=(2, 0))
 
         # --- Traitement externe (instantané de l'empilement)
         box = ttk.LabelFrame(left, text="Traitement externe (instantané)", padding=6)
@@ -909,12 +954,65 @@ class App:
         if actif != self.disp.vl_denoise:
             self.disp.vl_denoise = actif    # la clé change → re-résolution
 
+    def _on_vl_sharp(self):
+        """Case/curseur de la netteté live (jalon 12) : répercute les
+        itérations dans le solveur (bornées par le module, plafond dur
+        ITERATIONS_MAX), puis relance le rendu. Tolérant : une valeur
+        illisible (texte) est ignorée, la valeur précédente reste."""
+        try:
+            it = int(round(float(self.var_vl_sharp_iter.get())))
+        except (tk.TclError, TypeError, ValueError):
+            it = nettete_live.ITERATIONS_DEFAUT
+        self.disp.vl_sharp_iterations = min(max(it, 1),
+                                            nettete_live.ITERATIONS_MAX)
+        if it != self.disp.vl_sharp_iterations:
+            # Valeur hors bornes (programmée, config restaurée…) : ramenée ICI,
+            # jamais appliquée en silence. On passe par le CURSEUR pour que sa
+            # position et son étiquette suivent ; le rappel qu'il déclenche
+            # s'arrête de lui-même (la valeur est alors dans les bornes, la
+            # condition ci-dessus est fausse) — pas de récursion sans fin.
+            self.scl_sharp.set(float(self.disp.vl_sharp_iterations))
+        self.disp.sh_msg = ""           # message de l'essai précédent périmé
+        self._sync_vl_sharp_vue()
+        self._maj_lbl_sharp()
+        self._refresh_preview()
+
+    def _sync_vl_sharp_vue(self):
+        """Netteté live = vue « empilement » uniquement (même règle que
+        GraXpert/débruitage live) : en vue « traitée », l'image a déjà subi le
+        traitement externe — la reteinter ferait un DEUXIÈME traitement. La
+        case reste cochée : c'est disp.vl_sharp qui suit la vue."""
+        actif = self.var_vl_sharp.get() and self.var_view.get() != "traitée"
+        if actif != self.disp.vl_sharp:
+            self.disp.vl_sharp = actif      # la clé change → re-résolution
+
+    def _maj_lbl_sharp(self):
+        """Étiquette du cadre « Netteté live » : dit l'état RÉEL, jamais une
+        promesse — désactivée, ignorée en vue « traitée », refusée (raison
+        donnée par le module) ou active (itérations + provenance de la PSF)."""
+        if not self.var_vl_sharp.get():
+            txt, coul = "Netteté désactivée", "#888888"
+        elif self.var_view.get() == "traitée":
+            txt = "Vue « traitée » : netteté live ignorée"
+            coul = "#c98a00"
+        elif self.disp.sh_msg:
+            txt, coul = self.disp.sh_msg, "#d04040"
+        else:
+            psf = ("PSF du seeing mesuré" if self.disp.vl_seeing
+                   else "PSF mesurée sur l'image")
+            txt = (f"Netteté active · {self.disp.vl_sharp_iterations} it · "
+                   f"{psf}")
+            coul = "#1d7f1d"
+        self.lbl_sharp.config(text=txt, foreground=coul)
+
     def _on_view(self):
         """Bascule empilement ↔ résultat traité (stats d'étirement réinitialisées :
         les niveaux après GraXpert/BXT ne sont pas les mêmes)."""
         self.disp.reset()
         self._sync_vl_graxpert_vue()
         self._sync_vl_denoise_vue()
+        self._sync_vl_sharp_vue()
+        self._maj_lbl_sharp()
         if self.var_view.get() == "traitée":
             if self.proc_show is not None:
                 self.last_show = self.proc_show
@@ -980,6 +1078,9 @@ class App:
         self.bad_frames, self.fps = 0, 0.0
         self.seeing, self.seeing_msg = None, ""   # jalon 10 : nouvelle mesure
         self._seeing_t0 = 0.0                     # → dès la 1re frame
+        self.disp.vl_seeing = None                # jalon 12 : PSF de la
+                                                  # nouvelle session (aucune
+                                                  # mesure héritée)
         self.show_stack = None
         self.last_show = None
         self._session += 1                     # invalide tout traitement externe en vol
@@ -1035,10 +1136,11 @@ class App:
         courante (empilement ou traitée) RENDUE comme à l'écran, en PLEINE
         résolution (jamais l'aperçu 1600 px) : chaîne complète stack →
         GraXpert live si activé (vue « empilement » ; en vue « traitée »,
-        l'image a déjà subi le traitement externe) → étirement STF/manuel ou
-        VeraLux → gamma/saturation. Le bouton d'enregistrement LINÉAIRE
-        reste inchangé. Le rendu (plusieurs secondes possibles) part dans un
-        thread dédié via _worker — comme un traitement externe."""
+        l'image a déjà subi le traitement externe) → débruitage live si
+        activé (jalon 9) → netteté live si activée (jalon 12) → étirement
+        STF/manuel ou VeraLux → gamma/saturation. Le bouton d'enregistrement
+        LINÉAIRE reste inchangé. Le rendu (plusieurs secondes possibles) part
+        dans un thread dédié via _worker — comme un traitement externe."""
         if self.asseen_busy or self.save_asseen_request is not None:
             messagebox.showinfo("Enregistrer tel que vu",
                                 "Un enregistrement est déjà en cours — patientez.")
@@ -1080,14 +1182,16 @@ class App:
             vl_log_d_resolu=d.vl_log_d_resolu,
             vl_graxpert=d.vl_graxpert, vl_graxpert_cmd=d.vl_graxpert_cmd,
             vl_denoise=d.vl_denoise, vl_denoise_methode=d.vl_denoise_methode,
-            vl_denoise_force=d.vl_denoise_force)
+            vl_denoise_force=d.vl_denoise_force,
+            vl_sharp=d.vl_sharp, vl_sharp_iterations=d.vl_sharp_iterations)
         self.save_asseen_request = (path, vue, reglages)
 
     def _save_asseen_thread(self, path, vue, source, reglages, session):
         """Thread de sauvegarde « tel que vu » (jalon 5) : GraXpert live si
-        activé (vue « empilement » uniquement), puis rendu pleine résolution
-        identique à l'affichage, puis écriture du fichier. AUCUN appel Tk
-        ici : le résultat est consommé par _tick (messagebox thread-safe)."""
+        activé (vue « empilement » uniquement), puis débruitage/netteté live,
+        puis rendu pleine résolution identique à l'affichage, puis écriture du
+        fichier. AUCUN appel Tk ici : le résultat est consommé par _tick
+        (messagebox thread-safe)."""
         try:
             if vue == "pile" and reglages.get("vl_graxpert"):
                 gx, err = gx_live.appliquer(source, reglages["vl_graxpert_cmd"])
@@ -1108,6 +1212,21 @@ class App:
                     self.asseen_result = f"ERREUR: Débruitage live : {err}"
                     return
                 source = img_dn
+            # Jalon 12 : la netteté live fait aussi partie de la chaîne
+            # affichée (stack → GX → débruitage → netteté → étirement).
+            # ⚠️ La PSF est MESURÉE ici, en pleine résolution (aucun `mesure=`
+            # transmis) : celle du live est exprimée en pixels de l'APERÇU,
+            # réduit sur les gros capteurs — l'utiliser telle quelle fausserait
+            # la déconvolution du fichier.
+            if vue == "pile" and reglages.get("vl_sharp"):
+                img_net, err = nettete_live.deconvoluer(
+                    source,
+                    iterations=reglages.get("vl_sharp_iterations",
+                                            nettete_live.ITERATIONS_DEFAUT))
+                if err:
+                    self.asseen_result = f"ERREUR: Netteté live : {err}"
+                    return
+                source = img_net
             rendu = self.disp.rendu_pleine_resolution(source, reglages)
             if session != self._session:    # session relancée entre-temps
                 return
@@ -1458,6 +1577,12 @@ class App:
             if time.perf_counter() - self._seeing_t0 >= self.seeing_periode:
                 self._seeing_t0 = time.perf_counter()
                 self.seeing, self.seeing_msg = seeing_live.mesurer_seeing(show)
+                # Jalon 12 : la netteté live consomme cette mesure comme PSF —
+                # elle est faite sur l'APERÇU, exactement la résolution où la
+                # netteté travaille, et évite une 2e détection d'étoiles dans
+                # le solveur. (Affectation atomique : le solveur lit la
+                # référence, il ne la modifie jamais.)
+                self.disp.vl_seeing = self.seeing
             hist = self._compute_hist(show)
 
             dt = time.perf_counter() - t0
@@ -1510,11 +1635,15 @@ class App:
             cmd = self.var_cmd_graxpert.get().strip()
             if cmd != self.disp.vl_graxpert_cmd:
                 self.disp.vl_graxpert_cmd = cmd
-        # Jalon 5/9 : GraXpert live ET débruitage live = vue « empilement »
-        # uniquement (synchro permanente : les cases peuvent être cochées
-        # même en vue « traitée »)
+        # Jalon 5/9/12 : GraXpert, débruitage ET netteté live = vue
+        # « empilement » uniquement (synchro permanente : les cases peuvent
+        # être cochées même en vue « traitée »)
         self._sync_vl_graxpert_vue()
         self._sync_vl_denoise_vue()
+        self._sync_vl_sharp_vue()
+        if self.disp.sh_new:      # netteté live : message du solveur (jalon 12)
+            self.disp.sh_new = False
+            self._maj_lbl_sharp()
         if self.disp.vl_new:      # résultat du solveur VeraLux (thread dédié)
             self.disp.vl_new = False
             if self.var_moteur.get() == "VeraLux":
@@ -1525,7 +1654,8 @@ class App:
                 elif self.disp.vl_diagnostics is not None:
                     d = self.disp.vl_diagnostics
                     prefixe = ("GX ✓ · " if self.disp.vl_graxpert else "") \
-                        + ("DN ✓ · " if self.disp.vl_denoise else "")
+                        + ("DN ✓ · " if self.disp.vl_denoise else "") \
+                        + ("NET ✓ · " if self.disp.vl_sharp else "")
                     self.lbl_vl.config(
                         text=f"{prefixe}logD {self.disp.vl_log_d_resolu:.2f} · "
                              f"fond {d['median_luminance_finale']:.3f}",

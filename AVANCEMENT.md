@@ -7,12 +7,15 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
 
 ## État actuel (base stable)
 
-- **Version : AVAStack v2.3.6** (`avastack/__init__.py`,
-  `AVASTACK_VERSION = "2.3.6"`), branche `master`. **v2.3.6 = travail du
-  16/09/2026 : JALON 11 « netteté live » — MODULE de Richardson-Lucy SEUL,
-  sans UI** (le câblage live est le jalon 12), cf. sections « Netteté live »
-  et « Tâche en cours » ci-dessous. Test `_test_rl_jalon11.py` (43
-  vérifications, headless) ; **les 16 fichiers `_test_*.py` PASSENT**.
+- **Version : AVAStack v2.3.7** (`avastack/__init__.py`,
+  `AVASTACK_VERSION = "2.3.7"`), branche `master`. **v2.3.7 = travail du
+  16/09/2026 : JALON 12 « netteté live CÂBLÉE »** — cadre d'UI DÉDIÉ
+  (« Netteté live (Richardson-Lucy) »), visible dans TOUS les modes (décision
+  d'Alain), Richardson-Lucy appliquée AVANT l'étirement en STF/manuel comme
+  en VeraLux, cf. sections « Netteté live » et « Tâche en cours » ci-dessous.
+  Tests `_test_rl_jalon11.py` (module, 43 vérifications, headless) et
+  `_test_sharp_live_jalon12.py` (câblage, 66 vérifications) ; **les 17
+  fichiers `_test_*.py` PASSENT**.
   Bases VALIDÉES par Alain : v2.3.5 (jalon 10, « c'est OK pour la fwhm et
   nombre d'étoiles »), v2.3.4 (débruitage remis, verdict « on garde
   comme ça »), v2.3.3 (recadrage auto à
@@ -33,6 +36,26 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
   méthode : le « bruit × » du banc d'origine est un CONTRASTE global, pas du
   bruit de fond (le fond ne se dégrade pas : MAD ×0,92 à 5 it). Détail :
   § « Netteté live » ci-dessous.
+- **✅ JALON 12 « netteté live CÂBLÉE » : FAIT et TESTÉ le 16/09/2026
+  (v2.3.7)** — la netteté a son PROPRE cadre, « Netteté live
+  (Richardson-Lucy) », INDÉPENDANT du moteur d'étirement (décision d'Alain :
+  elle s'applique AUSSI en STF/manuel, sinon elle serait invisible dès qu'on
+  compare les deux moteurs) : case à cocher + curseur d'ITÉRATIONS (1 à 10,
+  défaut 5, « 3-5 = réglage utile ») + étiquette d'état qui dit l'état RÉEL
+  (désactivée / active avec la provenance de la PSF / refusée avec la raison
+  donnée par le module). Position dans la chaîne : **après le débruitage,
+  avant l'étirement** (on lisse d'abord, on restaure ensuite). PSF = celle du
+  seeing mesuré au jalon 10, transmise au solveur par le thread
+  d'acquisition (aucune 2e détection d'étoiles, la netteté suit le seeing
+  réel de la nuit). DEUX chemins, MÊMES réglages, même module : en mode
+  VeraLux c'est la DERNIÈRE étape du solveur existant (donc bien APRÈS
+  GraXpert/débruitage) ; en STF/manuel un solveur DÉDIÉ (thread, dernier job
+  gagnant) la calcule sans jamais bloquer l'UI. « 💾 tel que vu » la
+  reproduit en pleine résolution (PSF re-mesurée sur le FICHIER). Clés de
+  config `vl_sharp` + `vl_sharp_iterations` (restauration tolérante).
+  Test `_test_sharp_live_jalon12.py` (66 vérifications, fenêtre réelle
+  incluse) ; détail : § « Netteté live » → « Câblage live (jalon 12) ».
+  ⏳ **PAS ENCORE VALIDÉ SUR DE VRAIES IMAGES** (c'est la prochaine étape).
 - **✅ JALON 10 « seeing live » : FAIT, VALIDÉ EN RÉEL par Alain le
   16/09/2026, COMMITÉ ET POUSSÉ (v2.3.5, `0adc69d`)** — module
   `avastack/processing/stars.py` (détecteur d'étoiles + PSF/FWHM,
@@ -203,12 +226,15 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
     dans un thread séparé ; l'empilement accumulé reste linéaire et intact.
   - Débruitage LIVE opt-in (v2.3.4) : ondelettes à trous / Non-local means
     AVANT l'étirement, dans le thread solveur (cadre VeraLux).
-  - **Netteté live (v2.3.6, jalon 11) : MODULE SEUL, pas encore câblé** —
-    `avastack/processing/sharpness.py` (Richardson-Lucy, luminance seule,
-    PSF issue de la FWHM mesurée) est appelable et testé (43 vérifications),
-    mais AUCUNE case/curseur/config ne l'utilise encore : le câblage live est
-    le **jalon 12** (position dans la chaîne : après le débruitage, avant
-    l'étirement).
+  - **Netteté live (v2.3.7, jalon 12) : CÂBLÉE** — cadre d'UI DÉDIÉ
+    « Netteté live (Richardson-Lucy) », HORS des cadres STF/VeraLux donc
+    visible dans TOUS les modes (décision d'Alain) : case à cocher + curseur
+    d'itérations (1-10, défaut 5) + étiquette d'état, position dans la chaîne
+    après le débruitage et avant l'étirement, module
+    `avastack/processing/sharpness.py` (Richardson-Lucy, luminance seule, PSF
+    = seeing mesuré du jalon 10) ; deux chemins (dernière étape du solveur
+    VeraLux, ou solveur dédié en STF/manuel) ; reprise en pleine résolution
+    dans « 💾 tel que vu ».
   - Seeing LIVE (v2.3.5, jalon 10, validé en réel le 16/09/2026) : détecteur
     d'étoiles `avastack/processing/stars.py` (fond/MAD, seuil 8σ,
     composantes 8-connexes, rejets étoiles filées/bords/pixels chauds,
@@ -224,21 +250,40 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
     LINÉAIRES (voulu).
   - Installateur Windows Inno Setup (v2.1.0).
 
-## ⏭ TÂCHE EN COURS (repris en SESSION VIERGE : JALON 12 = câblage live de la netteté)
+## ⏭ TÂCHE EN COURS (JALON 12 « netteté live câblée » ✅ FAIT le 16/09/2026 — prochaine étape = réglage sur de VRAIES images)
 
-**JALON 11 : ✅ FAIT et TESTÉ le 16/09/2026 (v2.3.6)** — module
-`avastack/processing/sharpness.py` (Richardson-Lucy, luminance seule, PSF
-issue de la FWHM mesurée au jalon 10), test `_test_rl_jalon11.py`
-(43 vérifications, headless). AUCUNE UI touchée : le module est appelable,
-le câblage live reste à faire (jalon 12).
+**JALON 12 : ✅ FAIT et TESTÉ le 16/09/2026 (v2.3.7)** — la netteté live est
+CÂBLÉE de bout en bout : cadre d'UI DÉDIÉ (« Netteté live (Richardson-Lucy) »,
+visible dans TOUS les modes — décision d'Alain du 16/09 : la netteté n'est pas
+enfermée dans le cadre VeraLux), case + curseur 1-10 (défaut 5), étiquette
+d'état, position APRÈS le débruitage et AVANT l'étirement, PSF du seeing
+mesuré (jalon 10), reproduction en pleine résolution dans « 💾 tel que vu »,
+clés de config, vue « traitée » = désactivé (même règle que GX/débruitage).
+Test `_test_sharp_live_jalon12.py` (66 vérifications, fenêtre réelle incluse) :
+**les 17 fichiers `_test_*.py` PASSENT**. Détail : § « Netteté live » →
+« Câblage live (jalon 12) » et changelog de `avastack/__init__.py`.
 
-**PROCHAINE ÉTAPE UNIQUE = JALON 12** (câblage live : case + curseur dans le
-cadre VeraLux, position APRÈS le débruitage et AVANT l'étirement, cache du
-solveur, reproduction en pleine résolution dans « 💾 tel que vu », clés de
-config, vue « traitée » = désactivé — même règle que GX/débruitage), puis
-**réglage sur de VRAIES images** (leçon du « léopard »). Les prérequis (jalon
-10 : détecteur d'étoiles + PSF ; jalon 11 : module RL) sont FAITS. Rien
-d'autre n'est en attente, l'arbre de travail est propre.
+**PROCHAINE ÉTAPE UNIQUE = RÉGLAGE SUR DE VRAIES IMAGES** (leçon du
+« léopard » : jamais de validation sur du synthétique — les réglages agressifs
+y paraissent toujours meilleurs). À vérifier en réel, dans l'ordre :
+(1) case « Netteté live » cochée, 3 it puis 5 it, en STF **et** en VeraLux : le
+halo des étoiles se resserre-t-il sans ringing ni « trou noir » au centre ?
+(2) le cadre est-il visible et lisible dans les deux modes, et l'étiquette
+d'état dit-elle la vérité (PSF du seeing mesuré / refus avec la raison) ?
+(3) le coût se voit-il sur le rythme d'empilement (jalon 11 : 63-105 ms par
+calcul sur 800×1200, ×2-3 sur le laptop d'Alain) ?
+(4) « 💾 tel que vu » avec netteté : le fichier pleine résolution est-il
+meilleur que l'écran (PSF re-mesurée sur le fichier) sans excès ?
+⚠️ Sur un capteur 26 Mpx l'aperçu est réduit ×0,25 (étoiles ~1 px) : la netteté
+s'y REFUSE (c'est voulu — elle fabriquerait du ringing) alors qu'elle
+s'applique dans le fichier pleine résolution : écart écran/fichier à expliquer
+si Alain le constate.
+Les prérequis (jalon 10 : détecteur d'étoiles + PSF ; jalon 11 : module RL)
+sont FAITS. Rien d'autre n'est en attente.
+⚠️ État de l'arbre au moment d'écrire : les modifications du jalon 12
+(`avastack/processing/display.py`, `avastack/ui/app.py`, `avastack/__init__.py`
+(v2.3.7), `_test_sharp_live_jalon12.py`, `_test_denoise_live_jalon9.py`,
+`AVANCEMENT.md`) sont ENREGISTRÉES mais **pas encore commitées**.
 
 **Demande d'Alain (16/09/2026)** : « remettre les fonctions de
 denoise, graxpert dans traitement externe, et les 2 autres [ondelettes à
@@ -273,24 +318,32 @@ travail 1600 px, coût, PSF) :
   rien ne bouge) ; pic d'une étoile isolée ×2,35 avec **flux conservé à
   ×1,000** ; PSF fausse ±35 % tolérée sans creux sombre. Détail : § « Netteté
   live » (mesures, nuances de méthode, conformité à une RL de référence) ;
-- **jalon 12 — câblage live** : case + curseurs dans le cadre VeraLux
-  (position dans la chaîne : APRÈS le débruitage, AVANT l'étirement), cache
-  du solveur, reproduction en pleine résolution dans « 💾 tel que vu »,
-  clés config, vue « traitée » = désactivé (même règle que GX/débruitage) ;
+- **jalon 12 — câblage live** : ✅ **FAIT et TESTÉ le 16/09/2026 (v2.3.7)** —
+  cadre DÉDIÉ (visible en STF comme en VeraLux, décision d'Alain), case +
+  curseur 1-10 (défaut 5), position dans la chaîne APRÈS le débruitage et
+  AVANT l'étirement, solveur « dernier job gagnant » en STF/manuel + dernière
+  étape du solveur VeraLux, reproduction en pleine résolution dans « 💾 tel
+  que vu », clés config `vl_sharp` / `vl_sharp_iterations`, vue « traitée » =
+  désactivé (même règle que GX/débruitage). Détail : § « Câblage live
+  (jalon 12) » ci-dessous ;
 - **puis réglage sur de VRAIES images** — leçon du « léopard » : jamais de
   validation sur du synthétique, les réglages agressifs y paraissent
   toujours meilleurs.
 
 État exact à la reprise :
-- **v2.3.6 : JALON 11 CODÉ ET TESTÉ le 16/09/2026** (module RL
-  `avastack/processing/sharpness.py` + test `_test_rl_jalon11.py`), commité
-  et poussé en fin de jalon ; bases VALIDÉES par Alain : v2.3.5 (jalon 10
-  validé en réel), v2.3.4, v2.3.3 et v2.3.2 (cf. « État
-  actuel » en tête de fichier). **tests : LES 16 fichiers `_test_*.py`
-  PASSENT** (code de sortie 0), lancés UN PAR UN avec le venv :
+- **v2.3.7 : JALON 12 CODÉ ET TESTÉ le 16/09/2026** (câblage de la netteté
+  live : `avastack/processing/display.py`, `avastack/ui/app.py`, version +
+  changelog de `avastack/__init__.py`, `_test_sharp_live_jalon12.py`),
+  modifications ENREGISTRÉES mais **PAS ENCORE COMMITÉES** au moment d'écrire ;
+  jalon 11 (v2.3.6, module RL + `_test_rl_jalon11.py`) commité et poussé en
+  fin de jalon ; bases VALIDÉES par Alain : v2.3.5 (jalon 10 validé en réel),
+  v2.3.4, v2.3.3 et v2.3.2 (cf. « État actuel » en tête de fichier).
+  **tests : LES 17 fichiers `_test_*.py` PASSENT** (code de sortie 0), lancés
+  UN PAR UN avec le venv :
   `C:/Astro/astrolivestack/venv/Scripts/python.exe _test_xxx.py`
-  (dont `_test_stars_jalon10.py`, 27 vérifications, et le nouveau
-  `_test_rl_jalon11.py`, 43 vérifications).
+  (dont `_test_stars_jalon10.py`, 27 vérifications, `_test_rl_jalon11.py`,
+  43 vérifications, et le nouveau `_test_sharp_live_jalon12.py`, 66
+  vérifications).
 - **CLAUDE.md : 3 leçons du jalon 11 ajoutées le 16/09/2026, PROPOSÉES puis
   APPROUVÉES par Alain** (texte exact présenté avant écriture) :
   (1) « un “bruit ×” mesuré par l'écart-type GLOBAL n'est pas du bruit »
@@ -557,9 +610,10 @@ et GraXpert CLI (-strength pour le débruitage, -smoothing = gradient).
 **Plan retenu : jalon 10 = détecteur d'étoiles + seeing live (✅ FAIT,
 VALIDÉ EN RÉEL par Alain le 16/09/2026, v2.3.5) ; jalon 11 = module
 Richardson-Lucy headless (✅ FAIT et TESTÉ le 16/09/2026, v2.3.6) ; jalon 12
-= câblage live (UI + config + « tel que vu ») ; puis
+= câblage live (✅ FAIT et TESTÉ le 16/09/2026, v2.3.7 : UI + config +
+« tel que vu », dans un cadre INDÉPENDANT du moteur d'étirement) ; il reste
 réglage sur de VRAIES images** (détail et état : « ⏭ TÂCHE EN COURS » en
-tête de fichier).
+tête de fichier, et § « Câblage live (jalon 12) » plus bas).
 
 Demande d'Alain : « j'avais mis Unsharp Mask et Wiener Deconvolution pour
 savoir si ça valait le coup de rajouter une page de netteté dans le live
@@ -691,6 +745,9 @@ l'écran ne montrait pas (même mise en garde chez SharpCap) ; en mode manuel
   **seeing live** (FWHM + nombre d'étoiles, très utile en EAA), rejet de
   frames par FWHM, diagnostic tilt/coma, et base d'un futur « débruitage
   des étoiles seules ».
+  ⚠️ **MISE À JOUR 16/09/2026 : FAIT** (jalon 10, `stars.py`) — et c'est lui
+  qui fournit la PSF à la netteté : le solveur de netteté ne refait AUCUNE
+  détection d'étoiles (il reçoit la mesure du seeing, jalon 12).
 - **Luminance seule** (comme SharpCap) : pas d'artefacts couleur.
 - **Pas de no-op silencieux** : SharpCap n'applique RIEN si aucune étoile
   n'est détectée, sans le dire — nous afficherons un message explicite
@@ -698,6 +755,70 @@ l'écran ne montrait pas (même mise en garde chez SharpCap) ; en mode manuel
 - **BlurXTerminator reste en EXTERNE** (45 s sur son laptop, PSF par étoile
   non linéaire) : chaîne propre = **RL léger en live pendant la capture,
   BXT en post-traitement**.
+
+### Câblage live (jalon 12, 16/09/2026) — FAIT et TESTÉ (v2.3.7)
+
+Décision d'Alain du 16/09/2026 : **la netteté a son PROPRE cadre d'UI**,
+« Netteté live (Richardson-Lucy) », placé HORS des cadres STF/VeraLux → visible
+dans TOUS les modes, et DONC appliquée même sans VeraLux (c'était le point à
+trancher : GraXpert/débruitage live ne tournent qu'en mode VeraLux, la netteté
+non). En mode VeraLux elle est la DERNIÈRE étape du solveur existant (après
+GraXpert/débruitage) ; en STF/manuel un SECOND solveur, DÉDIÉ, la calcule
+(`_sh_worker`, thread, dernier job gagnant) : deux chemins, mêmes réglages,
+même module `sharpness.py`.
+
+Choix techniques (et pourquoi) :
+- **Clé d'image = IDENTITÉ de l'objet image**, pas une empreinte de contenu.
+  L'aperçu d'un empilement est un objet STABLE (retouché à chaque tick d'UI,
+  remplacé à chaque nouvel empilement) : l'empreinter coûterait un sha1 du
+  buffer 30 fois par seconde, soit bien plus que la netteté elle-même. Le
+  résultat mémorise l'objet qu'il a déconvolué (`res[1] is img`) : on ne peut
+  donc JAMAIS afficher l'image nette d'un AUTRE empilement.
+- **Le REFUS est mémorisé lui aussi** (image d'entrée inchangée + message) :
+  sans ça un job refusé (image sans étoiles, PSF hors bornes) serait resoumis
+  à chaque tick d'UI — 30 resoumissions par seconde, CPU saturé. Vérifié par
+  le test (« 5 ticks de plus : toujours aucun recalcul »).
+- **Aucune exception ne peut tuer un solveur** : le module ne lève jamais
+  (contrat : repli explicite), mais les DEUX chemins (dernière étape du
+  solveur VeraLux, solveur dédié STF/manuel) enveloppent l'appel d'un
+  `try/except` qui replie sur l'image NON nette et remonte la raison : un
+  thread mort figerait l'aperçu pour toujours. Vérifié par le test
+  (« le solveur est TOUJOURS VIVANT »).
+- **PSF = seeing mesuré (jalon 10)**, transmis au solveur par le thread
+  d'acquisition (`disp.vl_seeing`, réécrit toutes les 3 s, seulement LU par le
+  solveur) : aucune 2e détection d'étoiles, et la netteté suit le seeing réel
+  de la nuit. La PSF entre dans la clé des réglages → une nouvelle mesure
+  relance le calcul.
+- **Position** : APRÈS le débruitage, AVANT l'étirement (on lisse d'abord, on
+  restaure ensuite — l'ordre inverse amplifierait le bruit que le débruitage
+  doit retirer). Le job du solveur VeraLux passe donc de 5 à 6 éléments (les
+  réglages de netteté en dernier) : `_test_denoise_live_jalon9.py` mis à jour
+  en conséquence (il pilote le solveur avec la netteté INACTIVE).
+- **« 💾 tel que vu »** : la netteté est reproduite en PLEINE RÉSOLUTION, avec
+  une PSF **re-mesurée sur le FICHIER** (pas celle du live) : la PSF du live
+  est exprimée en pixels de l'APERÇU, réduit ×0,25 sur un capteur 26 Mpx — la
+  réutiliser fausserait la déconvolution du fichier. Conséquence assumée : sur
+  gros capteur le fichier peut être net alors que l'écran ne l'était pas.
+  Échec de la netteté pendant la sauvegarde = sauvegarde ABANDONNÉE (jamais un
+  fichier « presque comme vu »), comme pour GraXpert.
+- **UI** : étiquette d'état qui dit l'état RÉEL (désactivée / active avec la
+  provenance de la PSF / refusée avec la raison / ignorée en vue « traitée »),
+  curseur 1-10 (défaut 5) ; valeur hors bornes → ramenée au plafond ET curseur
+  remis d'aplomb (jamais appliquée en silence). Vue « traitée » = netteté
+  ignorée (même règle que GX/débruitage : l'image a déjà subi le traitement
+  externe, la reteinter ferait un 2e traitement).
+  Persistance `vl_sharp` + `vl_sharp_iterations`, restauration tolérante
+  (99 → défaut 5, sans « bricoler » la valeur).
+- Diagnostic de l'onglet : préfixe « NET ✓ · » quand la netteté est active.
+
+Test `_test_sharp_live_jalon12.py` (66 vérifications, fenêtre Tk réelle) :
+défauts et clés, solveur dédié (image d'attente NON nette → image nette
+conforme au module, cache par objet, recalcul sur nouvelle image ou nouveau
+réglage, refus mémorisé, case décochée = aucun appel), chaîne VeraLux dans
+l'ORDRE gradient → débruitage → netteté → étirement (comparée au calcul de
+référence), échec = repli étiré + message, cadre visible en STF ET en VeraLux,
+vue « traitée », persistance + restauration tolérante, sauvegarde
+« tel que vu » (fichier DIFFÉRENT avec netteté ; échec = aucun fichier écrit).
 
 ### Plan proposé (ordre d'attaque)
 
@@ -733,10 +854,14 @@ l'écran ne montrait pas (même mise en garde chez SharpCap) ; en mode manuel
    ont été ajoutées à `CLAUDE.md` (section « Leçons générales transposables »)
    le 16/09/2026, approuvées par Alain ;
 2. ~~**module RL**~~ ✅ **FAIT et TESTÉ le 16/09/2026 (v2.3.6,
-   `avastack/processing/sharpness.py`)** ; il reste la **page UI +
-   « tel que vu » + config** = **jalon 12**, calqué sur la page débruitage
-   (opt-in, DÉSACTIVÉ par défaut, plafond d'itérations) ;
-3. **réglage sur ses vraies images**.
+   `avastack/processing/sharpness.py`)** ;
+3. ~~**page UI + « tel que vu » + config**~~ ✅ **FAIT et TESTÉ le 16/09/2026
+   (v2.3.7) = JALON 12** : cadre DÉDIÉ (hors des cadres STF/VeraLux — décision
+   d'Alain : visible et actif dans TOUS les modes), case + curseur 1-10
+   (défaut 5), solveur dédié en STF/manuel, PSF du seeing mesuré, pleine
+   résolution dans « 💾 tel que vu », clés de config, vue « traitée ».
+   Détail : § « Câblage live (jalon 12) » ci-dessus ;
+4. **réglage sur ses vraies images** — prochaine étape, et rien d'autre.
 
 Effort : **3-6 h de code + tests**, mais la vraie dépense = la validation
 sur images RÉELLES (leçon du « léopard » : jamais de validation sur du

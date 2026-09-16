@@ -14,6 +14,12 @@ Vérifie :
   - persistance : clés vl_denoise* écrites ; restauration tolérante.
 
 Nécessite un affichage. Exécution : python _test_denoise_live_jalon9.py
+
+NB (jalon 12, 16/09/2026) : le job du solveur VeraLux est passé de 5 à 6
+éléments — les réglages de la NETTETÉ live (jalon 12) s'y ajoutent en
+dernier : (image, params, clé, (gx…), (dn…), (netteté active, itérations)).
+Ce test pilote le solveur avec la netteté INACTIVE, son périmètre (le
+débruitage) est donc inchangé.
 """
 import os
 import sys
@@ -103,7 +109,8 @@ def dn_compte(img, methode, force):
 
 dn.denoiser = dn_compte
 
-disp._vl_job = (IMG.copy(), PARAMS, "k1", (False, ""), (True, "ondelettes", 0.5))
+disp._vl_job = (IMG.copy(), PARAMS, "k1", (False, ""), (True, "ondelettes", 0.5),
+                (False, 5))
 disp._vl_pending = True
 disp._vl_wake.set()
 verifie(attendre(disp), "job solveur terminé")
@@ -118,14 +125,15 @@ verifie(appels["n"] == 1, f"débruitage calculé une fois (appels={appels['n']})
 # est réellement resoumis (l'étirement VeraLux est donc recalculé) : seule
 # la clé de cache (empreinte image, méthode, force) évite le débruitage.
 disp._vl_job = (IMG.copy(), PARAMS, "k1", (False, ""),
-                (True, "ondelettes", 0.5))
+                (True, "ondelettes", 0.5), (False, 5))
 disp._vl_pending = True
 disp._vl_wake.set()
 verifie(attendre(disp), "2e job (identique) terminé")
 verifie(appels["n"] == 1, "cache : même (image, méthode, force) → PAS de recalcul")
 
 # Force changée → recalcul (le cache est indexé aussi sur la force).
-disp._vl_job = (IMG.copy(), PARAMS, "k1", (False, ""), (True, "ondelettes", 0.6))
+disp._vl_job = (IMG.copy(), PARAMS, "k1", (False, ""), (True, "ondelettes", 0.6),
+                (False, 5))
 disp._vl_pending = True
 disp._vl_wake.set()
 verifie(attendre(disp) and appels["n"] == 2, "force changée → recalcul")
@@ -136,7 +144,7 @@ gx_live.appliquer = lambda img, cmd, timeout=gx_live.TIMEOUT_S: \
     (np.flipud(img), "")
 try:
     disp._vl_job = (IMG.copy(), PARAMS, "k2", (True, "fake"),
-                    (True, "ondelettes", 0.5))
+                    (True, "ondelettes", 0.5), (False, 5))
     disp._vl_pending = True
     disp._vl_wake.set()
     verifie(attendre(disp), "job avec GraXpert live terminé")
@@ -155,7 +163,8 @@ def dn_plante(img, methode, force):
 
 
 dn.denoiser = dn_plante
-disp._vl_job = (IMG.copy(), PARAMS, "k3", (False, ""), (True, "nlm", 0.5))
+disp._vl_job = (IMG.copy(), PARAMS, "k3", (False, ""), (True, "nlm", 0.5),
+                (False, 5))
 disp._vl_pending = True
 disp._vl_wake.set()
 verifie(attendre(disp), "job terminé malgré l'erreur de débruitage")
