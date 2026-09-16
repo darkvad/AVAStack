@@ -11,7 +11,7 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
   `AVASTACK_VERSION = "2.3.6"`), branche `master`. **v2.3.6 = travail du
   16/09/2026 : JALON 11 « netteté live » — MODULE de Richardson-Lucy SEUL,
   sans UI** (le câblage live est le jalon 12), cf. sections « Netteté live »
-  et « Tâche en cours » ci-dessous. Test `_test_rl_jalon11.py` (32
+  et « Tâche en cours » ci-dessous. Test `_test_rl_jalon11.py` (43
   vérifications, headless) ; **les 16 fichiers `_test_*.py` PASSENT**.
   Bases VALIDÉES par Alain : v2.3.5 (jalon 10, « c'est OK pour la fwhm et
   nombre d'étoiles »), v2.3.4 (débruitage remis, verdict « on garde
@@ -205,7 +205,7 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
     AVANT l'étirement, dans le thread solveur (cadre VeraLux).
   - **Netteté live (v2.3.6, jalon 11) : MODULE SEUL, pas encore câblé** —
     `avastack/processing/sharpness.py` (Richardson-Lucy, luminance seule,
-    PSF issue de la FWHM mesurée) est appelable et testé (32 vérifications),
+    PSF issue de la FWHM mesurée) est appelable et testé (43 vérifications),
     mais AUCUNE case/curseur/config ne l'utilise encore : le câblage live est
     le **jalon 12** (position dans la chaîne : après le débruitage, avant
     l'étirement).
@@ -229,7 +229,7 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
 **JALON 11 : ✅ FAIT et TESTÉ le 16/09/2026 (v2.3.6)** — module
 `avastack/processing/sharpness.py` (Richardson-Lucy, luminance seule, PSF
 issue de la FWHM mesurée au jalon 10), test `_test_rl_jalon11.py`
-(32 vérifications, headless). AUCUNE UI touchée : le module est appelable,
+(43 vérifications, headless). AUCUNE UI touchée : le module est appelable,
 le câblage live reste à faire (jalon 12).
 
 **PROCHAINE ÉTAPE UNIQUE = JALON 12** (câblage live : case + curseur dans le
@@ -290,7 +290,7 @@ travail 1600 px, coût, PSF) :
   PASSENT** (code de sortie 0), lancés UN PAR UN avec le venv :
   `C:/Astro/astrolivestack/venv/Scripts/python.exe _test_xxx.py`
   (dont `_test_stars_jalon10.py`, 27 vérifications, et le nouveau
-  `_test_rl_jalon11.py`, 32 vérifications).
+  `_test_rl_jalon11.py`, 43 vérifications).
 - **débruitage : PLUS RIEN EN ATTENTE.** Test réel d'Alain (16/09/2026) :
   « pas top » après retrait de gradient, « mieux mais pas parfait » sans —
   décision : **on garde le code tel quel, cases décochées** (aucun

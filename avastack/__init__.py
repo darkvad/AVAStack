@@ -49,7 +49,7 @@ AVASTACK_VERSION = "2.3.6"
 #          de référence écrite en numpy pur (convolution 2D explicite, bords
 #          réfléchis) : écart relatif < 1e-5 à 1, 3, 5 et 10 it — garantie
 #          que c'est bien LA formule de Richardson-Lucy qui est appliquée.
-#          Test _test_rl_jalon11.py (32 vérifications, headless) ; les 15
+#          Test _test_rl_jalon11.py (43 vérifications, headless) ; les 15
 #          tests existants repassent au vert.
 # v2.3.5 : JALON 10 — SEEING LIVE (détecteur d'étoiles, prérequis de la
 #          netteté Richardson-Lucy). Nouveau module
