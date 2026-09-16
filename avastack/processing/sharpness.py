@@ -30,7 +30,6 @@ fond +0,00000). Deux points de méthode :
     < 1e-5 à 1, 3, 5 et 10 it — c'est cette comparaison qui garantit que
     c'est bien LA formule de Richardson-Lucy qui est appliquée.
 
-
 Ce module est le **jalon 11** : il n'a AUCUNE interface (le câblage live —
 case à cocher, curseur, cache du solveur, « tel que vu », config — est le
 jalon 12) et AUCUNE dépendance nouvelle (numpy + OpenCV, comme
@@ -42,11 +41,12 @@ Ce qu'il fait :
     `stars.sigma_depuis_fwhm` : la netteté suit donc le seeing réel de la
     nuit, sans réglage à trouver ;
   - 3 à 5 itérations sont le réglage utile ; `ITERATIONS_MAX` (10) est un
-    plafond DUR (au-delà le gain devient invisible alors que le bruit
-    continue de monter) ;
+    plafond DUR (au-delà, le gain visible devient imperceptible — mesuré :
+    50 it = 10 it au bit près — alors que les pics d'étoiles continuent de
+    s'amplifier) ;
   - **luminance seule** pour une image couleur (comme SharpCap) : la
     luminance est déconvoluée, puis le gain obtenu est ré-appliqué aux
-    canaux d'origine — la chromatidité est conservée, aucun artefact
+    canaux d'origine — la chromaticité est conservée, aucun artefact
     couleur n'apparaît ;
   - **pas de no-op silencieux** : moins de `stars.MIN_ETOILES` étoiles
     mesurables, paramètres invalides ou PSF hors bornes → l'image est
@@ -57,9 +57,11 @@ Ce qu'il fait :
   - la netteté change l'AMPLITUDE, pas la texture : à l'écran le bruit
     affiché bouge à peine (le point noir auto vaut médiane − k·σ et σ est
     mesuré sur l'image COURANTE → il redescend de lui-même, ×0,99-1,01
-    pour TOUTES les méthodes). MAIS la sauvegarde « tel que vu » emporte le
-    bruit réellement amplifié, et en mode manuel (black/white figés) il se
-    voit ;
+    pour TOUTES les méthodes). MAIS la sauvegarde « tel que vu » n'est, elle,
+    compensée par rien : elle emporte l'amplitude ACCENTUÉE des étoiles —
+    nuance mesurée au jalon 11 : le fond, lui, n'est pas plus bruité
+    (MAD ×0,92 à 5 it) — et en mode manuel (black/white figés) le bruit
+    accentué se voit ;
   - ordre de la chaîne (précisé par Alain) : **recadrage → gradient →
     débruitage → NETTETÉ → étirement** — on lisse d'abord, on restaure
     ensuite : déconvoluer une image déjà lissée par NLM accentue les
