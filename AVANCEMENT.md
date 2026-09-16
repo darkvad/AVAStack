@@ -7,26 +7,40 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
 
 ## État actuel (base stable)
 
-- **Version : AVAStack v2.3.5** (`avastack/__init__.py`,
-  `AVASTACK_VERSION = "2.3.5"`), branche `master`. **v2.3.5 = travail du
-  16/09/2026 : JALON 10 « seeing live » (détecteur d'étoiles + FWHM/nombre
-  d'étoiles), tests 27/27 + les 14 tests existants au vert, TESTÉ EN RÉEL par
-  Alain et COMMITÉ ET POUSSÉ (commit `0adc69d`)** — retour d'Alain :
-  « c'est OK pour la fwhm et nombre d'étoiles ». Détail : sections
-  « Netteté live » et « Tâche en cours » ci-dessous.
-  Bases VALIDÉES par Alain : v2.3.4 (débruitage remis, verdict « on garde
+- **Version : AVAStack v2.3.6** (`avastack/__init__.py`,
+  `AVASTACK_VERSION = "2.3.6"`), branche `master`. **v2.3.6 = travail du
+  16/09/2026 : JALON 11 « netteté live » — MODULE de Richardson-Lucy SEUL,
+  sans UI** (le câblage live est le jalon 12), cf. sections « Netteté live »
+  et « Tâche en cours » ci-dessous. Test `_test_rl_jalon11.py` (32
+  vérifications, headless) ; **les 16 fichiers `_test_*.py` PASSENT**.
+  Bases VALIDÉES par Alain : v2.3.5 (jalon 10, « c'est OK pour la fwhm et
+  nombre d'étoiles »), v2.3.4 (débruitage remis, verdict « on garde
   comme ça »), v2.3.3 (recadrage auto à
   l'intersection) et v2.3.2 (sauvegarde linéaire sans frames), test réel du
   16/09/2026 (« C'est maintenant OK ») ; jalon 6 validé le 15/09/2026 ;
   jalon 5 validé le 14/09/2026.
+- **✅ JALON 11 « netteté live » (module RL) : FAIT et TESTÉ le 16/09/2026
+  (v2.3.6)** — nouveau module `avastack/processing/sharpness.py`
+  (Richardson-Lucy, numpy/OpenCV, AUCUNE dépendance nouvelle) : luminance
+  seule (couleur : le gain est ré-appliqué aux 3 canaux → chromaticité
+  intacte), PSF gaussienne isotrope issue de la FWHM MESURÉE au jalon 10
+  (`stars.mesurer_seeing` + `stars.sigma_depuis_fwhm`), itérations
+  plafonnées (défaut 5, max 10), refus explicite (image inchangée + raison)
+  si < 3 étoiles ou PSF hors bornes. Mesures du module : FWHM 2,91 px →
+  2,38 / 1,84 / 1,48 px à 3 / 5 / 10 it (63 / 75 / 105 ms sur 800×1200),
+  flux d'une étoile conservé à ×1,000, PSF fausse ±35 % tolérée. **Validé
+  contre une RL de référence en numpy pur (écart < 1e-5)** et ⚠️ constat de
+  méthode : le « bruit × » du banc d'origine est un CONTRASTE global, pas du
+  bruit de fond (le fond ne se dégrade pas : MAD ×0,92 à 5 it). Détail :
+  § « Netteté live » ci-dessous.
 - **✅ JALON 10 « seeing live » : FAIT, VALIDÉ EN RÉEL par Alain le
-  16/09/2026, COMMITÉ ET POUSSÉ (v2.3.5, `0adc69d`)** — nouveau module
+  16/09/2026, COMMITÉ ET POUSSÉ (v2.3.5, `0adc69d`)** — module
   `avastack/processing/stars.py` (détecteur d'étoiles + PSF/FWHM,
   numpy/OpenCV, aucune dépendance nouvelle) + étiquette « Seeing (FWHM) :
   x.xx px · N étoiles » dans le cadre Empilement (aperçu ≤ 1600 px, toutes
-  les 3 s, thread d'acquisition). **Le détecteur et la PSF sont donc
-  disponibles pour la netteté : la suite est le JALON 11 (module
-  Richardson-Lucy, sans UI)**, cf. « Tâche en cours » en tête de fichier.
+  les 3 s, thread d'acquisition). **Ce détecteur et sa PSF ont servi au
+  JALON 11 : la netteté est désormais codée (v2.3.6)**, cf. « Tâche en
+  cours » en tête de fichier.
 - **v2.3.2 — CORRECTION (constat Alain, 16/09/2026) : « 💾 Enregistrer
   l'empilement (linéaire)… » ne faisait RIEN** (aucun fichier, aucun
   message, ni fin ni erreur) dès que plus aucune brute n'arrivait
@@ -189,6 +203,12 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
     dans un thread séparé ; l'empilement accumulé reste linéaire et intact.
   - Débruitage LIVE opt-in (v2.3.4) : ondelettes à trous / Non-local means
     AVANT l'étirement, dans le thread solveur (cadre VeraLux).
+  - **Netteté live (v2.3.6, jalon 11) : MODULE SEUL, pas encore câblé** —
+    `avastack/processing/sharpness.py` (Richardson-Lucy, luminance seule,
+    PSF issue de la FWHM mesurée) est appelable et testé (32 vérifications),
+    mais AUCUNE case/curseur/config ne l'utilise encore : le câblage live est
+    le **jalon 12** (position dans la chaîne : après le débruitage, avant
+    l'étirement).
   - Seeing LIVE (v2.3.5, jalon 10, validé en réel le 16/09/2026) : détecteur
     d'étoiles `avastack/processing/stars.py` (fond/MAD, seuil 8σ,
     composantes 8-connexes, rejets étoiles filées/bords/pixels chauds,
@@ -204,11 +224,21 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
     LINÉAIRES (voulu).
   - Installateur Windows Inno Setup (v2.1.0).
 
-## ⏭ TÂCHE EN COURS (reprise en SESSION VIERGE : JALON 11 = module Richardson-Lucy)
+## ⏭ TÂCHE EN COURS (repris en SESSION VIERGE : JALON 12 = câblage live de la netteté)
 
-**PROCHAINE ÉTAPE UNIQUE = JALON 11** (module Richardson-Lucy, headless, sans
-UI) : le prérequis n°1 (détecteur d'étoiles + PSF) est FAIT et VALIDÉ en réel
-(jalon 10). Rien d'autre n'est en attente, l'arbre de travail est propre.
+**JALON 11 : ✅ FAIT et TESTÉ le 16/09/2026 (v2.3.6)** — module
+`avastack/processing/sharpness.py` (Richardson-Lucy, luminance seule, PSF
+issue de la FWHM mesurée au jalon 10), test `_test_rl_jalon11.py`
+(32 vérifications, headless). AUCUNE UI touchée : le module est appelable,
+le câblage live reste à faire (jalon 12).
+
+**PROCHAINE ÉTAPE UNIQUE = JALON 12** (câblage live : case + curseur dans le
+cadre VeraLux, position APRÈS le débruitage et AVANT l'étirement, cache du
+solveur, reproduction en pleine résolution dans « 💾 tel que vu », clés de
+config, vue « traitée » = désactivé — même règle que GX/débruitage), puis
+**réglage sur de VRAIES images** (leçon du « léopard »). Les prérequis (jalon
+10 : détecteur d'étoiles + PSF ; jalon 11 : module RL) sont FAITS. Rien
+d'autre n'est en attente, l'arbre de travail est propre.
 
 **Demande d'Alain (16/09/2026)** : « remettre les fonctions de
 denoise, graxpert dans traitement externe, et les 2 autres [ondelettes à
@@ -228,14 +258,21 @@ travail 1600 px, coût, PSF) :
   « observation seule » : il AFFICHE le seeing (FWHM médiane + nombre
   d'étoiles) sans rien changer à l'image. Le module `stars.py` fournit
   désormais la PSF à la netteté. Détail : section « Netteté live ».
-- **jalon 11 — module Richardson-Lucy (headless, sans UI)** : luminance
-  seule (comme SharpCap : pas d'artefact couleur) ou mono, PSF gaussienne
-  issue de la FWHM mesurée au jalon 10 (`stars.sigma_depuis_fwhm`),
-  NOMBRE D'ITÉRATIONS plafonné (3-5
-  it = le réglage utile), repli explicite si < 3 étoiles (« pas assez
-  d'étoiles détectées : netteté inactive » — jamais de no-op silencieux).
-  Validation par banc d'essai SYNTHÉTIQUE (déjà chiffré le 16/09 : 3-5 it →
-  FWHM 2,47-2,24 px, bruit ×1,14-1,22, 44-74 ms sur 1,6 Mpx) ;
+- **jalon 11 — module Richardson-Lucy (headless, sans UI)** : ✅ **FAIT et
+  TESTÉ le 16/09/2026 (v2.3.6)** — `avastack/processing/sharpness.py` :
+  luminance seule (comme SharpCap : pas d'artefact couleur ; mono (H,W) ET
+  couleur (H,W,3) : le gain de luminance est ré-appliqué aux 3 canaux), PSF
+  gaussienne isotrope issue de la FWHM mesurée au jalon 10
+  (`stars.sigma_depuis_fwhm`), itérations PLAFONNÉES (`ITERATIONS_DEFAUT` =
+  5, `ITERATIONS_MAX` = 10), repli explicite si < 3 étoiles (« netteté
+  inactive — pas assez d'étoiles détectées (N) : … », jamais de no-op
+  silencieux) et refus AUSSI si la PSF est hors bornes (étoiles ~1 px :
+  ringing). Banc SYNTHÉTIQUE refait sur le code livré (40 étoiles de FWHM
+  VRAIE 3,00 px, bruit 0,006, 800×1200) : FWHM mesurée 2,91 px → **2,38 /
+  1,84 / 1,48 px à 3 / 5 / 10 it** (63 / 75 / 105 ms ; au-delà de 10 it plus
+  rien ne bouge) ; pic d'une étoile isolée ×2,35 avec **flux conservé à
+  ×1,000** ; PSF fausse ±35 % tolérée sans creux sombre. Détail : § « Netteté
+  live » (mesures, nuances de méthode, conformité à une RL de référence) ;
 - **jalon 12 — câblage live** : case + curseurs dans le cadre VeraLux
   (position dans la chaîne : APRÈS le débruitage, AVANT l'étirement), cache
   du solveur, reproduction en pleine résolution dans « 💾 tel que vu »,
@@ -245,12 +282,15 @@ travail 1600 px, coût, PSF) :
   toujours meilleurs.
 
 État exact à la reprise :
-- **v2.3.5 : commitée et poussée le 16/09/2026** (jalon 10 validé en réel ;
-  bases validées : v2.3.4, v2.3.3 et v2.3.2 ; cf. « État actuel » en tête de
-  fichier). **tests : LES 15 fichiers `_test_*.py` PASSENT** (code de sortie
-  0), lancés UN PAR UN avec le venv :
+- **v2.3.6 : JALON 11 CODÉ ET TESTÉ le 16/09/2026** (module RL
+  `avastack/processing/sharpness.py` + test `_test_rl_jalon11.py`), commité
+  et poussé en fin de jalon ; bases VALIDÉES par Alain : v2.3.5 (jalon 10
+  validé en réel), v2.3.4, v2.3.3 et v2.3.2 ; cf. « État
+  actuel » en tête de fichier). **tests : LES 16 fichiers `_test_*.py`
+  PASSENT** (code de sortie 0), lancés UN PAR UN avec le venv :
   `C:/Astro/astrolivestack/venv/Scripts/python.exe _test_xxx.py`
-  (dont le nouveau `_test_stars_jalon10.py`, 27 vérifications).
+  (dont `_test_stars_jalon10.py`, 27 vérifications, et le nouveau
+  `_test_rl_jalon11.py`, 32 vérifications).
 - **débruitage : PLUS RIEN EN ATTENTE.** Test réel d'Alain (16/09/2026) :
   « pas top » après retrait de gradient, « mieux mais pas parfait » sans —
   décision : **on garde le code tel quel, cases décochées** (aucun
@@ -506,8 +546,8 @@ et GraXpert CLI (-strength pour le débruitage, -smoothing = gradient).
 
 **Plan retenu : jalon 10 = détecteur d'étoiles + seeing live (✅ FAIT,
 VALIDÉ EN RÉEL par Alain le 16/09/2026, v2.3.5) ; jalon 11 = module
-Richardson-Lucy
-headless ; jalon 12 = câblage live (UI + config + « tel que vu ») ; puis
+Richardson-Lucy headless (✅ FAIT et TESTÉ le 16/09/2026, v2.3.6) ; jalon 12
+= câblage live (UI + config + « tel que vu ») ; puis
 réglage sur de VRAIES images** (détail et état : « ⏭ TÂCHE EN COURS » en
 tête de fichier).
 
@@ -582,6 +622,43 @@ l'écran se renormalise tout seul.
 l'écran ne montrait pas (même mise en garde chez SharpCap) ; en mode manuel
 (black/white figés) le bruit accentué, lui, se voit.
 
+### Mesures du MODULE RL (jalon 11, 16/09/2026) — banc refait sur le code livré
+
+40 étoiles de FWHM VRAIE 3,00 px, bruit σ = 0,006, image 800×1200 px
+(résolution de travail de la chaîne live) ; FWHM mesurée AVANT netteté
+2,91 px (mesure du jalon 10) :
+
+| itérations | FWHM après | bruit de FOND (MAD) | hautes fréquences | écart-type GLOBAL | coût |
+|---|---|---|---|---|---|
+| 3 | 2,38 px | ×0,95 | ×0,93 | ×1,22 | 63 ms |
+| 5 (défaut) | 1,84 px | ×0,92 | ×0,89 | ×1,32 | 75 ms |
+| 10 (plafond) | 1,48 px | ×0,86 | ×0,83 | ×1,51 | 105 ms |
+
+- Au-delà de `ITERATIONS_MAX` (10) plus rien ne bouge : 50 it = 10 it au
+  bit près (testé).
+- ⚠️ **Le « bruit ×1,14-1,39 » du banc d'origine n'est PAS du bruit de
+  fond** : c'est le CONTRASTE gagné sur les pics d'étoiles (écart-type
+  global). Mesuré sur le fond (MAD hors étoiles) ET en hautes fréquences
+  (starlet, `denoise.estimer_sigma`), RL ne DÉGRADE RIEN (×0,92 à 5 it) :
+  c'est l'AMPLITUDE des étoiles (halos) qu'il faut surveiller à l'œil, pas
+  le fond. Corollaire pour la sauvegarde « tel que vu » : ce qu'elle
+  emporte, c'est l'AMPLITUDE des étoiles ACCENTUÉE (le fond, lui, n'est pas
+  plus bruité).
+- Photométrie : pic d'une étoile isolée ×2,35, **flux total conservé à
+  ×1,000** (±2 %).
+- PSF fausse de ±35 % (FWHM 1,95 / 4,05 px) : FWHM après 2,46 / 2,16 px,
+  aucun creux sombre de fond (+0,00000) — exactement ce que Wiener ne savait
+  pas faire (−0,102 du pic).
+- CONFORMITÉ : le module coïncide avec une RL de RÉFÉRENCE écrite en numpy
+  pur (convolution 2D explicite, bords réfléchis) à 1e-5 près (à 1, 3, 5 et
+  10 it). Cette comparaison est DANS le test permanent : c'est elle qui
+  garantit que c'est bien la formule de Richardson-Lucy qui est appliquée et
+  pas une variante approximative.
+- Piège rencontré en écrivant le module : en couleur, `(H,W,3) × (H,W)` ne
+  diffuse PAS en numpy (l'alignement se fait sur les DERNIÈRES dimensions)
+  → `gain[..., None]` ; sans lui le RGB partait en repli sûr (message de
+  diffusion) au lieu de bénéficier de la netteté.
+
 ### Contraintes techniques déjà vérifiées
 
 - **Résolution de travail** : toute la chaîne live tourne sur l'aperçu
@@ -645,9 +722,10 @@ l'écran ne montrait pas (même mise en garde chez SharpCap) ; en mode manuel
    mi-hauteur, jamais entre voisins stricts ; ces 2 leçons sont GÉNÉRIQUES et
    ont été ajoutées à `CLAUDE.md` (section « Leçons générales transposables »)
    le 16/09/2026, approuvées par Alain ;
-2. **module RL + page UI + « tel que vu » + config**, calqué sur la page
-   débruitage (module séparé dans `avastack/processing/`, opt-in, DÉSACTIVÉ
-   par défaut, plafond d'itérations) ;
+2. ~~**module RL**~~ ✅ **FAIT et TESTÉ le 16/09/2026 (v2.3.6,
+   `avastack/processing/sharpness.py`)** ; il reste la **page UI +
+   « tel que vu » + config** = **jalon 12**, calqué sur la page débruitage
+   (opt-in, DÉSACTIVÉ par défaut, plafond d'itérations) ;
 3. **réglage sur ses vraies images**.
 
 Effort : **3-6 h de code + tests**, mais la vraie dépense = la validation

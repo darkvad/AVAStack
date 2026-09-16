@@ -14,9 +14,43 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.3.5"
+AVASTACK_VERSION = "2.3.6"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.3.6 : JALON 11 — NETTETÉ LIVE, MODULE RICHARDSON-LUCY (module SEUL,
+#          sans UI : le câblage live — case, curseur, cache du solveur,
+#          « tel que vu », config — est le jalon 12). Nouveau module
+#          avastack/processing/sharpness.py (numpy/OpenCV, AUCUNE dépendance
+#          nouvelle — comme denoise.py et stars.py) : déconvolution de
+#          Richardson-Lucy sur la seule LUMINANCE (couleur : le gain obtenu
+#          est ré-appliqué aux 3 canaux → chromaticité intacte, aucun
+#          artéfact couleur, comme SharpCap), PSF gaussienne ISOTROPE dont
+#          le σ vient de la FWHM MESURÉE par stars.mesurer_seeing (jalon 10)
+#          via stars.sigma_depuis_fwhm : la netteté suit le seeing réel de
+#          la nuit, sans réglage à trouver. 3-5 itérations = réglage utile,
+#          ITERATIONS_MAX (10) en plafond DUR. Refus EXPLICITE (image d'ENTRÉE
+#          renvoyée inchangée + raison affichée) si moins de stars.MIN_ETOILES
+#          (3) étoiles mesurables, si la PSF est hors bornes (« étoiles ~1 px :
+#          ringing ») ou si un paramètre est invalide — jamais de no-op
+#          silencieux, jamais d'exception (mêmes conventions que
+#          denoise.denoiser / stars.mesurer_seeing).
+#          MESURES DU MODULE (40 étoiles de FWHM VRAIE 3,00 px, bruit 0,006,
+#          800×1200 px) : FWHM mesurée 2,91 px → 2,38 / 1,84 / 1,48 px à
+#          3 / 5 / 10 it (63 / 75 / 105 ms) ; pic d'une étoile isolée ×2,35
+#          avec FLUX conservé à ×1,000 (photométrie) ; PSF fausse de ±35 %
+#          toujours tolérée, SANS halo sombre (le mode d'échec mesuré de
+#          Wiener, −0,102 du pic, qui l'a fait écarter).
+#          Deux CONSTATS DE MÉTHODE : (1) le « bruit ×1,22 » du banc d'essai
+#          du 16/09 n'est PAS du bruit de fond — mesuré sur le fond (MAD) et
+#          en hautes fréquences (starlet), RL ne dégrade rien (×0,92 à 5 it) ;
+#          ce qui monte est le CONTRASTE des pics d'étoiles (écart-type
+#          GLOBAL ×1,32) → c'est l'amplitude des étoiles qu'il faut
+#          surveiller, pas le fond ; (2) le module est validé CONTRE une RL
+#          de référence écrite en numpy pur (convolution 2D explicite, bords
+#          réfléchis) : écart relatif < 1e-5 à 1, 3, 5 et 10 it — garantie
+#          que c'est bien LA formule de Richardson-Lucy qui est appliquée.
+#          Test _test_rl_jalon11.py (32 vérifications, headless) ; les 15
+#          tests existants repassent au vert.
 # v2.3.5 : JALON 10 — SEEING LIVE (détecteur d'étoiles, prérequis de la
 #          netteté Richardson-Lucy). Nouveau module
 #          avastack/processing/stars.py (numpy/OpenCV, AUCUNE dépendance
