@@ -149,8 +149,9 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
 - Arbre de travail **propre** au 15/09/2026 : jalon 6 validé et commité,
   rien en suspens ; les stashes de la tentative abandonnée ont été
   droppés (la fonctionnalité a été réécrite proprement aux jalons 1-3).
-  (État du **16/09/2026** — v2.3.4 débruitage remise, NON commitée : voir
-  la section « ⏭ TÂCHE EN COURS » en tête de ce fichier.)
+  (État du **16/09/2026** — v2.3.4 « débruitage remis » **COMMITÉE et
+  POUSSÉE** (e46dbd8) ; suite = netteté live RL : voir la section
+  « ⏭ TÂCHE EN COURS » en tête de ce fichier.)
 - **Dépôt distant créé (15/09/2026)** : `origin` =
   https://github.com/darkvad/AVAStack.git — `master` poussé et suivi
   (`git push` seul suffit désormais). Aucun fichier sensible suivi
@@ -242,6 +243,11 @@ Notes de mise en œuvre (pour ne pas les redécouvrir) :
 - `.gitignore` : il avait été COMMITÉ CORROMPU (une ligne de sortie d'outil
   + BOM en tête du fichier) ; nettoyé le 16/09/2026 et complété
   (`_gx_jalon4_compteur.txt`, artefact du test jalon 4).
+- `stash@{0}` (« Jalons 7/8/9 … ABANDONNÉ … code complet récupérable ») a
+  servi de SOURCE à la réintégration v2.3.4, désormais **commitée et
+  poussée** : ce stash n'est plus qu'une sauvegarde historique REDONDANTE.
+  Alain peut le dropper (`git stash drop`) quand il veut — **ne pas le faire
+  sans son accord** (c'est la seule copie de la version d'origine).
 
 ## ✅ RÉSOLU : retrait de gradient GraXpert — bords clairs + signal affaibli (signalement d'Alain, 15/09 → 16/09/2026)
 
