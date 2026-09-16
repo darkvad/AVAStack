@@ -354,6 +354,21 @@ Pièges :
   le CHEMIN ne protège pas des CARACTÈRES du nom lui-même (guillemets,
   sauts de ligne…) s il est ensuite interpolé dans un autre langage de
   script — les deux vérifications sont indépendantes.
+- **Une fenêtre de mesure ou de calcul FIXE appliquée à un objet de taille
+  VARIABLE biaise la mesure** : la fenêtre doit suivre la taille apparente de
+  l objet (dimension de sortie du détecteur, taille estimée, etc.). Un fond
+  de fenêtre trop vaste finit par peser autant que le signal recherché
+  (constat réel : FWHM surestimée de 170 % — étoile de ~1,2 px mesurée dans
+  une fenêtre fixe de ±9 px, dont presque tout le contenu était du bruit de
+  fond non retranché ; correction = fenêtre adaptative + soustraction du fond
+  réellement mesuré + moyennage par anneau).
+- **Sur un profil ou une statistique échantillonné(e) en « bins », les bins
+  VIDES doivent être sautés explicitement** : les compter comme des valeurs
+  invalides (NaN) fait perdre des mesures parfaitement valides (constat réel :
+  45 % des étoiles déclarées « sans retombée à mi-hauteur » alors que leur
+  profil était net — il faut interpoler vers le dernier bin FINI au-dessus du
+  seuil, pas vers le bin voisin immédiat ; un échantillonnage par anneaux est
+  clairsemé par nature dès que le rayon grandit).
 
 ## Maintenance des fichiers de connaissance (CLAUDE.md)
 

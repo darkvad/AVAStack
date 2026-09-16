@@ -642,7 +642,9 @@ l'écran ne montrait pas (même mise en garde chez SharpCap) ; en mode manuel
    anneau ; (2) anneaux VIDES du profil radial (pixelisation : tous les
    anneaux ne contiennent pas de pixel) → 45 % des étoiles perdues « sans
    retombée » → interpoler vers le dernier anneau FINI au-dessus de la
-   mi-hauteur, jamais entre voisins stricts ;
+   mi-hauteur, jamais entre voisins stricts ; ces 2 leçons sont GÉNÉRIQUES et
+   ont été ajoutées à `CLAUDE.md` (section « Leçons générales transposables »)
+   le 16/09/2026, approuvées par Alain ;
 2. **module RL + page UI + « tel que vu » + config**, calqué sur la page
    débruitage (module séparé dans `avastack/processing/`, opt-in, DÉSACTIVÉ
    par défaut, plafond d'itérations) ;
