@@ -100,6 +100,14 @@ non-négociables.
   de l éviter/la remplacer sans le dire — c est à Alain de trancher.
 - Vérifier la syntaxe (`ast.parse`) après CHAQUE édition avant de la
   considérer terminée.
+- **Stashes : jamais de stash qui traîne.** Un `stash` n'est qu'une étape
+  temporaire : dès que son contenu est repris, VÉRIFIÉ et commité, il se
+  droppe (`git stash drop`) — le garder n'apporte que de l'ambiguïté aux
+  sessions suivantes. Seule exception : s'il est la SEULE copie d'un travail
+  non commité. Avant de dropper : vérifier que chaque fichier du stash est
+  réellement repris (comparer le CONTENU, pas le nombre de fichiers — un
+  fichier de test peut avoir été réécrit depuis), relever le hash
+  (`git rev-parse 'stash@{0}'`) et le consigner dans AVANCEMENT.md.
 
 ## Fichier tiers : veralux_core_headless.py (GPL-3.0-or-later)
 

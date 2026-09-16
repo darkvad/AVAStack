@@ -259,7 +259,9 @@ Notes de mise en œuvre (pour ne pas les redécouvrir) :
   pas vocation à durer. Dès que son contenu est **repris, vérifié et
   commité**, il se droppe — c'est une sauvegarde REDONDANTE, et le garder ne
   crée que de l'ambiguïté aux sessions suivantes. Seule exception : s'il est
-  la seule copie d'un travail non commité.
+  la seule copie d'un travail non commité. **Règle désormais aussi en mémoire
+  LONGUE** (`CLAUDE.md`, « Conventions non-négociables »), avec la méthode de
+  vérification avant droppe.
 
 ## ✅ RÉSOLU : retrait de gradient GraXpert — bords clairs + signal affaibli (signalement d'Alain, 15/09 → 16/09/2026)
 
