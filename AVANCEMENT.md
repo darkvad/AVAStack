@@ -7,12 +7,15 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
 
 ## État actuel (base stable)
 
-- **Version : AVAStack v2.3.3** (`avastack/__init__.py`,
-  `AVASTACK_VERSION = "2.3.3"`), branche `master`, poussée. Jalon 5 validé
-  par Alain (14/09/2026) ; **jalon 6 VALIDÉ PAR ALAIN le 15/09/2026** (test
-  réel avec vraies brutes) et commité ; **v2.3.2 (sauvegarde linéaire sans
-  frames) et v2.3.3 (recadrage auto à l'intersection) VALIDÉES PAR ALAIN le
-  16/09/2026** (test réel : « C'est maintenant OK »).
+- **Version : AVAStack v2.3.4** (`avastack/__init__.py`,
+  `AVASTACK_VERSION = "2.3.4"`), branche `master`. **v2.3.4 = travail du
+  16/09/2026 : tests automatiques 14/14 au vert, TESTÉ EN RÉEL par Alain et
+  COMMITÉ ET POUSSÉ** (débruitage : verdict « on garde comme ça », cf. bullet
+  ci-dessous + « Tâche en cours »).
+  Bases VALIDÉES par Alain : v2.3.3 (recadrage auto à
+  l'intersection) et v2.3.2 (sauvegarde linéaire sans frames), test réel du
+  16/09/2026 (« C'est maintenant OK ») ; jalon 6 validé le 15/09/2026 ;
+  jalon 5 validé le 14/09/2026.
 - **v2.3.2 — CORRECTION (constat Alain, 16/09/2026) : « 💾 Enregistrer
   l'empilement (linéaire)… » ne faisait RIEN** (aucun fichier, aucun
   message, ni fin ni erreur) dès que plus aucune brute n'arrivait
@@ -24,24 +27,29 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
   traité » fonctionnaient). Fix : la demande linéaire est consommée au
   même endroit (avant `camera.read()`), sur l'empilement courant.
   Test `_test_save_lineaire_fix.py` (8 vérifications, headless) ; jalons
-  1-4 + 6 relancés : TOUS PASSENT. NB : `_test_ui_jalon5.py` échoue sur
-  « état initial moteur STF » — PRÉEXISTANT (persistance jalon 6 : la
-  config restaure VeraLux au démarrage ; le test suppose un départ STF) —
-  à corriger dans ce test plus tard, pas une régression.
-- **❌ DÉBRUITAGE : EXPÉRIENCE ABANDONNÉE par Alain le 15/09/2026.** Les
-  jalons 7/8/9 (débruitage GraXpert IA, puis algorithmes locaux rapides
-  ondelettes/NLM en manuel puis en live) sont ANNULÉS et leur code a été
-  SORTI du dépôt : retour au dernier commit validé `18e1480` (v2.3.1).
-  Tout le travail est conservé dans le stash `stash@{0}` (« Jalons 7/8/9
-  DÉBRUITAGE LOCAL - ABANDONNÉ… » — récupérable par `git stash pop`).
-  Trace complète des essais, des causes d'échec et des leçons : section
-  « Expérience abandonnée » ci-dessous + Pièges de CLAUDE.md. Alain
-  cherche de son côté d'autres méthodes (pistes possibles si le sujet
-  revient : débruitage IA léger local épargnant les étoiles).
+  1-4 + 6 relancés : TOUS PASSENT. NB : l'échec de `_test_ui_jalon5.py`
+  (« état initial moteur STF ») signalé ici était PRÉEXISTANT et a été
+  CORRIGÉ le 16/09/2026 (v2.3.4) : le test neutralise maintenant la
+  persistance (`ui.CONFIG = {}` + `sauver_config` intercepté) au lieu de
+  lire le vrai `config.json` d'Alain → il repasse au VERT.
+- **✅ DÉBRUITAGE : REMIS le 16/09/2026 (v2.3.4, demande d'Alain), TESTÉ EN
+  RÉEL ET CONSERVÉ TEL QUEL.** Historique : les jalons 7/8/9 (GraXpert IA
+  puis ondelettes/NLM locaux, en manuel puis en live) avaient été
+  ABANDONNÉS par Alain le 15/09/2026 (fond « léopard ») et leur code sorti
+  du dépôt (conservé dans `stash@{0}`). Alain a demandé le 16/09 leur
+  RÉINTRODUCTION, réorganisée selon la nature de chaque méthode :
+  **GraXpert IA → TRAITEMENT EXTERNE uniquement** (minutes par image, jamais
+  dans la chaîne live) et **ondelettes à trous + Non-local means → LIVE
+  (cadre VeraLux) ET TRAITEMENT EXTERNE** (en mémoire, sans commande
+  externe). **Verdict du test réel d'Alain (16/09/2026) : « pas top » dès
+  que le retrait de gradient est actif, « mieux mais pas parfait » sans —
+  décision : on garde le code, il ne cochera simplement pas les cases.** Le
+  fond « léopard » reste donc NON résolu, et un constat nouveau s'ajoute :
+  le débruitage se DÉGRADE après un retrait de gradient (cf. section
+  « Débruitage » ci-dessous + Pièges de CLAUDE.md).
 - **✅ JALON 6 VALIDÉ PAR ALAIN le 15/09/2026** (test réel, vraies
   brutes) : rejet des satellites (Winsorized), persistance config.json,
-  boutons « - »/« + » des curseurs — tout est bon. Aucune tâche en
-  suspens : la prochaine étape est à définir avec Alain.
+  boutons « - »/« + » des curseurs — tout est bon.
 - **Jalon 6 — rejet des satellites (demande d'Alain, 15/09/2026) : ✅
   CODÉ, commité puis VALIDÉ PAR ALAIN le 15/09/2026 (commit « Jalon 6 (1/3) »).** `avastack/processing/stacking.py` :
   `LiveStacker` a 2 méthodes de rejet — `method="kappa"` (comportement
@@ -141,6 +149,8 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
 - Arbre de travail **propre** au 15/09/2026 : jalon 6 validé et commité,
   rien en suspens ; les stashes de la tentative abandonnée ont été
   droppés (la fonctionnalité a été réécrite proprement aux jalons 1-3).
+  (État du **16/09/2026** — v2.3.4 débruitage remise, NON commitée : voir
+  la section « ⏭ TÂCHE EN COURS » en tête de ce fichier.)
 - **Dépôt distant créé (15/09/2026)** : `origin` =
   https://github.com/darkvad/AVAStack.git — `master` poussé et suivi
   (`git push` seul suffit désormais). Aucun fichier sensible suivi
@@ -161,14 +171,77 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
     CHAQUE nouvel empilement (thread dédié, dernier job gagnant, fallback
     STF) avec curseur « Luminosité du fond visée » — et « logD forcé »
     (curseur + bouton 🔒 de verrouillage du logD résolu).
-  - Traitement externe optionnel sur INSTANTANÉ (GraXpert, BlurXTerminator)
+  - Traitement externe optionnel sur INSTANTANÉ (GraXpert gradient,
+    débruitage — GraXpert IA OU ondelettes/NLM locaux —, BlurXTerminator)
     dans un thread séparé ; l'empilement accumulé reste linéaire et intact.
+  - Débruitage LIVE opt-in (v2.3.4) : ondelettes à trous / Non-local means
+    AVANT l'étirement, dans le thread solveur (cadre VeraLux).
   - Sauvegarde « 💾 Enregistrer tel que vu (étiré)… » (jalon 5, v2.2.7) :
     vue courante rendue comme à l'écran en pleine résolution (chaîne
-    complète : GraXpert live si activé → étirement STF/manuel ou VeraLux
-    avec le dernier logD résolu → gamma/saturation) ; les deux autres
-    boutons d'enregistrement restent LINÉAIRES (voulu).
+    complète : GraXpert live si activé → débruitage live si activé →
+    étirement STF/manuel ou VeraLux avec le dernier logD résolu →
+    gamma/saturation) ; les deux autres boutons d'enregistrement restent
+    LINÉAIRES (voulu).
   - Installateur Windows Inno Setup (v2.1.0).
+
+## ⏭ TÂCHE EN COURS (reprise de session, 16/09/2026)
+
+**Dernière demande d'Alain (16/09/2026)** : « remettre les fonctions de
+denoise, graxpert dans traitement externe, et les 2 autres [ondelettes à
+trous, Non-local means] qui peuvent s'exécuter en live — pour ondelette et
+NLM dans live ET dans external bien sûr. » → **FAIT, TESTÉ EN RÉEL PAR ALAIN
+ET COMMITÉ (v2.3.4)** (détails : changelog de `avastack/__init__.py` +
+section « Débruitage » ci-dessous).
+
+**CE QUI EST À REPRENDRE À LA PROCHAINE SESSION = LA NETTETÉ LIVE
+(Richardson-Lucy)** — tout est déjà décidé et documenté dans la section
+« Netteté live (page à venir) » ci-dessous : méthode arrêtée avec Alain le
+16/09/2026 (**RL retenu ; Unsharp Mask et Wiener ÉCARTÉS**, mesure à
+l'appui), chiffres du banc d'essai, contraintes techniques DÉJÀ vérifiées
+(résolution de travail 1600 px, coût, PSF), et le plan d'attaque en 3 étapes
+qui commence par le **détecteur d'étoiles + affichage du seeing live**.
+
+État exact à la reprise :
+- **v2.3.4 : commitée et poussée le 16/09/2026** (bases validées : v2.3.3
+  et v2.3.2 ; cf. « État actuel » en tête de fichier). **tests : LES 14
+  fichiers `_test_*.py` PASSENT** (code de sortie 0), lancés UN PAR UN avec
+  le venv : `C:/Astro/astrolivestack/venv/Scripts/python.exe _test_xxx.py`
+- **débruitage : PLUS RIEN EN ATTENTE.** Test réel d'Alain (16/09/2026) :
+  « pas top » après retrait de gradient, « mieux mais pas parfait » sans —
+  décision : **on garde le code tel quel, cases décochées** (aucun
+  ajustement de défaut demandé). La prochaine session n'a donc PAS à
+  retoucher le débruitage.
+- **ORDRE DE LA CHAÎNE, précisé par Alain le 16/09/2026 (ne pas l'oublier)** :
+  **recadrage → gradient → débruitage → netteté → étirement.** Les deux
+  premières étapes ne sont pas des options : le recadrage (automatique à
+  l'intersection, v2.3.3) et le retrait de gradient sont ce qui permet de
+  travailler sur les images les plus propres possible — et le gradient
+  comme la PSF (netteté) se dégradent sur des bords d'écart non recadrés.
+
+Notes de mise en œuvre (pour ne pas les redécouvrir) :
+- **live** : chaîne du thread solveur = **recadrage auto (`stacker.mean()`,
+  v2.3.3) → GraXpert live → débruitage → [netteté RL, à venir] → étirement
+  VeraLux** ; cache par (empreinte image ENTRANTE, méthode,
+  force) ; échec = repli sans débruitage + message (`vl_error`), jamais
+  figé ; vue « traitée » = débruitage live DÉSACTIVÉ (pas de 2e
+  traitement) ; sauvegarde « tel que vu » reproduit le débruitage en
+  pleine résolution.
+- **externe** : `ext_job` est un 8-tuple (méthode + force transportées) ;
+  les algorithmes locaux ne consomment AUCUNE commande (le champ de
+  commande GraXpert dédié n'est utilisé QUE par la méthode GraXpert).
+- **défauts livrés (v2.3.4), CONFIRMÉS par le test réel du 16/09/2026** :
+  live = désactivé, méthode « Non-local means », force 0,5 ; externe =
+  désactivé, méthode « GraXpert (IA, lent) », force 0,5. Alain garde le code
+  tel quel (« je n'aurai qu'à ne pas cocher les cases ») → **NE PAS retoucher
+  ces valeurs sans nouvelle demande** ; si le sujet est rouvert un jour, le
+  vrai chantier est l'interaction **gradient × débruitage** (cf. section
+  « Débruitage »), pas le réglage de la force.
+- `_test_ui_jalon5.py` : l'échec « état initial moteur STF » (préexistant,
+  cf. v2.3.2) est corrigé DANS le test (CONFIG simulé vide + `sauver_config`
+  intercepté) — plus aucune dépendance au vrai `config.json` du poste.
+- `.gitignore` : il avait été COMMITÉ CORROMPU (une ligne de sortie d'outil
+  + BOM en tête du fichier) ; nettoyé le 16/09/2026 et complété
+  (`_gx_jalon4_compteur.txt`, artefact du test jalon 4).
 
 ## ✅ RÉSOLU : retrait de gradient GraXpert — bords clairs + signal affaibli (signalement d'Alain, 15/09 → 16/09/2026)
 
@@ -217,12 +290,95 @@ ses réglages par défaut (Subtraction, smoothing 0.5).
 Constat Bonus conservé (Alain, 15/09) : « le débruitage non-local means
 semble fonctionner presque correctement sur la version SANS gradient » —
 son process tournait alors encore avec le code NLM des jalons 8/9 chargé
-en mémoire (conservé dans `stash@{0}`) ; piste à garder pour une
-éventuelle reprise, sans rouvrir l'expérience maintenant.
+en mémoire. **Cette piste est désormais ACTIVE : le débruitage NLM est
+REMIS dans le dépôt le 16/09/2026 (v2.3.4, live ET traitement externe)** —
+et l'observation d'Alain (NLM meilleur sur l'image SANS gradient) est une
+piste de réglage à retester : dans la chaîne live le débruitage s'applique
+APRÈS le GraXpert live éventuel, dans la chaîne externe APRÈS l'étape de
+gradient — cf. section suivante.
 
 
 
-## ❌ Expérience abandonnée : débruitage (jalons 7, 8, 9 — 15/09/2026)
+## Débruitage : abandonné le 15/09/2026, REMIS le 16/09/2026 (v2.3.4)
+
+**ÉTAT : code REMIS, tests automatiques 14/14 au vert, TESTÉ EN RÉEL par
+Alain le 16/09/2026 → CONSERVÉ EN L'ÉTAT (cases laissées DÉCOCHÉES).**
+Verdict réel d'Alain : « le débruitage n'est pas top si on garde l'extraction
+de gradient ; si je la décoche, il est mieux mais pas parfait. On va garder
+comme ça pour l'instant, je n'aurais qu'à ne pas cocher les cases. »
+→ **CONSTAT CAPITAL : le débruitage se DÉGRADE quand il s'applique APRÈS le
+retrait de gradient** (l'ordre appliqué, pourtant le « bon » en théorie :
+gradient → débruitage) ; sur l'empilement brut il est un peu meilleur, sans
+être convaincant pour autant. Le fond « léopard » n'est donc PAS résolu —
+c'est le même problème qu'au 15/09, vu sur de vraies images. Les défauts
+livrés (désactivé par défaut) sont exactement ce qu'il faut : **aucun
+changement de code demandé à ce stade** ; Alain décoche simplement les cases.
+Hypothèse (NON vérifiée, à investiguer si le sujet est rouvert) : GraXpert
+lisse/restructure le fond avant le débruiteur, si bien que le bruit résiduel
+n'a plus les mêmes statistiques et que le seuil k-sigma / le h NLM
+AUTO-ADAPTÉS (estimés par MAD sur l'image entrante) se calibrent de travers.
+Réorganisation demandée par Alain le 16/09/2026 — chaque
+méthode est désormais placée selon sa nature :
+- **GraXpert IA (débruitage)** → **traitement EXTERNE uniquement** (case
+  « 2. Débruitage » + méthode « GraXpert (IA, lent) ») : plusieurs MINUTES
+  par image, jamais dans la chaîne live.
+- **Ondelettes à trous** et **Non-local means** (module
+  `avastack/processing/denoise.py`, numpy/OpenCV, AUCUNE dépendance
+  nouvelle) → **LIVE (_et_ traitement EXTERNE)** : live = case dans le
+  cadre VeraLux (avant l'étirement, thread solveur, après GraXpert live
+  éventuel) ; externe = étape EN MÉMOIRE insérée entre les étapes
+  subprocess (gradient → débruitage → BXT « 3. »).
+Le reste de cette section est la TRACE de l'abandon du 15/09 : elle reste
+valable (le fond « léopard » n'est PAS résolu) et doit être relue avant
+tout réglage agressif.
+
+### Comparaison avec SharpCap (doc officielle, analyse du 16/09/2026)
+
+Demande d'Alain : « regarde ce que fait SharpCap en débruitage — est-ce que
+ça pourrait être mieux que ce qui est prévu chez nous ? » Onglet
+« Enhancement » de SharpCap : 5 outils (sauf le flou gaussien, tous
+réservés à la licence Pro).
+
+- **Gaussian Blur** : flou pur — sans intérêt (pire que ce qu'on a).
+- **Bilateral Filter** (Radius + Luminance Tolerance) : MÊME FAMILLE que
+  notre NLM (filtre local préservant les contours) → même limite
+  structurelle (plaques à forte force). Seul intérêt : coût plus faible
+  (`cv2.bilateralFilter`) — alternative, pas un progrès.
+- **Colour Noise Reduction** (uniquement les canaux Cb/Cr du YCbCr, la
+  luminance est INTACTE) : **LE point vraiment intéressant, et il n'existe
+  PAS chez nous.** SharpCap le présente comme efficace « dans les premiers
+  stades de l'empilement, quand peu de frames sont accumulées » = exactement
+  notre cas d'usage live. Parce qu'il ne touche pas la luminance, il ne peut
+  PAS créer de fond « léopard » ni de contraste fond lisse / bruit autour
+  des étoiles — les deux défauts qui ont fait abandonner notre expérience.
+  → **Piste n°1 à proposer si le sujet est rouvert après le test réel.**
+- **Unsharp Mask** (Radius + Amount, option « Luminance Only ») :
+  accentuation de netteté — AUGMENTE le bruit ; ce n'est pas un débruitage.
+  **ÉCARTÉ le 16/09/2026 après mesures** (cf. section « Netteté live ») :
+  sature (n'accentue que les ailes, jamais le cœur de la PSF) pour ×1,6-2,5
+  de bruit.
+- **Wiener Deconvolution** (luminance seule ; PSF estimée par la forme
+  moyenne des étoiles détectées) : RESTAURATION de flou (netteté), pas
+  débruitage ; AMPLIFIE le bruit → outil de netteté, pas un remède au bruit.
+  **ÉCARTÉ le 16/09/2026 après mesures** : s'effondre dès que la PSF estimée
+  s'écarte de ±10 % (halo sombre −0,10 du pic = l'« orange peel » de sa
+  doc) — remplacé par **Richardson-Lucy**. ⚠️ CORRECTION : « nous l'avons
+  déjà par l'aligneur » était FAUX — l'ORB de l'aligneur n'est PAS un
+  détecteur photométrique, aucune PSF n'est disponible aujourd'hui.
+
+**Conclusion** : sur le débruitage de LUMINANCE, SharpCap ne fait pas mieux
+que ce que nous avons remis — mêmes familles d'algorithmes (bilatéral ≈
+NLM, ondelettes), mêmes limites à forte force. Le seul apport réellement
+nouveau de sa doc est le **débruitage de CHROMA seule** (Cb/Cr), peu
+risqué, rapide et adapté au live peu intégré : à garder comme prochaine
+piste.
+⚠️ **Sur la NETTETÉ, ne pas suivre SharpCap** : sa doc ne propose que le
+Wiener (fragile, cf. mesures) — le **Richardson-Lucy** fait MIEUX et plus
+sûrement (décision d'Alain du 16/09/2026 : on ira directement sur RL,
+Unsharp Mask et Wiener sont OUBLIÉS). Détail chiffré et plan : section
+« Netteté live » ci-dessous.
+
+### Trace de l'abandon (15/09/2026)
 
 Demande d'Alain : le débruitage GraXpert IA (jalon 7) fonctionne mais
 « très long et peu efficace » → essai d'algorithmes classiques locaux
@@ -281,6 +437,126 @@ ou débruitage au moment de l'étirement) plutôt que re-raffiner le
 pixel-classique. Pièges techniques consignés au passage : OpenCV 5
 (fastNlMeansDenoising 16 bits = NORM_L1 + h tableau en 2e positionnel)
 et GraXpert CLI (-strength pour le débruitage, -smoothing = gradient).
+
+## Netteté live (page à venir) : Richardson-Lucy retenu, UM et Wiener ÉCARTÉS (analyse 16/09/2026)
+
+Demande d'Alain : « j'avais mis Unsharp Mask et Wiener Deconvolution pour
+savoir si ça valait le coup de rajouter une page de netteté dans le live
+(contrairement à BlurX qui prend 45 s sur mon laptop et qu'on laisserait en
+externe) ». Banc d'essai chiffré (scripts JETABLES, étoile synthétique
+FWHM 3,00 px + bruit σ = 0,006 ; coût mesuré en convolutions séparables),
+puis décision d'Alain : **on ira DIRECTEMENT sur Richardson-Lucy — Unsharp
+Mask et Wiener sont OUBLIÉS.**
+
+### Ordre de la chaîne (précisé par Alain : ne pas oublier les 2 premières)
+
+**recadrage → gradient → débruitage → netteté → étirement.**
+
+- **recadrage** = déjà AUTOMATIQUE (intersection des frames alignées,
+  v2.3.3, dans `LiveStacker.mean()`) : c'est le `mean()` RECADRÉ qui
+  alimente l'affichage, le GX live, les 3 sauvegardes et le traitement
+  externe. Rien à ajouter, MAIS **c'est ce qui conditionne la qualité du
+  gradient et de la PSF** (les bords d'écart = marches de fond qui affolent
+  le modèle de GraXpert, puis faussent la PSF estimée sur les étoiles).
+  Autrement dit : travailler sur une image propre dès le départ.
+- **gradient** = GraXpert (live : cadre VeraLux / externe : étape « 1. »).
+- **débruitage** = live (cadre VeraLux) OU externe (étape « 2. »).
+- **netteté** = page À CRÉER (RL, luminance seule) — **APRÈS le débruitage,
+  AVANT l'étirement** : on lisse d'abord, on restaure ensuite. L'ordre
+  inverse amplifierait le bruit que le débruitage doit ensuite retirer, et
+  déconvoluer une image déjà lissée par NLM accentue les plaques du
+  « léopard ». ⚠️ Les deux à la fois = DÉCONSEILLÉ en 1re version.
+- **étirement** = VeraLux (ou STF).
+
+### Chiffres (FWHM avant 3,06 px ; « bruit × » en LINÉAIRE)
+
+| méthode | FWHM après | bruit × | coût (1,6 Mpx) |
+|---|---|---|---|
+| Unsharp Mask 0,4 / 1,0 / 1,5 | 2,94 / 2,83 / 2,83 px | 1,39 / 1,99 / 2,48 | 6-11 ms |
+| Wiener SNR 5 / 10 / 25 | 2,59 / 2,35 / 2,00 px | 1,09 / 2,22 / 5,56 | ~80 ms |
+| Richardson-Lucy 3 / 5 / 10 it | 2,47 / 2,24 / 2,00 px | 1,14 / 1,22 / 1,39 | 44 / 74 / 142 ms |
+
+Trois constats qui fondent la décision :
+1. **Unsharp Mask SATURE** : dès amount ≈ 0,6 il n'améliore plus (2,83 px)
+   — il n'accentue que les AILES, jamais le CŒUR de la PSF (gain réel
+   ×1,08) et coûte ×1,6-2,5 de bruit. Écarté : mauvais rapport gain/bruit.
+2. **Wiener > UM mais FRAGILE** : meilleur rapport gain/bruit que l'UM
+   (2,35 px pour ×2,22) MAIS un seul bouton (SNR) et **il s'effondre si la
+   PSF estimée est fausse** — mesuré (PSF vraie 1,27 px) : halo sombre de
+   −0,005 (PSF 0,9) à **−0,102 (PSF 1,70)** du pic, exactement l'« orange
+   peel » que sa doc décrit. C'est structurel : Wiener DIVISE par le
+   spectre de la PSF (les hautes fréquences explosent).
+3. **Richardson-Lucy GAGNE** : à bruit ÉGAL il resserre bien plus que l'UM
+   (×1,22 de bruit → 2,24 px, contre 2,83 px) ; son réglage est un NOMBRE
+   D'ITÉRATIONS (prévisible, plafonnable ; 3-5 it = le réglage utile) ;
+   il est conservatif en flux (photométrie : 0,9163 × 1,22² = 1,00 — les
+   étoiles gardent leur éclat total) et **tolère une PSF fausse de ±35 %**
+   (creux du halo −0,015 à PSF juste, −0,021 à PSF 1,70 : pas
+   d'effondrement).
+
+### Découverte non évidente : le bruit AFFICHÉ ne bouge pas
+
+Mesuré APRÈS l'étirement d'affichage (donc ce que l'œil voit), le bruit
+reste **×0,99-1,01 pour TOUTES les méthodes**, y compris celles à ×2,5 en
+linéaire. Raison : le point noir auto vaut `médiane − k·σ` et σ est mesuré
+sur l'image COURANTE → amplifier le bruit fait DESCENDRE le point noir,
+l'écran se renormalise tout seul.
+**Asymétrie majeure avec le débruitage** :
+- le **débruitage** change la TEXTURE → très visible à l'écran → risque
+  d'artefacts (notre « léopard ») ;
+- la **netteté** change l'AMPLITUDE, que le noir auto compense → peu
+  visible en bruit ; le risque se limite aux halos sombres autour des
+  étoiles et à l'« orange peel ».
+⚠️ Corollaire : « enregistrer tel que vu » embarque le bruit AMPLIFIÉ que
+l'écran ne montrait pas (même mise en garde chez SharpCap) ; en mode manuel
+(black/white figés) le bruit accentué, lui, se voit.
+
+### Contraintes techniques déjà vérifiées
+
+- **Résolution de travail** : toute la chaîne live tourne sur l'aperçu
+  **≤ 1600 px** (comme le débruitage et GraXpert live, `app.py`) → RL 3-5 it
+  = 44-74 ms, ×2-3 sur le laptop d'Alain ≈ **0,15-0,25 s** : compatible
+  avec le rythme d'empilement, d'autant que le solveur « dernier job
+  gagnant » existe DÉJÀ (aucun threading à écrire). ⚠️ Sur un capteur
+  26 Mpx l'aperçu est réduit ×0,25 → étoiles ~1 px : la déconvolution n'a
+  plus rien à mordre (et fabrique du ringing) ; sur IMX585/533/662 l'aperçu
+  est quasi NATIF → gain réel. SharpCap, lui, applique ses filtres à la
+  résolution de la pile (d'où leur inclusion dans « Save Exactly as
+  Seen ») : son avantage sur gros capteur se paie en temps de calcul.
+- **PRÉREQUIS : détection d'étoiles + PSF — PAS disponible aujourd'hui.**
+  ⚠️ L'ORB de `StarAligner` n'est PAS un détecteur photométrique (aucune
+  PSF, aucune liste d'étoiles exploitable) : l'affirmation contraire d'une
+  première analyse était FAUSSE. À écrire (~60-100 lignes) : tri par
+  brillance + composantes 8-connexes + flux/moments sur une sous-image,
+  médiane de σ + ellipticité (rejet des étoiles filées).
+  **Argument décisif : ce détecteur sert AILLEURS** → affichage du
+  **seeing live** (FWHM + nombre d'étoiles, très utile en EAA), rejet de
+  frames par FWHM, diagnostic tilt/coma, et base d'un futur « débruitage
+  des étoiles seules ».
+- **Luminance seule** (comme SharpCap) : pas d'artefacts couleur.
+- **Pas de no-op silencieux** : SharpCap n'applique RIEN si aucune étoile
+  n'est détectée, sans le dire — nous afficherons un message explicite
+  (« pas assez d'étoiles détectées : netteté inactive »).
+- **BlurXTerminator reste en EXTERNE** (45 s sur son laptop, PSF par étoile
+  non linéaire) : chaîne propre = **RL léger en live pendant la capture,
+  BXT en post-traitement**.
+
+### Plan proposé (ordre d'attaque)
+
+0. ~~test réel du débruitage~~ ✅ **FAIT le 16/09/2026** : verdict « pas top »
+   (encore moins bon après retrait de gradient), code conservé tel quel,
+   cases simplement décochées — **chantier clos**, cf. section
+   « Débruitage » ;
+1. **détecteur d'étoiles + affichage du seeing SEUL** — validable en une
+   nuit réelle (comparable à ce qu'Alain connaît déjà) ;
+2. **module RL + page UI + « tel que vu » + config**, calqué sur la page
+   débruitage (module séparé dans `avastack/processing/`, opt-in, DÉSACTIVÉ
+   par défaut, plafond d'itérations) ;
+3. **réglage sur ses vraies images**.
+
+Effort : **3-6 h de code + tests**, mais la vraie dépense = la validation
+sur images RÉELLES (leçon du « léopard » : jamais de validation sur du
+synthétique — les réglages agressifs y paraissent toujours meilleurs).
 
 ## Le code VeraLux : où il en est
 

@@ -7,6 +7,7 @@ import numpy as np
 import cv2
 
 from ..external import live as _gx_live
+from . import denoise as _denoise
 from . import veralux as _veralux
 
 
@@ -54,6 +55,14 @@ class DisplayProcessor:
     Dans tous les modes, `process()` reçoit une image LINÉAIRE [0..1] et
     renvoie un uint8 affichable ; les données sauvegardées ne passent jamais
     par ici.
+
+    Mode VERALUX + DÉBRUITAGE LIVE (jalon 9, remis le 16/09/2026, opt-in) :
+    si self.vl_denoise est True, le thread solveur enchaîne stack → GraXpert
+    live (si activé) → débruitage LOCAL (avastack.processing.denoise :
+    ondelettes à trous ou Non-local Means, numpy/OpenCV, aucun subprocess)
+    → VeraLux. Cache par (CONTENU image APRÈS gradient, méthode, force) ;
+    échec = repli sur l'image sans débruitage + message préfixé
+    « Débruitage live : … » (jamais de blocage, jamais d'image perdue).
     """
     def __init__(self):
         self.auto = True
@@ -78,6 +87,18 @@ class DisplayProcessor:
         self.vl_graxpert_cmd = ""     # commande GraXpert ({input}/{outbase}…)
         self._gx_cache = None         # (empreinte image, image traitée) —
                                       # utilisé par le thread solveur SEUL
+        # --- Débruitage live (jalon 9, remis le 16/09/2026, opt-in) ---------
+        # Algorithmes LOCAUX rapides (numpy/OpenCV, aucun subprocess) — à la
+        # différence du débruitage GraXpert IA (PLUSIEURS minutes), celui-ci
+        # peut tourner à chaque nouvel empilement. OPTION DOUCE par défaut :
+        # à force utile les méthodes locales moutonnent (« léopard », cf.
+        # CLAUDE.md) ; le live sert à JUGER, la sauvegarde linéaire reste
+        # intouchée et « tel que vu » reproduit la chaîne affichée.
+        self.vl_denoise = False       # algorithme LOCAL avant l'étirement
+        self.vl_denoise_methode = "nlm"   # "ondelettes" | "nlm" (défaut : nlm)
+        self.vl_denoise_force = 0.5   # 0..1
+        self._dn_cache = None         # (empreinte image, méthode, force,
+                                      # image traitée) — thread solveur SEUL
         # cache + solveur (thread dédié, jamais le thread UI)
         self._vl_src = None           # dernière image soumise (comparaison d'objet)
         self._vl_key = None           # clé des réglages du dernier calcul lancé
@@ -99,6 +120,7 @@ class DisplayProcessor:
         changement de vue) : le prochain process() relance une résolution."""
         self._stats = None
         self._gx_cache = None         # oublie aussi le résultat GraXpert live
+        self._dn_cache = None         # …et le résultat du débruitage live
         with self._vl_lock:
             self._vl_result = None
             self._vl_force = True
@@ -158,13 +180,16 @@ class DisplayProcessor:
         """Clé de hachage des réglages VeraLux (recalcul si elle change)."""
         return (self.vl_mode_res, round(self.vl_target_bg, 4),
                 round(self.vl_log_d, 3), self.vl_profil,
-                self.vl_graxpert, self.vl_graxpert_cmd)
+                self.vl_graxpert, self.vl_graxpert_cmd,
+                self.vl_denoise, self.vl_denoise_methode,
+                round(self.vl_denoise_force, 2))
 
     def _vl_worker(self):
-        """Thread solveur : enchaîne (jalon 4) GraXpert live — si activé —
-        PUIS l'étirement VeraLux, sur le DERNIER job demandé (les jobs
-        intermédiaires — slider bougé, frame remplacée — sont simplement
-        remplacés, jamais empilés). Écrit le résultat sous verrou."""
+        """Thread solveur : enchaîne — si activés — GraXpert live (jalon 4)
+        PUIS le débruitage local (jalon 9 : algorithmes numpy/OpenCV, aucun
+        subprocess) PUIS l'étirement VeraLux, sur le DERNIER job demandé
+        (les jobs intermédiaires — slider bougé, frame remplacée — sont
+        simplement remplacés, jamais empilés). Écrit le résultat sous verrou."""
         while True:
             self._vl_wake.wait()
             self._vl_wake.clear()
@@ -172,8 +197,16 @@ class DisplayProcessor:
                 job = self._vl_job
                 self._vl_job = None
             if job is None:
+                # Aucun job à traiter : ne jamais laisser `_vl_pending` à True
+                # (un état « calcul en cours SANS job » figerait l'aperçu sur
+                # l'image d'attente STF pour toujours). Job et drapeau étant
+                # écrits ensemble sous verrou, cet état est incohérent : on le
+                # répare plutôt que d'attendre un job qui n'arrivera pas.
+                with self._vl_lock:
+                    self._vl_pending = False
                 continue
-            img, params, key, (gx_actif, gx_cmd) = job
+            img, params, key, (gx_actif, gx_cmd), (dn_actif, dn_methode,
+                                                   dn_force) = job
             # --- GraXpert live (opt-in) : retrait de gradient AVANT l'étirement
             # Cache indexé par (CONTENU de l'image, commande) : une nouvelle
             # frame relance l'outil, mais pas un simple curseur VeraLux ; et
@@ -190,20 +223,42 @@ class DisplayProcessor:
                         self._gx_cache = None    # brute, erreur signalée
                     else:
                         self._gx_cache = (cle, img_gx)
+            # --- Débruitage live (jalon 9, opt-in) : APRÈS le GraXpert live
+            # éventuel — même ordre que la chaîne manuelle (gradient →
+            # débruitage). Cache par (CONTENU de l'image ENTRANTE, méthode,
+            # force) : une nouvelle frame relance le calcul (l'empreinte
+            # change), pas un simple curseur VeraLux ; changer de méthode ou
+            # de force invalide aussi le résultat caché. Le seuil k-sigma des
+            # ondelettes et la force h du NLM sont AUTO-ADAPTÉS au bruit réel
+            # de chaque frame (le débruitage suit l'intégration, comme l'œil).
+            img_dn, err_dn = img_gx, ""
+            if dn_actif:
+                cle = (_gx_live.cle_image(img_gx), dn_methode,
+                       round(dn_force, 2))
+                if self._dn_cache is not None and self._dn_cache[0] == cle:
+                    img_dn = self._dn_cache[1]
+                else:
+                    img_dn, err_dn = _denoise.denoiser(img_gx, dn_methode,
+                                                       dn_force)
+                    if err_dn:
+                        img_dn = img_gx   # repli : étirement sans débruitage
+                        self._dn_cache = None
+                    else:
+                        self._dn_cache = (cle, img_dn)
+            prefixe = ((f"GraXpert live : {err_gx} ; " if err_gx else "")
+                       + (f"Débruitage live : {err_dn} ; " if err_dn else ""))
             try:
-                result, log_d_util, diag = _veralux.etirer(img_gx, **params)
+                result, log_d_util, diag = _veralux.etirer(img_dn, **params)
             except Exception as exc:      # moteur absent, image dégénérée…
                 with self._vl_lock:
                     self._vl_pending = False
-                    self.vl_error = (f"GraXpert live : {err_gx} ; VeraLux : {exc}"
-                                     if err_gx else f"VeraLux : {exc}")
+                    self.vl_error = f"{prefixe}VeraLux : {exc}"
                     self.vl_new = True
                 continue
             with self._vl_lock:
                 self._vl_pending = False
                 self._vl_result = (key, result)
-                self.vl_error = (f"GraXpert live : {err_gx}"
-                                 if err_gx else "")
+                self.vl_error = prefixe   # "" si tout s'est bien passé
                 self.vl_log_d_resolu = log_d_util
                 self.vl_diagnostics = diag
                 self.vl_new = True
@@ -223,6 +278,8 @@ class DisplayProcessor:
             params = dict(mode=self.vl_mode_res, target_bg=self.vl_target_bg,
                           log_d=self.vl_log_d, profil=self.vl_profil)
             gx = (self.vl_graxpert, self.vl_graxpert_cmd)   # capté côté UI
+            dn = (self.vl_denoise, self.vl_denoise_methode,
+                  self.vl_denoise_force)                    # capté côté UI
             with self._vl_lock:
                 if not self._vl_pending:
                     self._vl_pending = True
@@ -230,7 +287,7 @@ class DisplayProcessor:
                     # copie défensive : img appartient à l'UI et peut être
                     # remplacée pendant le calcul
                     self._vl_job = (img.astype(np.float32).copy(), params,
-                                    key, gx)
+                                    key, gx, dn)
                     self._vl_wake.set()
             self._vl_src, self._vl_key = img, key
         with self._vl_lock:

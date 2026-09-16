@@ -38,6 +38,11 @@ def est_packe(w):
 
 
 root = tk.Tk()
+# Jamais le vrai config.json : le développeur a une persistance réelle (moteur
+# VeraLux restauré au démarrage, jalon 6) qui rendrait l'état initial
+# INDÉTERMINÉ. CONFIG simulé VIDE → état initial = moteur STF par défaut.
+ui.CONFIG = {}
+ui.sauver_config = lambda d: None
 app = ui.App(root)
 root.update_idletasks()
 

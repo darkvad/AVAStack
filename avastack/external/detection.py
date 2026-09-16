@@ -7,6 +7,7 @@ complètes sont persistées dans config.json (cf. avastack/config.py).
 """
 
 import os
+import re
 import shutil
 
 from ..compat import IS_WINDOWS, IS_MACOS
@@ -54,6 +55,14 @@ _SOUS_RC_ASTRO = (os.path.join("RC-Astro", "CLI"), "")
 #   {outbase}  chemin de sortie SANS extension (GraXpert : -output)
 _GX_OPTIONS = ('"{input}" -cli -cmd background-extraction '
                '-correction Subtraction -smoothing 0.5 -output "{outbase}"')
+# Débruitage (jalon 7, remis le 16/09/2026) : la doc officielle GraXpert
+# (README du dépôt Steffenhir/GraXpert) impose le flag -strength (0.0 à 1.0,
+# défaut 0.5) pour le débruitage ; -smoothing ne concerne QUE le retrait de
+# gradient (le confondre échoue silencieusement). Traitement LONG (IA tuile
+# par tuile, plusieurs minutes) : volontairement cantonné au traitement
+# manuel sur instantané, jamais au live.
+_GX_DN_OPTIONS = ('"{input}" -cli -cmd denoising '
+                  '-strength 0.5 -output "{outbase}"')
 
 
 def commande_par_defaut_graxpert():
@@ -62,6 +71,14 @@ def commande_par_defaut_graxpert():
     if exe is None:
         return 'graxpert ' + _GX_OPTIONS
     return f'"{exe}" ' + _GX_OPTIONS
+
+
+def commande_par_defaut_graxpert_dn():
+    """Commande GraXpert DÉBRUITAGE : même exécutable, -cmd denoising."""
+    exe = trouver_exe(_NOM_GRAXPERT, "AVASTACK_GRAXPERT", _SOUS_GRAXPERT)
+    if exe is None:
+        return 'graxpert ' + _GX_DN_OPTIONS
+    return f'"{exe}" ' + _GX_DN_OPTIONS
 
 
 def commande_par_defaut_bxt():
@@ -75,4 +92,22 @@ def commande_par_defaut_bxt():
 # Commandes effectives au lancement : persistance d'abord, détection ensuite.
 # (Charge UNE fois à l'import, comme l'ancien module unique.)
 DEFAULT_CMD_GRAXPERT = CONFIG.get("cmd_graxpert") or commande_par_defaut_graxpert()
+DEFAULT_CMD_GRAXPERT_DN = (CONFIG.get("cmd_graxpert_dn")
+                           or commande_par_defaut_graxpert_dn())
 DEFAULT_CMD_BXT = CONFIG.get("cmd_bxt") or commande_par_defaut_bxt()
+
+
+def commande_avec_strength(cmd, val):
+    """Renvoie la commande de DÉBRUITAGE avec -strength fixé à val (0..1).
+
+    La valeur réglée dans l'interface est la source de vérité : si la
+    commande contient déjà un -strength (saisi à la main ou d'une session
+    précédente), il est REMPLACÉ (première occurrence, insensible à la
+    casse) ; sinon il est ajouté en fin de commande. Une valeur hors
+    bornes est ramenée dans [0, 1] (jamais de crash, jamais d'argument
+    invalide transmis à GraXpert)."""
+    v = min(1.0, max(0.0, float(val)))
+    s = f"{v:.2f}".rstrip("0").rstrip(".") or "0"
+    if re.search(r"(?i)-strength\s+\S+", cmd):
+        return re.sub(r"(?i)-strength\s+\S+", f"-strength {s}", cmd, count=1)
+    return cmd.rstrip() + f" -strength {s}"

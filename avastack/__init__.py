@@ -14,9 +14,51 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.3.3"
+AVASTACK_VERSION = "2.3.4"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.3.4 : REMISE DU DÉBRUITAGE (demande d'Alain, 16/09/2026) — les jalons
+#          7/8/9 (abandonnés le 15/09, code retiré, conservé dans le stash)
+#          sont réintégrés RÉORGANISÉS selon la nature de chaque méthode :
+#          - DÉBRUITAGE GRAXPERT IA → TRAITEMENT EXTERNE uniquement
+#            (plusieurs MINUTES par image : jamais dans la chaîne live).
+#          - DÉBRUITAGE LOCAL (ondelettes à trous / Non-local means,
+#            numpy/OpenCV, aucune dépendance nouvelle) → disponible À LA
+#            FOIS en traitement externe ET en live :
+#            · traitement externe (jalon 8) : case « 2. Débruitage » +
+#              combobox de méthode (GraXpert (IA, lent) / Ondelettes à
+#              trous / Non-local means) + force commune 0..1. Les
+#              algorithmes locaux tournent EN MÉMOIRE entre les étapes
+#              subprocess (gradient → débruitage → BXT) ; BlurXTerminator
+#              renuméroté « 3. ». Clés config : cmd_graxpert_dn, ext_dn,
+#              dn_methode, dn_force.
+#            · live (jalon 9) : cadre VeraLux — case « Débruitage live
+#              (avant étirement) » + méthode (Non-local means, défaut /
+#              Ondelettes à trous) + force 0..1. Dans le thread solveur,
+#              APRÈS GraXpert live (même ordre que la chaîne externe) :
+#              seuil k-sigma / force h AUTO-ADAPTÉS au bruit réel de
+#              chaque empilement ; cache par (empreinte image après
+#              gradient, méthode, force) ; échec = repli sans débruitage
+#              + message, jamais bloqué. Vue « traitée » : désactivé
+#              automatiquement (l'image y a déjà subi le traitement
+#              externe — même règle que GX live). Clés config :
+#              vl_denoise, vl_denoise_methode, vl_denoise_force.
+#          - Sauvegarde « tel que vu » : reproduit le débruitage live en
+#            PLEINE résolution (le fichier correspond à l'écran) ;
+#            échec = sauvegarde abandonnée (comme GX live).
+#          - Réintégration depuis le stash avec les correctifs anti-
+#            « léopard » déjà éprouvés (ondelettes : 2 niveaux fins
+#            seulement ; NLM : 2 passes faibles, h ≈ 0.8σ, petite
+#            fenêtre) — rester DOUCE : à force utile, toute méthode
+#            locale moutonne (cf. CLAUDE.md).
+#          TEST RÉEL (Alain, 16/09/2026) : « pas top » dès que le retrait de
+#          gradient est actif, « mieux mais pas parfait » sans → décision :
+#          on GARDE le code tel quel, les cases restent DÉCOCHÉES (aucun
+#          défaut modifié). Le fond « léopard » n'est donc PAS résolu, et un
+#          constat nouveau est consigné : le débruitage se DÉGRADE après un
+#          retrait de gradient (cf. CLAUDE.md → Pièges).
+#          Tests : _test_dn_jalon7 (externe), _test_denoise_live_jalon9
+#          (live), _test_dn_local_jalon8 (module).
 # v2.3.3 : RECADRAGE AUTOMATIQUE À L'INTERSECTION (demande d'Alain,
 #          16/09/2026) — l'empilement live est recadré à l'intersection
 #          GÉOMÉTRIQUE RÉELLE des frames alignées (équivalent live du

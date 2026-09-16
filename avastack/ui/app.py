@@ -24,15 +24,37 @@ from ..cameras import (SOURCES, SimulatedCamera, OpenCVCamera, ZWOASICamera,
                        FolderCamera, QHYCamera, PlayerOneCamera,
                        TouptekCamera, SVBonyCamera)
 from ..processing import Calibrator, StarAligner, LiveStacker, DisplayProcessor
+from ..processing import denoise as denoiser_local
 from ..external import live as gx_live
 from ..processing import veralux as veralux_moteur
 from ..external.detection import (
-    DEFAULT_CMD_GRAXPERT, DEFAULT_CMD_BXT,
-    commande_par_defaut_graxpert, commande_par_defaut_bxt)
+    DEFAULT_CMD_GRAXPERT, DEFAULT_CMD_GRAXPERT_DN, DEFAULT_CMD_BXT,
+    commande_avec_strength, commande_par_defaut_graxpert,
+    commande_par_defaut_graxpert_dn, commande_par_defaut_bxt)
 
 
 class App:
     W_IMG, H_IMG, W_HIST, H_HIST = 840, 560, 840, 110
+
+    # Débruitage live (jalon 9, remis le 16/09/2026) : libellés UI ↔ codes
+    # internes (module avastack/processing/denoise.py, algorithmes locaux
+    # sans IA). NLM en premier = défaut (tests réels d'Alain : plus homogène
+    # que les ondelettes). Le débruitage GraXpert IA reste en TRAITEMENT
+    # EXTERNE (plusieurs minutes par image — jamais en live).
+    VL_DN_METHODES = (("nlm", "Non-local means"),
+                      ("ondelettes", "Ondelettes à trous"))
+    VL_DN_LABELS = dict(VL_DN_METHODES)    # code → libellé (restauration)
+    VL_DN_CODES = {lib: code for code, lib in VL_DN_METHODES}
+
+    # Débruitage du TRAITEMENT EXTERNE (jalon 8, remis le 16/09/2026) :
+    # mêmes algorithmes locaux que le live (ondelettes/NLM) ET le débruitage
+    # GraXpert IA (lent) — au choix, force commune 0..1. En externe, les
+    # algorithmes locaux tournent EN MÉMOIRE entre les étapes subprocess.
+    DN_EXT_METHODES = (("graxpert", "GraXpert (IA, lent)"),
+                       ("ondelettes", "Ondelettes à trous"),
+                       ("nlm", "Non-local means"))
+    DN_EXT_LABELS = dict(DN_EXT_METHODES)  # code → libellé (restauration)
+    DN_EXT_CODES = {lib: code for code, lib in DN_EXT_METHODES}
 
     def __init__(self, root):
         self.root = root
@@ -69,7 +91,11 @@ class App:
         # --- traitement externe (instantané de l'empilement)
         self.ext_request = False        # demande en attente (lue par le worker)
         self.ext_busy = False           # un traitement externe tourne
-        self.ext_job = None             # (graxpert?, cmd_gx, bxt?, cmd_bxt)
+        self.ext_job = None             # (gx?, cmd_gx, dn?, cmd_dn, bxt?,
+                                        # cmd_bxt, mode_dn, force_dn)
+                                        # dn = débruitage : GraXpert IA
+                                        # (subprocess) OU ondelettes/nlm
+                                        # (local, en mémoire)
         self.proc_show = None           # aperçu traité (réduit, pour affichage)
         self.proc_full = None           # résultat traité pleine résolution (sauvegarde)
         self.proc_new = False           # un nouveau résultat vient d'arriver
@@ -104,6 +130,7 @@ class App:
         # défaut re-détecté qui aurait changé ; si la commande au démarrage
         # était un chemin (détection) devenu inexistant, re-détecter.
         for cle, var in (("cmd_graxpert", self.var_cmd_graxpert),
+                         ("cmd_graxpert_dn", self.var_cmd_graxpert_dn),
                          ("cmd_bxt", self.var_cmd_bxt)):
             enreg = c.get(cle)
             if enreg:
@@ -113,10 +140,30 @@ class App:
                 premier = var.get().strip().split('"')[1] \
                     if var.get().strip().startswith('"') else None
                 if premier and not os.path.isfile(premier):
-                    var.set(commande_par_defaut_graxpert() if cle == "cmd_graxpert"
-                            else commande_par_defaut_bxt())
+                    var.set(commande_par_defaut_graxpert()
+                            if cle == "cmd_graxpert" else
+                            commande_par_defaut_graxpert_dn()
+                            if cle == "cmd_graxpert_dn" else
+                            commande_par_defaut_bxt())
         if c.get("ext_graxpert"):
             self.var_ext_graxpert.set(True)
+        # Jalons 7/8 (remis le 16/09/2026) — débruitage du traitement
+        # externe : méthode au choix (GraXpert IA / ondelettes / NLM) +
+        # force commune. La case n'est restaurée que si la méthode est
+        # utilisable : ondelettes/NLM (aucun outil requis) ou GraXpert
+        # avec commande complète (jamais de popup au démarrage).
+        methode_ext = c.get("dn_methode")
+        if methode_ext in self.DN_EXT_LABELS:
+            self.var_dn_methode.set(self.DN_EXT_LABELS[methode_ext])
+        v = c.get("dn_force")
+        if isinstance(v, (int, float)) and not isinstance(v, bool) \
+                and 0.0 <= float(v) <= 1.0:
+            self.var_dn_force.set(float(v))
+        if c.get("ext_dn") and (self.DN_EXT_CODES.get(
+                self.var_dn_methode.get(), "graxpert") != "graxpert"
+                or gx_live.commande_valide(
+                    self.var_cmd_graxpert_dn.get().strip())):
+            self.var_ext_dn.set(True)
         if c.get("ext_bxt"):
             self.var_ext_bxt.set(True)
         for cle, var, mini, maxi in (
@@ -174,6 +221,21 @@ class App:
                 self.var_cmd_graxpert.get().strip()):
             self.var_vl_graxpert.set(True)
             self._on_vl_graxpert()   # sans popup : commande validée avant
+        # --- Jalon 9 (remis le 16/09/2026) : débruitage live (méthode +
+        # force tolérantes : méthode inconnue → nlm, force hors [0,1] → 0.5)
+        methode_dn = c.get("vl_denoise_methode")
+        if methode_dn in self.VL_DN_LABELS:
+            self.var_vl_dn_methode.set(self.VL_DN_LABELS[methode_dn])
+        v = c.get("vl_denoise_force")
+        if isinstance(v, (int, float)) and not isinstance(v, bool) \
+                and 0.0 <= float(v) <= 1.0:
+            self.var_vl_dn_force.set(float(v))
+        self.disp.vl_denoise_methode = self.VL_DN_CODES.get(
+            self.var_vl_dn_methode.get(), "nlm")
+        self.disp.vl_denoise_force = self.var_vl_dn_force.get()
+        if c.get("vl_denoise"):
+            self.var_vl_dn.set(True)
+            self._on_vl_denoise()    # sans popup : aucun outil externe requis
         # Moteur d'étirement en DERNIER : la bascule VeraLux masque les
         # réglages STF et affiche le cadre VeraLux avec les valeurs ci-dessus.
         # (moteur indisponible → STF conservé, sans popup)
@@ -194,10 +256,17 @@ class App:
         # rejouer au prochain lancement (installation déplacée, etc.).
         if self.var_cmd_graxpert.get().strip():
             c["cmd_graxpert"] = self.var_cmd_graxpert.get().strip()
+        if self.var_cmd_graxpert_dn.get().strip():
+            c["cmd_graxpert_dn"] = self.var_cmd_graxpert_dn.get().strip()
         if self.var_cmd_bxt.get().strip():
             c["cmd_bxt"] = self.var_cmd_bxt.get().strip()
         if self.var_ext_graxpert.get():
             c["ext_graxpert"] = True
+        if self.var_ext_dn.get():
+            c["ext_dn"] = True
+        c["dn_methode"] = self.DN_EXT_CODES.get(self.var_dn_methode.get(),
+                                                "graxpert")
+        c["dn_force"] = self.var_dn_force.get()   # force débruitage externe
         if self.var_ext_bxt.get():
             c["ext_bxt"] = True
         c["sigk"] = self.var_sigk.get()
@@ -216,6 +285,12 @@ class App:
         c["vl_logd"] = self.var_vl_logd.get()
         c["vl_profil"] = self.var_vl_profil.get()
         c["vl_graxpert"] = bool(self.var_vl_graxpert.get())
+        # Jalon 9 : débruitage live — booléen explicite (comme vl_graxpert),
+        # méthode en code interne ("nlm"/"ondelettes"), force dans [0, 1].
+        c["vl_denoise"] = bool(self.var_vl_dn.get())
+        c["vl_denoise_methode"] = self.VL_DN_CODES.get(
+            self.var_vl_dn_methode.get(), "nlm")
+        c["vl_denoise_force"] = self.var_vl_dn_force.get()
         sauver_config(c)
 
     # ------------------------------------------------------------ construction UI
@@ -443,6 +518,28 @@ class App:
                         variable=self.var_vl_graxpert,
                         command=self._on_vl_graxpert).pack(anchor="w",
                                                            pady=(2, 0))
+        # Jalon 9 (remis le 16/09/2026) : débruitage local AVANT l'étirement
+        # — algorithmes rapides numpy/OpenCV (aucun subprocess), opère en
+        # vue « empilement » uniquement (cf. _sync_vl_denoise_vue). Force en
+        # 0..1 : seuil k-sigma (ondelettes) / h (NLM) auto-adaptés au bruit
+        # réel de chaque empilement.
+        rowdn = ttk.Frame(self.frm_veralux)
+        rowdn.pack(fill="x", pady=(2, 0))
+        self.var_vl_dn = tk.BooleanVar(value=False)
+        ttk.Checkbutton(rowdn, text="Débruitage live (avant étirement)",
+                        variable=self.var_vl_dn,
+                        command=self._on_vl_denoise).pack(side="left")
+        self.var_vl_dn_methode = tk.StringVar(value=self.VL_DN_LABELS["nlm"])
+        self.cb_vl_dn_methode = ttk.Combobox(
+            rowdn, textvariable=self.var_vl_dn_methode, state="readonly",
+            width=15, values=[lib for _, lib in self.VL_DN_METHODES])
+        self.cb_vl_dn_methode.pack(side="left", padx=(4, 0))
+        self.cb_vl_dn_methode.bind("<<ComboboxSelected>>",
+                                   lambda e: self._on_vl_denoise())
+        self.var_vl_dn_force = tk.DoubleVar(value=0.5)
+        self._add_slider(self.frm_veralux, "Force du débruitage (live)",
+                         self.var_vl_dn_force, 0.0, 1.0, 0.05,
+                         self._on_vl_denoise, "{:.2f}")
         self.lbl_vl = ttk.Label(self.frm_veralux, text="—",
                                 foreground="#888888", wraplength=310)
         self.lbl_vl.pack(anchor="w")
@@ -473,8 +570,34 @@ class App:
         ttk.Button(rowgx, text="…", width=3,
                    command=lambda: self._pick_exe(self.var_cmd_graxpert)
                    ).pack(side="left", padx=(4, 0))
+        # Jalon 8 (remis le 16/09/2026) : débruitage du traitement externe —
+        # méthode au choix : GraXpert IA (lent, subprocess) OU algorithmes
+        # locaux rapides (ondelettes/NLM, en mémoire) ; force commune 0..1.
+        # -strength (GraXpert) / k-sigma·h (local, auto-adaptés au bruit).
+        rowd = ttk.Frame(box)
+        rowd.pack(anchor="w")
+        self.var_ext_dn = tk.BooleanVar(value=False)
+        ttk.Checkbutton(rowd, text="2. Débruitage :",
+                        variable=self.var_ext_dn).pack(side="left")
+        self.var_dn_methode = tk.StringVar(
+            value=self.DN_EXT_LABELS["graxpert"])
+        self.cb_dn_methode = ttk.Combobox(
+            rowd, textvariable=self.var_dn_methode, state="readonly",
+            width=17, values=[lib for _, lib in self.DN_EXT_METHODES])
+        self.cb_dn_methode.pack(side="left", padx=(4, 0))
+        rowdn = ttk.Frame(box)
+        rowdn.pack(fill="x")
+        self.var_cmd_graxpert_dn = tk.StringVar(value=DEFAULT_CMD_GRAXPERT_DN)
+        ttk.Entry(rowdn, textvariable=self.var_cmd_graxpert_dn).pack(
+            side="left", fill="x", expand=True)
+        ttk.Button(rowdn, text="…", width=3,
+                   command=lambda: self._pick_exe(self.var_cmd_graxpert_dn)
+                   ).pack(side="left", padx=(4, 0))
+        self.var_dn_force = tk.DoubleVar(value=0.5)
+        self._add_slider(box, "Force du débruitage (0-1)", self.var_dn_force,
+                         0.0, 1.0, 0.05, None, "{:.2f}")
         self.var_ext_bxt = tk.BooleanVar(value=False)
-        ttk.Checkbutton(box, text="2. BlurXTerminator — netteté",
+        ttk.Checkbutton(box, text="3. BlurXTerminator — netteté",
                         variable=self.var_ext_bxt).pack(anchor="w")
         rowbx = ttk.Frame(box)
         rowbx.pack(fill="x")
@@ -486,7 +609,9 @@ class App:
                    ).pack(side="left", padx=(4, 0))
         ttk.Label(box, text="Placeholders : {input} · {output} (.fits complet) · "
                            "{outbase} (sans extension, GraXpert). « … » : choisir "
-                           "l'exécutable, options conservées.",
+                           "l'exécutable, options conservées. Le débruitage "
+                           "Ondelettes/NLM n'utilise aucune commande (traité "
+                           "en mémoire).",
                   foreground="#888888", wraplength=310).pack(anchor="w")
         rowv = ttk.Frame(box)
         rowv.pack(fill="x", pady=2)
@@ -746,11 +871,35 @@ class App:
         if actif != self.disp.vl_graxpert:
             self.disp.vl_graxpert = actif   # la clé change → re-résolution
 
+    def _on_vl_denoise(self):
+        """Case/combobox/curseur du débruitage live : répercute méthode et
+        force dans le solveur, puis re-résolution. Tolérant : une force
+        saisie invalide (texte) est ignorée, la valeur précédente reste."""
+        self.disp.vl_denoise_methode = self.VL_DN_CODES.get(
+            self.var_vl_dn_methode.get(), "nlm")
+        try:
+            self.disp.vl_denoise_force = min(
+                1.0, max(0.0, float(self.var_vl_dn_force.get())))
+        except (tk.TclError, TypeError, ValueError):
+            pass                            # saisie invalide : on garde
+        self._sync_vl_denoise_vue()
+        self._refresh_preview()
+
+    def _sync_vl_denoise_vue(self):
+        """Débruitage live = vue « empilement » uniquement (même règle que
+        GraXpert live) : en vue « traitée », l'image a déjà subi le
+        traitement externe — re-débruiter ferait un DEUXIÈME traitement.
+        La case reste cochée : c'est disp.vl_denoise qui suit la vue."""
+        actif = self.var_vl_dn.get() and self.var_view.get() != "traitée"
+        if actif != self.disp.vl_denoise:
+            self.disp.vl_denoise = actif    # la clé change → re-résolution
+
     def _on_view(self):
         """Bascule empilement ↔ résultat traité (stats d'étirement réinitialisées :
         les niveaux après GraXpert/BXT ne sont pas les mêmes)."""
         self.disp.reset()
         self._sync_vl_graxpert_vue()
+        self._sync_vl_denoise_vue()
         if self.var_view.get() == "traitée":
             if self.proc_show is not None:
                 self.last_show = self.proc_show
@@ -912,7 +1061,9 @@ class App:
             vl_mode_res=d.vl_mode_res, vl_target_bg=d.vl_target_bg,
             vl_log_d=d.vl_log_d, vl_profil=d.vl_profil,
             vl_log_d_resolu=d.vl_log_d_resolu,
-            vl_graxpert=d.vl_graxpert, vl_graxpert_cmd=d.vl_graxpert_cmd)
+            vl_graxpert=d.vl_graxpert, vl_graxpert_cmd=d.vl_graxpert_cmd,
+            vl_denoise=d.vl_denoise, vl_denoise_methode=d.vl_denoise_methode,
+            vl_denoise_force=d.vl_denoise_force)
         self.save_asseen_request = (path, vue, reglages)
 
     def _save_asseen_thread(self, path, vue, source, reglages, session):
@@ -929,6 +1080,17 @@ class App:
                     self.asseen_result = f"ERREUR: GraXpert live : {err}"
                     return
                 source = gx
+            # Jalon 9 : le débruitage live fait partie de la chaîne affichée
+            # (stack → GX → débruitage → étirement) — reproduit ici en pleine
+            # résolution pour que le fichier corresponde à l'écran.
+            if vue == "pile" and reglages.get("vl_denoise"):
+                img_dn, err = denoiser_local.denoiser(
+                    source, reglages.get("vl_denoise_methode", "nlm"),
+                    reglages.get("vl_denoise_force", 0.5))
+                if err:
+                    self.asseen_result = f"ERREUR: Débruitage live : {err}"
+                    return
+                source = img_dn
             rendu = self.disp.rendu_pleine_resolution(source, reglages)
             if session != self._session:    # session relancée entre-temps
                 return
@@ -1008,16 +1170,28 @@ class App:
             messagebox.showinfo("Traitement externe",
                                 "Un traitement est déjà en cours — patientez.")
             return
-        if not (self.var_ext_graxpert.get() or self.var_ext_bxt.get()):
+        if not (self.var_ext_graxpert.get() or self.var_ext_dn.get()
+                or self.var_ext_bxt.get()):
             messagebox.showinfo("Traitement externe",
-                                "Cochez au moins GraXpert ou BlurXTerminator.")
+                                "Cochez au moins un traitement.")
             return
         # Capture des réglages ici (thread principal) : le thread externe ne
-        # touchera pas aux variables Tkinter.
+        # touchera pas aux variables Tkinter. Méthode de débruitage : la
+        # force est injectée DANS la commande GraXpert (source de vérité =
+        # curseur, l'Entry n'est jamais modifiée) ; pour ondelettes/NLM la
+        # force est transportée telle quelle (étape locale, en mémoire).
+        mode_dn = self.DN_EXT_CODES.get(self.var_dn_methode.get(), "graxpert")
+        cmd_dn = (commande_avec_strength(self.var_cmd_graxpert_dn.get().strip(),
+                                         self.var_dn_force.get())
+                  if mode_dn == "graxpert" else "")
         self.ext_job = (self.var_ext_graxpert.get(),
                         self.var_cmd_graxpert.get().strip(),
+                        self.var_ext_dn.get(),
+                        cmd_dn,
                         self.var_ext_bxt.get(),
-                        self.var_cmd_bxt.get().strip())
+                        self.var_cmd_bxt.get().strip(),
+                        mode_dn,
+                        self.var_dn_force.get())
         self.ext_request = True
         self._set_ext_msg("Traitement demandé…", state="busy")
         self.btn_ext.config(state="disabled")
@@ -1063,14 +1237,30 @@ class App:
         éventuel miroir vertical est corrigé (_auto_unflip)."""
         tmp = None
         try:
-            use_gx, cmd_gx, use_bxt, cmd_bxt = self.ext_job
+            (use_gx, cmd_gx, use_dn, cmd_dn, use_bxt, cmd_bxt,
+             mode_dn, force_dn) = self.ext_job
             steps = []
             if use_gx:
-                steps.append(("GraXpert", cmd_gx))
+                steps.append(("GraXpert gradient", "cmd", cmd_gx))
+            if use_dn:
+                if mode_dn == "graxpert":
+                    # Débruitage GraXpert IA (jalon 7, remis le 16/09/2026) :
+                    # étape SUBPROCESS comme les autres, LONGUE (minutes).
+                    steps.append(("GraXpert débruitage", "cmd", cmd_dn))
+                else:
+                    # Jalon 8 : débruitage LOCAL (ondelettes à trous ou
+                    # Non-local means) en numpy/OpenCV, quelques secondes —
+                    # étape EN MÉMOIRE entre les étapes subprocess.
+                    libelle = ("Ondelettes à trous" if mode_dn == "ondelettes"
+                               else "Non-local means")
+                    steps.append((f"Débruitage local ({libelle})",
+                                  "dn_local", None))
             if use_bxt:
-                steps.append(("BlurXTerminator", cmd_bxt))
-            for name, cmd in steps:
-                if "{input}" not in cmd or ("{output}" not in cmd and "{outbase}" not in cmd):
+                steps.append(("BlurXTerminator", "cmd", cmd_bxt))
+            for name, kind, cmd in steps:
+                if kind == "cmd" and ("{input}" not in cmd
+                                      or ("{output}" not in cmd
+                                          and "{outbase}" not in cmd)):
                     self._set_ext_msg(f"Commande {name} incomplète : il manque "
                                       "{{input}} ou {output}/{outbase}.", state="error")
                     return
@@ -1098,8 +1288,24 @@ class App:
                     return None
                 return res
 
-            for i, (name, cmd_tpl) in enumerate(steps):
+            for i, (name, kind, cmd_tpl) in enumerate(steps):
                 outbase = os.path.join(tmp, f"step{i}")
+                if kind == "dn_local":
+                    # Jalon 8 : étape locale EN MÉMOIRE (pas de subprocess) —
+                    # l'image courante est relue, débruitée (numpy/OpenCV)
+                    # puis réécrite pour l'outil suivant de la chaîne.
+                    self._set_ext_msg(f"{name} en cours… ({n_frames} frames)",
+                                      state="busy")
+                    img_cur = load_image(cur)
+                    img_dn, err = denoiser_local.denoiser(img_cur, mode_dn,
+                                                          force_dn)
+                    if err:
+                        self._set_ext_msg(f"Erreur {name} : {err}",
+                                          state="error")
+                        return
+                    cur = outbase + ".fits"
+                    save_image(cur, img_dn)
+                    continue
                 res = run_step(name, cmd_tpl, cur, outbase)
                 if res is None:
                     return
@@ -1278,9 +1484,11 @@ class App:
             cmd = self.var_cmd_graxpert.get().strip()
             if cmd != self.disp.vl_graxpert_cmd:
                 self.disp.vl_graxpert_cmd = cmd
-        # Jalon 5 : GraXpert live = vue « empilement » uniquement (synchro
-        # permanente : la case peut être cochée même en vue « traitée »)
+        # Jalon 5/9 : GraXpert live ET débruitage live = vue « empilement »
+        # uniquement (synchro permanente : les cases peuvent être cochées
+        # même en vue « traitée »)
         self._sync_vl_graxpert_vue()
+        self._sync_vl_denoise_vue()
         if self.disp.vl_new:      # résultat du solveur VeraLux (thread dédié)
             self.disp.vl_new = False
             if self.var_moteur.get() == "VeraLux":
@@ -1290,7 +1498,8 @@ class App:
                                        foreground="#d04040")
                 elif self.disp.vl_diagnostics is not None:
                     d = self.disp.vl_diagnostics
-                    prefixe = "GX ✓ · " if self.disp.vl_graxpert else ""
+                    prefixe = ("GX ✓ · " if self.disp.vl_graxpert else "") \
+                        + ("DN ✓ · " if self.disp.vl_denoise else "")
                     self.lbl_vl.config(
                         text=f"{prefixe}logD {self.disp.vl_log_d_resolu:.2f} · "
                              f"fond {d['median_luminance_finale']:.3f}",

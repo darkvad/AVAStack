@@ -217,9 +217,14 @@ Pièges :
 ## Pièges (leçons du projet AVAStack)
 
 - **DÉBRUITAGE LOCAL CLASSIQUE SUR STACKS ASTRO = FOND « LÉOPARD »**
-  (expérience ABANDONNÉE par Alain le 15/09/2026, jalons 7/8/9 — code
-  retiré du dépôt, trace complète dans AVANCEMENT.md § « Expérience
-  abandonnée », code dans le stash). Constat réel : ondelettes à trous
+  (constat réel du 15/09/2026 ; jalons 7/8/9 ABANDONNÉS ce jour-là, puis
+  **REMIS le 16/09/2026 à la demande d'Alain — v2.3.4, mêmes algorithmes,
+  désactivé par défaut, force par défaut 0,5 sur la plage 0-1**. Test réel
+  du 16/09/2026 (MÊME verdict) : « pas top » **dès que le retrait de
+  gradient est actif**, « mieux mais pas parfait » sans → décision d'Alain :
+  code conservé tel quel, **cases simplement décochées** (détails et état
+  courant : AVANCEMENT.md § « Débruitage : abandonné le 15/09/2026, REMIS le
+  16/09/2026 »). Constat réel : ondelettes à trous
   (starlet) ET Non-local Means OpenCV créent tous deux un moutonnement
   en plaques dès que la force est utile ; à force réduite, le bruit
   résiduel AUTOUR DES ÉTOILES rend le fond lisse encore plus visible par
@@ -229,10 +234,21 @@ Pièges :
   structurellement, le bruit élevé d'un empilement live peu intégré.
   À retenir : (1) ne JAMAIS valider un débruiteur sur du bruit pur
   synthétique (les réglages agressifs y paraissent meilleurs) — image
-  réelle obligatoire dès la première passe ; (2) si le sujet est reposé,
+  réelle obligatoire dès la première passe ; (2) rester DOUX : à force
+  utile, toute méthode locale moutonne ; (3) si le sujet est reposé,
   viser des méthodes épargnant les étoiles par conception (IA légère
   locale type Noise2* entraîné astro) plutôt que re-raffiner le
   pixel-classique.
+- **DÉBRUITAGE APRÈS RETRAIT DE GRADIENT = PIRE QUE SANS** (constat réel
+  d'Alain, 16/09/2026 — dégradation observée sur vraies images) : enchaîner
+  GraXpert (gradient) PUIS un débruiteur local donne un résultat MOINS bon
+  que le débruiteur seul sur l'empilement brut — alors que l'ordre appliqué
+  (gradient → débruitage) est le « bon » en théorie. À retenir : le
+  post-traitement d'un outil peut changer la STATISTIQUE du bruit et
+  dérégler un débruiteur qui estime son seuil sur l'image qu'il reçoit
+  (nos k-sigma/h sont auto-adaptés par MAD, cf. `processing/denoise.py`) —
+  hypothèse NON vérifiée, à instrumenter si le sujet est rouvert ; en
+  attendant, ne pas empiler les deux dans une validation réelle.
 - **OpenCV 5 : `fastNlMeansDenoising` sur uint16 n'existe qu'avec
   `normType=cv2.NORM_L1` et h en TABLEAU passé en 2e argument
   POSITIONNEL** (l'ordre des paramètres diffère entre les deux
