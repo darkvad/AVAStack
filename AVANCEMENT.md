@@ -36,7 +36,8 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
   RÉEL ET CONSERVÉ TEL QUEL.** Historique : les jalons 7/8/9 (GraXpert IA
   puis ondelettes/NLM locaux, en manuel puis en live) avaient été
   ABANDONNÉS par Alain le 15/09/2026 (fond « léopard ») et leur code sorti
-  du dépôt (conservé dans `stash@{0}`). Alain a demandé le 16/09 leur
+  du dépôt (mis de côté dans un `stash`, **droppé le 16/09/2026** une fois la
+  réintroduction v2.3.4 vérifiée et poussée). Alain a demandé le 16/09 leur
   RÉINTRODUCTION, réorganisée selon la nature de chaque méthode :
   **GraXpert IA → TRAITEMENT EXTERNE uniquement** (minutes par image, jamais
   dans la chaîne live) et **ondelettes à trous + Non-local means → LIVE
@@ -243,11 +244,22 @@ Notes de mise en œuvre (pour ne pas les redécouvrir) :
 - `.gitignore` : il avait été COMMITÉ CORROMPU (une ligne de sortie d'outil
   + BOM en tête du fichier) ; nettoyé le 16/09/2026 et complété
   (`_gx_jalon4_compteur.txt`, artefact du test jalon 4).
-- `stash@{0}` (« Jalons 7/8/9 … ABANDONNÉ … code complet récupérable ») a
-  servi de SOURCE à la réintégration v2.3.4, désormais **commitée et
-  poussée** : ce stash n'est plus qu'une sauvegarde historique REDONDANTE.
-  Alain peut le dropper (`git stash drop`) quand il veut — **ne pas le faire
-  sans son accord** (c'est la seule copie de la version d'origine).
+- `stash@{0}` (« Jalons 7/8/9 … ABANDONNÉ … code complet récupérable ») :
+  **DROPPÉ le 16/09/2026, sur accord d'Alain** — plus AUCUN stash dans le
+  dépôt (`git stash list` vide). Il avait servi de SOURCE à la réintégration
+  v2.3.4, commitée et poussée (e46dbd8) ; vérification faite AVANT de le
+  dropper : `avastack/processing/denoise.py` **identique octet pour octet**
+  au commit `HEAD`, et les 3 fichiers de test du stash étaient une
+  ITÉRATION ANTÉRIEURE (ancienne API d'UI `var_dn_mode` / boutons radio,
+  remplacée par la combobox `var_dn_methode`) — donc rien d'unique à
+  perdre, tout était repris ou périmé. (Hash de sécurité, au cas où :
+  `c79d6326dfd256fc9db787b43f75315181a0d700` — objet encore récupérable
+  quelques semaines côté git.)
+  **Règle retenue (« il n'y aura plus lieu de le faire »)** : un stash n'a
+  pas vocation à durer. Dès que son contenu est **repris, vérifié et
+  commité**, il se droppe — c'est une sauvegarde REDONDANTE, et le garder ne
+  crée que de l'ambiguïté aux sessions suivantes. Seule exception : s'il est
+  la seule copie d'un travail non commité.
 
 ## ✅ RÉSOLU : retrait de gradient GraXpert — bords clairs + signal affaibli (signalement d'Alain, 15/09 → 16/09/2026)
 
@@ -395,7 +407,8 @@ Alain a ABANDONNÉ : « soit ça fait le léopard, soit je baisse la force
 et ça laisse du bruit autour des étoiles, ce qui le rend d'autant plus
 visible. Je vais chercher de mon côté quelles autres méthodes existent. »
 
-Ce qui avait été codé puis SORTI du dépôt (conservé dans `stash@{0}`) :
+Ce qui avait été codé puis SORTI du dépôt (mis alors dans un `stash`,
+droppé depuis — tout est revenu au dépôt avec la v2.3.4) :
 - **jalon 7** : débruitage GraXpert CLI dans les outils externes manuels
   (`-cmd denoising` + `-strength`, PAS `-smoothing`) — fonctionnel mais
   plusieurs MINUTES par image (IA) ;
