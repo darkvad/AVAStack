@@ -25,6 +25,7 @@ from ..cameras import (SOURCES, SimulatedCamera, OpenCVCamera, ZWOASICamera,
                        TouptekCamera, SVBonyCamera)
 from ..processing import Calibrator, StarAligner, LiveStacker, DisplayProcessor
 from ..processing import denoise as denoiser_local
+from ..processing import stars as seeing_live
 from ..external import live as gx_live
 from ..processing import veralux as veralux_moteur
 from ..external.detection import (
@@ -78,6 +79,15 @@ class App:
         self.save_request = self.saved_path = None
         self.bad_frames = 0
         self.fps = 0.0
+        # --- Jalon 10 : seeing live (FWHM + nombre d'étoiles), mesuré par le
+        # thread d'acquisition sur l'aperçu (≤ 1600 px, même résolution que
+        # celle où travaillera la netteté live) toutes les `seeing_periode`
+        # secondes — la détection coûte quelques ms, inutile de la refaire à
+        # chaque frame. Sert aussi de PRÉREQUIS à la netteté (PSF).
+        self.seeing = None             # dernière mesure (dict) ou None
+        self.seeing_msg = ""           # message associé (étoiles insuffisantes…)
+        self.seeing_periode = 3.0      # secondes entre deux mesures
+        self._seeing_t0 = 0.0          # horodatage de la dernière mesure
         self.show_stack = None       # dernier aperçu linéaire de l'empilement
         self.last_show = None       # image linéaire actuellement affichée
         self._session = 0           # anti-mélange entre sessions
@@ -384,6 +394,11 @@ class App:
         box.pack(fill="x", pady=3)
         self.lbl_stats = ttk.Label(box, text="Frames : 0\nPixels rejetés (σ) : 0\nFrames non alignées : 0")
         self.lbl_stats.pack(anchor="w", pady=(0, 3))
+        # Jalon 10 : seeing live (FWHM médiane + nombre d'étoiles) — mesure
+        # faite par le thread d'acquisition sur l'aperçu, toutes les 3 s.
+        self.lbl_seeing = ttk.Label(box, text="Seeing (FWHM) : —",
+                                    foreground="#888888")
+        self.lbl_seeing.pack(anchor="w", pady=(0, 3))
         rowf = ttk.Frame(box)
         rowf.pack(fill="x", pady=2)
         ttk.Button(rowf, text="Réinitialiser l'empilement",
@@ -963,6 +978,8 @@ class App:
         self.disp.reset()                      # stats d'affichage repartent de zéro
         self._vl_frames = None                 # le 1er empilement relancera le solveur
         self.bad_frames, self.fps = 0, 0.0
+        self.seeing, self.seeing_msg = None, ""   # jalon 10 : nouvelle mesure
+        self._seeing_t0 = 0.0                     # → dès la 1re frame
         self.show_stack = None
         self.last_show = None
         self._session += 1                     # invalide tout traitement externe en vol
@@ -1433,6 +1450,14 @@ class App:
             if scale < 1.0:
                 show = cv2.resize(show, None, fx=scale, fy=scale,
                                   interpolation=cv2.INTER_AREA)
+            # Jalon 10 : seeing live (FWHM médiane + nombre d'étoiles) sur
+            # l'APERÇU — c'est la résolution sur laquelle la netteté live
+            # travaillera, la PSF mesurée y est donc directement exploitable.
+            # Mesure au plus toutes les `seeing_periode` s (quelques ms, mais
+            # inutile 20 fois par seconde : le seeing ne change pas si vite).
+            if time.perf_counter() - self._seeing_t0 >= self.seeing_periode:
+                self._seeing_t0 = time.perf_counter()
+                self.seeing, self.seeing_msg = seeing_live.mesurer_seeing(show)
             hist = self._compute_hist(show)
 
             dt = time.perf_counter() - t0
@@ -1442,7 +1467,8 @@ class App:
                       bad=self.bad_frames, fps=self.fps, cam=self.camera.name,
                       file=getattr(self.camera, "last_file", ""),
                       pending=len(getattr(self.camera, "_pending", [])),
-                      failed=getattr(self.camera, "failed", 0))
+                      failed=getattr(self.camera, "failed", 0),
+                      seeing=self.seeing, seeing_msg=self.seeing_msg)
             if self.stacker.cadre is not None:      # recadrage d'intersection
                 y0, x0, y1, x1 = self.stacker.cadre
                 st["crop_w"], st["crop_h"] = x1 - x0, y1 - y0
@@ -1672,6 +1698,22 @@ class App:
         self.lbl_stats.config(text=(f"Frames : {st['frames']}\n"
                                     f"Pixels rejetés (σ) : {st['rejets']}\n"
                                     f"Frames non alignées : {st['bad']}"))
+        # Jalon 10 : seeing live (mesuré par le thread d'acquisition) —
+        # jamais de silence : soit la mesure, soit la RAISON de son absence.
+        s = st.get("seeing") or {}
+        if s.get("nb"):
+            fiable = s["nb"] >= seeing_live.MIN_ETOILES
+            self.lbl_seeing.config(
+                text=(f"Seeing (FWHM) : {s['fwhm']:.2f} px  ·  "
+                      f"{s['nb']} étoiles"
+                      + ("" if fiable else "  (peu fiable)")),
+                foreground="#1d7f1d" if fiable else "#c98a00")
+        elif st.get("seeing_msg"):
+            self.lbl_seeing.config(text=f"Seeing : {st['seeing_msg']}",
+                                   foreground="#c98a00")
+        else:
+            self.lbl_seeing.config(text="Seeing (FWHM) : —",
+                                   foreground="#888888")
         extra = ""
         if st.get("pending"):
             extra += f"   |  en attente : {st['pending']}"

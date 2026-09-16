@@ -14,9 +14,37 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.3.4"
+AVASTACK_VERSION = "2.3.5"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.3.5 : JALON 10 — SEEING LIVE (détecteur d'étoiles, prérequis de la
+#          netteté Richardson-Lucy). Nouveau module
+#          avastack/processing/stars.py (numpy/OpenCV, AUCUNE dépendance
+#          nouvelle — comme denoise.py) : fond/bruit par médiane/MAD, seuil
+#          à 8σ, composantes 8-connexes, rejets (aire, bords, ellipticité),
+#          puis PROFIL RADIAL par étoile → FWHM = 2 × rayon de retombée à
+#          mi-hauteur ; médianes du champ = FWHM et ellipticité. Constat du
+#          16/09/2026 : l'ORB de StarAligner n'est PAS un détecteur
+#          photométrique — ce module est le prérequis manquant.
+#          UI : étiquette « Seeing (FWHM) : x.xx px · N étoiles » dans le
+#          cadre Empilement, mesurée sur l'APERÇU (≤ 1600 px, la résolution
+#          où travaillera la netteté live) toutes les 3 s par le thread
+#          d'acquisition ; mesure sur moins de 3 étoiles signalée
+#          « (peu fiable) », et JAMAIS de silence (la raison est affichée).
+#          Jalon « observation seule » : aucun réglage, aucune
+#          persistance, RIEN n'est modifié dans l'image empilée.
+#          Test _test_stars_jalon10.py (27 vérifications, fenêtre réelle
+#          incluse) : FWHM mesurée à 3 % de la vraie sur étoiles
+#          synthétiques (σ 1,2 et 1,8 px), 40/40 détectées, rejets
+#          vérifiés (étoile filée, nébulosité σ 12 px, objet au bord, pixel
+#          chaud) ; les 14 tests existants repassent tous au vert.
+#          PIÈGES consignés (2 échecs du 1er essai) : (1) fenêtre de mesure
+#          FIXE → FWHM surestimée de 170 % (le bruit du fond pèse alors
+#          autant que les ailes de l'étoile) → fenêtre ADAPTÉE à la taille
+#          apparente, fond retiré SANS clip, bruit annulé par la moyenne
+#          par anneau ; (2) anneaux vides du profil radial (pixelisation)
+#          → 45 % des étoiles perdues « sans retombée » → interpolation
+#          vers le dernier anneau FINI au-dessus de la mi-hauteur.
 # v2.3.4 : REMISE DU DÉBRUITAGE (demande d'Alain, 16/09/2026) — les jalons
 #          7/8/9 (abandonnés le 15/09, code retiré, conservé dans le stash)
 #          sont réintégrés RÉORGANISÉS selon la nature de chaque méthode :
