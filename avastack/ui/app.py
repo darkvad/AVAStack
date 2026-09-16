@@ -1171,6 +1171,21 @@ class App:
                         args=(path, vue, source, reglages, self._session),
                         daemon=True).start()
 
+            # Sauvegarde LINÉAIRE de l'empilement : consommation de la demande
+            # AVANT la lecture d'une frame — doit fonctionner même si aucune
+            # brute n'arrive (dossier surveillé terminé, caméra en pause…).
+            # Historiquement placé APRÈS l'empilement d'une nouvelle frame :
+            # sans nouvelles frames, le worker ne l'atteignait JAMAIS
+            # (demande silencieusement ignorée — constat Alain, 16/09/2026).
+            if (self.save_request is not None and self.stacker is not None
+                    and self.stacker.n > 0):
+                path, self.save_request = self.save_request, None
+                try:
+                    save_image(path, self.stacker.mean())
+                    self.saved_path = path
+                except Exception as e:
+                    self.saved_path = f"ERREUR: {e}"
+
             frame = self.camera.read()
             if frame is None:
                 time.sleep(0.005)
@@ -1201,14 +1216,6 @@ class App:
             if self.ref_request and stack is not None:
                 self.ref_request = False
                 self.aligner.set_reference(stack)   # utile en longue session (rotation de champ)
-
-            if self.save_request is not None and stack is not None:
-                path, self.save_request = self.save_request, None
-                try:
-                    save_image(path, stack)
-                    self.saved_path = path
-                except Exception as e:
-                    self.saved_path = f"ERREUR: {e}"
 
             show = stack if stack is not None else (last_good if last_good is not None else frame)
 

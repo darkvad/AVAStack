@@ -7,10 +7,25 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
 
 ## État actuel (base stable)
 
-- **Version : AVAStack v2.3.1** (`avastack/__init__.py`,
-  `AVASTACK_VERSION = "2.3.1"`), branche `master`. Jalon 5 validé par
+- **Version : AVAStack v2.3.2** (`avastack/__init__.py`,
+  `AVASTACK_VERSION = "2.3.2"`), branche `master`. Jalon 5 validé par
   Alain (14/09/2026) ; **jalon 6 VALIDÉ PAR ALAIN le 15/09/2026** (test
   réel avec vraies brutes) et commité.
+- **v2.3.2 — CORRECTION (constat Alain, 16/09/2026) : « 💾 Enregistrer
+  l'empilement (linéaire)… » ne faisait RIEN** (aucun fichier, aucun
+  message, ni fin ni erreur) dès que plus aucune brute n'arrivait
+  (dossier surveillé terminé). Cause : la demande (`save_request`) était
+  consommée par le thread d'acquisition UNIQUEMENT après l'empilement
+  d'une nouvelle frame — sans frames, le bloc n'était jamais atteint, en
+  silence ; les deux autres boutons de sauvegarde passent par des threads
+  dédiés consommés AVANT la lecture (d'où « tel que vu » et « résultat
+  traité » fonctionnaient). Fix : la demande linéaire est consommée au
+  même endroit (avant `camera.read()`), sur l'empilement courant.
+  Test `_test_save_lineaire_fix.py` (8 vérifications, headless) ; jalons
+  1-4 + 6 relancés : TOUS PASSENT. NB : `_test_ui_jalon5.py` échoue sur
+  « état initial moteur STF » — PRÉEXISTANT (persistance jalon 6 : la
+  config restaure VeraLux au démarrage ; le test suppose un départ STF) —
+  à corriger dans ce test plus tard, pas une régression.
 - **❌ DÉBRUITAGE : EXPÉRIENCE ABANDONNÉE par Alain le 15/09/2026.** Les
   jalons 7/8/9 (débruitage GraXpert IA, puis algorithmes locaux rapides
   ondelettes/NLM en manuel puis en live) sont ANNULÉS et leur code a été

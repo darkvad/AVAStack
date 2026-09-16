@@ -14,9 +14,23 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.3.1"
+AVASTACK_VERSION = "2.3.2"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.3.2 : CORRECTION (constat Alain, 16/09/2026) — « 💾 Enregistrer
+#          l'empilement (linéaire)… » ne faisait RIEN (aucun fichier, aucun
+#          message, ni fin ni erreur) dès que plus aucune brute n'arrivait
+#          (dossier surveillé terminé, caméra en pause). Cause : la demande
+#          (save_request) n'était consommée par le thread d'acquisition
+#          qu'APRÈS l'empilement d'une NOUVELLE frame — sans nouvelles
+#          frames, le bloc n'était jamais atteint, en silence. Les deux
+#          autres boutons de sauvegarde passaient par des threads dédiés
+#          consommés AVANT la lecture de frame, d'où la différence. Fix :
+#          la demande linéaire est désormais consommée au même endroit
+#          (avant camera.read()), sur l'empilement courant — le fichier
+#          correspond à ce qui était affiché au clic ; le message
+#          « Empilement sauvegardé »/d'erreur de _tick s'affiche alors
+#          fiablement. Test headless _test_save_lineaire_fix.py.
 # v2.3.1 : Jalon 6, demande d'Alain AVANT son test réel — boutons « - »/« + »
 #          sur TOUS les curseurs (_add_slider, avastack/ui/app.py) : réglage
 #          fin sans viser à la souris. Un clic = ±1 pas du curseur (res),
