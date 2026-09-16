@@ -165,10 +165,20 @@ Cause identifiée (analyse du 15/09/2026, comportement intrinsèque de
 l'outil sur CE type d'image, pas un bug du code AVAStack) :
 - La commande par défaut (`_GX_OPTIONS`, `avastack/external/detection.py`)
   est `-cmd background-extraction -correction Subtraction -smoothing 0.5`.
-- L'image fournie est la pile LINÉAIRE déjà calibrée (flat appliqué) :
-  son fond est DÉJÀ plat. GraXpert ajuste alors un modèle de fond à du
-  bruit ; le modèle ondule et retombe vers les bords (extrapolation, les
-  points d'échantillonnage ne touchent pas les bords).
+- **PRÉCISION (Alain, 15/09) : empilement calibré avec dark SANS flat.**
+  Le fond de la pile est donc un VRAI gradient : skyglow (pollution
+  lumineuse, à peu près uniforme) × vignettage optique (bords assombris,
+  potentiellement 20-50 %). Le retrait de gradient est ici a priori
+  JUSTIFIÉ — ce n'est pas une image déjà plate.
+- Mécanisme de l'artefact (le plus plausible, à confirmer par essais) :
+  avec `-smoothing 0.5`, le modèle de fond de GraXpert (interpolation de
+  points d'échantillonnage) **retombe vers les bords** (comportement
+  d'extrapolation : les points ne touchent pas le bord exact). En
+  **Subtraction**, il retire alors TROP PEU près des bords alors que le
+  ciel y est encore présent → le centre descend vers ~0, les bords gardent
+  un fond résiduel ; l'étirement auto (VeraLux) se renormalisant sur le
+  fond global, ce résiduel ressort en BANDE CLAIRE. Le vignettage accentue
+  la marche centre/bords après correction.
 - En **Subtraction**, on retire ce modèle : beaucoup au centre, presque
   rien en périphérie → le fond brut (skyglow + offset) y reste → BANDE
   CLAIRE. Le gradient de bord est CRÉÉ par la correction, pas révélé.
@@ -181,16 +191,22 @@ l'outil sur CE type d'image, pas un bug du code AVAStack) :
 
 Essais à faire par Alain (commande ÉDITABLE dans le champ GraXpert, aucun
 code à changer) — dans l'ordre :
-1. `-smoothing 0.8` (modèle rigide → quasi-plan → peu de soustraction) ;
-2. `-correction Division` au lieu de `Subtraction` (multiplicatif,
-   préserve mieux les niveaux faibles) ;
+1. `-correction Division` au lieu de `Subtraction` : le vignettage est un
+   défaut MULTIPLICATIF, la division est donc le mode théoriquement adapté
+   (et préserve mieux les niveaux faibles) ;
+2. `-smoothing 0.8` : modèle plus rigide, s'affaisse moins vers les bords ;
 3. les deux combinés ; comparer les mêmes zones (bords + bras externes).
-À noter : sur une pile déjà plate (flat correct), le retrait de gradient
-n'a presque rien d'utile à corriger — le rapport coût/artefact est défavor.
+À noter : ici le VRAI correctif du gradient est la calibration FLAT (le
+vignettage se corrige à la source, avant empilement) ; GraXpert ne devrait
+être qu'un rattrapage, pas un substitut au flat.
 Constat Bonus (Alain) : « le débruitage non-local means semble fonctionner
-presque correctement sur la version SANS gradient » — le code NLM est dans
-le stash `stash@{0}` (jalons 8/9), PAS dans l'arbre courant : clarifier
-comment ce test a été fait avant tout développement.
+presque correctement sur la version SANS gradient » — EXPLICATION : Alain
+n'a PAS relancé l'application depuis l'abandon, son process tourne donc
+ENCORE avec le code des jalons 8/9 (NLM) chargé en mémoire, absent de
+l'arbre courant (conservé dans `stash@{0}`). Son observation reste une vraie
+donnée : le NLM semblait « presque correct » sur une image non renormalisée
+par le coussin GX — piste à garder pour une éventuelle reprise du
+débruitage, sans rouvrir l'expérience maintenant.
 
 
 ## ❌ Expérience abandonnée : débruitage (jalons 7, 8, 9 — 15/09/2026)
