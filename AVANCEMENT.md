@@ -216,6 +216,22 @@ l'arbre courant (conservé dans `stash@{0}`). Son observation reste une vraie
 donnée : le NLM semblait « presque correct » sur une image non renormalisée
 par le coussin GX — piste à garder pour une éventuelle reprise du
 débruitage, sans rouvrir l'expérience maintenant.
+- **Donnée croisée Siril (Alain, 15/09) : jamais de coussin avec Siril +
+  GraXpert (script python).** Or la CLI GraXpert n'exécute QUE la méthode
+  IA (doc officielle Steffenhir : « the AI method … can also be executed
+  from the command line », `-ai_version` défaut = dernière version) —
+  notre commande est donc déjà en IA, comme Siril. La différence est donc
+  dans (a) les paramètres d'appel (`-correction Subtraction -smoothing
+  0.5` vs autres valeurs) ou (b) l'AFFICHAGE : dans AVAStack la sortie GX
+  est étirée par STF/VeraLux (cible de fond 0.31) qui peut amplifier un
+  résidu de bord là où l'autostretch de Siril le rend différemment. → La
+  MESURE `_diag_gx_bords.py` sur les fichiers LINÉAIRES tranche : si les
+  bords sont PLATS en linéaire après GX, le coussin vient de l'affichage
+  AVAStack (à corriger chez nous), pas de GraXpert.
+- **Plan retenu par Alain (15/09)** : sauvegarder la pile linéaire et la
+  reprendre dans Siril pour le retrait de gradient. Workflow déjà supporté
+  (l'empilement accumulé reste linéaire et intact ; les boutons
+  d'enregistrement linéaires sont là pour ça).
 
 
 ## ❌ Expérience abandonnée : débruitage (jalons 7, 8, 9 — 15/09/2026)
