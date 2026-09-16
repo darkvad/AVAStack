@@ -7,10 +7,12 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
 
 ## État actuel (base stable)
 
-- **Version : AVAStack v2.3.2** (`avastack/__init__.py`,
-  `AVASTACK_VERSION = "2.3.2"`), branche `master`. Jalon 5 validé par
-  Alain (14/09/2026) ; **jalon 6 VALIDÉ PAR ALAIN le 15/09/2026** (test
-  réel avec vraies brutes) et commité.
+- **Version : AVAStack v2.3.3** (`avastack/__init__.py`,
+  `AVASTACK_VERSION = "2.3.3"`), branche `master`, poussée. Jalon 5 validé
+  par Alain (14/09/2026) ; **jalon 6 VALIDÉ PAR ALAIN le 15/09/2026** (test
+  réel avec vraies brutes) et commité ; **v2.3.2 (sauvegarde linéaire sans
+  frames) et v2.3.3 (recadrage auto à l'intersection) VALIDÉES PAR ALAIN le
+  16/09/2026** (test réel : « C'est maintenant OK »).
 - **v2.3.2 — CORRECTION (constat Alain, 16/09/2026) : « 💾 Enregistrer
   l'empilement (linéaire)… » ne faisait RIEN** (aucun fichier, aucun
   message, ni fin ni erreur) dès que plus aucune brute n'arrivait
@@ -202,10 +204,15 @@ headless, piège des axes de canaux traité) ; jalons 1-6 relancés : TOUS
 PASSENT (l'échec `_test_ui_jalon5.py` est préexistant — persistance jalon 6,
 voir bullet v2.3.2).
 
-Piège à retenir : **GX background-extraction sur un stack à bords d'écart
-de recouvrement = coussin clair sur ces bords** — recadrer à l'intersection
-AVANT tout retrait de gradient (proposition d'entrée CLAUDE.md en attente
-de validation d'Alain).
+Piège à retenir (consigné dans CLAUDE.md § Pièges, accord d'Alain) :
+**GX background-extraction sur un stack à bords d'écart de recouvrement =
+coussin clair sur ces bords** — recadrer à l'intersection AVANT tout retrait
+de gradient ; `-correction Division` plante (ne pas y revenir).
+
+**VALIDATION FINALE (Alain, 16/09/2026) : « C'est maintenant OK »** — le
+recadrage automatique v2.3.3 fonctionne en réel : les bords d'écart sortent
+de l'empilement, GraXpert (live et externe) se comporte correctement avec
+ses réglages par défaut (Subtraction, smoothing 0.5).
 
 Constat Bonus conservé (Alain, 15/09) : « le débruitage non-local means
 semble fonctionner presque correctement sur la version SANS gradient » —

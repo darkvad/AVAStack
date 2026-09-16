@@ -289,6 +289,20 @@ Pièges :
   popup au lancement. Ordre de restauration parfois significatif : ici,
   VeraLux est restauré AVANT le moteur pour que la dépendance
   (GX live n'a de sens qu'avec le bon moteur) soit satisfaite.
+- **GraXpert background-extraction sur un stack à bords d'écart de
+  recouvrement = « coussin » clair sur ces bords** : les marches de fond
+  partiellement exposées (zones sombres décalées où les frames ne couvrent
+  pas tout le champ, ex. 3 côtés sur M33) parasitent le modèle de fond IA
+  — bande claire périphérique + signal faible amputé, IDENTIQUE en live et
+  en traitement externe. Toujours recadrer à l'intersection GÉOMÉTRIQUE
+  RÉELLE des frames alignées AVANT tout retrait de gradient — méthode
+  exacte via les matrices d'alignement (équivalent live du `-framing=min`
+  de Siril, leçon astromatix : jamais d'heuristique de pixels) ;
+  implémenté v2.3.3 (`LiveStacker.note_alignement` + `mean()` recadrée,
+  toute la chaîne en hérite). NB : `-correction Division` PLAANTE dans
+  GraXpert 3.1.0rc2 → rester en Subtraction. (Constat Alain 16/09/2026 :
+  coussin disparu après recadrage manuel dans Siril ; recadrage auto
+  validé par Alain, v2.3.3.)
 
 ## Leçons générales transposables (projet pipeline siril)
 
