@@ -165,20 +165,22 @@ Cause identifiée (analyse du 15/09/2026, comportement intrinsèque de
 l'outil sur CE type d'image, pas un bug du code AVAStack) :
 - La commande par défaut (`_GX_OPTIONS`, `avastack/external/detection.py`)
   est `-cmd background-extraction -correction Subtraction -smoothing 0.5`.
-- **PRÉCISION (Alain, 15/09) : empilement calibré avec dark SANS flat.**
-  Le fond de la pile est donc un VRAI gradient : skyglow (pollution
-  lumineuse, à peu près uniforme) × vignettage optique (bords assombris,
-  potentiellement 20-50 %). Le retrait de gradient est ici a priori
-  JUSTIFIÉ — ce n'est pas une image déjà plate.
-- Mécanisme de l'artefact (le plus plausible, à confirmer par essais) :
-  avec `-smoothing 0.5`, le modèle de fond de GraXpert (interpolation de
-  points d'échantillonnage) **retombe vers les bords** (comportement
-  d'extrapolation : les points ne touchent pas le bord exact). En
-  **Subtraction**, il retire alors TROP PEU près des bords alors que le
-  ciel y est encore présent → le centre descend vers ~0, les bords gardent
-  un fond résiduel ; l'étirement auto (VeraLux) se renormalisant sur le
-  fond global, ce résiduel ressort en BANDE CLAIRE. Le vignettage accentue
-  la marche centre/bords après correction.
+- **PRÉCISIONS (Alain, 15/09) : empilement calibré avec dark SANS flat, et
+  instrument SANS (ou quasi sans) vignettage** — lunette grand champ type
+  astrographe corrigée jusqu'au format APS-C, capteur IMX585 bien plus
+  petit que l'APS-C (on n'utilise que le cœur du champ corrigé). Le fond
+  de la pile est donc ≈ skyglow seul, presque uniforme (éventuellement une
+  légère composante directionnelle : pollution lumineuse, lune). POINT
+  CLÉ : le retrait de gradient n'a ici QUASI RIEN à corriger.
+- Mécanisme(s) candidats (le comportement interne de GraXpert n'est pas
+  documenté ; à trancher par MESURE, cf. `_diag_gx_bords.py` à la racine) :
+  le modèle de fond, n'ayant pas de vrai gradient à ajuster, dépense sa
+  souplesse (`-smoothing 0.5`) à épouser les grandes échelles réelles —
+  enveloppe diffuse de la galaxie, résidus — et les soustrait : perte de
+  lueur faible (le « signal détruit ») et/ou marche centre/bords dont le
+  fond résiduel des bords ressort en BANDE CLAIRE après renormalisation
+  de l'étirement auto. Racine commune : LANCER background-extraction sur
+  une image quasi sans gradient avec une commande trop souple.
 - En **Subtraction**, on retire ce modèle : beaucoup au centre, presque
   rien en périphérie → le fond brut (skyglow + offset) y reste → BANDE
   CLAIRE. Le gradient de bord est CRÉÉ par la correction, pas révélé.
@@ -189,16 +191,23 @@ l'outil sur CE type d'image, pas un bug du code AVAStack) :
   contraste ET bruit remontent), en partie une vraie perte de lueur
   faible si le modèle a capté la galaxie.
 
-Essais à faire par Alain (commande ÉDITABLE dans le champ GraXpert, aucun
-code à changer) — dans l'ordre :
-1. `-correction Division` au lieu de `Subtraction` : le vignettage est un
-   défaut MULTIPLICATIF, la division est donc le mode théoriquement adapté
-   (et préserve mieux les niveaux faibles) ;
-2. `-smoothing 0.8` : modèle plus rigide, s'affaisse moins vers les bords ;
+Mesure AVANT tout essai de réglage (script `_diag_gx_bords.py` à la racine,
+testé sur image de synthèse, aucune dépendance nouvelle) :
+`python _diag_gx_bords.py empilement.fits empilement_GraXpert.fits`
+(fichiers LINÉAIRES : l'empilement enregistré via les boutons
+d'enregistrement linéaires + la sortie `…_GraXpert.fits` du traitement
+externe) → chiffre la marche bords/centre avant/après ; si la marche APRÈS
+dépasse nettement celle d'AVANT, le coussin est créé par la correction.
+Essais ensuite (commande ÉDITABLE dans le champ GraXpert, aucun code à
+changer) :
+1. `-correction Division` au lieu de `Subtraction` (plus doux pour les
+   niveaux faibles) ;
+2. `-smoothing 0.8` : modèle plus rigide ;
 3. les deux combinés ; comparer les mêmes zones (bords + bras externes).
-À noter : ici le VRAI correctif du gradient est la calibration FLAT (le
-vignettage se corrige à la source, avant empilement) ; GraXpert ne devrait
-être qu'un rattrapage, pas un substitut au flat.
+À noter : sans vignettage et sans gradient marqué, la version SANS GX est
+probablement déjà la bonne — le retrait de gradient n'a de sens ici que si
+un vrai gradient existe (lune, côté ville). Le flat reste utile (poussières,
+PRNU) mais n'est pas le correctif du problème observé.
 Constat Bonus (Alain) : « le débruitage non-local means semble fonctionner
 presque correctement sur la version SANS gradient » — EXPLICATION : Alain
 n'a PAS relancé l'application depuis l'abandon, son process tourne donc
