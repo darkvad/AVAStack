@@ -7,15 +7,26 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
 
 ## État actuel (base stable)
 
-- **Version : AVAStack v2.3.4** (`avastack/__init__.py`,
-  `AVASTACK_VERSION = "2.3.4"`), branche `master`. **v2.3.4 = travail du
-  16/09/2026 : tests automatiques 14/14 au vert, TESTÉ EN RÉEL par Alain et
-  COMMITÉ ET POUSSÉ** (débruitage : verdict « on garde comme ça », cf. bullet
-  ci-dessous + « Tâche en cours »).
-  Bases VALIDÉES par Alain : v2.3.3 (recadrage auto à
+- **Version : AVAStack v2.3.5** (`avastack/__init__.py`,
+  `AVASTACK_VERSION = "2.3.5"`), branche `master`. **v2.3.5 = travail du
+  16/09/2026 : JALON 10 « seeing live » (détecteur d'étoiles + FWHM/nombre
+  d'étoiles), tests 27/27 + les 14 tests existants au vert, TESTÉ EN RÉEL par
+  Alain et COMMITÉ ET POUSSÉ (commit `0adc69d`)** — retour d'Alain :
+  « c'est OK pour la fwhm et nombre d'étoiles ». Détail : sections
+  « Netteté live » et « Tâche en cours » ci-dessous.
+  Bases VALIDÉES par Alain : v2.3.4 (débruitage remis, verdict « on garde
+  comme ça »), v2.3.3 (recadrage auto à
   l'intersection) et v2.3.2 (sauvegarde linéaire sans frames), test réel du
   16/09/2026 (« C'est maintenant OK ») ; jalon 6 validé le 15/09/2026 ;
   jalon 5 validé le 14/09/2026.
+- **✅ JALON 10 « seeing live » : FAIT, VALIDÉ EN RÉEL par Alain le
+  16/09/2026, COMMITÉ ET POUSSÉ (v2.3.5, `0adc69d`)** — nouveau module
+  `avastack/processing/stars.py` (détecteur d'étoiles + PSF/FWHM,
+  numpy/OpenCV, aucune dépendance nouvelle) + étiquette « Seeing (FWHM) :
+  x.xx px · N étoiles » dans le cadre Empilement (aperçu ≤ 1600 px, toutes
+  les 3 s, thread d'acquisition). **Le détecteur et la PSF sont donc
+  disponibles pour la netteté : la suite est le JALON 11 (module
+  Richardson-Lucy, sans UI)**, cf. « Tâche en cours » en tête de fichier.
 - **v2.3.2 — CORRECTION (constat Alain, 16/09/2026) : « 💾 Enregistrer
   l'empilement (linéaire)… » ne faisait RIEN** (aucun fichier, aucun
   message, ni fin ni erreur) dès que plus aucune brute n'arrivait
@@ -178,6 +189,13 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
     dans un thread séparé ; l'empilement accumulé reste linéaire et intact.
   - Débruitage LIVE opt-in (v2.3.4) : ondelettes à trous / Non-local means
     AVANT l'étirement, dans le thread solveur (cadre VeraLux).
+  - Seeing LIVE (v2.3.5, jalon 10, validé en réel le 16/09/2026) : détecteur
+    d'étoiles `avastack/processing/stars.py` (fond/MAD, seuil 8σ,
+    composantes 8-connexes, rejets étoiles filées/bords/pixels chauds,
+    PROFIL RADIAL → FWHM) ; étiquette « Seeing (FWHM) : x.xx px · N
+    étoiles » dans le cadre Empilement, mesurée sur l'aperçu toutes les 3 s
+    par le thread d'acquisition. Observation seule : aucun réglage, aucune
+    écriture dans l'image empilée.
   - Sauvegarde « 💾 Enregistrer tel que vu (étiré)… » (jalon 5, v2.2.7) :
     vue courante rendue comme à l'écran en pleine résolution (chaîne
     complète : GraXpert live si activé → débruitage live si activé →
@@ -186,28 +204,53 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
     LINÉAIRES (voulu).
   - Installateur Windows Inno Setup (v2.1.0).
 
-## ⏭ TÂCHE EN COURS (reprise de session, 16/09/2026)
+## ⏭ TÂCHE EN COURS (reprise en SESSION VIERGE : JALON 11 = module Richardson-Lucy)
 
-**Dernière demande d'Alain (16/09/2026)** : « remettre les fonctions de
+**PROCHAINE ÉTAPE UNIQUE = JALON 11** (module Richardson-Lucy, headless, sans
+UI) : le prérequis n°1 (détecteur d'étoiles + PSF) est FAIT et VALIDÉ en réel
+(jalon 10). Rien d'autre n'est en attente, l'arbre de travail est propre.
+
+**Demande d'Alain (16/09/2026)** : « remettre les fonctions de
 denoise, graxpert dans traitement externe, et les 2 autres [ondelettes à
 trous, Non-local means] qui peuvent s'exécuter en live — pour ondelette et
 NLM dans live ET dans external bien sûr. » → **FAIT, TESTÉ EN RÉEL PAR ALAIN
 ET COMMITÉ (v2.3.4)** (détails : changelog de `avastack/__init__.py` +
 section « Débruitage » ci-dessous).
 
-**CE QUI EST À REPRENDRE À LA PROCHAINE SESSION = LA NETTETÉ LIVE
-(Richardson-Lucy)** — tout est déjà décidé et documenté dans la section
-« Netteté live (page à venir) » ci-dessous : méthode arrêtée avec Alain le
-16/09/2026 (**RL retenu ; Unsharp Mask et Wiener ÉCARTÉS**, mesure à
-l'appui), chiffres du banc d'essai, contraintes techniques DÉJÀ vérifiées
-(résolution de travail 1600 px, coût, PSF), et le plan d'attaque en 3 étapes
-qui commence par le **détecteur d'étoiles + affichage du seeing live**.
+**LA NETTETÉ LIVE EST DÉCOUPÉE EN 3 JALONS** (proposition du 16/09/2026,
+VALIDÉE par Alain) — méthode et chiffres déjà arrêtés dans la section
+« Netteté live » ci-dessous (**RL retenu ; Unsharp Mask et Wiener ÉCARTÉS**,
+mesure à l'appui), contraintes techniques DÉJÀ vérifiées (résolution de
+travail 1600 px, coût, PSF) :
+- **jalon 10 — détecteur d'étoiles + seeing live** : ✅ **FAIT, VALIDÉ EN
+  RÉEL par Alain le 16/09/2026** (« c'est OK pour la fwhm et nombre
+  d'étoiles »), **COMMITÉ ET POUSSÉ** (v2.3.5, `0adc69d`). Jalon
+  « observation seule » : il AFFICHE le seeing (FWHM médiane + nombre
+  d'étoiles) sans rien changer à l'image. Le module `stars.py` fournit
+  désormais la PSF à la netteté. Détail : section « Netteté live ».
+- **jalon 11 — module Richardson-Lucy (headless, sans UI)** : luminance
+  seule (comme SharpCap : pas d'artefact couleur) ou mono, PSF gaussienne
+  issue de la FWHM mesurée au jalon 10 (`stars.sigma_depuis_fwhm`),
+  NOMBRE D'ITÉRATIONS plafonné (3-5
+  it = le réglage utile), repli explicite si < 3 étoiles (« pas assez
+  d'étoiles détectées : netteté inactive » — jamais de no-op silencieux).
+  Validation par banc d'essai SYNTHÉTIQUE (déjà chiffré le 16/09 : 3-5 it →
+  FWHM 2,47-2,24 px, bruit ×1,14-1,22, 44-74 ms sur 1,6 Mpx) ;
+- **jalon 12 — câblage live** : case + curseurs dans le cadre VeraLux
+  (position dans la chaîne : APRÈS le débruitage, AVANT l'étirement), cache
+  du solveur, reproduction en pleine résolution dans « 💾 tel que vu »,
+  clés config, vue « traitée » = désactivé (même règle que GX/débruitage) ;
+- **puis réglage sur de VRAIES images** — leçon du « léopard » : jamais de
+  validation sur du synthétique, les réglages agressifs y paraissent
+  toujours meilleurs.
 
 État exact à la reprise :
-- **v2.3.4 : commitée et poussée le 16/09/2026** (bases validées : v2.3.3
-  et v2.3.2 ; cf. « État actuel » en tête de fichier). **tests : LES 14
-  fichiers `_test_*.py` PASSENT** (code de sortie 0), lancés UN PAR UN avec
-  le venv : `C:/Astro/astrolivestack/venv/Scripts/python.exe _test_xxx.py`
+- **v2.3.5 : commitée et poussée le 16/09/2026** (jalon 10 validé en réel ;
+  bases validées : v2.3.4, v2.3.3 et v2.3.2 ; cf. « État actuel » en tête de
+  fichier). **tests : LES 15 fichiers `_test_*.py` PASSENT** (code de sortie
+  0), lancés UN PAR UN avec le venv :
+  `C:/Astro/astrolivestack/venv/Scripts/python.exe _test_xxx.py`
+  (dont le nouveau `_test_stars_jalon10.py`, 27 vérifications).
 - **débruitage : PLUS RIEN EN ATTENTE.** Test réel d'Alain (16/09/2026) :
   « pas top » après retrait de gradient, « mieux mais pas parfait » sans —
   décision : **on garde le code tel quel, cases décochées** (aucun
@@ -459,7 +502,14 @@ pixel-classique. Pièges techniques consignés au passage : OpenCV 5
 (fastNlMeansDenoising 16 bits = NORM_L1 + h tableau en 2e positionnel)
 et GraXpert CLI (-strength pour le débruitage, -smoothing = gradient).
 
-## Netteté live (page à venir) : Richardson-Lucy retenu, UM et Wiener ÉCARTÉS (analyse 16/09/2026)
+## Netteté live : Richardson-Lucy retenu, UM et Wiener ÉCARTÉS (analyse 16/09/2026) — PLAN EN 3 JALONS
+
+**Plan retenu : jalon 10 = détecteur d'étoiles + seeing live (✅ FAIT,
+VALIDÉ EN RÉEL par Alain le 16/09/2026, v2.3.5) ; jalon 11 = module
+Richardson-Lucy
+headless ; jalon 12 = câblage live (UI + config + « tel que vu ») ; puis
+réglage sur de VRAIES images** (détail et état : « ⏭ TÂCHE EN COURS » en
+tête de fichier).
 
 Demande d'Alain : « j'avais mis Unsharp Mask et Wiener Deconvolution pour
 savoir si ça valait le coup de rajouter une page de netteté dans le live
@@ -568,8 +618,31 @@ l'écran ne montrait pas (même mise en garde chez SharpCap) ; en mode manuel
    (encore moins bon après retrait de gradient), code conservé tel quel,
    cases simplement décochées — **chantier clos**, cf. section
    « Débruitage » ;
-1. **détecteur d'étoiles + affichage du seeing SEUL** — validable en une
-   nuit réelle (comparable à ce qu'Alain connaît déjà) ;
+1. ~~**détecteur d'étoiles + affichage du seeing SEUL**~~ ✅ **CODÉ le
+   16/09/2026 (v2.3.5, jalon 10)** : module `avastack/processing/stars.py`
+   (numpy/OpenCV, aucune dépendance nouvelle) + étiquette « Seeing (FWHM) :
+   x.xx px · N étoiles » dans le cadre Empilement — mesure toutes les 3 s
+   sur l'APERÇU (≤ 1600 px, la résolution où travaillera la netteté), par
+   le thread d'acquisition, sans jamais bloquer l'UI ; « (peu fiable) »
+   signalé sous 3 étoiles, et JAMAIS de silence (la raison est affichée).
+   Test `_test_stars_jalon10.py` (27 vérifications, fenêtre réelle
+   incluse) : FWHM mesurée à 3 % de la vraie sur étoiles synthétiques (σ
+   1,2 et 1,8 px), 40/40 étoiles détectées, rejets vérifiés (étoile filée,
+   nébulosité σ 12 px, objet au bord, pixel chaud), ~15 ms par mesure sur
+   800×600 ; les 14 tests existants repassent au vert, et une session
+   SIMULÉE réelle a affiché « Seeing (FWHM) : 3.22 px · 132 étoiles ».
+   ✅ **VALIDÉ EN RÉEL par Alain le 16/09/2026** (« c'est OK pour la fwhm et
+   nombre d'étoiles »), commité et poussé (v2.3.5, `0adc69d`) — observation
+   seule : rien n'est modifié dans l'empilement, aucun réglage, aucune
+   persistance.
+   ⚠️ Pièges à ne pas redécouvrir (les 2 échecs du 1er essai) : (1) fenêtre
+   de mesure FIXE → FWHM surestimée de 170 % (le bruit du fond pèse alors
+   autant que les ailes de l'étoile) → fenêtre ADAPTÉE à la taille
+   apparente, fond retiré SANS clip, bruit annulé par la moyenne par
+   anneau ; (2) anneaux VIDES du profil radial (pixelisation : tous les
+   anneaux ne contiennent pas de pixel) → 45 % des étoiles perdues « sans
+   retombée » → interpoler vers le dernier anneau FINI au-dessus de la
+   mi-hauteur, jamais entre voisins stricts ;
 2. **module RL + page UI + « tel que vu » + config**, calqué sur la page
    débruitage (module séparé dans `avastack/processing/`, opt-in, DÉSACTIVÉ
    par défaut, plafond d'itérations) ;
