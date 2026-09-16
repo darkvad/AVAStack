@@ -130,11 +130,16 @@ Trois boutons d enregistrement aux rôles DISTINCTS — ne jamais fusionner :
   1600 px) : `DisplayProcessor.rendu_pleine_resolution()` — fonction PURE
   (aucun état partagé : pas de stats EMA, pas de solveur, jamais
   black/white/gamma). VeraLux y réutilise le DERNIER logD résolu (rendu
-  identique à l écran, sans re-résolution). GraXpert live ne s applique
-  qu en vue « empilement » (en vue « traitée », l image a déjà subi le
-  traitement externe — le relancer ferait un DEUXIÈME traitement ; synchro
-  `_sync_vl_graxpert_vue`). Les réglages STF sont MASQUÉS (pas grisés) en
-  mode VeraLux — ils n y ont aucun effet.
+  identique à l écran, sans re-résolution). Le retrait de gradient LIVE
+  (GraXpert live) n est disponible qu AVEC LE MOTEUR VERALUX — PAS en
+  mode STF : sa case vit dans le cadre VeraLux, MASQUÉ quand le moteur
+  STF est sélectionné (`_on_moteur`), et le thread solveur — seul chemin
+  du GX live — ne tourne qu en mode VeraLux (la restauration de config
+  respecte cette dépendance : VeraLux AVANT le moteur). GraXpert live ne
+  s applique qu en vue « empilement » (en vue « traitée », l image a déjà
+  subi le traitement externe — le relancer ferait un DEUXIÈME traitement ;
+  synchro `_sync_vl_graxpert_vue`). Les réglages STF sont MASQUÉS
+  (pas grisés) en mode VeraLux — ils n y ont aucun effet.
 
 ## Doc outils externes (CLI)
 
