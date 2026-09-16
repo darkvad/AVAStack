@@ -280,10 +280,10 @@ s'applique dans le fichier pleine résolution : écart écran/fichier à expliqu
 si Alain le constate.
 Les prérequis (jalon 10 : détecteur d'étoiles + PSF ; jalon 11 : module RL)
 sont FAITS. Rien d'autre n'est en attente.
-⚠️ État de l'arbre au moment d'écrire : les modifications du jalon 12
+⚠️ État de l'arbre : les modifications du jalon 12
 (`avastack/processing/display.py`, `avastack/ui/app.py`, `avastack/__init__.py`
 (v2.3.7), `_test_sharp_live_jalon12.py`, `_test_denoise_live_jalon9.py`,
-`AVANCEMENT.md`) sont ENREGISTRÉES mais **pas encore commitées**.
+`AVANCEMENT.md`) sont **COMMITÉES ET POUSSÉES** (`2051a38`).
 
 **Demande d'Alain (16/09/2026)** : « remettre les fonctions de
 denoise, graxpert dans traitement externe, et les 2 autres [ondelettes à
@@ -334,7 +334,7 @@ travail 1600 px, coût, PSF) :
 - **v2.3.7 : JALON 12 CODÉ ET TESTÉ le 16/09/2026** (câblage de la netteté
   live : `avastack/processing/display.py`, `avastack/ui/app.py`, version +
   changelog de `avastack/__init__.py`, `_test_sharp_live_jalon12.py`),
-  modifications ENREGISTRÉES mais **PAS ENCORE COMMITÉES** au moment d'écrire ;
+  **COMMITÉ ET POUSSÉ** (`2051a38`, en fin de jalon) ;
   jalon 11 (v2.3.6, module RL + `_test_rl_jalon11.py`) commité et poussé en
   fin de jalon ; bases VALIDÉES par Alain : v2.3.5 (jalon 10 validé en réel),
   v2.3.4, v2.3.3 et v2.3.2 (cf. « État actuel » en tête de fichier).
