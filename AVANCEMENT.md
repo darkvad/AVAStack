@@ -276,6 +276,26 @@ brute (écart max 0,181), `vl_error` vide. Ce test ne remplace PAS la
 validation sur VRAIES images (leçon du « léopard ») : elle reste la PROCHAINE
 ÉTAPE UNIQUE.
 
+**État des tests réels (16/09/2026)** — la chaîne live et la netteté sont
+fonctionnelles, mais **le ringing apparaît dès 1 itération quand le seeing est
+court (FWHM ~1,77 px, setup N.I.N.A. HFR ~1,7) et dans les DEUX modes
+(STF et VeraLux)**. Diagnostic : pas un bug du module RL (validé jalon 11 à
+< 1e-5 d'une référence numpy) — le module exécute **exactement** la
+Richardson-Lucy. Le ringing est **inherent à la déconvolution** quand la
+PSF estimée (1,77 px) est **plus étroite que l'échantillonnage réel de
+l'étoile** : la RL n'a alors « rien à mordre » et amplifie le bruit.
+
+→ **Pas de contournement code pour l'instant** : le produit comporte déjà
+le mécanisme adéquat — **décocher la case « Netteté live »** (ou régler
+**1 itération**, le gain visible est minime sous 1,77 px). Le plancher de PSF
+(`SIGMA_SHARP_MIN`) a été **testé dans le module mais REJETÉ** : il casse la
+validation jalon 11 (écart > 1e-5) car il modifie la FWHM sur les étoiles
+normales (σ 1,27 → 1,5). **À re-proposer comme contournement dans le câblage
+`display.py`** (FWHM mesuré ≥ seuil ou désactivation auto) si Alain veut
+forcer la netteté sous cette FWHM. Le point (1) de validation devient :
+« > 2,5 px : la netteté peut être cochée ; < 2,5 px : préférer la décocher
+ou régler 1 it. »
+
 **PROCHAINE ÉTAPE UNIQUE = RÉGLAGE SUR DE VRAIES IMAGES** (leçon du
 « léopard » : jamais de validation sur du synthétique — les réglages agressifs
 y paraissent toujours meilleurs). À vérifier en réel, dans l'ordre :
