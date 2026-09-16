@@ -1207,6 +1207,7 @@ class App:
                 aligned = cv2.warpAffine(frame, M, (frame.shape[1], frame.shape[0]),
                                          flags=cv2.INTER_LINEAR)
                 self.stacker.add(aligned)
+                self.stacker.note_alignement(M)   # intersection des zones couvertes
                 last_good = aligned
             else:
                 self.bad_frames += 1
@@ -1236,6 +1237,9 @@ class App:
                       file=getattr(self.camera, "last_file", ""),
                       pending=len(getattr(self.camera, "_pending", [])),
                       failed=getattr(self.camera, "failed", 0))
+            if self.stacker.cadre is not None:      # recadrage d'intersection
+                y0, x0, y1, x1 = self.stacker.cadre
+                st["crop_w"], st["crop_h"] = x1 - x0, y1 - y0
             try:
                 self.q.put_nowait((show, hist, st))
             except queue.Full:
@@ -1467,8 +1471,10 @@ class App:
         self.lbl_last.config(text="Dernier fichier : "
                              f"{os.path.basename(st.get('file', '')) or '—'}{extra}")
         self.lbl_status.config(
-            text=f"{st['cam']}  |  {st['fps']:.1f} fps  |  "
-                 f"{st['frames']} frames empilées (intégration cumulée)")
+            text=(f"{st['cam']}  |  {st['fps']:.1f} fps  |  "
+                  f"{st['frames']} frames empilées (intégration cumulée)"
+                  + (f"  |  recadrée {st['crop_w']}×{st['crop_h']}"
+                     if st.get("crop_w") else "")))
 
 
 def main():

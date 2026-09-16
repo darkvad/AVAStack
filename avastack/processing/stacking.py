@@ -23,6 +23,88 @@ import numpy as np
 # (surchargeable par les tests pour forcer le multi-bandes).
 _CHUNK_PX = 4_000_000
 
+# Marge (pixels) retirée de chaque côté du rectangle d'intersection : le
+# warpAffine linéaire « creuse » (undershoot) au ras des bords couverts,
+# et quelques pixels d'hale à l'intersection suffisent à perturber le
+# modèle de fond de GraXpert (leçon du pipeline astromatix : recadrage à
+# l'intersection RÉELLE, jamais au ras du bord).
+_MARGE_CROP = 3
+
+# Le recadrage n'a de sens qu'au-delà de ce nombre minimal de pixels par
+# côté (sinon on garde l'image entière plutôt qu'un timbre-poste).
+_CROP_MIN_COTE = 16
+
+
+def quad_alignement(M, shape):
+    """Coins (x, y) de l'image `shape` transformés par la matrice affine
+    `M` (2×3, celle de cv2.warpAffine) — le quadrilatère couvert par la
+    frame alignée, dans le repère de l'image cible (H, W). Accepte (H, W),
+    (H, W, C) ou (C, H, W) : seuls H et W comptent."""
+    shape = tuple(shape)
+    if len(shape) == 2:
+        h, w = shape
+    elif shape[0] <= 4:                       # (C, H, W)
+        h, w = shape[1], shape[2]
+    else:                                     # (H, W, C)
+        h, w = shape[0], shape[1]
+    pts = np.array([[0.0, 0.0], [w, 0.0], [w, h], [0.0, h]])
+    M = np.asarray(M, np.float64)
+    pts = pts @ M[:, :2].T + M[:, 2]
+    return pts
+
+
+def _aire_signee(poly):
+    x, y = poly[:, 0], poly[:, 1]
+    return 0.5 * float(np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y))
+
+
+def _clip_poly(suj, clip):
+    """Sutherland–Hodgman : clippe le polygone convexe `suj` par le
+    polygone convexe `clip` (numpy (n, 2)). Renvoie numpy (m, 2) ou None
+    si l'intersection est vide."""
+    res = [tuple(p) for p in np.asarray(suj, np.float64)]
+    cl = [tuple(p) for p in np.asarray(clip, np.float64)]
+    m = len(cl)
+    for i in range(m):
+        a, b = cl[i], cl[(i + 1) % m]
+        dx, dy = b[0] - a[0], b[1] - a[1]
+
+        def dedans(p, a=a, b=b, dx=dx, dy=dy):
+            return (dx * (p[1] - a[1]) - dy * (p[0] - a[0])) >= 0.0
+
+        nouveau = []
+        n = len(res)
+        for j in range(n):
+            c, d = res[j], res[(j + 1) % n]
+            sc, sd = dedans(c), dedans(d)
+            if sc:
+                nouveau.append(c)
+            if sc != sd:                    # le segment traverse la frontière
+                ex, ey = d[0] - c[0], d[1] - c[1]
+                t = (dx * (a[1] - c[1]) - dy * (a[0] - c[0])) / \
+                    (dx * ey - dy * ex)
+                t = min(1.0, max(0.0, t))
+                nouveau.append((c[0] + t * ex, c[1] + t * ey))
+        res = nouveau
+        if not res:
+            return None
+    return np.array(res, np.float64)
+
+
+def cadre_intersection(poly, marge=_MARGE_CROP, min_cote=_CROP_MIN_COTE):
+    """Rectangle (y0, x0, y1, x1) englobant STRICTEMENT l'intérieur du
+    polygone (arrondi vers l'intérieur + marge de sécurité), ou None si le
+    polygone est dégénéré ou trop petit pour valoir un recadrage."""
+    if poly is None or len(poly) < 3:
+        return None
+    y0 = int(np.ceil(poly[:, 1].min())) + marge
+    y1 = int(np.floor(poly[:, 1].max())) - marge
+    x0 = int(np.ceil(poly[:, 0].min())) + marge
+    x1 = int(np.floor(poly[:, 0].max())) - marge
+    if y1 - y0 < min_cote or x1 - x0 < min_cote:
+        return None
+    return (y0, x0, y1, x1)
+
 
 class LiveStacker:
     """Moyenne glissante + rejet kappa-sigma ou Winsorized (fenêtre glissante)."""
@@ -46,6 +128,29 @@ class LiveStacker:
         self._buf = None       # fenêtre glissante (mode winsorized)
         self._nbuf = 0
         self._rejeu = False    # rejeu du warmup déjà effectué ?
+        self._poly = None      # intersection géométrique des zones couvertes
+        self.cadre = None      # rectangle (y0, x0, y1, x1) du recadrage
+
+    def note_alignement(self, M):
+        """Met à jour l'intersection géométrique des zones couvertes avec la
+        matrice d'alignement `M` de la frame qui vient d'être empilée
+        (équivalent live du `-framing=min` de Siril : l'intersection RÉELLE
+        calculée par les transformations, pas une heuristique de pixels).
+        mean() renvoie ensuite l'accumulation RECADRÉE à cette intersection —
+        les bords d'écart de recouvrement (partiellement exposés) sortent de
+        tout ce qui en découle, y compris de l'image envoyée à GraXpert."""
+        if M is None:
+            return
+        q = quad_alignement(M, self.shape)
+        if _aire_signee(q) < 0:        # orientation normalisée
+            q = q[::-1].copy()
+        if self._poly is None:         # le cadre cible est la borne absolue
+            self._poly = quad_alignement(
+                np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]), self.shape)
+        p = _clip_poly(self._poly, q)
+        if p is not None:              # vide = M aberrante → on ignore
+            self._poly = p
+        self.cadre = cadre_intersection(self._poly)
 
     def set_rejet(self, method=None, window=None):
         """Change de méthode / de taille de fenêtre à chaud, sans perdre
@@ -77,7 +182,13 @@ class LiveStacker:
     def mean(self):
         if self.n == 0:
             return None
-        return (self.sum / np.maximum(self.wsum, 1e-9)).astype(np.float32)
+        img = (self.sum / np.maximum(self.wsum, 1e-9)).astype(np.float32)
+        if self.cadre is None:         # pas de recadrage (dégénéré/trop petit)
+            return img
+        y0, x0, y1, x1 = self.cadre
+        if img.ndim == 3 and img.shape[0] <= 4:    # (C, H, W)
+            return img[:, y0:y1, x0:x1]
+        return img[y0:y1, x0:x1, ...]              # (H, W) ou (H, W, C)
 
     # ------------------------------------------------------------- rejet
     def _poids(self, f):

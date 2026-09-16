@@ -168,85 +168,51 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
     boutons d'enregistrement restent LINÉAIRES (voulu).
   - Installateur Windows Inno Setup (v2.1.0).
 
-## ⚠️ Diagnostic en cours : retrait de gradient GraXpert — bords clairs + signal affaibli (signalement d'Alain, 15/09/2026)
+## ✅ RÉSOLU : retrait de gradient GraXpert — bords clairs + signal affaibli (signalement d'Alain, 15/09 → 16/09/2026)
 
-Copies d'écran reçues (M33) : (1) sans retrait de gradient = fond uniforme
-jusqu'aux bords ; (2) avec retrait (GraXpert live VeraLux ET traitement
-externe manuel — même commande) = **bande claire périphérique régulière sur
-tout le pourtour** (effet « coussin ») + rendu différent des bras spiraux.
-Alain : « me détruit du signal et me crée un gradient sur les bords ».
+Symptôme (M33) : avec retrait GraXpert (live VeraLux ET traitement externe —
+même commande `-correction Subtraction -smoothing 0.5`), **bande claire
+périphérique** (« coussin ») + spirales affaiblies ; sans retrait, fond
+uniforme. Investigations successives : hypothèses « modèle IA sur image
+quasi plate » (pile dark sans flat ; astrographe APS-C + IMX585 = pas de
+vignettage), mesure objective (`_diag_gx_bords.py`, racine), comparaison
+Siril — toutes PARTIELLEMENT fausses, la vraie cause était ailleurs.
 
-Cause identifiée (analyse du 15/09/2026, comportement intrinsèque de
-l'outil sur CE type d'image, pas un bug du code AVAStack) :
-- La commande par défaut (`_GX_OPTIONS`, `avastack/external/detection.py`)
-  est `-cmd background-extraction -correction Subtraction -smoothing 0.5`.
-- **PRÉCISIONS (Alain, 15/09) : empilement calibré avec dark SANS flat, et
-  instrument SANS (ou quasi sans) vignettage** — lunette grand champ type
-  astrographe corrigée jusqu'au format APS-C, capteur IMX585 bien plus
-  petit que l'APS-C (on n'utilise que le cœur du champ corrigé). Le fond
-  de la pile est donc ≈ skyglow seul, presque uniforme (éventuellement une
-  légère composante directionnelle : pollution lumineuse, lune). POINT
-  CLÉ : le retrait de gradient n'a ici QUASI RIEN à corriger.
-- Mécanisme(s) candidats (le comportement interne de GraXpert n'est pas
-  documenté ; à trancher par MESURE, cf. `_diag_gx_bords.py` à la racine) :
-  le modèle de fond, n'ayant pas de vrai gradient à ajuster, dépense sa
-  souplesse (`-smoothing 0.5`) à épouser les grandes échelles réelles —
-  enveloppe diffuse de la galaxie, résidus — et les soustrait : perte de
-  lueur faible (le « signal détruit ») et/ou marche centre/bords dont le
-  fond résiduel des bords ressort en BANDE CLAIRE après renormalisation
-  de l'étirement auto. Racine commune : LANCER background-extraction sur
-  une image quasi sans gradient avec une commande trop souple.
-- En **Subtraction**, on retire ce modèle : beaucoup au centre, presque
-  rien en périphérie → le fond brut (skyglow + offset) y reste → BANDE
-  CLAIRE. Le gradient de bord est CRÉÉ par la correction, pas révélé.
-- Le modèle lisse peut aussi absorber l'enveloppe diffuse de la galaxie :
-  la soustraction l'ampute = « signal détruit ». La différence de rendu
-  des spirales entre les 2 copies d'écran est en partie une ILLUSION de
-  renormalisation (l'étirement auto se recalibre sur le fond abaissé →
-  contraste ET bruit remontent), en partie une vraie perte de lueur
-  faible si le modèle a capté la galaxie.
+**CAUSE RÉELLE trouvée par Alain (16/09, test Siril très instructif)** :
+les **bords d'écart de recouvrement de l'empilement** (3 côtés sombres
+décalés où les frames ne couvrent pas tout le champ). Ces marches de fond
+parasitent le modèle de fond de GraXpert, qui crée le coussin EXACTEMENT
+sur ces bords-là. En recadrant l'image AVANT le retrait (Soustraction,
+smoothing 0.5 INCHANGÉS), GraXpert retrouve un comportement correct ; et
+Siril n'a jamais montré le coussin parce qu'il recadre déjà à l'intersection
+lors du stacking. À NOTER : le test `-correction Division` PLAANTE dans
+cette version de GraXpert → piste abandonnée, ne pas y revenir.
 
-Mesure AVANT tout essai de réglage (script `_diag_gx_bords.py` à la racine,
-testé sur image de synthèse, aucune dépendance nouvelle) :
-`python _diag_gx_bords.py empilement.fits empilement_GraXpert.fits`
-(fichiers LINÉAIRES : l'empilement enregistré via les boutons
-d'enregistrement linéaires + la sortie `…_GraXpert.fits` du traitement
-externe) → chiffre la marche bords/centre avant/après ; si la marche APRÈS
-dépasse nettement celle d'AVANT, le coussin est créé par la correction.
-Essais ensuite (commande ÉDITABLE dans le champ GraXpert, aucun code à
-changer) :
-1. `-correction Division` au lieu de `Subtraction` (plus doux pour les
-   niveaux faibles) ;
-2. `-smoothing 0.8` : modèle plus rigide ;
-3. les deux combinés ; comparer les mêmes zones (bords + bras externes).
-À noter : sans vignettage et sans gradient marqué, la version SANS GX est
-probablement déjà la bonne — le retrait de gradient n'a de sens ici que si
-un vrai gradient existe (lune, côté ville). Le flat reste utile (poussières,
-PRNU) mais n'est pas le correctif du problème observé.
-Constat Bonus (Alain) : « le débruitage non-local means semble fonctionner
-presque correctement sur la version SANS gradient » — EXPLICATION : Alain
-n'a PAS relancé l'application depuis l'abandon, son process tourne donc
-ENCORE avec le code des jalons 8/9 (NLM) chargé en mémoire, absent de
-l'arbre courant (conservé dans `stash@{0}`). Son observation reste une vraie
-donnée : le NLM semblait « presque correct » sur une image non renormalisée
-par le coussin GX — piste à garder pour une éventuelle reprise du
-débruitage, sans rouvrir l'expérience maintenant.
-- **Donnée croisée Siril (Alain, 15/09) : jamais de coussin avec Siril +
-  GraXpert (script python).** Or la CLI GraXpert n'exécute QUE la méthode
-  IA (doc officielle Steffenhir : « the AI method … can also be executed
-  from the command line », `-ai_version` défaut = dernière version) —
-  notre commande est donc déjà en IA, comme Siril. La différence est donc
-  dans (a) les paramètres d'appel (`-correction Subtraction -smoothing
-  0.5` vs autres valeurs) ou (b) l'AFFICHAGE : dans AVAStack la sortie GX
-  est étirée par STF/VeraLux (cible de fond 0.31) qui peut amplifier un
-  résidu de bord là où l'autostretch de Siril le rend différemment. → La
-  MESURE `_diag_gx_bords.py` sur les fichiers LINÉAIRES tranche : si les
-  bords sont PLATS en linéaire après GX, le coussin vient de l'affichage
-  AVAStack (à corriger chez nous), pas de GraXpert.
-- **Plan retenu par Alain (15/09)** : sauvegarder la pile linéaire et la
-  reprendre dans Siril pour le retrait de gradient. Workflow déjà supporté
-  (l'empilement accumulé reste linéaire et intact ; les boutons
-  d'enregistrement linéaires sont là pour ça).
+FIX v2.3.3 — recadrage AUTOMATIQUE à l'intersection GÉOMÉTRIQUE RÉELLE des
+frames alignées (équivalent live du `-framing=min` de Siril ; leçon du
+pipeline astromatix d'Alain : méthode exacte, jamais d'heuristique de
+pixels) : `LiveStacker.note_alignement(M)` maintient l'intersection
+incrémentalement (clipping de polygones Sutherland–Hodgman, marge 3 px —
+l'interpolation « creuse » au ras des bords ; garde-fous : M aberrante
+ignorée, jamais d'agrandissement, min 16 px par côté) et `mean()` renvoie
+l'accumulation recadrée → affichage, GX live, les 3 sauvegardes et le
+traitement externe héritent du recadrage d'un coup. Statut live :
+« recadrée H×W ». Test `_test_crop_intersection.py` (16 vérifications,
+headless, piège des axes de canaux traité) ; jalons 1-6 relancés : TOUS
+PASSENT (l'échec `_test_ui_jalon5.py` est préexistant — persistance jalon 6,
+voir bullet v2.3.2).
+
+Piège à retenir : **GX background-extraction sur un stack à bords d'écart
+de recouvrement = coussin clair sur ces bords** — recadrer à l'intersection
+AVANT tout retrait de gradient (proposition d'entrée CLAUDE.md en attente
+de validation d'Alain).
+
+Constat Bonus conservé (Alain, 15/09) : « le débruitage non-local means
+semble fonctionner presque correctement sur la version SANS gradient » —
+son process tournait alors encore avec le code NLM des jalons 8/9 chargé
+en mémoire (conservé dans `stash@{0}`) ; piste à garder pour une
+éventuelle reprise, sans rouvrir l'expérience maintenant.
+
 
 
 ## ❌ Expérience abandonnée : débruitage (jalons 7, 8, 9 — 15/09/2026)

@@ -14,9 +14,27 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.3.2"
+AVASTACK_VERSION = "2.3.3"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.3.3 : RECADRAGE AUTOMATIQUE À L'INTERSECTION (demande d'Alain,
+#          16/09/2026) — l'empilement live est recadré à l'intersection
+#          GÉOMÉTRIQUE RÉELLE des frames alignées (équivalent live du
+#          `-framing=min` de Siril) : les coins de chaque frame sont
+#          transformés par sa matrice d'alignement et l'intersection est
+#          maintenue incrémentalement (Sutherland–Hodgman), avec marge de
+#          sécurité de 3 px (l'interpolation « creuse » au ras des bords).
+#          CAUSE (constat Alain) : les bords d'écart de recouvrement de
+#          l'empilement — partiellement exposés, donc sombres — sont une
+#          marche de fond pour GraXpert → « coussin » clair + signal
+#          affaibli après background-extraction ; le recadrage manuel dans
+#          Siril supprimait le problème. Le recadrage est appliqué à la
+#          SOURCE (LiveStacker.mean()) : affichage, GX live, les 3
+#          sauvegardes et le traitement externe en héritent d'un coup.
+#          Statut live : « recadrée H×W ». Test _test_crop_intersection.py
+#          (16 vérifications, headless) ; piège des axes de canaux traité
+#          ((H,W), (H,W,3), (C,H,W)). Pas de case : automatique par défaut
+#          (la demande d'Alain), M aberrante ignorée (jamais d'agrandissement).
 # v2.3.2 : CORRECTION (constat Alain, 16/09/2026) — « 💾 Enregistrer
 #          l'empilement (linéaire)… » ne faisait RIEN (aucun fichier, aucun
 #          message, ni fin ni erreur) dès que plus aucune brute n'arrivait
