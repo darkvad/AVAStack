@@ -11,6 +11,16 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
   `AVASTACK_VERSION = "2.3.1"`), branche `master`. Jalon 5 validé par
   Alain (14/09/2026) ; **jalon 6 VALIDÉ PAR ALAIN le 15/09/2026** (test
   réel avec vraies brutes) et commité.
+- **❌ DÉBRUITAGE : EXPÉRIENCE ABANDONNÉE par Alain le 15/09/2026.** Les
+  jalons 7/8/9 (débruitage GraXpert IA, puis algorithmes locaux rapides
+  ondelettes/NLM en manuel puis en live) sont ANNULÉS et leur code a été
+  SORTI du dépôt : retour au dernier commit validé `18e1480` (v2.3.1).
+  Tout le travail est conservé dans le stash `stash@{0}` (« Jalons 7/8/9
+  DÉBRUITAGE LOCAL - ABANDONNÉ… » — récupérable par `git stash pop`).
+  Trace complète des essais, des causes d'échec et des leçons : section
+  « Expérience abandonnée » ci-dessous + Pièges de CLAUDE.md. Alain
+  cherche de son côté d'autres méthodes (pistes possibles si le sujet
+  revient : débruitage IA léger local épargnant les étoiles).
 - **✅ JALON 6 VALIDÉ PAR ALAIN le 15/09/2026** (test réel, vraies
   brutes) : rejet des satellites (Winsorized), persistance config.json,
   boutons « - »/« + » des curseurs — tout est bon. Aucune tâche en
@@ -142,6 +152,66 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
     avec le dernier logD résolu → gamma/saturation) ; les deux autres
     boutons d'enregistrement restent LINÉAIRES (voulu).
   - Installateur Windows Inno Setup (v2.1.0).
+
+## ❌ Expérience abandonnée : débruitage (jalons 7, 8, 9 — 15/09/2026)
+
+Demande d'Alain : le débruitage GraXpert IA (jalon 7) fonctionne mais
+« très long et peu efficace » → essai d'algorithmes classiques locaux
+rapides (numpy/OpenCV, aucune dépendance nouvelle) : jalon 8 en
+traitement externe manuel, jalon 9 en LIVE dans le thread solveur
+VeraLux. Après 3 itérations et 3 tests réels sur ses vraies images,
+Alain a ABANDONNÉ : « soit ça fait le léopard, soit je baisse la force
+et ça laisse du bruit autour des étoiles, ce qui le rend d'autant plus
+visible. Je vais chercher de mon côté quelles autres méthodes existent. »
+
+Ce qui avait été codé puis SORTI du dépôt (conservé dans `stash@{0}`) :
+- **jalon 7** : débruitage GraXpert CLI dans les outils externes manuels
+  (`-cmd denoising` + `-strength`, PAS `-smoothing`) — fonctionnel mais
+  plusieurs MINUTES par image (IA) ;
+- **jalon 8** : module `avastack/processing/denoise.py` — « ondelettes »
+  (starlet à trous B3-spline 5 niveaux, seuillage k-sigma par couche,
+  bruit estimé par MAD) et « nlm » (Non-local means OpenCV 16 bits,
+  h auto-adapté au bruit réel par MAD) ; choix radio « 2. Débruitage »
+  dans le traitement externe manuel, force commune ; étape locale
+  exécutée EN MÉMOIRE entre les étapes subprocess ;
+- **jalon 9** : le même débruitage offert EN LIVE (case dans le cadre
+  VeraLux) — chaîne du thread solveur : stack → GraXpert live →
+  débruitage local → étirement, résultat en cache par (empreinte image,
+  méthode, force), persistance, sauvegarde « tel que vu » cohérente.
+  Perf OK (~0,2-0,4 s à taille aperçu) — le problème n'était PAS la
+  vitesse mais la QUALITÉ VISUELLE.
+
+Le problème non résolu (constats réels d'Alain sur vraies images) :
+- le FOND « LÉOPARD » (moutonnement en plaques) apparaît dès que la
+  force est assez élevée pour être utile ;
+- en baissant la force, le léopard disparaît MAIS il reste du bruit fin
+  AUTOUR DES ÉTOILES — et le contraste rend le lissage du fond encore
+  plus visible. Le compromis est structurel pour un débruiteur « pixel
+  classique » appliqué à un empilement live peu intégré.
+
+Corrections tentées, insuffisantes (v2.6.1 puis v2.6.2) :
+1. seuillage DUR → GARROTE non-négative (transition continue, pas
+   d'îlots de coefficients survécus) ;
+2. ondelettes : ne seuiller QUE les niveaux fins (5 → 3 → 2 niveaux :
+   les couches grossières contiennent de la STRUCTURE, les seuiller
+   moutonne) ; k relevé jusqu'à 4σ ;
+3. NLM : h 3σ → 0.8σ, fenêtre de recherche 21 → 15 px, gabarit 7 → 5 px,
+   une passe forte → deux passes faibles (la fenêtre de recherche FIXE
+   l'échelle des plaques ; le lissage itératif homogénéise).
+Chaque correction a réduit le défaut sans l'éliminer.
+
+LEÇONS retenues (reprises dans CLAUDE.md → Pièges) :
+- sur du bruit PUR synthétique, les réglages agressifs paraissent
+  MEILLEURS (les grandes échelles y sont du bruit) — seul un test sur
+  image RÉELLE révèle le défaut ; valider réel dès la première passe ;
+- pas de réglage « gratuit » : force utile = artefacts, force sûre =
+  bruit résiduel autour des étoiles.
+Si le sujet est reposé un jour : viser des méthodes qui épargnent les
+étoiles par conception (IA légère locale, type Noise2* entraîné astro,
+ou débruitage au moment de l'étirement) plutôt que re-raffiner le
+pixel-classique. Pièges techniques consignés au passage : OpenCV 5
+(fastNlMeansDenoising 16 bits = NORM_L1 + h tableau en 2e positionnel)
+et GraXpert CLI (-strength pour le débruitage, -smoothing = gradient).
 
 ## Le code VeraLux : où il en est
 

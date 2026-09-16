@@ -152,6 +152,11 @@ Pièges :
 - `-correction` est **SENSIBLE À LA CASSE** (`Subtraction`/`Division`,
   S et D majuscules — une casse différente échoue silencieusement ou avec
   une erreur obscure).
+- Le DÉBRUITAGE (`-cmd denoising`) utilise `-strength` (0..1, défaut
+  0.5) — `-smoothing` ne concerne QUE le retrait de gradient
+  (`-cmd background-extraction`) : confondre les deux = échec
+  silencieux. (Doc officielle du dépôt Steffenhir/GraXpert, vérifiée
+  le 15/09/2026.)
 - `-output` attend un chemin **SANS extension** (GraXpert choisit lui-même
   l extension de sortie, souvent avec un suffixe `_GraXpert`).
 - Les modèles IA sont téléchargés au premier usage de chaque fonction
@@ -206,6 +211,30 @@ Pièges :
 
 ## Pièges (leçons du projet AVAStack)
 
+- **DÉBRUITAGE LOCAL CLASSIQUE SUR STACKS ASTRO = FOND « LÉOPARD »**
+  (expérience ABANDONNÉE par Alain le 15/09/2026, jalons 7/8/9 — code
+  retiré du dépôt, trace complète dans AVANCEMENT.md § « Expérience
+  abandonnée », code dans le stash). Constat réel : ondelettes à trous
+  (starlet) ET Non-local Means OpenCV créent tous deux un moutonnement
+  en plaques dès que la force est utile ; à force réduite, le bruit
+  résiduel AUTOUR DES ÉTOILES rend le fond lisse encore plus visible par
+  contraste. Causes identifiées : seuiller des niveaux GROSSIERS de la
+  transformée (structure, pas bruit), seuil DUR (îlots), h/fenêtre de
+  recherche NLM trop grands (la fenêtre FIXE l'échelle des plaques) — et
+  structurellement, le bruit élevé d'un empilement live peu intégré.
+  À retenir : (1) ne JAMAIS valider un débruiteur sur du bruit pur
+  synthétique (les réglages agressifs y paraissent meilleurs) — image
+  réelle obligatoire dès la première passe ; (2) si le sujet est reposé,
+  viser des méthodes épargnant les étoiles par conception (IA légère
+  locale type Noise2* entraîné astro) plutôt que re-raffiner le
+  pixel-classique.
+- **OpenCV 5 : `fastNlMeansDenoising` sur uint16 n'existe qu'avec
+  `normType=cv2.NORM_L1` et h en TABLEAU passé en 2e argument
+  POSITIONNEL** (l'ordre des paramètres diffère entre les deux
+  surcharges Python !) : `cv2.fastNlMeansDenoising(u16,
+  h=np.array([h], np.float32), templateWindowSize=…, searchWindowSize=…,
+  normType=cv2.NORM_L1)` — sinon « Unsupported depth! Only CV_8U » ou
+  échec silencieux. (Constat 15/09/2026, expérience débruitage.)
 - **OpenCV 5 refuse de débayeriser une image flottante** (`depth == CV_8U
   || CV_16U` exigé, sinon `cv2.error`). Toute image float32/float64
   (master dark/flat, empilement, sortie GraXpert/BXT) doit être traitée
