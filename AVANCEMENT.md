@@ -153,6 +153,46 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
     boutons d'enregistrement restent LINÉAIRES (voulu).
   - Installateur Windows Inno Setup (v2.1.0).
 
+## ⚠️ Diagnostic en cours : retrait de gradient GraXpert — bords clairs + signal affaibli (signalement d'Alain, 15/09/2026)
+
+Copies d'écran reçues (M33) : (1) sans retrait de gradient = fond uniforme
+jusqu'aux bords ; (2) avec retrait (GraXpert live VeraLux ET traitement
+externe manuel — même commande) = **bande claire périphérique régulière sur
+tout le pourtour** (effet « coussin ») + rendu différent des bras spiraux.
+Alain : « me détruit du signal et me crée un gradient sur les bords ».
+
+Cause identifiée (analyse du 15/09/2026, comportement intrinsèque de
+l'outil sur CE type d'image, pas un bug du code AVAStack) :
+- La commande par défaut (`_GX_OPTIONS`, `avastack/external/detection.py`)
+  est `-cmd background-extraction -correction Subtraction -smoothing 0.5`.
+- L'image fournie est la pile LINÉAIRE déjà calibrée (flat appliqué) :
+  son fond est DÉJÀ plat. GraXpert ajuste alors un modèle de fond à du
+  bruit ; le modèle ondule et retombe vers les bords (extrapolation, les
+  points d'échantillonnage ne touchent pas les bords).
+- En **Subtraction**, on retire ce modèle : beaucoup au centre, presque
+  rien en périphérie → le fond brut (skyglow + offset) y reste → BANDE
+  CLAIRE. Le gradient de bord est CRÉÉ par la correction, pas révélé.
+- Le modèle lisse peut aussi absorber l'enveloppe diffuse de la galaxie :
+  la soustraction l'ampute = « signal détruit ». La différence de rendu
+  des spirales entre les 2 copies d'écran est en partie une ILLUSION de
+  renormalisation (l'étirement auto se recalibre sur le fond abaissé →
+  contraste ET bruit remontent), en partie une vraie perte de lueur
+  faible si le modèle a capté la galaxie.
+
+Essais à faire par Alain (commande ÉDITABLE dans le champ GraXpert, aucun
+code à changer) — dans l'ordre :
+1. `-smoothing 0.8` (modèle rigide → quasi-plan → peu de soustraction) ;
+2. `-correction Division` au lieu de `Subtraction` (multiplicatif,
+   préserve mieux les niveaux faibles) ;
+3. les deux combinés ; comparer les mêmes zones (bords + bras externes).
+À noter : sur une pile déjà plate (flat correct), le retrait de gradient
+n'a presque rien d'utile à corriger — le rapport coût/artefact est défavor.
+Constat Bonus (Alain) : « le débruitage non-local means semble fonctionner
+presque correctement sur la version SANS gradient » — le code NLM est dans
+le stash `stash@{0}` (jalons 8/9), PAS dans l'arbre courant : clarifier
+comment ce test a été fait avant tout développement.
+
+
 ## ❌ Expérience abandonnée : débruitage (jalons 7, 8, 9 — 15/09/2026)
 
 Demande d'Alain : le débruitage GraXpert IA (jalon 7) fonctionne mais
