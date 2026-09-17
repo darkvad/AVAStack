@@ -28,9 +28,12 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
   message « re-stack N/M frames · réf. = brute #i (S étoiles, auto/bouton) »
   sur la ligne d'alignement. Toute substitution de référence passe par
   `_definir_reference` (mesure aussi le score de la référence). Test
-  `_test_restack_jalon16.py`. **⚠ PAS ENCORE VALIDÉ EN RÉEL** (prochaine
-  nuit d'Alain : vérifier sur de vraies frames, notamment qu'un re-stack
-  auto ne part pas en boucle sur un dossier mixé).
+  `_test_restack_jalon16.py`. **RETOUR RÉEL PARTIEL d'Alain le 17/09/2026 :
+  « on est ok, pas simple de voir le restack »** — le re-stack fonctionne
+  mais son effet est PEU VISIBLE (pas de signal évident de ce qui a changé à
+  l'écran) ; chantier d'UX noté à faire (voir « À FAIRE »). Reste à vérifier
+  qu'un re-stack auto ne part pas en boucle sur un dossier mixé (prochaine
+  nuit).
 - **Version précédente : AVAStack v2.4.0** (jalon 15, retour réel partiel
   d'Alain le 17/09/2026 : « ça a l'air OK sauf brutes très défocalisées »).
   **v2.4.0 = travail du
@@ -128,6 +131,20 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
   frames pour le choix de la référence, mais elles ENTRENT encore dans
   l'empilement — c'est ça qu'il faut filtrer. Décision d'UI à prendre
   (rejet automatique vs simple signal + case « ignorer les frames floues »).
+
+### ⚠ À FAIRE (retour réel d'Alain sur le jalon 16, 17/09/2026)
+
+- **RENDRE LE RE-STACK PLUS VISIBLE (UX)** — constat réel d'Alain :
+  « on est ok, **pas simple de voir le restack** ». Quand un re-stack
+  (auto ou bouton) se déclenche, rien ne saute aux yeux : le message sur la
+  ligne d'alignement (« re-stack N/M frames · réf. = brute #i (S étoiles,
+  auto/bouton) ») est discret et la modification de l'empilement peut être
+  progressive. Pistes à proposer à Alain (décision à prendre) : bannière
+  temporaire dans l'UI pendant/à la fin du re-stack, notification dans le
+  journal avec horodatage, changement de couleur du message, affichage du
+  gain (nb de frames récupérées / delta de score vs référence précédente),
+  voire un petit historique des re-stacks de la session. À coupler avec la
+  vérification anti-boucle sur dossier mixé.
 
 ## ✅ Jalons 13 + 14 — VALIDÉS EN RÉEL PAR ALAIN (17/09/2026) — session close
 
