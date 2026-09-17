@@ -14,9 +14,42 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.3.8"
+AVASTACK_VERSION = "2.3.9"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.3.9 : CORRECTION (constat réel d'Alain, 17/09/2026, jalon 14) — la
+#          chaîne de TRAITEMENT EXTERNE (« Traiter l'empilement courant »)
+#          plantait GraXpert dès la 1re étape sur un empilement RGB
+#          (Uranus-C Pro) : boîte modale cx_Freeze « cv2.error …
+#          !dsize.empty() in function 'cv::hal::resize' » (appelée par
+#          background_extraction.py). C'est EXACTEMENT le piège de la
+#          convention d'axes FITS diagnostiqué le 14/09/2026 : le lecteur
+#          FITS de GraXpert suppose les canaux sur NAXIS3 ((C, H, W) côté
+#          astropy) alors que save_image écrit (H, W, C) → NAXIS1=3. La
+#          parade (écrire canaux-en-tête + retransposer la sortie) existait
+#          DÉJÀ dans le chemin GraXpert LIVE (external/live.py, jalons 4/9)
+#          mais n'avait JAMAIS été répercutée sur la chaîne externe — le
+#          mono 2D n'étant pas concerné, le défaut est resté invisible
+#          jusqu'au passage en couleur. Leçon (proposée à Alain) : une
+#          parade documentée dans UN chemin doit être vérifiée dans les
+#          AUTRES chemins qui partagent le même outil externe.
+#          CORRECTIONS dans _run_external (avastack/ui/app.py) :
+#          (1) le FITS d'entrée de la chaîne est écrit canaux-en-tête
+#          (external.live._ecrire_entree) ; (2) après CHAQUE étape, la
+#          sortie est normalisée ((3, H, W) → (H, W, 3)) puis réécrite
+#          canaux-en-tête pour l'étape suivante — chaque outil reçoit la
+#          même convention, quelle que soit celle de son prédécesseur ;
+#          (3) l'étape de débruitage local lit normalisé et réécrit
+#          canaux-en-tête ; (4) la lecture finale est normalisée avant
+#          auto_unflip. En plus : le lanceur « survivable » (piège
+#          subprocess + boîte modale cx_Freeze, documenté le 14/09) remplace
+#          subprocess.run(capture_output) — sorties dans un fichier, kill de
+#          l'arborescence au délai : un outil qui plante ne bloque plus
+#          jamais la chaîne (message d'erreur + état error). Le mono 2D est
+#          inchangé (les helpers ne transposent que le RGB).
+#          Test _test_ext_rgb_jalon14.py (faux outils externes réels :
+#          convention vue par les outils, chaîne RGB complète avec
+#          débruitage local en mémoire, outil qui plante, mono inchangé).
 # v2.3.8 : JALON 13 — ALIGNEMENT ROBUSTE + ÉQUILIBRAGE DES CANAUX (constat
 #          réel d'Alain, 17/09/2026 : nouveau setup couleur Uranus-C Pro sur
 #          C8 + réducteur 0,63 → 1280 mm ; sur NGC7023/NGC4565 les étoiles

@@ -7,7 +7,6 @@ import os
 import time
 import queue
 import shutil
-import subprocess
 import tempfile
 import threading
 
@@ -1476,19 +1475,42 @@ class App:
                     return
             tmp = tempfile.mkdtemp(prefix="avastack_")
             cur = os.path.join(tmp, "stack.fits")
-            save_image(cur, stack)
+            # Jalon 14 : les outils externes (GraXpert, et BXT côté PixInsight)
+            # lisent le FITS avec les CANAUX sur NAXIS3 ((C, H, W) côté
+            # astropy). Le save_image standard ((H, W, C) → NAXIS1=3) est MAL
+            # LU et fait planter GraXpert dans cv2.resize
+            # (« !dsize.empty() », boîte modale cx_Freeze) — constat réel
+            # d'Alain le 17/09/2026 sur empilement RGB (Uranus-C Pro). Parade
+            # déjà éprouvée du chemin live (external/live.py) : écrire
+            # canaux-en-tête. Le mono 2D n'est pas concerné.
+            gx_live._ecrire_entree(cur, stack)
+            journal = os.path.join(tmp, "outils_sortie.txt")
 
             def run_step(name, cmd_tpl, src, outbase):
                 cmd = (cmd_tpl.replace("{input}", src)
                               .replace("{output}", outbase + ".fits")
                               .replace("{outbase}", outbase))
                 self._set_ext_msg(f"{name} en cours… ({n_frames} frames)", state="busy")
-                r = subprocess.run(cmd, shell=True, capture_output=True,
-                                   text=True, timeout=1800)
-                if r.returncode != 0:
-                    lines = (r.stderr or r.stdout or "").strip().splitlines()
-                    detail = lines[-1] if lines else "aucun message"
-                    self._set_ext_msg(f"Erreur {name} (code {r.returncode}) : {detail}",
+                # Jalon 14 : lanceur « survivable » (piège documenté du
+                # 14/09/2026) — sorties dans un FICHIER et kill de
+                # l'ARBORESCENCE au délai : un outil qui plante affiche sa
+                # boîte modale puis meurt, au lieu de bloquer
+                # subprocess.run(capture_output) pour toujours (le kill ne
+                # touchait que cmd.exe, pas GraXpert).
+                code, err = gx_live._run_bloquant_survivable(cmd, tmp, 1800)
+                if err:
+                    self._set_ext_msg(f"Erreur {name} : {err}", state="error")
+                    return None
+                if code != 0:
+                    lignes = []
+                    try:
+                        with open(journal, encoding="utf-8",
+                                  errors="replace") as f:
+                            lignes = [l for l in f.read().splitlines() if l.strip()]
+                    except OSError:
+                        pass
+                    detail = lignes[-1] if lignes else "aucun message"
+                    self._set_ext_msg(f"Erreur {name} (code {code}) : {detail}",
                                       state="error")
                     return None
                 res = find_output(src, outbase)      # extension/suffixe quelconques
@@ -1506,7 +1528,10 @@ class App:
                     # puis réécrite pour l'outil suivant de la chaîne.
                     self._set_ext_msg(f"{name} en cours… ({n_frames} frames)",
                                       state="busy")
-                    img_cur = load_image(cur)
+                    # Jalon 14 : lecture normalisée ((3,H,W) → (H,W,3)) pour
+                    # le débruiteur, réécriture canaux-en-tête pour l'outil
+                    # suivant (cf. convention FITS des outils externes).
+                    img_cur = gx_live._lire_sortie(cur)
                     img_dn, err = denoiser_local.denoiser(img_cur, mode_dn,
                                                           force_dn)
                     if err:
@@ -1514,14 +1539,20 @@ class App:
                                           state="error")
                         return
                     cur = outbase + ".fits"
-                    save_image(cur, img_dn)
+                    gx_live._ecrire_entree(cur, img_dn)
                     continue
                 res = run_step(name, cmd_tpl, cur, outbase)
                 if res is None:
                     return
-                cur = res
+                # Jalon 14 : normalise la sortie de l'outil ((3, H, W) →
+                # (H, W, 3) le cas échéant) puis la réécrit canaux-en-tête
+                # pour l'étape SUIVANTE — chaque outil reçoit la même
+                # convention, quelle que soit celle de son prédécesseur.
+                img_out = gx_live._lire_sortie(res)
+                cur = outbase + "_conv.fits"
+                gx_live._ecrire_entree(cur, img_out)
 
-            img = load_image(cur)
+            img = gx_live._lire_sortie(cur)
             img = auto_unflip(img, stack)     # corrige un éventuel miroir vertical
             if session != self._session:             # session relancée entre-temps
                 return

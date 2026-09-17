@@ -7,23 +7,46 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
 
 ## État actuel (base stable)
 
-- **Version : AVAStack v2.3.8** (`avastack/__init__.py`,
-  `AVASTACK_VERSION = "2.3.8"`), branche `master`. **v2.3.8 = travail du
-  17/09/2026 : JALON 13 « alignement robuste + équilibrage des canaux »** —
-  réponse au constat réel d'Alain sur son NOUVEAU setup (Uranus-C Pro
-  couleur sur C8 + réducteur 0,63 → 1280 mm, poses 120 s) : étoiles « en
-  plusieurs points puis en trainées », 26/75 frames non alignées, image très
-  verte. Diagnostic fait sur de VRAIES frames (`_diag_align_1200.py`,
-  dossier NGC 4565, 19 FITS) ; correction complète (ORB → étoiles → phase
-  honnête, référence auto, équilibrage des canaux), **VALIDÉE SUR LES
-  VRAIES FRAMES** (14/17 frames à ≤ 2,6 px de la dérive vraie ; empilement
-  final 77 étoiles · FWHM 2,71 px · ellipticité 0,05 · fonds R=V=B ; détail
-  : § « Tâche en cours » ci-dessous et changelog de `avastack/__init__.py`).
-  Tests : `_test_align_jalon13.py` (42 vérifications) + **les 17 fichiers
-  `_test_*.py` existants PASSENT** (18 au total, tous au vert, lancés UN
-  PAR UN avec le venv :
-  `C:/Astro/astrolivestack/venv/Scripts/python.exe _test_xxx.py`).
-  ⏳ **PAS ENCORE VALIDÉ EN SESSION LIVE PAR ALAIN** (prochaine étape).
+- **Version : AVAStack v2.3.9** (`avastack/__init__.py`,
+  `AVASTACK_VERSION = "2.3.9"`), branche `master`. **v2.3.9 = travail du
+  17/09/2026 : JALON 14 « traitement externe RGB »** — correction du crash
+  signalé par Alain sur « Traiter l'empilement courant » avec l'Uranus-C Pro
+  (boîte modale cx_Freeze « cv2.error … !dsize.empty() in 'cv::hal::resize' »
+  dans background_extraction.py de GraXpert). C'est le piège de convention
+  d'axes FITS du 14/09/2026, corrigé au jalon 4/9 dans le chemin LIVE mais
+  jamais répercuté dans la chaîne EXTERNE : le mono 2D n'était pas
+  concerné, le défaut est resté invisible jusqu'au passage en couleur.
+  Corrections : FITS d'entrée écrit canaux-en-tête (comme le chemin live),
+  normalisation ((3,H,W) → (H,W,3)) + réécriture canaux-en-tête entre
+  CHAQUE étape (le débruitage local inclus), lecture finale normalisée ;
+  plus le lanceur « survivable » (piège subprocess + boîte modale cx_Freeze,
+  documenté le 14/09) à la place de subprocess.run(capture_output) — un
+  outil qui plante est SIGNALÉ (état « error », détail stderr) au lieu de
+  bloquer la chaîne pour toujours. Test `_test_ext_rgb_jalon14.py`
+  (12 vérifications, faux outils réels) ; **les 19 fichiers `_test_*.py`
+  PASSENT** (18 précédents + nouveau). ⏳ **À REVALIDER PAR ALAIN** : relancer
+  « Traiter l'empilement courant » sur l'empilement RGB réel (GraXpert doit
+  enchaîner sans popup ; en cas de crash d'un outil, il y aura désormais un
+  message d'erreur dans la barre d'état du traitement externe au lieu d'une
+  boîte modale figée).
+- **VALIDATION JALON 13 PAR ALAIN (17/09/2026, session live réelle)** :
+  **empilement OK et couleur OK** (« Empilement et couleur ok ») ;
+  **netteté live : « ne fait pas de miracle » — laissée EN L'ÉTAT** (décision
+  d'Alain, comme prévu au jalon 12 : pas de réglage à chercher, elle
+  déconvolue sans artéfact mais ne crée pas de détail absent). Le jalon 13
+  est donc VALIDÉ EN RÉEL pour l'alignement et l'équilibrage des canaux.
+- **v2.3.8 = travail du 17/09/2026 : JALON 13 « alignement robuste +
+  équilibrage des canaux »** — réponse au constat réel d'Alain sur son
+  NOUVEAU setup (Uranus-C Pro couleur sur C8 + réducteur 0,63 → 1280 mm,
+  poses 120 s) : étoiles « en plusieurs points puis en trainées », 26/75
+  frames non alignées, image très verte. Diagnostic fait sur de VRAIES
+  frames (`_diag_align_1200.py`, dossier NGC 4565, 19 FITS) ; correction
+  complète (ORB → étoiles → phase honnête, référence auto, équilibrage des
+  canaux), **VALIDÉE SUR LES VRAIES FRAMES** (14/17 frames à ≤ 2,6 px de la
+  dérive vraie ; empilement final 77 étoiles · FWHM 2,71 px · ellipticité
+  0,05 · fonds R=V=B ; détail : § « Tâche en cours » ci-dessous et
+  changelog de `avastack/__init__.py`). Test `_test_align_jalon13.py` (42
+  vérifications). **VALIDÉ EN RÉEL PAR ALAIN le 17/09 (empilement + couleur)**.
 - **NOUVEAU SETUP D'ALAIN (17/09/2026)** : C8 défourché du CPC800, monté
   sur une monture équatoriale, avec réducteur 0,63 → **1280 mm** (FOCALLEN
   des FITS) ; caméra **Player One Uranus-C Pro** (couleur, IMX585,
@@ -34,20 +57,26 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
   riches en étoiles) fonctionnait sans problème — les défauts corrigés au
   jalon 13 sont spécifiques à longue focale / couleur / dossiers mixés.
 
-## ⏭ Tâche en cours : Jalon 13 — validation en session live par Alain
+## ✅ Jalon 13 — VALIDÉ EN RÉEL PAR ALAIN (17/09/2026) ; ⏭ reste jalon 14
 
-**Le code est fait, testé et validé sur les vraies frames HORS appli** (le
-script `_diag_align_1200.py` rejoue le pipeline exact de l'appli). Reste le
-test RÉEL dans l'appli par Alain : ouvrir le dossier NGC 4565 (ou NGC 7023)
-et vérifier que (1) les étoiles ne se dédoublent plus, (2) la ligne
-« Align. : Δ=(…) · θ(…) · méthode » (nouvelle, cadre Empilement) montre une
-méthode plausible (« étoiles » attendu) et une dérive régulière ~1-5 px par
-frame, (3) le fond n'est plus vert (case « Équilibrage des canaux (auto) »
-cochée par défaut ; curseur « Force de l'équilibrage » si trop fort/pas
-assez), (4) « Frames non alignées » reste petit. Si des refus apparaissent
-en rafale : mettre « Rafraîchir la référence (frames) » à 10, ou cliquer
-« Réf. = empilement » (corrigé au passage : il fournissait l'empilement
-RECADRÉ — bug silencieux qui décalait tout le repère à chaque clic).
+**Jalon 13 validé en session live réelle par Alain** : « Empilement et
+couleur ok » (étoiles nettes, fond équilibré) ; « netteté ne fait pas de
+miracle mais ça on le savait déjà » → **laissée EN L'ÉTAT** (décision : pas
+de réglage à chercher). Le chantier jalon 13 est clôturé.
+
+**⏭ Reste (jalon 14, v2.3.9)** : Alain doit relancer « Traiter l'empilement
+courant » sur l'empilement RGB réel — GraXpert doit enchaîner sans popup
+(le crash « !dsize.empty() » venait de la convention d'axes FITS non
+répercutée du chemin live vers la chaîne externe ; correction + lanceur
+« survivable » : un outil qui plante est désormais SIGNALÉ dans la barre
+d'état du traitement externe au lieu d'afficher une boîte modale figée).
+Deux leçons PROPOSÉES à Alain pour CLAUDE.md (EN ATTENTE d'accord) :
+(1) « une parade documentée dans UN chemin doit être vérifiée dans les
+AUTRES chemins qui partagent le même outil externe » ; (2) jalon 13 : « une
+transformation auto-consistante n'est pas une bonne transformation
+(contre-test par appariements mutuels, seuil renforcé pour l'ANCRE) » et
+« deux normalisations indépendantes rendent une SSD aveugle (partager les
+bornes de la référence) ».
 
 ### Ce qui a été fait (jalon 13, v2.3.8 — chiffres)
 
