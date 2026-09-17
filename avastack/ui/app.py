@@ -23,6 +23,7 @@ from ..cameras import (SOURCES, SimulatedCamera, OpenCVCamera, ZWOASICamera,
                        FolderCamera, QHYCamera, PlayerOneCamera,
                        TouptekCamera, SVBonyCamera)
 from ..processing import Calibrator, StarAligner, LiveStacker, DisplayProcessor
+from ..processing.framestore import ArchiveFrames
 from ..processing import denoise as denoiser_local
 from ..processing import stars as seeing_live
 from ..processing import sharpness as nettete_live
@@ -97,6 +98,10 @@ class App:
         self.show_stack = None       # dernier aperçu linéaire de l'empilement
         self.last_show = None       # image linéaire actuellement affichée
         self._session = 0           # anti-mélange entre sessions
+        # Jalon 15 : archive temporaire des frames calibrées (fondation du
+        # re-stack « à la Siril » : recalcul de l'empilement sur une meilleure
+        # référence). Dossier temp de session, vidé au démarrage/fermeture.
+        self.archive = ArchiveFrames()
 
         # --- état du zoom / pan (affichage)
         self.zoom = 1.0                # 1.0 = image ajustée à la fenêtre
@@ -1157,6 +1162,7 @@ class App:
         self.show_stack = None
         self.last_show = None
         self._session += 1                     # invalide tout traitement externe en vol
+        self.archive.vider()                   # jalon 15 : archive de session neuve
         self.proc_show = self.proc_full = None
         self.proc_new = False
         self.save_asseen_request = None       # sauvegarde « tel que vu » annulée
@@ -1192,6 +1198,7 @@ class App:
     def _on_close(self):
         self._sauver_config_app()
         self._stop()
+        self.archive.vider()      # jalon 15 : dossier temp des frames supprimé
         self.root.destroy()
 
     def _save(self):
@@ -1639,6 +1646,17 @@ class App:
                 continue
             frame = self.calib.apply(frame)
 
+            # Jalon 15 : chaque frame calibrée est archivée (dossier temp de
+            # session, garde-fous débit/taille) — matière du futur re-stack
+            # « à la Siril » (recalcul sur une meilleure référence). Aucun
+            # échec d'archivage n'interrompt l'empilement (erreur exposée).
+            if self.stacker is not None \
+                    and self.stacker.shape != frame.shape:
+                # changement de géométrie : les frames archivées (autre
+                # taille) ne sont plus ré-empilables → archive neuve
+                self.archive.vider()
+            self.archive.ajouter(frame)
+
             # (re)création de l'empilement / nouvelle référence
             if self.reset_request or self.stacker is None or self.stacker.shape != frame.shape:
                 self.reset_request = False
@@ -1738,7 +1756,8 @@ class App:
                       pending=len(getattr(self.camera, "_pending", [])),
                       failed=getattr(self.camera, "failed", 0),
                       align=self.align_info,
-                      seeing=self.seeing, seeing_msg=self.seeing_msg)
+                      seeing=self.seeing, seeing_msg=self.seeing_msg,
+                      archive=self.archive.n, archive_err=self.archive.erreur)
             if self.stacker.cadre is not None:      # recadrage d'intersection
                 y0, x0, y1, x1 = self.stacker.cadre
                 st["crop_w"], st["crop_h"] = x1 - x0, y1 - y0
@@ -1970,10 +1989,14 @@ class App:
             self.cv_hist.create_line(*pts, fill=col, width=1)
 
     def _update_status(self, st):
+        arc = f"Archive (re-stack) : {st.get('archive', 0)}"
+        if st.get("archive_err"):
+            arc += f" — {st['archive_err']}"
         self.lbl_stats.config(text=(f"Frames : {st['frames']}\n"
                                     f"Pixels rejetés (σ) : {st['rejets']}\n"
                                     f"Frames non alignées : {st['bad']}\n"
-                                    f"Align. : {st.get('align', '—')}"))
+                                    f"Align. : {st.get('align', '—')}\n"
+                                    f"{arc}"))
         # Jalon 10 : seeing live (mesuré par le thread d'acquisition) —
         # jamais de silence : soit la mesure, soit la RAISON de son absence.
         s = st.get("seeing") or {}

@@ -1,0 +1,91 @@
+# -*- coding: utf-8 -*-
+"""Archive TEMPORAIRE des frames calibrées — fondation du re-stack (jalon 15).
+
+Décision d'Alain (17/09/2026, constat « Siril empile des brutes que nous
+refusons ») : l'alignement devient « à la Siril » (canal vert, appariement
+par triangles) ET l'empilement devra pouvoir être recalculé sur une MEILLEURE
+frame de référence, comme Siril choisit la sienne. Pour cela il faut garder
+les frames — dans TOUS les modes : en « dossier surveillé » les brutes sont
+souvent lues à travers le réseau (NAS, mini-PC d'acquisition) et leur relecture
+n'est pas garantie ; une caméra SDK, elle, n'écrit aucun fichier.
+
+Chaque frame CALIBRÉE (donc directement re-empilable, sans rejouer darks/
+flats) est écrite en FITS float32 dans un dossier temporaire de session.
+Garde-fous (jamais de panne silencieuse) :
+- au plus une frame archivée par `intervalle_s` secondes : une source vidéo
+  (webcam OpenCV ~30 fps, ciel simulé) ne doit pas noyer le disque — aux
+  poses d'astronomie (≥ 30 s) la limite ne joue jamais ;
+- plafond de taille `max_octets` : au-delà, l'archivage S'ARRÊTE et le
+  message est exposé dans la ligne d'état ; l'empilement continue normalement ;
+- tout échec d'écriture arrête aussi l'archivage (`erreur`), sans jamais
+  interrompre le thread d'acquisition.
+Le dossier est supprimé à la fermeture de la session (`vider`).
+"""
+import os
+import shutil
+import tempfile
+import time
+
+from ..images import save_image
+
+# Une frame archivée au plus toutes les `ARCHIVE_INTERVALLE_S` secondes.
+ARCHIVE_INTERVALLE_S = 1.0
+# Plafond de taille du dossier d'archive (20 Go ≈ 3 h de frames RGB float32
+# 8 Mpx à 120 s de pose) : au-delà, archivage arrêté et signalé.
+ARCHIVE_MAX_OCTETS = 20 * 1024 ** 3
+PREFIXE_DOSSIER = "avastack_frames_"
+
+
+class ArchiveFrames:
+    """Dossier temporaire de session contenant les frames calibrées (FITS
+    float32, ordre d'arrivée). `n` = nombre de frames archivées ; `erreur`
+    non vide = archivage arrêté (message à exposer, jamais une exception)."""
+
+    def __init__(self, max_octets=ARCHIVE_MAX_OCTETS,
+                 intervalle_s=ARCHIVE_INTERVALLE_S):
+        self.max_octets = max(1, int(max_octets))
+        self.intervalle_s = max(0.0, float(intervalle_s))
+        self.dossier = None      # créé à la première frame archivée
+        self.chemins = []        # chemins écrits, dans l'ordre d'arrivée
+        self.n = 0
+        self.erreur = ""         # non vide = archivage arrêté
+        self._t0 = None          # monotonic du dernier archivage (débit)
+        self._taille = 0         # somme des tailles de fichiers (octets)
+
+    def ajouter(self, frame):
+        """Archive une frame calibrée → chemin écrit, ou None (limite de
+        débit, erreur d'écriture, ou plafond atteint). `frame` n'est PAS
+        modifiée ; aucune exception n'est propagée (l'empilement continue)."""
+        if self.erreur:
+            return None
+        if (self._t0 is not None
+                and time.monotonic() - self._t0 < self.intervalle_s):
+            return None
+        try:
+            if self.dossier is None:
+                self.dossier = tempfile.mkdtemp(prefix=PREFIXE_DOSSIER)
+            chemin = os.path.join(self.dossier, f"frame_{self.n:06d}.fits")
+            save_image(chemin, frame)
+            self._t0 = time.monotonic()
+            self._taille += os.path.getsize(chemin)
+            self.chemins.append(chemin)
+            self.n += 1
+            if self._taille > self.max_octets:
+                self.erreur = (f"plafond atteint "
+                               f"({self._taille / (1 << 30):.1f} Go) : "
+                               "archivage arrêté, l'empilement continue")
+            return chemin
+        except Exception as exc:
+            self.erreur = f"écriture impossible ({exc}) : archivage arrêté"
+            return None
+
+    def vider(self):
+        """Supprime le dossier temporaire et réinitialise l'archive."""
+        if self.dossier:
+            shutil.rmtree(self.dossier, ignore_errors=True)
+        self.dossier = None
+        self.chemins = []
+        self.n = 0
+        self.erreur = ""
+        self._t0 = None
+        self._taille = 0

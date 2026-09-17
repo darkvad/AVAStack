@@ -14,9 +14,40 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.3.9"
+AVASTACK_VERSION = "2.4.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.4.0 : JALON 15 — ALIGNEMENT « À LA SIRIL » (canal vert + triangles) et
+#          ARCHIVE des frames calibrées. Constat réel d'Alain (17/09/2026) :
+#          des brutes que SIRIL empile sans problème sortent de AVAStack avec
+#          étoiles dédoublées et refus en masse. Causes traitées : Siril
+#          aligne sur le canal VERT de la brute CFA (pleine résolution, zéro
+#          interpolation) et apparie les étoiles de façon GLOBALE (similitude
+#          de triangles, esprit astrometry.net), alors que nous alignions sur
+#          la MOYENNE RGB après débayerisation et exigions une continuité de
+#          translation (±40/100 px) — un dithering de NINA, une reprise de
+#          session ou une autre nuit (dossiers mixés) faisait tout refuser.
+#          ALIGNEMENT (alignment.py) : (1) TOUS les chemins travaillent sur
+#          le canal VERT (couleur) ou l'image telle quelle (mono) —
+#          canal_alignement() ; (2) NOUVEAU chemin TRIANGLES entre ORB et le
+#          vote de centroïdes : triangles canoniques des plus brillantes
+#          (apex + base ordonnée par distance à l'apex → deux rapports de
+#          côtés invariants), paires candidates par tolérance sur les
+#          rapports, transformation exacte candidate scorée sur la liste
+#          complète des étoiles, consolidation RANSAC + LMEDS + contre-test
+#          d'appariements mutuels — SANS fenêtre de continuité ; les
+#          garde-fous échelle/angle restent, la phase reste le repli des
+#          champs sans étoiles. ARCHIVE (nouveau module
+#          processing/framestore.py, décision d'Alain : le futur re-stack
+#          relira TOUJOURS ce dossier local, jamais le NAS) : chaque frame
+#          calibrée est écrite en FITS float32 dans un dossier temporaire de
+#          session, dans TOUS les modes ; garde-fous : 1 frame/s max
+#          (webcams), plafond 20 Go, échec d'écriture → archivage arrêté et
+#          message exposé (jamais de panne silencieuse) ; dossier supprimé à
+#          la fermeture de session. UI : ligne « Archive (re-stack) : N ».
+#          Le re-stack LUI-MÊME (meilleure référence + recalcul complet)
+#          reste À FAIRE (étape 3) — tout est en place. Test
+#          _test_align_jalon15.py.
 # v2.3.9 : CORRECTION (constat réel d'Alain, 17/09/2026, jalon 14) — la
 #          chaîne de TRAITEMENT EXTERNE (« Traiter l'empilement courant »)
 #          plantait GraXpert dès la 1re étape sur un empilement RGB

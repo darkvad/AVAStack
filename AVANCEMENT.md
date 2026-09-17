@@ -7,8 +7,40 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
 
 ## État actuel (base stable)
 
-- **Version : AVAStack v2.3.9** (`avastack/__init__.py`,
-  `AVASTACK_VERSION = "2.3.9"`), branche `master`. **v2.3.9 = travail du
+- **Version : AVAStack v2.4.0** (`avastack/__init__.py`,
+  `AVASTACK_VERSION = "2.4.0"`), branche `master`. **v2.4.0 = travail du
+  17/09/2026 : JALON 15 « alignement à la Siril » + ARCHIVE des frames** —
+  réponse au NOUVEAU constat d'Alain : des brutes que Siril empile sans
+  problème sortent de AVAStack avec **étoiles dédoublées et beaucoup de
+  refus**. Analyse (accord d'Alain : « on fait les choses bien comme dans
+  Siril ») : Siril aligne sur le CANAL VERT de la brute CFA et apparie les
+  étoiles de façon GLOBALE (triangles), alors que nous alignions sur la
+  moyenne RGB et exigions une continuité de translation (±40/100 px) — un
+  dithering NINA, une reprise de session ou une autre nuit faisait tout
+  refuser. Livré : (1) **canal vert** pour TOUT l'alignement couleur
+  (`alignment.canal_alignement`, mono tel quel) ; (2) **chemin TRIANGLES**
+  dans la cascade (ORB → triangles → centroïdes → phase) : triangles
+  canoniques des plus brillantes (apex + base ordonnée par distance à
+  l'apex → 2 rapports de côtés invariants), paires candidates par tolérance
+  (TRI_TOL 0,02), transformée candidate scorée sur la liste complète,
+  consolidation RANSAC + LMEDS + contre-test mutuel, SANS fenêtre de
+  continuité ; garde-fous échelle/angle conservés ; (3) **ARCHIVE des
+  frames calibrées** (nouveau module `avastack/processing/framestore.py`,
+  décision d'Alain : le futur re-stack relira TOUJOURS ce dossier local
+  temp de session, jamais le NAS) — FITS float32, garde-fous 1 frame/s,
+  plafond 20 Go, échec → archivage arrêté ET signalé (ligne « Archive
+  (re-stack) : N »), dossier vidé à chaque session/fermeture. PIÈGE
+  corrigé pendant le développement : la canonisation des triangles devait
+  convertir les POSITIONS (0..2) du triangle en INDICES GLOBAUX d'étoiles
+  (ça ne coïncidait que pour le triangle (0,1,2) → 0 appariement correct).
+  Test `_test_align_jalon15.py` (24 vérifications) ; **les 20 fichiers
+  `_test_*.py` PASSENT**. **⚠ PAS ENCORE VALIDÉ EN RÉEL** : prochaine
+  session = Alain relance l'appli sur le dossier d'images qui échoue
+  (étoiles dédoublées) ; si OK, on passe à l'ÉTAPE 3 (re-stack : meilleure
+  référence au fil de l'eau + recalcul complet depuis l'archive — tout est
+  en place).
+- **Version précédente : AVAStack v2.3.9** (jalon 14, validé en réel le
+  17/09/2026). **v2.3.9 = travail du
   17/09/2026 : JALON 14 « traitement externe RGB »** — correction du crash
   signalé par Alain sur « Traiter l'empilement courant » avec l'Uranus-C Pro
   (boîte modale cx_Freeze « cv2.error … !dsize.empty() in 'cv::hal::resize' »
