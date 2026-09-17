@@ -14,9 +14,70 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.3.7"
+AVASTACK_VERSION = "2.3.8"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.3.8 : JALON 13 — ALIGNEMENT ROBUSTE + ÉQUILIBRAGE DES CANAUX (constat
+#          réel d'Alain, 17/09/2026 : nouveau setup couleur Uranus-C Pro sur
+#          C8 + réducteur 0,63 → 1280 mm ; sur NGC7023/NGC4565 les étoiles
+#          sortent « en plusieurs points puis en trainées », 26/75 frames non
+#          alignées, image très verte).
+#          DIAGNOSTIC sur de vraies frames (_diag_align_1200.py, 19 FITS) :
+#          (1) l'ORB ne s'apparie PLUS à cette focale — 0-6 appariements sur
+#          1000 points-clés, MÊME entre frames d'une même nuit (il marchait
+#          à 243 mm sur des champs riches en étoiles) ; (2) le repli
+#          corrélation de phase renvoyait (0,0) PENDANT que le champ dérive
+#          réellement (~90 px/h, mesuré par les centroïdes : (−15,+10) →
+#          (−48,+77) px) et se déclarait TOUJOURS « confiant » → toutes les
+#          frames empilées à l'identité = étoiles dédoublées puis trainées ;
+#          (3) les RA/DEC d'en-tête sont des coordonnées MONTURE (stables)
+#          et ne voient pas la dérive de l'image (flexure/erreur périodique).
+#          ALIGNEMENT (alignment.py) en CASCADE : ORB (inchangé, excellent à
+#          petite focale) → NOUVEAU repli par CENTROÏDES D'ÉTOILES
+#          (stars.detecter_positions, calibré sur un balayage de paramètres
+#          fait sur les 17 frames réelles : 60 étoiles les PLUS BRILLANTES
+#          seulement — les étoiles saturées ont de mauvais centroïdes et
+#          les objets faibles dispersent le vote ; vote de translation BRUT
+#          sans lissage, recentré sur la moyenne des paires du bin vainqueur ;
+#          sélection ±3 px ; RANSAC affine 2,5 px ; CONTRE-TEST
+#          d'appariements mutuels ≤ 2,5 px, seuil 6 avec prédiction et 8
+#          sans — un pic parasite auto-consistant du vote peut réunir 6
+#          coïncidences, rarement 8 ; continuité : fenêtre de vote ±40 px
+#          avec prédiction, ±100 px au 1er alignement) → corrélation de
+#          phase DEVENUE HONNÊTE (fenêtre de Hann + retrait de la médiane ;
+#          acceptée SEULEMENT si la SSD s'améliore ≥ 10 % et |Δ| ≤ 40 px,
+#          sinon frame REFUSÉE au lieu d'empilée à l'identité). Garde-fous
+#          communs : échelle [0.9, 1.1], |angle| ≤ 10°. Normalisation 8 bits
+#          PARTAGÉE référence/frame (bornes de la référence) : une
+#          normalisation indépendante rendait les étirements incohérents dès
+#          qu'une frame a des bords non couverts (SSD insensible à la bonne
+#          translation). BILAN SUR LES VRAIES FRAMES : 14 frames sur 17
+#          retrouvées à ≤ 2,6 px de la dérive vraie (la plupart ≤ 0,5 px,
+#          dérive mesurée (−9,+7) → (−48,+77) px en 35 min), 2 refus,
+#          empilement final 77 étoiles · FWHM 2,71 px · ellipticité 0,05
+#          (étoiles nettes et rondes) ; le lissage gaussien du vote était
+#          NUISIBLE (3 réussites contre 14).
+#          RÉFÉRENCE (app.py) : rafraîchissement AUTOMATIQUE toutes les N
+#          frames (défaut 20, combobox « Rafraîchir la référence (frames) »,
+#          « jamais » = ancien comportement) OU dès ≥ 50 % de frames
+#          refusées (≥ 3) — la référence devient l'empilement courant SANS
+#          recadrage (nouveau `mean(recadre=False)`) pour rester dans le
+#          MÊME repère ; le bouton « Réf. = empilement » avait le BUG
+#          INVERSE (il fournissait l'empilement RECADRÉ : chaque clic
+#          décalait silencieusement l'empilement de (y0, x0)). Ligne d'état
+#          « Align. : Δ=(…) · θ(…) · méthode » ajoutée aux stats d'empilement.
+#          COULEUR (stacking.py) : « Équilibrage des canaux (auto) » (case +
+#          force, config `wb_auto`/`wb_force`) — gains LINÉAIRES par canal
+#          égalisant le FOND (20e percentile de la zone recadrée ; la
+#          couleur des objets est préservée), cible = moyenne géométrique
+#          des trois fonds, gains bornés [0.25, 4] ; appliqué à la SORTIE de
+#          l'empilement (affichage, histogramme, sauvegardes, traitements),
+#          mis en cache par (n, force, cadre). Case cochée par défaut.
+#          stars.py : `detecter_positions()` (centroïdes pondérés par
+#          l'intensité, tri par éclat décroissant) — même 1re étape de
+#          détection que `mesurer_seeing`, sans la mesure de profil.
+#          Test _test_align_jalon13.py (42 vérifications) ; les 17 tests
+#          existants repassent.
 # v2.3.7 : JALON 12 — NETTETÉ LIVE CÂBLÉE (Richardson-Lucy en direct).
 #          Nouveau cadre « Netteté live (Richardson-Lucy) », INDÉPENDANT du
 #          moteur d'étirement (demande d'Alain) : la netteté s'applique AVANT

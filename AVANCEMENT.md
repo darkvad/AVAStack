@@ -7,6 +7,103 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
 
 ## État actuel (base stable)
 
+- **Version : AVAStack v2.3.8** (`avastack/__init__.py`,
+  `AVASTACK_VERSION = "2.3.8"`), branche `master`. **v2.3.8 = travail du
+  17/09/2026 : JALON 13 « alignement robuste + équilibrage des canaux »** —
+  réponse au constat réel d'Alain sur son NOUVEAU setup (Uranus-C Pro
+  couleur sur C8 + réducteur 0,63 → 1280 mm, poses 120 s) : étoiles « en
+  plusieurs points puis en trainées », 26/75 frames non alignées, image très
+  verte. Diagnostic fait sur de VRAIES frames (`_diag_align_1200.py`,
+  dossier NGC 4565, 19 FITS) ; correction complète (ORB → étoiles → phase
+  honnête, référence auto, équilibrage des canaux), **VALIDÉE SUR LES
+  VRAIES FRAMES** (14/17 frames à ≤ 2,6 px de la dérive vraie ; empilement
+  final 77 étoiles · FWHM 2,71 px · ellipticité 0,05 · fonds R=V=B ; détail
+  : § « Tâche en cours » ci-dessous et changelog de `avastack/__init__.py`).
+  Tests : `_test_align_jalon13.py` (42 vérifications) + **les 17 fichiers
+  `_test_*.py` existants PASSENT** (18 au total, tous au vert, lancés UN
+  PAR UN avec le venv :
+  `C:/Astro/astrolivestack/venv/Scripts/python.exe _test_xxx.py`).
+  ⏳ **PAS ENCORE VALIDÉ EN SESSION LIVE PAR ALAIN** (prochaine étape).
+- **NOUVEAU SETUP D'ALAIN (17/09/2026)** : C8 défourché du CPC800, monté
+  sur une monture équatoriale, avec réducteur 0,63 → **1280 mm** (FOCALLEN
+  des FITS) ; caméra **Player One Uranus-C Pro** (couleur, IMX585,
+  3856×2180, BAYERPAT RGGB, GAIN 210). Acquisition via NINA (dossiers
+  `TargetSchedulerSequence/<cible>/<expo>/LIGHT` sur le miniPC — ATTENTION :
+  un dossier peut MÉLANGER plusieurs nuits, la 1re frame (ordre mtime) n'est
+  pas forcément de la nuit courante). L'ancien setup mono à 243 mm (champs
+  riches en étoiles) fonctionnait sans problème — les défauts corrigés au
+  jalon 13 sont spécifiques à longue focale / couleur / dossiers mixés.
+
+## ⏭ Tâche en cours : Jalon 13 — validation en session live par Alain
+
+**Le code est fait, testé et validé sur les vraies frames HORS appli** (le
+script `_diag_align_1200.py` rejoue le pipeline exact de l'appli). Reste le
+test RÉEL dans l'appli par Alain : ouvrir le dossier NGC 4565 (ou NGC 7023)
+et vérifier que (1) les étoiles ne se dédoublent plus, (2) la ligne
+« Align. : Δ=(…) · θ(…) · méthode » (nouvelle, cadre Empilement) montre une
+méthode plausible (« étoiles » attendu) et une dérive régulière ~1-5 px par
+frame, (3) le fond n'est plus vert (case « Équilibrage des canaux (auto) »
+cochée par défaut ; curseur « Force de l'équilibrage » si trop fort/pas
+assez), (4) « Frames non alignées » reste petit. Si des refus apparaissent
+en rafale : mettre « Rafraîchir la référence (frames) » à 10, ou cliquer
+« Réf. = empilement » (corrigé au passage : il fournissait l'empilement
+RECADRÉ — bug silencieux qui décalait tout le repère à chaque clic).
+
+### Ce qui a été fait (jalon 13, v2.3.8 — chiffres)
+
+- **DIAGNOSTIC** (`_diag_align_1200.py`, consigné au changelog v2.3.8) :
+  (1) ORB inutilisable à 1280 mm (0-6 appariements sur 1000 points-clés,
+  MÊME entre frames d'une même nuit) ; (2) l'ancien repli corrélation de
+  phase renvoyait (0,0) pendant que le champ dérive réellement (~90 px/h,
+  mesuré par les centroïdes) et se déclarait TOUJOURS « confiant » →
+  frames empilées à l'identité = étoiles dédoublées puis trainées ; (3) les
+  RA/DEC d'en-tête sont des coordonnées MONTURE (stables) et ne voient pas
+  la dérive de l'image (flexure/erreur périodique) ; (4) le vert = capteur
+  couleur sans balance des blancs (2 sites verts sur 4 dans le Bayer).
+- **CORRECTIONS** (détail complet au changelog v2.3.8) : cascade
+  ORB → centroïdes d'étoiles (60 plus brillantes ; vote de translation BRUT
+  recentré sur la moyenne des paires du bin vainqueur ; sélection ±3 px ;
+  RANSAC affine 2,5 px ; contre-test d'appariements mutuels ≤ 2,5 px,
+  seuil 6 avec prédiction / 8 sans — l'ancre exige plus de preuves ;
+  continuité ±40 px avec prédiction, ±100 px au 1er alignement) →
+  corrélation de phase HONNÊTE (Hann + retrait de la médiane, acceptée
+  seulement si la SSD s'améliore ≥ 10 % et |Δ| ≤ 40 px, sinon REFUS —
+  l'ancien code empilait à l'identité en se déclarant confiant).
+  Normalisation 8 bits PARTAGÉE (bornes de la référence) : deux
+  normalisations indépendantes rendaient la SSD insensible à la BONNE
+  translation dès qu'une frame a des bords non couverts.
+  Dossier MIXÉ : si tout refuse avec ≤ 2 frames empilées → référence
+  recalée sur la frame courante (les ≤ 2 frames d'ancien repère seront
+  rejetées ensuite par la médiane Winsorized).
+  `mean(recadre=False)` + rafraîchissement AUTO de la référence (combobox
+  « Rafraîchir la référence (frames) », défaut 20, « jamais » = ancien
+  comportement ; déclencheur secondaire : ≥ 50 % de frames refusées, ≥ 3).
+  Équilibrage des canaux AUTO (case cochée + curseur de force, config
+  `wb_auto`/`wb_force`) : gains LINÉAIRES égalisant le FOND (20e
+  percentile de la zone recadrée ; la couleur des objets est préservée),
+  cible = moyenne géométrique des fonds, gains bornés [0.25, 4], appliqué
+  à la SORTIE de l'empilement (affichage, histogramme, sauvegardes,
+  traitements), mis en cache par (n, force, cadre).
+- **VALIDATION SUR LES VRAIES FRAMES** : dérive mesurée (−9,+7) →
+  (−48,+77) px en 35 min ; 14/17 frames retrouvées à ≤ 2,6 px (la plupart
+  ≤ 0,5 px) ; passe « même nuit » 15/17 ; empilement réel sauvegardé
+  (`_diag_stack_4565.fit/.png` à la racine du dépôt, JETABLES) : 77
+  étoiles, FWHM 2,71 px, ellipticité 0,05, fonds R=V=B=0,0222.
+  Le lissage gaussien du vote était NUISIBLE (3 réussites contre 14 sans) ;
+  le cap « 60 étoiles les plus brillantes » est le meilleur (les étoiles
+  saturées ont de mauvais centroïdes, les objets faibles dispersent le
+  vote). Dossier mixé réel (03/06 + 07/06) : 12 frames empilées après un
+  seul re-calage.
+- **CLAUDE.md : 2 leçons PROPOSÉES à Alain le 17/09 (EN ATTENTE
+  d'approbation — ne pas écrire sans accord explicite)** : (1) « une
+  transformation auto-consistante n'est pas une bonne transformation :
+  contre-vérifier par appariements mutuels des deux côtés, et relever le
+  seuil quand la décision sert d'ANCRE (sans prédiction) » ; (2) « deux
+  normalisations indépendantes rendent une SSD aveugle : toute comparaison
+  d'images doit partager les bornes de normalisation de la référence ».
+
+## État au 16/09/2026 (figé — avant le jalon 13)
+
 - **Version : AVAStack v2.3.7** (`avastack/__init__.py`,
   `AVASTACK_VERSION = "2.3.7"`), branche `master`. **v2.3.7 = travail du
   16/09/2026 : JALON 12 « netteté live CÂBLÉE »** — cadre d'UI DÉDIÉ

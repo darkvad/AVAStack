@@ -35,6 +35,53 @@ _MARGE_CROP = 3
 _CROP_MIN_COTE = 16
 
 
+# --- Équilibrage des canaux (jalon 13) ---------------------------------------
+# Les capteurs couleur ont 2 sites verts sur 4 (matrice de Bayer) et une
+# réponse spectrale déséquilibrée : un empilement brut OSC domine dans le
+# vert (constat réel d'Alain, NGC7023, Uranus-C Pro, 17/09/2026). L'option
+# « Équilibrage des canaux (auto) » multiplie chaque canal par un gain
+# LINÉAIRE égalisant le FOND du ciel des trois canaux : le fond (percentile
+# bas), pas les objets — la couleur de la nébulose est donc préservée.
+# Géométrique moyenne = flux total conservé ; gains bornés contre les
+# extrêmes (canal quasi noir → amplification folle interdite).
+WB_PERCENTILE = 20.0
+WB_GAIN_MIN, WB_GAIN_MAX = 0.25, 4.0
+
+
+def gains_equilibre(img, cadre=None):
+    """Gains (r, v, b) égalisant le fond des 3 canaux de `img` ((H, W, 3) ou
+    (C, H, W)). Stats sur la zone recadrée si `cadre` est fourni (les bords
+    jamais couverts par les frames alignées y sont à zéro et fausseraient
+    les percentiles), sinon sur le quart central ; sous-échantillonnage ×4
+    (largement suffisant). → numpy (3,) float32, ou None si dégénéré."""
+    if img.ndim != 3:
+        return None
+    hwc = img.shape[-1] == 3
+    if cadre is not None:
+        y0, x0, y1, x1 = cadre
+        zone = img[y0:y1, x0:x1, :] if hwc else img[:, y0:y1, x0:x1]
+    else:
+        h, w = img.shape[:2] if hwc else img.shape[1:3]
+        zone = (img[h // 4: max(h // 4 + 1, 3 * h // 4),
+                    w // 4: max(w // 4 + 1, 3 * w // 4), :] if hwc else
+                img[:, h // 4: max(h // 4 + 1, 3 * h // 4),
+                    w // 4: max(w // 4 + 1, 3 * w // 4)])
+    if zone.size == 0:
+        return None
+    if hwc:
+        echant = zone[::4, ::4, :]
+        bgs = [float(np.percentile(echant[..., c], WB_PERCENTILE))
+               for c in range(3)]
+    else:
+        echant = zone[:, ::4, ::4]
+        bgs = [float(np.percentile(echant[c], WB_PERCENTILE)) for c in range(3)]
+    if min(bgs) <= 1e-9:
+        return None
+    cible = (bgs[0] * bgs[1] * bgs[2]) ** (1.0 / 3.0)
+    return np.array([min(max(cible / b, WB_GAIN_MIN), WB_GAIN_MAX)
+                     for b in bgs], np.float32)
+
+
 def quad_alignement(M, shape):
     """Coins (x, y) de l'image `shape` transformés par la matrice affine
     `M` (2×3, celle de cv2.warpAffine) — le quadrilatère couvert par la
@@ -117,6 +164,11 @@ class LiveStacker:
         self.warmup = warmup
         self.method = method if method in self.METHODES else "kappa"
         self.window = max(3, int(window))
+        # Équilibrage des canaux (jalon 13) : désactivé au niveau module —
+        # l'interface l'active (config persistée) ; les tests existants
+        # voient donc l'ancien comportement.
+        self.wb_auto = False
+        self.wb_force = 1.0
         self.reset()
 
     def reset(self):
@@ -130,6 +182,7 @@ class LiveStacker:
         self._rejeu = False    # rejeu du warmup déjà effectué ?
         self._poly = None      # intersection géométrique des zones couvertes
         self.cadre = None      # rectangle (y0, x0, y1, x1) du recadrage
+        self._wb_cache = None  # (clé, gains) de l'équilibrage des canaux
 
     def note_alignement(self, M):
         """Met à jour l'intersection géométrique des zones couvertes avec la
@@ -179,16 +232,45 @@ class LiveStacker:
         self.wsum += w
         self.n += 1
 
-    def mean(self):
+    def mean(self, recadre=True):
+        """Moyenne pondérée courante. `recadre=False` renvoie l'accumulation
+        COMPLÈTE, sans le recadrage d'intersection — réservé à la référence
+        d'alignement (jalon 13) : la référence doit rester dans le MÊME repère
+        que les frames alignées, sinon chaque rafraîchissement décalerait tout
+        l'empilement (c'était le bug silencieux du bouton « Réf. =
+        empilement », qui fournissait l'empilement RECADRÉ)."""
         if self.n == 0:
             return None
         img = (self.sum / np.maximum(self.wsum, 1e-9)).astype(np.float32)
-        if self.cadre is None:         # pas de recadrage (dégénéré/trop petit)
+        img = self._equilibrer(img)
+        if not recadre or self.cadre is None:  # pas de recadrage (dégénéré)
             return img
         y0, x0, y1, x1 = self.cadre
         if img.ndim == 3 and img.shape[0] <= 4:    # (C, H, W)
             return img[:, y0:y1, x0:x1]
         return img[y0:y1, x0:x1, ...]              # (H, W) ou (H, W, C)
+
+    def _equilibrer(self, img):
+        """Équilibrage des canaux (auto, jalon 13) : gains par canal dérivés
+        du FOND de l'accumulation, mis en cache (recalculés une seule fois
+        par frame empilée — `mean()` est appelée ~20×/s mais `n` ne change
+        qu'à l'arrivée d'une frame). no-op en mono ou si désactivé."""
+        if (not self.wb_auto or img.ndim != 3
+                or 3 not in (img.shape[-1], img.shape[0])):
+            return img
+        cle = (self.n, round(float(self.wb_force), 4), self.cadre)
+        if self._wb_cache is not None and self._wb_cache[0] == cle:
+            gains = self._wb_cache[1]
+        else:
+            gains = gains_equilibre(img, self.cadre)
+            self._wb_cache = (cle, gains)
+        if gains is None:
+            return img
+        if self.wb_force < 1.0:
+            gains = gains ** float(self.wb_force)
+        if img.shape[-1] == 3:               # (H, W, 3) : diffuse sur l'axe couleur
+            return img * gains
+        return img * gains[:, None, None]    # (C, H, W) : piège du broadcast
 
     # ------------------------------------------------------------- rejet
     def _poids(self, f):

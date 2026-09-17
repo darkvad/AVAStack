@@ -272,3 +272,61 @@ def sigma_depuis_fwhm(fwhm):
 def fwhm_depuis_sigma(sigma):
     """FWHM (px) correspondant à un σ gaussien (px)."""
     return FWHM_PAR_SIGMA * max(float(sigma), 0.0)
+
+
+def detecter_positions(img, max_etoiles=MAX_ETOILES, seuil_sigma=SEUIL_SIGMA):
+    """Positions (centroïdes) des étoiles les plus brillantes — prérequis de
+    l'ALIGNEMENT par étoiles (jalon 13) : sur un champ pauvre en étoiles et
+    riche en nébulosité (C8 à 1280 mm, constat réel du 17/09/2026), les
+    descripteurs ORB ne s'apparient plus (0-6 appariements sur 1000 points)
+    alors que les CENTROÏDES, eux, se votent très bien (translation estimée
+    par histogramme des paires). Même 1re étape de détection que
+    `mesurer_seeing` (luminance, fond/bruit par médiane-MAD, seuil k·σ,
+    composantes 8-connexes, rejet des surfaces), SANS la mesure de profil
+    (inutile ici, et elle écarte des étoiles utilisables pour l'appariement) :
+    centroïde pondéré par l'intensité, tri par éclat décroissant, plafonné à
+    `max_etoiles`.
+
+    Renvoie (positions, message) — convention du module : (résultat, "") en
+    succès, (résultat partiel, message explicite) sinon. `positions` est un
+    numpy (N, 2) float32 en (x, y) PIXELS DE L'IMAGE FOURNIE, éventuellement
+    vide. `img` n'est JAMAIS modifiée."""
+    try:
+        luma = _luminance(img)
+        h, w = luma.shape
+        if min(h, w) < 8:
+            return np.zeros((0, 2), np.float32), \
+                f"image trop petite ({w}×{h} px)"
+        fond, bruit = _fond_bruit(luma)
+        if bruit <= 1e-9:
+            return np.zeros((0, 2), np.float32), "image constante"
+        masque = (luma > fond + float(seuil_sigma) * bruit).astype(np.uint8)
+        nb_obj, _labels, stats, _ = cv2.connectedComponentsWithStats(
+            masque, connectivity=8)
+        cands = []
+        for i in range(1, nb_obj):
+            x = int(stats[i, cv2.CC_STAT_LEFT])
+            y = int(stats[i, cv2.CC_STAT_TOP])
+            bw = int(stats[i, cv2.CC_STAT_WIDTH])
+            bh = int(stats[i, cv2.CC_STAT_HEIGHT])
+            aire = int(stats[i, cv2.CC_STAT_AREA])
+            if aire < AIRE_MIN or aire > AIRE_MAX:
+                continue
+            if x <= 1 or y <= 1 or x + bw >= w - 1 or y + bh >= h - 1:
+                continue        # touche un bord : centroïde incomplet
+            pic = float(luma[y:y + bh, x:x + bw].max())
+            cands.append((pic, x, y, bw, bh))
+        cands.sort(key=lambda c: -c[0])
+        pos = []
+        for _pic, x, y, bw, bh in cands[:int(max_etoiles)]:
+            sub = np.clip(luma[y:y + bh, x:x + bw] - fond, 0.0, None)
+            s = float(sub.sum())
+            if s <= 0.0:        # composante au seuil mais sous le fond
+                pos.append((x + bw / 2.0, y + bh / 2.0))
+                continue
+            ys, xs = np.mgrid[y:y + bh, x:x + bw]
+            pos.append((float((xs * sub).sum() / s),
+                        float((ys * sub).sum() / s)))
+        return np.array(pos, np.float32).reshape(-1, 2), ""
+    except Exception as exc:                 # mémoire, image dégénérée…
+        return np.zeros((0, 2), np.float32), str(exc)

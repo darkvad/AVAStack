@@ -79,6 +79,12 @@ class App:
         self.reset_request = self.ref_request = False
         self.save_request = self.saved_path = None
         self.bad_frames = 0
+        # Jalon 13 : alignement — info de la dernière frame (ligne d'état) et
+        # rafraîchissement automatique de la référence (fréquence + compteurs).
+        self.align_info = "—"
+        self.ref_refresh = 20            # frames (0 = « jamais »)
+        self._ref_frames = 0             # frames depuis le dernier rafraîchissement
+        self._ref_bad = 0                # frames refusées depuis le dernier
         self.fps = 0.0
         # --- Jalon 10 : seeing live (FWHM + nombre d'étoiles), mesuré par le
         # thread d'acquisition sur l'aperçu (≤ 1600 px, même résolution que
@@ -209,6 +215,21 @@ class App:
                 and str(fen) in self.cb_fenetre["values"]:
             self.rejet_fenetre = fen
             self.var_fenetre.set(str(fen))
+        # --- Jalon 13 : rafraîchissement auto de la référence + équilibrage
+        # des canaux (booléen EXPLICITE : une case décochée ne doit pas
+        # hériter d'un True d'une session précédente ; clé absente → défauts).
+        v = c.get("ref_refresh")
+        if isinstance(v, int) and not isinstance(v, bool) \
+                and str(v) in self.cb_ref_refresh["values"]:
+            self.var_ref_refresh.set(str(v))
+        self._on_ref_refresh()
+        if "wb_auto" in c:
+            self.var_wb.set(bool(c.get("wb_auto")))
+        v = c.get("wb_force")
+        if isinstance(v, (int, float)) and not isinstance(v, bool) \
+                and 0.0 <= float(v) <= 1.0:
+            self.var_wb_force.set(float(v))
+        self._on_wb()
         # --- Jalon 6 : réglages VeraLux (moteur tiers opt-in)
         mode_res = c.get("vl_mode_res")
         if mode_res in ("fond cible (auto)", "logD forcé"):
@@ -305,6 +326,11 @@ class App:
         c["kappa"] = self.kappa                  # None → null JSON (« Off »)
         c["rejet_methode"] = self.rejet_methode
         c["rejet_fenetre"] = int(self.rejet_fenetre)
+        # Jalon 13 : alignement (référence auto) + équilibrage des canaux —
+        # booléen explicite (comme les autres cases).
+        c["ref_refresh"] = int(self.ref_refresh)
+        c["wb_auto"] = bool(self.var_wb.get())
+        c["wb_force"] = float(self.var_wb_force.get())
         c["moteur"] = self.var_moteur.get()
         c["vl_mode_res"] = self.var_vl_mode_res.get()
         c["vl_target"] = self.var_vl_target.get()
@@ -413,7 +439,8 @@ class App:
         # --- Empilement
         box = ttk.LabelFrame(left, text="Empilement", padding=6)
         box.pack(fill="x", pady=3)
-        self.lbl_stats = ttk.Label(box, text="Frames : 0\nPixels rejetés (σ) : 0\nFrames non alignées : 0")
+        self.lbl_stats = ttk.Label(box, text="Frames : 0\nPixels rejetés (σ) : 0"
+                                             "\nFrames non alignées : 0\nAlign. : —")
         self.lbl_stats.pack(anchor="w", pady=(0, 3))
         # Jalon 10 : seeing live (FWHM médiane + nombre d'étoiles) — mesure
         # faite par le thread d'acquisition sur l'aperçu, toutes les 3 s.
@@ -428,6 +455,21 @@ class App:
         ttk.Button(rowf, text="Réf. = empilement",
                    command=lambda: setattr(self, "ref_request", True)
                    ).pack(side="left", expand=True, fill="x", padx=1)
+        # Jalon 13 : rafraîchissement AUTOMATIQUE de la référence
+        # d'alignement — la dérive lente (flexure, erreur périodique)
+        # éloigne les frames de la référence initiale et l'appariement
+        # dégénère ; une référence jeune (l'empilement courant) suit.
+        # « jamais » = ancien comportement (référence figée).
+        rowr = ttk.Frame(box)
+        rowr.pack(fill="x", pady=2)
+        ttk.Label(rowr, text="Rafraîchir la référence (frames) :").pack(side="left")
+        self.var_ref_refresh = tk.StringVar(value="20")
+        self.cb_ref_refresh = ttk.Combobox(
+            rowr, textvariable=self.var_ref_refresh, state="readonly", width=6,
+            values=["jamais", "10", "20", "30", "50"])
+        self.cb_ref_refresh.pack(side="left", padx=4)
+        self.cb_ref_refresh.bind("<<ComboboxSelected>>",
+                                 lambda e: self._on_ref_refresh())
         ttk.Label(box, text="Rejet kappa-sigma :").pack(anchor="w")
         self.var_kappa = tk.StringVar(value="3σ")
         cb = ttk.Combobox(box, textvariable=self.var_kappa, state="readonly", width=8,
@@ -455,6 +497,20 @@ class App:
                                        values=["4", "6", "8", "12", "16"])
         self.cb_fenetre.pack(side="left", padx=4)
         self.cb_fenetre.bind("<<ComboboxSelected>>", lambda e: self._on_rejet())
+        # Jalon 13 : équilibrage des canaux (auto) — les capteurs couleur ont
+        # 2 sites verts sur 4 (matrice de Bayer) et une réponse spectrale
+        # déséquilibrée : l'empilement brut domine dans le vert (constat réel
+        # NGC7023). Gains LINÉAIRES par canal égalisant le FOND du ciel (la
+        # couleur des objets est préservée) ; tout ce qui sort de
+        # l'empilement est équilibré (affichage, histogramme, sauvegardes,
+        # traitements externes).
+        self.var_wb = tk.BooleanVar(value=True)
+        ttk.Checkbutton(box, text="Équilibrage des canaux (auto)",
+                        variable=self.var_wb, command=self._on_wb
+                        ).pack(anchor="w", pady=(2, 0))
+        self.var_wb_force = tk.DoubleVar(value=1.0)
+        self._add_slider(box, "Force de l'équilibrage",
+                         self.var_wb_force, 0.0, 1.0, 0.05, self._on_wb, "{:.2f}")
 
         # --- Affichage
         box = ttk.LabelFrame(left, text="Affichage (temps réel)", padding=6)
@@ -812,6 +868,24 @@ class App:
         if self.stacker:
             self.stacker.set_rejet(method=self.rejet_methode,
                                    window=self.rejet_fenetre)
+
+    def _on_ref_refresh(self):
+        """Jalon 13 : fréquence (en frames) du rafraîchissement auto de la
+        référence d'alignement ; « jamais » = 0 (ancien comportement)."""
+        v = self.var_ref_refresh.get()
+        try:
+            self.ref_refresh = 0 if v == "jamais" else int(v)
+        except ValueError:
+            self.ref_refresh = 20
+        self._ref_frames = self._ref_bad = 0
+
+    def _on_wb(self):
+        """Jalon 13 : équilibrage des canaux (auto) de l'empilement —
+        répercuté sur l'empilement courant s'il existe."""
+        if self.stacker:
+            self.stacker.wb_auto = bool(self.var_wb.get())
+            self.stacker.wb_force = float(self.var_wb_force.get())
+        self._refresh_preview()
 
     def _on_cfa(self, *args):
         import avastack.images as _images
@@ -1540,6 +1614,8 @@ class App:
                 self.stacker = LiveStacker(frame.shape, k=self.kappa,
                                            method=self.rejet_methode,
                                            window=self.rejet_fenetre)
+                self.stacker.wb_auto = bool(self.var_wb.get())
+                self.stacker.wb_force = float(self.var_wb_force.get())
                 self.aligner.reset()
                 self.aligner.set_reference(frame)
                 self.disp.reset()          # stats d'affichage repartent de zéro
@@ -1551,14 +1627,51 @@ class App:
                 self.stacker.add(aligned)
                 self.stacker.note_alignement(M)   # intersection des zones couvertes
                 last_good = aligned
+                self._ref_bad = 0
             else:
                 self.bad_frames += 1
+                self._ref_bad += 1
+                # Jalon 13 : dossier MIXÉ (brutes de plusieurs nuits, p.ex.
+                # TargetSchedulerSequence de NINA) — si TOUT refuse alors que
+                # l'empilement est quasi vide (≤ 2 frames), la référence
+                # (1re frame, autre nuit — ou une ancre faussée) ne convient
+                # à rien : on la recale sur la frame courante. Sûr : ≤ 2
+                # frames d'ancien repère dans l'accumulation seront rejetées
+                # ensuite par la médiane Winsorized (dilution).
+                if self.stacker.n <= 2 and self._ref_bad >= 3:
+                    self.aligner.set_reference(frame)
+                    self._ref_frames = self._ref_bad = 0
+            self._ref_frames += 1
+            # Jalon 13 : ligne d'état de l'alignement (Δ, θ, méthode ou refus).
+            if ok and self.aligner.dernier:
+                d = self.aligner.dernier
+                self.align_info = (f"Δ=({d['dx']:+.1f},{d['dy']:+.1f}) px · "
+                                   f"θ {d['angle']:+.2f}° · {d['methode']}")
+            elif not ok:
+                self.align_info = "refus (frame non empilée)"
 
             stack = self.stacker.mean()
 
+            # Jalon 13 : rafraîchissement AUTOMATIQUE de la référence — la
+            # dérive lente éloigne les frames de la référence initiale et
+            # l'appariement dégénère ; une référence JEUNE (l'empilement,
+            # SANS recadrage → même repère que les frames alignées) suit.
+            # Déclencheurs : toutes les N frames, ou ≥ 50 % de frames
+            # refusées (et ≥ 3) depuis le dernier — sinon on ne se remet
+            # jamais d'une série d'échecs (la prédiction reste bloquée).
+            if stack is not None and self.ref_refresh > 0 and (
+                    self._ref_frames >= self.ref_refresh
+                    or (self._ref_bad >= 3
+                        and 2 * self._ref_bad >= self._ref_frames)):
+                self.aligner.set_reference(self.stacker.mean(recadre=False))
+                self._ref_frames = self._ref_bad = 0
+
             if self.ref_request and stack is not None:
                 self.ref_request = False
-                self.aligner.set_reference(stack)   # utile en longue session (rotation de champ)
+                # jalon 13 : SANS recadrage (même repère que les frames —
+                # l'ancien code passait l'empilement RECADRÉ : chaque clic
+                # décalait silencieusement tout l'empilement de (y0, x0))
+                self.aligner.set_reference(self.stacker.mean(recadre=False))
 
             show = stack if stack is not None else (last_good if last_good is not None else frame)
 
@@ -1593,6 +1706,7 @@ class App:
                       file=getattr(self.camera, "last_file", ""),
                       pending=len(getattr(self.camera, "_pending", [])),
                       failed=getattr(self.camera, "failed", 0),
+                      align=self.align_info,
                       seeing=self.seeing, seeing_msg=self.seeing_msg)
             if self.stacker.cadre is not None:      # recadrage d'intersection
                 y0, x0, y1, x1 = self.stacker.cadre
@@ -1827,7 +1941,8 @@ class App:
     def _update_status(self, st):
         self.lbl_stats.config(text=(f"Frames : {st['frames']}\n"
                                     f"Pixels rejetés (σ) : {st['rejets']}\n"
-                                    f"Frames non alignées : {st['bad']}"))
+                                    f"Frames non alignées : {st['bad']}\n"
+                                    f"Align. : {st.get('align', '—')}"))
         # Jalon 10 : seeing live (mesuré par le thread d'acquisition) —
         # jamais de silence : soit la mesure, soit la RAISON de son absence.
         s = st.get("seeing") or {}
