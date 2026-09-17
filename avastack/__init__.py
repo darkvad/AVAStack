@@ -14,9 +14,31 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.5.0"
+AVASTACK_VERSION = "2.6.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.6.0 : JALON 17 — FILTRE ANTI-BRUTES TRÈS DÉFOCALISÉES (AVANT
+#          l'empilement). Constat réel d'Alain après le jalon 15 : « ça a
+#          l'air OK sauf sur des brutes très défocalisées » — elles passaient
+#          l'alignement (les triangles s'y retrouvent) mais dégradaient
+#          l'empilement. DÉCISION d'Alain : rejet AUTOMATIQUE d'office + case
+#          pour désactiver (« Rejeter les frames floues (auto) », cadre
+#          Empilement, config `rejeter_flou` — booléen explicite). MÉTHODE :
+#          chaque frame calibrée est mesurée à l'arrivée avec
+#          `stars.mesurer_seeing` (jalon 10, ~15 ms) → (FWHM médiane, nb
+#          d'étoiles) ; app._score_qualite + app._filtre_floue ; comparaison
+#          RELATIVE à la médiane des frames gardées (≥ FLU_MIN_REF = 3 avant
+#          tout rejet, jamais de rejet sur mesure impossible) : FWHM >
+#          FWHM_MARGE = 2× la médiane (et > FWHM_ABS_MIN = 3 px absolus —
+#          rien à rejeter en très courte focale), OU score étoiles effondré
+#          (< FLU_NB_FRAC = 0,5× la médiane) combiné à une FWHM dégradée
+#          (> 1,25×) ou non mesurable — seul il pourrait refléter un simple
+#          changement de champ (dossier mixé) ; si AUCUNE frame gardée n'a
+#          d'étoiles (nébulosité, champ pauvre), rien n'est jamais rejeté.
+#          Une frame rejetée n'est NI archivée NI empilable (donc jamais
+#          ramenée par un re-stack) ; compteur « Frames floues rejetées : N »
+#          dans les stats + motif sur la ligne d'alignement. Test
+#          _test_jalon17_filtre.py.
 # v2.5.0 : JALON 16 — RE-STACK SUR LA MEILLEURE RÉFÉRENCE (étape 3 « à la
 #          Siril »). Retour réel d'Alain après le jalon 15 : « ça a l'air OK
 #          sauf sur des brutes très défocalisées » (un filtre qualité reste

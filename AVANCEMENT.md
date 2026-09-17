@@ -7,13 +7,35 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
 
 ## État actuel (base stable)
 
-- **Version : AVAStack v2.5.0** (`avastack/__init__.py`,
+- **Version : AVAStack v2.6.0** (`avastack/__init__.py`,
+  `AVASTACK_VERSION = "2.6.0"`), branche `master`. **v2.6.0 = travail du
+  17/09/2026 : JALON 17 « filtre anti-brutes très défocalisées »** —
+  première des deux décisions d'Alain (« rejet AUTOMATIQUE d'office + case
+  pour désactiver »). À l'ARRIVÉE de chaque frame calibrée (worker, AVANT
+  archivage ET empilement) : `stars.mesurer_seeing` → (FWHM médiane, nb
+  d'étoiles) ; `_score_qualite` + `_filtre_floue` (app.py) comparent à la
+  MÉDIANE des frames gardées (≥ FLU_MIN_REF = 3 avant tout rejet ; jamais
+  de rejet sur mesure impossible) : FWHM > FWHM_MARGE = 2× la médiane (et >
+  FWHM_ABS_MIN = 3 px absolus), OU score étoiles effondré (< FLU_NB_FRAC =
+  0,5× la médiane) avec FWHM dégradée (> 1,25×) ou non mesurable (les
+  étoiles très défocalisées sortent des critères de forme de stars.py —
+  c'est le cas nb = 0 de la brute σ8 du test jalon 16) ; si AUCUNE frame
+  gardée n'a d'étoiles (nébulosité), rien n'est jamais rejeté. Une frame
+  rejetée n'est NI archivée NI empilable (le re-stack ne peut pas la
+  ramener) ; compteur « Frames floues rejetées : N » dans les stats + motif
+  sur la ligne d'alignement ; case « Rejeter les frames floues (auto) »
+  (config `rejeter_flou`, booléen explicite, miroir thread-sûr
+  `self.rejeter_flou` lu par le worker). Une frame TRÈS défocalisée en
+  début de session reste GARDÉE (pas encore de référence) — le re-stack
+  jalon 16 reste son filet. Test `_test_jalon17_filtre.py` ; les 22
+  fichiers `_test_*.py` PASSENT.
+- **Version précédente : AVAStack v2.5.0** (`avastack/__init__.py`,
   `AVASTACK_VERSION = "2.5.0"`), branche `master`. **v2.5.0 = travail du
   17/09/2026 : JALON 16 « re-stack sur la meilleure référence » (étape 3)** —
   enchaîné au retour réel d'Alain sur le jalon 15 : **« ça a l'air OK sauf
   sur des brutes très défocalisées »** (première validation réelle du canal
-  vert + triangles ; le filtre défocalisation est NOTÉ à faire, voir la
-  section « À FAIRE » ci-dessous). Livré : chaque brute archivée reçoit un
+  vert + triangles ; le filtre défocalisation est livré depuis, jalon 17 —
+  section dédiée ci-dessous). Livré : chaque brute archivée reçoit un
   **score qualité = nb d'étoiles détectées sur le canal vert** (une brute
   défocalisée en détecte peu — pénalisée d'office) ; **déclencheur AUTO** :
   si la meilleure brute bat la référence courante de RESTACK_MARGE = 1,5×
@@ -117,20 +139,16 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
   riches en étoiles) fonctionnait sans problème — les défauts corrigés au
   jalon 13 sont spécifiques à longue focale / couleur / dossiers mixés.
 
-### ⚠ À FAIRE (demandé par Alain le 17/09/2026, après le 1er test réel du jalon 15)
+### ✅ FAIT (jalon 17, v2.6.0) — filtre anti-brutes très défocalisées
 
-- **FILTRE ANTI-BRUTES TRÈS DÉFOCALISÉES** — constat réel d'Alain :
-  « ça a l'air OK **sauf sur des brutes très défocalisées** ». Les brutes
-  très défocalisées passent encore l'alignement (les triangles s'y
-  retrouvent) mais dégradent l'empilement. À prévoir : un filtre qualité
-  AVANT l'empilement qui signale/rejette une frame dont la **FWHM médiane
-  dépasse nettement la médiane des FWHM des frames précédentes** (mesure
-  déjà disponible : `stars.mesurer_seeing`, jalon 10) ou dont le **score
-  étoiles s'effondre** (les étoiles défocalisées sortent des critères de
-  forme de `stars.py`). Le score du re-stack (jalon 16) pénalise déjà ces
-  frames pour le choix de la référence, mais elles ENTRENT encore dans
-  l'empilement — c'est ça qu'il faut filtrer. Décision d'UI à prendre
-  (rejet automatique vs simple signal + case « ignorer les frames floues »).
+Ancien « À FAIRE » du 17/09/2026, LIVRÉ : mesure `stars.mesurer_seeing` de
+CHAQUE frame à l'arrivée, rejet relatif à la médiane des frames gardées
+(FWHM > 2× la médiane, ou score étoiles < 0,5× la médiane + FWHM
+dégradée/absente), décision d'UI d'Alain : **rejet automatique d'office +
+case « Rejeter les frames floues (auto) »** pour désactiver ; la frame
+rejetée n'est ni empilée ni archivée. Détail complet au changelog v2.6.0.
+**Reste à valider en réel** (prochaine nuit) : le seuil 2× sur le vrai ciel
+et le comportement sur dossier mixé.
 
 ### ⚠ À FAIRE (retour réel d'Alain sur le jalon 16, 17/09/2026)
 

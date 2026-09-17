@@ -35,6 +35,17 @@ SCORE_MAX_ETOILES = 200    # plafond de détection pour le score qualité
 RESTACK_MARGE = 1.5        # une brute doit battre la référence de ce facteur
 RESTACK_MIN_FRAMES = 5     # pas de re-stack auto avant ce nb de frames archivées
 RESTACK_CADENCE = 10       # nb de frames archivées entre deux re-stacks auto
+
+# --- Jalon 17 : filtre anti-brutes TRÈS défocalisées (AVANT l'empilement) ---
+# Constat réel d'Alain (17/09/2026, après le jalon 15) : « ça a l'air OK sauf
+# sur des brutes très défocalisées » — elles passent l'alignement (les
+# triangles s'y retrouvent) mais dégradent l'empilement. Rejet AUTOMATIQUE
+# d'office, case « Rejeter les frames floues (auto) » pour désactiver
+# (décision d'Alain). Critères RELATIFS à la médiane des frames gardées.
+FLU_MIN_REF = 3      # ≥ 3 frames gardées avant le 1er rejet possible
+FLU_NB_FRAC = 0.5    # score étoiles < 0,5× la médiane → « effondré »
+FWHM_MARGE = 2.0     # FWHM > 2× la médiane → frame très floue
+FWHM_ABS_MIN = 3.0   # …et soi-même > 3 px (rien à rejeter en très courte focale)
 from ..processing import denoise as denoiser_local
 from ..processing import stars as seeing_live
 from ..processing import sharpness as nettete_live
@@ -122,6 +133,14 @@ class App:
         self._ancre_idx = None       # index d'archive de la brute servant d'ancre
         self._ancre_score = None     # son score
         self._restack_depuis = 0     # frames archivées depuis le dernier re-stack
+        # Jalon 17 : filtre anti-brutes très défocalisées (rejet d'office,
+        # case pour désactiver — décision d'Alain). Mesure par frame à
+        # l'arrivée (fwhm, nb d'étoiles) ; le filtre compare à la médiane des
+        # frames gardées (≥ 3 avant tout rejet, jamais de rejet sur mesure
+        # impossible) ; compteur exposé dans les stats d'empilement.
+        self.rejeter_flou = True     # état lu par le thread worker (case UI)
+        self.floues_rejetees = 0     # frames rejetées par le filtre (session)
+        self._fwhm_hist = []         # (fwhm, nb) des frames gardées — médianes
 
         # --- état du zoom / pan (affichage)
         self.zoom = 1.0                # 1.0 = image ajustée à la fenêtre
@@ -253,6 +272,12 @@ class App:
         if isinstance(v, (int, float)) and not isinstance(v, bool) \
                 and 0.0 <= float(v) <= 1.0:
             self.var_wb_force.set(float(v))
+        # --- Jalon 17 : filtre anti-brutes très défocalisées — booléen
+        # explicite (une case décochée ne doit pas hériter d'un True) ;
+        # clé absente → défaut (rejet d'office).
+        if "rejeter_flou" in c:
+            self.var_rejeter_flou.set(bool(c.get("rejeter_flou")))
+        self._on_rejeter_flou()
         self._on_wb()
         # --- Jalon 6 : réglages VeraLux (moteur tiers opt-in)
         mode_res = c.get("vl_mode_res")
@@ -355,6 +380,9 @@ class App:
         c["ref_refresh"] = int(self.ref_refresh)
         c["wb_auto"] = bool(self.var_wb.get())
         c["wb_force"] = float(self.var_wb_force.get())
+        # Jalon 17 : filtre défocalisation — booléen explicite (comme les
+        # autres cases : une case décochée ne doit pas hériter d'un True).
+        c["rejeter_flou"] = bool(self.var_rejeter_flou.get())
         c["moteur"] = self.var_moteur.get()
         c["vl_mode_res"] = self.var_vl_mode_res.get()
         c["vl_target"] = self.var_vl_target.get()
@@ -542,6 +570,13 @@ class App:
         self.var_wb_force = tk.DoubleVar(value=1.0)
         self._add_slider(box, "Force de l'équilibrage",
                          self.var_wb_force, 0.0, 1.0, 0.05, self._on_wb, "{:.2f}")
+        # Jalon 17 : filtre anti-brutes TRÈS défocalisées — rejet d'office
+        # (décision d'Alain), cette case le désactive (les frames passent
+        # comme avant le jalon 17 ; le compteur de rejets reste affiché).
+        self.var_rejeter_flou = tk.BooleanVar(value=True)
+        ttk.Checkbutton(box, text="Rejeter les frames floues (auto)",
+                        variable=self.var_rejeter_flou,
+                        command=self._on_rejeter_flou).pack(anchor="w")
 
         # --- Affichage
         box = ttk.LabelFrame(left, text="Affichage (temps réel)", padding=6)
@@ -918,6 +953,12 @@ class App:
             self.stacker.wb_force = float(self.var_wb_force.get())
         self._refresh_preview()
 
+    def _on_rejeter_flou(self):
+        """Jalon 17 : active/désactive le filtre anti-brutes très défocalisées.
+        Miroir thread-sûr (booléen Python écrit côté UI, lu par le thread
+        d'acquisition) : jamais d'accès Tk depuis le worker."""
+        self.rejeter_flou = bool(self.var_rejeter_flou.get())
+
     def _on_cfa(self, *args):
         import avastack.images as _images
         _images.CFA_MODE = self.var_cfa.get()
@@ -1181,6 +1222,8 @@ class App:
         self.disp.reset()                      # stats d'affichage repartent de zéro
         self._vl_frames = None                 # le 1er empilement relancera le solveur
         self.bad_frames, self.fps = 0, 0.0
+        self.floues_rejetees = 0              # jalon 17 : compteur de session
+        self._fwhm_hist = []                  # jalon 17 : mesures de session neuve
         self.seeing, self.seeing_msg = None, ""   # jalon 10 : nouvelle mesure
         self._seeing_t0 = 0.0                     # → dès la 1re frame
         self.disp.vl_seeing = None                # jalon 12 : PSF de la
@@ -1612,6 +1655,72 @@ class App:
             if session == self._session:
                 self.ext_busy = False
 
+    # ----------------------- jalon 17 : filtre anti-brutes défocalisées
+    def _score_qualite(self, img):
+        """Mesure qualité d'une brute pour le filtre jalon 17 :
+        (fwhm, nb) — FWHM médiane (px) et nombre d'étoiles exploitables de
+        `stars.mesurer_seeing` (jalon 10, ~15 ms ; la couleur est traitée par
+        sa luminance interne). (None, 0) = aucune étoile exploitable (mesure
+        impossible, champ sans étoile ou défocalisation poussée) : la
+        DÉCISION reste à `_filtre_floue` (jamais de rejet sur la seule erreur
+        de mesure). Jamais d'exception propagée (convention du module
+        stars)."""
+        try:
+            mes, _msg = seeing_live.mesurer_seeing(img)
+        except Exception:
+            return None, 0
+        if not isinstance(mes, dict):
+            return None, 0
+        fwhm = mes.get("fwhm")
+        if not isinstance(fwhm, (int, float)) or not np.isfinite(fwhm) \
+                or fwhm <= 0:
+            fwhm = None
+        return (float(fwhm) if fwhm is not None else None), \
+            int(mes.get("nb") or 0)
+
+    def _filtre_floue(self, frame):
+        """Décision du filtre jalon 17 pour la frame calibrée `frame` :
+        → message de rejet ("" si la frame est gardée ou filtre désactivé).
+        Rejet si : FWHM > FWHM_MARGE × médiane des frames gardées (et
+        soi-même > FWHM_ABS_MIN px — ne rien rejeter en très courte focale où
+        une FWHM de 3 px est un seeing honnête), OU score étoiles effondré
+        (< FLU_NB_FRAC × médiane des gardées) : la défocalisation poussée
+        fait sortir les étoiles des critères de forme de stars.py (nb 0, FWHM
+        non mesurable). SEUL, un score bas pourrait refléter un simple
+        changement de champ (dossier mixé) → il ne rejette que si la FWHM est
+        dégradée (> 1,25× la médiane) ou non mesurable. Il faut ≥ FLU_MIN_REF
+        frames gardées pour décider ; si AUCUNE frame gardée n'a d'étoiles
+        (nébulosité, champ pauvre…), rien n'est jamais rejeté. La frame
+        gardée alimente les médianes de référence."""
+        if not self.rejeter_flou:
+            return ""
+        fwhm, nb = self._score_qualite(frame)
+        ref_f = [m[0] for m in self._fwhm_hist if m[0] is not None]
+        ref_n = [m[1] for m in self._fwhm_hist]
+        assez_n = len(ref_n) >= FLU_MIN_REF
+        med_n = float(np.median(ref_n)) if assez_n else 0.0
+        med_f = float(np.median(ref_f)) if len(ref_f) >= FLU_MIN_REF else None
+        if nb == 0 and (not assez_n or med_n <= 0):
+            return ""             # aucune étoile nulle part : pas de critère
+        rejeter = ""
+        if med_f is not None and fwhm is not None \
+                and fwhm > FWHM_ABS_MIN and fwhm > FWHM_MARGE * med_f:
+            rejeter = (f"frame très floue rejetée "
+                       f"(FWHM {fwhm:.1f} px ≫ médiane {med_f:.1f} px)")
+        if not rejeter and assez_n and nb < FLU_NB_FRAC * med_n:
+            # Effondrement du nb d'étoiles : signature d'une défocalisation
+            # plus poussée que les critères de forme de stars.py. SEUL il peut
+            # refléter un simple changement de champ (dossier mixé) → il ne
+            # rejette que si la FWHM est dégradée ou non mesurable.
+            degrade = (fwhm is not None and med_f is not None
+                       and fwhm > 1.25 * med_f)
+            if degrade or fwhm is None:
+                rejeter = (f"frame très défocalisée rejetée (score étoiles "
+                           f"{nb} ≪ médiane {med_n:.0f})")
+        if not rejeter and fwhm is not None:
+            self._fwhm_hist.append((fwhm, nb))
+        return rejeter
+
     # -------------------------------------- jalon 16 : re-stack (Siril)
     def _score_frame(self, img):
         """Score qualité d'une brute (esprit Siril) : nombre d'étoiles
@@ -1778,6 +1887,20 @@ class App:
                 continue
             frame = self.calib.apply(frame)
 
+            # Jalon 17 : filtre anti-brutes TRÈS DÉFOCALISÉES — AVANT tout le
+            # reste (une frame rejetée n'est ni archivée ni empilable, donc
+            # jamais ramenée par un re-stack). Rejet d'office, case pour
+            # désactiver (décision d'Alain). La mesure (~15 ms) est presque
+            # rien devant une pose de 120 s. La frame rejetée est comptée,
+            # signalée sur la ligne d'alignement, et le worker respire (au
+            # plus 20 analyses/s) sans empiler ni déclencher de re-calage.
+            verdict = self._filtre_floue(frame)
+            if verdict:
+                self.floues_rejetees += 1
+                self.align_info = verdict
+                time.sleep(max(0.0, 1.0 / 20.0 - (time.perf_counter() - t0)))
+                continue
+
             # Jalon 15 : chaque frame calibrée est archivée (dossier temp de
             # session, garde-fous débit/taille) — matière du futur re-stack
             # « à la Siril » (recalcul sur une meilleure référence). Aucun
@@ -1795,7 +1918,10 @@ class App:
                 self._scores.append(self._score_frame(frame))
                 self._restack_depuis += 1
 
-            # (re)création de l'empilement / nouvelle référence
+            # (re)création de l'empilement / nouvelle référence — SEULEMENT
+            # si la frame a passé le filtre jalon 17 (une brute très floue ne
+            # doit jamais devenir la référence d'alignement ni créer
+            # l'empilement — c'est le défaut que le filtre élimine).
             if self.reset_request or self.stacker is None or self.stacker.shape != frame.shape:
                 self.reset_request = False
                 self.stacker = LiveStacker(frame.shape, k=self.kappa,
@@ -1824,7 +1950,8 @@ class App:
                 # (1re frame, autre nuit — ou une ancre faussée) ne convient
                 # à rien : on la recale sur la frame courante. Sûr : ≤ 2
                 # frames d'ancien repère dans l'accumulation seront rejetées
-                # ensuite par la médiane Winsorized (dilution).
+                # ensuite par la médiane Winsorized (dilution). (Jalon 17 :
+                # la frame courante a déjà passé le filtre défocalisation.)
                 if self.stacker.n <= 2 and self._ref_bad >= 3:
                     self._definir_reference(frame)
                     self._ref_frames = self._ref_bad = 0
@@ -1906,7 +2033,8 @@ class App:
             inst = 1.0 / max(dt, 1e-4)
             self.fps = inst if self.fps == 0 else 0.9 * self.fps + 0.1 * inst
             st = dict(frames=self.stacker.n, rejets=self.stacker.rejected_total,
-                      bad=self.bad_frames, fps=self.fps, cam=self.camera.name,
+                      bad=self.bad_frames, floues=self.floues_rejetees,
+                      fps=self.fps, cam=self.camera.name,
                       file=getattr(self.camera, "last_file", ""),
                       pending=len(getattr(self.camera, "_pending", [])),
                       failed=getattr(self.camera, "failed", 0),
@@ -2147,11 +2275,16 @@ class App:
         arc = f"Archive (re-stack) : {st.get('archive', 0)}"
         if st.get("archive_err"):
             arc += f" — {st['archive_err']}"
-        self.lbl_stats.config(text=(f"Frames : {st['frames']}\n"
-                                    f"Pixels rejetés (σ) : {st['rejets']}\n"
-                                    f"Frames non alignées : {st['bad']}\n"
-                                    f"Align. : {st.get('align', '—')}\n"
-                                    f"{arc}"))
+        # Jalon 17 : compteur des frames rejetées par le filtre défocalisation
+        # (ligne seulement s'il y en a — zéro message superflu).
+        lignes = [f"Frames : {st['frames']}",
+                  f"Pixels rejetés (σ) : {st['rejets']}",
+                  f"Frames non alignées : {st['bad']}"]
+        if st.get("floues"):
+            lignes.append(f"Frames floues rejetées : {st['floues']}")
+        lignes.append(f"Align. : {st.get('align', '—')}")
+        lignes.append(arc)
+        self.lbl_stats.config(text="\n".join(lignes))
         # Jalon 10 : seeing live (mesuré par le thread d'acquisition) —
         # jamais de silence : soit la mesure, soit la RAISON de son absence.
         s = st.get("seeing") or {}
