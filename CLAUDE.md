@@ -53,6 +53,17 @@ mémoire de COURT terme.
     la prochaine étape avant de s'arrêter).
 - Ne pas y dupliquer ce qui appartient à CLAUDE.md ; les leçons durables
   remontent vers CLAUDE.md via la procédure de proposition décrite plus bas.
+- **Garder AVANCEMENT.md LÉGER** (consigne d'Alain, 18/09/2026) : le
+  changelog détaillé des versions vit dans `avastack/__init__.py`
+  (source) — AVANCEMENT.md ne le duplique pas. La section « État actuel »
+  reste courte : version stable de référence, résumé succinct du DERNIER
+  jalon (une quinzaine de lignes maximum), tâche en cours et prochaine
+  étape. À chaque nouveau jalon, les détails du jalon précédent sont
+  SUPPRIMÉS (seul le dernier reste détaillé) et les jalons/tâches
+  terminés plus anciens sont nettoyés — leur trace durable est dans le
+  changelog du source et l'historique git. Seuls les rappels opérationnels
+  encore utiles (pièges récents, prochains tests réels, réglages gelés
+  sur décision d'Alain) sont conservés.
 
 ## Commandes essentielles (Windows, PowerShell)
 
