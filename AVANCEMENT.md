@@ -24,11 +24,11 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
   outil qui plante est SIGNALÉ (état « error », détail stderr) au lieu de
   bloquer la chaîne pour toujours. Test `_test_ext_rgb_jalon14.py`
   (12 vérifications, faux outils réels) ; **les 19 fichiers `_test_*.py`
-  PASSENT** (18 précédents + nouveau). ⏳ **À REVALIDER PAR ALAIN** : relancer
-  « Traiter l'empilement courant » sur l'empilement RGB réel (GraXpert doit
-  enchaîner sans popup ; en cas de crash d'un outil, il y aura désormais un
-  message d'erreur dans la barre d'état du traitement externe au lieu d'une
-  boîte modale figée).
+  PASSENT** (18 précédents + nouveau). **✅ VALIDÉ PAR ALAIN le 17/09/2026**
+  (« l'appel d'outils externes fonctionne maintenant » — GraXpert enchaîne
+  sans popup sur l'empilement RGB réel). Leçon ajoutée à CLAUDE.md (accord
+  d'Alain) : une parade documentée dans UN chemin doit être vérifiée dans
+  les AUTRES chemins qui partagent le même outil externe.
 - **VALIDATION JALON 13 PAR ALAIN (17/09/2026, session live réelle)** :
   **empilement OK et couleur OK** (« Empilement et couleur ok ») ;
   **netteté live : « ne fait pas de miracle » — laissée EN L'ÉTAT** (décision
@@ -57,26 +57,19 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
   riches en étoiles) fonctionnait sans problème — les défauts corrigés au
   jalon 13 sont spécifiques à longue focale / couleur / dossiers mixés.
 
-## ✅ Jalon 13 — VALIDÉ EN RÉEL PAR ALAIN (17/09/2026) ; ⏭ reste jalon 14
+## ✅ Jalons 13 + 14 — VALIDÉS EN RÉEL PAR ALAIN (17/09/2026) — session close
 
 **Jalon 13 validé en session live réelle par Alain** : « Empilement et
 couleur ok » (étoiles nettes, fond équilibré) ; « netteté ne fait pas de
 miracle mais ça on le savait déjà » → **laissée EN L'ÉTAT** (décision : pas
-de réglage à chercher). Le chantier jalon 13 est clôturé.
-
-**⏭ Reste (jalon 14, v2.3.9)** : Alain doit relancer « Traiter l'empilement
-courant » sur l'empilement RGB réel — GraXpert doit enchaîner sans popup
-(le crash « !dsize.empty() » venait de la convention d'axes FITS non
-répercutée du chemin live vers la chaîne externe ; correction + lanceur
-« survivable » : un outil qui plante est désormais SIGNALÉ dans la barre
-d'état du traitement externe au lieu d'afficher une boîte modale figée).
-Deux leçons PROPOSÉES à Alain pour CLAUDE.md (EN ATTENTE d'accord) :
-(1) « une parade documentée dans UN chemin doit être vérifiée dans les
-AUTRES chemins qui partagent le même outil externe » ; (2) jalon 13 : « une
-transformation auto-consistante n'est pas une bonne transformation
-(contre-test par appariements mutuels, seuil renforcé pour l'ANCRE) » et
-« deux normalisations indépendantes rendent une SSD aveugle (partager les
-bornes de la référence) ».
+de réglage à chercher). **Jalon 14 validé** : « l'appel d'outils externes
+fonctionne maintenant » (GraXpert + chaîne externe sans popup sur RGB).
+Leçons ajoutées à CLAUDE.md avec l'accord d'Alain : parade partagée entre
+chemins utilisant le même outil externe (jalon 14) ; contre-test par
+appariements mutuels + seuil renforcé pour l'ANCRE + normalisation partagée
+(jalon 13). **PROCHAINE SESSION : aucun chantier en attente** — reprendre
+sur une nouvelle demande (prochains tests de nuit : voir la ligne
+« Align. : Δ(…) θ(…) méthode » en direct et « Frames non alignées »).
 
 ### Ce qui a été fait (jalon 13, v2.3.8 — chiffres)
 

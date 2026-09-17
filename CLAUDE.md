@@ -280,10 +280,16 @@ Pièges :
   standard écrit NAXIS1=3. Un RGB « standard » est déformé à la lecture :
   crash `cv2.resize !dsize.empty()` (boîte de dialogue modale cx_Freeze)
   avec l'interpolation AI, ou sortie dégénérée (W, 3) avec RBF ; le mono 2D
-  n'est pas concerné (d'où des succès intermittents trompeurs). Parade dans
-  `avastack/external/live.py` : entrée RGB écrite canaux-en-tête
-  (`_ecrire_entree`) + sortie retransposée (`_lire_sortie`). NB : l'entrée
-  TIFF plante aussi chez GraXpert (imagecodecs LZW absent de leur build).
+  n'est pas concerné (d'où des succès intermittents trompeurs). Parade :
+  entrée RGB écrite canaux-en-tête (`external/live._ecrire_entree`) +
+  sortie retransposée (`_lire_sortie`). **PIÈGE AJOUTÉ (17/09/2026, jalon
+  14)** : la parade n'avait été codée que dans le chemin GraXpert LIVE —
+  la chaîne de TRAITEMENT EXTERNE (ui/app.py, `_run_external`) plantait
+  toujours, invisible tant que le setup était mono. **Une parade documentée
+  dans UN chemin doit être vérifiée dans tous les AUTRES chemins qui
+  partagent le même outil externe** (et entre chaque étape d'une chaîne :
+  normaliser la sortie puis réécrire canaux-en-tête). NB : l'entrée TIFF
+  plante aussi chez GraXpert (imagecodecs LZW absent de leur build).
 - **subprocess + boîte de dialogue modale cx_Freeze** : quand un outil
   packagé cx_Freeze plante, sa boîte d'erreur MODALE bloque le processus
   jusqu'au clic ; avec `subprocess.run(capture_output=True)` les tubes
@@ -298,6 +304,17 @@ Pièges :
   Constaté sur les scripts de test : un test qui réussit en direct peut
   « échouer » via un pipe (`| Select-Object`). Parade : en tête des scripts
   de test, `sys.stdout.reconfigure(encoding="utf-8", errors="replace")`.
+- **Une transformation auto-consistante n'est pas une bonne transformation**
+  (constat réel du 17/09/2026, jalon 13 — alignement des frames) : un
+  consensus de 6 correspondances peut être un motif répété du champ qui
+  passe les seuils. Toujours contre-vérifier par APPARIEMENTS MUTUELS
+  (plus proche voisin des DEUX côtés), et RELEVER le seuil quand la décision
+  sert d'ANCRE (1er alignement sans prédiction : 8 mutuels au lieu de 6) —
+  une ancre faussée décale tout le repère de la session. Complément : deux
+  NORMALISATIONS INDÉPENDANTES (percentiles calculés séparément par image)
+  rendent une SSD insensible à la BONNE translation dès qu'une image a des
+  bords non couverts — toute comparaison d'images doit PARTAGER les bornes
+  de normalisation de la référence.
 - **Live stacking, rejet des traînées de satellites** : le kappa-sigma
   CUMULÉ gonfle σ pour toujours (les pixels de la trace entrent dans les
   sommes de référence). La méthode robuste est celle type PixInsight :
