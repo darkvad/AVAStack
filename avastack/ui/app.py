@@ -35,6 +35,7 @@ SCORE_MAX_ETOILES = 200    # plafond de détection pour le score qualité
 RESTACK_MARGE = 1.5        # une brute doit battre la référence de ce facteur
 RESTACK_MIN_FRAMES = 5     # pas de re-stack auto avant ce nb de frames archivées
 RESTACK_CADENCE = 10       # nb de frames archivées entre deux re-stacks auto
+RESTACK_HIST_MAX = 12      # entrées conservées dans l'historique de session (jalon 18)
 
 # --- Jalon 17 : filtre anti-brutes TRÈS défocalisées (AVANT l'empilement) ---
 # Constat réel d'Alain (17/09/2026, après le jalon 15) : « ça a l'air OK sauf
@@ -133,6 +134,16 @@ class App:
         self._ancre_idx = None       # index d'archive de la brute servant d'ancre
         self._ancre_score = None     # son score
         self._restack_depuis = 0     # frames archivées depuis le dernier re-stack
+        # Jalon 18 : rendre le re-stack VISIBLE (retour réel d'Alain sur le
+        # jalon 16 : « pas simple de voir le restack »). Ligne d'état DÉDIÉE
+        # (toujours affichée, jamais écrasée par les messages de frames),
+        # horodatage, GAIN, compteur de session et historique (bouton « ⓘ »).
+        # Écrit par le worker (attributs simples), lu par _update_status
+        # dans le thread Tk.
+        self.restack_info = ""           # texte de la ligne dédiée ("" = rien)
+        self.restack_couleur = "#888888" # gris (rien) / vert (succès) / ambre (échec)
+        self.restack_total = 0           # re-stacks RÉUSSIS de la session
+        self.restack_hist = []           # historique horodaté (récent en tête)
         # Jalon 17 : filtre anti-brutes très défocalisées (rejet d'office,
         # case pour désactiver — décision d'Alain). Mesure par frame à
         # l'arrivée (fwhm, nb d'étoiles) ; le filtre compare à la médiane des
@@ -529,6 +540,19 @@ class App:
         ttk.Button(box, text="⟳ Re-stacker (meilleure brute)",
                    command=lambda: setattr(self, "restack_request", True)
                    ).pack(fill="x", pady=2)
+        # Jalon 18 : ligne d'état DÉDIÉE au re-stack (retour réel d'Alain :
+        # « pas simple de voir le restack » — le message de la ligne
+        # d'alignement est écrasé par la frame suivante) + bouton « ⓘ » =
+        # historique horodaté des re-stacks de la session. Gris = rien,
+        # vert = re-stack réussi, ambre = échec.
+        row_rs = ttk.Frame(box)
+        row_rs.pack(fill="x", pady=(2, 0))
+        self.lbl_restack = ttk.Label(row_rs, text="Re-stack : —",
+                                     foreground="#888888")
+        self.lbl_restack.pack(side="left", fill="x", expand=True)
+        ttk.Button(row_rs, text="ⓘ", width=3,
+                   command=self._montrer_restack_hist).pack(side="left",
+                                                            padx=(4, 0))
         ttk.Label(box, text="Rejet kappa-sigma :").pack(anchor="w")
         self.var_kappa = tk.StringVar(value="3σ")
         cb = ttk.Combobox(box, textvariable=self.var_kappa, state="readonly", width=8,
@@ -1237,6 +1261,10 @@ class App:
         self._ref_score = self._ancre_score = None
         self._ancre_idx = None
         self._restack_depuis = 0
+        self.restack_info = ""            # jalon 18 : état dédié de session neuve
+        self.restack_couleur = "#888888"
+        self.restack_total = 0
+        self.restack_hist = []
         self.proc_show = self.proc_full = None
         self.proc_new = False
         self.save_asseen_request = None       # sauvegarde « tel que vu » annulée
@@ -1775,8 +1803,10 @@ class App:
         TOUT l'empilement depuis l'archive (équivalent live du choix de
         référence de Siril). S'exécute dans le thread worker (quelques
         secondes à ~1 min selon le nb de frames) ; les frames qui arrivent
-        pendant ce temps sont traitées juste après. → message d'état, ou ""
-        si rien fait (archive vide, lecture impossible, forme différente)."""
+        pendant ce temps sont traitées juste après. Le re-stack est SIGNALÉ
+        sur une ligne d'état DÉDIÉE (jalon 18) : horodatage + gain +
+        historique. → message d'état, ou "" si rien fait (archive vide,
+        lecture impossible, forme différente)."""
         if self.stacker is None:
             return ""
         idx, chemin, score = self._meilleure_archive()
@@ -1785,10 +1815,24 @@ class App:
         try:
             ref = load_image(chemin)
         except Exception as exc:
+            self._noter_restack(0, 0, 0, 0, None,
+                                f"re-stack impossible (lecture archive : "
+                                f"{exc})", echec=True)
             return f"re-stack impossible (lecture archive : {exc})"
         ancien = self.stacker
         if tuple(ref.shape) != tuple(ancien.shape):
+            self._noter_restack(0, 0, 0, 0, None,
+                                "re-stack impossible (forme d'archive "
+                                "différente)", echec=True)
             return "re-stack impossible (forme d'archive différente)"
+        # Jalon 18 : état « en cours » visible immédiatement (le recalcul
+        # peut prendre de quelques secondes à ~1 min).
+        self.restack_couleur = "#888888"
+        self.restack_info = f"{time.strftime('%H:%M:%S')} · re-stack en " \
+                            f"cours ({raison})…"
+        # Jalon 18 : mémoriser l'état AVANT le recalcul pour afficher le GAIN.
+        n_avant = ancien.n
+        ref_score_avant = self._ref_score
         self._definir_reference(ref)
         st = LiveStacker(ancien.shape, k=ancien.k, method=ancien.method,
                          window=ancien.window)
@@ -1819,8 +1863,56 @@ class App:
         self._restack_depuis = 0
         self._ancre_idx = idx
         self._ancre_score = score
+        # Jalon 18 : signaler le re-stack (ligne dédiée horodatée + gain,
+        # compteur de session, historique) — le message sur la ligne
+        # d'alignement reste inchangé (test jalon 16).
+        self._noter_restack(n_ok, n_avant, self.archive.n, score,
+                            ref_score_avant, raison)
         return (f"re-stack {n_ok}/{self.archive.n} frames · réf. = brute "
                 f"#{idx} ({score} étoiles, {raison})")
+
+    # ------------------------------------ jalon 18 : re-stack VISIBLE (UX)
+    def _noter_restack(self, n_ok, n_avant, n_arch, score, ref_score_avant,
+                       detail, echec=False):
+        """Signale un re-stack (jalon 18 — retour réel d'Alain sur le jalon 16 :
+        « pas simple de voir le restack ») : ligne d'état DÉDIÉE horodatée
+        avec le GAIN (frames récupérées vs l'ancien empilement, rapport du
+        score de la nouvelle référence à l'ancien), compteur de session et
+        historique (bouton « ⓘ »). Appelé depuis le thread worker : ne
+        modifie que des attributs simples ; l'affichage est fait par
+        _update_status dans le thread Tk. Un ÉCHEC est signalé (ambre) mais
+        ne compte PAS dans le compteur ni n'est un « re-stack »."""
+        if not echec:
+            self.restack_total += 1
+        hhmm = time.strftime("%H:%M:%S")
+        if echec:
+            self.restack_couleur = "#c98a00"
+            self.restack_info = f"{hhmm} · {detail}"
+        else:
+            gain_n = int(n_ok) - int(n_avant)
+            gain_n_txt = f"+{gain_n}" if gain_n > 0 else str(gain_n)
+            if ref_score_avant is None or ref_score_avant <= 0:
+                gain_s_txt = "réf. précédente non mesurée"
+            else:
+                rapport = float(score) / float(ref_score_avant)
+                gain_s_txt = (f"score réf. ×{rapport:.2f} "
+                              f"({int(ref_score_avant)} → {int(score)} étoiles)")
+            self.restack_couleur = "#1d7f1d"
+            self.restack_info = (f"{hhmm} · re-stack #{self.restack_total} "
+                                 f"({detail}) : {int(n_ok)}/{int(n_arch)} "
+                                 f"frames ({gain_n_txt} vs avant) · "
+                                 f"{gain_s_txt}")
+        self.restack_hist.insert(0, self.restack_info)
+        del self.restack_hist[RESTACK_HIST_MAX:]
+
+    def _montrer_restack_hist(self):
+        """Bouton « ⓘ » : historique horodaté des re-stacks de la session
+        (fenêtre modale, la plus récente en premier)."""
+        lignes = self.restack_hist or ["(aucun re-stack cette session)"]
+        messagebox.showinfo(
+            "Historique des re-stacks",
+            f"Re-stacks de la session : {self.restack_total}\n\n"
+            + "\n".join(f"• {l}" for l in lignes))
 
     # ------------------------------------------------------------ thread d'acquisition
     def _worker(self):
@@ -2040,7 +2132,8 @@ class App:
                       failed=getattr(self.camera, "failed", 0),
                       align=self.align_info,
                       seeing=self.seeing, seeing_msg=self.seeing_msg,
-                      archive=self.archive.n, archive_err=self.archive.erreur)
+                      archive=self.archive.n, archive_err=self.archive.erreur,
+                      restack=self.restack_info, restack_n=self.restack_total)
             if self.stacker.cadre is not None:      # recadrage d'intersection
                 y0, x0, y1, x1 = self.stacker.cadre
                 st["crop_w"], st["crop_h"] = x1 - x0, y1 - y0
@@ -2282,9 +2375,19 @@ class App:
                   f"Frames non alignées : {st['bad']}"]
         if st.get("floues"):
             lignes.append(f"Frames floues rejetées : {st['floues']}")
+        # Jalon 18 : compteur des re-stacks de la session (ligne seulement
+        # s'il y en a — zéro message superflu).
+        if st.get("restack_n"):
+            lignes.append(f"Re-stacks (session) : {st['restack_n']}")
         lignes.append(f"Align. : {st.get('align', '—')}")
         lignes.append(arc)
         self.lbl_stats.config(text="\n".join(lignes))
+        # Jalon 18 : ligne DÉDIÉE au re-stack — jamais écrasée par les
+        # messages de frames (retour réel d'Alain : « pas simple de voir le
+        # restack »). Gris = rien, vert = réussi, ambre = échec.
+        detail_rs = st.get("restack", self.restack_info) or ""
+        self.lbl_restack.config(text=detail_rs or "Re-stack : —",
+                                foreground=self.restack_couleur)
         # Jalon 10 : seeing live (mesuré par le thread d'acquisition) —
         # jamais de silence : soit la mesure, soit la RAISON de son absence.
         s = st.get("seeing") or {}

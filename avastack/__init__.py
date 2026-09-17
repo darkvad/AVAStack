@@ -14,9 +14,32 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.6.0"
+AVASTACK_VERSION = "2.7.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.7.0 : JALON 18 — RE-STACK VISIBLE (UX). Retour réel d'Alain sur le
+#          jalon 16 : « on est ok, pas simple de voir le restack » — le
+#          message sur la ligne d'alignement était discret et vite écrasé
+#          par la frame suivante. Décision d'Alain : chantier COMPLET.
+#          Livré : ligne d'état DÉDIÉE « Re-stack : … » dans le cadre
+#          Empilement (sous le bouton, avec bouton « ⓘ »), toujours
+#          visible et JAMAIS écrasée — grise (aucun / en cours), VERTE
+#          (re-stack réussi), AMBRE (échec : lecture archive / forme
+#          différente) ; horodatage HH:MM:SS ; GAIN affiché (frames
+#          récupérées vs l'ancien empilement « +N vs avant », et rapport
+#          du score de la nouvelle référence à l'ancienne « ×1.50
+#          (100 → 150 étoiles) », ou « réf. précédente non mesurée ») ;
+#          compteur « Re-stacks (session) : N » dans les stats (ligne
+#          seulement si N > 0) ; bouton « ⓘ » → historique horodaté de la
+#          session (fenêtre modale, plus récent en premier, plafond
+#          RESTACK_HIST_MAX = 12). Implémentation : app._noter_restack
+#          (thread worker, attributs simples ; affichage par
+#          _update_status dans le thread Tk) + app._montrer_restack_hist ;
+#          _do_restack note SUCCÈS et ÉCHECS (« re-stack impossible ») et
+#          affiche un état « en cours » immédiat — un échec ne compte PAS
+#          dans le compteur ; état de session neuve à chaque « ▶
+#          Démarrer ». Le message de la ligne d'alignement reste INCHANGÉ
+#          (test jalon 16 inchangé). Test _test_restack_visu_jalon18.py.
 # v2.6.0 : JALON 17 — FILTRE ANTI-BRUTES TRÈS DÉFOCALISÉES (AVANT
 #          l'empilement). Constat réel d'Alain après le jalon 15 : « ça a
 #          l'air OK sauf sur des brutes très défocalisées » — elles passaient
