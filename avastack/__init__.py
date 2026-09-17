@@ -14,9 +14,34 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.4.0"
+AVASTACK_VERSION = "2.5.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.5.0 : JALON 16 — RE-STACK SUR LA MEILLEURE RÉFÉRENCE (étape 3 « à la
+#          Siril »). Retour réel d'Alain après le jalon 15 : « ça a l'air OK
+#          sauf sur des brutes très défocalisées » (un filtre qualité reste
+#          à faire, noté dans AVANCEMENT.md) → on enchaîne le point 3.
+#          Chaque brute archivée (jalon 15) reçoit un SCORE qualité = nb
+#          d'étoiles détectées sur le canal vert (app._score_frame ; une
+#          brute défocalisée en détecte peu — les étoiles larges sortent des
+#          critères de forme — donc le score la pénalise déjà). DÉCLENCHEURS
+#          : AUTO si la meilleure brute bat nettement la référence courante
+#          (marge RESTACK_MARGE = 1,5×, au-delà de RESTACK_MIN_FRAMES = 5
+#          frames archivées, avec cadence RESTACK_CADENCE = 10 entre deux
+#          re-stacks) — utile surtout quand l'ancre initiale était médiocre ;
+#          et MANUEL via le nouveau bouton « ⟳ Re-stacker (meilleure
+#          brute) ». EFFET (_do_restack, thread worker) : re-ancre
+#          l'alignement sur la meilleure brute ET RECALCULE TOUT
+#          l'empilement depuis l'archive — les frames qui avaient REFUSÉ
+#          avec l'ancienne référence ont une seconde chance (c'est le but) ;
+#          l'ancre est ajoutée telle quelle (identité), les autres sont
+#          ré-alignées par la cascade jalon 15. Les réglages du stacker
+#          (k, méthode de rejet, fenêtre, équilibrage) sont conservés.
+#          Toute substitution de référence passe par _definir_reference,
+#          qui mesure aussi le score de la référence (seuil du déclencheur).
+#          UI : bouton dans le cadre Empilement + message « re-stack N/M
+#          frames · réf. = brute #i (S étoiles, auto|bouton) » sur la ligne
+#          d'alignement. Test _test_restack_jalon16.py.
 # v2.4.0 : JALON 15 — ALIGNEMENT « À LA SIRIL » (canal vert + triangles) et
 #          ARCHIVE des frames calibrées. Constat réel d'Alain (17/09/2026) :
 #          des brutes que SIRIL empile sans problème sortent de AVAStack avec

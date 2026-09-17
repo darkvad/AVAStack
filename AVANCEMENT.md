@@ -7,8 +7,33 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
 
 ## État actuel (base stable)
 
-- **Version : AVAStack v2.4.0** (`avastack/__init__.py`,
-  `AVASTACK_VERSION = "2.4.0"`), branche `master`. **v2.4.0 = travail du
+- **Version : AVAStack v2.5.0** (`avastack/__init__.py`,
+  `AVASTACK_VERSION = "2.5.0"`), branche `master`. **v2.5.0 = travail du
+  17/09/2026 : JALON 16 « re-stack sur la meilleure référence » (étape 3)** —
+  enchaîné au retour réel d'Alain sur le jalon 15 : **« ça a l'air OK sauf
+  sur des brutes très défocalisées »** (première validation réelle du canal
+  vert + triangles ; le filtre défocalisation est NOTÉ à faire, voir la
+  section « À FAIRE » ci-dessous). Livré : chaque brute archivée reçoit un
+  **score qualité = nb d'étoiles détectées sur le canal vert** (une brute
+  défocalisée en détecte peu — pénalisée d'office) ; **déclencheur AUTO** :
+  si la meilleure brute bat la référence courante de RESTACK_MARGE = 1,5×
+  (après RESTACK_MIN_FRAMES = 5 frames archivées, cadence
+  RESTACK_CADENCE = 10 entre deux re-stacks) — surtout utile quand l'ancre
+  initiale est médiocre ; **bouton « ⟳ Re-stacker (meilleure brute) »**
+  (cadre Empilement) pour forcer. EFFET : re-ancre l'alignement sur la
+  meilleure brute ET **recalcule TOUT l'empilement depuis l'archive** —
+  les frames qui avaient REFUSÉ avec l'ancienne référence ont une seconde
+  chance (c'est le but) ; l'ancre est ajoutée telle quelle, les autres
+  ré-alignées par la cascade jalon 15 ; réglages du stacker conservés ;
+  message « re-stack N/M frames · réf. = brute #i (S étoiles, auto/bouton) »
+  sur la ligne d'alignement. Toute substitution de référence passe par
+  `_definir_reference` (mesure aussi le score de la référence). Test
+  `_test_restack_jalon16.py`. **⚠ PAS ENCORE VALIDÉ EN RÉEL** (prochaine
+  nuit d'Alain : vérifier sur de vraies frames, notamment qu'un re-stack
+  auto ne part pas en boucle sur un dossier mixé).
+- **Version précédente : AVAStack v2.4.0** (jalon 15, retour réel partiel
+  d'Alain le 17/09/2026 : « ça a l'air OK sauf brutes très défocalisées »).
+  **v2.4.0 = travail du
   17/09/2026 : JALON 15 « alignement à la Siril » + ARCHIVE des frames** —
   réponse au NOUVEAU constat d'Alain : des brutes que Siril empile sans
   problème sortent de AVAStack avec **étoiles dédoublées et beaucoup de
@@ -88,6 +113,21 @@ la tâche en cours. CLAUDE.md reste la mémoire de long terme, inchangée.)
   pas forcément de la nuit courante). L'ancien setup mono à 243 mm (champs
   riches en étoiles) fonctionnait sans problème — les défauts corrigés au
   jalon 13 sont spécifiques à longue focale / couleur / dossiers mixés.
+
+### ⚠ À FAIRE (demandé par Alain le 17/09/2026, après le 1er test réel du jalon 15)
+
+- **FILTRE ANTI-BRUTES TRÈS DÉFOCALISÉES** — constat réel d'Alain :
+  « ça a l'air OK **sauf sur des brutes très défocalisées** ». Les brutes
+  très défocalisées passent encore l'alignement (les triangles s'y
+  retrouvent) mais dégradent l'empilement. À prévoir : un filtre qualité
+  AVANT l'empilement qui signale/rejette une frame dont la **FWHM médiane
+  dépasse nettement la médiane des FWHM des frames précédentes** (mesure
+  déjà disponible : `stars.mesurer_seeing`, jalon 10) ou dont le **score
+  étoiles s'effondre** (les étoiles défocalisées sortent des critères de
+  forme de `stars.py`). Le score du re-stack (jalon 16) pénalise déjà ces
+  frames pour le choix de la référence, mais elles ENTRENT encore dans
+  l'empilement — c'est ça qu'il faut filtrer. Décision d'UI à prendre
+  (rejet automatique vs simple signal + case « ignorer les frames floues »).
 
 ## ✅ Jalons 13 + 14 — VALIDÉS EN RÉEL PAR ALAIN (17/09/2026) — session close
 

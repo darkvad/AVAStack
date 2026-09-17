@@ -23,7 +23,18 @@ from ..cameras import (SOURCES, SimulatedCamera, OpenCVCamera, ZWOASICamera,
                        FolderCamera, QHYCamera, PlayerOneCamera,
                        TouptekCamera, SVBonyCamera)
 from ..processing import Calibrator, StarAligner, LiveStacker, DisplayProcessor
+from ..processing import alignment as align_mod
 from ..processing.framestore import ArchiveFrames
+
+# --- Jalon 16 : re-stack sur la meilleure référence (esprit Siril) ----------
+# Chaque brute archivée reçoit un score qualité (nb d'étoiles détectées sur
+# le canal vert). Si une brute bat nettement la référence courante, on
+# ré-ancre dessus et on RECALCULE tout l'empilement depuis l'archive ;
+# le bouton « ⟳ Re-stacker (meilleure brute) » force le recalcul.
+SCORE_MAX_ETOILES = 200    # plafond de détection pour le score qualité
+RESTACK_MARGE = 1.5        # une brute doit battre la référence de ce facteur
+RESTACK_MIN_FRAMES = 5     # pas de re-stack auto avant ce nb de frames archivées
+RESTACK_CADENCE = 10       # nb de frames archivées entre deux re-stacks auto
 from ..processing import denoise as denoiser_local
 from ..processing import stars as seeing_live
 from ..processing import sharpness as nettete_live
@@ -102,6 +113,15 @@ class App:
         # re-stack « à la Siril » : recalcul de l'empilement sur une meilleure
         # référence). Dossier temp de session, vidé au démarrage/fermeture.
         self.archive = ArchiveFrames()
+        # Jalon 16 : re-stack sur la meilleure référence — score qualité
+        # (nb d'étoiles) parallèle à archive.chemins, ancre courante, et
+        # déclencheurs (auto : marge en étoiles ; manuel : bouton).
+        self._scores = []            # score par frame archivée (même ordre)
+        self.restack_request = False # bouton « ⟳ Re-stacker (meilleure brute) »
+        self._ref_score = None       # score de la référence courante
+        self._ancre_idx = None       # index d'archive de la brute servant d'ancre
+        self._ancre_score = None     # son score
+        self._restack_depuis = 0     # frames archivées depuis le dernier re-stack
 
         # --- état du zoom / pan (affichage)
         self.zoom = 1.0                # 1.0 = image ajustée à la fenêtre
@@ -474,6 +494,13 @@ class App:
         self.cb_ref_refresh.pack(side="left", padx=4)
         self.cb_ref_refresh.bind("<<ComboboxSelected>>",
                                  lambda e: self._on_ref_refresh())
+        # Jalon 16 : re-stack « à la Siril » — re-ancre l'alignement sur la
+        # meilleure brute archivée (score = nb d'étoiles) et RECALCULE tout
+        # l'empilement depuis l'archive. Déclencheur auto : une brute bat
+        # nettement la référence courante ; ce bouton force le recalcul.
+        ttk.Button(box, text="⟳ Re-stacker (meilleure brute)",
+                   command=lambda: setattr(self, "restack_request", True)
+                   ).pack(fill="x", pady=2)
         ttk.Label(box, text="Rejet kappa-sigma :").pack(anchor="w")
         self.var_kappa = tk.StringVar(value="3σ")
         cb = ttk.Combobox(box, textvariable=self.var_kappa, state="readonly", width=8,
@@ -1162,7 +1189,11 @@ class App:
         self.show_stack = None
         self.last_show = None
         self._session += 1                     # invalide tout traitement externe en vol
-        self.archive.vider()                   # jalon 15 : archive de session neuve
+        self._vider_archive()                  # jalon 15/16 : archive + scores de session neuve
+        self.restack_request = False
+        self._ref_score = self._ancre_score = None
+        self._ancre_idx = None
+        self._restack_depuis = 0
         self.proc_show = self.proc_full = None
         self.proc_new = False
         self.save_asseen_request = None       # sauvegarde « tel que vu » annulée
@@ -1581,6 +1612,107 @@ class App:
             if session == self._session:
                 self.ext_busy = False
 
+    # -------------------------------------- jalon 16 : re-stack (Siril)
+    def _score_frame(self, img):
+        """Score qualité d'une brute (esprit Siril) : nombre d'étoiles
+        détectées sur le canal vert. Une brute très défocalisée en détecte
+        peu (les étoiles larges sortent des critères de forme de stars.py) —
+        le score pénalise donc déjà partiellement la défocalisation pour le
+        choix de la référence (un VRAI filtre qualité FWHM reste à faire,
+        cf. AVANCEMENT.md). Jamais d'exception propagée."""
+        try:
+            pos, _msg = seeing_live.detecter_positions(
+                align_mod.canal_alignement(img), max_etoiles=SCORE_MAX_ETOILES)
+            return int(len(pos))
+        except Exception:
+            return 0
+
+    def _definir_reference(self, img):
+        """Remplace la référence d'alignement ET mesure son score (le score
+        de la référence sert de seuil au déclencheur auto du re-stack)."""
+        self.aligner.set_reference(img)
+        self._ref_score = self._score_frame(img)
+
+    def _vider_archive(self):
+        """Vide l'archive temporaire ET le score parallèle (les deux listes
+        doivent toujours avoir le même ordre — jalon 16)."""
+        self.archive.vider()
+        self._scores = []
+
+    def _meilleure_archive(self):
+        """→ (idx, chemin, score) de la meilleure brute archivée, ou
+        (None, None, None) si l'archive est vide ou incohérente."""
+        if not self._scores or len(self._scores) != len(self.archive.chemins):
+            return None, None, None
+        idx = int(np.argmax(self._scores))
+        return idx, self.archive.chemins[idx], int(self._scores[idx])
+
+    def _veut_restack(self):
+        """Déclencheur AUTO (esprit Siril) : la meilleure brute archivée bat
+        nettement la référence courante (marge RESTACK_MARGE en étoiles).
+        Surtout utile quand l'ANCRE initiale était médiocre ; une fois la
+        référence rafraîchie sur l'EMPILEMENT (qui détecte plus d'étoiles
+        qu'une brute isolée), la marge n'est presque plus atteinte —
+        comportement voulu, le re-stack auto reste exceptionnel."""
+        idx, _chemin, score = self._meilleure_archive()
+        if idx is None or self._ref_score is None:
+            return False
+        if self._ancre_idx is not None and idx == self._ancre_idx:
+            return False
+        return score >= RESTACK_MARGE * self._ref_score
+
+    def _do_restack(self, raison):
+        """Re-ancre l'alignement sur la MEILLEURE brute archivée et recalcule
+        TOUT l'empilement depuis l'archive (équivalent live du choix de
+        référence de Siril). S'exécute dans le thread worker (quelques
+        secondes à ~1 min selon le nb de frames) ; les frames qui arrivent
+        pendant ce temps sont traitées juste après. → message d'état, ou ""
+        si rien fait (archive vide, lecture impossible, forme différente)."""
+        if self.stacker is None:
+            return ""
+        idx, chemin, score = self._meilleure_archive()
+        if idx is None:
+            return ""
+        try:
+            ref = load_image(chemin)
+        except Exception as exc:
+            return f"re-stack impossible (lecture archive : {exc})"
+        ancien = self.stacker
+        if tuple(ref.shape) != tuple(ancien.shape):
+            return "re-stack impossible (forme d'archive différente)"
+        self._definir_reference(ref)
+        st = LiveStacker(ancien.shape, k=ancien.k, method=ancien.method,
+                         window=ancien.window)
+        st.wb_auto = ancien.wb_auto
+        st.wb_force = ancien.wb_force
+        self.stacker = st
+        n_ok = 0
+        ident = np.eye(2, 3)
+        for j, c in enumerate(self.archive.chemins):
+            try:
+                img = load_image(c)
+            except Exception:
+                continue                    # fichier illisible → on le saute
+            if tuple(img.shape) != tuple(st.shape):
+                continue
+            if j == idx:
+                st.add(img)                 # l'ancre : alignement trivial
+                st.note_alignement(ident)
+                n_ok += 1
+                continue
+            M, ok = self.aligner.compute(img)
+            if ok:
+                st.add(cv2.warpAffine(img, M, (img.shape[1], img.shape[0]),
+                                      flags=cv2.INTER_LINEAR))
+                st.note_alignement(M)
+                n_ok += 1
+        self._ref_frames = self._ref_bad = 0
+        self._restack_depuis = 0
+        self._ancre_idx = idx
+        self._ancre_score = score
+        return (f"re-stack {n_ok}/{self.archive.n} frames · réf. = brute "
+                f"#{idx} ({score} étoiles, {raison})")
+
     # ------------------------------------------------------------ thread d'acquisition
     def _worker(self):
         last_good = None
@@ -1654,8 +1786,14 @@ class App:
                     and self.stacker.shape != frame.shape:
                 # changement de géométrie : les frames archivées (autre
                 # taille) ne sont plus ré-empilables → archive neuve
-                self.archive.vider()
-            self.archive.ajouter(frame)
+                self._vider_archive()
+            chemin_archive = self.archive.ajouter(frame)
+            if chemin_archive is not None:
+                # Jalon 16 : score qualité (nb d'étoiles détectées, canal
+                # vert) de chaque brute archivée — matière du choix de
+                # référence à la Siril (meilleure référence + re-stack).
+                self._scores.append(self._score_frame(frame))
+                self._restack_depuis += 1
 
             # (re)création de l'empilement / nouvelle référence
             if self.reset_request or self.stacker is None or self.stacker.shape != frame.shape:
@@ -1666,7 +1804,7 @@ class App:
                 self.stacker.wb_auto = bool(self.var_wb.get())
                 self.stacker.wb_force = float(self.var_wb_force.get())
                 self.aligner.reset()
-                self.aligner.set_reference(frame)
+                self._definir_reference(frame)
                 self.disp.reset()          # stats d'affichage repartent de zéro
 
             M, ok = self.aligner.compute(frame)
@@ -1688,7 +1826,7 @@ class App:
                 # frames d'ancien repère dans l'accumulation seront rejetées
                 # ensuite par la médiane Winsorized (dilution).
                 if self.stacker.n <= 2 and self._ref_bad >= 3:
-                    self.aligner.set_reference(frame)
+                    self._definir_reference(frame)
                     self._ref_frames = self._ref_bad = 0
             self._ref_frames += 1
             # Jalon 13 : ligne d'état de l'alignement (Δ, θ, méthode ou refus).
@@ -1712,7 +1850,7 @@ class App:
                     self._ref_frames >= self.ref_refresh
                     or (self._ref_bad >= 3
                         and 2 * self._ref_bad >= self._ref_frames)):
-                self.aligner.set_reference(self.stacker.mean(recadre=False))
+                self._definir_reference(self.stacker.mean(recadre=False))
                 self._ref_frames = self._ref_bad = 0
 
             if self.ref_request and stack is not None:
@@ -1720,7 +1858,24 @@ class App:
                 # jalon 13 : SANS recadrage (même repère que les frames —
                 # l'ancien code passait l'empilement RECADRÉ : chaque clic
                 # décalait silencieusement tout l'empilement de (y0, x0))
-                self.aligner.set_reference(self.stacker.mean(recadre=False))
+                self._definir_reference(self.stacker.mean(recadre=False))
+
+            # Jalon 16 : re-stack sur la MEILLEURE brute archivée (choix de
+            # référence à la Siril) — auto si une brute bat nettement la
+            # référence courante (marge en étoiles), ou sur bouton. Le
+            # recalcul rejoue TOUTES les frames archivées : celles qui
+            # avaient refusé avec l'ancienne référence ont une seconde chance.
+            if self.stacker is not None and (
+                    self.restack_request
+                    or (self.archive.n >= RESTACK_MIN_FRAMES
+                        and self._restack_depuis >= RESTACK_CADENCE
+                        and self._veut_restack())):
+                raison = "bouton" if self.restack_request else "auto"
+                self.restack_request = False
+                info = self._do_restack(raison)
+                if info:
+                    self.align_info = info
+                    stack = self.stacker.mean()   # affichage immédiat
 
             show = stack if stack is not None else (last_good if last_good is not None else frame)
 
