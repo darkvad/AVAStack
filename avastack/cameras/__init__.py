@@ -11,6 +11,7 @@ from .simulated import SimulatedCamera
 from .opencv_cam import OpenCVCamera
 from .zwo import ZWOASICamera
 from .folder import FolderCamera
+from .multifolder import MultiFolderCamera
 from .qhy import QHYCamera
 from .playerone import PlayerOneCamera
 from .touptek import TouptekCamera

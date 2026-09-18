@@ -20,10 +20,12 @@ from ..compat import IS_WINDOWS
 from ..config import CONFIG, sauver_config
 from ..images import CFA_MODE, load_image, save_image, find_output, auto_unflip
 from ..cameras import (SOURCES, SimulatedCamera, OpenCVCamera, ZWOASICamera,
-                       FolderCamera, QHYCamera, PlayerOneCamera,
-                       TouptekCamera, SVBonyCamera)
+                       FolderCamera, MultiFolderCamera, QHYCamera,
+                       PlayerOneCamera, TouptekCamera, SVBonyCamera)
 from ..processing import Calibrator, StarAligner, LiveStacker, DisplayProcessor
 from ..processing import alignment as align_mod
+from ..processing.composition import (CompositeStacker, extraire_canal,
+                                      composition_pour_roles)
 from ..processing.framestore import ArchiveFrames
 
 # --- Jalon 16 : re-stack sur la meilleure référence (esprit Siril) ----------
@@ -125,6 +127,13 @@ class App:
         # re-stack « à la Siril » : recalcul de l'empilement sur une meilleure
         # référence). Dossier temp de session, vidé au démarrage/fermeture.
         self.archive = ArchiveFrames()
+        # Jalon 19 (mode composition) : drapeau de mode + composition déduite
+        # des rôles des dossiers (choix UI explicite en phase 3). En mode
+        # compo, self.stacker est une FAÇADE CompositeStacker (un LiveStacker
+        # par rôle, mean() → composite) et l'archive est tenue PAR RÔLE.
+        self._mode_compo = False
+        self._compo_nom = None
+        self.archives = {}              # rôle → ArchiveFrames (mode compo)
         # Jalon 16 : re-stack sur la meilleure référence — score qualité
         # (nb d'étoiles) parallèle à archive.chemins, ancre courante, et
         # déclencheurs (auto : marge en étoiles ; manuel : bouton).
@@ -152,6 +161,9 @@ class App:
         self.rejeter_flou = True     # état lu par le thread worker (case UI)
         self.floues_rejetees = 0     # frames rejetées par le filtre (session)
         self._fwhm_hist = []         # (fwhm, nb) des frames gardées — médianes
+        self._fwhm_par_role = {}     # jalon 19 : historique PAR RÔLE en mode
+                                     # compo (un filtre étroit ne montre pas
+                                     # le même champ qu'un autre)
 
         # --- état du zoom / pan (affichage)
         self.zoom = 1.0                # 1.0 = image ajustée à la fenêtre
@@ -1235,12 +1247,22 @@ class App:
             return
         try:
             cam = self._make_camera(self.var_source.get())
+            if isinstance(cam, MultiFolderCamera) and \
+                    composition_pour_roles(cam.roles) is None:
+                raise RuntimeError(
+                    "Rôles de dossiers sans composition connue : "
+                    + ", ".join(cam.roles))
             cam.open()
             cam.apply_settings(self.var_expo.get(), self.var_gain.get())
         except Exception as e:
             messagebox.showerror("Caméra", str(e))
             return
         self.camera = cam
+        # Jalon 19 : mode composition si la source est multi-dossiers — la
+        # composition est déduite des rôles configurés (choix UI en phase 3).
+        self._mode_compo = isinstance(cam, MultiFolderCamera)
+        self._compo_nom = (composition_pour_roles(cam.roles)
+                           if self._mode_compo else None)
         self.aligner = StarAligner()
         self.stacker = None
         self.disp.reset()                      # stats d'affichage repartent de zéro
@@ -1248,6 +1270,7 @@ class App:
         self.bad_frames, self.fps = 0, 0.0
         self.floues_rejetees = 0              # jalon 17 : compteur de session
         self._fwhm_hist = []                  # jalon 17 : mesures de session neuve
+        self._fwhm_par_role = {}              # jalon 19 : idem, PAR RÔLE (compo)
         self.seeing, self.seeing_msg = None, ""   # jalon 10 : nouvelle mesure
         self._seeing_t0 = 0.0                     # → dès la 1re frame
         self.disp.vl_seeing = None                # jalon 12 : PSF de la
@@ -1706,9 +1729,12 @@ class App:
         return (float(fwhm) if fwhm is not None else None), \
             int(mes.get("nb") or 0)
 
-    def _filtre_floue(self, frame):
+    def _filtre_floue(self, frame, role=None):
         """Décision du filtre jalon 17 pour la frame calibrée `frame` :
         → message de rejet ("" si la frame est gardée ou filtre désactivé).
+        En mode composition (jalon 19, `role` fourni), la médiane de
+        référence est tenue PAR RÔLE : un filtre étroit (Ha) ne montre pas
+        le même nombre d'étoiles ni la même FWHM qu'un autre (O3).
         Rejet si : FWHM > FWHM_MARGE × médiane des frames gardées (et
         soi-même > FWHM_ABS_MIN px — ne rien rejeter en très courte focale où
         une FWHM de 3 px est un seeing honnête), OU score étoiles effondré
@@ -1723,8 +1749,10 @@ class App:
         if not self.rejeter_flou:
             return ""
         fwhm, nb = self._score_qualite(frame)
-        ref_f = [m[0] for m in self._fwhm_hist if m[0] is not None]
-        ref_n = [m[1] for m in self._fwhm_hist]
+        hist = (self._fwhm_par_role.setdefault(role, [])
+                if role is not None else self._fwhm_hist)
+        ref_f = [m[0] for m in hist if m[0] is not None]
+        ref_n = [m[1] for m in hist]
         assez_n = len(ref_n) >= FLU_MIN_REF
         med_n = float(np.median(ref_n)) if assez_n else 0.0
         med_f = float(np.median(ref_f)) if len(ref_f) >= FLU_MIN_REF else None
@@ -1746,7 +1774,7 @@ class App:
                 rejeter = (f"frame très défocalisée rejetée (score étoiles "
                            f"{nb} ≪ médiane {med_n:.0f})")
         if not rejeter and fwhm is not None:
-            self._fwhm_hist.append((fwhm, nb))
+            hist.append((fwhm, nb))
         return rejeter
 
     # -------------------------------------- jalon 16 : re-stack (Siril)
@@ -1772,9 +1800,12 @@ class App:
 
     def _vider_archive(self):
         """Vide l'archive temporaire ET le score parallèle (les deux listes
-        doivent toujours avoir le même ordre — jalon 16)."""
+        doivent toujours avoir le même ordre — jalon 16). En mode compo
+        (jalon 19), vide aussi les archives PAR RÔLE."""
         self.archive.vider()
         self._scores = []
+        for arch in self.archives.values():
+            arch.vider()
 
     def _meilleure_archive(self):
         """→ (idx, chemin, score) de la meilleure brute archivée, ou
@@ -1973,10 +2004,15 @@ class App:
                 except Exception as e:
                     self.saved_path = f"ERREUR: {e}"
 
-            frame = self.camera.read()
-            if frame is None:
+            lu = self.camera.read()
+            if lu is None:
                 time.sleep(0.005)
                 continue
+            # Jalon 19 : source « composition » → read() renvoie (img, rôle).
+            if self._mode_compo:
+                frame, role = lu
+            else:
+                frame, role = lu, None
             frame = self.calib.apply(frame)
 
             # Jalon 17 : filtre anti-brutes TRÈS DÉFOCALISÉES — AVANT tout le
@@ -1986,7 +2022,7 @@ class App:
             # rien devant une pose de 120 s. La frame rejetée est comptée,
             # signalée sur la ligne d'alignement, et le worker respire (au
             # plus 20 analyses/s) sans empiler ni déclencher de re-calage.
-            verdict = self._filtre_floue(frame)
+            verdict = self._filtre_floue(frame, role=role)
             if verdict:
                 self.floues_rejetees += 1
                 self.align_info = verdict
@@ -1997,16 +2033,28 @@ class App:
             # session, garde-fous débit/taille) — matière du futur re-stack
             # « à la Siril » (recalcul sur une meilleure référence). Aucun
             # échec d'archivage n'interrompt l'empilement (erreur exposée).
+            # Jalon 19 : extraction du CANAL du rôle (mono → tel quel ; CFA
+            # débayerisé → canal dominant du rôle, CANAUX_CFA). Tout le reste
+            # du flux (référence, alignement, empilement) travaille sur ce
+            # canal 2D — le repère reste COMMUN (aligneur unique, décision
+            # tranchée du 18/09/2026).
+            img_travail = (extraire_canal(frame, role)
+                           if self._mode_compo else frame)
             if self.stacker is not None \
-                    and self.stacker.shape != frame.shape:
+                    and self.stacker.shape != img_travail.shape:
                 # changement de géométrie : les frames archivées (autre
                 # taille) ne sont plus ré-empilables → archive neuve
                 self._vider_archive()
-            chemin_archive = self.archive.ajouter(frame)
-            if chemin_archive is not None:
+            if self._mode_compo:          # archive PAR RÔLE (futur re-stack v2)
+                chemin_archive = self.archives.setdefault(
+                    role, ArchiveFrames()).ajouter(frame)
+            else:
+                chemin_archive = self.archive.ajouter(frame)
+            if chemin_archive is not None and not self._mode_compo:
                 # Jalon 16 : score qualité (nb d'étoiles détectées, canal
                 # vert) de chaque brute archivée — matière du choix de
                 # référence à la Siril (meilleure référence + re-stack).
+                # (Mode compo : re-stack DÉSACTIVÉ — reporté v2.)
                 self._scores.append(self._score_frame(frame))
                 self._restack_depuis += 1
 
@@ -2014,21 +2062,32 @@ class App:
             # si la frame a passé le filtre jalon 17 (une brute très floue ne
             # doit jamais devenir la référence d'alignement ni créer
             # l'empilement — c'est le défaut que le filtre élimine).
-            if self.reset_request or self.stacker is None or self.stacker.shape != frame.shape:
+            if (self.reset_request or self.stacker is None
+                    or self.stacker.shape != img_travail.shape):
                 self.reset_request = False
-                self.stacker = LiveStacker(frame.shape, k=self.kappa,
-                                           method=self.rejet_methode,
-                                           window=self.rejet_fenetre)
+                if self._mode_compo:       # façade multi-rôles : un stacker
+                    self.stacker = CompositeStacker(   # par rôle, mean() =
+                        self._compo_nom,   # composite (cadre commun)
+                        k=self.kappa, method=self.rejet_methode,
+                        window=self.rejet_fenetre)
+                else:
+                    self.stacker = LiveStacker(img_travail.shape, k=self.kappa,
+                                               method=self.rejet_methode,
+                                               window=self.rejet_fenetre)
                 self.stacker.wb_auto = bool(self.var_wb.get())
                 self.stacker.wb_force = float(self.var_wb_force.get())
                 self.aligner.reset()
-                self._definir_reference(frame)
+                self._definir_reference(img_travail)
                 self.disp.reset()          # stats d'affichage repartent de zéro
 
-            M, ok = self.aligner.compute(frame)
+            M, ok = self.aligner.compute(img_travail)
             if ok:
-                aligned = cv2.warpAffine(frame, M, (frame.shape[1], frame.shape[0]),
+                aligned = cv2.warpAffine(img_travail, M,
+                                         (img_travail.shape[1],
+                                          img_travail.shape[0]),
                                          flags=cv2.INTER_LINEAR)
+                if self._mode_compo:       # routage vers le stacker du rôle
+                    self.stacker.role_courant = role
                 self.stacker.add(aligned)
                 self.stacker.note_alignement(M)   # intersection des zones couvertes
                 last_good = aligned
@@ -2084,11 +2143,13 @@ class App:
             # référence courante (marge en étoiles), ou sur bouton. Le
             # recalcul rejoue TOUTES les frames archivées : celles qui
             # avaient refusé avec l'ancienne référence ont une seconde chance.
-            if self.stacker is not None and (
+            # Jalon 19 : re-stack DÉSACTIVÉ en mode compo (reporté v2 —
+            # l'archive par rôle est en place pour l'accueillir).
+            if (not self._mode_compo and self.stacker is not None and (
                     self.restack_request
                     or (self.archive.n >= RESTACK_MIN_FRAMES
                         and self._restack_depuis >= RESTACK_CADENCE
-                        and self._veut_restack())):
+                        and self._veut_restack()))):
                 raison = "bouton" if self.restack_request else "auto"
                 self.restack_request = False
                 info = self._do_restack(raison)
@@ -2124,15 +2185,29 @@ class App:
             dt = time.perf_counter() - t0
             inst = 1.0 / max(dt, 1e-4)
             self.fps = inst if self.fps == 0 else 0.9 * self.fps + 0.1 * inst
+            # Jalon 19 : en mode compo, `pending` est une propriété (somme
+            # des dossiers) et l'archive est tenue PAR RÔLE — totaux pour
+            # l'état ; `compo` = état par canal (« Ha: 12 · O3: 9 »).
+            if self._mode_compo:
+                pend = getattr(self.camera, "pending", 0)
+                n_arch = sum(a.n for a in self.archives.values())
+                err_arch = "; ".join(a.erreur for a in self.archives.values()
+                                     if a.erreur)
+            else:
+                pend = len(getattr(self.camera, "_pending", []))
+                n_arch, err_arch = self.archive.n, self.archive.erreur
             st = dict(frames=self.stacker.n, rejets=self.stacker.rejected_total,
                       bad=self.bad_frames, floues=self.floues_rejetees,
                       fps=self.fps, cam=self.camera.name,
                       file=getattr(self.camera, "last_file", ""),
-                      pending=len(getattr(self.camera, "_pending", [])),
+                      pending=pend,
                       failed=getattr(self.camera, "failed", 0),
                       align=self.align_info,
                       seeing=self.seeing, seeing_msg=self.seeing_msg,
-                      archive=self.archive.n, archive_err=self.archive.erreur,
+                      archive=n_arch, archive_err=err_arch,
+                      compo=(self.stacker.etat()
+                             if self._mode_compo and self.stacker is not None
+                             else None),
                       restack=self.restack_info, restack_n=self.restack_total)
             if self.stacker.cadre is not None:      # recadrage d'intersection
                 y0, x0, y1, x1 = self.stacker.cadre

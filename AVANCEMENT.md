@@ -71,15 +71,29 @@ normaliser/bornes figeables, composer, radio L),
 `avastack/cameras/multifolder.py` (MultiFolderCamera, read() → (img, rôle),
 stats par rôle) + `read(timeout=)` rétro-compatible dans `folder.py`.
 Tests `_test_composition_jalon19.py` (25 vérifs) et
-`_test_multifolder_jalon19.py` (vrais dossiers temporaires) ; les
-**25 fichiers `_test_*.py` passent**. NB : radio L, mode « synthétisé » =
-combine identité aujourd'hui (identique au RGB pur tant qu'aucun
-traitement spécifique du canal L n'existe) — documenté dans le source.
-**Prochaine étape : Phase 2 (worker : stackers par rôle + aligneur
-partagé, NB recadrage sur cadre COMMUN avant composer()).**
-**FIN DE SESSION (18/09/2026)** : Phase 1 commitée sur `master` (version
-restée v2.7.0 — jalon 19 non livré, pas de bump) ; reprendre directement
-à la **Phase 2** en relisant CLAUDE.md + cette section au démarrage.
+`_test_multifolder_jalon19.py` (vrais dossiers temporaires). NB : radio L,
+mode « synthétisé » = combine identité aujourd'hui — documenté dans le
+source. **Phase 2 LIVRÉE (18/09/2026)** — worker multi-rôles :
+`CompositeStacker` (façade dans composition.py : un LiveStacker par rôle,
+un seul polygone d'intersection GLOBAL = CADRE COMMUN appliqué avant
+composer(), mean() → composite linéaire, k/set_rejet/wb répercutés, etat()
+« Ha: 12 · O3: 9 ») ; worker (`ui/app.py`) : `read() → (img, rôle)` si
+caméra multi-dossiers, extraction du canal du rôle (mono tel quel / CFA →
+CANAUX_CFA) APRÈS calib + filtre flou, TOUT le flux (référence, alignement
+partagé, warp, empilement) travaille sur le canal 2D, archives PAR RÔLE,
+filtre flou à médiane PAR RÔLE, re-stack DÉSACTIVÉ (reporté v2), stats
+`compo` + totaux archive/pending. Le chemin MONO ne change pas
+(self.stacker reste un LiveStacker). Test `_test_compo_worker_jalon19.py`
+(façade + worker réel sur dossiers temporaires Ha/O3 → HOO, sauvegarde =
+composite) ; les **26 fichiers `_test_*.py` passent**. Piège test :
+`var.get()` Tkinter interdit hors thread principal (bouchons `_Val`) et
+crash OpenCV 5/OpenCL au teardown (`cv2.ocl.setUseOpenCL(False)`).
+**Prochaine étape : Phase 3 (UI : source « Composition », combobox
+composition ↔ dossiers par rôle, auto-détection filtre FITS FILTER +
+override, gains par canal, radio L, affichage de l'état par canal).**
+**FIN DE SESSION (18/09/2026)** : Phases 1+2 commitées sur `master`
+(version restée v2.7.0 — jalon 19 non livré, pas de bump) ; reprendre
+directement à la **Phase 3** en relisant CLAUDE.md + cette section.
 
 **Phases** :
 1. `avastack/processing/composition.py` (COMPOSITIONS, extraire_canal,

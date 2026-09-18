@@ -33,6 +33,12 @@ il est utilisé quoi qu'il arrive.
 
 import numpy as np
 
+# Réutilisation SANS modification du socle d'empilement (jalon 15) : la
+# façade multi-rôles tient la MÊME géométrie d'intersection (les helpers
+# privés _aire_signee/_clip_poly restent dans stacking.py, source unique).
+from .stacking import (LiveStacker, _aire_signee, _clip_poly,
+                       cadre_intersection, quad_alignement)
+
 # Rôles possibles d'un dossier (un rôle = un filtre).
 ROLES = ("L", "R", "G", "B", "Ha", "O3", "S2")
 
@@ -218,3 +224,218 @@ def composer(canaux, composition, gains=None, bornes=None,
             rgb = (rgb * ratio[..., None]).astype(np.float32)
 
     return rgb
+
+
+# ------------------------------------------------------ façade worker -----
+def composition_pour_roles(roles):
+    """Composition correspondant à un ensemble de rôles (jalon 19, phase 2 :
+    SANS choix UI encore, le worker la déduit des dossiers configurés).
+    Correspondance EXACTE d'abord ; sinon la première composition dont les
+    rôles englobent ceux fournis (ordre HOO, SHO, RGB, LRGB) — ex.
+    (« Ha »,) → HOO (O3 restera vide, canal neutre). → nom, ou None si vide."""
+    roles = tuple(roles)
+    if not roles:
+        return None
+    for nom in COMPOSITIONS:
+        if COMPOSITIONS[nom]["roles"] == roles:
+            return nom
+    ens = set(roles)
+    for nom in ("HOO", "SHO", "RGB", "LRGB"):
+        if ens <= set(COMPOSITIONS[nom]["roles"]):
+            return nom
+    return None
+
+
+class CompositeStacker:
+    """Façade multi-rôles (jalon 19, phase 2) : UN LiveStacker par rôle.
+
+    Imite l'interface de LiveStacker telle que le worker l'utilise
+    (add / mean / n / cadre / note_alignement / k / set_rejet / wb_auto /
+    wb_force / reset) — ainsi TOUT le code existant du worker (aperçu,
+    sauvegardes, traitement externe) fonctionne sans le savoir : mean()
+    renvoie le COMPOSITE linéaire.
+
+    Décisions tranchées (AVANCEMENT.md, 18/09/2026) :
+    - les stackers de rôle accumulent des CANAUX 2D (extraire_canal) dans le
+      repère des frames alignées — l'aligneur est PARTAGÉ (référence unique),
+      donc tous les rôles partagent le MÊME repère ;
+    - l'intersection des zones couvertes est tenue GLOBALEMENT (un seul
+      polygone, tous rôles confondus) : c'est le CADRE COMMUN appliqué avant
+      composer() — les stackers de rôle n'ont pas à se recadrer entre eux ;
+    - mean(recadre=False) renvoie le composite SANS recadrage (même repère
+      que les frames) : utilisable comme référence d'alignement, exactement
+      comme LiveStacker.mean(recadre=False) en mono (jalon 13).
+    """
+
+    def __init__(self, composition, k=3.0, warmup=5, method="kappa",
+                 window=8):
+        if composition not in COMPOSITIONS:
+            raise ValueError(f"Composition inconnue : {composition!r}")
+        self.composition = composition
+        self._k = k
+        self.warmup = warmup
+        self._method = method if method in LiveStacker.METHODES else "kappa"
+        self._window = max(3, int(window))
+        self._wb_auto = False
+        self._wb_force = 1.0
+        self.gains = None                 # gains R/G/B (UI, phase 3)
+        self.mode_l = "synthetise"        # radio « Canal L » (UI, phase 3)
+        self.role_courant = None          # rôle de la frame en cours d'ajout
+        self.stackers = {}                # rôle → LiveStacker (canaux 2D)
+        self._shape = None                # forme des canaux (posée au 1er add)
+        self._poly = None                 # intersection GLOBALE des couvertures
+        self.cadre = None                 # cadre commun (y0, x0, y1, x1)
+
+    # -- attributs répercutés sur tous les stackers (existants ET futurs) ---
+    @property
+    def k(self):
+        return self._k
+
+    @k.setter
+    def k(self, v):
+        self._k = v
+        for s in self.stackers.values():
+            s.k = v
+
+    @property
+    def wb_auto(self):
+        return self._wb_auto
+
+    @wb_auto.setter
+    def wb_auto(self, v):
+        self._wb_auto = bool(v)
+        for s in self.stackers.values():
+            s.wb_auto = self._wb_auto
+
+    @property
+    def wb_force(self):
+        return self._wb_force
+
+    @wb_force.setter
+    def wb_force(self, v):
+        self._wb_force = float(v)
+        for s in self.stackers.values():
+            s.wb_force = self._wb_force
+
+    @property
+    def method(self):
+        return self._method
+
+    @property
+    def window(self):
+        return self._window
+
+    def set_rejet(self, method=None, window=None):
+        """Change la méthode / fenêtre de rejet à chaud, sur tous les rôles
+        (accumulations préservées — cf. LiveStacker.set_rejet)."""
+        if method is not None and method in LiveStacker.METHODES:
+            self._method = method
+        if window is not None:
+            self._window = max(3, int(window))
+        for s in self.stackers.values():
+            s.set_rejet(method=method, window=window)
+
+    # -- compteurs (somme sur les rôles) ------------------------------------
+    @property
+    def shape(self):
+        return self._shape
+
+    @property
+    def n(self):
+        return sum(s.n for s in self.stackers.values())
+
+    @property
+    def rejected_total(self):
+        return sum(s.rejected_total for s in self.stackers.values())
+
+    # -- accumulation --------------------------------------------------------
+    def _stacker_de(self, role):
+        s = self.stackers.get(role)
+        if s is None:                     # 1re frame de ce rôle
+            s = LiveStacker(self._shape, k=self._k, warmup=self.warmup,
+                            method=self._method, window=self._window)
+            s.wb_auto = self._wb_auto
+            s.wb_force = self._wb_force
+            self.stackers[role] = s
+        return s
+
+    def add(self, frame, role=None):
+        """Empile `frame` (canal 2D du rôle) dans le stacker de son rôle.
+        Le rôle vient de l'argument ou de `role_courant` (posé par le worker)."""
+        role = role or self.role_courant
+        if not role:
+            raise ValueError("CompositeStacker.add : rôle inconnu (ni "
+                             "argument ni role_courant)")
+        if self._shape is None:
+            self._shape = tuple(frame.shape)
+        self._stacker_de(role).add(frame)
+
+    def note_alignement(self, M):
+        """Intersection GLOBALE des zones couvertes (tous rôles confondus —
+        même repère, aligneur partagé) : le cadre commun appliqué à CHAQUE
+        moyenne de rôle avant composer(), garantissant des formes identiques.
+        Même géométrie que LiveStacker.note_alignement (jalon 15)."""
+        if M is None or self._shape is None:
+            return
+        q = quad_alignement(M, self._shape)
+        if _aire_signee(q) < 0:           # orientation normalisée
+            q = q[::-1].copy()
+        if self._poly is None:            # le cadre cible est la borne absolue
+            self._poly = quad_alignement(
+                np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]), self._shape)
+        p = _clip_poly(self._poly, q)
+        if p is not None:                 # vide = M aberrante → on ignore
+            self._poly = p
+        self.cadre = cadre_intersection(self._poly)
+
+    def reset(self):
+        """Vide TOUT (tous rôles + cadre commun)."""
+        self.stackers.clear()
+        self._poly = None
+        self.cadre = None
+        self._shape = None
+
+    # -- lecture du composite -------------------------------------------------
+    def _recadrer(self, img):
+        if self.cadre is None:
+            return img
+        y0, x0, y1, x1 = self.cadre
+        return img[y0:y1, x0:x1]
+
+    def moyennes(self, recadre=True):
+        """{rôle: carte 2D float32 de l'empilement du rôle} — recadrées au
+        cadre COMMUN si `recadre` (formes identiques, exigence de composer()).
+        Matière de l'état par canal et des futures sauvegardes par canal."""
+        out = {}
+        for role, s in self.stackers.items():
+            if s.n == 0:
+                continue
+            m = s.mean(recadre=False)     # accumulation complète, même repère
+            out[role] = self._recadrer(m) if recadre else m
+        return out
+
+    def mean(self, recadre=True):
+        """Composite LINÉAIRE courant (composer : normalisation par canal +
+        gains + LRGB), recadré au cadre commun si `recadre`. → (H, W, 3)
+        float32 (ou (H, W) en Mono), None si aucun rôle n'a de frame."""
+        canaux = self.moyennes(recadre=recadre)
+        if not canaux:
+            return None
+        try:
+            return composer(canaux, self.composition, gains=self.gains,
+                            mode_l=self.mode_l)
+        except ValueError:
+            return None                   # formes hétérogènes (ne doit pas
+                                          # arriver : cadre commun) → rien
+
+    def etat(self):
+        """État par canal « Ha: 12 · O3: 9 » (frames EMPILÉES par rôle, dans
+        l'ordre de la composition ; rôles vides absents)."""
+        ordre = list(roles_de(self.composition))
+        parties = []
+        for role in ordre + [r for r in self.stackers if r not in ordre]:
+            s = self.stackers.get(role)
+            if s is not None and s.n > 0:
+                parties.append(f"{role}: {s.n}")
+        return " · ".join(parties)
+
