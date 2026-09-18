@@ -46,12 +46,14 @@ from avastack.cameras.qhy import QHYCamera
 
 FICHIER_LOG = mqhy.FICHIER_TRACE
 
-# Numérotation de l'enum QHYCCD_CONTROL du SDK C (les principaux) — les
-# noms manquants sont des contrôles secondaires, la valeur reste lue.
-NOMS_CTRL = {1: "EXP", 2: "GAIN", 3: "OFFSET", 4: "USBTRAFFIC", 5: "SPEED",
-             6: "CAMSINGLEFRAMEMODE", 7: "CAMLIVEVIDEOMODE",
-             9: "AUTOEXPOSURE", 26: "COOLERON", 31: "AUTOBANDBALANCE",
-             37: "USB3", 38: "USBGAIN", 40: "SensorTemperature"}
+# Numérotation RÉELLE des contrôles du binding `qhyccd` (constat empirique
+# d'Alain, 19/09/2026 : gain 90 relu sur ctrl 6, offset 25 sur ctrl 7,
+# expo 1 000 000 µs sur ctrl 8 — c'est l'enum NOUVEAU du SDK, PAS l'ancien
+# CONTROL_* où EXP=1). Les libellés sans « vérifié » sont plausibles mais
+# non confirmés — se fier aux valeurs.
+NOMS_CTRL = {1: "Brightness?", 2: "Contrast?", 3: "WBR?", 4: "WBB?",
+             5: "WBG?/Speed?", 6: "GAIN (vérifié)", 7: "OFFSET (vérifié)",
+             8: "EXPOSURE µs (vérifié)", 9: "UsbTraffic?", 10: "Speed?"}
 
 
 class BancQHY:
@@ -247,6 +249,16 @@ class BancQHY:
                     self._trace(f"set_offset({offset:g}) OK")
                 except Exception as e:
                     self._trace(f"set_offset ignoré ({e})")
+                # Relire les réglages posés — numérotation RÉELLE du binding
+                # (gain=6, offset=7, exposure µs=8 ; vérifié empiriquement
+                # par Alain : ce qu'on pose sur ces ids revient à l'identique)
+                for cid_, nom in ((6, "gain"), (7, "offset"),
+                                  (8, "exposure µs")):
+                    try:
+                        self._trace(f"relu {nom} (ctrl {cid_}) = "
+                                    f"{self.cam.cam.get_param(cid_)}")
+                    except Exception as e:
+                        self._trace(f"relu {nom} (ctrl {cid_}) : {e}")
             # Premier frame diagnostique : shape/dtype RÉELS du buffer.
             # NB (constat réel) : juste après begin_live, la 1re image n'est
             # pas encore prête (exposition de 1000 ms !) → le SDK renvoie
