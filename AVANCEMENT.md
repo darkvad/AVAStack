@@ -25,9 +25,12 @@ dans le changelog du source et l'historique git.)
   inchangé ; sauvegardes composite + par canal ; ligne « Canaux : … »
   dans les stats ; re-stack désactivé en mode compo (v2). Détails :
   changelog v2.8.0 du source + historique git. **Les 27 fichiers
-  `_test_*.py` PASSENT.**
+  `_test_*.py` PASSENT.** **✅ Validé en réel par Alain le 19/09/2026 :
+  le stack RGB fonctionne bien** (HOO/SHO/LRGB : même code, à
+  confirmer sur narrowband).
 - **Base stable précédente : v2.7.0** (jalon 18). Validations réelles
-  d'Alain les plus récentes : jalon 13 « empilement et couleur ok »,
+  d'Alain les plus récentes : **jalon 19 RGB « le stack RGB fonctionne
+  bien » (19/09/2026)**, jalon 13 « empilement et couleur ok »,
   jalon 14 « l'appel d'outils externes fonctionne » (17/09/2026), jalon
   16 partiel (« on est ok, pas simple de voir le restack » → jalon 18).
   Historique complet : changelog du source + git.
@@ -39,20 +42,23 @@ dans le changelog du source et l'historique git.)
   et simuler `ui.CONFIG` (jamais toucher au vrai config.json, cf.
   `_test_config_jalon6.py`).
 
-## 🔜 À faire — validations et suite du jalon 19
+## 🔜 À faire — suite et validations du jalon 19
 
-- **Valider le jalon 19 en RÉEL** (prochaine nuit, dossiers N.I.N.A.) :
-  deux dossiers (p. ex. Ha + O3) → source « Composition
-  multi-dossiers », vérifier la détection FITS FILTER, le composite HOO
-  temps réel, les gains à chaud, la ligne « Canaux : … » et la
-  sauvegarde par canal (« 💾 Enregistrer les canaux (par filtre)… »).
+- **✅ VALIDÉ EN RÉEL par Alain (19/09/2026) : le stack RGB fonctionne
+  bien** — source « Composition multi-dossiers », 3 dossiers R/G/B,
+  composite temps réel. Le socle (détection FITS FILTER, empilement par
+  rôle, cadre commun, étirement global sur le composite) est donc
+  confirmé sur le vrai ciel ; HOO/SHO/LRGB utilisent le MÊME chemin
+  (seule la table de composition change) — à confirmer quand même sur
+  une vraie série narrowband la prochaine occasion.
 - **Reportés v2 (assumés)** : re-stack multi-canal (désactivé en mode
   compo), darks/flats par filtre, STF par canal (opt-in), traitement
   externe = sur le composite.
 
 ## ⏭ Validations réelles en attente (nuits suivantes)
 
-1. **Valider le jalon 19 en réel** : voir ci-dessus.
+1. **Jalon 19 — variantes narrowband** : HOO (Ha+O3), puis SHO/LRGB si
+   l'occasion se présente (même code que RGB, risque faible).
 2. **Valider le jalon 18 en réel** : la ligne dédiée doit sauter aux
    yeux au re-stack (auto ET bouton) ; vérifier le gain affiché
    (frames + Δ score) sur un vrai re-stack.
