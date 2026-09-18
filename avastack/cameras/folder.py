@@ -88,9 +88,12 @@ class FolderCamera(CameraBase):
         return None
 
     # -- interface CameraBase ---------------------------------------------
-    def read(self):
-        """→ prochaine image du dossier (attend jusqu'à ~1 s), sinon None."""
-        deadline = time.time() + 1.0
+    def read(self, timeout=1.0):
+        """→ prochaine image du dossier (attend jusqu'à `timeout` s), sinon None.
+        `timeout` court (rotation round-robin de MultiFolderCamera) : le
+        sommeil entre scans est raboté au temps restant, pour ne jamais
+        bloquer la rotation plus que demandé."""
+        deadline = time.time() + timeout
         while time.time() < deadline and self._running:
             self._scan()
             if self._pending:
@@ -104,5 +107,5 @@ class FolderCamera(CameraBase):
                     return img
                 self.failed += 1
                 continue
-            time.sleep(self.poll)
+            time.sleep(min(self.poll, max(0.0, deadline - time.time())))
         return None

@@ -44,6 +44,78 @@ dans le changelog du source et l'historique git.)
   une chaîne (`str()` obligatoire) ; le `tk.Label` classique renvoie déjà
   une `str`. Ajouté comme commentaire dans le test du jalon 18.
 
+## 🔜 À faire — Jalon 19 « Composition multi-filtres » (RGB/HOO/SHO/LRGB)
+
+Plan validé par Alain (18/09/2026) — reprendre ICI si session coupée.
+
+**Objectif** : live stacking de brutes prises avec des filtres différents
+(1 à 4 dossiers surveillés), choix de la composition, composite temps réel.
+
+**Décisions tranchées (ne pas rouvrir)** :
+- Brutes mono OU couleur CFA : les deux chemins (extraction du canal selon
+  la forme de la brute ; CFA → débayerisation CFA_MODE existante puis canal
+  dominant du rôle : Ha→R, OIII→G+B, S2→R).
+- Alignement : UN SEUL aligneur partagé par tous les canaux (référence
+  commune obligatoire ; un aligneur par canal désalignerait les repères).
+- Étirement : normalisation LINÉAIRE par canal dans le composer (percentiles
+  + gains), PUIS étirement global existant (STF ou VeraLux) inchangé ;
+  option « STF par canal » opt-in (l'auto STF actuel calcule sur la
+  luminance moyenne, cf. display.py).
+- LRGB : 4 dossiers (L, R, G, B), rôle L optionnel. Radio « Canal L » si
+  L vide : L synthétisé (0.299/0.587/0.114, chroma du RGB préservée,
+  défaut) OU dégradé en RGB.
+
+**Avancement (18/09/2026)** : Phase 1 LIVRÉE —
+`avastack/processing/composition.py` (COMPOSITIONS, extraire_canal,
+normaliser/bornes figeables, composer, radio L),
+`avastack/cameras/multifolder.py` (MultiFolderCamera, read() → (img, rôle),
+stats par rôle) + `read(timeout=)` rétro-compatible dans `folder.py`.
+Tests `_test_composition_jalon19.py` (25 vérifs) et
+`_test_multifolder_jalon19.py` (vrais dossiers temporaires) ; les
+**25 fichiers `_test_*.py` passent**. NB : radio L, mode « synthétisé » =
+combine identité aujourd'hui (identique au RGB pur tant qu'aucun
+traitement spécifique du canal L n'existe) — documenté dans le source.
+**Prochaine étape : Phase 2 (worker : stackers par rôle + aligneur
+partagé, NB recadrage sur cadre COMMUN avant composer()).**
+**FIN DE SESSION (18/09/2026)** : Phase 1 commitée sur `master` (version
+restée v2.7.0 — jalon 19 non livré, pas de bump) ; reprendre directement
+à la **Phase 2** en relisant CLAUDE.md + cette section au démarrage.
+
+**Phases** :
+1. `avastack/processing/composition.py` (COMPOSITIONS, extraire_canal,
+   composer, LRGB) + test ; `avastack/cameras/multifolder.py`
+   (MultiFolderCamera : N FolderCamera existantes, round-robin,
+   read() → (img, rôle)) — briques testées seules.
+2. Worker `app.py` : un LiveStacker par rôle + aligneur partagé ; pipeline
+   calib → filtre floue (jalon 17) → archive par rôle → empilement par rôle
+   → composer() → affichage ; état par canal (« Ha: 12 · O3: 9 »).
+   NB : stackers par rôle → cadres d'intersection potentiellement
+   différents → recadrer sur le cadre COMMUN avant composer().
+3. UI : source « Composition (dossiers multiples) » ; combobox composition
+   → dossiers par rôle (et l'inverse : dossiers remplis contraignent la
+   compo) ; auto-détection filtre via mot-clé FITS FILTER + override
+   manuel ; gains par canal ; radio L ; sauvegardes composite + par canal.
+4. Test d'intégration `_test_compo_jalon19.py` (caméra factice multi-
+   dossiers) ; les 23 tests `_test_*.py` doivent rester verts.
+
+**Reportés v2 (assumés)** : re-stack multi-canal (jalon 16 désactivé en
+mode compo), darks/flats par filtre, traitement externe = sur le composite.
+
+**Avant de coder** : relire CLAUDE.md + cette section ; la source
+« Dossier » actuelle et le chemin mono-flux ne doivent PAS changer
+(aucune régression, 23 tests verts).
+
+## ⏭ Validations réelles en attente (nuits suivantes)
+
+1. **Valider le jalon 18 en réel** : la ligne dédiée doit sauter aux
+   yeux au re-stack (auto ET bouton) ; vérifier le gain affiché
+   (frames + Δ score) sur un vrai re-stack.
+2. **Anti-boucle sur dossier mixé** (reporté du jalon 16 ; le nouvel
+   historique « ⓘ » du jalon 18 sert aussi de diagnostic) : vérifier
+   qu'un re-stack AUTO ne part pas en boucle — le déclencheur exclut déjà
+   l'ancre courante et exige la marge 1,5×.
+3. **Jalon 17 à re-vérifier sur vrai ciel** : seuil 2× (FWHM) et
+   comportement sur dossier mixé.
 ## ⏭ Prochaines étapes (validation réelle, prochaine nuit)
 
 1. **Valider le jalon 18 en réel** : la ligne dédiée doit sauter aux
