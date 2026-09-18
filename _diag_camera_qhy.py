@@ -247,11 +247,25 @@ class BancQHY:
                     self._trace(f"set_offset({offset:g}) OK")
                 except Exception as e:
                     self._trace(f"set_offset ignoré ({e})")
-            # Premier frame diagnostique : shape/dtype RÉELS du buffer
-            f = self.cam.cam.get_live_frame()
+            # Premier frame diagnostique : shape/dtype RÉELS du buffer.
+            # NB (constat réel) : juste après begin_live, la 1re image n'est
+            # pas encore prête (exposition de 1000 ms !) → le SDK renvoie
+            # son erreur 0xFFFFFFFF pendant ~1 s. Ce n'est PAS une erreur :
+            # on patiente et on réessaie avant de déclarer un problème.
+            f = None
+            for essai in range(12):        # 12 × 0,5 s = 6 s max
+                try:
+                    f = self.cam.cam.get_live_frame()
+                    break
+                except Exception as e:
+                    if essai == 0:
+                        self._trace(f"1er get_live_frame() : {e} — la 1re "
+                                    "image n'est pas encore prête "
+                                    "(exposition en cours), essais…")
+                    time.sleep(0.5)
             if f is None:
-                self._trace("1er get_live_frame() → None "
-                            "(pas encore de frame — normal en début)")
+                self._trace("1er get_live_frame() : aucune image reçue "
+                            "en 6 s — voir erreurs ci-dessus")
             else:
                 a = np.asarray(f)
                 self._dims = f"{a.shape[1]}×{a.shape[0]} px"
@@ -317,7 +331,11 @@ class BancQHY:
 
     def _boucle(self):
         """Boucle de lecture du flux (thread) — QHYCamera.read(), la même
-        méthode que dans l'application."""
+        méthode que dans l'application. Tolérante aux erreurs transitoires
+        (entre deux frames, pendant l'exposition, le SDK répond par son
+        erreur 0xFFFFFFFF : on réessaie au lieu d'abandonner)."""
+        echecs = 0
+        t_dernier_msg = time.time()
         while self._flux_actif and self.cam is not None:
             try:
                 f = self.cam.read()
@@ -325,8 +343,18 @@ class BancQHY:
                 self._trace(f"read() : {e}")
                 break
             if f is None:
+                echecs += 1
+                if (echecs > 1 and time.time() - t_dernier_msg > 2.0):
+                    self._trace(f"{echecs} lectures sans frame (exposition "
+                                "longue ?) — réessais en cours")
+                    t_dernier_msg = time.time()
+                if echecs > 400:               # ~4 s sans AUCUNE frame
+                    self._trace(f"arrêt : aucune frame après "
+                                f"{echecs} essais (voir log)")
+                    break
                 time.sleep(0.01)
                 continue
+            echecs = 0
             if self._dims == "—":
                 self._dims = f"{f.shape[1]}×{f.shape[0]} px"
             self._aperçu = f
