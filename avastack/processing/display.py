@@ -8,6 +8,7 @@ import cv2
 
 from ..external import live as _gx_live
 from . import couleurs as _couleurs
+from . import composition as _composition
 from . import denoise as _denoise
 from . import sharpness as _sharpness
 from . import veralux as _veralux
@@ -121,6 +122,23 @@ class DisplayProcessor:
         self.vl_denoise_force = 0.5   # 0..1
         self._dn_cache = None         # (empreinte image, méthode, force,
                                       # image traitée) — thread solveur SEUL
+        # --- Jalon 24 : mode composition (multi-couches) ---------------------
+        # Posé par l'UI à chaque nouvel état de la file worker :
+        # (canaux {rôle → carte 2D linéaire de l'APERÇU}, nom de composition,
+        # gains, mode_l). None en mode mono → la chaîne agit sur le composite
+        # comme avant (jalon 4/9). En composition, le gradient ET le
+        # débruitage sont faits PAR COUCHE (décision d'Alain du 19/09/2026 :
+        # la pollution lumineuse et la lune ne frappent pas pareil selon le
+        # filtre, et la palette Hubble n'est pas un fond physique — le modèle
+        # de fond de GraXpert ne doit voir que des couches mono 2D). La
+        # netteté reste SUR LE COMPOSITE (PSF identique pour toutes les
+        # couches, meilleur SNR après débruitage, moitié moins de calcul).
+        self.vl_compo = None
+        self._gx_couches = {}         # rôle → (clé, couche après gradient)
+        self._dn_couches = {}         # rôle → (clé, couche après débruitage)
+                                      # (caches du thread solveur SEUL, un par
+                                      # rôle : une nouvelle frame ne relance le
+                                      # traitement QUE de la couche qui a reçu)
         # --- Netteté live (jalon 12, opt-in) --------------------------------
         # Richardson-Lucy (avastack.processing.sharpness) APRÈS le débruitage
         # et AVANT l'étirement, dans TOUS les moteurs d'étirement (le cadre de
@@ -173,6 +191,9 @@ class DisplayProcessor:
         self._stats = None
         self._gx_cache = None         # oublie aussi le résultat GraXpert live
         self._dn_cache = None         # …et le résultat du débruitage live
+        self._gx_couches = {}         # …et les caches PAR COUCHE (jalon 24)
+        self._dn_couches = {}
+        self.vl_compo = None          # couches de composition (obsolètes)
         with self._sh_lock:           # …et celui de la netteté live (jalon 12) :
             self._sh_result = None    # un autre empilement ou une autre vue ne
             self._sh_soumis = None    # doit jamais réutiliser un résultat
@@ -284,11 +305,84 @@ class DisplayProcessor:
             scnr_actif = bool(coul[0]) if len(coul) > 0 else False
             sd_actif = bool(coul[1]) if len(coul) > 1 else False
             dm_actif = bool(coul[2]) if len(coul) > 2 else False
+            # Jalon 24 : données de composition transportées dans le job
+            # (8e élément : (canaux, nom, gains, mode_l), None en mode mono).
+            compo = job[7] if len(job) > 7 else None
+            # --- Jalon 24 : mode COMPOSITION — gradient ET débruitage PAR
+            # COUCHE, AVANT recomposition (décision d'Alain du 19/09/2026 :
+            # la pollution lumineuse et la clarté de la lune ne frappent pas
+            # pareil selon le filtre, et une palette Hubble n'est pas un fond
+            # physique — le modèle de fond de GraXpert ne doit voir que des
+            # couches mono 2D). Chaque couche : gradient puis débruitage
+            # (caches PAR RÔLE : une nouvelle frame ne relance que la couche
+            # qui en a reçu une), puis composite re-fait par composer() — la
+            # netteté, la chaîne couleur et l'étirement restent sur le
+            # composite. Échec d'une couche = repli sur la couche brute +
+            # message ; la chaîne n'est jamais bloquée. Succès → les drapeaux
+            # gx/dn sont neutralisés : la chaîne composite (jalons 4/9)
+            # ci-dessous est sautée — c'est aussi le repli si la
+            # recomposition échoue (chaîne composite reprise sur l'image
+            # brute, jamais d'image perdue).
+            img_gx, err_gx = img, ""
+            if compo is not None and (gx_actif or dn_actif):
+                canaux, nom_compo, gains, mode_l = compo
+                msgs, traites = [], {}
+                for role, couche in canaux.items():
+                    c = np.asarray(couche, dtype=np.float32)
+                    if gx_actif:
+                        if float(np.max(np.abs(c))) < 1e-9:
+                            # Équivalent par couche du garde-fou jalon 23b :
+                            # une couche sans données n'est pas envoyée à
+                            # l'outil (comportement imprévisible).
+                            msgs.append(f"GraXpert live ({role}) : couche vide"
+                                        " — ignorée")
+                        else:
+                            cle = ("gx", role, _gx_live.cle_image(c), gx_cmd)
+                            cache = self._gx_couches.get(role)
+                            if cache is not None and cache[0] == cle:
+                                c = cache[1]     # autre rôle seulement : cette
+                            else:                # couche n'est PAS relancée
+                                c2, err = _gx_live.appliquer(c, gx_cmd)
+                                if err:
+                                    msgs.append(f"GraXpert live ({role}) : "
+                                                f"{err}")
+                                else:
+                                    c = c2
+                                    self._gx_couches[role] = (cle, c2)
+                    if dn_actif:
+                        cle = ("dn", role, _gx_live.cle_image(c), dn_methode,
+                               round(dn_force, 2))
+                        cache = self._dn_couches.get(role)
+                        if cache is not None and cache[0] == cle:
+                            c = cache[1]
+                        else:
+                            c2, err = _denoise.denoiser(c, dn_methode, dn_force)
+                            if err:
+                                msgs.append(f"Débruitage live ({role}) : {err}")
+                            else:
+                                c = c2
+                                self._dn_couches[role] = (cle, c2)
+                    traites[role] = c
+                try:
+                    comp = _composition.composer(traites, nom_compo,
+                                                 gains=gains, mode_l=mode_l)
+                except Exception as exc:    # formes hétérogènes (ne doit pas
+                    comp = None             # arriver : cadre commun) → repli
+                    msgs.append(f"Recomposition : {exc}")
+                if comp is not None:
+                    img_gx = comp           # composite re-fait depuis les
+                    gx_actif = False        # couches traitées : la chaîne
+                    dn_actif = False        # composite est sautée ci-dessous
+                err_gx = " ; ".join(msgs)
             # --- GraXpert live (opt-in) : retrait de gradient AVANT l'étirement
             # Cache indexé par (CONTENU de l'image, commande) : une nouvelle
             # frame relance l'outil, mais pas un simple curseur VeraLux ; et
             # modifier la commande GraXpert invalide le résultat caché.
-            img_gx, err_gx = img, ""
+            # (Jalon 24 : sauté si le chemin PAR COUCHE ci-dessus a réussi —
+            # gx_actif/dn_actif y sont neutralisés, et img_gx porte alors le
+            # composite re-fait depuis les couches traitées.)
+            img_gx, err_gx = (img_gx, err_gx) if compo is not None \
+                else (img, "")
             if gx_actif:
                 # Jalon 23b : un canal MORT (SHO sans S → R = 0) rend le
                 # comportement de GraXpert imprévisible (sortie dégénérée →
@@ -318,6 +412,8 @@ class DisplayProcessor:
             # de force invalide aussi le résultat caché. Le seuil k-sigma des
             # ondelettes et la force h du NLM sont AUTO-ADAPTÉS au bruit réel
             # de chaque frame (le débruitage suit l'intégration, comme l'œil).
+            # (Jalon 24 : si le chemin par couche a réussi, dn_actif est déjà
+            # False — le composite est conservé tel quel, sans 2e débruitage.)
             img_dn, err_dn = img_gx, ""
             if dn_actif:
                 cle = (_gx_live.cle_image(img_gx), dn_methode,
@@ -401,6 +497,9 @@ class DisplayProcessor:
             sh = (self.vl_sharp, int(self.vl_sharp_iterations))
             coul = (self.vl_scnr, self.vl_scnr_doux,
                     self.vl_demagenta)     # jalon 22/23 : chaîne couleur
+            # Jalon 24 : couches de la composition (posées par l'UI, jamais
+            # mutées en place — remplacement entier), capturées avec le job.
+            compo = self.vl_compo
             with self._vl_lock:
                 if not self._vl_pending:
                     self._vl_pending = True
@@ -408,7 +507,7 @@ class DisplayProcessor:
                     # copie défensive : img appartient à l'UI et peut être
                     # remplacée pendant le calcul
                     self._vl_job = (img.astype(np.float32).copy(), params,
-                                    key, gx, dn, sh, coul)
+                                    key, gx, dn, sh, coul, compo)
                     self._vl_wake.set()
             self._vl_src, self._vl_key = img, key
         with self._vl_lock:

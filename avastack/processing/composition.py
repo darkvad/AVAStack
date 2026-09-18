@@ -442,19 +442,28 @@ class CompositeStacker:
             out[role] = self._recadrer(m) if recadre else m
         return out
 
+    def mean_avec_canaux(self, recadre=True):
+        """(composite, {rôle: carte 2D}) en UNE passe de moyennes (jalon 24) :
+        le worker a besoin des DEUX à chaque nouvel empilement (composite pour
+        l'affichage, couches pour le traitement par couche du solveur live) —
+        une seule exécution de mean()/recadrage au lieu de deux.
+        → (composite ou None, dict — vide si aucun rôle n'a de frame)."""
+        canaux = self.moyennes(recadre=recadre)
+        if not canaux:
+            return None, None
+        try:
+            comp = composer(canaux, self.composition, gains=self.gains,
+                            mode_l=self.mode_l)
+        except ValueError:
+            comp = None                   # formes hétérogènes (ne doit pas
+        return comp, canaux               # arriver : cadre commun) → rien
+
     def mean(self, recadre=True):
         """Composite LINÉAIRE courant (composer : normalisation par canal +
         gains + LRGB), recadré au cadre commun si `recadre`. → (H, W, 3)
         float32 (ou (H, W) en Mono), None si aucun rôle n'a de frame."""
-        canaux = self.moyennes(recadre=recadre)
-        if not canaux:
-            return None
-        try:
-            return composer(canaux, self.composition, gains=self.gains,
-                            mode_l=self.mode_l)
-        except ValueError:
-            return None                   # formes hétérogènes (ne doit pas
-                                          # arriver : cadre commun) → rien
+        comp, _ = self.mean_avec_canaux(recadre=recadre)
+        return comp
 
     def etat(self):
         """État par canal « Ha: 12 · O3: 9 » (frames EMPILÉES par rôle, dans

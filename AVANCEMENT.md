@@ -11,72 +11,67 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version : AVAStack v2.12.1** (`avastack/__init__.py`,
-  `AVASTACK_VERSION = "2.12.1"`), branche `master`. Dernier jalon livré :
-  **JALON 23b « Garde-fous GraXpert »** (19/09/2026, retour réel
-  d'Alain : en SHO, GraXpert live pour le gradient → « plus d'image dans
-  la visu », fréquent mais non systématique). Cause : en SHO sans S le
-  canal R du composite est ENTIEREMENT VIDE → GraXpert reçoit une image à
-  canal mort, comportement imprévisible (sortie dégénérée → noir après
-  étirement). Garde-fous : (1) `couleurs.canal_mort` détecte un canal
-  vide ; (2) le solveur VeraLux refuse de lancer GraXpert sur un canal
-  mort — message clair « canal R vide (aucune donnée) : GraXpert live
-  ignoré », la chaîne continue sur l'image brute ; (3) sortie d'outil
-  dégénérée (NaN/Inf, image vide) rejetée avec repli/erreur claire
-  (live ET externe). **⚠️ Le gradient (GraXpert live comme externe) est
-  retiré sur le COMPOSITE, pas sur chaque couche** — un retrait par
-  couche reste à faire (workflow manuel : sauvegarde par canal → GX par
-  canal ; en live ce serait N lancements CLI par frame). Détails :
-  changelog v2.12.1 + git. **Les 30 fichiers `_test_*.py` PASSENT.**
-- **Base stable précédente : v2.12.0** (jalon 23 « SCNR doux borné par
-  le bruit » : ne retire que l'excès de vert ≤ 3σ — σ sur le détail
-  haute-fréquence — structure préservée, pensé pour les palettes
-  narrowband où le SCNR classique fait virer l'image au bleu ; cases
-  live « SCNR doux — bruit seul » et externe « 5. », Démagenta « 6. » ;
-  ordre SCNR → SCNR doux → démagenta). Jalon 22 : SCNR classique +
-  démagenta live/externe. Historique complet : changelog du source + git.
-- **Pièges récents (jalon 20-23b)** : `var.get()` Tkinter interdit hors
+- **Version : AVAStack v2.13.0** (`avastack/__init__.py`,
+  `AVASTACK_VERSION = "2.13.0"`), branche `master`. Dernier jalon livré :
+  **JALON 24 « Gradient + débruitage PAR COUCHE »** (19/09/2026, décision
+  d'Alain : « autant nettoyer les images le plus tôt possible » — pollution
+  lumineuse et lune ne frappent pas pareil selon le filtre ; une palette
+  Hubble n'est pas un fond physique). En COMPOSITION, gradient (GraXpert) et
+  débruitage sont faits sur CHAQUE COUCHE AVANT composition ; la NETTETÉ
+  reste SUR LE COMPOSITE (avis demandé par Alain, rendu et suivi :
+  PSF identique pour
+  toutes les couches, meilleur SNR après débruitage, moitié moins de
+  calcul). Ordre : couches (gradient → débruitage) → recomposition →
+  netteté → étirement. Live : worker pousse les couches via
+  `disp.vl_compo` (`CompositeStacker.mean_avec_canaux`, une seule passe de
+  moyennes) ; solveur = caches PAR RÔLE (une nouvelle frame ne relance QUE
+  la couche qui en a reçu une). Externe (⚡) : GraXpert gradient +
+  débruitage par couche en FITS 2D MONO (plus de convention canaux-en-tête
+  pour ces étapes), recomposition, puis BXT + chaîne couleur sur le
+  composite. Échec d'une couche = couche brute + message ; échec d'un
+  subprocess = erreur claire. Mode mono : chaîne composite historique
+  INCHANGÉE (jalons 4/9). **Les 31 fichiers `_test_*.py` PASSENT**
+  (dont `_test_gradient_couche_jalon24.py`). Le garde-fou jalon 23b
+  (canal mort) reste actif en mono ; en composition il devient inutile par
+  construction (couches mono 2D).
+- **Pièges récents (jalon 20-24)** : `var.get()` Tkinter interdit hors
   thread principal (bouchons `_Val`) ; crash OpenCV 5/OpenCL au teardown
-  (`cv2.ocl.setUseOpenCL(False)`) ; **la vraie config d'Alain contient
-  désormais ses lignes compo réelles (LRGB, dossiers N.I.N.A.)** — tout
-  test qui crée `ui.App` doit être HERMÉTIQUE (`ui.CONFIG = {}` +
-  `ui.sauver_config` intercepté) ; les images synthétiques des tests
-  doivent être BRUITÉES (sans bruit, détection « image constante » →
-  0 étoile → triangles impossibles, constat jalon 21) ; **mesurer
-  l'effet d'un traitement d'affichage en STF AUTO est biaisé** (stats
-  EMA/par image — comparer en manuel à points fixes, constat jalon 23) ;
-  **les outils factices de tests subprocess doivent être autonomes**
-  (astropy seul : le subprocess est lancé avec cwd = dossier temporaire,
-  le package avastack n'y est pas importable, constat jalon 23b).
+  (`cv2.ocl.setUseOpenCL(False)`) ; tout test qui crée `ui.App` doit être
+  HERMÉTIQUE (`ui.CONFIG = {}` + `ui.sauver_config` intercepté) ; images
+  synthétiques des tests BRUITÉES (sinon 0 étoile) ; mesurer un traitement
+  d'affichage en STF AUTO est biaisé (comparer en manuel à points fixes) ;
+  outils factices de tests subprocess AUTONOMES (astropy seul, cwd = dossier
+  temporaire) ; **valider les placeholders d'une commande AVANT la
+  substitution** (après, ils n'existent plus — constat jalon 24).
 
-## 🔜 À faire — suite et validations du jalon 23b
+## 🔜 À faire — validations réelles du jalon 24
 
-- **Valider en réel les garde-fous GraXpert** : en SHO sans S, cocher
-  GraXpert live → la ligne d'état doit afficher « canal R vide (aucune
-  donnée) : GraXpert live ignoré » et l'image RESTER visible ; en
-  RGB/LRGB (canaux vivants), GraXpert live doit fonctionner comme avant.
-- **Valider en réel le SCNR doux** (jalon 23) : en SHO sans S et HOO —
+- **Valider en réel le gradient/débruitage par couche** : en composition
+  (HOO ou SHO), cocher GraXpert live + débruitage live → chaque couche
+  traitée (la ligne d'état peut mentionner « (rôle) : couche vide —
+  ignorée » pour un rôle sans données), composite re-fait, image visible.
+  Puis bouton ⚡ : progression « GraXpert gradient Ha (1/2)… », message
+  final « Traité par couche à … ».
+- **Valider en réel les garde-fous GraXpert jalon 23b en mono** (SHO sans
+  S mais session MONO composite) : message « canal R vide… » et image
+  RESTANT visible.
+- **Valider en réel le SCNR doux** (jalon 23) : SHO sans S et HOO —
   grésillement vert du fond retiré SANS bascule bleue.
-- **Valider en réel le jalon 21b** : méthodes triangles/étoiles/phase
-  affichées ; refus de début de session SHO réduits.
 - **Reportés v2 (assumés)** : darks/flats par filtre, STF par canal
-  (opt-in), curseur de force du SCNR doux (k réglable), **retrait de
-  gradient PAR COUCHE** (workflow : canaux sauvegardés → GX par canal).
+  (opt-in), curseur de force du SCNR doux (k réglable).
 
 ## ⏭ Validations réelles en attente (nuits suivantes)
 
-1. **Jalon 23b** : garde-fous GraXpert en SHO sans S (ci-dessus).
-2. **Jalon 23** : SCNR doux live et externe.
-3. **Jalon 21b** : HOO/SHO en réel — refus de début de session réduits,
+1. **Jalon 24** : gradient/débruitage par couche, live et externe (ci-dessus).
+2. **Jalon 21b** : HOO/SHO en réel — refus de début de session réduits,
    méthode affichée par frame.
-4. **Jalon 20** : re-stack compo en réel (ligne verte + détail par
-   canal).
+3. **Jalon 20** : re-stack compo en réel (ligne verte + détail par canal).
 
 ## Rappels utiles (court terme)
 
 - **Tests** (PowerShell, venv) :
   `C:\Astro\astrolivestack\venv\Scripts\python.exe _test_xxx.py` — les
-  30 fichiers `_test_*.py` doivent passer avant tout commit. Vérification
+  31 fichiers `_test_*.py` doivent passer avant tout commit. Vérification
   syntaxique systématique avant livraison : `python -c "import ast;
   ast.parse(open('AVAStack.py', encoding='utf-8').read())"`.
 - **PIÈGE LANCEMENT** (voir aussi CLAUDE.md) : `python3` ne pointe PAS
@@ -97,6 +92,12 @@ dans le changelog du source et l'historique git.)
   relevé quand la décision sert d'ANCRE (sans prédiction) ; (2) deux
   normalisations indépendantes rendent une SSD aveugle — toute
   comparaison d'images doit partager les bornes de normalisation.
+- **CLAUDE.md — 1 leçon du jalon 24 PROPOSÉE le 19/09/2026, EN ATTENTE
+  d'approbation d'Alain** (ne pas écrire sans accord explicite) :
+  valider les placeholders d'un gabarit de commande AVANT la
+  substitution (après, ils n'existent plus — le contrôle « il manque
+  {input} » passait à tort sur une commande déjà remplacée, constat
+  réel du débogage du 19/09/2026).
 - **Prochaines vérifications de nuit** : suivre en direct la ligne
   « Align. : Δ(…) θ(…) méthode » et « Frames non alignées ».
 - **Setup d'Alain** (17/09/2026) : C8 défourché + réducteur 0,63 →

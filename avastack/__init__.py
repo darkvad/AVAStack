@@ -14,9 +14,36 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.12.1"
+AVASTACK_VERSION = "2.13.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.13.0 : JALON 24 — GRADIENT + DÉBRUITAGE PAR COUCHE (décision d'Alain,
+#          19/09/2026, reprise du chantier « reporté v2 » : « autant nettoyer
+#          les images le plus tôt possible » — la pollution lumineuse et la
+#          clarté de la lune ne frappent pas pareil selon le filtre, et une
+#          palette Hubble n'est pas un fond physique : le modèle de fond de
+#          GraXpert ne doit voir que des couches mono 2D ; élimine
+#          STRUCTURELLEMENT le canal-mort SHO sans S du jalon 23b). En mode
+#          COMPOSITION, le gradient (GraXpert) et le débruitage sont faits
+#          sur CHAQUE COUCHE AVANT la composition ; la NETTETÉ reste sur le
+#          composite (PSF identique pour toutes les couches, meilleur SNR
+#          après débruitage par couche, moitié moins de calcul) — ordre :
+#          couches (gradient → débruitage) → recomposition → netteté →
+#          étirement. LIVE : le worker pousse les couches (CompositeStacker.
+#          mean_avec_canaux, une seule passe de moyennes) via disp.vl_compo ;
+#          le solveur traite chaque couche avec des CACHES PAR RÔLE (une
+#          nouvelle frame ne relance que la couche qui en a reçu une — pas N
+#          lancements CLI par frame) puis re-compose. EXTERNE (⚡) :
+#          GraXpert gradient + débruitage exécutés sur chaque couche en FITS
+#          2D MONO (plus de convention canaux-en-tête), recomposition, puis
+#          BXT et chaîne couleur sur le composite. Échec d'une couche = couche
+#          brute + message, la chaîne continue ; échec d'un subprocess =
+#          erreur claire (même politique que la chaîne mono). En mode mono,
+#          chaîne composite historique INCHANGÉE (jalons 4/9). Réutilisation
+#          de _run_bloquant_survivable via le helper _ext_run_cmd (validation
+#          du GABARIT avant substitution des placeholders — leçon du
+#          débogage). Test _test_gradient_couche_jalon24.py.
+
 # v2.12.1 : JALON 23b — GARDE-FOUS GRAXPERT (retour réel d'Alain : en SHO,
 #          en cliquant GraXpert live pour le gradient, « plus d'image dans
 #          la visu », non systématique mais fréquent). Cause : en SHO sans

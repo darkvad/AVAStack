@@ -54,6 +54,7 @@ FWHM_MARGE = 2.0     # FWHM > 2× la médiane → frame très floue
 FWHM_ABS_MIN = 3.0   # …et soi-même > 3 px (rien à rejeter en très courte focale)
 from ..processing import denoise as denoiser_local
 from ..processing import couleurs as couleurs_mod
+from ..processing import composition as composition_mod
 from ..processing import stars as seeing_live
 from ..processing import sharpness as nettete_live
 from ..external import live as gx_live
@@ -1944,6 +1945,13 @@ class App:
         « traitée ») et la sauvegarde dédiée — l'empilement accumulé reste
         linéaire et intact.
 
+        Jalon 24 (décision d'Alain, 19/09/2026) : en mode COMPOSITION, le
+        gradient et le débruitage sont faits PAR COUCHE (la pollution
+        lumineuse et la lune ne frappent pas pareil selon le filtre ; le
+        modèle de fond de GraXpert ne doit voir que des couches mono 2D —
+        élimine aussi le canal-mort SHO sans S, cf. jalon 23b) ; BXT et la
+        chaîne couleur restent sur le composite. Voir _run_external_compo.
+
         Placeholders des commandes :
           {input}   → fichier FITS d'entrée (instantané de l'empilement, float 32F)
           {output}  → chemin de sortie complet, extension .fits
@@ -1953,6 +1961,17 @@ class App:
         éventuel miroir vertical est corrigé (_auto_unflip)."""
         tmp = None
         try:
+            # Jalon 24 : en composition, chaîne PAR COUCHE (gradient +
+            # débruitage sur chaque couche 2D, recomposition, puis BXT +
+            # chaîne couleur sur le composite).
+            if self._mode_compo and hasattr(self.stacker,
+                                            "mean_avec_canaux") \
+                    and len(self.ext_job) > 11 \
+                    and (self.ext_job[0] or self.ext_job[2]):
+                comp, canaux = self.stacker.mean_avec_canaux()
+                if comp is not None and canaux:
+                    self._run_external_compo(comp, canaux, n_frames, session)
+                    return
             (use_gx, cmd_gx, use_dn, cmd_dn, use_bxt, cmd_bxt,
              mode_dn, force_dn) = self.ext_job[:8]
             # Jalon 22/23 : chaîne couleur transportée dans le job (9e, 10e
@@ -2110,7 +2129,189 @@ class App:
             if session == self._session:
                 self.ext_busy = False
 
-    # ----------------------- jalon 17 : filtre anti-brutes défocalisées
+    def _run_external_compo(self, comp, canaux, n_frames, session):
+        """Chaîne externe PAR COUCHE (jalon 24, décision d'Alain du 19/09/2026) :
+        sur un instantané de la composition — GraXpert gradient et débruitage
+        exécutés sur CHAQUE couche 2D (FITS mono — plus de piège RGB jalon 14),
+        composite re-fait depuis les couches traitées, PUIS BXT et la chaîne
+        couleur (SCNR…) sur le composite, comme la chaîne mono. Échec d'une
+        étape sur une couche = la couche brute passe à la suite, message
+        signalé — jamais de blocage, jamais d'image perdue. Même contrat de
+        thread que _run_external (ext_busy géré par son finally)."""
+        tmp = None
+        try:
+            (use_gx, cmd_gx, use_dn, cmd_dn, use_bxt, cmd_bxt,
+             mode_dn, force_dn) = self.ext_job[:8]
+            scnr_actif = bool(self.ext_job[8]) if len(self.ext_job) > 8 \
+                else False
+            sd_actif = bool(self.ext_job[9]) if len(self.ext_job) > 9 \
+                else False
+            dm_actif = bool(self.ext_job[10]) if len(self.ext_job) > 10 \
+                else False
+            tmp = tempfile.mkdtemp(prefix="avastack_compo_")
+            journal = os.path.join(tmp, "outils_sortie.txt")
+            n_etapes = ((len(canaux) if use_gx else 0)
+                        + (len(canaux) if use_dn and mode_dn == "graxpert"
+                           else 0))
+            i_etape, msgs = 0, []
+            traites = self._compo_couches_traitees(
+                canaux, use_gx, cmd_gx, use_dn, cmd_dn, mode_dn, force_dn,
+                tmp, journal, n_frames, n_etapes, msgs)
+            if traites is None:
+                return                      # erreur déjà posée par _ext_run_cmd
+            comp_traite = composition_mod.composer(
+                traites, self.stacker.composition, gains=self.stacker.gains,
+                mode_l=self.stacker.mode_l)
+            if comp_traite is None:
+                self._set_ext_msg("Erreur : recomposition impossible après "
+                                  "traitement par couche", state="error")
+                return
+            comp_traite = np.asarray(comp_traite, dtype=np.float32)
+            # --- Suite de la chaîne SUR LE COMPOSITE : BXT et chaîne couleur
+            # — identique à la fin de la chaîne mono.
+            cur = os.path.join(tmp, "comp_traite.fits")
+            gx_live._ecrire_entree(cur, comp_traite)
+            if use_bxt:
+                outbase = os.path.join(tmp, "bxt")
+                res = self._ext_run_cmd("BlurXTerminator", cmd_bxt, cur,
+                                        outbase, tmp, journal, n_frames)
+                if res is None:
+                    return
+                cur = res
+            img = gx_live._lire_sortie(cur)
+            img = auto_unflip(img, comp)
+            if (not np.isfinite(img).all()
+                    or float(np.max(np.abs(img))) < 1e-9):
+                self._set_ext_msg("Erreur : sortie dégénérée de l'outil "
+                                  "(pixels non finis ou image vide)",
+                                  state="error")
+                return
+            if scnr_actif:
+                img = couleurs_mod.scnr(img)
+            if sd_actif:
+                img = couleurs_mod.scnr_doux(img)
+            if dm_actif:
+                img = couleurs_mod.demagenta(img)
+            if session != self._session:      # session relancée entre-temps
+                return
+            self.proc_full = img
+            h, w = img.shape[:2]
+            scale = min(1.0, 1600.0 / float(max(h, w)))
+            if scale < 1.0:
+                img = cv2.resize(img, None, fx=scale, fy=scale,
+                                 interpolation=cv2.INTER_AREA)
+            self.proc_show = img
+            self.proc_new = True
+            detail = (" ; ".join(msgs) + " — ") if msgs else ""
+            self._set_ext_msg(f"{detail}Traité par couche à "
+                              f"{time.strftime('%H:%M:%S')} ({n_frames} "
+                              "frames)", state="ok" if not msgs else "busy")
+        except Exception as e:
+            self._set_ext_msg(f"Erreur : {e}", state="error")
+        finally:
+            if tmp is not None:
+                shutil.rmtree(tmp, ignore_errors=True)
+
+    def _compo_couches_traitees(self, canaux, use_gx, cmd_gx, use_dn, cmd_dn,
+                                mode_dn, force_dn, tmp, journal, n_frames,
+                                n_etapes, msgs):
+        """Boucle PAR COUCHE du traitement externe (jalon 24) : gradient
+        (subprocess) puis débruitage (subprocess GraXpert IA, ou local en
+        mémoire numpy/OpenCV) sur chaque couche 2D du dossier temporaire.
+        → dict rôle → couche traitée, ou None (erreur d'un subprocess :
+        message déjà posé, chaîne arrêtée — même politique que la chaîne
+        mono ; les échecs SANS subprocess dégénèrent en couche brute +
+        message et la chaîne continue)."""
+        traites = {}
+        i_etape = 0
+        for role, couche in canaux.items():
+            c = np.asarray(couche, dtype=np.float32)
+            src = os.path.join(tmp, f"in_{role}.fits")
+            gx_live._ecrire_entree(src, c)
+            if use_gx:
+                if float(np.max(np.abs(c))) < 1e-9:
+                    msgs.append(f"GraXpert ({role}) : couche vide — ignorée")
+                else:
+                    i_etape += 1
+                    outbase = os.path.join(tmp, f"gx_{role}")
+                    res = self._ext_run_cmd(
+                        f"GraXpert gradient {role}", cmd_gx, src, outbase,
+                        tmp, journal, n_frames, f" ({i_etape}/{n_etapes})")
+                    if res is None:
+                        return None
+                    c2 = auto_unflip(gx_live._lire_sortie(res), c)
+                    if (not np.isfinite(c2).all()
+                            or float(np.max(np.abs(c2))) < 1e-9):
+                        msgs.append(f"GraXpert ({role}) : sortie dégénérée — "
+                                    "couche brute conservée")
+                    else:
+                        c = c2.astype(np.float32)
+                        src = os.path.join(tmp, f"in2_{role}.fits")
+                        gx_live._ecrire_entree(src, c)
+            if use_dn:
+                if mode_dn == "graxpert":
+                    i_etape += 1
+                    outbase = os.path.join(tmp, f"dn_{role}")
+                    res = self._ext_run_cmd(
+                        f"GraXpert débruitage {role}", cmd_dn, src, outbase,
+                        tmp, journal, n_frames, f" ({i_etape}/{n_etapes})")
+                    if res is None:
+                        return None
+                    c2 = auto_unflip(gx_live._lire_sortie(res), c)
+                    if (not np.isfinite(c2).all()
+                            or float(np.max(np.abs(c2))) < 1e-9):
+                        msgs.append(f"Débruitage ({role}) : sortie dégénérée "
+                                    "— couche brute conservée")
+                    else:
+                        c = c2.astype(np.float32)
+                else:
+                    c2, err = denoiser_local.denoiser(c, mode_dn, force_dn)
+                    if err:
+                        msgs.append(f"Débruitage ({role}) : {err}")
+                    else:
+                        c = c2
+            traites[role] = c
+        return traites
+
+    def _ext_run_cmd(self, name, cmd_tpl, src, outbase, tmp, journal,
+                     n_frames, progression=""):
+        """Une étape SUBPROCESS de la chaîne externe (jalon 24) : lanceur
+        « survivable » partagé avec la chaîne mono, progression par étape.
+        → chemin du fichier de sortie, ou None (message d'erreur déjà posé)."""
+        # Validation du GABARIT AVANT substitution (après, les placeholders
+        # n'existent plus — leçon du débogage du jalon 24).
+        if ("{input}" not in cmd_tpl or ("{output}" not in cmd_tpl
+                                         and "{outbase}" not in cmd_tpl)):
+            self._set_ext_msg(f"Commande {name} incomplète : il manque "
+                              "{{input}} ou {output}/{outbase}.", state="error")
+            return None
+        cmd = (cmd_tpl.replace("{input}", src)
+                      .replace("{output}", outbase + ".fits")
+                      .replace("{outbase}", outbase))
+        self._set_ext_msg(f"{name} en cours…{progression} ({n_frames} frames)",
+                          state="busy")
+        code, err = gx_live._run_bloquant_survivable(cmd, tmp, 1800)
+        if err:
+            self._set_ext_msg(f"Erreur {name} : {err}", state="error")
+            return None
+        if code != 0:
+            lignes = []
+            try:
+                with open(journal, encoding="utf-8", errors="replace") as f:
+                    lignes = [l for l in f.read().splitlines() if l.strip()]
+            except OSError:
+                pass
+            detail = lignes[-1] if lignes else "aucun message"
+            self._set_ext_msg(f"Erreur {name} (code {code}) : {detail}",
+                              state="error")
+            return None
+        res = find_output(src, outbase)
+        if res is None:
+            self._set_ext_msg(f"Erreur {name} : fichier de sortie introuvable "
+                              "(l'outil n'a rien écrit)", state="error")
+            return None
+        return res
+
     def _score_qualite(self, img):
         """Mesure qualité d'une brute pour le filtre jalon 17 :
         (fwhm, nb) — FWHM médiane (px) et nombre d'étoiles exploitables de
@@ -2686,6 +2887,7 @@ class App:
                     deja_rejoue = True
 
             stack = None
+            canaux = None
             if self.stacker is not None and not deja_rejoue:
                 M, ok = self.aligner.compute(img_travail)
                 if ok:
@@ -2770,6 +2972,13 @@ class App:
 
             show = stack if stack is not None else (last_good if last_good is not None else frame)
 
+            # Jalon 24 : couches de la composition (même passe que le
+            # composite — ni double calcul, ni incohérence entre les deux).
+            if stack is not None and self._mode_compo \
+                    and hasattr(self.stacker, "mean_avec_canaux"):
+                comp, canaux = self.stacker.mean_avec_canaux()
+                if comp is not None:
+                    stack = comp
             # Aperçu allégé pour l'UI : réactif même en 16 Mpx ; l'étirement est
             # recalculé côté interface → curseurs réactifs entre deux frames.
             h, w = show.shape[:2]
@@ -2792,6 +3001,17 @@ class App:
                 # référence, il ne la modifie jamais.)
                 self.disp.vl_seeing = self.seeing
             hist = self._compute_hist(show)
+
+            # Jalon 24 : couches + paramètres de recomposition poussés vers le
+            # solveur live (remplacement ENTIER de la référence — jamais de
+            # mutation en place, le solveur lit toujours un dict cohérent).
+            # Gains/mode_l recopiés des valeurs lues côté thread principal en
+            # tête de _tick (le worker n'a jamais le droit de lire les Tk).
+            if self._mode_compo and canaux:
+                self.disp.vl_compo = (dict(canaux), self.stacker.composition,
+                                      self._compo_gains, self._compo_mode_l)
+            else:
+                self.disp.vl_compo = None
 
             dt = time.perf_counter() - t0
             inst = 1.0 / max(dt, 1e-4)
