@@ -32,22 +32,34 @@ Ouvre alors le log d'étapes (bouton « 📄 Ouvrir le log » ou fichier
 avastack_qhy_debug.log du dossier temp) : la DERNIÈRE ligne indique
 l'étape fatale — c'est elle qu'il faut rapporter.
 
-Deux boutons de démarrage :
-  - « ▶ Démarrer (séquence APPLI) »  : appelle QHYCamera.open() tel quel —
-    si l'appli crashe, ce bouton crashe au même endroit (avec la trace) ;
-  - « ▶ Démarrer (pas-à-pas + ROI) » : la même séquence décomposée ici,
-    avec possibilité d'IMPOSER la ROI (set_resolution) avant begin_live —
-    l'hypothèse « buffer non alloué sans ROI » est testable en un clic.
+Deux façons de démarrer, UN SEUL chemin de code applicatif :
+  - « ▶ Démarrer (QHYCamera.open(), séquence APPLI) » : appelle exactement
+    ce que fait l'appli (QHYCamera.open), en transmettant la ROI saisie si
+    la copie de qhy.py installée sait l'accepter ;
+  - case « forcer côté banc » : contourne l'appli et pose la ROI depuis le
+    banc (l'ancien « pas-à-pas ») — utile pour distinguer un défaut du code
+    applicatif d'un simple problème de copie de fichiers.
 
 Lancement (venv, dossier contenant avastack/) :
     venv/Scripts/python.exe _diag_camera_qhy.py
 Sur le miniPC installé : copier CE FICHIER dans le dossier d'installation
 (%LOCALAPPDATA%/AVAStack) puis :
     venv/Scripts/python.exe _diag_camera_qhy.py
+
+⚠ À LIRE AVANT D'INTERPRÉTER UN ÉCHEC : le banc et avastack/cameras/qhy.py
+doivent venir de la MÊME version. Le 19/09/2026, un banc récent exécuté sur
+un qhy.py ANTÉRIEUR (v2.13.1, sans set_resolution) a produit exactement les
+symptômes d'un vrai bug : « Démarrer » qui ferme la fenêtre, case ROI qui
+semble ignorée. En haut de la fenêtre, le banc AFFICHE donc les fichiers
+réellement chargés (chemins, dates, présence de set_resolution, signature de
+open()) : à vérifier AU MOINS une fois avant de me rapporter un plantage.
 """
+import inspect
 import os
 import sys
 import queue
+import subprocess
+import tempfile
 import threading
 import time
 import tkinter as tk
@@ -103,6 +115,13 @@ CTRL_PWM = 15         # CurPWM    : puissance TEC courante (0-255)
 CTRL_PWM_MANU = 16    # ManualPWM : puissance imposée → mode MANUEL
 CTRL_CONSIGNE = 18    # Cooler    : consigne °C → mode AUTO
 
+# Contrôles balayés par le SÉQUENCEUR : uniquement des RÉGLAGES, jamais des
+# contrôles de CONFIGURATION (binning 21-24, profondeur de bits 34-35, mode
+# DDR 48-52, modes de flux 57-58). Écrire ces derniers en série laisse la
+# caméra dans un état incohérent — le balayage manuel les autorise, mais
+# seulement après confirmation explicite.
+CTRLS_SEQUENCEUR = (6, 7, 12)      # GAIN, OFFSET, UsbTraffic
+
 
 def _nom_ctrl(cid):
     """Nom officiel d'un contrôle ('' si l'id n'est pas documenté ici)."""
@@ -129,6 +148,131 @@ def _nb(val, suffixe=""):
         return str(val)
 
 
+def _open_supporte_roi():
+    """→ True si le QHYCamera CHARGÉ accepte open(roi=...).
+
+    Garde-fou d'outillage : si le fichier avastack/cameras/qhy.py copié sur
+    la machine est ANTÉRIEUR à la v2.13.2, open() n'a pas de paramètre roi et
+    n'appelle JAMAIS set_resolution → le SDK plante en natif au premier
+    get_live_frame, la fenêtre se ferme, et la ROI cochée paraît « ignorée ».
+    On le DIT au lieu de mourir en TypeError.
+    """
+    try:
+        return "roi" in inspect.signature(QHYCamera.open).parameters
+    except (TypeError, ValueError):
+        return False
+
+
+def _infos_versions():
+    """→ liste de lignes identifiant les fichiers RÉELLEMENT chargés.
+
+    Constat du 19/09/2026 (log du miniPC) : `begin_live` apparaissait SANS
+    AUCUN `set_resolution` alors que le code était censé le faire depuis la
+    v2.13.2 → les deux fichiers (banc et avastack/cameras/qhy.py) n'avaient
+    pas été copiés ENSEMBLE. Un banc récent sur un qhy.py périmé affiche
+    exactement les mêmes symptômes qu'un vrai bug : « Démarrer » plante
+    (aucune ROI posée → segfault du SDK) alors que le pas-à-pas fonctionne
+    (le banc pose la ROI lui-même) et la case ROI semble ignorée. On affiche
+    donc l'identité des fichiers au lieu de la deviner.
+    """
+    import avastack
+    from avastack.cameras import qhy as _q
+    lignes = []
+    try:
+        import qhyccd
+        lignes.append("paquet qhyccd : " + getattr(qhyccd, "__file__", "?"))
+    except Exception as e:
+        lignes.append(f"paquet qhyccd : ABSENT ({e})")
+    f = getattr(_q, "__file__", "?")
+    try:
+        mtime = time.strftime("%d/%m/%Y %H:%M:%S",
+                              time.localtime(os.path.getmtime(f)))
+    except OSError:
+        mtime = "?"
+    src = ""
+    try:
+        with open(f, encoding="utf-8", errors="replace") as fichier:
+            src = fichier.read()
+    except OSError:
+        pass
+    lignes.append(f"avastack/cameras/qhy.py : {f}")
+    lignes.append(f"    modifié le {mtime} — classe chargée : {QHYCamera}")
+    lignes.append("    init_sdk unique (_initialiser_sdk) : "
+                  + ("OUI" if "_initialiser_sdk" in src else "NON"))
+    lignes.append("    set_resolution dans qhy.py : "
+                  + ("OUI" if "set_resolution" in src else
+                     "NON — fichiers désaccordés ! qhy.py est ANTÉRIEUR à la "
+                     "v2.13.2 : la ROI ne sera JAMAIS transmise → segfault"))
+    try:
+        sig = str(inspect.signature(QHYCamera.open))
+    except (TypeError, ValueError):
+        sig = "(illisible)"
+    lignes.append(f"    signature open() : {sig}"
+                  + ("" if _open_supporte_roi() else
+                     "  ← PAS de paramètre roi : le banc ne peut pas "
+                     "transmettre la case ROI"))
+    lignes.append(f"banc _diag_camera_qhy.py : {os.path.abspath(__file__)}")
+    lignes.append(f"avastack version : {avastack.AVASTACK_VERSION}")
+    return lignes
+
+
+def _dossier_courant():
+    """→ dossier de travail au lancement (renseigne sur la copie utilisée)."""
+    return os.path.abspath(os.getcwd())
+
+
+def _taille_log():
+    """→ taille courante du fichier de trace (octets), 0 s'il n'existe pas.
+
+    Sert à DÉLIMITER les lignes écrites par une opération précise : on note
+    la taille avant, puis on ne relit que ce qui a été ajouté depuis. C'est
+    ce qui permet de vérifier ce qu'a RÉELLEMENT fait une ouverture donnée,
+    sans être trompé par les traces des essais précédents.
+    """
+    try:
+        return os.path.getsize(FICHIER_LOG)
+    except OSError:
+        return 0
+
+
+def _lignes_depuis(offset):
+    """→ lignes ajoutées au fichier de trace depuis `offset` (octets)."""
+    try:
+        with open(FICHIER_LOG, encoding="utf-8", errors="replace") as f:
+            f.seek(offset)
+            return [l for l in f.read().splitlines() if l.strip()]
+    except OSError:
+        return []
+
+
+def _binding_sans_liberation():
+    """→ (True, liste) si le binding n'expose AUCUNE libération du SDK.
+
+    Vérifié par introspection le 19/09/2026 : le module `qhyccd` n'expose que
+    `Camera`, `init_sdk`, `scan_cameras` (plus des utilitaires de chemins) —
+    ni `release_sdk` ni `ReleaseQHYCCDResource`. Conséquence PRATIQUE : après
+    une fermeture, on ne peut PAS réinitialiser l'état global du SDK dans le
+    même process — d'où le constat « après un Arrêter, Démarrer ne reçoit
+    plus jamais de frame ». On le DIT au lieu de le laisser deviner.
+    """
+    try:
+        import qhyccd
+        noms = [n for n in dir(qhyccd) if not n.startswith("_")]
+    except Exception as e:
+        return None, [f"module qhyccd illisible ({e})"]
+    suspects = [n for n in noms
+                if any(m in n.lower() for m in ("release", "deinit",
+                                                "close_sdk", "shutdown",
+                                                "cleanup", "finalize"))]
+    return (not suspects), noms
+
+
+# (fusion du 19/09/2026 : UNE SEULE définition de _infos_versions() et de
+#  _open_supporte_roi() — les doublons qui suivaient écrasaient la version la
+#  plus informative, seule conservée ci-dessus. Une redéfinition silencieuse
+#  est exactement le genre de piège que ce banc doit éviter.)
+
+
 class BancQHY:
     def __init__(self, root):
         self.root = root
@@ -139,6 +283,21 @@ class BancQHY:
         self._photo = None
         self._dims = "—"
         self._froid = None           # (temp °C, PWM, consigne °C) du TEC
+        # Cadence de test : on RALENTIT volontairement la boucle pour voir
+        # chaque frame s'installer (l'œil ne perçoit rien à 30 fps) et pour
+        # horodater l'arrivée des premières — diagnostic des « pas de
+        # frame ». `_pause` gèle la lecture SANS fermer la caméra.
+        self._total = 0              # frames reçues depuis le démarrage
+        self._derniere = 0.0         # horodatage de la dernière frame
+        self._pause = False          # test de cadence : on ne lit PLUS rien
+        self._expo_s = 0.1           # exposition courante (s) pour l'affichage
+        self._pause_txt = ""         # compte à rebours de pause (affichage)
+        self._roi_txt = "—"          # ce qui a été transmis à open()
+        self._balayage_resume = None  # résumé du dernier balayage (affichage)
+        # Caméra déjà ouverte PUIS fermée dans ce process : l'état global du
+        # SDK natif n'est PAS réinitialisable (aucune fonction de libération
+        # dans le binding) — la 2e ouverture est à risque (constat réel).
+        self._deja_ouverte = False
         self._fps = 0.0
         self._n = 0
         self._t0 = 0.0
@@ -150,6 +309,22 @@ class BancQHY:
         self._log_direct(f"Log d'étapes : {FICHIER_LOG}")
         self._log_direct("Si la fenêtre meurt sans message : crash natif du "
                          "SDK — regarde le log (bouton 📄).")
+        # Identité des fichiers chargés : affichée AVANT toute manip, parce
+        # qu'une copie périmée de qhy.py imite parfaitement un bug du code
+        # (constat du 19/09/2026 : begin_live sans set_resolution dans le log
+        # alors que le fichier était censé être à jour).
+        self._log_direct("=== fichiers réellement chargés ===")
+        self._log_direct("dossier courant : " + _dossier_courant())
+        for ligne in _infos_versions():
+            self._log_direct(ligne)
+        self._log_direct(f"case ROI transmise à open() : "
+                         f"{'OUI' if _open_supporte_roi() else 'NON'}")
+        ok_libre, noms = _binding_sans_liberation()
+        if ok_libre:
+            self._log_direct(
+                "libération du SDK : AUCUNE fonction exposée par le binding ("
+                + ", ".join(noms) + ") → après « ■ Arrêter », fermer le banc "
+                "et le relancer pour repartir d'un état SDK propre.")
         self.root.after(40, self._tick)
 
     def _trace(self, msg):
@@ -200,12 +375,18 @@ class BancQHY:
 
         act = ttk.Frame(self.root, padding=6)
         act.pack(fill="x")
-        self.btn_start = ttk.Button(act, text="▶ Démarrer (séquence APPLI)",
-                                    command=lambda: self._demarrer(False))
+        # Il n'y a PLUS qu'un seul bouton de démarrage : il exécute la
+        # séquence EXACTE de l'application via QHYCamera.open() — c'est ce
+        # chemin qu'il faut valider, pas un chemin parallèle. (Un second
+        # bouton « pas-à-pas » maintenait deux séquences divergentes : le
+        # diagnostic interrogeait le code de l'appli tout en le contournant.)
+        self.btn_start = ttk.Button(
+            act, text="▶ Démarrer (QHYCamera.open(), séquence APPLI)",
+            command=self._demarrer)
         self.btn_start.pack(side="left")
-        self.btn_start2 = ttk.Button(act, text="▶ Démarrer (pas-à-pas + ROI)",
-                                     command=lambda: self._demarrer(True))
-        self.btn_start2.pack(side="left", padx=(6, 0))
+        self.btn_pause = ttk.Button(act, text="\u23F8 Pause 3 s (cadence)",
+                                    command=self._pause_ctrl)
+        self.btn_pause.pack(side="left", padx=(6, 0))
         self.btn_stop = ttk.Button(act, text="■ Arrêter",
                                    command=self._arreter, state="disabled")
         self.btn_stop.pack(side="left", padx=(6, 0))
@@ -216,6 +397,52 @@ class BancQHY:
                    command=self._lister_api).pack(side="left", padx=(6, 0))
         ttk.Button(act, text="📄 Ouvrir le log",
                    command=self._ouvrir_log).pack(side="left", padx=(6, 0))
+        self.lbl_cadence = ttk.Label(act, text="—")
+        self.lbl_cadence.pack(side="left", padx=10)
+        ttk.Label(self.root, text="Fichiers réellement chargés (une copie "
+                                  "périmée rendrait tout diagnostic faux) :"
+                  ).pack(anchor="w", padx=6)
+        self.lbl_roi_etat = ttk.Label(self.root, text="ROI transmise : —",
+                                      foreground="#1d7f1d")
+        self.lbl_roi_etat.pack(anchor="w", padx=6)
+        self.var_contourner = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            self.root, variable=self.var_contourner,
+            text="forcer côté banc (poser la ROI depuis le banc, sans passer "
+                 "par QHYCamera.open — outil de comparaison)").pack(
+            anchor="w", padx=6)
+
+        # Balayage d'un contrôle : l'outil de DÉCOUVERTE DES VALEURS (quelles
+        # bornes accepte réellement ce capteur ?). Pose chaque valeur, la
+        # relit, note les refus. Indispensable avant de recalibrer les
+        # curseurs de l'appli (le gain est aujourd'hui borné à 8 alors que le
+        # SDK QHY raisonne en unités constructeur).
+        boxb = ttk.LabelFrame(self.root, text="Balayage d'un contrôle "
+                                              "(relevé des bornes réelles)",
+                              padding=6)
+        boxb.pack(fill="x", padx=6, pady=(4, 0))
+        ttk.Label(boxb, text="id").pack(side="left")
+        self.var_bid = tk.StringVar(value="6")        # gain
+        ttk.Entry(boxb, textvariable=self.var_bid, width=5).pack(
+            side="left", padx=(2, 8))
+        ttk.Label(boxb, text="de").pack(side="left")
+        self.var_bmin = tk.StringVar(value="0")
+        ttk.Entry(boxb, textvariable=self.var_bmin, width=6).pack(
+            side="left", padx=(2, 8))
+        ttk.Label(boxb, text="à").pack(side="left")
+        self.var_bmax = tk.StringVar(value="100")
+        ttk.Entry(boxb, textvariable=self.var_bmax, width=6).pack(
+            side="left", padx=(2, 8))
+        ttk.Label(boxb, text="pas").pack(side="left")
+        self.var_bpas = tk.StringVar(value="10")
+        ttk.Entry(boxb, textvariable=self.var_bpas, width=5).pack(
+            side="left", padx=(2, 8))
+        ttk.Button(boxb, text="▶ Balayer",
+                   command=self._balayer).pack(side="left", padx=(2, 0))
+        ttk.Button(boxb, text="\U0001F4CA Séquenceur (gain/offset/usb)",
+                   command=self._sequenceur).pack(side="left", padx=(6, 0))
+        self.lbl_balayage = ttk.Label(boxb, text="—")
+        self.lbl_balayage.pack(side="left", padx=10)
 
         # Écriture d'un contrôle arbitraire (set_param) — pour tester les
         # contrôles non couverts par expo/gain/offset (USB traffic,
@@ -309,6 +536,19 @@ class BancQHY:
             self.lbl_img.config(image=self._photo, text="")
         if self._flux_actif:
             self.lbl_fps.config(text=f"{self._fps:.1f} fps — {self._dims}")
+        # Cadence : compteur de frames, âge de la dernière, état de pause.
+        # À exposition 1 s, « 0,5 fps » et « dernière frame il y a 2,0 s »
+        # sont les deux mesures qui distinguent une caméra lente d'une caméra
+        # qui n'émet plus.
+        etat = f"{self._total} frames — dernière il y a " + (
+            f"{time.time() - self._derniere:.1f} s"
+            if self._derniere else "—")
+        if self._pause_txt:
+            etat += " — " + self._pause_txt
+        self.lbl_cadence.config(text=etat)
+        self.lbl_roi_etat.config(text="ROI transmise : " + self._roi_txt)
+        if self._balayage_resume is not None:
+            self.lbl_balayage.config(text=self._balayage_resume)
         # Refroidissement : temp/PWM/consigne relus par le thread de flux
         # (toutes les 2 s) — l'affichage ne fait que consommer le résultat.
         if self._froid is not None:
@@ -320,12 +560,10 @@ class BancQHY:
         if self._btn_demande == "flux":
             self._btn_demande = None
             self.btn_start.config(state="disabled")
-            self.btn_start2.config(state="disabled")
             self.btn_stop.config(state="normal")
         elif self._btn_demande == "libre":
             self._btn_demande = None
             self.btn_start.config(state="normal")
-            self.btn_start2.config(state="normal")
             self.btn_stop.config(state="disabled")
         self.root.after(40, self._tick)
 
@@ -347,7 +585,15 @@ class BancQHY:
         self.q_msg.put(f"détection OK : {len(ids)} caméra(s) — "
                        f"la 1re sera ouverte")
 
-    def _demarrer(self, pasapas):
+    def _demarrer(self):
+        """Bouton unique : séquence EXACTE de l'application.
+
+        La ROI cochée est LUE ICI (thread Tk — var.get() hors thread Tk est
+        interdit) puis TRANSMISE à open() : elle ne peut plus « ne rien
+        faire » en silence. Si la copie de qhy.py installée n'accepte pas de
+        ROI (antérieure à la v2.13.2), on l'annonce explicitement : c'est le
+        scénario qui a fait croire à un bug le 19/09/2026.
+        """
         if self._flux_actif:
             return
         try:
@@ -360,13 +606,14 @@ class BancQHY:
             messagebox.showerror("Réglages", "Expo/Gain/Offset/ROI : "
                                  "nombres invalides.")
             return
+        contourner = bool(self.var_contourner.get())
         self.btn_start.config(state="disabled")
-        self.btn_start2.config(state="disabled")
+        self.btn_pause.config(state="normal")
         threading.Thread(target=self._demarrer_thread,
-                         args=(pasapas, expo, gain, offset, roi),
+                         args=(expo, gain, offset, roi, contourner),
                          daemon=True).start()
 
-    def _demarrer_thread(self, pasapas, expo, gain, offset, roi):
+    def _demarrer_thread(self, expo, gain, offset, roi, contourner):
         try:
             if not self.camera_id:
                 # NE PAS appeler QHYCamera.lister() ici : le scan de
@@ -378,16 +625,59 @@ class BancQHY:
                 # le pas-à-pas (lancé APRÈS « Détecter ») fonctionnait.
                 raise RuntimeError("aucune caméra détectée — clique "
                                    "d'abord sur « 🔎 Détecter »")
-            if pasapas:
+            self._total = 0
+            self._derniere = 0.0
+            self._dims = "—"
+            # Marque de départ dans le log : on ne relira QUE les lignes
+            # écrites par CETTE ouverture (verdict ROI, cf. _verdict_roi).
+            offset_ouverture = _taille_log()
+            if self._deja_ouverte:
+                self._trace(
+                    "⚠ CETTE caméra a DÉJÀ été ouverte puis fermée dans ce "
+                    "même process. Le binding n'expose AUCUNE fonction de "
+                    "libération du SDK (ni release_sdk ni "
+                    "ReleaseQHYCCDResource — vérifié par introspection) : "
+                    "constat du 19/09/2026, après un Arrêter un nouveau "
+                    "Démarrer n'a PLUS JAMAIS reçu de frame, sans planter. "
+                    "Si ça se reproduit : FERME LE BANC ET RELANCE-LE "
+                    "(process neuf = état SDK propre). C'est une limite du "
+                    "paquet qhyccd, pas un défaut de votre matériel.")
+            if contourner:
+                # Comparaison : le banc pose la ROI lui-même (ancien
+                # « pas-à-pas »). Ce chemin ne prouve RIEN sur l'appli — il
+                # sert juste à confirmer qu'un plantage vient bien de la
+                # version de qhy.py installée.
+                self._roi_txt = ("forçage banc — " +
+                                 ("aucune" if roi is None else
+                                  f"{roi[0]}×{roi[1]}"))
                 self._ouvrir_pasapas(roi)
             else:
                 self._trace("démarrage via QHYCamera.open() "
                             "(séquence EXACTE de l'application)")
+                if roi is not None and not _open_supporte_roi():
+                    self._roi_txt = ("ROI IGNORÉE — la copie installée de "
+                                     "qhy.py n'accepte pas de ROI (antérieure "
+                                     "à la v2.13.2) : c'est CE fichier qu'il "
+                                     "faut remplacer")
+                    self._trace("⚠ open(roi=...) impossible : la copie "
+                                "chargée de avastack/cameras/qhy.py n'a PAS "
+                                "de paramètre roi → set_resolution ne sera "
+                                "jamais appelé → segfault probable. Voir le "
+                                "bloc « fichiers réellement chargés ».")
+                else:
+                    self._roi_txt = ("aucune" if roi is None else
+                                     f"{roi[0]}×{roi[1]}")
                 self.cam = QHYCamera(camera_id=self.camera_id)
-                # La ROI saisie est transmise (l'appli, elle, utilise ses
-                # tailles candidates) : c'est le SEUL écart avec l'appli.
-                self.cam.open(roi=roi)
+                if _open_supporte_roi():
+                    self.cam.open(roi=roi)   # SEUL écart avec l'appli
+                else:
+                    self.cam.open()          # l'appli, telle qu'installée
             self.cam.apply_settings(expo, gain)
+            self._deja_ouverte = True
+            # Verdict AUTOMATIQUE sur la ROI : c'est ce que la case cochée
+            # n'arrivait pas à prouver (constat du 19/09/2026 : aucune ligne
+            # set_resolution dans le log, même ROI cochée).
+            self._verdict_roi(offset_ouverture, roi, contourner)
             self._expo_s = expo / 1000.0     # pour le garde-fou de la boucle
             self._trace(f"apply_settings : expo {expo:g} ms "
                         f"({int(expo * 1000)} µs), gain {gain:g}")
@@ -440,6 +730,44 @@ class BancQHY:
         except Exception as e:
             self._trace(f"ERREUR : {e}")
             self._btn_demande = "libre"
+
+    def _verdict_roi(self, offset, roi, contourner):
+        """VERDICT AUTOMATIQUE : cette ouverture a-t-elle POSÉ la ROI ?
+
+        Constat d'Alain (19/09/2026, miniPC) : « Démarrer » ne contenait
+        AUCUNE ligne set_resolution, MÊME case ROI cochée — parce que la
+        copie chargée de avastack/cameras/qhy.py était ANTÉRIEURE à la
+        v2.13.2 et n'appelait jamais set_resolution. Or sans résolution
+        posée, le SDK QHY plante en natif au premier get_live_frame (fenêtre
+        fermée sans message) ou n'émet aucune frame : les DEUX symptômes
+        rapportés s'expliquent ainsi. La case ROI ne pouvait rien prouver
+        (le fichier fautif ignore l'argument) : on relit donc la trace
+        elle-même et on conclut explicitement.
+        """
+        if contourner and roi is None:
+            self._roi_txt = "forçage banc SANS ROI (rien à poser : normal)"
+            self._trace("verdict ROI : " + self._roi_txt)
+            return
+        lignes = _lignes_depuis(offset)
+        tentees = [l for l in lignes if "set_resolution" in l]
+        acceptees = [l for l in tentees
+                     if " OK" in l and "REFUS" not in l]
+        if acceptees:
+            self._roi_txt = ("POSÉE ✔ — " + acceptees[-1].split("] ", 1)[-1])
+            self._trace("verdict ROI : " + self._roi_txt)
+        elif tentees:
+            self._roi_txt = ("TENTÉE MAIS REFUSÉE par le SDK — "
+                             + tentees[-1].split("] ", 1)[-1])
+            self._trace("⚠ verdict ROI : " + self._roi_txt + " — aucune taille "
+                        "acceptée : le flux ne peut pas démarrer dans de "
+                        "bonnes conditions (voir les refus ci-dessus).")
+        else:
+            self._roi_txt = ("AUCUNE TENTATIVE de set_resolution PENDANT "
+                             "cette ouverture → la copie chargée de "
+                             "avastack/cameras/qhy.py est ANTÉRIEURE à la "
+                             "v2.13.2 : c'est la CAUSE (pas la case ROI). "
+                             "Remplacer ce fichier par la version à jour.")
+            self._trace("⚠ verdict ROI : " + self._roi_txt)
 
     def _ouvrir_pasapas(self, roi):
         """Séquence officielle DÉCOMPOSÉE : chaque étape tracée + ROI
@@ -505,7 +833,16 @@ class BancQHY:
         t_derniere = time.time()
         t_dernier_msg = time.time()
         t_maj_froid = 0.0
+        t0_flux = time.time()
         while self._flux_actif and self.cam is not None:
+            # PAUSE (test de cadence) : on ne lit PLUS RIEN. À exposition
+            # 1000 ms le flux tourne à ~1 fps et rien ne permet de distinguer
+            # « la caméra n'émet plus » de « nos lectures vident le buffer ».
+            # La pause tranche : si le flux repart d'un coup à la reprise, le
+            # rythme est piloté par nos lectures.
+            if self._pause:
+                time.sleep(0.05)
+                continue
             # Relecture TEC (température/PWM/consigne) toutes les 2 s —
             # pendant le flux, c'est le seul moment où les valeurs bougent.
             maintenant = time.time()
@@ -534,15 +871,25 @@ class BancQHY:
                 continue
             echecs = 0
             t_derniere = time.time()
-            if self._dims == "—":
-                self._dims = f"{f.shape[1]}×{f.shape[0]} px"
-            self._aperçu = f
+            self._total += 1
+            self._derniere = t_derniere
             self._n += 1
-            dt = time.time() - self._t0
+            dt = t_derniere - self._t0
             if dt >= 1.0:
                 self._fps = self._n / dt
                 self._n = 0
-                self._t0 = time.time()
+                self._t0 = t_derniere
+            # Horodatage des 5 premières frames : on SAIT quand chacune
+            # arrive. À exposition 1 s, c'est cette ligne qui dit si la
+            # caméra tient son rythme (t+1,0 / t+2,0 / t+3,0 s…) ou si elle
+            # décroche — un compteur seul ne le montrerait pas.
+            if self._total <= 5:
+                self._trace(f"frame #{self._total} à t+"
+                            f"{t_derniere - t0_flux:.1f} s — shape={f.shape} "
+                            f"dtype={f.dtype} min={f.min()} max={f.max()}")
+            if self._dims == "—":
+                self._dims = f"{f.shape[1]}×{f.shape[0]} px"
+            self._aperçu = f
         self._trace("boucle de flux terminée")
 
     def _lire_froid(self):
@@ -568,17 +915,260 @@ class BancQHY:
 
     def _arreter(self):
         self._flux_actif = False
+        self._pause = False
+        self._pause_txt = ""
         threading.Thread(target=self._fermer_thread, daemon=True).start()
+
+    def _pause_ctrl(self):
+        """Pause de 3 s : teste si le flux REPART après une interruption.
+
+        À expo 1000 ms, on ne peut pas distinguer « la caméra n'émet plus »
+        de « nos lectures vident le buffer ». On arrête donc de LIRE pendant
+        3 s, puis on reprend : si une frame (ou plusieurs) arrive aussitôt,
+        c'est bien nous qui pilotons le rythme (comportement normal, le
+        getter vidant la file du SDK) — pas un défaut de la caméra.
+        """
+        if not self._flux_actif or self._pause:
+            return
+        threading.Thread(target=self._pause_thread, daemon=True).start()
+
+    def _pause_thread(self):
+        self._pause = True
+        t0 = time.time()
+        try:
+            while time.time() - t0 < 3.0:
+                self._pause_txt = (f"PAUSE — plus aucune lecture "
+                                   f"({3.0 - (time.time() - t0):.1f} s)")
+                time.sleep(0.1)
+        finally:
+            self._pause_txt = ""
+            self._pause = False
+        self._trace("reprise des lectures après 3 s de pause — si le flux "
+                    "repart aussitôt, c'est bien nos lectures qui pilotent "
+                    "le rythme (pas un défaut caméra)")
 
     def _fermer_thread(self):
         if self.cam is not None:
             try:
                 self.cam.close()
                 self._trace("close OK")
+                ok_libre, noms = _binding_sans_liberation()
+                if ok_libre:
+                    self._trace(
+                        "RAPPEL : le binding qhyccd n'expose AUCUNE fonction "
+                        "de libération du SDK (ni release_sdk ni "
+                        "ReleaseQHYCCDResource — introspection : "
+                        + ", ".join(noms) + "). Fermer la caméra ne "
+                        "réinitialise donc PAS l'état global du SDK : un "
+                        "nouveau ▶ Démarrer dans CE process est à risque "
+                        "(constat du 19/09/2026 : plus AUCUNE frame reçue "
+                        "après un Arrêter). Pour repartir proprement : "
+                        "FERMER LE BANC et le relancer.")
             except Exception as e:
                 self._trace(f"close : {e}")
             self.cam = None
         self._btn_demande = "libre"
+
+    def _balayer(self):
+        """Balayage d'un contrôle : POSE chaque valeur, la RELIT, note les refus.
+
+        Outil de DÉCOUVERTE DES BORNES RÉELLES (demande d'Alain : « la
+        découverte de toutes les valeurs »). Il est indispensable parce que
+        trois comportements coexistent côté SDK :
+          1. valeur acceptée et relue à l'identique (cas du gain) ;
+          2. valeur acceptée mais RELUE AUTREMENT (le SDK la borne ou
+             l'arrondit — invisible sans relecture) ;
+          3. valeur REFUSÉE (erreur, souvent la sentinelle 0xFFFFFFFF).
+        Les variables Tk sont lues ICI (thread principal) : var.get() hors
+        thread Tk est interdit (piège consigné dans CLAUDE.md).
+        """
+        if self.cam is None or self.cam.cam is None:
+            self.q_msg.put("balayage : ouvre d'abord la caméra (▶ Démarrer)")
+            return
+        try:
+            cid = int(self.var_bid.get())
+            vmin = float(self.var_bmin.get().replace(",", "."))
+            vmax = float(self.var_bmax.get().replace(",", "."))
+            pas = float(self.var_bpas.get().replace(",", "."))
+        except ValueError:
+            messagebox.showerror("Balayage", "id/de/à/pas : nombres invalides.")
+            return
+        if pas <= 0 or vmax < vmin:
+            messagebox.showerror("Balayage", "« pas » doit être > 0 et « à » "
+                                 "supérieur ou égal à « de ».")
+            return
+        # Garde-fou : certains contrôles changent la CONFIGURATION de la
+        # caméra (binning, profondeur de bits, mode DDR…) — les écrire en
+        # série mérite une confirmation explicite.
+        if cid in (20, 21, 22, 23, 24, 25, 30, 31, 34, 35, 43, 48, 49, 51,
+                   52, 57, 58):
+            if not messagebox.askokcancel(
+                    "Balayage",
+                    f"Le contrôle {cid} ({_nom_ctrl(cid) or 'inconnu'}) "
+                    "change la CONFIGURATION de la caméra (binning, bits, "
+                    "mode…).\n\nBalayer plusieurs valeurs le laissera dans "
+                    "un état quelconque — il faudra relancer ▶ Démarrer.\n\n"
+                    "Continuer ?"):
+                return
+        self.lbl_balayage.config(text="balayage en cours…")
+        threading.Thread(target=self._balayer_thread,
+                         args=(cid, vmin, vmax, pas), daemon=True).start()
+
+    def _balayer_thread(self, cid, vmin, vmax, pas):
+        """Exécute le balayage (thread) puis publie un RÉSUMÉ exploitable.
+
+        Chaque valeur : set_param puis get_param immédiat. On consigne les
+        refus, et surtout les valeurs RELUES différentes de la valeur posée
+        (signe que le SDK borne/arrondit) — c'est ce relevé qui permettra de
+        recalibrer les curseurs de l'application (le gain y est borné à 8
+        alors que la MiniCam8M travaille en unités constructeur).
+        """
+        if self.cam is None or self.cam.cam is None:
+            self.q_msg.put("balayage : caméra fermée entre-temps")
+            return
+        nom = _nom_ctrl(cid) or "?"
+        self._trace(f"=== balayage ctrl {cid} ({nom}) : de {vmin:g} à "
+                    f"{vmax:g} pas {pas:g} ===")
+        n = int(round((vmax - vmin) / pas)) + 1
+        valeurs = [vmin + i * pas for i in range(max(n, 1))]
+        acceptees, refusees, transformees = [], 0, []
+        for v in valeurs:
+            try:
+                self.cam.cam.set_param(cid, v)
+            except Exception as e:
+                refusees += 1
+                self._trace(f"  {v:g} → REFUSÉ ({e})")
+                continue
+            acceptees.append(v)
+            try:
+                relu = float(self.cam.cam.get_param(cid))
+                if abs(relu - v) > 1e-6:
+                    transformees.append((v, relu))
+                    self._trace(f"  {v:g} → accepté mais RELU {relu:g}")
+            except Exception as e:
+                self._trace(f"  {v:g} → posé, relecture impossible ({e})")
+        # Résumé : bornes réellement acceptées + valeurs transformées.
+        if acceptees:
+            resume = (f"ctrl {cid} ({nom}) : {len(acceptees)}/{len(valeurs)} "
+                      f"acceptées, {refusees} refusées — plage réellement "
+                      f"acceptée [{min(acceptees):g} … {max(acceptees):g}]")
+        else:
+            resume = (f"ctrl {cid} ({nom}) : AUCUNE valeur acceptée sur "
+                      f"[{vmin:g} … {vmax:g}] — contrôle non inscriptible")
+        if transformees:
+            resume += (f" — {len(transformees)} valeur(s) TRANSFORMÉE(S) par "
+                       "le SDK (voir le log)")
+        self._balayage_resume = resume
+        self._trace(resume)
+        self._trace("NB : les réglages de la caméra ont été modifiés par le "
+                    "balayage — relance ▶ Démarrer pour repartir d'un état "
+                    "connu.")
+        self._lire_froid()
+
+    def _ctrl_dispo(self, cid):
+        """→ True si le SDK déclare ce contrôle disponible sur CETTE caméra.
+
+        Garde-fou : on n'essaie pas d'écrire un contrôle que le capteur
+        n'expose pas (la MiniCam8M n'en expose que 22 sur 63 — constat réel).
+        """
+        try:
+            return bool(self.cam.cam.is_control_available(cid))
+        except Exception:
+            return False
+
+    def _sequenceur(self):
+        """Séquenceur : balaye une LISTE de contrôles SÛRS en plusieurs points.
+
+        Répond à la demande « la découverte de TOUTES les valeurs » : pour
+        chaque contrôle de RÉGLAGE disponible, on pose des échantillons
+        réguliers entre « de » et « à », on RELIT après chaque écriture et on
+        classe la réponse en trois, car trois comportements coexistent :
+          1. accepté et relu à l'identique  → borne fiable, utilisable dans
+             l'application ;
+          2. accepté mais RELU AUTREMENT    → le SDK borne ou arrondit
+             (invisible sans relecture) ;
+          3. REFUSÉ (souvent 0xFFFFFFFF)    → hors domaine du capteur.
+        Les contrôles de CONFIGURATION en sont EXCLUS (cf.
+        CTRLS_SEQUENCEUR) : les écrire en série laisse la caméra dans un état
+        incohérent, il faudrait relancer ▶ Démarrer.
+        Les variables Tk sont lues ICI (thread principal) : var.get() hors
+        thread Tk est interdit (piège consigné dans CLAUDE.md).
+        """
+        if self.cam is None or self.cam.cam is None:
+            self.q_msg.put("séquenceur : ouvre d'abord la caméra (▶ Démarrer)")
+            return
+        try:
+            vmin = float(self.var_bmin.get().replace(",", "."))
+            vmax = float(self.var_bmax.get().replace(",", "."))
+            pas = float(self.var_bpas.get().replace(",", "."))
+        except ValueError:
+            messagebox.showerror("Séquenceur", "de/à/pas : nombres invalides.")
+            return
+        if pas <= 0 or vmax < vmin:
+            messagebox.showerror("Séquenceur", "« pas » doit être > 0 et "
+                                 "« à » supérieur ou égal à « de ».")
+            return
+        cibles = [c for c in CTRLS_SEQUENCEUR if self._ctrl_dispo(c)]
+        if not cibles:
+            self.q_msg.put("séquenceur : aucun contrôle ciblé disponible "
+                           "(caméra ouverte ?)")
+            return
+        if not messagebox.askokcancel(
+                "Séquenceur",
+                "Balayage de " + ", ".join(f"{c} ({_nom_ctrl(c)})"
+                                           for c in cibles)
+                + f" entre {vmin:g} et {vmax:g} (pas {pas:g}).\n\n"
+                "Ces contrôles sont des RÉGLAGES : rien n'est cassé, mais "
+                "chaque contrôle restera sur la DERNIÈRE valeur testée. "
+                "Continuer ?"):
+            return
+        self.lbl_balayage.config(text="séquenceur en cours…")
+        threading.Thread(target=self._sequenceur_thread,
+                         args=(cibles, vmin, vmax, pas), daemon=True).start()
+
+    def _sequenceur_thread(self, cibles, vmin, vmax, pas):
+        """Exécute le séquenceur (thread : set_param bloque sur le SDK)."""
+        self.q_msg.put("=== séquenceur : valeurs acceptées "
+                       "(pose + relecture) ===")
+        valeurs = []
+        v = vmin
+        while v <= vmax + 1e-9:
+            valeurs.append(round(v, 4))
+            v += pas
+        if len(valeurs) > 40:
+            valeurs = valeurs[:40]
+            self.q_msg.put("    (limité à 40 échantillons)")
+        resume = []
+        for cid in cibles:
+            notes = []
+            ok_min = ok_max = None
+            for val in valeurs:
+                try:
+                    self.cam.cam.set_param(cid, val)
+                except Exception:
+                    notes.append(f"{val:g}=refusé")
+                    continue
+                try:
+                    relu = float(self.cam.cam.get_param(cid))
+                except Exception:
+                    notes.append(f"{val:g}=posé,relecture KO")
+                    continue
+                if abs(relu - val) <= max(abs(val) * 1e-6, 1e-6):
+                    notes.append(f"{val:g}=ok")
+                    ok_min = val if ok_min is None else ok_min
+                    ok_max = val
+                else:
+                    notes.append(f"{val:g}->{relu:g}")
+            self.q_msg.put(f"ctrl {cid:>2} {_nom_ctrl(cid):<20} "
+                           + " ".join(notes))
+            if ok_min is None:
+                resume.append(f"{cid} ({_nom_ctrl(cid)}): aucune valeur "
+                              "acceptée telle quelle")
+            else:
+                resume.append(f"{cid} ({_nom_ctrl(cid)}): "
+                              f"{ok_min:g}..{ok_max:g} acceptés tels quels")
+        self.q_msg.put("résumé — " + " | ".join(resume))
+        self._balayage_resume = "séquenceur : " + "; ".join(resume)[:90]
 
     def _lister_controles(self):
         threading.Thread(target=self._lister_thread, daemon=True).start()
@@ -639,12 +1229,26 @@ class BancQHY:
         self._lire_froid()      # rafraîchit l'affichage température/PWM
 
     def _lister_thread(self):
-        """Énumère TOUS les contrôles du SDK (1..63) : is_control_available
-        puis get_param (valeur courante). Nécessite la caméra ouverte."""
+        """Énumère les contrôles du SDK et relève TOUTES les valeurs.
+
+        Deux passes, volontairement distinctes :
+          1. les contrôles réellement DISPONIBLES (is_control_available) avec
+             leur nom officiel et leur valeur — ceux sur lesquels on peut agir ;
+          2. un balayage EXHAUSTIF de 0 à 63 (demande d'Alain : « on finit la
+             découverte de toutes les valeurs ») : les id indisponibles sont
+             affichés quand même, avec leur valeur brute en hexadécimal. C'est
+             indispensable pour trancher un cas limite : un contrôle ABSENT
+             (is_control_available() faux) et un contrôle « drapeau » (valeur
+             sentinelle 0xFFFFFFFF) ne se distinguent pas autrement.
+
+        Nécessite la caméra ouverte. Lectures seules (get_param) : aucun
+        réglage n'est modifié ; un id inconnu du SDK lève une exception, on
+        l'affiche au lieu de planter.
+        """
         if self.cam is None or self.cam.cam is None:
             self.q_msg.put("lister : ouvre d'abord la caméra (▶ Démarrer)")
             return
-        self.q_msg.put("=== contrôles disponibles (is_control_available) ===")
+        self.q_msg.put("=== contrôles DISPONIBLES (is_control_available) ===")
         dispo = 0
         for ctrl in range(1, 64):
             try:
@@ -661,6 +1265,31 @@ class BancQHY:
             self.q_msg.put(f"ctrl {ctrl:>2} {_nom_ctrl(ctrl):<24} "
                            f"valeur={_fmt_val(val)}")
         self.q_msg.put(f"({dispo} contrôles disponibles sur 1..63)")
+
+        # --- Passe 2 : TOUTES les valeurs, y compris les id indisponibles ---
+        self.q_msg.put("=== TOUTES les valeurs (0..63, y compris "
+                       "indisponibles) ===")
+        for ctrl in range(0, 64):
+            dispo_txt = "dispo"
+            try:
+                if not self.cam.cam.is_control_available(ctrl):
+                    dispo_txt = "INDISPO"
+            except Exception as e:
+                dispo_txt = f"erreur is_control_available ({e})"
+            try:
+                brut = self.cam.cam.get_param(ctrl)
+                valeur = f"{brut:g}"
+                try:
+                    valeur += f" (0x{int(brut) & 0xFFFFFFFF:08X})"
+                except (OverflowError, ValueError):
+                    pass
+            except Exception as e:
+                valeur = f"(get_param : {e})"
+            self.q_msg.put(f"ctrl {ctrl:>2} [{dispo_txt:<7}] "
+                           f"{_nom_ctrl(ctrl):<24} {valeur}")
+        self.q_msg.put("Rappel : 0xFFFFFFFF (4294967295) = sentinelle du SDK "
+                       "pour un contrôle sans valeur numérique ; les id sans "
+                       "nom ne figurent pas dans l'enum officiel qhyccd-rs.")
 
     def _lister_api(self):
         """Introspection : liste TOUT ce que le binding expose.

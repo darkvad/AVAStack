@@ -14,9 +14,77 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.13.3"
+AVASTACK_VERSION = "2.13.4"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.13.4 : DIAGNOSTIC CAMÉRA (aucun changement de comportement de l'appli ;
+#          consigne d'Alain du 19/09/2026 : « on ne bosse que sur le
+#          diagnostic caméra, arrête de rebuilder l'installateur » — donc
+#          INSTALLATEUR NON REBUILDÉ à cette version).
+#          (1) DÉCOUVERTE DE CAUSE : le log du miniPC montrait begin_live
+#          SANS AUCUN set_resolution alors que le fichier était censé être
+#          v2.13.2+ → les deux fichiers n'avaient pas été copiés ENSEMBLE
+#          (banc récent + avastack/cameras/qhy.py resté en v2.13.1, la
+#          version où set_resolution n'existait pas). D'où : « Démarrer »
+#          plante (pas de ROI → segfault), « pas-à-pas » marche (le banc
+#          pose la ROI lui-même), et la ROI cochée semble ignorée.
+#          Correctif d'outillage : le banc AFFICHE désormais, à l'ouverture
+#          ET à chaque démarrage, les fichiers réellement chargés (chemin,
+#          date, présence de set_resolution, signature de open(), version
+#          d'avastack) → une copie périmée devient VISIBLE au lieu d'être
+#          invisible ; et si open() n'accepte pas de ROI, le banc le dit au
+#          lieu de planter en TypeError.
+#          (2) « Démarrer (séquence APPLI) » transmet enfin la ROI cochée
+#          via open(roi=...) — la case ROI ne peut plus « ne rien faire ».
+#          (3) NOUVEAU : balayage d'un contrôle (id, de, à, pas) : pose
+#          chaque valeur, la relit, liste les refusées et affiche la plage
+#          acceptée — c'est l'outil de DÉCOUVERTE DES VALEURS demandé (gain
+#          QHY en unités constructeur, PWM du TEC, USB traffic…), préalable
+#          au recalibrage des curseurs de l'appli (gain bridé à 8 alors que
+#          le SDK QHY attend des unités constructeur).
+#          (4) DÉCOUVERTE DE TOUTES LES VALEURS : « Lister les contrôles »
+#          fait maintenant DEUX passes — les contrôles disponibles (nom
+#          officiel + valeur), puis un balayage EXHAUSTIF 0..63, id
+#          indisponibles compris, avec la valeur brute en hexadécimal.
+#          C'est la seule façon de distinguer un contrôle ABSENT
+#          (is_control_available() faux) d'un contrôle « drapeau » (valeur
+#          sentinelle 0xFFFFFFFF).
+#          (5) Test de CADENCE (bouton ⏸ Pause 3 s) et horodatage des 5
+#          premières frames : à exposition 1000 ms on ne peut pas distinguer
+#          « la caméra n'émet plus » de « nos lectures vident la file du
+#          SDK ». La pause tranche ; les horodatages disent si le rythme est
+#          tenu (t+1,0 / t+2,0…). Un compteur CUMULÉ de frames et l'âge de la
+#          dernière frame sont affichés en permanence.
+#          (6) VERDICT ROI AUTOMATIQUE (constat du 2e run, 19/09/2026 : le
+#          log de « Démarrer » ne contenait TOUJOURS AUCUNE ligne
+#          set_resolution, MÊME case ROI cochée). Le banc ne se contente plus
+#          d'afficher les fichiers : il RELIT la tranche de trace produite
+#          pendant l'ouverture (taille du log notée avant, lue après) et
+#          conclut en clair — soit « ROI POSÉE ✔ (taille) », soit « TENTÉE
+#          MAIS REFUSÉE par le SDK », soit « AUCUNE TENTATIVE → la copie
+#          chargée de qhy.py est ANTÉRIEURE à la v2.13.2 : c'est la CAUSE,
+#          pas la case ROI ». La case cochée ne pouvait RIEN prouver : un
+#          fichier périmé ignore l'argument roi.
+#          (7) RELANCE SANS FRAME (2e constat du même run) : après un
+#          « ■ Arrêter », un nouveau « ▶ Démarrer » dans le MÊME process ne
+#          recevait PLUS JAMAIS de frame (sans planter : 126 lectures sans
+#          frame, ni 1er frame). Cause : le binding `qhyccd` n'expose AUCUNE
+#          fonction de libération du SDK — vérifié par introspection, le
+#          module ne contient que Camera, init_sdk, scan_cameras (+ des
+#          utilitaires de chemins) : ni release_sdk ni ReleaseQHYCCDResource.
+#          Fermer la caméra ne réinitialise donc PAS l'état global du SDK, et
+#          rien ne permet de le faire dans le même process. Le banc le DIT
+#          (au démarrage, après chaque close, et en avertissement si la
+#          caméra a déjà été ouverte+fermée) : pour repartir proprement,
+#          FERMER LE BANC et le relancer. LIMITE À REPORTER DANS L'APPLI :
+#          même comportement côté appli → un redémarrage de la source QHY
+#          après Arrêter exigera de relancer AVAStack.
+#          (8) Ménage : suppression de définitions DUPLIQUÉES du banc (deux
+#          copies de _infos_versions/_open_supporte_roi dont la 1re était
+#          écrasée en silence — un doublon de fonction est exactement le
+#          genre de piège que ce banc doit éviter).
+#          ⚠ Le banc et avastack/cameras/qhy.py DOIVENT venir de la même
+#          version : c'est l'affichage des fichiers chargés qui le garantit.
 # v2.13.3 : BANC DE DIAGNOSTIC QHY enrichi et EMBARQUÉ dans l'installateur
 #          (aucun changement de comportement de l'application : le banc est
 #          un outil autonome, _diag_camera_qhy.py, désormais installé avec
