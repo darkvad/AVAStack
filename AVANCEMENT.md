@@ -18,6 +18,17 @@ dans le changelog du source et l'historique git.)
   ouverture tracée pas-à-pas, ROI, flux live, liste des contrôles SDK,
   écriture set_param, **refroidissement TEC**) — demandé par Alain pour
   déboguer hors application, sans relancer les tests de non-régression.
+  **Correctif apporté dans le même jalon** (constat d'Alain : dans le banc,
+  « Démarrer » SANS détection préalable « ferme l'appli direct ») :
+  `init_sdk()` n'est plus appelé qu'**UNE fois par process** (garde-fou
+  `_SDK_PRET` dans `cameras/qhy.py`) — le chemin fautif enchaînait
+  `QHYCamera.lister()` (init #1 + scan) puis `open()` (init #2), alors que
+  le pas-à-pas, lancé APRÈS « Détecter », n'en faisait qu'une ; le banc ne
+  fait plus de scan dans le même process. En prime, `open(roi=None)` accepte
+  une ROI imposée et lève une erreur **claire** si AUCUNE taille n'est
+  acceptée, au lieu d'appeler `begin_live()` sans résolution (segfault).
+  `_test_qhy_camera.py` : **19 vérifications** (ajout de la sécurité ROI et
+  du garde-fou init_sdk).
   Contrôles nommés d'après l'enum OFFICIEL du SDK (crate `qhyccd-rs`) :
   gain=6, offset=7, expo µs=8 (VÉRIFIÉS en réel : posés puis relus à
   l'identique), CurTemp=14, CurPWM=15, ManualPWM=16, Cooler=18 ; la valeur
@@ -40,7 +51,13 @@ dans le changelog du source et l'historique git.)
   d'affichage en STF AUTO est biaisé (comparer en manuel à points fixes) ;
   outils factices de tests subprocess AUTONOMES (astropy seul, cwd = dossier
   temporaire) ; **valider les placeholders d'une commande AVANT la
-  substitution** (après, ils n'existent plus — constat jalon 24).
+  substitution** (après, ils n'existent plus — constat jalon 24) ;
+  **SDK natif (QHY) : `init_sdk()` UNE SEULE fois par process** — le
+  garde-fou `_SDK_PRET` de `cameras/qhy.py` a été ajouté après le constat
+  « Démarrer sans Détecter ferme l'appli » (lister() = init #1 puis open()
+  = init #2) ; un crash NATIF n'est jamais rattrapable par un `except`
+  Python : tracer chaque étape dans un fichier et isoler les appels risqués
+  (le scan QHY tourne en sous-processus pour cette raison).
 
 ## 🔜 À faire — validations réelles du jalon 24
 
@@ -67,7 +84,11 @@ dans le changelog du source et l'historique git.)
 4. **Poursuivre le débogage QHY avec la Minicam8M** via le banc embarqué
    (`venv\Scripts\python.exe _diag_camera_qhy.py` dans le dossier
    d'installation) : le flux est validé (à 2000 ms → 0,5 fps exactement,
-   donc l'exposition est bien appliquée par le ctrl 8). À tester ensuite :
+   donc l'exposition est bien appliquée par le ctrl 8). **À vérifier en
+   premier (v2.13.3)** : « Démarrer (séquence APPLI) » **sans** cliquer
+   « Détecter » d'abord ne doit PLUS fermer la fenêtre (double `init_sdk`
+   supprimé) — c'est le seul écart restant entre le banc et le pas-à-pas.
+   À tester ensuite :
    le **refroidissement TEC** (consigne ctrl 18 / PWM ctrl 16, lectures 14
    et 15) — avec l'**alimentation 12 V** branchée, sinon la régulation est
    inactive ; puis reporter les bornes réelles dans l'appli (gain QHY en
@@ -78,7 +99,7 @@ dans le changelog du source et l'historique git.)
 
 - **Tests** (PowerShell, venv) :
   `C:\Astro\astrolivestack\venv\Scripts\python.exe _test_xxx.py` — les
-  31 fichiers `_test_*.py` doivent passer avant tout commit. Vérification
+  32 fichiers `_test_*.py` doivent passer avant tout commit. Vérification
   syntaxique systématique avant livraison : `python -c "import ast;
   ast.parse(open('AVAStack.py', encoding='utf-8').read())"`.
 - **Build installateur** (version lue AUTOMATIQUEMENT du source
@@ -86,7 +107,10 @@ dans le changelog du source et l'historique git.)
   `powershell -NoProfile -ExecutionPolicy Bypass -File installer\windows\build_avastack.ps1`
   → artefact `installer\windows\output\avastack-setup.exe` (gitignore).
   Rebuilder après chaque montée de version (jalon).
-- **Diagnostic QHY** : `%TEMP%\avastack_qhy_debug.log` trace chaque étape
+- **Diagnostic QHY** : le banc `_diag_camera_qhy.py` est **embarqué par
+  l'installateur** (dossier d'installation) — détection, ouverture tracée,
+  ROI, flux, tous les contrôles SDK et le refroidissement TEC.
+  `%TEMP%\avastack_qhy_debug.log` trace chaque étape
   d'ouverture/fermeture de la caméra (un crash natif n'affiche RIEN à
   l'écran — le log dit la dernière étape réussie).
 - **PIÈGE LANCEMENT** (voir aussi CLAUDE.md) : `python3` ne pointe PAS

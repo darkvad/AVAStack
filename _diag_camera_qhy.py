@@ -369,19 +369,24 @@ class BancQHY:
     def _demarrer_thread(self, pasapas, expo, gain, offset, roi):
         try:
             if not self.camera_id:
-                ids = QHYCamera.lister()
-                if not ids:
-                    raise RuntimeError("aucune caméra QHY détectée "
-                                       "(bouton 🔎 Détecter d'abord)")
-                self.camera_id = str(ids[0])
-                self._lbl_cam_txt = "détectée (auto) : " + self.camera_id
+                # NE PAS appeler QHYCamera.lister() ici : le scan de
+                # découverte a déjà tourné et le SDK natif est DÉJÀ initialisé
+                # dans ce process (vérification exhaustive faite dans le
+                # sous-processus). Un second init_sdk() dans le même process
+                # est justement le suspect du crash — constat du banc :
+                # « Démarrer » sans détection préalable plantait, alors que
+                # le pas-à-pas (lancé APRÈS « Détecter ») fonctionnait.
+                raise RuntimeError("aucune caméra détectée — clique "
+                                   "d'abord sur « 🔎 Détecter »")
             if pasapas:
                 self._ouvrir_pasapas(roi)
             else:
                 self._trace("démarrage via QHYCamera.open() "
                             "(séquence EXACTE de l'application)")
                 self.cam = QHYCamera(camera_id=self.camera_id)
-                self.cam.open()
+                # La ROI saisie est transmise (l'appli, elle, utilise ses
+                # tailles candidates) : c'est le SEUL écart avec l'appli.
+                self.cam.open(roi=roi)
             self.cam.apply_settings(expo, gain)
             self._expo_s = expo / 1000.0     # pour le garde-fou de la boucle
             self._trace(f"apply_settings : expo {expo:g} ms "
@@ -443,8 +448,11 @@ class BancQHY:
         close() (self.cam.cam = handle du binding)."""
         self._trace("=== séquence pas-à-pas (chaque étape tracée) ===")
         import qhyccd
-        qhyccd.init_sdk()
-        self._trace("init_sdk() OK")
+        if mqhy._initialiser_sdk():
+            self._trace("init_sdk() OK (1re initialisation du process)")
+        else:
+            self._trace("init_sdk() DÉJÀ fait — ré-initialisation ÉVITÉE "
+                        "(état global du SDK)")
         ids = list(qhyccd.scan_cameras())
         self._trace(f"scan_cameras() -> {ids}")
         if not ids:

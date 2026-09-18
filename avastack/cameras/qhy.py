@@ -53,6 +53,37 @@ def _tracer(message):
         pass        # la trace ne doit JAMAIS gêner l'acquisition
 
 
+# État global du SDK natif QHYCCD : init_sdk() ne doit PAS être rappelé
+# (constat du banc, 19/09/2026 : deux initialisations dans le même process
+# = suspect n°1 du crash « la fenêtre se ferme direct »).
+_SDK_PRET = False
+
+
+def _initialiser_sdk():
+    """Initialise le SDK natif UNE SEULE FOIS par process.
+
+    → True si c'est CET appel qui vient de l'initialiser, False s'il était
+    déjà prêt (appel ignoré).
+
+    Le SDK QHYCCD garde un état GLOBAL par process : un second init_sdk()
+    sans ReleaseQHYCCDResource entre les deux peut laisser le handle de la
+    caméra dans un état incohérent, et begin_live()/get_live_frame() plantent
+    alors en NATIF (fenêtre fermée sans message, aucun `except` Python ne
+    rattrape). Le banc a révélé exactement cette divergence (19/09/2026) :
+    « Démarrer » SANS détection préalable appelait QHYCamera.lister()
+    (init #1 + scan) PUIS open() (init #2 + scan) — deux initialisations —
+    alors que le pas-à-pas, lancé APRÈS le bouton « Détecter », n'en faisait
+    qu'une seule et fonctionnait.
+    """
+    global _SDK_PRET
+    if _SDK_PRET:
+        return False
+    import qhyccd
+    qhyccd.init_sdk()
+    _SDK_PRET = True
+    return True
+
+
 def lister_via_sous_processus(timeout_s=25):
     """Scan QHY DANS UN SOUS-PROCESSUS isolé → (ids, None) ou (None, message).
 
@@ -93,7 +124,7 @@ class QHYCamera(CameraBase):
         """→ liste des noms des caméras QHY branchées (sans les ouvrir)."""
         try:
             import qhyccd
-            qhyccd.init_sdk()
+            _initialiser_sdk()
             return list(qhyccd.scan_cameras())
         except Exception:
             return []          # paquet absent ou SDK incompatible → pas de QHY
@@ -105,14 +136,28 @@ class QHYCamera(CameraBase):
         self.name = f"QHY {camera_id}" if camera_id else f"QHY #{index}"
         self.cam = None
 
-    def open(self):
+    def open(self, roi=None):
+        """Ouvre la caméra et démarre le flux live.
+
+        roi : (largeur, hauteur) imposée AVANT begin_live, ou None pour
+        essayer les tailles candidates (« 3840×2160 » = pleine définition
+        IMX585 de la MiniCam8M en premier). Une ROI REFUSÉE par le SDK n'est
+        pas fatale ; en revanche, si AUCUNE taille n'est acceptée, on lève une
+        erreur Python CLAIRE au lieu d'appeler begin_live() : sans résolution
+        posée, begin_live/get_live_frame plantent en natif (fenêtre fermée
+        sans message — aucun `except` ne rattrape un segfault).
+        """
         try:
             import qhyccd
         except ImportError:
             raise RuntimeError("SDK QHY manquant : pip install qhyccd")
-        _tracer(f"--- open() : id={self.camera_id!r} index={self.index}")
-        qhyccd.init_sdk()
-        _tracer("init_sdk OK")
+        _tracer(f"--- open() : id={self.camera_id!r} index={self.index} "
+                f"roi={roi!r}")
+        if _initialiser_sdk():
+            _tracer("init_sdk OK (1re initialisation du process)")
+        else:
+            _tracer("init_sdk DÉJÀ fait — ré-initialisation ÉVITÉE "
+                    "(état global du SDK)")
         ids = list(qhyccd.scan_cameras())
         _tracer(f"scan_cameras -> {ids}")
         if not ids:
@@ -133,18 +178,38 @@ class QHYCamera(CameraBase):
         self.cam.set_bin_mode(1, 1)          # 1x1 (séquence officielle)
         _tracer("set_bin_mode(1,1) OK")
         # ROI : SANS résolution posée, begin_live/get_live_frame segfaultent
-        # (constat réel 19/09/2026 — la fenêtre mourait sans message). Les
-        # tailles candidates sont essayées dans l'ordre ; une taille refusée
-        # (erreur 0xFFFFFFFF du SDK) n'est PAS fatale. 3840×2160 = pleine
-        # définition IMX585 de la MiniCam8M (la fiche 3856×2180 de Player
-        # One est REFUSÉE par le SDK QHY).
-        for w, h in ((3840, 2160), (3856, 2180), (3848, 2168), (1920, 1080)):
+        # (constat réel 19/09/2026 — la fenêtre mourait sans message). Une
+        # ROI imposée (paramètre ou banc) est essayée EN PREMIER, puis les
+        # tailles candidates. 3840×2160 = pleine définition IMX585 de la
+        # MiniCam8M (la fiche 3856×2180 de Player One est REFUSÉE par le SDK
+        # QHY). Une taille refusée (erreur 0xFFFFFFFF) n'est PAS fatale.
+        tailles = []
+        for t in ([(int(roi[0]), int(roi[1]))] if roi else []) + [
+                (3840, 2160), (3856, 2180), (3848, 2168), (1920, 1080)]:
+            if t not in tailles:
+                tailles.append(t)
+        posee = False
+        for w, h in tailles:
             try:
                 self.cam.set_resolution(0, 0, w, h)
-                _tracer(f"set_resolution(0,0,{w},{h}) OK")
+                _tracer(f"set_resolution(0,0,{w},{h}) OK — ROI posée")
+                posee = True
                 break
             except Exception as e:
                 _tracer(f"set_resolution(0,0,{w},{h}) refusée ({e})")
+        if not posee:
+            # On NE va PAS plus loin : begin_live() sans ROI = crash natif.
+            # self.cam remis à None pour que l'appelant (l'UI) n'essaie pas
+            # de lire un handle inutilisable ; le handle reste ouvert jusqu'à
+            # la fermeture de l'application (la refermer ici serait un appel
+            # natif de plus, non testé, dans un chemin déjà en échec).
+            self.cam = None
+            raise RuntimeError(
+                "aucune ROI acceptée par le SDK (essayées : "
+                + ", ".join(f"{w}×{h}" for w, h in tailles)
+                + ") — le SDK QHY exige une résolution posée AVANT "
+                "begin_live, sinon il plante. Relance l'application.\n"
+                f"Trace : {FICHIER_TRACE}")
         self.cam.begin_live()
         _tracer("begin_live() OK")
 
