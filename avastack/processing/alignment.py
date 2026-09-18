@@ -151,6 +151,11 @@ class StarAligner:
         self.orb = cv2.ORB_create(nfeatures=n_features, fastThreshold=8)
         self.bf = cv2.BFMatcher(cv2.NORM_HAMMING)
         self.ratio, self.min_matches, self.min_inliers = ratio, min_matches, min_inliers
+        # Jalon 21 (décision d'Alain) : compositions narrowband (HOO/SHO) —
+        # TRIANGLES d'abord, ORB écarté. Jalon 21b : repli « étoiles » puis
+        # phase (retour réel : trop de refus quand le canal narrowband montre
+        # peu d'étoiles).
+        self.triangles_seuls = False
         self.reset()
 
     def reset(self):
@@ -192,6 +197,23 @@ class StarAligner:
 
     def compute(self, frame):
         """→ (M 2x3, confiant)  M transforme la frame courante vers la référence."""
+        # Jalon 21 (HOO/SHO) : TRIANGLES d'abord, ORB ÉCARTÉ (descripteurs de
+        # gradients qui s'apparient mal d'un filtre à l'autre). Jalon 21b
+        # (retour réel d'Alain : 86 frames refusées en début de session SHO —
+        # les canaux narrowband montrent souvent moins de 6 étoiles communes,
+        # le minimum des triangles) : REPLI sur « étoiles » puis sur la
+        # corrélation de phase, deux chemins à garde-fous forts (contre-
+        # vérification par appariements mutuels, gain SSD net exigé) —
+        # toujours SANS ORB. Si tout échoue, la frame est refusée.
+        if self.triangles_seuls:
+            M, ok = self._triangles(frame)
+            if M is not None:
+                return M, ok
+            M, ok = self._etoiles(frame)
+            if M is not None:
+                return M, ok
+            g = self._norm8(frame, self._ref_lo, self._ref_hi)
+            return self._phase(g)
         g = self._norm8(frame, self._ref_lo, self._ref_hi)
         kp, des = self.orb.detectAndCompute(g, None)
         if (self.ref_des is None or des is None

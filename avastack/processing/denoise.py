@@ -33,6 +33,8 @@ entière). Renvoie toujours une copie float32 — l'image d'entrée n'est
 jamais modifiée.
 """
 
+import sys
+
 import numpy as np
 import cv2
 
@@ -176,8 +178,22 @@ def denoiser(img, methode, force=0.5):
         return source, (f"méthode de débruitage inconnue : {methode!r} "
                         f"(attendu : {' ou '.join(METHODS)})")
     try:
-        out = _ondelettes(source, force) if m == "ondelettes" \
-            else _nlm(source, force)
+        data = np.asarray(source, dtype=np.float32)
+        if not np.isfinite(data).all():
+            # v2.9.1 : pixels invalides (NaN/Inf) — ils viennent de l'AMONT
+            # (sortie d'outil externe, FITS douteux…). Sans correction, le
+            # NLM les jette à 0 en conversion 16 bits avec un RuntimeWarning
+            # (« invalid value encountered in cast ») et les ondelettes
+            # propagent le NaN à TOUTE la reconstruction. Remis à 0 (resp.
+            # 1 pour +Inf) AVANT tout traitement ; compteur affiché en
+            # console pour diagnostiquer l'amont.
+            n_bad = int(np.count_nonzero(~np.isfinite(data)))
+            data = np.nan_to_num(data, nan=0.0, posinf=1.0,
+                                 neginf=0.0).astype(np.float32)
+            print(f"avastack.denoise : {n_bad} pixels invalides (NaN/Inf) "
+                  f"corrigés avant débruitage ({m})")
+        out = _ondelettes(data, force) if m == "ondelettes" \
+            else _nlm(data, force)
         out = np.asarray(out, dtype=np.float32)
         if out.shape != source.shape:
             return source, (f"dimensions de sortie {out.shape} ≠ "

@@ -8,7 +8,7 @@ Vérifie :
   [2] worker réel (app._worker dans un thread) avec MultiFolderCamera sur
       deux dossiers temporaires de FITS mono : façade posée, stackers par
       rôle, état par canal dans les stats, composite (H, W, 3), archive
-      PAR RÔLE (l'archive mono reste vide), re-stack désactivé ;
+      PAR RÔLE (l'archive mono reste vide), scores PAR RÔLE (jalon 20) ;
   [3] sauvegarde LINÉAIRE : le fichier écrit = le composite (façade).
 
 Le chemin mono-flux ne doit PAS changer : les 25 autres _test_*.py restent
@@ -55,8 +55,12 @@ def verifie(cond, msg):
 _ETOILES = None
 
 
-def champ(dx=0.0, dy=0.0, fond=0.05):
-    """Carte float32 (H, W) : fond + étoiles gaussiennes translatées."""
+def champ(dx=0.0, dy=0.0, fond=0.05, graine=0):
+    """Carte float32 (H, W) : fond BRUITÉ + étoiles gaussiennes translatées.
+    Jalon 21 : le bruit de fond est INDISPENSABLE — sans lui, la détection
+    d'étoiles (médiane-MAD) renvoie « image constante » (0 étoile) et le
+    chemin TRIANGLES, imposé en HOO/SHO depuis le jalon 21, n'a rien à
+    appareiller (en vrai ciel, il y a toujours du bruit de lecture/pose)."""
     global _ETOILES
     rng = np.random.default_rng(7)
     if _ETOILES is None:
@@ -68,6 +72,8 @@ def champ(dx=0.0, dy=0.0, fond=0.05):
         xx, yy = sx + dx, sy + dy
         img += f * np.exp(-((x - xx) ** 2 + (y - yy) ** 2)
                           / (2.0 * 1.2 ** 2)).astype(np.float32)
+    img += np.random.default_rng(100 + graine).normal(
+        0, 0.004, img.shape).astype(np.float32)
     return img
 
 
@@ -154,7 +160,8 @@ decalages = {"Ha": [(0.0, 0.0), (3.0, 1.0), (6.0, 2.0)],
 for role, doss in (("Ha", d_ha), ("O3", d_o3)):
     for i, (dx, dy) in enumerate(decalages[role]):
         save_image(os.path.join(doss, f"{role}_{i:02d}.fits"),
-                   champ(dx, dy, fond=0.05 if role == "Ha" else 0.07))
+                   champ(dx, dy, fond=0.05 if role == "Ha" else 0.07,
+                         graine=i if role == "Ha" else 50 + i))
 time.sleep(1.3)                      # taille stable + mtime > 0,5 s (folder)
 
 root = tk.Tk()
@@ -233,13 +240,21 @@ if st is not None:
 else:
     verifie(False, "stats : aucune stat reçue de la file")
 
-# archive PAR RÔLE ; l'archive mono reste vide ; re-stack désactivé
+# archive PAR RÔLE ; l'archive mono reste vide ; scores PAR RÔLE (jalon 20).
+# Jalon 21 : la 1re brute Ha est l'ANCRE initiale (HOO) → rejeu des archives
+# à l'ancre → _restack_depuis repart de 0 puis compte les frames suivantes.
 verifie(sum(a.n for a in app.archives.values()) == 6
         and set(app.archives) == {"Ha", "O3"},
         "worker : archive PAR RÔLE (6 frames, rôles Ha/O3)")
 verifie(app.archive.n == 0, "worker : archive MONO intacte (vide)")
-verifie(app._restack_depuis == 0 and app._scores == [],
-        "worker : re-stack désactivé en mode compo (pas de scores)")
+verifie(app._restack_depuis == 5 and app._scores == []
+        and set(app._scores_par_role) == {"Ha", "O3"}
+        and all(len(v) == 3 for v in app._scores_par_role.values())
+        and all(s >= 0 for v in app._scores_par_role.values() for s in v),
+        "worker : scores PAR RÔLE (jalon 20) + ancre Ha au démarrage "
+        "(jalon 21 : 1re Ha → rejeu, 5 frames comptées depuis)")
+verifie(app._ancre_role == "Ha" and app.restack_total == 1,
+        "worker : ancre initiale = la 1re brute Ha (jalon 21)")
 if app.stacker.cadre is not None:
     y0, x0, y1, x1 = app.stacker.cadre
     formes = {r: m.shape for r, m in app.stacker.moyennes().items()}

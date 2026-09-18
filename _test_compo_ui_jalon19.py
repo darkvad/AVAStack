@@ -53,8 +53,12 @@ def verifie(cond, msg):
 _ETOILES = None
 
 
-def champ(dx=0.0, dy=0.0, fond=0.05):
-    """Carte float32 (H, W) : fond + étoiles gaussiennes translatées."""
+def champ(dx=0.0, dy=0.0, fond=0.05, graine=0):
+    """Carte float32 (H, W) : fond BRUITÉ + étoiles gaussiennes translatées.
+    Jalon 21 : le bruit de fond est INDISPENSABLE — sans lui, la détection
+    d'étoiles (médiane-MAD) renvoie « image constante » (0 étoile) et le
+    chemin TRIANGLES, imposé en HOO/SHO depuis le jalon 21, n'a rien à
+    appareiller (en vrai ciel, il y a toujours du bruit de lecture/pose)."""
     global _ETOILES
     rng = np.random.default_rng(7)
     if _ETOILES is None:
@@ -66,6 +70,8 @@ def champ(dx=0.0, dy=0.0, fond=0.05):
         xx, yy = sx + dx, sy + dy
         img += f * np.exp(-((x - xx) ** 2 + (y - yy) ** 2)
                           / (2.0 * 1.2 ** 2)).astype(np.float32)
+    img += np.random.default_rng(100 + graine).normal(
+        0, 0.004, img.shape).astype(np.float32)
     return img
 
 
@@ -116,6 +122,14 @@ print("[2] UI : cadre composition, combobox ↔ rôles, gains")
 root = tk.Tk()
 root.withdraw()
 import avastack.ui.app as ui
+# Test HERMÉTIQUE (piège config.json — comme _test_ui_jalon5 / jalon12) : la
+# vraie config d'Alain contient des lignes compo RÉELLES (LRGB, dossiers
+# N.I.N.A.) ; _restaurer_config les rétablirait dans l'UI et fausserait le
+# test du PRÉ-REMPLISSAGE (constaté le 19/09/2026 après une session réelle).
+# Config vierge simulée + sauvegarde interceptée : jamais toucher au vrai
+# fichier.
+ui.CONFIG = {}
+ui.sauver_config = lambda d: None
 app = ui.App(root)
 
 verifie("Composition multi-dossiers (RGB/HOO/SHO/LRGB)" in SOURCES,
@@ -239,8 +253,10 @@ th.start()
 
 # déposer les frames APRÈS l'ouverture (comme N.I.N.A. pendant la session)
 for i, (dx, dy) in enumerate([(0.0, 0.0), (2.0, 0.0), (4.0, 0.0)]):
-    save_image(os.path.join(d_ha, f"ha_{i}.fit"), champ(dx, dy, fond=0.05))
-    save_image(os.path.join(d_o3, f"o3_{i}.fit"), champ(dx, dy, fond=0.07))
+    save_image(os.path.join(d_ha, f"ha_{i}.fit"),
+               champ(dx, dy, fond=0.05, graine=i))
+    save_image(os.path.join(d_o3, f"o3_{i}.fit"),
+               champ(dx, dy, fond=0.07, graine=50 + i))
 t0 = time.time()
 st = None
 while time.time() - t0 < 60:

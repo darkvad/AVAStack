@@ -11,69 +11,72 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version : AVAStack v2.8.0** (`avastack/__init__.py`,
-  `AVASTACK_VERSION = "2.8.0"`), branche `master`. Dernier jalon livré :
-  **JALON 19 « Composition multi-filtres » (RGB/HOO/SHO/LRGB)** — 4
-  phases livrées les 18-19/09/2026. Live stacking de brutes prises avec
-  des filtres différents (1 à 4 dossiers surveillés, un RÔLE = un filtre
-  par dossier), composite temps réel. Source « Composition
-  multi-dossiers » + cadre UI dédié (combobox composition ⇄ 4 lignes
-  rôle+dossier, détection FITS FILTER + override manuel, gains R/G/B à
-  chaud, radio « Canal L », config persistée) ; worker : un LiveStacker
-  par rôle, aligneur partagé (référence commune), cadre commun
-  d'intersection, normalisation linéaire par canal PUIS étirement global
-  inchangé ; sauvegardes composite + par canal ; ligne « Canaux : … »
-  dans les stats ; re-stack désactivé en mode compo (v2). Détails :
-  changelog v2.8.0 du source + historique git. **Les 27 fichiers
-  `_test_*.py` PASSENT.** **✅ Validé en réel par Alain le 19/09/2026 :
-  le stack RGB fonctionne bien** (HOO/SHO/LRGB : même code, à
-  confirmer sur narrowband).
-- **Base stable précédente : v2.7.0** (jalon 18). Validations réelles
-  d'Alain les plus récentes : **jalon 19 RGB « le stack RGB fonctionne
-  bien » (19/09/2026)**, jalon 13 « empilement et couleur ok »,
-  jalon 14 « l'appel d'outils externes fonctionne » (17/09/2026), jalon
-  16 partiel (« on est ok, pas simple de voir le restack » → jalon 18).
-  Historique complet : changelog du source + git.
-- **Pièges récents (jalon 19)** : `var.get()` Tkinter interdit hors
-  thread principal (bouchons `_Val` dans les tests) ; crash OpenCV
-  5/OpenCL au teardown (`cv2.ocl.setUseOpenCL(False)`) ;
-  `_sauver_config_app` travaille sur une COPIE de CONFIG
-  (`c = dict(CONFIG)`) — dans les tests, intercepter `ui.sauver_config`
-  et simuler `ui.CONFIG` (jamais toucher au vrai config.json, cf.
-  `_test_config_jalon6.py`).
+- **Version : AVAStack v2.12.1** (`avastack/__init__.py`,
+  `AVASTACK_VERSION = "2.12.1"`), branche `master`. Dernier jalon livré :
+  **JALON 23b « Garde-fous GraXpert »** (19/09/2026, retour réel
+  d'Alain : en SHO, GraXpert live pour le gradient → « plus d'image dans
+  la visu », fréquent mais non systématique). Cause : en SHO sans S le
+  canal R du composite est ENTIEREMENT VIDE → GraXpert reçoit une image à
+  canal mort, comportement imprévisible (sortie dégénérée → noir après
+  étirement). Garde-fous : (1) `couleurs.canal_mort` détecte un canal
+  vide ; (2) le solveur VeraLux refuse de lancer GraXpert sur un canal
+  mort — message clair « canal R vide (aucune donnée) : GraXpert live
+  ignoré », la chaîne continue sur l'image brute ; (3) sortie d'outil
+  dégénérée (NaN/Inf, image vide) rejetée avec repli/erreur claire
+  (live ET externe). **⚠️ Le gradient (GraXpert live comme externe) est
+  retiré sur le COMPOSITE, pas sur chaque couche** — un retrait par
+  couche reste à faire (workflow manuel : sauvegarde par canal → GX par
+  canal ; en live ce serait N lancements CLI par frame). Détails :
+  changelog v2.12.1 + git. **Les 30 fichiers `_test_*.py` PASSENT.**
+- **Base stable précédente : v2.12.0** (jalon 23 « SCNR doux borné par
+  le bruit » : ne retire que l'excès de vert ≤ 3σ — σ sur le détail
+  haute-fréquence — structure préservée, pensé pour les palettes
+  narrowband où le SCNR classique fait virer l'image au bleu ; cases
+  live « SCNR doux — bruit seul » et externe « 5. », Démagenta « 6. » ;
+  ordre SCNR → SCNR doux → démagenta). Jalon 22 : SCNR classique +
+  démagenta live/externe. Historique complet : changelog du source + git.
+- **Pièges récents (jalon 20-23b)** : `var.get()` Tkinter interdit hors
+  thread principal (bouchons `_Val`) ; crash OpenCV 5/OpenCL au teardown
+  (`cv2.ocl.setUseOpenCL(False)`) ; **la vraie config d'Alain contient
+  désormais ses lignes compo réelles (LRGB, dossiers N.I.N.A.)** — tout
+  test qui crée `ui.App` doit être HERMÉTIQUE (`ui.CONFIG = {}` +
+  `ui.sauver_config` intercepté) ; les images synthétiques des tests
+  doivent être BRUITÉES (sans bruit, détection « image constante » →
+  0 étoile → triangles impossibles, constat jalon 21) ; **mesurer
+  l'effet d'un traitement d'affichage en STF AUTO est biaisé** (stats
+  EMA/par image — comparer en manuel à points fixes, constat jalon 23) ;
+  **les outils factices de tests subprocess doivent être autonomes**
+  (astropy seul : le subprocess est lancé avec cwd = dossier temporaire,
+  le package avastack n'y est pas importable, constat jalon 23b).
 
-## 🔜 À faire — suite et validations du jalon 19
+## 🔜 À faire — suite et validations du jalon 23b
 
-- **✅ VALIDÉ EN RÉEL par Alain (19/09/2026) : le stack RGB fonctionne
-  bien** — source « Composition multi-dossiers », 3 dossiers R/G/B,
-  composite temps réel. Le socle (détection FITS FILTER, empilement par
-  rôle, cadre commun, étirement global sur le composite) est donc
-  confirmé sur le vrai ciel ; HOO/SHO/LRGB utilisent le MÊME chemin
-  (seule la table de composition change) — à confirmer quand même sur
-  une vraie série narrowband la prochaine occasion.
-- **Reportés v2 (assumés)** : re-stack multi-canal (désactivé en mode
-  compo), darks/flats par filtre, STF par canal (opt-in), traitement
-  externe = sur le composite.
+- **Valider en réel les garde-fous GraXpert** : en SHO sans S, cocher
+  GraXpert live → la ligne d'état doit afficher « canal R vide (aucune
+  donnée) : GraXpert live ignoré » et l'image RESTER visible ; en
+  RGB/LRGB (canaux vivants), GraXpert live doit fonctionner comme avant.
+- **Valider en réel le SCNR doux** (jalon 23) : en SHO sans S et HOO —
+  grésillement vert du fond retiré SANS bascule bleue.
+- **Valider en réel le jalon 21b** : méthodes triangles/étoiles/phase
+  affichées ; refus de début de session SHO réduits.
+- **Reportés v2 (assumés)** : darks/flats par filtre, STF par canal
+  (opt-in), curseur de force du SCNR doux (k réglable), **retrait de
+  gradient PAR COUCHE** (workflow : canaux sauvegardés → GX par canal).
 
 ## ⏭ Validations réelles en attente (nuits suivantes)
 
-1. **Jalon 19 — variantes narrowband** : HOO (Ha+O3), puis SHO/LRGB si
-   l'occasion se présente (même code que RGB, risque faible).
-2. **Valider le jalon 18 en réel** : la ligne dédiée doit sauter aux
-   yeux au re-stack (auto ET bouton) ; vérifier le gain affiché
-   (frames + Δ score) sur un vrai re-stack.
-3. **Anti-boucle sur dossier mixé** (reporté du jalon 16 ; l'historique
-   « ⓘ » du jalon 18 sert aussi de diagnostic) : vérifier qu'un
-   re-stack AUTO ne part pas en boucle — le déclencheur exclut déjà
-   l'ancre courante et exige la marge 1,5×.
-4. **Jalon 17 à re-vérifier sur vrai ciel** : seuil 2× (FWHM) et
-   comportement sur dossier mixé.
+1. **Jalon 23b** : garde-fous GraXpert en SHO sans S (ci-dessus).
+2. **Jalon 23** : SCNR doux live et externe.
+3. **Jalon 21b** : HOO/SHO en réel — refus de début de session réduits,
+   méthode affichée par frame.
+4. **Jalon 20** : re-stack compo en réel (ligne verte + détail par
+   canal).
 
 ## Rappels utiles (court terme)
 
 - **Tests** (PowerShell, venv) :
   `C:\Astro\astrolivestack\venv\Scripts\python.exe _test_xxx.py` — les
-  27 fichiers `_test_*.py` doivent passer avant tout commit. Vérification
+  30 fichiers `_test_*.py` doivent passer avant tout commit. Vérification
   syntaxique systématique avant livraison : `python -c "import ast;
   ast.parse(open('AVAStack.py', encoding='utf-8').read())"`.
 - **PIÈGE LANCEMENT** (voir aussi CLAUDE.md) : `python3` ne pointe PAS

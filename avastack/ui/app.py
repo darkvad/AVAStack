@@ -53,6 +53,7 @@ FLU_NB_FRAC = 0.5    # score étoiles < 0,5× la médiane → « effondré »
 FWHM_MARGE = 2.0     # FWHM > 2× la médiane → frame très floue
 FWHM_ABS_MIN = 3.0   # …et soi-même > 3 px (rien à rejeter en très courte focale)
 from ..processing import denoise as denoiser_local
+from ..processing import couleurs as couleurs_mod
 from ..processing import stars as seeing_live
 from ..processing import sharpness as nettete_live
 from ..external import live as gx_live
@@ -149,8 +150,10 @@ class App:
         self.restack_request = False # bouton « ⟳ Re-stacker (meilleure brute) »
         self._ref_score = None       # score de la référence courante
         self._ancre_idx = None       # index d'archive de la brute servant d'ancre
+        self._ancre_role = None      # jalon 20 : rôle de cette brute (compo)
         self._ancre_score = None     # son score
         self._restack_depuis = 0     # frames archivées depuis le dernier re-stack
+        self._scores_par_role = {}   # jalon 20 : rôle → scores (ordre de l'archive)
         # Jalon 18 : rendre le re-stack VISIBLE (retour réel d'Alain sur le
         # jalon 16 : « pas simple de voir le restack »). Ligne d'état DÉDIÉE
         # (toujours affichée, jamais écrasée par les messages de frames),
@@ -183,7 +186,8 @@ class App:
         self.ext_request = False        # demande en attente (lue par le worker)
         self.ext_busy = False           # un traitement externe tourne
         self.ext_job = None             # (gx?, cmd_gx, dn?, cmd_dn, bxt?,
-                                        # cmd_bxt, mode_dn, force_dn)
+                                        # cmd_bxt, mode_dn, force_dn,
+                                        # scnr?, scnr_doux?, demagenta?)
                                         # dn = débruitage : GraXpert IA
                                         # (subprocess) OU ondelettes/nlm
                                         # (local, en mémoire)
@@ -280,6 +284,14 @@ class App:
             self.var_ext_dn.set(True)
         if c.get("ext_bxt"):
             self.var_ext_bxt.set(True)
+        # Jalon 22 : SCNR + démagenta du traitement externe (booléens
+        # explicites — aucun outil requis, numpy seul).
+        if c.get("ext_scnr"):
+            self.var_ext_scnr.set(True)
+        if c.get("ext_scnr_doux"):
+            self.var_ext_scnr_doux.set(True)
+        if c.get("ext_demagenta"):
+            self.var_ext_demagenta.set(True)
         for cle, var, mini, maxi in (
                 ("sigk", self.var_sigk, 0.5, 5.0),
                 ("target", self.var_target, 0.10, 0.45),
@@ -385,6 +397,17 @@ class App:
         if c.get("vl_sharp"):
             self.var_vl_sharp.set(True)
             self._on_vl_sharp()      # sans popup : aucun outil externe requis
+        # --- Jalon 22 : SCNR + démagenta live (booléens explicites, aucun
+        # outil externe requis — appliqués après composition, avant étirement).
+        if c.get("vl_scnr"):
+            self.var_vl_scnr.set(True)
+            self._on_vl_scnr()
+        if c.get("vl_scnr_doux"):
+            self.var_vl_scnr_doux.set(True)
+            self._on_vl_scnr_doux()
+        if c.get("vl_demagenta"):
+            self.var_vl_demagenta.set(True)
+            self._on_vl_demagenta()
         self._maj_lbl_sharp()        # étiquette juste dès le démarrage
         # Moteur d'étirement en DERNIER : la bascule VeraLux masque les
         # réglages STF et affiche le cadre VeraLux avec les valeurs ci-dessus.
@@ -428,6 +451,14 @@ class App:
         c["dn_force"] = self.var_dn_force.get()   # force débruitage externe
         if self.var_ext_bxt.get():
             c["ext_bxt"] = True
+        # Jalon 22/23 : chaîne couleur (live et externe) — booléens
+        # EXPLICITES (True comme False, cf. convention ci-dessous).
+        c["vl_scnr"] = bool(self.var_vl_scnr.get())
+        c["vl_scnr_doux"] = bool(self.var_vl_scnr_doux.get())
+        c["vl_demagenta"] = bool(self.var_vl_demagenta.get())
+        c["ext_scnr"] = bool(self.var_ext_scnr.get())
+        c["ext_scnr_doux"] = bool(self.var_ext_scnr_doux.get())
+        c["ext_demagenta"] = bool(self.var_ext_demagenta.get())
         c["sigk"] = self.var_sigk.get()
         c["target"] = self.var_target.get()
         c["gamma"] = self.var_gamma.get()
@@ -838,6 +869,28 @@ class App:
         self._add_slider(self.frm_veralux, "Force du débruitage (live)",
                          self.var_vl_dn_force, 0.0, 1.0, 0.05,
                          self._on_vl_denoise, "{:.2f}")
+        # Jalon 22 (décision d'Alain) : SCNR + démagenta — APRÈS composition
+        # (image COULEUR du composite) et JUSTE AVANT l'étirement ; no-op sur
+        # un composite monochrome (Mono). Vue « empilement » uniquement (en
+        # vue « traitée », l'image a déjà subi le traitement externe).
+        self.var_vl_scnr = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self.frm_veralux, text="SCNR — retrait du vert (live)",
+                        variable=self.var_vl_scnr,
+                        command=self._on_vl_scnr).pack(anchor="w", pady=(2, 0))
+        # Jalon 23 : SCNR doux borné par le bruit — ne retire que le
+        # grésillement vert (excès de vert ≤ 3σ), préserve la structure
+        # (nébuleuses) : pensé pour les palettes narrowband où le vert est
+        # de la DONNÉE (HOO : O3 ; SHO sans S : Ha).
+        self.var_vl_scnr_doux = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self.frm_veralux,
+                        text="SCNR doux — bruit seul (live)",
+                        variable=self.var_vl_scnr_doux,
+                        command=self._on_vl_scnr_doux).pack(anchor="w")
+        self.var_vl_demagenta = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self.frm_veralux,
+                        text="Démagenta — négatif + SCNR (live)",
+                        variable=self.var_vl_demagenta,
+                        command=self._on_vl_demagenta).pack(anchor="w")
         self.lbl_vl = ttk.Label(self.frm_veralux, text="—",
                                 foreground="#888888", wraplength=310)
         self.lbl_vl.pack(anchor="w")
@@ -929,6 +982,20 @@ class App:
         ttk.Button(rowbx, text="…", width=3,
                    command=lambda: self._pick_exe(self.var_cmd_bxt)
                    ).pack(side="left", padx=(4, 0))
+        # Jalon 22/23 (décision d'Alain) : chaîne couleur en fin de traitement
+        # externe — SCNR classique, puis SCNR doux (bruit seul, jalon 23 :
+        # pensé pour les palettes narrowband), puis démagenta — sur l'image
+        # COULEUR du résultat (no-op si mono), juste avant l'étirement
+        # d'affichage. Équivalent des cases live du cadre VeraLux.
+        self.var_ext_scnr = tk.BooleanVar(value=False)
+        ttk.Checkbutton(box, text="4. SCNR — retrait du vert",
+                        variable=self.var_ext_scnr).pack(anchor="w")
+        self.var_ext_scnr_doux = tk.BooleanVar(value=False)
+        ttk.Checkbutton(box, text="5. SCNR doux — bruit seul",
+                        variable=self.var_ext_scnr_doux).pack(anchor="w")
+        self.var_ext_demagenta = tk.BooleanVar(value=False)
+        ttk.Checkbutton(box, text="6. Démagenta (négatif + SCNR)",
+                        variable=self.var_ext_demagenta).pack(anchor="w")
         ttk.Label(box, text="Placeholders : {input} · {output} (.fits complet) · "
                            "{outbase} (sans extension, GraXpert). « … » : choisir "
                            "l'exécutable, options conservées. Le débruitage "
@@ -1244,6 +1311,36 @@ class App:
         if actif != self.disp.vl_denoise:
             self.disp.vl_denoise = actif    # la clé change → re-résolution
 
+    def _on_vl_scnr(self):
+        """Case SCNR (jalon 22) : répercute dans le solveur — la clé des
+        réglages change → re-résolution. Vue « empilement » uniquement
+        (en vue « traitée », l'image a déjà subi le traitement externe)."""
+        actif = self.var_vl_scnr.get() and self.var_view.get() != "traitée"
+        if actif != self.disp.vl_scnr:
+            self.disp.vl_scnr = actif       # la clé change → re-résolution
+
+    def _on_vl_demagenta(self):
+        """Case démagenta (jalon 22) : idem SCNR."""
+        actif = self.var_vl_demagenta.get() and self.var_view.get() != "traitée"
+        if actif != self.disp.vl_demagenta:
+            self.disp.vl_demagenta = actif  # la clé change → re-résolution
+
+    def _on_vl_scnr_doux(self):
+        """Case SCNR doux (jalon 23) : idem SCNR — bruit seul, structure
+        préservée (pensé pour les palettes narrowband)."""
+        actif = self.var_vl_scnr_doux.get() \
+            and self.var_view.get() != "traitée"
+        if actif != self.disp.vl_scnr_doux:
+            self.disp.vl_scnr_doux = actif  # la clé change → re-résolution
+
+    def _sync_vl_couleur_vue(self):
+        """Chaîne couleur live (jalon 22/23 : SCNR, SCNR doux, démagenta) =
+        vue « empilement » uniquement (même règle que le débruitage live) :
+        suit le changement de vue."""
+        self._on_vl_scnr()
+        self._on_vl_scnr_doux()
+        self._on_vl_demagenta()
+
     def _on_vl_sharp(self):
         """Case/curseur de la netteté live (jalon 12) : répercute les
         itérations dans le solveur (bornées par le module, plafond dur
@@ -1301,6 +1398,7 @@ class App:
         self.disp.reset()
         self._sync_vl_graxpert_vue()
         self._sync_vl_denoise_vue()
+        self._sync_vl_couleur_vue()
         self._sync_vl_sharp_vue()
         self._maj_lbl_sharp()
         if self.var_view.get() == "traitée":
@@ -1540,6 +1638,7 @@ class App:
         self.restack_request = False
         self._ref_score = self._ancre_score = None
         self._ancre_idx = None
+        self._ancre_role = None
         self._restack_depuis = 0
         self.restack_info = ""            # jalon 18 : état dédié de session neuve
         self.restack_couleur = "#888888"
@@ -1645,6 +1744,8 @@ class App:
             vl_graxpert=d.vl_graxpert, vl_graxpert_cmd=d.vl_graxpert_cmd,
             vl_denoise=d.vl_denoise, vl_denoise_methode=d.vl_denoise_methode,
             vl_denoise_force=d.vl_denoise_force,
+            vl_scnr=d.vl_scnr, vl_demagenta=d.vl_demagenta,
+            vl_scnr_doux=d.vl_scnr_doux,
             vl_sharp=d.vl_sharp, vl_sharp_iterations=d.vl_sharp_iterations)
         self.save_asseen_request = (path, vue, reglages)
 
@@ -1689,6 +1790,15 @@ class App:
                     self.asseen_result = f"ERREUR: Netteté live : {err}"
                     return
                 source = img_net
+            # Jalon 22/23 : la chaîne couleur fait aussi partie de la chaîne
+            # affichée (… → netteté → SCNR → SCNR doux → démagenta →
+            # étirement).
+            if vue == "pile" and reglages.get("vl_scnr"):
+                source = couleurs_mod.scnr(source)
+            if vue == "pile" and reglages.get("vl_scnr_doux"):
+                source = couleurs_mod.scnr_doux(source)
+            if vue == "pile" and reglages.get("vl_demagenta"):
+                source = couleurs_mod.demagenta(source)
             rendu = self.disp.rendu_pleine_resolution(source, reglages)
             if session != self._session:    # session relancée entre-temps
                 return
@@ -1769,7 +1879,9 @@ class App:
                                 "Un traitement est déjà en cours — patientez.")
             return
         if not (self.var_ext_graxpert.get() or self.var_ext_dn.get()
-                or self.var_ext_bxt.get()):
+                or self.var_ext_bxt.get() or self.var_ext_scnr.get()
+                or self.var_ext_scnr_doux.get()
+                or self.var_ext_demagenta.get()):
             messagebox.showinfo("Traitement externe",
                                 "Cochez au moins un traitement.")
             return
@@ -1789,7 +1901,13 @@ class App:
                         self.var_ext_bxt.get(),
                         self.var_cmd_bxt.get().strip(),
                         mode_dn,
-                        self.var_dn_force.get())
+                        self.var_dn_force.get(),
+                        # Jalon 22/23 : chaîne couleur EN FIN de chaîne,
+                        # dans l'ordre d'application — SCNR classique,
+                        # SCNR doux (bruit seul), démagenta.
+                        self.var_ext_scnr.get(),
+                        self.var_ext_scnr_doux.get(),
+                        self.var_ext_demagenta.get())
         self.ext_request = True
         self._set_ext_msg("Traitement demandé…", state="busy")
         self.btn_ext.config(state="disabled")
@@ -1836,7 +1954,17 @@ class App:
         tmp = None
         try:
             (use_gx, cmd_gx, use_dn, cmd_dn, use_bxt, cmd_bxt,
-             mode_dn, force_dn) = self.ext_job
+             mode_dn, force_dn) = self.ext_job[:8]
+            # Jalon 22/23 : chaîne couleur transportée dans le job (9e, 10e
+            # et 11e éléments — ordre d'application). Déballage TOLÉRANT
+            # (8 éléments = tout False) pour compatibilité des tests qui
+            # fabriquent des jobs 8-tuple (jalons 7/14).
+            scnr_actif = bool(self.ext_job[8]) if len(self.ext_job) > 8 \
+                else False
+            sd_actif = bool(self.ext_job[9]) if len(self.ext_job) > 9 \
+                else False
+            dm_actif = bool(self.ext_job[10]) if len(self.ext_job) > 10 \
+                else False
             steps = []
             if use_gx:
                 steps.append(("GraXpert gradient", "cmd", cmd_gx))
@@ -1943,6 +2071,25 @@ class App:
 
             img = gx_live._lire_sortie(cur)
             img = auto_unflip(img, stack)     # corrige un éventuel miroir vertical
+            # Jalon 23b : sortie d'outil DÉGÉNÉRÉE (pixels non finis, image
+            # vide — cf. le « plus d'image » en SHO sans S) → erreur claire
+            # au lieu d'un résultat noir en visu / sauvegardé.
+            if (not np.isfinite(img).all()
+                    or float(np.max(np.abs(img))) < 1e-9):
+                self._set_ext_msg("Erreur : sortie dégénérée de l'outil "
+                                  "(pixels non finis ou image vide)",
+                                  state="error")
+                return
+            # Jalon 22/23 : chaîne couleur (opt-in) — EN FIN de chaîne
+            # externe, sur l'image COULEUR du résultat (no-op si mono),
+            # juste avant l'étirement d'affichage (décision d'Alain).
+            # Ordre : SCNR classique → SCNR doux (bruit seul) → démagenta.
+            if scnr_actif:
+                img = couleurs_mod.scnr(img)
+            if sd_actif:
+                img = couleurs_mod.scnr_doux(img)
+            if dm_actif:
+                img = couleurs_mod.demagenta(img)
             if session != self._session:             # session relancée entre-temps
                 return
             self.proc_full = img                     # pleine résolution (sauvegarde)
@@ -2061,6 +2208,7 @@ class App:
         (jalon 19), vide aussi les archives PAR RÔLE."""
         self.archive.vider()
         self._scores = []
+        self._scores_par_role = {}   # jalon 20 : scores PAR RÔLE (compo)
         for arch in self.archives.values():
             arch.vider()
 
@@ -2072,13 +2220,40 @@ class App:
         idx = int(np.argmax(self._scores))
         return idx, self.archive.chemins[idx], int(self._scores[idx])
 
+    def _meilleure_archive_compo(self):
+        """Jalon 20 (mode compo) → (rôle, idx, chemin, score) de la meilleure
+        brute archivée, TOUS RÔLES confondus — les scores sont mesurés sur le
+        CANAL EXTRAIT de chaque rôle (la même mesure que l'alignement), donc
+        comparables d'une couche à l'autre. → (None,)*4 si vide ou incohérent
+        (une liste de scores ne collant plus à son archive est ignorée)."""
+        meilleur = (None, None, None, None)
+        for role, scores in self._scores_par_role.items():
+            arch = self.archives.get(role)
+            if arch is None or len(scores) != len(arch.chemins):
+                continue
+            idx = int(np.argmax(scores))
+            if meilleur[3] is None or scores[idx] > meilleur[3]:
+                meilleur = (role, idx, arch.chemins[idx], int(scores[idx]))
+        return meilleur
+
     def _veut_restack(self):
         """Déclencheur AUTO (esprit Siril) : la meilleure brute archivée bat
         nettement la référence courante (marge RESTACK_MARGE en étoiles).
         Surtout utile quand l'ANCRE initiale était médiocre ; une fois la
         référence rafraîchie sur l'EMPILEMENT (qui détecte plus d'étoiles
         qu'une brute isolée), la marge n'est presque plus atteinte —
-        comportement voulu, le re-stack auto reste exceptionnel."""
+        comportement voulu, le re-stack auto reste exceptionnel.
+        Jalon 20 : en mode compo, même logique TOUS RÔLES confondus (la
+        référence d'alignement est partagée, une meilleure brute d'une
+        couche quelconque re-ancre tout)."""
+        if self._mode_compo:
+            role, idx, _chemin, score = self._meilleure_archive_compo()
+            if role is None or self._ref_score is None:
+                return False
+            if (self._ancre_idx is not None and self._ancre_role == role
+                    and idx == self._ancre_idx):
+                return False
+            return score >= RESTACK_MARGE * self._ref_score
         idx, _chemin, score = self._meilleure_archive()
         if idx is None or self._ref_score is None:
             return False
@@ -2097,6 +2272,8 @@ class App:
         lecture impossible, forme différente)."""
         if self.stacker is None:
             return ""
+        if self._mode_compo:          # jalon 20 : re-stack multi-canal
+            return self._do_restack_compo(raison)
         idx, chemin, score = self._meilleure_archive()
         if idx is None:
             return ""
@@ -2158,6 +2335,123 @@ class App:
                             ref_score_avant, raison)
         return (f"re-stack {n_ok}/{self.archive.n} frames · réf. = brute "
                 f"#{idx} ({score} étoiles, {raison})")
+
+    def _narrowband_ha(self):
+        """Jalon 21 (décision d'Alain) : composition narrowband contenant le
+        rôle Ha (HOO, SHO). Dans ce mode : l'ancre initiale est TOUJOURS une
+        brute Ha, et l'alignement se fait par TRIANGLES seuls (ORB s'apparie
+        mal d'un filtre à l'autre)."""
+        return bool(self._mode_compo and self._compo_nom
+                    and "Ha" in roles_de(self._compo_nom))
+
+    def _do_restack_compo(self, raison, ancre_role=None, ancre_idx=None):
+        """Jalon 20 — re-stack en mode COMPOSITION multi-filtres. La
+        meilleure brute archivée, TOUS RÔLES confondus, devient la
+        référence de l'aligneur PARTAGÉ (même repère pour toutes les
+        couches, décision du 18/09/2026) et TOUTES les couches sont
+        recalculées depuis leur archive PAR RÔLE : chaque couche a ses
+        mauvaises frames (refusées à l'alignement ou dégradées avec
+        l'ancienne référence) — elles repartent de zéro et ont une
+        seconde chance. Le canal du rôle est ré-extrait de chaque brute
+        archivée (les archives gardent les brutes complètes, calibrées).
+        Jalon 21 : ancre FORCÉE (ancre_role, ancre_idx) au démarrage
+        HOO/SHO — la 1re brute Ha devient l'ancre et les frames archivées
+        entre-temps sont rejouées.
+        S'exécute dans le thread worker ; → message d'état, ou "" si
+        rien fait (archive vide, lecture impossible, forme différente)."""
+        if ancre_role is not None:
+            arch = self.archives.get(ancre_role)
+            if (arch is None or ancre_idx is None
+                    or not (0 <= ancre_idx < len(arch.chemins))):
+                return ""
+            role_ref = ancre_role
+            idx = ancre_idx
+            chemin = arch.chemins[idx]
+            scores = self._scores_par_role.get(ancre_role) or []
+            score = scores[idx] if idx < len(scores) else None
+        else:
+            role_ref, idx, chemin, score = self._meilleure_archive_compo()
+            if role_ref is None:
+                return ""
+        try:
+            ref = load_image(chemin)
+            canal_ref = extraire_canal(ref, role_ref)
+        except Exception as exc:
+            self._noter_restack(0, 0, 0, 0, None,
+                                f"re-stack impossible (lecture archive : "
+                                f"{exc})", echec=True)
+            return f"re-stack impossible (lecture archive : {exc})"
+        ancien = self.stacker
+        if (ancien.shape is not None
+                and tuple(canal_ref.shape) != tuple(ancien.shape)):
+            self._noter_restack(0, 0, 0, 0, None,
+                                "re-stack impossible (forme d'archive "
+                                "différente)", echec=True)
+            return "re-stack impossible (forme d'archive différente)"
+        # Jalon 18 : état « en cours » visible immédiatement.
+        self.restack_couleur = "#888888"
+        self.restack_info = f"{time.strftime('%H:%M:%S')} · re-stack en " \
+                            f"cours ({raison})…"
+        n_avant = ancien.n
+        ref_score_avant = self._ref_score
+        n_arch = sum(a.n for a in self.archives.values())
+        # Référence de l'aligneur PARTAGÉ = canal extrait de la meilleure
+        # brute (même mesure que les scores — cf. _meilleure_archive_compo).
+        self._definir_reference(canal_ref)
+        st = CompositeStacker(ancien.composition, k=ancien.k,
+                              method=ancien.method, window=ancien.window)
+        st.gains = dict(ancien.gains) if ancien.gains else None
+        st.mode_l = ancien.mode_l
+        st.wb_auto = ancien.wb_auto
+        st.wb_force = ancien.wb_force
+        self.stacker = st
+        # Rejouer les archives : rôles dans l'ordre de la composition, puis
+        # les éventuels rôles supplémentaires (même ordre que etat()).
+        roles = [r for r in roles_de(ancien.composition) if r in self.archives]
+        roles += [r for r in self.archives if r not in roles]
+        n_ok_par_role = {}
+        ident = np.eye(2, 3)
+        for role in roles:
+            arch = self.archives[role]
+            n_ok_role = 0
+            for j, c in enumerate(arch.chemins):
+                try:
+                    img = load_image(c)
+                    canal = extraire_canal(img, role)
+                except Exception:
+                    continue            # fichier illisible → on le saute
+                if (ancien.shape is not None
+                        and tuple(canal.shape) != tuple(ancien.shape)):
+                    continue
+                if role == role_ref and j == idx:
+                    st.add(canal, role=role)      # l'ancre : trivial
+                    st.note_alignement(ident)
+                    n_ok_role += 1
+                    continue
+                M, ok = self.aligner.compute(canal)
+                if ok:
+                    st.add(cv2.warpAffine(canal, M, (canal.shape[1],
+                                                     canal.shape[0]),
+                                          flags=cv2.INTER_LINEAR), role=role)
+                    st.note_alignement(M)
+                    n_ok_role += 1
+            n_ok_par_role[role] = n_ok_role
+        n_ok = sum(n_ok_par_role.values())
+        self._ref_frames = self._ref_bad = 0
+        self._restack_depuis = 0
+        self._ancre_role, self._ancre_idx, self._ancre_score = \
+            role_ref, idx, score
+        # Jalon 18 : signaler (ligne dédiée + gain + historique) — le détail
+        # PAR CANAL (« Ha 9/9 · O3 8/9 ») permet de voir quelle couche a
+        # récupéré (ou perdu) des frames avec la nouvelle référence.
+        detail = raison
+        detail += " · " + " · ".join(
+            f"{r} {n_ok_par_role.get(r, 0)}/{self.archives[r].n}"
+            for r in roles if self.archives[r].n > 0)
+        self._noter_restack(n_ok, n_avant, n_arch, score,
+                            ref_score_avant, detail)
+        return (f"re-stack {n_ok}/{n_arch} frames (compo) · réf. = brute "
+                f"{role_ref}#{idx} ({score} étoiles, {raison})")
 
     # ------------------------------------ jalon 18 : re-stack VISIBLE (UX)
     def _noter_restack(self, n_ok, n_avant, n_arch, score, ref_score_avant,
@@ -2317,25 +2611,45 @@ class App:
                 # changement de géométrie : les frames archivées (autre
                 # taille) ne sont plus ré-empilables → archive neuve
                 self._vider_archive()
-            if self._mode_compo:          # archive PAR RÔLE (futur re-stack v2)
+            if self._mode_compo:          # archive PAR RÔLE (re-stack jalon 20)
                 chemin_archive = self.archives.setdefault(
                     role, ArchiveFrames()).ajouter(frame)
             else:
                 chemin_archive = self.archive.ajouter(frame)
-            if chemin_archive is not None and not self._mode_compo:
-                # Jalon 16 : score qualité (nb d'étoiles détectées, canal
-                # vert) de chaque brute archivée — matière du choix de
-                # référence à la Siril (meilleure référence + re-stack).
-                # (Mode compo : re-stack DÉSACTIVÉ — reporté v2.)
-                self._scores.append(self._score_frame(frame))
-                self._restack_depuis += 1
+            if chemin_archive is not None:
+                if self._mode_compo:
+                    # Jalon 20 : score qualité PAR RÔLE — mesuré sur le CANAL
+                    # EXTRAIT (img_travail, la même image que l'alignement),
+                    # donc comparable d'une couche à l'autre pour choisir la
+                    # meilleure brute TOUS RÔLES confondus.
+                    self._scores_par_role.setdefault(role, []).append(
+                        self._score_frame(img_travail))
+                    self._restack_depuis += 1
+                else:
+                    # Jalon 16 : score qualité (nb d'étoiles détectées, canal
+                    # vert) de chaque brute archivée — matière du choix de
+                    # référence à la Siril (meilleure référence + re-stack).
+                    self._scores.append(self._score_frame(frame))
+                    self._restack_depuis += 1
 
             # (re)création de l'empilement / nouvelle référence — SEULEMENT
             # si la frame a passé le filtre jalon 17 (une brute très floue ne
             # doit jamais devenir la référence d'alignement ni créer
             # l'empilement — c'est le défaut que le filtre élimine).
-            if (self.reset_request or self.stacker is None
+            # Jalon 21 (décision d'Alain) : HOO/SHO — l'ancre initiale est
+            # TOUJOURS une brute Ha. Tant qu'aucune brute Ha n'est arrivée,
+            # les frames des autres rôles (déjà archivées) ne créent PAS
+            # l'empilement ; à la 1re Ha, l'ancre est posée sur elle et les
+            # frames archivées entre-temps sont rejouées (via
+            # _do_restack_compo, exactement comme un re-stack).
+            deja_rejoue = False
+            if (self._mode_compo and self._narrowband_ha()
+                    and self.stacker is None and role != "Ha"):
+                self.align_info = ("en attente d'une brute Ha "
+                                   "(référence d'alignement)…")
+            elif (self.reset_request or self.stacker is None
                     or self.stacker.shape != img_travail.shape):
+                etait_vide = self.stacker is None
                 self.reset_request = False
                 if self._mode_compo:       # façade multi-rôles : un stacker
                     self.stacker = CompositeStacker(   # par rôle, mean() =
@@ -2353,45 +2667,62 @@ class App:
                 self.stacker.wb_auto = bool(self.var_wb.get())
                 self.stacker.wb_force = float(self.var_wb_force.get())
                 self.aligner.reset()
+                # Jalon 21 : HOO/SHO → TRIANGLES seuls pour toute la session.
+                self.aligner.triangles_seuls = self._narrowband_ha()
                 self._definir_reference(img_travail)
                 self.disp.reset()          # stats d'affichage repartent de zéro
+                # Jalon 21 : 1re brute Ha → ancre + rejeu des frames
+                # archivées entre-temps (les autres rôles arrivés avant).
+                if (etait_vide and self._mode_compo and self._narrowband_ha()
+                        and role == "Ha"
+                        and self.archives.get(role, ArchiveFrames()).n > 0):
+                    idx_ancre = len(self.archives[role].chemins) - 1
+                    self._ancre_role, self._ancre_idx = role, idx_ancre
+                    info = self._do_restack_compo(
+                        f"ancre {role} (démarrage)", ancre_role=role,
+                        ancre_idx=idx_ancre)
+                    if info:
+                        self.align_info = info
+                    deja_rejoue = True
 
-            M, ok = self.aligner.compute(img_travail)
-            if ok:
-                aligned = cv2.warpAffine(img_travail, M,
-                                         (img_travail.shape[1],
-                                          img_travail.shape[0]),
-                                         flags=cv2.INTER_LINEAR)
-                if self._mode_compo:       # routage vers le stacker du rôle
-                    self.stacker.role_courant = role
-                self.stacker.add(aligned)
-                self.stacker.note_alignement(M)   # intersection des zones couvertes
-                last_good = aligned
-                self._ref_bad = 0
-            else:
-                self.bad_frames += 1
-                self._ref_bad += 1
-                # Jalon 13 : dossier MIXÉ (brutes de plusieurs nuits, p.ex.
-                # TargetSchedulerSequence de NINA) — si TOUT refuse alors que
-                # l'empilement est quasi vide (≤ 2 frames), la référence
-                # (1re frame, autre nuit — ou une ancre faussée) ne convient
-                # à rien : on la recale sur la frame courante. Sûr : ≤ 2
-                # frames d'ancien repère dans l'accumulation seront rejetées
-                # ensuite par la médiane Winsorized (dilution). (Jalon 17 :
-                # la frame courante a déjà passé le filtre défocalisation.)
-                if self.stacker.n <= 2 and self._ref_bad >= 3:
-                    self._definir_reference(frame)
-                    self._ref_frames = self._ref_bad = 0
-            self._ref_frames += 1
-            # Jalon 13 : ligne d'état de l'alignement (Δ, θ, méthode ou refus).
-            if ok and self.aligner.dernier:
-                d = self.aligner.dernier
-                self.align_info = (f"Δ=({d['dx']:+.1f},{d['dy']:+.1f}) px · "
-                                   f"θ {d['angle']:+.2f}° · {d['methode']}")
-            elif not ok:
-                self.align_info = "refus (frame non empilée)"
+            stack = None
+            if self.stacker is not None and not deja_rejoue:
+                M, ok = self.aligner.compute(img_travail)
+                if ok:
+                    aligned = cv2.warpAffine(img_travail, M,
+                                             (img_travail.shape[1],
+                                              img_travail.shape[0]),
+                                             flags=cv2.INTER_LINEAR)
+                    if self._mode_compo:       # routage vers le stacker du rôle
+                        self.stacker.role_courant = role
+                    self.stacker.add(aligned)
+                    self.stacker.note_alignement(M)   # intersection des zones
+                    last_good = aligned
+                    self._ref_bad = 0
+                else:
+                    self.bad_frames += 1
+                    self._ref_bad += 1
+                    # Jalon 13 : dossier MIXÉ (brutes de plusieurs nuits, p.ex.
+                    # TargetSchedulerSequence de NINA) — si TOUT refuse alors que
+                    # l'empilement est quasi vide (≤ 2 frames), la référence
+                    # (1re frame, autre nuit — ou une ancre faussée) ne convient
+                    # à rien : on la recale sur la frame courante. Sûr : ≤ 2
+                    # frames d'ancien repère dans l'accumulation seront rejetées
+                    # ensuite par la médiane Winsorized (dilution). (Jalon 17 :
+                    # la frame courante a déjà passé le filtre défocalisation.)
+                    if self.stacker.n <= 2 and self._ref_bad >= 3:
+                        self._definir_reference(frame)
+                        self._ref_frames = self._ref_bad = 0
+                self._ref_frames += 1
+                # Jalon 13 : ligne d'état de l'alignement (Δ, θ, méthode ou refus).
+                if ok and self.aligner.dernier:
+                    d = self.aligner.dernier
+                    self.align_info = (f"Δ=({d['dx']:+.1f},{d['dy']:+.1f}) px · "
+                                       f"θ {d['angle']:+.2f}° · {d['methode']}")
+                elif not ok:
+                    self.align_info = "refus (frame non empilée)"
 
-            stack = self.stacker.mean()
+                stack = self.stacker.mean()
 
             # Jalon 13 : rafraîchissement AUTOMATIQUE de la référence — la
             # dérive lente éloigne les frames de la référence initiale et
@@ -2419,11 +2750,15 @@ class App:
             # référence courante (marge en étoiles), ou sur bouton. Le
             # recalcul rejoue TOUTES les frames archivées : celles qui
             # avaient refusé avec l'ancienne référence ont une seconde chance.
-            # Jalon 19 : re-stack DÉSACTIVÉ en mode compo (reporté v2 —
-            # l'archive par rôle est en place pour l'accueillir).
-            if (not self._mode_compo and self.stacker is not None and (
+            # Jalon 20 : le re-stack s'applique AUSSI au mode compo — la
+            # meilleure brute, TOUS RÔLES confondus, re-ancre l'aligneur
+            # PARTAGÉ et toutes les couches sont recalculées depuis les
+            # archives PAR RÔLE (chaque couche a ses mauvaises frames).
+            n_arch = (sum(a.n for a in self.archives.values())
+                      if self._mode_compo else self.archive.n)
+            if (self.stacker is not None and (
                     self.restack_request
-                    or (self.archive.n >= RESTACK_MIN_FRAMES
+                    or (n_arch >= RESTACK_MIN_FRAMES
                         and self._restack_depuis >= RESTACK_CADENCE
                         and self._veut_restack()))):
                 raison = "bouton" if self.restack_request else "auto"
@@ -2472,7 +2807,10 @@ class App:
             else:
                 pend = len(getattr(self.camera, "_pending", []))
                 n_arch, err_arch = self.archive.n, self.archive.erreur
-            st = dict(frames=self.stacker.n, rejets=self.stacker.rejected_total,
+            st = dict(frames=(self.stacker.n if self.stacker is not None
+                              else 0),
+                      rejets=(self.stacker.rejected_total
+                              if self.stacker is not None else 0),
                       bad=self.bad_frames, floues=self.floues_rejetees,
                       fps=self.fps, cam=self.camera.name,
                       file=getattr(self.camera, "last_file", ""),
@@ -2485,7 +2823,7 @@ class App:
                              if self._mode_compo and self.stacker is not None
                              else None),
                       restack=self.restack_info, restack_n=self.restack_total)
-            if self.stacker.cadre is not None:      # recadrage d'intersection
+            if self.stacker is not None and self.stacker.cadre is not None:
                 y0, x0, y1, x1 = self.stacker.cadre
                 st["crop_w"], st["crop_h"] = x1 - x0, y1 - y0
             try:
@@ -2540,6 +2878,7 @@ class App:
         # être cochées même en vue « traitée »)
         self._sync_vl_graxpert_vue()
         self._sync_vl_denoise_vue()
+        self._sync_vl_couleur_vue()
         self._sync_vl_sharp_vue()
         if self.disp.sh_new:      # netteté live : message du solveur (jalon 12)
             self.disp.sh_new = False

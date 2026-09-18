@@ -145,6 +145,16 @@ def appliquer(img, cmd, timeout=TIMEOUT_S):
         if out.shape != img.shape:
             return img, (f"dimensions de sortie {out.shape[:2]} ≠ "
                          f"entrée {img.shape[:2]}")
+        # Jalon 23b : sortie DÉGÉNÉRÉE (pixels non finis, image vide —
+        # constat réel d'Alain en SHO sans S : « plus d'image dans la
+        # visu ») → repli sur l'image brute avec un message clair, au
+        # lieu d'un noir inexpliqué après étirement.
+        if not np.isfinite(out).all():
+            return img, ("sortie contenant des pixels non finis (NaN/Inf) "
+                         "— outil ignoré, image brute conservée")
+        if float(np.max(np.abs(out))) < 1e-9:
+            return img, ("sortie vide (image noire) — outil ignoré, "
+                         "image brute conservée")
         return out, ""
     except Exception as exc:              # E/S, lecture…
         return img, str(exc)

@@ -7,6 +7,7 @@ import numpy as np
 import cv2
 
 from ..external import live as _gx_live
+from . import couleurs as _couleurs
 from . import denoise as _denoise
 from . import sharpness as _sharpness
 from . import veralux as _veralux
@@ -127,6 +128,13 @@ class DisplayProcessor:
         # = réglage utile, ITERATIONS_MAX (10) en plafond dur.
         self.vl_sharp = False         # netteté live activée (vue « empilement »)
         self.vl_sharp_iterations = _sharpness.ITERATIONS_DEFAUT
+        # --- SCNR + démagenta (jalon 22, opt-in) ----------------------------
+        # APRÈS composition (image COULEUR du composite) et JUSTE AVANT
+        # l'étirement (décision d'Alain) — no-op sur un composite monochrome.
+        self.vl_scnr = False          # SCNR « moyenne neutre » (retrait du vert)
+        self.vl_demagenta = False     # négatif → SCNR → positif (anti-magenta)
+        self.vl_scnr_doux = False     # jalon 23 : SCNR borné par le bruit
+                                      # (bruit seul — structure préservée)
         self.vl_seeing = None         # mesure du seeing (jalon 10, dict) : sert
                                       # de PSF à la netteté — posée par le
                                       # thread d'acquisition, jamais mesurée ici
@@ -227,14 +235,16 @@ class DisplayProcessor:
 
     def _vl_params(self):
         """Clé de hachage des réglages de la chaîne PRÉ-ÉTIREMENT VeraLux —
-        GraXpert live, débruitage live et netteté live (jalon 12), plus les
-        paramètres d'étirement : bouger l'un d'eux relance la résolution."""
+        GraXpert live, débruitage live, netteté live (jalon 12), SCNR et
+        démagenta (jalon 22), plus les paramètres d'étirement : bouger
+        l'un d'eux relance la résolution."""
         return (self.vl_mode_res, round(self.vl_target_bg, 4),
                 round(self.vl_log_d, 3), self.vl_profil,
                 self.vl_graxpert, self.vl_graxpert_cmd,
                 self.vl_denoise, self.vl_denoise_methode,
                 round(self.vl_denoise_force, 2),
-                self.vl_sharp, int(self.vl_sharp_iterations))
+                self.vl_sharp, int(self.vl_sharp_iterations),
+                self.vl_scnr, self.vl_demagenta, self.vl_scnr_doux)
 
     def _vl_worker(self):
         """Thread solveur : enchaîne — si activés — GraXpert live (jalon 4)
@@ -262,25 +272,44 @@ class DisplayProcessor:
                 with self._vl_lock:
                     self._vl_pending = False
                 continue
-            img, params, key, (gx_actif, gx_cmd), (dn_actif, dn_methode,
-                                                   dn_force), (sh_actif,
-                                                   sh_iter) = job
+            img, params, key, gx, dn, sh = job[:6]
+            gx_actif, gx_cmd = gx
+            dn_actif, dn_methode, dn_force = dn
+            sh_actif, sh_iter = sh
+            # Jalon 22/23 : SCNR, SCNR doux et démagenta transportés dans le
+            # job (7e élément, ordre d'application). Déballage TOLÉRANT
+            # (6 éléments = tout False) pour compatibilité des tests qui
+            # fabriquent des jobs jalon 9/12.
+            coul = job[6] if len(job) > 6 else ()
+            scnr_actif = bool(coul[0]) if len(coul) > 0 else False
+            sd_actif = bool(coul[1]) if len(coul) > 1 else False
+            dm_actif = bool(coul[2]) if len(coul) > 2 else False
             # --- GraXpert live (opt-in) : retrait de gradient AVANT l'étirement
             # Cache indexé par (CONTENU de l'image, commande) : une nouvelle
             # frame relance l'outil, mais pas un simple curseur VeraLux ; et
             # modifier la commande GraXpert invalide le résultat caché.
             img_gx, err_gx = img, ""
             if gx_actif:
-                cle = (_gx_live.cle_image(img), gx_cmd)
-                if self._gx_cache is not None and self._gx_cache[0] == cle:
-                    img_gx = self._gx_cache[1]   # curseur bougé : GraXpert
-                else:                            # n'est PAS relancé
-                    img_gx, err_gx = _gx_live.appliquer(img, gx_cmd)
-                    if err_gx:
-                        img_gx = img             # repli : étirement de l'image
-                        self._gx_cache = None    # brute, erreur signalée
-                    else:
-                        self._gx_cache = (cle, img_gx)
+                # Jalon 23b : un canal MORT (SHO sans S → R = 0) rend le
+                # comportement de GraXpert imprévisible (sortie dégénérée →
+                # image noire en visu, constat réel d'Alain). On ne lance
+                # PAS l'outil : message clair + repli sur l'image brute, la
+                # chaîne (débruitage/netteté/étirement) continue normalement.
+                mort = _couleurs.canal_mort(img)
+                if mort is not None:
+                    img_gx, err_gx = img, (f"canal {mort} vide (aucune "
+                                           f"donnée) : GraXpert live ignoré")
+                else:
+                    cle = (_gx_live.cle_image(img), gx_cmd)
+                    if self._gx_cache is not None and self._gx_cache[0] == cle:
+                        img_gx = self._gx_cache[1]   # curseur bougé : GraXpert
+                    else:                            # n'est PAS relancé
+                        img_gx, err_gx = _gx_live.appliquer(img, gx_cmd)
+                        if err_gx:
+                            img_gx = img             # repli : étirement de
+                            self._gx_cache = None    # l'image brute, erreur
+                        else:                        # signalée
+                            self._gx_cache = (cle, img_gx)
             # --- Débruitage live (jalon 9, opt-in) : APRÈS le GraXpert live
             # éventuel — même ordre que la chaîne manuelle (gradient →
             # débruitage). Cache par (CONTENU de l'image ENTRANTE, méthode,
@@ -323,6 +352,16 @@ class DisplayProcessor:
                 if err_net:
                     img_net = img_dn     # repli : étirement sans netteté
                 self.sh_msg, self.sh_new = err_net, True
+            # Jalon 22/23 : chaîne couleur (opt-in) — APRÈS la netteté,
+            # JUSTE AVANT l'étirement (décision d'Alain : sur le composite
+            # COULEUR ; no-op si l'image est monochrome). Ordre :
+            # SCNR classique → SCNR doux (bruit seul) → démagenta.
+            if scnr_actif:
+                img_net = _couleurs.scnr(img_net)
+            if sd_actif:
+                img_net = _couleurs.scnr_doux(img_net)
+            if dm_actif:
+                img_net = _couleurs.demagenta(img_net)
             prefixe = ((f"GraXpert live : {err_gx} ; " if err_gx else "")
                        + (f"Débruitage live : {err_dn} ; " if err_dn else "")
                        + (f"Netteté live : {err_net} ; " if err_net else ""))
@@ -360,6 +399,8 @@ class DisplayProcessor:
             dn = (self.vl_denoise, self.vl_denoise_methode,
                   self.vl_denoise_force)                    # capté côté UI
             sh = (self.vl_sharp, int(self.vl_sharp_iterations))
+            coul = (self.vl_scnr, self.vl_scnr_doux,
+                    self.vl_demagenta)     # jalon 22/23 : chaîne couleur
             with self._vl_lock:
                 if not self._vl_pending:
                     self._vl_pending = True
@@ -367,7 +408,7 @@ class DisplayProcessor:
                     # copie défensive : img appartient à l'UI et peut être
                     # remplacée pendant le calcul
                     self._vl_job = (img.astype(np.float32).copy(), params,
-                                    key, gx, dn, sh)
+                                    key, gx, dn, sh, coul)
                     self._vl_wake.set()
             self._vl_src, self._vl_key = img, key
         with self._vl_lock:
@@ -494,6 +535,15 @@ class DisplayProcessor:
         # refaire ici — d'où le test sur le moteur RÉELLEMENT utilisé.
         if self.vl_sharp and not self._veralux_actif():
             img = self._process_nettete(img)
+        # Jalon 22/23 : chaîne couleur (opt-in) — AVANT l'étirement, en
+        # STF/manuel ; en VeraLux elle fait partie de la chaîne du solveur
+        # (appliquée dans _vl_worker) : ne pas la refaire ici.
+        if self.vl_scnr and not self._veralux_actif():
+            img = _couleurs.scnr(img)
+        if self.vl_scnr_doux and not self._veralux_actif():
+            img = _couleurs.scnr_doux(img)
+        if self.vl_demagenta and not self._veralux_actif():
+            img = _couleurs.demagenta(img)
         if self._veralux_actif():
             x = self._process_veralux(img, live=live)
         else:

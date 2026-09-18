@@ -14,9 +14,153 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.8.0"
+AVASTACK_VERSION = "2.12.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.12.1 : JALON 23b — GARDE-FOUS GRAXPERT (retour réel d'Alain : en SHO,
+#          en cliquant GraXpert live pour le gradient, « plus d'image dans
+#          la visu », non systématique mais fréquent). Cause : en SHO sans
+#          S, le canal R du composite est ENTIEREMENT VIDE (aucun dossier
+#          S2) — GraXpert reçoit une image à canal mort et son comportement
+#          devient imprévisible (sortie dégénérée → image noire après
+#          étirement). Trois garde-fous :
+#          · couleurs.canal_mort(img) : détecte un canal entièrement vide
+#            ('R'/'G'/'B') ;
+#          · solveur VeraLux : si un canal est mort, GraXpert live n'est
+#            PAS lancé — message clair « canal R vide (aucune donnée) :
+#            GraXpert live ignoré » sur la ligne d'état, la chaîne
+#            (débruitage/netteté/étirement) continue sur l'image brute ;
+#          · external.live.appliquer + _run_external : sortie d'outil
+#            DÉGÉNÉRÉE (NaN/Inf, image vide) rejetée → repli image brute /
+#            erreur claire, au lieu d'un résultat noir.
+#          Test _test_couleurs_jalon22.py section [5] (outils factices
+#          autonomes astropy : NaN, image vide, copie ; canal mort jamais
+#          appelé, image saine appelée une fois).
+
+# v2.12.0 : JALON 23 — SCNR DOUX BORNÉ PAR LE BRUIT (décision d'Alain,
+#          19/09/2026). Retour réel sur le jalon 22 : le SCNR « moyenne
+#          neutre » classique vire une SHO sans S (R = 0, G = Ha, B = O3)
+#          FRANCHEMENT AU BLEU — le neutre y devient (0+B)/2 = O3/2 et tout
+#          le signal Ha est écrêté, car dans les palettes narrowband le vert
+#          est de la DONNÉE, pas du bruit. Nouveau couleurs.scnr_doux :
+#          n'ajouter que l'excès de vert DE L'ORDRE DU BRUIT — e = G −
+#          (R+B)/2 ; σ estimé par MAD sur le DÉTAIL haute-fréquence de e
+#          (1re couche starlet, cf. denoise.estimer_sigma) : insensible au
+#          fait que la structure (nébuleuse) soit majoritaire, car une
+#          nébuleuse est lisse et le grain seul vit en haute fréquence ;
+#          seuil t = 3σ ; garotte douce sur la partie positive (e ≤ t → 0,
+#          e > t → e − t²/e, e ≤ 0 inchangé) ; G' = (R+B)/2 + e'. Le
+#          grésillement vert du fond disparaît, la teinte Ha/O3 est
+#          préservée. Case « SCNR doux — bruit seul » en LIVE (cadre
+#          VeraLux, entre SCNR et Démagenta ; clé _vl_params, chaîne « tel
+#          que vu », vue « empilement » uniquement) et en TRAITEMENT
+#          EXTERNE (« 5. SCNR doux — bruit seul », le Démagenta devient
+#          « 6. » ; job 11-tuple, déballage tolérant). Ordre de la chaîne
+#          couleur : SCNR classique → SCNR doux → démagenta. Persistance :
+#          vl_scnr_doux / ext_scnr_doux. Test _test_couleurs_jalon22.py
+#          étendu (grésillement retiré, structure préservée, mono no-op,
+#          clé, chaîne externe, persistance).
+
+# v2.11.0 : JALON 22 — SCNR (retrait du vert) + DÉMAGENTA (décision d'Alain,
+#          19/09/2026). Nouveau module avastack/processing/couleurs.py :
+#          SCNR « moyenne neutre » (G = min(G, (R+B)/2) — le vert excédentaire
+#          est ramené à la moyenne des deux autres canaux, les étoiles
+#          blanches restent intactes) et démagenta par la recette d'Alain
+#          (négatif → SCNR → retour au positif). Placement demandé : APRÈS la
+#          composition (sur l'image COULEUR du composite — « pour retirer du
+#          vert, il faut de la couleur ») et JUSTE AVANT l'étirement ; no-op
+#          sur un composite monochrome (source Mono). Quatre cases à cocher :
+#          · LIVE (cadre VeraLux, sous le débruitage live) : « SCNR — retrait
+#            du vert (live) » et « Démagenta — négatif + SCNR (live) » —
+#            appliqués dans le solveur VeraLux après la netteté, et dans
+#            process() pour les modes STF/manuel ; vue « empilement »
+#            uniquement (suivent le changement de vue comme le débruitage
+#            live) ; inclus dans la clé des réglages (_vl_params) et dans la
+#            chaîne « tel que vu » ;
+#          · TRAITEMENT EXTERNE : « 4. SCNR — retrait du vert » et
+#            « 5. Démagenta (négatif + SCNR) » — appliqués EN FIN de chaîne
+#            externe sur le résultat traité (job 10-tuple, déballage
+#            tolérant pour les jobs 8-tuple).
+#          Persistance : vl_scnr / vl_demagenta / ext_scnr / ext_demagenta
+#          (booléens explicites). Test _test_couleurs_jalon22.py.
+
+# v2.10.1 : JALON 21b — RETOUR RÉEL d'Alain (session SHO : 6 frames empilées
+#          pour 86 refusées au début) : en « triangles d'abord » (HOO/SHO),
+#          les canaux narrowband montrent souvent MOINS DE 6 étoiles communes
+#          — le minimum exigé par les triangles — d'où des refus en masse.
+#          REPLI après l'échec des triangles : chemin « étoiles »
+#          (centroïdes + vote + contre-vérification mutuelle) puis
+#          corrélation de phase honnête (Hann + gain SSD net exigé, ±40 px).
+#          ORB reste ÉCARTÉ en narrowband (c'est lui qui s'apparie mal d'un
+#          filtre à l'autre). La ligne d'état « Align. » affiche la méthode
+#          réellement utilisée (triangles / étoiles / phase). Test
+#          _test_narrowband_ha_jalon21.py enrichi (champ pauvre → phase).
+
+# v2.10.0 : JALON 21 — NARROWBAND (HOO/SHO) : TRIANGLES SEULS + ANCRE HA
+#          (décision d'Alain, 19/09/2026). En composition narrowband
+#          contenant le rôle Ha (HOO, SHO) : (1) l'alignement se fait
+#          SYSTÉMATIQUEMENT par TRIANGLES d'étoiles — nouveau mode
+#          StarAligner.triangles_seuls : ORB (descripteurs de gradients,
+#          qui s'apparient mal d'un filtre à l'autre), le chemin « étoiles »
+#          et la phase ne sont PAS tentés ; si les triangles ne concluent
+#          pas, la frame est refusée (jamais d'empilement approximatif) ;
+#          (2) la référence d'alignement INITIALE est TOUJOURS une brute Ha
+#          — tant qu'aucune brute Ha n'est arrivée, les frames des autres
+#          rôles (déjà archivées) ne créent PAS l'empilement (ligne
+#          d'état « en attente d'une brute Ha ») ; à la 1re Ha, l'ancre est
+#          posée sur elle (_do_restack_compo avec ancre FORCÉE) et les
+#          frames archivées entre-temps sont REJOUÉES — ensuite, en cas de
+#          re-stack, comportement normal du jalon 20 (meilleure brute tous
+#          rôles confondus). Mono, RGB et LRGB inchangés (cascade ORB →
+#          triangles → étoiles → phase ; 1re frame = ancre). Tests :
+#          _test_narrowband_ha_jalon21.py (nouveau) ; les images
+#          synthétiques des tests jalon 19 sont maintenant BRUITÉES (sans
+#          bruit, la détection d'étoiles renvoie « image constante » et les
+#          triangles n'ont rien à appareiller) ; _test_compo_ui_jalon19.py
+#          rendu hermétique à la vraie config (ui.CONFIG = {} + sauvegarde
+#          interceptée — la vraie config contient les lignes compo réelles
+#          d'Alain).
+
+# v2.9.1 : CORRECTIF — débruitage robuste aux pixels invalides (retour réel
+#          d'Alain : RuntimeWarning « invalid value encountered in cast »
+#          dans denoise._nlm avec la case débruitage cochée). Un NaN/Inf
+#          arrivant à l'entrée (sortie d'outil externe, FITS douteux…) était
+#          jeté à 0 par la conversion 16 bits du NLM (points noirs + warning)
+#          et les ondelettes propageaient le NaN à TOUTE la reconstruction.
+#          denoiser() sanatisé l'entrée (NaN → 0, ±Inf → 1/0) AVANT les deux
+#          algorithmes, avec compteur affiché en console
+#          (« avastack.denoise : N pixels invalides… corrigés ») pour
+#          diagnostiquer l'amont. Aucun changement d'algorithme sur des
+#          données valides. Cas de régression ajouté à
+#          _test_dn_local_jalon8.py (warning transformé en erreur).
+
+# v2.9.0 : JALON 20 — RE-STACK MULTI-CANAL (mode composition). Le re-stack
+#          « à la Siril » (jalon 16/18) s'applique AUSSI au mode composition
+#          multi-filtres (HOO/SHO/RGB/LRGB) : chaque couche (rôle) a ses
+#          mauvaises frames ou ses meilleures au fil du stack, et une
+#          meilleure brute de N'IMPORTE QUELLE couche doit pouvoir re-ancre.
+#          Scores qualité PAR RÔLE (nb d'étoiles mesuré sur le CANAL EXTRAIT
+#          de chaque rôle — la même mesure que l'alignement, donc comparable
+#          d'une couche à l'autre), mémorisés parallèlement aux archives PAR
+#          RÔLE (jalon 19). Déclencheur AUTO : la meilleure brute TOUS RÔLES
+#          confondus bat la référence courante de 1,5× (marges et constantes
+#          du jalon 16 inchangées ; l'ancre courante, maintenant (rôle,
+#          index), est exclue — pas de boucle) ; le bouton « ⟳ Re-stacker
+#          (meilleure brute) » est désormais HONORÉ en mode compo. Le
+#          recalcul (_do_restack_compo) : la meilleure brute devient la
+#          référence de l'aligneur PARTAGÉ (même repère pour toutes les
+#          couches) puis TOUTES les couches sont recalculées depuis leur
+#          archive PAR RÔLE — canal du rôle ré-extrait de chaque brute
+#          archivée, ré-alignement, ré-empilement : les frames qui avaient
+#          refusé avec l'ancienne référence ont une seconde chance, couche
+#          par couche. Nouvelle façade CompositeStacker avec réglages
+#          conservés (composition, gains R/G/B, mode L, WB, méthode/fenêtre
+#          de rejet). Ligne dédiée du re-stack enrichie du détail PAR CANAL
+#          (« re-stack #2 (bouton · Ha 9/9 · O3 8/9) : … »). Le chemin mono
+#          (jalon 16/18) est inchangé. Test _test_restack_compo_jalon20.py ;
+#          _test_compo_worker_jalon19.py mis à jour (scores PAR RÔLE au lieu
+#          de « re-stack désactivé »).
+
 # v2.8.0 : JALON 19 — COMPOSITION MULTI-FILTRES (RGB/HOO/SHO/LRGB). Live
 #          stacking de brutes prises avec des filtres différents (1 à 4
 #          dossiers surveillés, un RÔLE = un filtre par dossier) et composite

@@ -105,6 +105,20 @@ verifie(err != "" and np.array_equal(out, img),
 out, err = dn.denoiser(img, "ondelettes", 7.0)
 verifie(err == "", "force hors bornes → clampée, pas de crash")
 
+print("[3bis] Entrée avec pixels invalides (NaN/Inf) — retour réel v2.9.0")
+import warnings
+piege = img.copy()
+piege[10, 10] = np.nan
+piege[20, 20] = np.inf
+piege[30, 30] = -np.inf
+for methode in ("ondelettes", "nlm"):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")   # tout RuntimeWarning = échec
+        out, err = dn.denoiser(piege, methode, 0.5)
+    verifie(err == "" and np.isfinite(out).all(),
+            f"{methode} : NaN/Inf sanitisés, sortie finie, sans warning "
+            f"(err={err!r})")
+
 # NB : le cÂBLAGE UI du débruitage externe (combobox de méthode, force,
 # 8-tuple, chaîne gradient → local → BXT, persistance) est vérifié par
 # _test_dn_jalon7.py ; le câblage LIVE (solveur, cache, vue « traitée »,
