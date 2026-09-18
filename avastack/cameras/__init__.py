@@ -20,5 +20,6 @@ from .svbony import SVBonyCamera
 # Libellés du menu déroulant de l'interface (ordre d'affichage)
 SOURCES = ["Simulée (démo)",
            "Dossier surveillé (brutes FITS/PNG/TIFF…)",
+           "Composition multi-dossiers (RGB/HOO/SHO/LRGB)",
            "OpenCV 0", "OpenCV 1", "ZWO ASI (SDK)", "QHY (SDK)",
            "Player One (SDK)", "Touptek/Altair (SDK)", "SVBONY (SDK)"]

@@ -80,6 +80,34 @@ def roles_optionnels(composition):
     """Rôles qui peuvent rester vides sans bloquer la composition."""
     return COMPOSITIONS[composition]["optionnels"]
 
+# Alias usuels du mot-clé FITS FILTER (jalon 19) : N.I.N.A., APT, SGP, ASI
+# Air et les roues à filtres écrivent des graphies différentes du même
+# filtre. Clés NORMALISÉES (majuscules, séparateurs supprimés à la lecture).
+FILTRES_USUELS = {
+    "HA": "Ha", "HALPHA": "Ha", "H": "Ha",
+    "OIII": "O3", "O3": "O3", "O": "O3",
+    "SII": "S2", "S2": "S2", "S": "S2",
+    "RED": "R", "R": "R",
+    "GREEN": "G", "G": "G",
+    "BLUE": "B", "B": "B",
+    "LUM": "L", "LUMINANCE": "L", "L": "L", "CLEAR": "L", "CL": "L",
+    "IR": "L", "IRCUT": "L", "NONE": "L",
+}
+
+
+def role_de_filtre(filtre):
+    """Rôle (ROLES) correspondant à la valeur du mot-clé FITS FILTER
+    (« Ha », « H-alpha », « OIII », « Red », « L »…), ou None si non reconnu
+    (le dossier garde alors son rôle déclaré à la main)."""
+    if filtre is None:
+        return None
+    cle = str(filtre).strip().upper()
+    for sep in (" ", "-", "_", ".", "/"):
+        cle = cle.replace(sep, "")
+    return FILTRES_USUELS.get(cle)
+
+
+
 
 # ------------------------------------------------------------ extraction ---
 def extraire_canal(img, role):

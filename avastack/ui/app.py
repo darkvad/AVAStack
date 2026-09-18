@@ -18,14 +18,17 @@ from PIL import Image, ImageTk
 
 from ..compat import IS_WINDOWS
 from ..config import CONFIG, sauver_config
-from ..images import CFA_MODE, load_image, save_image, find_output, auto_unflip
+from ..images import (CFA_MODE, lire_filtre_fits, load_image, save_image,
+                      find_output, auto_unflip)
 from ..cameras import (SOURCES, SimulatedCamera, OpenCVCamera, ZWOASICamera,
                        FolderCamera, MultiFolderCamera, QHYCamera,
                        PlayerOneCamera, TouptekCamera, SVBonyCamera)
 from ..processing import Calibrator, StarAligner, LiveStacker, DisplayProcessor
 from ..processing import alignment as align_mod
-from ..processing.composition import (CompositeStacker, extraire_canal,
-                                      composition_pour_roles)
+from ..processing.composition import (COMPOSITIONS, MODES_L, ROLES,
+                                      CompositeStacker, extraire_canal,
+                                      composition_pour_roles, role_de_filtre,
+                                      roles_de)
 from ..processing.framestore import ArchiveFrames
 
 # --- Jalon 16 : re-stack sur la meilleure référence (esprit Siril) ----------
@@ -103,6 +106,7 @@ class App:
         self.pending_settings = None
         self.reset_request = self.ref_request = False
         self.save_request = self.saved_path = None
+        self.save_canaux_request = None  # jalon 19 : dossier des canaux (compo)
         self.bad_frames = 0
         # Jalon 13 : alignement — info de la dernière frame (ligne d'état) et
         # rafraîchissement automatique de la référence (fréquence + compteurs).
@@ -133,6 +137,10 @@ class App:
         # par rôle, mean() → composite) et l'archive est tenue PAR RÔLE.
         self._mode_compo = False
         self._compo_nom = None
+        # Jalon 19 phase 3 : instantanés pour le thread worker (jamais de
+        # lecture de variables Tk hors du thread principal — cf. pièges).
+        self._compo_gains = None         # dict R/G/B → facteur
+        self._compo_mode_l = "synthetise"
         self.archives = {}              # rôle → ArchiveFrames (mode compo)
         # Jalon 16 : re-stack sur la meilleure référence — score qualité
         # (nb d'étoiles) parallèle à archive.chemins, ancre courante, et
@@ -207,6 +215,29 @@ class App:
             self.var_folder.set(c["dossier"])
         if c.get("cfa") in ("Auto", "RGGB", "BGGR", "GRBG", "GBRG", "Non"):
             self.var_cfa.set(c["cfa"])
+        # --- Jalon 19 : composition multi-filtres (rôles + dossiers des 4
+        # lignes, gains, radio « Canal L ») — restauration TOLÉRANTE :
+        # format inconnu / rôle hors liste → ligne ignorée (défauts).
+        for i in range(4):
+            entree = c.get(f"compo_dossier_{i}")
+            if isinstance(entree, str) and entree:
+                self.var_compo_dossiers[i].set(entree)
+        for i in range(4):
+            v = c.get(f"compo_role_{i}")
+            if isinstance(v, str) and v in ROLES:
+                self.var_compo_roles[i].set(v)
+        if c.get("compo_nom") in COMPOSITIONS:
+            self.var_compo.set(c["compo_nom"])
+        gains = c.get("compo_gains")
+        if isinstance(gains, dict):
+            for canal in ("R", "G", "B"):
+                v = gains.get(canal)
+                if isinstance(v, (int, float)) and not isinstance(v, bool) \
+                        and 0.0 <= float(v) <= 10.0:
+                    self.var_compo_gains[canal].set(str(float(v)))
+        if c.get("compo_mode_l") in MODES_L:
+            self.var_compo_mode_l.set(c["compo_mode_l"])
+        self._on_compo_roles()   # composition recollée aux rôles restaurés
         if c.get("process_existing") is False:
             self.var_process_existing.set(False)
         # Traitement externe : ne pas écraser une commande persistée par un
@@ -369,6 +400,15 @@ class App:
         if self.var_folder.get().strip():
             c["dossier"] = self.var_folder.get().strip()
         c["cfa"] = self.var_cfa.get()
+        # Jalon 19 : réglages de la composition (rôles + dossiers des 4
+        # lignes, gains, radio « Canal L ») — relus au démarrage suivant.
+        for i in range(4):
+            c[f"compo_role_{i}"] = self.var_compo_roles[i].get()
+            c[f"compo_dossier_{i}"] = self.var_compo_dossiers[i].get().strip()
+        c["compo_nom"] = self.var_compo.get()
+        c["compo_gains"] = {canal: self._lire_gains()[canal]
+                            for canal in ("R", "G", "B")}
+        c["compo_mode_l"] = self.var_compo_mode_l.get()
         c["process_existing"] = self.var_process_existing.get()
         # Les commandes ne sont persistées que si utilisées au moins une fois
         # ou modifiées par l'utilisateur — sinon on laisse la détection se
@@ -498,6 +538,70 @@ class App:
         self.var_cfa.trace_add("write", self._on_cfa)
         self.lbl_last = ttk.Label(box, text="Dernier fichier : —")
         self.lbl_last.pack(anchor="w")
+
+        # --- Composition multi-filtres (jalon 19) : 1 à 4 dossiers surveillés,
+        # un RÔLE (filtre) par dossier ; le composite temps réel combine les
+        # empilements par rôle selon la composition choisie.
+        box = ttk.LabelFrame(left, text="Composition multi-filtres", padding=6)
+        box.pack(fill="x", pady=3)
+        row_c = ttk.Frame(box)
+        row_c.pack(fill="x")
+        ttk.Label(row_c, text="Composition :").pack(side="left")
+        self.var_compo = tk.StringVar(value="HOO")
+        cb_compo = ttk.Combobox(row_c, textvariable=self.var_compo,
+                                state="readonly", width=8,
+                                values=list(COMPOSITIONS))
+        cb_compo.pack(side="left", padx=4)
+        cb_compo.bind("<<ComboboxSelected>>", lambda e: self._on_compo())
+        self.lbl_compo_info = ttk.Label(box, text="", foreground="#666666")
+        self.lbl_compo_info.pack(anchor="w")
+        # 4 lignes fixes : rôle (filtre) + dossier. Une ligne sans rôle = non
+        # utilisée ; le remplissage des rôles CONTRAINT la composition
+        # (cf. _on_compo_roles), la composition pré-remplit les rôles.
+        self.var_compo_roles = [tk.StringVar(value="") for _ in range(4)]
+        self.var_compo_dossiers = [tk.StringVar(value="") for _ in range(4)]
+        for i in range(4):
+            row = ttk.Frame(box)
+            row.pack(fill="x", pady=1)
+            cb_role = ttk.Combobox(row, textvariable=self.var_compo_roles[i],
+                                   state="readonly", width=5,
+                                   values=list(ROLES))
+            cb_role.pack(side="left")
+            cb_role.bind("<<ComboboxSelected>>", self._on_compo_roles)
+            ttk.Entry(row, textvariable=self.var_compo_dossiers[i]).pack(
+                side="left", fill="x", expand=True, padx=(4, 0))
+            ttk.Button(row, text="…", width=3,
+                       command=lambda i=i: self._pick_dossier_compo(i)
+                       ).pack(side="left", padx=(4, 0))
+        # Radio « Canal L » (utile en LRGB quand le dossier L est vide) :
+        # L synthétisé = luminance du composite (combine identité) ;
+        # dégradé = composite RGB pur (décisions d'Alain, 18/09/2026).
+        row_l = ttk.Frame(box)
+        row_l.pack(fill="x", pady=(4, 0))
+        ttk.Label(row_l, text="Canal L (si dossier L vide) :").pack(side="left")
+        self.var_compo_mode_l = tk.StringVar(value="synthetise")
+        self.rb_l_syn = ttk.Radiobutton(row_l, text="Synthétisé",
+                                        value="synthetise",
+                                        variable=self.var_compo_mode_l)
+        self.rb_l_deg = ttk.Radiobutton(row_l, text="Dégradé RGB",
+                                        value="degrade",
+                                        variable=self.var_compo_mode_l)
+        self.rb_l_syn.pack(side="left", padx=(6, 0))
+        self.rb_l_deg.pack(side="left", padx=(6, 0))
+        # Gains R/G/B du composite : multiplicatifs APRÈS la normalisation
+        # linéaire par canal — réglage à chaud de l'équilibre colorimétrique
+        # (appliqués au composite dès la frame suivante, cf. _tick).
+        row_g = ttk.Frame(box)
+        row_g.pack(fill="x", pady=(4, 0))
+        ttk.Label(row_g, text="Gains R/G/B :").pack(side="left")
+        self.var_compo_gains = {canal: tk.StringVar(value="1.0")
+                                for canal in ("R", "G", "B")}
+        for canal in ("R", "G", "B"):
+            ttk.Entry(row_g, textvariable=self.var_compo_gains[canal],
+                      width=5).pack(side="left", padx=(4, 0))
+        ttk.Button(box, text="🔎 Détecter les filtres (FITS FILTER)",
+                   command=self._detecter_filtres).pack(fill="x", pady=(6, 0))
+        self._on_compo()    # pré-remplit les lignes de rôle de la compo par défaut
 
         # --- Calibration
         box = ttk.LabelFrame(left, text="Calibration", padding=6)
@@ -859,6 +963,10 @@ class App:
             box, text="💾 Enregistrer tel que vu (étiré)…",
             command=self._save_asseen)
         self.btn_save_asseen.pack(fill="x")
+        # Jalon 19 : en mode composition, un fichier par canal (rôle) —
+        # l'empilement « standard » reste le COMPOSITE linéaire (bouton du haut).
+        ttk.Button(box, text="💾 Enregistrer les canaux (par filtre)…",
+                   command=self._save_canaux).pack(fill="x")
 
         # --- Panneau droit
         right = ttk.Frame(main)
@@ -1217,6 +1325,65 @@ class App:
         if self.camera is not None:
             self.pending_settings = (self.var_expo.get(), self.var_gain.get())
 
+    def _pick_dossier_compo(self, i):
+        d = filedialog.askdirectory(
+            title=("Dossier des brutes « "
+                   + (self.var_compo_roles[i].get() or "rôle ?") + " »"))
+        if d:
+            self.var_compo_dossiers[i].set(d)
+
+    def _detecter_filtres(self):
+        """Auto-détection (jalon 19) : pour chaque dossier rempli, lit le
+        mot-clé FILTER du FITS le plus récent et applique le rôle
+        correspondant. Override manuel ensuite : les menus déroulants
+        restent modifiables à la main."""
+        rapports = []
+        for i in range(4):
+            d = self.var_compo_dossiers[i].get().strip()
+            if not d or not os.path.isdir(d):
+                continue
+            filtre = None
+            try:
+                candidats = [os.path.join(d, f) for f in os.listdir(d)
+                             if f.lower().endswith((".fits", ".fit", ".fts"))]
+                if candidats:
+                    recent = max(candidats, key=os.path.getmtime)
+                    filtre = lire_filtre_fits(recent)
+            except Exception:
+                filtre = None
+            role = role_de_filtre(filtre)
+            if role:
+                self.var_compo_roles[i].set(role)
+                rapports.append(f"Ligne {i + 1} : FILTER = « {filtre} » "
+                                f"→ rôle {role}")
+            elif filtre:
+                rapports.append(
+                    f"Ligne {i + 1} : FILTER = « {filtre} » non reconnu "
+                    f"(rôle inchangé : {self.var_compo_roles[i].get() or '—'})")
+            else:
+                rapports.append(f"Ligne {i + 1} : aucun mot-clé FILTER trouvé")
+        self._on_compo_roles()   # la composition se recolle aux rôles détectés
+        if rapports:
+            messagebox.showinfo("Détection des filtres", "\n".join(rapports))
+        else:
+            messagebox.showinfo("Détection des filtres",
+                                "Aucun dossier rempli dans la composition.")
+
+    def _save_canaux(self):
+        """Sauvegarde des empilements PAR CANAL (jalon 19) : un fichier
+        « canal_<rôle>.fit » (linéaire, recadré au cadre commun) par rôle
+        empilé. Consommée par le thread d'acquisition (comme save_request)."""
+        if not (self._mode_compo and self.stacker is not None
+                and self.stacker.n > 0):
+            messagebox.showinfo(
+                "Canaux", "Rien à enregistrer : démarrez une session en mode "
+                          "composition et attendez au moins une frame.")
+            return
+        d = filedialog.askdirectory(
+            title="Dossier où enregistrer les empilements par canal")
+        if d:
+            self.save_canaux_request = d
+
     def _make_camera(self, key):
         if key.startswith("Simulée"):
             return SimulatedCamera()
@@ -1225,6 +1392,11 @@ class App:
             if not folder:
                 raise RuntimeError("Choisissez d'abord le dossier à surveiller (bouton …)")
             return FolderCamera(folder, process_existing=self.var_process_existing.get())
+        if key.startswith("Composition"):
+            # Jalon 19 phase 3 : 1 à 4 dossiers surveillés, un rôle par ligne
+            # (les erreurs de remplissage sortent avec un message clair).
+            return MultiFolderCamera(self._lire_roles_dossiers(),
+                                     process_existing=self.var_process_existing.get())
         if key.startswith("OpenCV"):
                         return OpenCVCamera(int(key.split()[-1]))
         if key.startswith("QHY"):
@@ -1237,10 +1409,91 @@ class App:
             return SVBonyCamera()
         return ZWOASICamera()
 
+    # --- Jalon 19 phase 3 : composition multi-filtres ------------------------
+    def _on_compo(self):
+        """Choix de la composition → pré-remplit les rôles des 4 lignes."""
+        roles = roles_de(self.var_compo.get())
+        for i in range(4):
+            self.var_compo_roles[i].set(roles[i] if i < len(roles) else "")
+        self._maj_compo_info()
+
+    def _on_compo_roles(self, *_):
+        """Changement manuel d'un rôle (override de la détection) → la
+        composition se DÉDUIT des rôles remplis (sens inverse : les
+        dossiers contraignent la composition). Pas de correspondance
+        connue → la composition affichée reste en place, l'erreur exacte
+        sera levée au démarrage (garde-fou déjà en place)."""
+        remplis = tuple(v.get() for v in self.var_compo_roles if v.get())
+        comp = composition_pour_roles(remplis)
+        if comp and comp != self.var_compo.get():
+            self.var_compo.set(comp)
+        self._maj_compo_info()
+
+    def _maj_compo_info(self):
+        """Ligne d'aide : mapping de la composition ; la radio « Canal L »
+        n'est active qu'en LRGB (inutile ailleurs)."""
+        nom = self.var_compo.get()
+        spec = COMPOSITIONS.get(nom)
+        if spec is None:
+            self.lbl_compo_info.config(text="—")
+            return
+        if "canaux_rgb" not in spec:
+            txt = "Mono : un seul dossier, composite monochrome."
+        else:
+            txt = " · ".join(f"{canal}={'+'.join(roles)}"
+                             for canal, roles in spec["canaux_rgb"].items())
+            if "luminance" in spec:
+                txt += " + luminance L (optionnelle)"
+        self.lbl_compo_info.config(text=txt)
+        etat = "normal" if nom == "LRGB" else "disabled"
+        self.rb_l_syn.config(state=etat)
+        self.rb_l_deg.config(state=etat)
+
     def _pick_folder(self):
         d = filedialog.askdirectory(title="Dossier où arrivent les brutes")
         if d:
             self.var_folder.set(d)
+
+    def _lire_roles_dossiers(self):
+        """Couples (rôle, dossier) des lignes remplies (au démarrage).
+        Lève une erreur claire sur un remplissage incohérent : rôle sans
+        dossier, rôle en double, dossier sans rôle, tout vide."""
+        pairs, vus = [], {}
+        for i in range(4):
+            role = self.var_compo_roles[i].get().strip()
+            doss = self.var_compo_dossiers[i].get().strip()
+            if not role:
+                if doss:
+                    raise RuntimeError(
+                        f"Ligne {i + 1} : dossier rempli mais aucun rôle "
+                        "choisi (menu déroulant de la ligne)")
+                continue
+            if not doss:
+                raise RuntimeError(
+                    f"Rôle {role} : choisissez le dossier à surveiller (…)")
+            if role in vus:
+                raise RuntimeError(
+                    f"Rôle {role} présent sur les lignes {vus[role] + 1} "
+                    f"et {i + 1} — un rôle = un seul dossier")
+            vus[role] = i
+            pairs.append((role, doss))
+        if not pairs:
+            raise RuntimeError("Composition : remplissez au moins une ligne "
+                               "(rôle + dossier)")
+        return pairs
+
+    def _lire_gains(self):
+        """Gains R/G/B saisis (texte → float, virgule acceptée, défaut 1.0,
+        borné 0..10). Appelé côté THREAD PRINCIPAL seulement (variables Tk) ;
+        le thread worker consomme l'instantané `_compo_gains`."""
+        gains = {}
+        for canal in ("R", "G", "B"):
+            try:
+                v = float(self.var_compo_gains[canal].get().replace(",", "."))
+            except (ValueError, AttributeError):
+                v = 1.0
+            gains[canal] = min(10.0, max(0.0, v))
+        return gains
 
     def _start(self):
         if self.running:
@@ -1263,6 +1516,10 @@ class App:
         self._mode_compo = isinstance(cam, MultiFolderCamera)
         self._compo_nom = (composition_pour_roles(cam.roles)
                            if self._mode_compo else None)
+        # Jalon 19 phase 3 : gains + radio « Canal L » instantanés POUR LE
+        # THREAD (le worker n'a jamais le droit de lire les variables Tk).
+        self._compo_gains = self._lire_gains()
+        self._compo_mode_l = self.var_compo_mode_l.get()
         self.aligner = StarAligner()
         self.stacker = None
         self.disp.reset()                      # stats d'affichage repartent de zéro
@@ -2004,6 +2261,21 @@ class App:
                 except Exception as e:
                     self.saved_path = f"ERREUR: {e}"
 
+            # Jalon 19 : sauvegarde des empilements PAR CANAL (mode compo) —
+            # un fichier « canal_<rôle>.fit » par rôle empilé, linéaire et
+            # recadré au cadre commun (composite = bouton « Enregistrer »).
+            if (self.save_canaux_request is not None and self._mode_compo
+                    and self.stacker is not None and self.stacker.n > 0):
+                d_canaux, self.save_canaux_request = \
+                    self.save_canaux_request, None
+                try:
+                    for role, carte in self.stacker.moyennes().items():
+                        save_image(os.path.join(
+                            d_canaux, f"canal_{role}.fit"), carte)
+                    self.saved_path = d_canaux
+                except Exception as e:
+                    self.saved_path = f"ERREUR: {e}"
+
             lu = self.camera.read()
             if lu is None:
                 time.sleep(0.005)
@@ -2070,6 +2342,10 @@ class App:
                         self._compo_nom,   # composite (cadre commun)
                         k=self.kappa, method=self.rejet_methode,
                         window=self.rejet_fenetre)
+                    # Jalon 19 phase 3 : gains + canal L posés dès la
+                    # création (instantanés tenus à jour par _tick).
+                    self.stacker.gains = dict(self._compo_gains or {})
+                    self.stacker.mode_l = self._compo_mode_l
                 else:
                     self.stacker = LiveStacker(img_travail.shape, k=self.kappa,
                                                method=self.rejet_methode,
@@ -2226,6 +2502,15 @@ class App:
 
     # ------------------------------------------------------------ rafraîchissement UI
     def _tick(self):
+        # Jalon 19 : réglages de composition (gains R/G/B, radio « Canal L »)
+        # lus CÔTÉ THREAD PRINCIPAL (variables Tk interdites dans le worker,
+        # cf. piège) et poussés vers la façade si modifiés → appliqués au
+        # composite dès la prochaine frame, sans redémarrer la session.
+        gains = self._lire_gains()
+        mode_l = self.var_compo_mode_l.get()
+        if gains != self._compo_gains or mode_l != self._compo_mode_l:
+            self._compo_gains = gains
+            self._compo_mode_l = mode_l
         try:
             while True:
                 show, hist, st = self.q.get_nowait()
@@ -2299,6 +2584,9 @@ class App:
             p, self.saved_path = self.saved_path, None
             if p.startswith("ERREUR"):
                 messagebox.showerror("Enregistrer", p)
+            elif os.path.isdir(p):
+                messagebox.showinfo("Enregistrer",
+                                    f"Canaux sauvegardés dans :\n{p}")
             else:
                 messagebox.showinfo("Enregistrer", f"Empilement sauvegardé :\n{p}")
         # Jalon 5 : état de la sauvegarde « tel que vu » (thread dédié)
@@ -2455,6 +2743,8 @@ class App:
         if st.get("restack_n"):
             lignes.append(f"Re-stacks (session) : {st['restack_n']}")
         lignes.append(f"Align. : {st.get('align', '—')}")
+        if st.get("compo"):
+            lignes.append(f"Canaux : {st['compo']}")
         lignes.append(arc)
         self.lbl_stats.config(text="\n".join(lignes))
         # Jalon 18 : ligne DÉDIÉE au re-stack — jamais écrasée par les

@@ -14,9 +14,39 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.7.0"
+AVASTACK_VERSION = "2.8.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.8.0 : JALON 19 — COMPOSITION MULTI-FILTRES (RGB/HOO/SHO/LRGB). Live
+#          stacking de brutes prises avec des filtres différents (1 à 4
+#          dossiers surveillés, un RÔLE = un filtre par dossier) et composite
+#          temps réel. Sources « Composition multi-dossiers » au menu ;
+#          cadre « Composition multi-filtres » : combobox composition
+#          (Mono/HOO/SHO/RGB/LRGB) ⇄ 4 lignes rôle+dossier (le remplissage
+#          des rôles CONTRAINT la composition, la composition pré-remplit
+#          les rôles), auto-détection du filtre par bouton (« 🔎 Détecter
+#          les filtres » : mot-clé FITS FILTER du FITS le plus récent de
+#          chaque dossier, alias graphies Ha/H-alpha/OIII/Red/Lum… via
+#          role_de_filtre, override manuel ensuite), gains R/G/B (texte,
+#          virgule acceptée, bornés 0..10, appliqués au composite À CHAUD
+#          via _tick — aucune re-session nécessaire), radio « Canal L »
+#          (si dossier L vide : L synthétisé = luminance du composite,
+#          combine identité — OU composite dégradé en RGB), persistance
+#          config (rôles/dossiers/gains/mode L, restauration tolérante).
+#          Chaîne (décisions d'Alain, 18/09/2026) : un seul aligneur
+#          PARTAGÉ (référence commune obligatoire), extraction du canal du
+#          rôle APRÈS calib + filtre flou (mono tel quel ; CFA débayerisé →
+#          canal dominant CANAUX_CFA : Ha→R, OIII→G+B, S2→R, L→luma),
+#          normalisation LINÉAIRE par canal dans le composer (percentiles
+#          + gains) PUIS étirement global existant inchangé ; cadre commun
+#          d'intersection GLOBALE ; re-stack DÉSACTIVÉ en mode compo
+#          (reporté v2, l'archive par rôle est en place). Nouveaux
+#          sauvegardes : composite (bouton existant) + bouton « 💾
+#          Enregistrer les canaux (par filtre)… » (un canal_<rôle>.fit
+#          linéaire recadré par rôle) ; ligne « Canaux : Ha: 12 · O3: 9 »
+#          dans les stats. Tests _test_composition_jalon19.py,
+#          _test_multifolder_jalon19.py, _test_compo_worker_jalon19.py,
+#          _test_compo_ui_jalon19.py.
 # v2.7.0 : JALON 18 — RE-STACK VISIBLE (UX). Retour réel d'Alain sur le
 #          jalon 16 : « on est ok, pas simple de voir le restack » — le
 #          message sur la ligne d'alignement était discret et vite écrasé

@@ -116,6 +116,22 @@ def load_image(path):
         a = a.astype(np.float32)
     return a
 
+def lire_filtre_fits(path):
+    """Mot-clé FILTER de l'en-tête d'un FITS (jalon 19 : auto-détection du
+    filtre d'un dossier surveillé), ou None (PNG/TIFF, absence du mot-clé,
+    lecture impossible — jamais d'exception)."""
+    if not FITS_OK or not str(path).lower().endswith((".fits", ".fit", ".fts")):
+        return None
+    try:
+        with fits.open(path) as hd:
+            f = hd[0].header.get("FILTER")
+    except Exception:
+        return None
+    f = str(f).strip() if f is not None else ""
+    return f or None
+
+
+
 
 def save_image(path, arr):
     """Sauve une image float [0..1] en FITS (si astropy) ou PNG/TIFF 16 bits."""
