@@ -42,6 +42,36 @@ REMARQUE : si tu préfères ne pas toucher au dossier d'installation, tu peux
 définir une variable d'environnement pointant vers le dossier contenant la
 DLL, par exemple AVASTACK_PLAYERONE_DIR=C:\chemin\vers\SDK\PlayerOne.
 
+BANC DE DIAGNOSTIC CAMÉRA (QHY)
+-------------------------------
+Un outil autonome est installé avec AVAStack : _diag_camera_qhy.py. Il
+réutilise le MÊME code caméra que l'application, mais hors application :
+idéal pour comprendre un problème de caméra sans toucher au live stacking.
+
+Pour le lancer :
+  1. ouvre une invite de commandes dans ce dossier ;
+  2. tape :  venv\Scripts\python.exe _diag_camera_qhy.py
+
+Il permet de :
+  - DÉTECTER les caméras QHY branchées ;
+  - OUVRIR la caméra selon deux séquences (celle de l'application, et une
+    pas-à-pas où chaque étape est tracée) ;
+  - IMPOSER une ROI (zone de lecture) avant le démarrage du flux ;
+  - AFFICHER le flux live, avec les fps et la taille réelle du capteur ;
+  - LISTER tous les contrôles du SDK avec leur nom officiel et leur
+    valeur (gain, offset, exposition, USB traffic, température...) ;
+  - ÉCRIRE n'importe quel contrôle (set_param) ;
+  - PILOTER LE REFROIDISSEMENT : consigne de température (régulation
+    automatique) ou puissance TEC manuelle, avec lecture de la
+    température du capteur et du PWM courant.
+    ATTENTION : la MiniCam8M est une caméra REFROIDIE — il lui faut son
+    alimentation 12 V pour que la régulation fonctionne (et pour que la
+    température lue ait un sens).
+
+En cas de fermeture brutale de la fenêtre sans message (crash natif du
+SDK), le bouton "Ouvrir le log" — ou le fichier avastack_qhy_debug.log du
+dossier temporaire — indique la DERNIÈRE étape réussie : c'est elle qu'il
+faut me transmettre.
 TRAITEMENT EXTERNE (optionnel)
 -----------------------------
 GraXpert et BlurXTerminator (rc-astro.exe) sont détectés automatiquement

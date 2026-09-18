@@ -7,6 +7,25 @@ régression. Ce programme réutilise `avastack.cameras.qhy.QHYCamera` TEL
 QUEL : détection, ouverture (2 séquences), énumération de TOUS les
 contrôles du SDK, flux live affiché.
 
+Contrôles : les 1..63 sont nommés d'après l'enum OFFICIEL du SDK QHY
+(crate `qhyccd-rs` 0.1.9 qui sous-tend le paquet PyPI) — gain=6,
+offset=7, exposure=8 VÉRIFIÉS en réel ; température=14, PWM=15,
+PWM manuel=16, consigne=18. Une valeur 4294967295 (0xFFFFFFFF) est la
+SENTINELLE D'ERREUR du SDK : elle marque les contrôles « drapeaux »
+(CamBin2x2, Cam8bits, CamIsColor…) qui n'ont pas de valeur numérique.
+
+Refroidissement (TEC) : la MiniCam8M est une caméra REFROIDIE (fiche QHY
+« Cooled CMOS astronomy camera », alimentation 12 V nécessaire pour
+activer la régulation). Le binding n'expose AUCUNE méthode dédiée au
+froid : tout passe par set_param/get_param (cf. « User Manual of
+Temperature Control API in QHYCCD SDK », qhyccd.com) — mode AUTO =
+set_param(18, consigne °C), mode MANUEL = set_param(16, PWM 0-255),
+lectures = get_param(14) température et (15) PWM courant.
+
+`🔬 API du SDK` : introspection de tout ce que le binding expose (le
+refroidissement, par exemple, n'a pas de méthode dédiée — preuve à
+l'appui).
+
 IMPORTANT — crash natif : si la fenêtre se ferme brutalement sans
 message, c'est un segfault du SDK natif (Python ne peut rien afficher).
 Ouvre alors le log d'étapes (bouton « 📄 Ouvrir le log » ou fichier
@@ -46,14 +65,68 @@ from avastack.cameras.qhy import QHYCamera
 
 FICHIER_LOG = mqhy.FICHIER_TRACE
 
-# Numérotation RÉELLE des contrôles du binding `qhyccd` (constat empirique
-# d'Alain, 19/09/2026 : gain 90 relu sur ctrl 6, offset 25 sur ctrl 7,
-# expo 1 000 000 µs sur ctrl 8 — c'est l'enum NOUVEAU du SDK, PAS l'ancien
-# CONTROL_* où EXP=1). Les libellés sans « vérifié » sont plausibles mais
-# non confirmés — se fier aux valeurs.
-NOMS_CTRL = {1: "Brightness?", 2: "Contrast?", 3: "WBR?", 4: "WBB?",
-             5: "WBG?/Speed?", 6: "GAIN (vérifié)", 7: "OFFSET (vérifié)",
-             8: "EXPOSURE µs (vérifié)", 9: "UsbTraffic?", 10: "Speed?"}
+# Enum `Control` OFFICIEL du SDK QHY — source : crate Rust `qhyccd-rs` 0.1.9
+# (docs.rs), celle qui sous-tend le paquet PyPI `qhyccd`. Les clés sont les
+# discriminants de l'enum. VÉRIFIÉ en réel (Alain, 19/09/2026) : gain (6),
+# offset (7) et exposition µs (8) posés via le binding sont relus à
+# l'identique — 3 relevés concordants. L'id 38 n'existe PAS dans cet enum.
+NOMS_CTRL = {
+    0: "Brightness", 1: "Contrast", 2: "WBR", 3: "WBB", 4: "WBG",
+    5: "Gamma", 6: "GAIN", 7: "OFFSET", 8: "EXPOSURE (µs)", 9: "Speed",
+    10: "TransferBit (bits/px)", 11: "Channels", 12: "UsbTraffic",
+    13: "RowDeNoise", 14: "CurTemp (°C capteur)", 15: "CurPWM (TEC 0-255)",
+    16: "ManualPWM (TEC 0-255)", 17: "CfwPort", 18: "COOLER (consigne °C)",
+    19: "St4Port", 20: "CamColor", 21: "CamBin1x1mode", 22: "CamBin2x2mode",
+    23: "CamBin3x3mode", 24: "CamBin4x4mode", 25: "CamMechanicalShutter",
+    26: "CamTrigerInterface", 27: "CamTecOverprotect",
+    28: "CamSignalClamp", 29: "CamFinetone",
+    30: "CamShutterMotorHeating", 31: "CamCalibrateFpn",
+    32: "CamChipTempSensor", 33: "CamUsbReadoutSlowest", 34: "Cam8bits",
+    35: "Cam16bits", 36: "CamGps", 37: "CamIgnoreOverscan",
+    39: "Qhyccd3aAutoexposure", 40: "Qhyccd3aAutofocus", 41: "Ampv",
+    42: "Vcam", 43: "CamViewMode", 44: "CfwSlotsNum", 45: "IsExposingDone",
+    46: "ScreenStretchB", 47: "ScreenStretchW", 48: "DDR",
+    49: "CamLightPerformanceMode", 50: "CamQhy5IIGuideMode",
+    51: "DDRBufferCapacity", 52: "DDRBufferReadThreshold",
+    53: "DefaultGain", 54: "DefaultOffset", 55: "OutputDataActualBits",
+    56: "OutputDataAlignment", 57: "CamSingleFrameMode",
+    58: "CamLiveVideoMode", 59: "CamIsColor", 60: "HasHardwareFrameCounter",
+}
+# Sentinelle d'erreur du SDK : GetQHYCCDParam renvoie 0xFFFFFFFF pour un
+# contrôle DRAPEAU (sans valeur numérique). L'afficher brute prêtait à
+# confusion (constat Alain : « pourquoi 4294967295 partout ? »).
+VALEUR_ERREUR = 4294967295.0
+
+# Refroidissement TEC (cf. doc QHY « Temperature Control API »).
+CTRL_TEMP = 14        # CurTemp   : température capteur LUE
+CTRL_PWM = 15         # CurPWM    : puissance TEC courante (0-255)
+CTRL_PWM_MANU = 16    # ManualPWM : puissance imposée → mode MANUEL
+CTRL_CONSIGNE = 18    # Cooler    : consigne °C → mode AUTO
+
+
+def _nom_ctrl(cid):
+    """Nom officiel d'un contrôle ('' si l'id n'est pas documenté ici)."""
+    return NOMS_CTRL.get(cid, "")
+
+
+def _fmt_val(val):
+    """Valeur de get_param lisible : la sentinelle 0xFFFFFFFF signifie
+    « contrôle drapeau, pas de valeur numérique » (CamBin2x2, Cam8bits,
+    IsExposingDone…)."""
+    try:
+        if float(val) == VALEUR_ERREUR:
+            return "(drapeau : pas de valeur — sentinelle 0xFFFFFFFF)"
+    except (TypeError, ValueError):
+        pass
+    return str(val)
+
+
+def _nb(val, suffixe=""):
+    """Nombre lisible ; les lectures TEC peuvent échouer → texte brut."""
+    try:
+        return f"{float(val):.1f}{suffixe}"
+    except (TypeError, ValueError):
+        return str(val)
 
 
 class BancQHY:
@@ -65,6 +138,7 @@ class BancQHY:
         self._aperçu = None          # dernière frame float32 [0..1]
         self._photo = None
         self._dims = "—"
+        self._froid = None           # (temp °C, PWM, consigne °C) du TEC
         self._fps = 0.0
         self._n = 0
         self._t0 = 0.0
@@ -135,11 +209,72 @@ class BancQHY:
         self.btn_stop = ttk.Button(act, text="■ Arrêter",
                                    command=self._arreter, state="disabled")
         self.btn_stop.pack(side="left", padx=(6, 0))
-        ttk.Button(act, text="📋 Lister les contrôles",
+        ttk.Button(act, text="\U0001F4CB Lister les contrôles",
                    command=self._lister_controles).pack(side="left",
                                                         padx=(6, 0))
+        ttk.Button(act, text="\U0001F52C API du SDK",
+                   command=self._lister_api).pack(side="left", padx=(6, 0))
         ttk.Button(act, text="📄 Ouvrir le log",
                    command=self._ouvrir_log).pack(side="left", padx=(6, 0))
+
+        # Écriture d'un contrôle arbitraire (set_param) — pour tester les
+        # contrôles non couverts par expo/gain/offset (USB traffic,
+        # binning mono…). À manipuler avec prudence.
+        boxw = ttk.LabelFrame(self.root,
+                              text="Écrire un contrôle (set_param) — "
+                                   "prudence !", padding=6)
+        boxw.pack(fill="x", padx=6)
+        ttk.Label(boxw, text="id ctrl").pack(side="left")
+        self.var_cid = tk.StringVar(value="10")
+        ttk.Entry(boxw, textvariable=self.var_cid, width=5).pack(
+            side="left", padx=(2, 10))
+        ttk.Label(boxw, text="valeur").pack(side="left")
+        self.var_cval = tk.StringVar(value="")
+        ttk.Entry(boxw, textvariable=self.var_cval, width=10).pack(
+            side="left", padx=(2, 10))
+        ttk.Button(boxw, text="✍ Écrire",
+                   command=self._ecrire_ctrl).pack(side="left", padx=(2, 0))
+
+        # Refroidissement TEC — la MiniCam8M est refroidie (spéc. QHY). Le
+        # binding n'a AUCUNE méthode « cooler » : on passe par set_param,
+        # conformément à la doc QHY « Temperature Control API » :
+        #   AUTO   : ctrl 18 = consigne (°C) — régulation par la caméra ;
+        #   MANUEL : ctrl 16 = PWM 0-255 — puissance TEC imposée (le SDK
+        #            BASCULE en mode manuel dès qu'on écrit 16) ;
+        #   lecture: ctrl 14 = température capteur, ctrl 15 = PWM courant.
+        # ⚠ Alimentation 12 V OBLIGATOIRE : sans elle le circuit de
+        # régulation est inactif (et la température lue n'a pas de sens).
+        boxf = ttk.LabelFrame(self.root, text="\u2744 Refroidissement (TEC)"
+                                              " — alim. 12 V requise",
+                              padding=6)
+        boxf.pack(fill="x", padx=6, pady=(4, 0))
+        self.lbl_t14 = ttk.Label(boxf, text="temp capteur : —")
+        self.lbl_t14.pack(side="left")
+        self.lbl_t15 = ttk.Label(boxf, text="PWM TEC : —")
+        self.lbl_t15.pack(side="left", padx=(10, 12))
+        ttk.Label(boxf, text="Consigne °C").pack(side="left")
+        self.var_temp = tk.StringVar(value="0")
+        ttk.Entry(boxf, textvariable=self.var_temp, width=6).pack(
+            side="left", padx=(2, 2))
+        ttk.Button(boxf, text="❄ Réguler (ctrl 18)",
+                   command=lambda: self._ecrire_ctrl_valeur(
+                       CTRL_CONSIGNE, self.var_temp.get(),
+                       "consigne °C")).pack(side="left", padx=(2, 12))
+        ttk.Label(boxf, text="PWM 0-255").pack(side="left")
+        self.var_pwm = tk.StringVar(value="0")
+        ttk.Entry(boxf, textvariable=self.var_pwm, width=5).pack(
+            side="left", padx=(2, 2))
+        ttk.Button(boxf, text="🎛 Manuel (ctrl 16)",
+                   command=lambda: self._ecrire_ctrl_valeur(
+                       CTRL_PWM_MANU, self.var_pwm.get(),
+                       "PWM manuel")).pack(side="left", padx=(2, 0))
+        ttk.Button(boxf, text="Couper le froid (PWM 0)",
+                   command=lambda: self._ecrire_ctrl_valeur(
+                       CTRL_PWM_MANU, "0", "arrêt TEC")).pack(
+            side="left", padx=(6, 0))
+        ttk.Button(boxf, text="🔁 Relire",
+                   command=self._relire_froid).pack(side="left",
+                                                    padx=(6, 0))
 
         self.lbl_img = ttk.Label(self.root, anchor="center",
                                  text="\n\n(le flux apparaîtra ici)\n\n")
@@ -174,6 +309,13 @@ class BancQHY:
             self.lbl_img.config(image=self._photo, text="")
         if self._flux_actif:
             self.lbl_fps.config(text=f"{self._fps:.1f} fps — {self._dims}")
+        # Refroidissement : temp/PWM/consigne relus par le thread de flux
+        # (toutes les 2 s) — l'affichage ne fait que consommer le résultat.
+        if self._froid is not None:
+            t, pwm, cons = self._froid
+            self.lbl_t14.config(text="temp capteur : " + _nb(t, " °C"))
+            self.lbl_t15.config(text="PWM TEC : " + _nb(pwm)
+                                + " — consigne : " + _nb(cons, " °C"))
         # États des boutons demandés depuis les threads
         if self._btn_demande == "flux":
             self._btn_demande = None
@@ -241,6 +383,7 @@ class BancQHY:
                 self.cam = QHYCamera(camera_id=self.camera_id)
                 self.cam.open()
             self.cam.apply_settings(expo, gain)
+            self._expo_s = expo / 1000.0     # pour le garde-fou de la boucle
             self._trace(f"apply_settings : expo {expo:g} ms "
                         f"({int(expo * 1000)} µs), gain {gain:g}")
             if self.cam.cam is not None:
@@ -345,10 +488,22 @@ class BancQHY:
         """Boucle de lecture du flux (thread) — QHYCamera.read(), la même
         méthode que dans l'application. Tolérante aux erreurs transitoires
         (entre deux frames, pendant l'exposition, le SDK répond par son
-        erreur 0xFFFFFFFF : on réessaie au lieu d'abandonner)."""
+        erreur 0xFFFFFFFF : on réessaie). Garde-fou ADAPTÉ À L'EXPOSITION :
+        (constat réel, expo 5000 ms → la 1re frame arrive après ~5 s, un
+        seuil fixe de 4 s coupait à tort) — patience = 2× l'exposition,
+        minimum 4 s."""
         echecs = 0
+        delai_max = max(2.0 * self._expo_s, 4.0)
+        t_derniere = time.time()
         t_dernier_msg = time.time()
+        t_maj_froid = 0.0
         while self._flux_actif and self.cam is not None:
+            # Relecture TEC (température/PWM/consigne) toutes les 2 s —
+            # pendant le flux, c'est le seul moment où les valeurs bougent.
+            maintenant = time.time()
+            if maintenant - t_maj_froid > 2.0:
+                t_maj_froid = maintenant
+                self._lire_froid()
             try:
                 f = self.cam.read()
             except Exception as e:
@@ -356,17 +511,21 @@ class BancQHY:
                 break
             if f is None:
                 echecs += 1
-                if (echecs > 1 and time.time() - t_dernier_msg > 2.0):
+                maintenant = time.time()
+                if maintenant - t_dernier_msg > 2.0:
                     self._trace(f"{echecs} lectures sans frame (exposition "
-                                "longue ?) — réessais en cours")
-                    t_dernier_msg = time.time()
-                if echecs > 400:               # ~4 s sans AUCUNE frame
-                    self._trace(f"arrêt : aucune frame après "
-                                f"{echecs} essais (voir log)")
+                                f"{self._expo_s:g} s ?) — réessais en cours")
+                    t_dernier_msg = maintenant
+                if maintenant - t_derniere > delai_max:
+                    self._trace(f"arrêt : aucune frame pendant "
+                                f"{maintenant - t_derniere:.1f} s (limite "
+                                f"{delai_max:.1f} s = 2× exposition, "
+                                "min 4 s)")
                     break
                 time.sleep(0.01)
                 continue
             echecs = 0
+            t_derniere = time.time()
             if self._dims == "—":
                 self._dims = f"{f.shape[1]}×{f.shape[0]} px"
             self._aperçu = f
@@ -377,6 +536,27 @@ class BancQHY:
                 self._n = 0
                 self._t0 = time.time()
         self._trace("boucle de flux terminée")
+
+    def _lire_froid(self):
+        """Lit le TEC : température (14), PWM courant (15), consigne (18).
+
+        Appelé depuis les threads (flux ou écriture) : ne touche JAMAIS à
+        Tk (les valeurs passent par self._froid, consommé par _tick). Un
+        échec de lecture est NORMAL sur une caméra non refroidie ou sans
+        alimentation 12 V — on l'affiche au lieu de planter.
+        """
+        if self.cam is None or self.cam.cam is None:
+            return
+        vals = []
+        for cid in (CTRL_TEMP, CTRL_PWM, CTRL_CONSIGNE):
+            try:
+                vals.append(float(self.cam.cam.get_param(cid)))
+            except Exception as e:
+                vals.append(f"erreur ({e})")
+        self._froid = tuple(vals)
+
+    def _relire_froid(self):
+        threading.Thread(target=self._lire_froid, daemon=True).start()
 
     def _arreter(self):
         self._flux_actif = False
@@ -394,6 +574,61 @@ class BancQHY:
 
     def _lister_controles(self):
         threading.Thread(target=self._lister_thread, daemon=True).start()
+
+    def _ecrire_ctrl(self):
+        """Écriture depuis le panneau générique (id + valeur saisis).
+
+        Les variables Tk sont lues ICI (thread principal) : var.get() hors
+        du thread Tk est interdit (piège consigné dans CLAUDE.md).
+        """
+        if self.cam is None or self.cam.cam is None:
+            self.q_msg.put("écrire : ouvre d'abord la caméra (▶ Démarrer)")
+            return
+        try:
+            cid = int(self.var_cid.get())
+            val = float(self.var_cval.get().replace(",", "."))
+        except ValueError:
+            self.q_msg.put("écrire : id/valeur invalides (nombres attendus)")
+            return
+        self._ecrire_valeur(cid, val, "")
+
+    def _ecrire_ctrl_valeur(self, cid, texte, libelle):
+        """Boutons du panneau TEC : valide la saisie PUIS écrit dans un
+        thread (set_param bloque sur le SDK natif)."""
+        if self.cam is None or self.cam.cam is None:
+            self.q_msg.put("écrire : ouvre d'abord la caméra (▶ Démarrer)")
+            return
+        try:
+            val = float(str(texte).replace(",", "."))
+        except ValueError:
+            self.q_msg.put(f"{libelle} : valeur invalide « {texte} »")
+            return
+        self._ecrire_valeur(cid, val, libelle)
+
+    def _ecrire_valeur(self, cid, val, libelle):
+        threading.Thread(target=self._ecrire_thread,
+                         args=(cid, val, libelle), daemon=True).start()
+
+    def _ecrire_thread(self, cid, val, libelle):
+        """set_param(id, valeur) : écrit n'importe quel contrôle du SDK
+        (PWM du TEC, USB traffic, binning…) puis RELIT pour confirmer."""
+        if self.cam is None or self.cam.cam is None:
+            self.q_msg.put("écrire : caméra fermée entre-temps")
+            return
+        prefixe = f"{libelle} — " if libelle else ""
+        try:
+            self.cam.cam.set_param(cid, val)
+        except Exception as e:
+            self.q_msg.put(f"{prefixe}set_param({cid}, {val:g}) : {e}")
+            return
+        try:
+            relu = self.cam.cam.get_param(cid)
+            self.q_msg.put(f"{prefixe}set_param({cid}, {val:g}) OK — "
+                           f"relu : {_fmt_val(relu)}")
+        except Exception as e:
+            self.q_msg.put(f"{prefixe}set_param({cid}, {val:g}) OK — "
+                           f"relecture : {e}")
+        self._lire_froid()      # rafraîchit l'affichage température/PWM
 
     def _lister_thread(self):
         """Énumère TOUS les contrôles du SDK (1..63) : is_control_available
@@ -415,9 +650,42 @@ class BancQHY:
                 val = self.cam.cam.get_param(ctrl)
             except Exception as e:
                 val = f"(erreur {e})"
-            self.q_msg.put(f"ctrl {ctrl:>2} {NOMS_CTRL.get(ctrl, ''):<16} "
-                           f"valeur={val}")
+            self.q_msg.put(f"ctrl {ctrl:>2} {_nom_ctrl(ctrl):<24} "
+                           f"valeur={_fmt_val(val)}")
         self.q_msg.put(f"({dispo} contrôles disponibles sur 1..63)")
+
+    def _lister_api(self):
+        """Introspection : liste TOUT ce que le binding expose.
+
+        Répond à « quels contrôles sont possibles ? » : le refroidissement
+        n'a AUCUNE méthode dédiée (pas de set_cooler / set_temperature) —
+        il ne peut passer que par set_param(18, consigne) / set_param(16,
+        PWM), d'où la nécessité des id numériques. Introspection pure Python
+        (dir/__doc__), sans appel natif → sans risque.
+        """
+        self.q_msg.put("=== API du binding qhyccd (introspection) ===")
+        try:
+            import qhyccd
+            self.q_msg.put("module : " + ", ".join(
+                n for n in dir(qhyccd) if not n.startswith("_")))
+            for nom in sorted(n for n in dir(qhyccd.Camera)
+                              if not n.startswith("_")):
+                try:
+                    doc = getattr(qhyccd.Camera, nom).__doc__ or ""
+                except Exception:
+                    doc = ""
+                doc = doc.strip().splitlines()
+                self.q_msg.put(f"  Camera.{nom:<22}"
+                               + (f"  {doc[0].strip()}" if doc else ""))
+        except Exception as e:
+            self.q_msg.put(f"introspection : {e}")
+        # NB : la flèche « ⇒ » est évitée volontairement — un caractère hors
+        # cp1252 fait planter tout affichage redirigé vers un stdout Windows
+        # (piège consigné dans CLAUDE.md ; ici le message va à Tk, mais le
+        # log peut être relu/pipé).
+        self.q_msg.put("=> refroidissement : set_param(18, °C) ou "
+                       "set_param(16, PWM 0-255) ; lecture 14 (temp) / "
+                       "15 (PWM) — aucune méthode dédiée dans le binding.")
 
     def _ouvrir_log(self):
         if os.path.isfile(FICHIER_LOG):

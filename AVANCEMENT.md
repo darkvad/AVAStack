@@ -11,19 +11,24 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version : AVAStack v2.13.2** (`avastack/__init__.py`), branche
-  `master`. Dernier jalon : **ROI QHY v2.13.2** (19/09/2026) : le banc
-  `_diag_camera_qhy` a désigné la cause du crash restant —
-  `set_resolution(0,0,3864,2192)` (fiche Player One IMX585) REFUSÉE par le
-  SDK (erreur 0xFFFFFFFF) : la MiniCam8M expose **3840×2160** ; et sans ROI
-  posée, `begin_live`/`get_live_frame` segfaultent. Fix : `open()` tente
-  set_resolution avec repli (3840×2160 d'abord) ; banc défaut 3840×2160 +
-  essais auto. Contrôles SDK relevés par Alain (22/63 dispo, EXP/GAIN/
-  OFFSET/SPEED/température…) : à exploiter pour les bornes des réglages.
-  Correctif précédent v2.13.1 : double ouverture du handle (cam.open()
-  après constructeur qui ouvre déjà) → séquence officielle sans open()
-  explicite, dtype-normalisation read(), trace %TEMP%\avastack_qhy_debug.log,
-  détection UI + scan QHY sous-processus isolé. Tests : **32/32 passent**
+- **Version : AVAStack v2.13.3** (`avastack/__init__.py`), branche
+  `master`. Dernier jalon : **BANC CAMÉRA QHY v2.13.3** (19/09/2026, aucun
+  changement du comportement applicatif) : le banc `_diag_camera_qhy.py` est
+  désormais **embarqué par l'installateur** (outil autonome : détection,
+  ouverture tracée pas-à-pas, ROI, flux live, liste des contrôles SDK,
+  écriture set_param, **refroidissement TEC**) — demandé par Alain pour
+  déboguer hors application, sans relancer les tests de non-régression.
+  Contrôles nommés d'après l'enum OFFICIEL du SDK (crate `qhyccd-rs`) :
+  gain=6, offset=7, expo µs=8 (VÉRIFIÉS en réel : posés puis relus à
+  l'identique), CurTemp=14, CurPWM=15, ManualPWM=16, Cooler=18 ; la valeur
+  4294967295 est la SENTINELLE D'ERREUR du SDK (contrôles « drapeaux »).
+  **Constat à corriger** : la MiniCam8M EST refroidie (alim. 12 V requise —
+  ma réponse précédente était fausse) et le curseur Gain de l'appli est
+  bridé à 8 alors que le SDK QHY raisonne en unités constructeur (défaut 30,
+  essai concluant à 90). Jalons précédents : ROI QHY v2.13.2 (3840×2160
+  imposée avant `begin_live`, sinon segfault), double ouverture v2.13.1
+  (séquence officielle sans `open()`, trace %TEMP%\avastack_qhy_debug.log,
+  détection UI + scan sous-processus isolé). Tests : **32/32 passent**
   (dont `_test_qhy_camera.py`, banc auto-testé sans caméra). Jalon 24
   (v2.13.0, gradient + débruitage par couche) : validations réelles
   toujours en attente ; garde-fou jalon 23b actif en mono.
@@ -59,12 +64,15 @@ dans le changelog du source et l'historique git.)
 2. **Jalon 21b** : HOO/SHO en réel — refus de début de session réduits,
    méthode affichée par frame.
 3. **Jalon 20** : re-stack compo en réel (ligne verte + détail par canal).
-4. **Re-tester le correctif QHY v2.13.1 avec la Minicam8M** (installateur
-   rebuildé — choisir « QHY (SDK) » : la détection doit afficher la caméra,
-   puis « Démarrer » sans crash). En cas de souci : le fichier
-   `avastack_qhy_debug.log` (dossier temp) trace chaque étape. NOTE gain :
-   l'échelle du slider générique (0,5-8,0) ne correspond sûrement PAS à
-   l'échelle QHY (unités SDK constructeur) — à ajuster après ce test.
+4. **Poursuivre le débogage QHY avec la Minicam8M** via le banc embarqué
+   (`venv\Scripts\python.exe _diag_camera_qhy.py` dans le dossier
+   d'installation) : le flux est validé (à 2000 ms → 0,5 fps exactement,
+   donc l'exposition est bien appliquée par le ctrl 8). À tester ensuite :
+   le **refroidissement TEC** (consigne ctrl 18 / PWM ctrl 16, lectures 14
+   et 15) — avec l'**alimentation 12 V** branchée, sinon la régulation est
+   inactive ; puis reporter les bornes réelles dans l'appli (gain QHY en
+   unités constructeur, plage actuelle 0,5-8,0 = bridée). En cas de crash
+   natif : `%TEMP%\avastack_qhy_debug.log` donne la dernière étape réussie.
 
 ## Rappels utiles (court terme)
 

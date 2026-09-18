@@ -14,9 +14,51 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.13.2"
+AVASTACK_VERSION = "2.13.3"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.13.3 : BANC DE DIAGNOSTIC QHY enrichi et EMBARQUÉ dans l'installateur
+#          (aucun changement de comportement de l'application : le banc est
+#          un outil autonome, _diag_camera_qhy.py, désormais installé avec
+#          elle — demandé par Alain pour déboguer la caméra hors de
+#          l'application, sans relancer les tests de non-régression).
+#          (1) Contrôles nommés d'après l'enum OFFICIEL du SDK QHY (crate
+#          Rust `qhyccd-rs`, qui sous-tend le paquet PyPI) — fini les
+#          libellés approximatifs : gain=6, offset=7, exposure(µs)=8 sont
+#          VÉRIFIÉS en réel (trois relevés concordants : les valeurs posées
+#          se relisent à l'identique) ; CurTemp=14, CurPWM=15,
+#          ManualPWM=16, Cooler=18. La valeur 4294967295 lue partout est
+#          la SENTINELLE D'ERREUR du SDK : elle marque les contrôles
+#          « drapeaux » (CamBin2x2, Cam8bits, IsExposingDone…) et n'a
+#          aucune signification physique (elle est maintenant affichée
+#          comme telle).
+#          (2) Panneau Refroidissement (TEC) dans le banc. CONSTAT
+#          IMPORTANT : la MiniCam8M EST une caméra REFROIDIE (fiche QHY
+#          « Cooled CMOS astronomy camera » ; alimentation 12 V requise
+#          pour activer le circuit de régulation) — ma réponse précédente
+#          (« pas de refroidissement sur ce modèle ») était FAUSSE. Le
+#          binding n'expose AUCUNE méthode dédiée au froid : mode AUTO =
+#          set_param(18, consigne °C), mode MANUEL = set_param(16, PWM
+#          0-255, bascule le SDK en manuel), lectures get_param(14)
+#          température capteur et (15) PWM courant — rafraîchies toutes les
+#          2 s pendant le flux (cf. doc QHY « Temperature Control API »).
+#          (3) Bouton d'introspection de l'API du binding (méthodes +
+#          docstrings) : preuve qu'il n'existe pas de set_cooler, d'où le
+#          passage par les id numériques.
+#          (4) Garde-fou de la boucle de flux proportionnel à l'exposition
+#          (2x, minimum 4 s) : à 5000 ms l'ancien seuil fixe de 4 s coupait
+#          AVANT l'arrivée de la 1re frame (constat Alain : à 2000 ms le
+#          flux tourne à 0,5 fps EXACTEMENT, ce qui prouve que l'exposition
+#          est bien appliquée par le ctrl 8).
+#          (5) Écriture/correction : les variables Tk sont lues dans le
+#          thread principal (var.get() hors thread Tk est interdit) avant
+#          de lancer l'écriture set_param dans un thread.
+#          À FAIRE (constats du run) : le curseur Gain de l'application est
+#          borné à 8 (échelle « 0.5-8.0 » héritée de Player One) alors que
+#          le SDK QHY raisonne en unités constructeur (défaut relevé 30,
+#          essai concluant à 90) — le gain QHY est donc bridé dans l'appli ;
+#          et la température lue (ctrl 14, ~-1 °C) n'est plausible QUE si
+#          l'alimentation 12 V est branchée (à confirmer).
 # v2.13.2 : CORRECTION (constat Alain, run réel — banc _diag_camera_qhy,
 #          19/09/2026) : « Démarrer (pas-à-pas + ROI) » échouait APRÈS
 #          set_bin_mode avec « Operation failed with error code: 4294967295 »
@@ -28,9 +70,12 @@ AVASTACK_VERSION = "2.13.2"
 #          identique au premier constat). Fix : QHYCamera.open() tente
 #          set_resolution en repli (3840×2160, puis tailles candidates) ;
 #          banc : défaut 3840×2160 + essais automatiques. Contrôles SDK
-#          relevés par Alain (22 dispo sur 1..63) : EXP=1, GAIN=2,
-#          OFFSET=3, SPEED=5, SensorTemperature… — à exploiter pour les
-#          bornes réelles des réglages (prochaine étape).
+#          relevés par Alain (22 dispo sur 1..63) — numérotation OFFICIELLE
+#          de l'enum, vérifiée ensuite : gain=6, offset=7, exposure(µs)=8,
+#          CurTemp=14, CurPWM=15, ManualPWM=16, Cooler=18 (les libellés
+#          « EXP=1, GAIN=2, OFFSET=3 » notés ici le 19/09 étaient ceux d'une
+#          numérotation APPROXIMATIVE — corrigé en v2.13.3) — à exploiter
+#          pour les bornes réelles des réglages (prochaine étape).
 # v2.13.1 : CORRECTION (constat Alain, run réel — 1er test QHY Minicam8M,
 #          19/09/2026) : source « QHY (SDK) » sans aucun retour d'info, et le
 #          clic « Démarrer » FERMAIT l'application sans message. Cause : crash
