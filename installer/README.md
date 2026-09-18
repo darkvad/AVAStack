@@ -1,4 +1,3 @@
-The original is a markdown doc for installer/. The suggested edit adds a .gitignore snippet. Apply it — likely append the .gitignore block to the file. Output complete modified file.```
 # installer/ — AVAStack
 
 Installateur Windows pour AVAStack (live stacking) — déploiement local,
@@ -27,13 +26,21 @@ aucun droit administrateur requis (installe dans le profil utilisateur).
 
 ## Compilation
 
+Méthode recommandée — le wrapper lit la version dans `avastack/__init__.py`
+(`AVASTACK_VERSION`, source unique de vérité) et la passe à ISCC via
+`/DAppVersion=...` :
+
 ```
-ISCC.exe avastack.iss
-# ou
-$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe .\avastack.iss
+powershell -NoProfile -ExecutionPolicy Bypass -File .\build_avastack.ps1
 ```
 
-Artefact : `output/avastack-setup.exe` (~2 Mo).
+Compilation manuelle (sans wrapper) : `ISCC.exe avastack.iss` — dans ce cas
+vérifier le `#define AppVersion` de repli du script (seule `AVASTACK_VERSION`
+du source fait foi).
+
+Artefact : `output/avastack-setup.exe` (~2 Mo). Rebuilder l'installateur après
+toute montée de version de l'application (le numéro embarqué suit le source
+avec le wrapper).
 
 ## Structure
 
@@ -43,18 +50,20 @@ installer/
     avastack_setup.py     création de venv + dépendances (stdlib only),
                           appelé par l'installateur à la fin
   windows/
-    avastack.iss          script Inno Setup
+    avastack.iss          script Inno Setup (version passée via /DAppVersion)
+    build_avastack.ps1    wrapper ISCC : lit AVASTACK_VERSION, appelle ISCC
     LISEZMOI.txt          lisez-moi utilisateur (copié à l'installation)
-    build_avastack.ps1    wrapper ISCC (optionnel)
     output/               artefact compilé (gitignore)
 ```
 
 ## Tests
 
-- **Compilation** : OK (Inno Setup 6.7.3, zéro warning).
+- **Compilation** : OK (Inno Setup 6.7.3, zéro warning) — refaite avec la
+  version d'application v2.13.0 (jalon 24, gradient + débruitage par couche).
 - **Exécution réelle sur machine vierge** : à faire — installer sur une
   machine Windows sans Python ni caméra pour valider le chemin
   "téléchargement silencieux de Python" (jamais déclenché sur la machine de
   dev, Python y est déjà présent), et le lancement via raccourci.
 - **Test matériel caméras** : à faire avec les vraies caméras d'Alain
-  (QHY Minicam8M, Player One Uranus-C Pro, Touptek, SVBONY).
+  (QHY Minicam8M — test prévu à la nuit du jour, Player One Uranus-C Pro,
+  Touptek, SVBONY).

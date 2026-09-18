@@ -9,11 +9,19 @@
 ; ensuite et les depose dans le dossier d'installation - message explicite
 ; en fin d'installation.
 ;
-; Compilation : ISCC.exe avastack.iss
+; Compilation : powershell -NoProfile -ExecutionPolicy Bypass -File build_avastack.ps1
+; (recommande : la version est lue dans avastack/__init__.py et passee a ISCC
+; via /DAppVersion=...) ; sinon ISCC.exe avastack.iss a la main, en verifiant
+; le define de repli ci-dessous.
 
 #define RepoRoot "..\.."
 #define AppName "AVAStack"
-#define AppVersion "2.2.0"
+; Version AVAStack : source unique de verite = AVASTACK_VERSION dans
+; avastack/__init__.py (lue par build_avastack.ps1). Le define de repli ne
+; sert qu'a une compilation manuelle ISCC sans /DAppVersion=.
+#ifndef AppVersion
+  #define AppVersion "2.13.0"
+#endif
 #define MinPythonMajor 3
 #define MinPythonMinor 10
 #define PythonInstallerUrl "https://www.python.org/ftp/python/3.12.7/python-3.12.7-amd64.exe"

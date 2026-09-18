@@ -66,6 +66,11 @@ dans le changelog du source et l'historique git.)
 2. **Jalon 21b** : HOO/SHO en réel — refus de début de session réduits,
    méthode affichée par frame.
 3. **Jalon 20** : re-stack compo en réel (ligne verte + détail par canal).
+4. **Installateur refait pour v2.13.0** (ce soir) : installer puis tester en
+   réel avec la QHY Minicam8M — source « QHY (SDK) » (SDK natif inclus dans
+   le paquet pip `qhyccd`, rien à déposer à la main), raccourci Bureau →
+   lancer_avastack.bat. Consigner tout échec (lancement, détection caméra,
+   venv/pip).
 
 ## Rappels utiles (court terme)
 
@@ -74,6 +79,11 @@ dans le changelog du source et l'historique git.)
   31 fichiers `_test_*.py` doivent passer avant tout commit. Vérification
   syntaxique systématique avant livraison : `python -c "import ast;
   ast.parse(open('AVAStack.py', encoding='utf-8').read())"`.
+- **Build installateur** (version lue AUTOMATIQUEMENT du source
+  `AVASTACK_VERSION`, plus de version figée dans l'.iss) :
+  `powershell -NoProfile -ExecutionPolicy Bypass -File installer\windows\build_avastack.ps1`
+  → artefact `installer\windows\output\avastack-setup.exe` (gitignore).
+  Rebuilder après chaque montée de version (jalon).
 - **PIÈGE LANCEMENT** (voir aussi CLAUDE.md) : `python3` ne pointe PAS
   vers le venv — toujours lancer avec `python AVAStack.py`.
 - **ORDRE DE LA CHAÎNE** (Alain, 16/09/2026 — ne pas l'oublier) :

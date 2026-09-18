@@ -42,7 +42,7 @@ REMARQUE : si tu préfères ne pas toucher au dossier d'installation, tu peux
 définir une variable d'environnement pointant vers le dossier contenant la
 DLL, par exemple AVASTACK_PLAYERONE_DIR=C:\chemin\vers\SDK\PlayerOne.
 
-TRAIEMENT EXTERNE (optionnel)
+TRAITEMENT EXTERNE (optionnel)
 -----------------------------
 GraXpert et BlurXTerminator (rc-astro.exe) sont détectés automatiquement
 s'ils sont installés, sinon indique leur chemin dans l'application
