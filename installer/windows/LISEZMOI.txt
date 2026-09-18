@@ -72,6 +72,7 @@ En cas de fermeture brutale de la fenêtre sans message (crash natif du
 SDK), le bouton "Ouvrir le log" — ou le fichier avastack_qhy_debug.log du
 dossier temporaire — indique la DERNIÈRE étape réussie : c'est elle qu'il
 faut me transmettre.
+
 TRAITEMENT EXTERNE (optionnel)
 -----------------------------
 GraXpert et BlurXTerminator (rc-astro.exe) sont détectés automatiquement
