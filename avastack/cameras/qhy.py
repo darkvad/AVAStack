@@ -1,23 +1,87 @@
 # -*- coding: utf-8 -*-
-"""Caméras QHYCCD via le paquet PyPI officiel `qhyccd`.
+"""Caméras QHYCCD via le paquet PyPI `qhyccd`.
 
-Le paquet `qhyccd` (Rust/PyO3, MIT/Apache-2.0) embarque le SDK natif QHYCCD
-pour Windows et Linux — rien d'autre à installer :
+Le paquet `qhyccd` (Rust/PyO3, MIT/Apache-2.0) embarque le SDK natif
+QHYCCD pour Windows et Linux — rien d'autre à installer :
     pip install qhyccd
 Une seule classe gère N'IMPORTE QUELLE caméra QHY branchée (Minicam8M,
 QHY268, QHY5III…) : les caractéristiques (résolution, mono/couleur) sont
 lues sur la caméra elle-même, jamais codées en dur.
 
-Frames : le SDK renvoie un numpy 2D (H, W) mono (RAW8/RAW16 → [0..1] par
-la normalisation de CameraBase via le pipeline d'affichage). Le cas d'une
-caméra COULEUR QHY (bayer brut 2D) serait débayerisable via
-avastack.images._debayer — à activer le jour où on teste une QHY couleur
-réelle (Minicam8M d'Alain est mono).
+CONSTAT RÉEL (Alain, 1er test Minicam8M, 19/09/2026) : l'appel explicite
+de cam.open() APRÈS le constructeur qhyccd.Camera(cid) CRASHAIT
+L'APPLICATION sans message — le CONSTRUCTEUR ouvre DÉJÀ la caméra
+(vérifié sans matériel : RuntimeError « Failed to open camera: … » sur un
+id inexistant) et la double ouverture du handle USB produit un segfault
+natif qu'aucun `except` Python ne rattrape. La séquence suit donc la doc
+officielle du paquet (README wheel 0.1.3), qui n'appelle JAMAIS open().
+
+Frames : numpy 2D (H, W) mono en RAW8 OU RAW16 selon le mode du SDK —
+la normalisation tient compte du dtype réel. Une QHY COULEUR (bayer brut
+2D) serait débayerisable via avastack.images._debayer (à activer le jour
+d'un test réel ; la Minicam8M d'Alain est mono).
+
+Diagnostic : chaque étape d'open()/close() est tracée dans
+avastack_qhy_debug.log (dossier temp) — un crash natif n'affiche rien,
+le log identifie la DERNIÈRE étape réussie.
 """
+
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
 
 import numpy as np
 
 from .base import CameraBase
+from .sdk_loader import RACINE_PROJET
+
+FICHIER_TRACE = os.path.join(tempfile.gettempdir(), "avastack_qhy_debug.log")
+# CREATE_NO_WINDOW (Windows) : l'enfant ne doit pas faire clignoter une
+# console (l'application tourne normalement via pythonw, sans console).
+_CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
+
+
+def _tracer(message):
+    """Trace d'étapes QHY (diagnostic de crash natif) — append + flush."""
+    try:
+        with open(FICHIER_TRACE, "a", encoding="utf-8") as f:
+            f.write(time.strftime("[%H:%M:%S] ") + message + "\n")
+    except Exception:
+        pass        # la trace ne doit JAMAIS gêner l'acquisition
+
+
+def lister_via_sous_processus(timeout_s=25):
+    """Scan QHY DANS UN SOUS-PROCESSUS isolé → (ids, None) ou (None, message).
+
+    Isolation : le SDK natif est du code externe — s'il segfaulte au scan,
+    seul l'enfant meurt et la fonction renvoie un message clair (un scan
+    in-process tuerait TOUTE l'application). Le chemin racine est transmis
+    via sys.argv, JAMAIS interpolé dans le code (un chemin d'installation
+    peut contenir quotes/apostrophes).
+    """
+    code = ("import sys, json; sys.path.insert(0, sys.argv[1]); "
+            "from avastack.cameras.qhy import QHYCamera; "
+            "print(json.dumps(QHYCamera.lister()))")
+    try:
+        r = subprocess.run([sys.executable, "-c", code, RACINE_PROJET],
+                           capture_output=True, text=True,
+                           timeout=timeout_s,
+                           creationflags=_CREATE_NO_WINDOW)
+    except subprocess.TimeoutExpired:
+        return None, (f"le scan n'a pas répondu en {timeout_s} s "
+                      f"(trace : {FICHIER_TRACE})")
+    if r.returncode != 0:
+        lignes = (r.stderr or "").strip().splitlines()
+        detail = lignes[-1] if lignes else f"code retour {r.returncode}"
+        return None, (f"le SDK a planté pendant le scan ({detail}) "
+                      f"— trace : {FICHIER_TRACE}")
+    try:
+        return json.loads(r.stdout.strip().splitlines()[-1]), None
+    except Exception:
+        return None, "sortie inattendue du scan : " + (r.stdout or "")[:200]
 
 
 class QHYCamera(CameraBase):
@@ -45,21 +109,36 @@ class QHYCamera(CameraBase):
         try:
             import qhyccd
         except ImportError:
-            raise RuntimeError("SDK manquant :  pip install qhyccd")
+            raise RuntimeError("SDK QHY manquant : pip install qhyccd")
+        _tracer(f"--- open() : id={self.camera_id!r} index={self.index}")
         qhyccd.init_sdk()
-        ids = qhyccd.scan_cameras()
+        _tracer("init_sdk OK")
+        ids = list(qhyccd.scan_cameras())
+        _tracer(f"scan_cameras -> {ids}")
         if not ids:
-            raise RuntimeError("Aucune caméra QHY détectée")
-        # camera_id fourni par l'UI (nom exact), sinon l'index du scan
+            raise RuntimeError("Aucune caméra QHY détectée (scan USB vide)")
+        # camera_id fourni par l'UI (id exact du scan), sinon l'index
         cid = self.camera_id if self.camera_id in ids else ids[self.index]
+        # Le CONSTRUCTEUR ouvre la caméra (doc officielle du paquet ; vérifié
+        # en réel : RuntimeError "Failed to open camera" sur id inexistant).
+        # NE PAS appeler open() ensuite — double ouverture = segfault natif
+        # (constat Alain 19/09/2026 : l'application se fermait sans message).
         self.cam = qhyccd.Camera(cid)
-        self.cam.open()
-        self.cam.set_stream_mode(1)          # 1 = live (streaming continu)
-        self.cam.init()
         self.name = f"QHY {cid}"
-        # ROI par défaut de la caméra (pleine capteur) : laissée telle quelle,
-        # le SDK dimensionne lui-même son buffer à l'init.
+        _tracer(f"Camera({cid!r}) ouverte (constructeur)")
+        self.cam.set_stream_mode(1)          # 1 = live (streaming continu)
+        _tracer("set_stream_mode(1) OK")
+        self.cam.init()                      # init matériel + registres
+        _tracer("init() OK")
+        self.cam.set_bin_mode(1, 1)          # 1x1 (séquence officielle)
+        _tracer("set_bin_mode(1,1) OK")
+        # ROI non imposée : la zone par défaut du SDK après init() est la
+        # zone effective pleine capteur, et le binding n'expose pas la
+        # lecture des dimensions — set_resolution ne peut pas être appelé
+        # à l'aveugle. Si un problème survient ici, le log _tracer ciblera
+        # l'étape exacte (cf. AVANCEMENT.md).
         self.cam.begin_live()
+        _tracer("begin_live() OK")
 
     def read(self):
         """→ frame numpy 2D mono (float32 [0..1]) ou None."""
@@ -71,7 +150,15 @@ class QHYCamera(CameraBase):
             return None
         if frame is None:
             return None
-        return np.asarray(frame).astype(np.float32) / 65535.0  # RAW16 → [0..1]
+        # np.array(float32) COPIE : indispensable — le ndarray du binding est
+        # zero-copy côté Rust et son buffer peut être réutilisé à la frame
+        # suivante. La normalisation tient compte du dtype RÉEL (RAW8 → /255,
+        # RAW16 → /65535 : un /65535 en dur aurait rendu une frame RAW8 noire).
+        a = np.asarray(frame)
+        if a.ndim != 2 or a.size == 0:
+            return None
+        plein = 255.0 if a.dtype == np.uint8 else 65535.0
+        return np.array(a, dtype=np.float32) / plein
 
     def apply_settings(self, exposure_ms, gain):
         if self.cam is None:
@@ -79,15 +166,16 @@ class QHYCamera(CameraBase):
         try:
             self.cam.set_exposure(int(exposure_ms * 1000))   # µs
             self.cam.set_gain(float(gain))
-        except Exception:
-            pass        # certaines valeurs hors limites firmware → ignorées
+        except Exception as e:
+            _tracer(f"apply_settings ignoré ({e})")   # hors limites firmware
 
     def close(self):
         if self.cam is not None:
             try:
                 self.cam.stop_live()
                 self.cam.close()
-            except Exception:
-                pass
+                _tracer("close OK")
+            except Exception as e:
+                _tracer(f"close : {e}")
             finally:
                 self.cam = None

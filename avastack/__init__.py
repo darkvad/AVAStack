@@ -14,9 +14,33 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.13.0"
+AVASTACK_VERSION = "2.13.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.13.1 : CORRECTION (constat Alain, run réel — 1er test QHY Minicam8M,
+#          19/09/2026) : source « QHY (SDK) » sans aucun retour d'info, et le
+#          clic « Démarrer » FERMAIT l'application sans message. Cause : crash
+#          NATIF (segfault) — QHYCamera.open() appelait cam.open() APRÈS
+#          qhyccd.Camera(cid), alors que le CONSTRUCTEUR ouvre déjà la caméra
+#          (vérifié sans matériel : RuntimeError « Failed to open camera: … »
+#          sur un id inexistant) → double ouverture du handle USB, non
+#          rattrapable par l'except de _start. Correctifs :
+#          (1) séquence officielle du paquet (README wheel 0.1.3) — plus
+#          d'appel open() explicite : Camera(id) → set_stream_mode(1) →
+#          init() → set_bin_mode(1,1) → expos/gain → begin_live() ;
+#          (2) read() normalise selon le dtype RÉEL du SDK (RAW8 → /255,
+#          RAW16 → /65535 : le /65535 en dur aurait rendu une frame RAW8
+#          noire) + COPIE float32 explicite (le ndarray du binding est
+#          zero-copy côté Rust, buffer réutilisable à la frame suivante) ;
+#          (3) trace d'étapes dans avastack_qhy_debug.log (dossier temp) —
+#          un crash natif n'affiche rien : le log identifie la dernière
+#          étape réussie ;
+#          (4) UI : bouton « 🔎 Détecter » + auto-détection à la sélection
+#          d'une source SDK, résultat affiché sous le panneau Caméra ; scan
+#          QHY en SOUS-PROCESSUS isolé (timeout 25 s) — un segfault du SDK
+#          au scan ne tue plus l'application ; l'id détecté est transmis à
+#          QHYCamera (plusieurs caméras QHY branchées : la 1re est ouverte).
+#          Nouveau test _test_qhy_camera.py (faux SDK, sans matériel).
 # v2.13.0 : JALON 24 — GRADIENT + DÉBRUITAGE PAR COUCHE (décision d'Alain,
 #          19/09/2026, reprise du chantier « reporté v2 » : « autant nettoyer
 #          les images le plus tôt possible » — la pollution lumineuse et la

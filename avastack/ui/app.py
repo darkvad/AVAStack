@@ -23,6 +23,7 @@ from ..images import (CFA_MODE, lire_filtre_fits, load_image, save_image,
 from ..cameras import (SOURCES, SimulatedCamera, OpenCVCamera, ZWOASICamera,
                        FolderCamera, MultiFolderCamera, QHYCamera,
                        PlayerOneCamera, TouptekCamera, SVBonyCamera)
+from ..cameras.qhy import lister_via_sous_processus
 from ..processing import Calibrator, StarAligner, LiveStacker, DisplayProcessor
 from ..processing import alignment as align_mod
 from ..processing.composition import (COMPOSITIONS, MODES_L, ROLES,
@@ -110,6 +111,14 @@ class App:
         self.save_request = self.saved_path = None
         self.save_canaux_request = None  # jalon 19 : dossier des canaux (compo)
         self.bad_frames = 0
+        # Détection des sources SDK (correctif du 19/09/2026 : le choix
+        # « QHY (SDK) » n'affichait rien et le 1er « Démarrer » mourait en
+        # crash natif). Le scan QHY est isolé en SOUS-PROCESSUS (un segfault
+        # du SDK au scan ne doit jamais tuer l'application).
+        self._qhy_id = ""             # id de caméra détecté → QHYCamera
+        self._sdk_ids = None          # dernier scan réussi (liste d'ids)
+        self._detect_busy = False     # un scan est en cours (thread)
+        self._detect_result = None    # (source, ids|None, erreur|None) → _tick
         # Jalon 13 : alignement — info de la dernière frame (ligne d'état) et
         # rafraîchissement automatique de la référence (fréquence + compteurs).
         self.align_info = "—"
@@ -533,8 +542,11 @@ class App:
         box = ttk.LabelFrame(left, text="Caméra", padding=6)
         box.pack(fill="x", pady=3)
         self.var_source = tk.StringVar(value=SOURCES[0])
-        ttk.Combobox(box, textvariable=self.var_source, values=SOURCES,
-                     state="readonly", width=28).pack(fill="x", pady=2)
+        self.cb_source = ttk.Combobox(box, textvariable=self.var_source,
+                                      values=SOURCES, state="readonly",
+                                      width=28)
+        self.cb_source.pack(fill="x", pady=2)
+        self.cb_source.bind("<<ComboboxSelected>>", self._on_source_choisie)
         rowbtn = ttk.Frame(box)
         rowbtn.pack(fill="x", pady=1)
         self.btn_start = ttk.Button(rowbtn, text="▶ Démarrer", command=self._start)
@@ -548,6 +560,16 @@ class App:
                          self._push_settings, "{:.0f}")
         self._add_slider(box, "Gain", self.var_gain, 0.5, 8.0, 0.1,
                          self._push_settings, "{:.1f}")
+        # Détection des caméras « SDK constructeur » (correctif du
+        # 19/09/2026 : aucune info au choix de la source). Le scan QHY
+        # tourne dans un SOUS-PROCESSUS isolé : un segfault du SDK ne tue
+        # jamais l'application (message clair à la place).
+        rowd = ttk.Frame(box)
+        rowd.pack(fill="x", pady=(2, 0))
+        ttk.Button(rowd, text="🔎 Détecter", width=12,
+                   command=self._detecter_camera).pack(side="left")
+        self.lbl_detect = ttk.Label(rowd, text="", foreground="#666666")
+        self.lbl_detect.pack(side="left", padx=(6, 0))
 
         # --- Dossier surveillé
         box = ttk.LabelFrame(left, text="Dossier surveillé", padding=6)
@@ -1483,6 +1505,54 @@ class App:
         if d:
             self.save_canaux_request = d
 
+    # --- Détection des caméras SDK (correctif du 19/09/2026) -----------------
+    _SOURCES_SDK = ("QHY", "ZWO", "Player One", "Touptek", "SVBONY")
+
+    def _on_source_choisie(self, *_):
+        """Sélection d'une source : auto-détection si source « SDK »."""
+        if self.var_source.get().startswith(self._SOURCES_SDK):
+            self._detecter_camera()
+        else:
+            self.lbl_detect.config(text="")
+
+    def _detecter_camera(self):
+        """Lance la détection (thread : ne jamais bloquer l'UI)."""
+        if self._detect_busy:
+            return
+        source = self.var_source.get()
+        if source.startswith("QHY"):
+            self._detect_busy = True
+            self.lbl_detect.config(text="QHY : scan en cours…")
+            threading.Thread(target=self._detect_qhy, daemon=True).start()
+        elif source.startswith(self._SOURCES_SDK):
+            self._detect_busy = True
+            self.lbl_detect.config(text="Scan en cours…")
+            threading.Thread(target=self._detect_sdk_local,
+                             args=(source,), daemon=True).start()
+
+    def _detect_qhy(self):
+        """Scan QHY DANS UN SOUS-PROCESSUS isolé (le résultat est consommé
+        par _tick côté thread UI ; aucun appel Tk depuis ce thread)."""
+        ids, err = lister_via_sous_processus()
+        self._detect_result = ("QHY", ids, err)
+
+    def _detect_sdk_local(self, source):
+        """Scan des autres marques, in-process (sans DLL → RuntimeError
+        propre ; lister() des modules attrape déjà les exceptions)."""
+        cls = (PlayerOneCamera if source.startswith("Player One")
+               else TouptekCamera if source.startswith("Touptek")
+               else SVBonyCamera if source.startswith("SVBONY")
+               else ZWOASICamera)
+        fn = getattr(cls, "lister", None)
+        if fn is None:
+            self._detect_result = (source, None,
+                                   "détection non disponible (SDK/paquet absent)")
+            return
+        try:
+            self._detect_result = (source, list(fn()), None)
+        except Exception as e:
+            self._detect_result = (source, None, str(e))
+
     def _make_camera(self, key):
         if key.startswith("Simulée"):
             return SimulatedCamera()
@@ -1499,7 +1569,7 @@ class App:
         if key.startswith("OpenCV"):
                         return OpenCVCamera(int(key.split()[-1]))
         if key.startswith("QHY"):
-            return QHYCamera()
+            return QHYCamera(camera_id=self._qhy_id)
         if key.startswith("Player One"):
             return PlayerOneCamera()
         if key.startswith("Touptek"):
@@ -3060,6 +3130,26 @@ class App:
 
     # ------------------------------------------------------------ rafraîchissement UI
     def _tick(self):
+        # Détection SDK (thread → UI) : consommation du résultat — les
+        # variables/labels Tk ne sont touchés QUE depuis ce thread principal.
+        if self._detect_result is not None:
+            source, ids, err = self._detect_result
+            self._detect_result = None
+            self._detect_busy = False
+            if err is not None:
+                self.lbl_detect.config(text=f"{source} : {err}",
+                                       foreground="#B06000")
+            elif not ids:
+                self.lbl_detect.config(
+                    text=f"{source} : aucune caméra détectée",
+                    foreground="#B06000")
+            else:
+                self._sdk_ids = list(ids)
+                if source == "QHY":
+                    self._qhy_id = str(ids[0])   # ouverte au « Démarrer »
+                self.lbl_detect.config(
+                    text=f"{source} : {' — '.join(map(str, ids))}",
+                    foreground="#1d7f1d")
         # Jalon 19 : réglages de composition (gains R/G/B, radio « Canal L »)
         # lus CÔTÉ THREAD PRINCIPAL (variables Tk interdites dans le worker,
         # cf. piège) et poussés vers la façade si modifiés → appliqués au

@@ -11,29 +11,27 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version : AVAStack v2.13.0** (`avastack/__init__.py`,
-  `AVASTACK_VERSION = "2.13.0"`), branche `master`. Dernier jalon livré :
-  **JALON 24 « Gradient + débruitage PAR COUCHE »** (19/09/2026, décision
-  d'Alain : « autant nettoyer les images le plus tôt possible » — pollution
-  lumineuse et lune ne frappent pas pareil selon le filtre ; une palette
-  Hubble n'est pas un fond physique). En COMPOSITION, gradient (GraXpert) et
-  débruitage sont faits sur CHAQUE COUCHE AVANT composition ; la NETTETÉ
-  reste SUR LE COMPOSITE (avis demandé par Alain, rendu et suivi :
-  PSF identique pour
-  toutes les couches, meilleur SNR après débruitage, moitié moins de
-  calcul). Ordre : couches (gradient → débruitage) → recomposition →
-  netteté → étirement. Live : worker pousse les couches via
-  `disp.vl_compo` (`CompositeStacker.mean_avec_canaux`, une seule passe de
-  moyennes) ; solveur = caches PAR RÔLE (une nouvelle frame ne relance QUE
-  la couche qui en a reçu une). Externe (⚡) : GraXpert gradient +
-  débruitage par couche en FITS 2D MONO (plus de convention canaux-en-tête
-  pour ces étapes), recomposition, puis BXT + chaîne couleur sur le
-  composite. Échec d'une couche = couche brute + message ; échec d'un
-  subprocess = erreur claire. Mode mono : chaîne composite historique
-  INCHANGÉE (jalons 4/9). **Les 31 fichiers `_test_*.py` PASSENT**
-  (dont `_test_gradient_couche_jalon24.py`). Le garde-fou jalon 23b
-  (canal mort) reste actif en mono ; en composition il devient inutile par
-  construction (couches mono 2D).
+- **Version : AVAStack v2.13.1** (`avastack/__init__.py`), branche
+  `master`. Dernier jalon : **CORRECTIF QHY v2.13.1** (19/09/2026, 1er test
+  réel Minicam8M) : le choix « QHY (SDK) » n'affichait rien et « Démarrer »
+  FERMAIT l'application sans message — crash NATIF : QHYCamera.open()
+  appelait `cam.open()` APRÈS le constructeur `qhyccd.Camera(cid)` qui
+  OUVRE DÉJÀ la caméra (vérifié sans matériel : RuntimeError « Failed to
+  open camera » sur id inexistant) → double ouverture du handle USB, non
+  rattrapable par l'except de `_start`. Fix : séquence officielle du
+  paquet (README wheel 0.1.3 — plus d'`open()` explicite : Camera(id) →
+  set_stream_mode(1) → init() → set_bin_mode(1,1) → expos/gain →
+  begin_live) ; `read()` normalise selon le dtype RÉEL (RAW8 → /255,
+  RAW16 → /65535) avec COPIE float32 (ndarray zero-copy Rust) ; trace
+  d'étapes dans `%TEMP%\avastack_qhy_debug.log` (le crash natif n'affiche
+  rien, le log identifie la dernière étape) ; UI : bouton « 🔎 Détecter »
+  + auto-détection à la sélection d'une source SDK, scan QHY en
+  SOUS-PROCESSUS isolé (un segfault au scan ne tue plus l'appli), id
+  détecté transmis à QHYCamera. Nouveau test `_test_qhy_camera.py` (faux
+  SDK, sans matériel) : **les 32 `_test_*.py` passent**. Jalon 24
+  (v2.13.0, gradient + débruitage PAR COUCHE en composition, netteté sur
+  le composite) : validations réelles toujours en attente (cf. ci-
+  dessous) ; garde-fou jalon 23b (canal mort) actif en mono.
 - **Pièges récents (jalon 20-24)** : `var.get()` Tkinter interdit hors
   thread principal (bouchons `_Val`) ; crash OpenCV 5/OpenCL au teardown
   (`cv2.ocl.setUseOpenCL(False)`) ; tout test qui crée `ui.App` doit être
@@ -66,11 +64,12 @@ dans le changelog du source et l'historique git.)
 2. **Jalon 21b** : HOO/SHO en réel — refus de début de session réduits,
    méthode affichée par frame.
 3. **Jalon 20** : re-stack compo en réel (ligne verte + détail par canal).
-4. **Installateur refait pour v2.13.0** (ce soir) : installer puis tester en
-   réel avec la QHY Minicam8M — source « QHY (SDK) » (SDK natif inclus dans
-   le paquet pip `qhyccd`, rien à déposer à la main), raccourci Bureau →
-   lancer_avastack.bat. Consigner tout échec (lancement, détection caméra,
-   venv/pip).
+4. **Re-tester le correctif QHY v2.13.1 avec la Minicam8M** (installateur
+   rebuildé — choisir « QHY (SDK) » : la détection doit afficher la caméra,
+   puis « Démarrer » sans crash). En cas de souci : le fichier
+   `avastack_qhy_debug.log` (dossier temp) trace chaque étape. NOTE gain :
+   l'échelle du slider générique (0,5-8,0) ne correspond sûrement PAS à
+   l'échelle QHY (unités SDK constructeur) — à ajuster après ce test.
 
 ## Rappels utiles (court terme)
 
@@ -84,6 +83,9 @@ dans le changelog du source et l'historique git.)
   `powershell -NoProfile -ExecutionPolicy Bypass -File installer\windows\build_avastack.ps1`
   → artefact `installer\windows\output\avastack-setup.exe` (gitignore).
   Rebuilder après chaque montée de version (jalon).
+- **Diagnostic QHY** : `%TEMP%\avastack_qhy_debug.log` trace chaque étape
+  d'ouverture/fermeture de la caméra (un crash natif n'affiche RIEN à
+  l'écran — le log dit la dernière étape réussie).
 - **PIÈGE LANCEMENT** (voir aussi CLAUDE.md) : `python3` ne pointe PAS
   vers le venv — toujours lancer avec `python AVAStack.py`.
 - **ORDRE DE LA CHAÎNE** (Alain, 16/09/2026 — ne pas l'oublier) :
