@@ -132,11 +132,19 @@ class QHYCamera(CameraBase):
         _tracer("init() OK")
         self.cam.set_bin_mode(1, 1)          # 1x1 (séquence officielle)
         _tracer("set_bin_mode(1,1) OK")
-        # ROI non imposée : la zone par défaut du SDK après init() est la
-        # zone effective pleine capteur, et le binding n'expose pas la
-        # lecture des dimensions — set_resolution ne peut pas être appelé
-        # à l'aveugle. Si un problème survient ici, le log _tracer ciblera
-        # l'étape exacte (cf. AVANCEMENT.md).
+        # ROI : SANS résolution posée, begin_live/get_live_frame segfaultent
+        # (constat réel 19/09/2026 — la fenêtre mourait sans message). Les
+        # tailles candidates sont essayées dans l'ordre ; une taille refusée
+        # (erreur 0xFFFFFFFF du SDK) n'est PAS fatale. 3840×2160 = pleine
+        # définition IMX585 de la MiniCam8M (la fiche 3856×2180 de Player
+        # One est REFUSÉE par le SDK QHY).
+        for w, h in ((3840, 2160), (3856, 2180), (3848, 2168), (1920, 1080)):
+            try:
+                self.cam.set_resolution(0, 0, w, h)
+                _tracer(f"set_resolution(0,0,{w},{h}) OK")
+                break
+            except Exception as e:
+                _tracer(f"set_resolution(0,0,{w},{h}) refusée ({e})")
         self.cam.begin_live()
         _tracer("begin_live() OK")
 

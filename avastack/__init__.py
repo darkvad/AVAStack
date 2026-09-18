@@ -14,9 +14,23 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.13.1"
+AVASTACK_VERSION = "2.13.2"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.13.2 : CORRECTION (constat Alain, run réel — banc _diag_camera_qhy,
+#          19/09/2026) : « Démarrer (pas-à-pas + ROI) » échouait APRÈS
+#          set_bin_mode avec « Operation failed with error code: 4294967295 »
+#          (0xFFFFFFFF = erreur générique du SDK) sur
+#          set_resolution(0,0,3864,2192) — taille tirée de la fiche Player
+#          One de l'IMX585, REFUSÉE par le SDK QHY : la MiniCam8M expose
+#          3840×2160. Et SANS ROI posée, begin_live/get_live_frame
+#          segfaultent (la fenêtre mourait sans message — crash natif
+#          identique au premier constat). Fix : QHYCamera.open() tente
+#          set_resolution en repli (3840×2160, puis tailles candidates) ;
+#          banc : défaut 3840×2160 + essais automatiques. Contrôles SDK
+#          relevés par Alain (22 dispo sur 1..63) : EXP=1, GAIN=2,
+#          OFFSET=3, SPEED=5, SensorTemperature… — à exploiter pour les
+#          bornes réelles des réglages (prochaine étape).
 # v2.13.1 : CORRECTION (constat Alain, run réel — 1er test QHY Minicam8M,
 #          19/09/2026) : source « QHY (SDK) » sans aucun retour d'info, et le
 #          clic « Démarrer » FERMAIT l'application sans message. Cause : crash

@@ -113,8 +113,9 @@ class BancQHY:
         self.var_roi = tk.BooleanVar(value=False)
         ttk.Checkbutton(box, text="Imposer la ROI (set_resolution) :",
                         variable=self.var_roi).pack(side="left", padx=(14, 2))
-        self.var_w = tk.StringVar(value="3864")   # IMX585 pleine résolution
-        self.var_h = tk.StringVar(value="2192")   # (Minicam8M — à ajuster)
+        self.var_w = tk.StringVar(value="3840")   # IMX585 QHY MiniCam8M
+        self.var_h = tk.StringVar(value="2160")   # (3864×2192 = fiche Player
+        # One, REFUSÉE par le SDK QHY — erreur 0xFFFFFFFF, constat du test)
         ttk.Entry(box, textvariable=self.var_w, width=7).pack(
             side="left", padx=(2, 2))
         ttk.Label(box, text="×").pack(side="left")
@@ -293,8 +294,22 @@ class BancQHY:
         self._trace("set_bin_mode(1,1) OK")
         if roi is not None:
             w, h = roi
-            cam.set_resolution(0, 0, w, h)
-            self._trace(f"set_resolution(0,0,{w},{h}) OK")
+            tailles = [(w, h)] + [t for t in [(3840, 2160), (3856, 2180),
+                                              (3848, 2168), (1920, 1080)]
+                                  if t != (w, h)]
+            posee = False
+            for tw, th in tailles:
+                try:
+                    cam.set_resolution(0, 0, tw, th)
+                    self._trace(f"set_resolution(0,0,{tw},{th}) OK")
+                    posee = True
+                    break
+                except Exception as e:
+                    self._trace(f"set_resolution(0,0,{tw},{th}) REFUSÉE ({e})"
+                                " — taille invalide pour ce capteur")
+            if not posee:
+                raise RuntimeError("aucune ROI acceptée par le SDK — "
+                                   "essayer d'autres dimensions")
         else:
             self._trace("(ROI non imposée — zone par défaut du SDK)")
         cam.begin_live()

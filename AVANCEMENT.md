@@ -11,27 +11,22 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version : AVAStack v2.13.1** (`avastack/__init__.py`), branche
-  `master`. Dernier jalon : **CORRECTIF QHY v2.13.1** (19/09/2026, 1er test
-  réel Minicam8M) : le choix « QHY (SDK) » n'affichait rien et « Démarrer »
-  FERMAIT l'application sans message — crash NATIF : QHYCamera.open()
-  appelait `cam.open()` APRÈS le constructeur `qhyccd.Camera(cid)` qui
-  OUVRE DÉJÀ la caméra (vérifié sans matériel : RuntimeError « Failed to
-  open camera » sur id inexistant) → double ouverture du handle USB, non
-  rattrapable par l'except de `_start`. Fix : séquence officielle du
-  paquet (README wheel 0.1.3 — plus d'`open()` explicite : Camera(id) →
-  set_stream_mode(1) → init() → set_bin_mode(1,1) → expos/gain →
-  begin_live) ; `read()` normalise selon le dtype RÉEL (RAW8 → /255,
-  RAW16 → /65535) avec COPIE float32 (ndarray zero-copy Rust) ; trace
-  d'étapes dans `%TEMP%\avastack_qhy_debug.log` (le crash natif n'affiche
-  rien, le log identifie la dernière étape) ; UI : bouton « 🔎 Détecter »
-  + auto-détection à la sélection d'une source SDK, scan QHY en
-  SOUS-PROCESSUS isolé (un segfault au scan ne tue plus l'appli), id
-  détecté transmis à QHYCamera. Nouveau test `_test_qhy_camera.py` (faux
-  SDK, sans matériel) : **les 32 `_test_*.py` passent**. Jalon 24
-  (v2.13.0, gradient + débruitage PAR COUCHE en composition, netteté sur
-  le composite) : validations réelles toujours en attente (cf. ci-
-  dessous) ; garde-fou jalon 23b (canal mort) actif en mono.
+- **Version : AVAStack v2.13.2** (`avastack/__init__.py`), branche
+  `master`. Dernier jalon : **ROI QHY v2.13.2** (19/09/2026) : le banc
+  `_diag_camera_qhy` a désigné la cause du crash restant —
+  `set_resolution(0,0,3864,2192)` (fiche Player One IMX585) REFUSÉE par le
+  SDK (erreur 0xFFFFFFFF) : la MiniCam8M expose **3840×2160** ; et sans ROI
+  posée, `begin_live`/`get_live_frame` segfaultent. Fix : `open()` tente
+  set_resolution avec repli (3840×2160 d'abord) ; banc défaut 3840×2160 +
+  essais auto. Contrôles SDK relevés par Alain (22/63 dispo, EXP/GAIN/
+  OFFSET/SPEED/température…) : à exploiter pour les bornes des réglages.
+  Correctif précédent v2.13.1 : double ouverture du handle (cam.open()
+  après constructeur qui ouvre déjà) → séquence officielle sans open()
+  explicite, dtype-normalisation read(), trace %TEMP%\avastack_qhy_debug.log,
+  détection UI + scan QHY sous-processus isolé. Tests : **32/32 passent**
+  (dont `_test_qhy_camera.py`, banc auto-testé sans caméra). Jalon 24
+  (v2.13.0, gradient + débruitage par couche) : validations réelles
+  toujours en attente ; garde-fou jalon 23b actif en mono.
 - **Pièges récents (jalon 20-24)** : `var.get()` Tkinter interdit hors
   thread principal (bouchons `_Val`) ; crash OpenCV 5/OpenCL au teardown
   (`cv2.ocl.setUseOpenCL(False)`) ; tout test qui crée `ui.App` doit être
