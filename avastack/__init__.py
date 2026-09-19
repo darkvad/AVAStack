@@ -14,9 +14,31 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.14.2"
+AVASTACK_VERSION = "2.14.3"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.14.3 : CORRECTIFS ROUE + DÉCONNEXION + INSTALLATEUR (constats réels
+#          d'Alain, 19/09/2026 en fin de soirée).
+#          (1) CHANGEMENT DE FILTRE EN ÉCHEC (« QHYCamera object has no
+#          attribute 'stop_live' ») : le changement de filtre appelle
+#          stop_live()/begin_live() sur la CLASSE cam_pilotee (pas sur le
+#          handle natif self.cam) — la classe QHYCamera les expose désormais
+#          et délègue au handle avec trace (vérifié par le faux SDK).
+#          (2) « ⏏ DÉCONNECTER » SANS EFFET + FERMETURE IMPOSSIBLE : les
+#          appels natifs du SDK (TEC, close) étaient faits depuis le thread
+#          Tk PENDANT que le thread de travail lit le flux — conflit du SDK
+#          natif = blocage sans message. La déconnexion est maintenant une
+#          DEMANDE exécutée par le thread de travail (TEC coupé, close),
+#          dont la confirmation met à jour l'UI ; la fermeture de la fenêtre
+#          demande puis attend (borne 15 s, l'UI se rafraîchit) avant de
+#          forcer la sortie.
+#          (3) INSTALLATEUR : les DLL des SDK constructeurs posées à la
+#          racine du dépôt (ASICamera2.dll, PlayerOneCamera.dll, ToupCam.dll,
+#          SVBCameraSDK.dll) sont désormais EMBARQUÉES dans l'installateur
+#          (demande d'Alain) — sdk_loader.py les trouve dans le dossier du
+#          programme ; le paquet pip zwoasi est installé (requirements.txt
+#          décommenté) ; LISEZMOI.txt et la page SDK de l'installateur mis à
+#          jour. Les DLL restent hors du dépôt git (*.dll dans .gitignore).
 # v2.14.2 : CORRECTIF — CONNEXION QHY FIGÉE À « connexion de la caméra… »
 #          (constat réel d'Alain, 19/09/2026 au soir : « Détecter » affichait
 #          le message pour toujours, aucun contrôle actif, fermeture

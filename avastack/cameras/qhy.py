@@ -248,6 +248,32 @@ class QHYCamera(CameraBase):
         plein = 255.0 if a.dtype == np.uint8 else 65535.0
         return np.array(a, dtype=np.float32) / plein
 
+    # --- contrôle direct du flux (roue à filtres — jalon 25/26) -----------
+    # CORRECTIF (constat réel d'Alain, 19/09/2026 : « QHYCamera object has
+    # no attribute 'stop_live' ») : le CHANGEMENT DE FILTRE de l'UI appelle
+    # stop_live()/begin_live() sur la CLASSE (le pilotage passe par
+    # cam_pilotee), pas sur le handle natif self.cam — la classe doit donc
+    # les exposer et déléguer (avec trace, comme tout appel natif).
+    def stop_live(self):
+        """Arrête le flux live (délégation au handle SDK, avec trace)."""
+        if self.cam is not None:
+            try:
+                self.cam.stop_live()
+                _tracer("stop_live() OK")
+            except Exception as e:
+                _tracer(f"stop_live() : {e}")
+                raise
+
+    def begin_live(self):
+        """Reprend le flux live (délégation au handle SDK, avec trace)."""
+        if self.cam is not None:
+            try:
+                self.cam.begin_live()
+                _tracer("begin_live() OK")
+            except Exception as e:
+                _tracer(f"begin_live() : {e}")
+                raise
+
     def apply_settings(self, exposure_ms, gain):
         if self.cam is None:
             return

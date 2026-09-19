@@ -10,37 +10,29 @@ ou sur lancer_avastack.bat dans ce dossier.
 
 SUPPORT DES CAMÉRAS
 -------------------
-AVAStack gère plusieurs marques de caméras. Selon la marque, le SDK
-constructeur est inclus ou à installer toi-même :
+AVAStack gère plusieurs marques de caméras. Les SDK constructeurs sont
+INCLUS dans ce dossier d'installation :
 
-✅ INCLUS D'OFFICE (aucune action) :
+✅ INCLUS (aucune action) :
   - QHYCCD  : le SDK est embarqué dans l'installation (paquet qhyccd).
               Branche simplement ta caméra, choisis "QHY (SDK)" dans
               l'application, et c'est parti.
+  - ZWO ASI : ASICamera2.dll est installée dans CE dossier (et le paquet
+              zwoasi est installé dans le venv).
+  - Player One : PlayerOneCamera.dll est installée dans CE dossier.
+  - Touptek / Altair : ToupCam.dll est installée dans CE dossier
+              (fonctionne aussi pour les clones : Altair et autres
+              marques revendant l'électronique ToupCam).
+  - SVBONY : SVBCameraSDK.dll est installée dans CE dossier.
   - Simulée : ciel de démo, sans matériel.
   - Dossier surveillé : empile les FITS/PNG/TIFF que ton logiciel
               d'acquisition (N.I.N.A., APT, SharpCap...) écrit dans un dossier.
   - OpenCV : webcams / cartes d'acquisition génériques.
 
-⚠️ À INSTALLER TOI-MÊME (SDK propriétaire, gratuit, à télécharger) :
-  - ZWO ASI : télécharge le SDK sur astronomy-imaging-camera.com,
-              décompresse, et copie "ASICamera2.dll" (version x64) dans
-              CE dossier.
-  - Player One : télécharge le SDK sur player-one-astronomy.com,
-              copie "PlayerOneCamera.dll" (version x64) dans CE dossier.
-  - Touptek / Altair : télécharge le SDK sur touptek.com,
-              copie "toupcam.dll" (version x64) dans CE dossier.
-              (fonctionne aussi pour les clones : Altair et autres
-              marques revendant l'électronique ToupCam)
-  - SVBONY : télécharge le SDK sur svbony.com,
-              copie "SVBCameraSDK.dll" (version x64) dans CE dossier.
-
-Une fois la DLL en place, relance AVAStack : la source correspondante
-apparaît/est opérationnelle dans le menu déroulant.
-
-REMARQUE : si tu préfères ne pas toucher au dossier d'installation, tu peux
-définir une variable d'environnement pointant vers le dossier contenant la
-DLL, par exemple AVASTACK_PLAYERONE_DIR=C:\chemin\vers\SDK\PlayerOne.
+REMARQUE : si tu dois remplacer une DLL par une version plus récente,
+copie-la simplement dans CE dossier (ou définis une variable
+d'environnement pointant vers le dossier qui la contient, par exemple
+AVASTACK_PLAYERONE_DIR=C:\chemin\vers\SDK\PlayerOne).
 
 BANC DE DIAGNOSTIC CAMÉRA (QHY)
 -------------------------------

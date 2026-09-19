@@ -13,5 +13,9 @@ avastack_*/
 # Compteur d executions du test jalon 4 (genere par le test, jamais suivi)
 _gx_jalon4_compteur.txt
 
+# SDK binaires constructeurs (code proprietaire, jamais dans le depot) —
+# poses a la racine du projet, embarques dans l'installateur par avastack.iss
+*.dll
+
 # Artefacts d'installateur
 installer/windows/output/

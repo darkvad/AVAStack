@@ -11,28 +11,30 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version : AVAStack v2.14.2** (`avastack/__init__.py`), branche `master`.
-  Dernier jalon : **CORRECTIF — CONNEXION QHY FIGÉE** (19/09/2026 soir).
-  Constat d'Alain : « Détecter » restait sur « connexion de la caméra… »,
-  aucun contrôle actif, fermeture impossible (process tué au gestionnaire).
-  - **CAUSE** : le thread de connexion lisait des variables Tkinter
-    (`var_expo.get()`) — un appel Tcl depuis un thread secondaire bloque sur
-    le verrou Tcl SANS JAMAIS rendre la main (pas d'exception) → résultat
-    jamais consommé, `_connexion_busy` resté vrai, fermeture en échec.
-  - **CORRECTIF** : le thread de connexion ne touche plus à AUCUNE variable
-    Tk (ouverture seule) ; les réglages sont posés par le worker via
-    `pending_settings` (instantanés `expo_ms`/`gain_val` tenus par le thread
-    Tk) ; détection ignorée pendant une connexion en cours ; « ⏏
-    Déconnecter » reste actif pendant l'empilement.
-  - Jalons précédents : **v2.14.1** connexion à la détection (Détecter =
-    connexion, sondage roue/TEC et refroidissement AVANT l'empilement,
-    Démarrer = empilement seul, Arrêter = pause, bouton ⏏, relecture TEC
-    2 s) ; **v2.14.0** contrôles QHY (roue ctrl 17 en 48+n, purge des frames
-    de rotation ; consigne 18, lectures 14/15, arrêt PWM 16 à 0 ; exposition
-    log 11 µs–5 s + échelle longue 1–900 s ; gain 0–175 ; FITS FILTER).
-  - **À valider en réel (miniPC)** : Détecter → « connectée » en vert, filtre
-    et TEC actifs AVANT Démarrer, pause/reprise, puis jalon 25 (roue, TEC,
-    gain).
+- **Version : AVAStack v2.14.3** (`avastack/__init__.py`), branche `master`.
+  Dernier jalon : **CORRECTIFS ROUE + DÉCONNEXION + INSTALLATEUR** (19/09/2026
+  soir, constats réels d'Alain).
+  - (1) « QHYCamera object has no attribute 'stop_live' » : le changement de
+    filtre appelait stop_live/begin_live sur la CLASSE — `QHYCamera` les
+    expose désormais (délégation au handle + trace, vérifié par le faux SDK,
+    32 vérifications).
+  - (2) « ⏏ Déconnecter » sans effet + fermeture impossible : les appels
+    natifs (TEC, close) partaient du thread Tk PENDANT la lecture du flux
+    par le worker → conflit du SDK natif. La déconnexion est maintenant une
+    DEMANDE exécutée par le worker (confirmation → _tick met à jour l'UI) ;
+    la fermeture demande, attend (borne 15 s, UI rafraîchie) puis détruit.
+  - (3) INSTALLATEUR : DLL des SDK constructeurs (ASICamera2, PlayerOne,
+    ToupCam, SVBCameraSDK) embarquées dans l'installateur (posées par Alain
+    à la racine — hors dépôt git : *.dll dans .gitignore) ; paquet pip
+    zwoasi installé (requirements.txt décommenté) ; LISEZMOI.txt et page SDK
+    mis à jour.
+  - Jalons précédents : v2.14.2 (connexion figée = variables Tk lues hors
+    thread Tk), v2.14.1 (connexion à la détection, Démarrer = empilement
+    seul, Arrêter = pause, relecture TEC 2 s), v2.14.0 (roue ctrl 17/48+n,
+    TEC 18/14/15/16, exposition log, gain 0-175, FITS FILTER).
+  - **À valider en réel (miniPC)** : filtre changeable pendant la pause ET
+    l'empilement, ⏏ Déconnecter effectif (TEC coupé, caméra refermée),
+    fermeture de la fenêtre immédiate, installateur avec DLL + zwoasi.
 
   - **Verdict ROI automatique** (2e run réel, 19/09/2026) : le log de
     « Démarrer » ne contenait TOUJOURS aucune ligne `set_resolution`, même

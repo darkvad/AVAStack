@@ -8,9 +8,9 @@ astropy
 # Minicam8M) ; retirer cette ligne si aucune camera QHY n'est utilisee.
 qhyccd
 
-# Optionnel - cameras ZWO ASI (necessite en plus la DLL ASICamera2.dll du SDK,
-# a placer dans le dossier du script). Decommenter pour installer :
-# zwoasi
+# Optionnel - cameras ZWO ASI (SDK officiel) : la DLL ASICamera2.dll est
+# installee avec l'application (dossier d'installation) - paquet pip requis :
+zwoasi
 
 # Optionnel - cameras Player One (necessite en plus la DLL PlayerOneCamera.dll
 # du SDK officiel, telechargee sur player-one-astronomy.com et a placer dans

@@ -119,6 +119,13 @@ class App:
         self._connexion_busy = False     # une connexion QHY est en cours
         self._connexion_result = None    # (cam|None, err|None) → _tick
         self._tec_dernier_t0 = 0.0       # cadence de relecture TEC (2 s)
+        # Jalon 26b (constat réel : « ⏏ Déconnecter » sans effet + fermeture
+        # impossible) : les appels natifs du SDK ne doivent JAMAIS être faits
+        # depuis le thread Tk pendant que le worker lit le flux → la
+        # déconnexion est une DEMANDE exécutée par le thread de travail,
+        # dont la confirmation est consommée par _tick.
+        self._deconnexion_request = False
+        self._deconnexion_faite = None   # "qhy" | "autre" (worker → _tick)
         self._controles_sondes = False
         self._roue_ok = False            # roue détectée (worker → _tick)
         self._tec_ok = False             # refroidissement détecté (idem)
@@ -1678,10 +1685,20 @@ class App:
         """Sélection d'une source : auto-détection si source « SDK ».
         Une caméra connectée est d'abord déconnectée (jalon 26 : la
         connexion appartient à la source ; pour une QHY, la reconnexion
-        dans le même process est impossible — l'utilisateur est prévenu)."""
+        dans le même process est impossible — l'utilisateur est prévenu et
+        la re-détection automatique est évitée, elle échouerait)."""
         if self.camera is not None:
             qhy = isinstance(self.camera, QHYCamera)
             self._deconnecter_camera()
+            t0 = time.monotonic()
+            while (self.camera is not None and self.thread is not None
+                   and self.thread.is_alive()
+                   and time.monotonic() - t0 < 8.0):
+                try:
+                    self.root.update()     # _tick consomme la confirmation
+                except tk.TclError:
+                    break
+                time.sleep(0.05)
             if qhy:
                 messagebox.showinfo(
                     "Changement de source",
@@ -1689,6 +1706,12 @@ class App:
                     "déconnexion, relancez l'application pour reconnecter "
                     "une caméra QHY (le SDK ne peut pas être réinitialisé "
                     "dans le même process).")
+                self.lbl_detect.config(
+                    text="QHY déconnectée — relancez l'application pour "
+                         "reconnecter (le SDK QHY ne peut pas être "
+                         "réinitialisé dans ce process).",
+                    foreground="#B06000")
+                return
         if self.var_source.get().startswith(self._SOURCES_SDK):
             self._detecter_camera()
         else:
@@ -2024,41 +2047,44 @@ class App:
         consommer du courant et de givrer), arrête l'empilement, libère le
         worker. LIMITE SDK (constat du banc) : après un close, une
         reconnexion QHY dans le même process ne reçoit plus JAMAIS de
-        frame — relancer l'application pour rebrancher une caméra QHY."""
+        frame — relancer l'application pour rebrancher une caméra QHY.
+
+        Jalon 26b (constat réel : le bouton restait sans effet) : la
+        déconnexion est exécutée PAR LE THREAD DE TRAVAIL — les appels
+        natifs du SDK (TEC, stop_live, close) ne doivent jamais être faits
+        depuis le thread Tk pendant que le worker lit le flux (conflit du
+        SDK natif = blocage sans message). Le résultat est consommé par
+        _tick ; en dernier recours (worker déjà parti), on coupe
+        directement, mais hors flux (caméra déjà arrêtée)."""
         self.empilement_on = False
-        self.running = False
-        if self.thread:
-            self.thread.join(timeout=3)
-            self.thread = None
-        cam = self.cam_pilotee or (self.camera
-                                   if isinstance(self.camera, QHYCamera)
-                                   else None)
-        if cam is not None:
-            try:
-                cam.arreter_refroidissement()
-            except Exception:
-                pass        # caméra déjà fermée / TEC absent : rien à faire
-        self.cam_pilotee = None
-        if self.camera:
-            self.camera.close()
-            self.camera = None
-        self.btn_start.config(state="normal")
-        self.btn_stop.config(state="disabled")
-        self.btn_deconnect.config(state="disabled")
-        self.cb_filtre.config(state="disabled")
-        self.btn_tec_on.config(state="disabled")
-        self.btn_tec_off.config(state="disabled")
-        self.lbl_tec.config(text="Capteur : — · TEC : —", foreground="#888888")
-        self.lbl_filtre.config(text="", foreground="#888888")
-        if cam is not None and isinstance(cam, QHYCamera):
-            self.lbl_detect.config(
-                text="QHY déconnectée — relancez l'application pour "
-                     "reconnecter (le SDK QHY ne peut pas être réinitialisé "
-                     "dans ce process).", foreground="#B06000")
-        else:
-            self.lbl_detect.config(text="Caméra déconnectée.",
-                                   foreground="#888888")
-        self.lbl_status.config(text="Caméra déconnectée.")
+        self._deconnexion_request = True
+        if self.thread is not None and self.thread.is_alive():
+            self.btn_deconnect.config(state="disabled")
+            self.lbl_status.config(text="Déconnexion en cours…")
+            return       # le worker exécute → confirmation via _tick
+        self._executer_deconnexion("qhy" if isinstance(self.camera, QHYCamera)
+                                   else "autre")
+
+    def _executer_deconnexion(self, marque):
+        """Fermeture EFFECTIVE de la caméra — appelé PAR LE THREAD DE
+        TRAVAIL (jalon 26b), ou depuis le thread Tk UNIQUEMENT si le worker
+        ne tourne plus (aucun flux actif). `marque` : "qhy" | "autre".
+        Le résultat (`_deconnexion_faite`) est consommé par _tick."""
+        try:
+            cam = self.cam_pilotee or (self.camera
+                                       if isinstance(self.camera, QHYCamera)
+                                       else None)
+            if cam is not None:
+                try:
+                    cam.arreter_refroidissement()
+                except Exception:
+                    pass    # caméra déjà fermée / TEC absent : rien à faire
+        finally:
+            self.cam_pilotee = None
+            if self.camera:
+                self.camera.close()
+                self.camera = None
+        self._deconnexion_faite = marque
 
     def _deconnecter_camera(self):
         """« ⏏ Déconnecter » (jalon 26) : referme la caméra — le TEC est
@@ -2090,10 +2116,24 @@ class App:
 
     def _on_close(self):
         self._sauver_config_app()
-        # Jalon 26 : déconnexion COMPLÈTE à la fermeture — le TEC est coupé
-        # (un refroidissement laissé en régulation continue de consommer du
-        # courant et de givrer) puis la caméra est refermée.
-        self._deconnecter_camera()
+        # Jalon 26b : déconnexion PAR LE THREAD DE TRAVAIL (jamais d'appel
+        # natif du SDK depuis le thread Tk pendant que le flux tourne) —
+        # on demande, puis on attend (borne 15 s) la confirmation en
+        # laissant l'UI se rafraîchir ; au-delà, on force la sortie (le
+        # process se termine et le système referme le handle USB).
+        self.empilement_on = False
+        self._deconnexion_request = True
+        thread = self.thread
+        if thread is not None and thread.is_alive():
+            t0 = time.monotonic()
+            while (thread.is_alive() and self._deconnexion_faite is None
+                   and time.monotonic() - t0 < 15.0):
+                try:
+                    self.root.update()   # laisse _tick consommer la confirmation
+                except tk.TclError:
+                    break
+                time.sleep(0.05)
+        self.running = False
         self.archive.vider()      # jalon 15 : dossier temp des frames supprimé
         self.root.destroy()
 
@@ -3226,6 +3266,17 @@ class App:
                 self.camera.apply_settings(*self.pending_settings)
                 self.pending_settings = None
 
+            # Jalon 26b : déconnexion DEMANDÉE par le thread Tk → exécutée
+            # ICI (thread de travail, jamais d'appel natif concurrent au
+            # flux). L'empilement est arrêté, le TEC coupé, la caméra
+            # refermée ; la confirmation est consommée par _tick (UI).
+            if self._deconnexion_request:
+                self._deconnexion_request = False
+                self.empilement_on = False
+                self._executer_deconnexion(
+                    "qhy" if isinstance(self.camera, QHYCamera) else "autre")
+                break
+
             # Jalon 26 : « ▶ Démarrer » (empilement_start_request) → RESET
             # COMPLET de session exécuté ICI (thread de travail) — l'UI ne
             # touche jamais aux objets vivants du worker. Purge d'abord des
@@ -3716,6 +3767,32 @@ class App:
                     self.thread = threading.Thread(target=self._worker,
                                                    daemon=True)
                     self.thread.start()
+        # Jalon 26b : confirmation de DÉCONNEXION (thread de travail →
+        # thread Tk) — mise à jour de l'état des boutons et des lignes de
+        # contrôles UNE fois la caméra réellement refermée.
+        if self._deconnexion_faite is not None:
+            marque = self._deconnexion_faite
+            self._deconnexion_faite = None
+            self.thread = None
+            self.btn_start.config(state="normal")
+            self.btn_stop.config(state="disabled")
+            self.btn_deconnect.config(state="disabled")
+            self.cb_filtre.config(state="disabled")
+            self.btn_tec_on.config(state="disabled")
+            self.btn_tec_off.config(state="disabled")
+            self.lbl_tec.config(text="Capteur : — · TEC : —",
+                                foreground="#888888")
+            self.lbl_filtre.config(text="", foreground="#888888")
+            if marque == "qhy":
+                self.lbl_detect.config(
+                    text="QHY déconnectée — relancez l'application pour "
+                         "reconnecter (le SDK QHY ne peut pas être "
+                         "réinitialisé dans ce process).",
+                    foreground="#B06000")
+            else:
+                self.lbl_detect.config(text="Caméra déconnectée.",
+                                       foreground="#888888")
+            self.lbl_status.config(text="Caméra déconnectée.")
         # Jalon 19 : réglages de composition (gains R/G/B, radio « Canal L »)
         # lus CÔTÉ THREAD PRINCIPAL (variables Tk interdites dans le worker,
         # cf. piège) et poussés vers la façade si modifiés → appliqués au

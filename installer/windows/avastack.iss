@@ -2,12 +2,15 @@
 ;
 ; Deploiement LOCAL : copie l'application dans un dossier choisi par
 ; l'utilisateur, cree un venv, installe les dependances (numpy, opencv,
-; pillow, astropy + le paquet camera qhyccd), et cree un raccourci.
+; pillow, astropy + les paquets cameras qhyccd et zwoasi), et cree un
+; raccourci.
 ;
-; Les SDK binaires constructeurs (ASICamera2.dll, PlayerOneCamera.dll…) ne
-; sont PAS embarques (code proprietaire) : l'utilisateur les telecharge
-; ensuite et les depose dans le dossier d'installation - message explicite
-; en fin d'installation.
+; Les SDK binaires constructeurs poses par Alain a la racine du depot
+; (ASICamera2.dll, PlayerOneCamera.dll, ToupCam.dll, SVBCameraSDK.dll) sont
+; EMBARQUES dans l'installateur depuis le 19/09/2026 (decision d'Alain :
+; « j'ai mis dans le dossier principal toutes les dll des sdk, donc inclut
+; les ») - les paquet pip associes (zwoasi ; PlayerOne/Touptek/SVBONY en
+; ctypes direct, pas de paquet) sont installes via requirements.txt.
 ;
 ; Compilation : powershell -NoProfile -ExecutionPolicy Bypass -File build_avastack.ps1
 ; (recommande : la version est lue dans avastack/__init__.py et passee a ISCC
@@ -56,6 +59,12 @@ Source: "{#RepoRoot}\avastack\processing\*.py"; DestDir: "{app}\avastack\process
 Source: "{#RepoRoot}\avastack\external\*.py"; DestDir: "{app}\avastack\external"; Flags: ignoreversion
 Source: "{#RepoRoot}\avastack\ui\*.py"; DestDir: "{app}\avastack\ui"; Flags: ignoreversion
 Source: "{#RepoRoot}\requirements.txt"; DestDir: "{app}"; Flags: ignoreversion
+; SDK binaires des cameras (poses par Alain a la racine du depot) : charges
+; par avastack/cameras/sdk_loader.py dans le dossier du programme.
+Source: "{#RepoRoot}\ASICamera2.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#RepoRoot}\PlayerOneCamera.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#RepoRoot}\ToupCam.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#RepoRoot}\SVBCameraSDK.dll"; DestDir: "{app}"; Flags: ignoreversion
 ; Banc de diagnostic camera autonome (QHY) : outil d'Alain pour deboguer
 ; hors application (detection, controles SDK, refroidissement TEC, flux).
 Source: "{#RepoRoot}\_diag_camera_qhy.py"; DestDir: "{app}"; Flags: ignoreversion
@@ -214,15 +223,14 @@ begin
   end;
 
   PageSDK := CreateOutputMsgPage(wpInstalling,
-    'SDK des cameras', 'Bibliotheques constructeurs (optionnel, a ajouter ensuite)',
-    'AVAStack est installe avec le support QHY (paquet qhyccd inclus dans les ' +
-    'dependances). Pour les AUTRES marques de camera (ZWO, Player One, Touptek/' +
-    'Altair, SVBONY), telechargez le SDK du constructeur et copiez la DLL dans ' +
-    'le dossier d''installation APRES cette installation :' + #13#10#13#10 +
-    '- ZWO : ASICamera2.dll (astronomy-imaging-camera.com)' + #13#10 +
-    '- Player One : PlayerOneCamera.dll (player-one-astronomy.com)' + #13#10 +
-    '- Touptek/Altair : toupcam.dll (touptek.com)' + #13#10 +
-    '- SVBONY : SVBCameraSDK.dll (svbony.com)' + #13#10#13#10 +
+    'SDK des cameras', 'Bibliotheques constructeurs (incluses)',
+    'Les SDK binaires des cameras sont inclus dans le dossier ' +
+    'd''installation :' + #13#10#13#10 +
+    '- QHY : paquet qhyccd (SDK natif embarque dans le paquet pip)' + #13#10 +
+    '- ZWO : ASICamera2.dll + paquet zwoasi' + #13#10 +
+    '- Player One : PlayerOneCamera.dll (integration ctypes directe)' + #13#10 +
+    '- Touptek/Altair : ToupCam.dll (integration ctypes directe)' + #13#10 +
+    '- SVBONY : SVBCameraSDK.dll (integration ctypes directe)' + #13#10#13#10 +
     'Un fichier LISEZMOI.txt dans le dossier d''installation rappelle tout cela.');
 end;
 
@@ -277,7 +285,7 @@ begin
   ExtractTemporaryFile('avastack_setup.py');
   ScriptSetup := ExpandConstant('{tmp}\avastack_setup.py');
 
-  if not ExecEtVerifie('Creation du venv AVAStack (numpy/opencv/pillow/astropy/qhyccd)...',
+  if not ExecEtVerifie('Creation du venv AVAStack (numpy/opencv/pillow/astropy/qhyccd/zwoasi)...',
        PythonChoisi, '"' + ScriptSetup + '" create-venv --venv-dir "' + AppDir + '\venv" ' +
        '--requirements "' + AppDir + '\requirements.txt"', AppDir) then
     Exit;

@@ -230,6 +230,14 @@ def main():
         verifie(("exposure", 100000) in apps and ("gain", 2.0) in apps,
                 "exposition 100 ms → 100000 µs, gain 2.0")
 
+        print("[3b] stop_live/begin_live : exposés sur la CLASSE (roue)")
+        _FakeSDK.seq.clear()
+        c.stop_live()
+        c.begin_live()
+        verifie(("stop",) in _FakeSDK.seq and ("live",) in _FakeSDK.seq,
+                "stop_live()/begin_live() délèguent au handle "
+                "(appelés par le changement de filtre)")
+
         print("[4] close() : stop puis close")
         _FakeSDK.seq.clear()
         c.close()
