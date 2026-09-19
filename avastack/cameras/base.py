@@ -56,3 +56,8 @@ class CameraBase:
     def arreter_refroidissement(self):
         """Coupe le refroidissement (aucun effet par défaut)."""
         pass
+
+    def definir_offset(self, offset):
+        """Pose l'offset du capteur (aucun effet par défaut : seules les
+        caméras SDK qui l'exposent redéfinissent)."""
+        pass

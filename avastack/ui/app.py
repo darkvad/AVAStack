@@ -25,7 +25,7 @@ from ..cameras import (SOURCES, SimulatedCamera, OpenCVCamera, ZWOASICamera,
                        FolderCamera, MultiFolderCamera, QHYCamera,
                        PlayerOneCamera, TouptekCamera, SVBonyCamera)
 from ..cameras.base import FILTRES_ROUE
-from ..cameras.qhy import lister_via_sous_processus
+from ..cameras.qhy import lister_via_sous_processus, tracer_evt
 from ..processing import Calibrator, StarAligner, LiveStacker, DisplayProcessor
 from ..processing import alignment as align_mod
 from ..processing.composition import (COMPOSITIONS, MODES_L, ROLES,
@@ -126,6 +126,8 @@ class App:
         # dont la confirmation est consommée par _tick.
         self._deconnexion_request = False
         self._deconnexion_faite = None   # "qhy" | "autre" (worker → _tick)
+        self._deconnexion_t0 = 0.0       # heure de la demande (→ alerte 10 s)
+        self._deconnexion_alerte = False
         self._controles_sondes = False
         self._roue_ok = False            # roue détectée (worker → _tick)
         self._tec_ok = False             # refroidissement détecté (idem)
@@ -143,6 +145,7 @@ class App:
         self.pending_settings = None
         self.expo_ms = 100.0             # instantanés thread-safe (jalon 25)
         self.gain_val = 30.0
+        self.pending_offset = None       # jalon 27 : offset demandé (10-255)
         self.reset_request = self.ref_request = False
         self.save_request = self.saved_path = None
         self.save_canaux_request = None  # jalon 19 : dossier des canaux (compo)
@@ -573,9 +576,36 @@ class App:
         ms = min(max(float(ms), lo), hi)
         self.var_expo.set(ms)
         self.lbl_expo.config(text=_fmt_expo(ms))
+        self.var_expo_saisie.set(_fmt_expo(ms))
         if replacer:
             self.s_expo.set(self._pos_depuis_expo(ms))
         self._push_settings()
+
+    def _valider_expo(self, _e=None):
+        """Saisie directe de l'exposition (jalon 27) : accepte « 100 »,
+        « 0,5 », « 12 ms », « 2 s », « 11 µs » — borne à l'échelle courante
+        et BASCULE automatiquement d'échelle si la valeur déborde."""
+        t = self.var_expo_saisie.get().strip().lower().replace(",", ".")
+        t = t.replace(" ", "")
+        facteur = 1.0
+        if t.endswith("ms"):
+            t = t[:-2]
+        elif t.endswith(("µs", "us")):
+            t = t[:-2]
+            facteur = 0.001
+        elif t.endswith("s"):
+            t = t[:-1]
+            facteur = 1000.0
+        try:
+            ms = float(t) * facteur
+        except ValueError:
+            self.var_expo_saisie.set(_fmt_expo(self.var_expo.get()))
+            return
+        if ms > self._EXPO_COURT[1] and not self.var_expo_longue.get():
+            self.var_expo_longue.set(True)    # bascule automatique
+        elif ms < self._EXPO_LONG[0] and self.var_expo_longue.get():
+            self.var_expo_longue.set(False)
+        self._maj_expo(ms)
 
     def _on_echelle_expo(self):
         """Case « échelle longue » : garde la valeur réelle si elle reste
@@ -638,6 +668,7 @@ class App:
         self.btn_stop.pack(side="left", expand=True, fill="x", padx=1)
         self.var_expo = tk.DoubleVar(value=100.0)
         self.var_gain = tk.DoubleVar(value=30.0)
+        self.var_offset = tk.DoubleVar(value=10.0)
         # Contrôles caméra QHY (jalon 25 — demandes d'Alain du 19/09/2026) :
         # exposition log 11 µs → 5 s (case → 1 s à 900 s) ; gain 0 → 175
         # (unités SDK QHY) ; refroidissement (consigne, lecture, arrêt) ;
@@ -652,12 +683,20 @@ class App:
         self._filtre_info = None          # texte d'état roue (thread → _tick)
         self._roue_ok = False             # roue détectée (worker → _tick)
         # --- Exposition : curseur log dédié (11 µs – 5 s / 1 s – 900 s) ---
+        # Jalon 27 (demande d'Alain) : zone de saisie en PLUS du curseur
+        # (formats acceptés : « 100 », « 0,5 », « 12 ms », « 2 s », « 11 µs »).
         rowe = ttk.Frame(box)
         rowe.pack(fill="x", pady=1)
         heade = ttk.Frame(rowe)
         heade.pack(fill="x")
         ttk.Label(heade, text="Exposition").pack(side="left")
-        self.lbl_expo = ttk.Label(heade, text=_fmt_expo(100.0))
+        self.var_expo_saisie = tk.StringVar(value=_fmt_expo(100.0))
+        self.entry_expo = ttk.Entry(heade, textvariable=self.var_expo_saisie,
+                                    width=10, justify="right")
+        self.entry_expo.pack(side="right", padx=(0, 4))
+        self.entry_expo.bind("<Return>", self._valider_expo)
+        self.entry_expo.bind("<FocusOut>", self._valider_expo)
+        self.lbl_expo = ttk.Label(heade, text="")
         self.lbl_expo.pack(side="right")
         lignee = ttk.Frame(rowe)
         lignee.pack(fill="x")
@@ -676,7 +715,10 @@ class App:
             variable=self.var_expo_longue, command=self._on_echelle_expo)
         self.chk_expo_longue.pack(anchor="w")
         self._add_slider(box, "Gain (0 – 175)", self.var_gain, 0.0, 175.0,
-                         1.0, self._push_settings, "{:.0f}")
+                         1.0, self._push_settings, "{:.0f}", saisie=True)
+        self._add_slider(box, "Offset (0 – 255)", self.var_offset, 0.0,
+                         255.0, 1.0, self._push_settings, "{:.0f}",
+                         saisie=True)
         # --- Roue à filtres intégrée (active si la roue répond, cf. worker)
         rowf = ttk.Frame(box)
         rowf.pack(fill="x", pady=(2, 0))
@@ -1232,23 +1274,50 @@ class App:
         self.cv_img.bind("<Double-Button-1>", self._on_img_dblclick)
         self.cv_img.bind("<Configure>", lambda e: self._render())
 
-    def _add_slider(self, parent, label, var, frm, to, res, onchange=None, fmt="{:g}"):
+    def _add_slider(self, parent, label, var, frm, to, res, onchange=None,
+                    fmt="{:g}", saisie=False):
         """Curseur + étiquette de valeur + boutons « - »/« + » (demande
         d'Alain, jalon 6) : réglage FIN sans devoir viser à la souris.
         Un clic = ±1 pas (res), aligné sur la grille du curseur ; clic
         MAINTENU = répétition (400 ms puis toutes les 80 ms) pour parcourir
-        une grande plage sans cliquer 200 fois. Clamps aux bornes frm/to."""
+        une grande plage sans cliquer 200 fois. Clamps aux bornes frm/to.
+        saisie=True (jalon 27, demande d'Alain) : le label de valeur devient
+        une ZONE DE SAISIE (nombre acceptant la virgule ; Return ou sortie
+        de champ applique et borne ; le curseur suit)."""
         row = ttk.Frame(parent)
         row.pack(fill="x", pady=1)
         head = ttk.Frame(row)
         head.pack(fill="x")
         ttk.Label(head, text=label).pack(side="left")
-        lab_val = ttk.Label(head, text=fmt.format(var.get()))
-        lab_val.pack(side="right")
+        var_txt = tk.StringVar(value=fmt.format(var.get()))
+        if saisie:
+            lab_val = ttk.Entry(head, textvariable=var_txt, width=8,
+                                justify="right")
+            lab_val.pack(side="right")
+
+            def valider(_e=None):
+                try:
+                    v = float(var_txt.get().strip().replace(",", "."))
+                except ValueError:
+                    var_txt.set(fmt.format(var.get()))
+                    return
+                v = min(max(v, frm), to)
+                v = frm + round((v - frm) / res) * res
+                s.set(round(v, 6))   # rappelle cmd() → var + texte + onchange
+                var_txt.set(fmt.format(var.get()))
+
+            lab_val.bind("<Return>", valider)
+            lab_val.bind("<FocusOut>", valider)
+        else:
+            lab_val = ttk.Label(head, text=fmt.format(var.get()))
+            lab_val.pack(side="right")
 
         def cmd(v):
             var.set(float(v))
-            lab_val.config(text=fmt.format(float(v)))
+            if saisie:
+                var_txt.set(fmt.format(float(v)))   # Entry (StringVar)
+            else:
+                lab_val.config(text=fmt.format(float(v)))
             if onchange:
                 onchange()
 
@@ -1598,6 +1667,7 @@ class App:
         self.gain_val = float(self.var_gain.get())
         if self.camera is not None:
             self.pending_settings = (self.expo_ms, self.gain_val)
+            self.pending_offset = float(self.var_offset.get())
 
     # --- contrôles caméra QHY (jalon 25) : demandes posées ICI (thread Tk),
     # consommées par le thread de travail — jamais d'appel SDK depuis Tk.
@@ -2058,6 +2128,8 @@ class App:
         directement, mais hors flux (caméra déjà arrêtée)."""
         self.empilement_on = False
         self._deconnexion_request = True
+        self._deconnexion_t0 = time.monotonic()
+        self._deconnexion_alerte = False
         if self.thread is not None and self.thread.is_alive():
             self.btn_deconnect.config(state="disabled")
             self.lbl_status.config(text="Déconnexion en cours…")
@@ -2069,22 +2141,40 @@ class App:
         """Fermeture EFFECTIVE de la caméra — appelé PAR LE THREAD DE
         TRAVAIL (jalon 26b), ou depuis le thread Tk UNIQUEMENT si le worker
         ne tourne plus (aucun flux actif). `marque` : "qhy" | "autre".
-        Le résultat (`_deconnexion_faite`) est consommé par _tick."""
+        Le résultat (`_deconnexion_faite`) est consommé par _tick.
+
+        Jalon 27 (constat réel : déconnexion silencieusement sans effet) :
+        CHAQUE étape est tracée dans le journal QHY (avastack_qhy_debug.log)
+        — le close() passe EN PREMIER (il coupe le flux ET le TEC en une
+        seule opération ; écrire le contrôle TEC en régulation avant le
+        close était le suspect du blocage), et l'arrêt explicite du TEC ne
+        sert qu'en repli si le close échoue."""
+        tracer_evt(f"--- déconnexion ({marque}) demandée")
         try:
             cam = self.cam_pilotee or (self.camera
                                        if isinstance(self.camera, QHYCamera)
                                        else None)
             if cam is not None:
                 try:
-                    cam.arreter_refroidissement()
-                except Exception:
-                    pass    # caméra déjà fermée / TEC absent : rien à faire
+                    cam.close()
+                    tracer_evt("déconnexion : caméra refermée (close OK)")
+                except Exception as e:
+                    tracer_evt(f"déconnexion : close en échec ({e}) — "
+                               "tentative arrêt TEC puis close")
+                    try:
+                        cam.arreter_refroidissement()
+                    except Exception as e2:
+                        tracer_evt(f"déconnexion : arrêt TEC en échec ({e2})")
+                    try:
+                        cam.close()
+                        tracer_evt("déconnexion : close OK (2e tentative)")
+                    except Exception as e3:
+                        tracer_evt(f"déconnexion : close en échec ({e3})")
         finally:
             self.cam_pilotee = None
-            if self.camera:
-                self.camera.close()
-                self.camera = None
+            self.camera = None
         self._deconnexion_faite = marque
+        tracer_evt("déconnexion terminée")
 
     def _deconnecter_camera(self):
         """« ⏏ Déconnecter » (jalon 26) : referme la caméra — le TEC est
@@ -3266,6 +3356,16 @@ class App:
                 self.camera.apply_settings(*self.pending_settings)
                 self.pending_settings = None
 
+            # Jalon 27 : OFFSET (contrôle 7, SDK QHY) — demande posée par
+            # le thread Tk, exécutée ICI ; no-op silencieux pour les sources
+            # qui n'ont pas d'offset (base no-op).
+            if self.pending_offset is not None:
+                off, self.pending_offset = self.pending_offset, None
+                try:
+                    self.camera.definir_offset(off)
+                except Exception:
+                    pass
+
             # Jalon 26b : déconnexion DEMANDÉE par le thread Tk → exécutée
             # ICI (thread de travail, jamais d'appel natif concurrent au
             # flux). L'empilement est arrêté, le TEC coupé, la caméra
@@ -3748,6 +3848,7 @@ class App:
                 self._controles_sondes = False
                 self._roue_ok = self._tec_ok = False
                 self.pending_settings = (self.expo_ms, self.gain_val)
+                self.pending_offset = float(self.var_offset.get())
                 self.var_filtre.set(FILTRES_ROUE[0])
                 self.cb_filtre.config(state="disabled")
                 self.lbl_filtre.config(text="", foreground="#888888")
@@ -3773,6 +3874,7 @@ class App:
         if self._deconnexion_faite is not None:
             marque = self._deconnexion_faite
             self._deconnexion_faite = None
+            self._deconnexion_alerte = False
             self.thread = None
             self.btn_start.config(state="normal")
             self.btn_stop.config(state="disabled")
@@ -3793,6 +3895,19 @@ class App:
                 self.lbl_detect.config(text="Caméra déconnectée.",
                                        foreground="#888888")
             self.lbl_status.config(text="Caméra déconnectée.")
+        # Jalon 27 : si la demande de déconnexion ne confirme pas en 10 s,
+        # LE DIRE (constat : déconnexion silencieusement sans effet) — le
+        # log QHY (avastack_qhy_debug.log) dit l'étape exacte bloquée.
+        if (self._deconnexion_request and not self._deconnexion_alerte
+                and time.monotonic() - self._deconnexion_t0 > 10.0):
+            self._deconnexion_alerte = True
+            self.lbl_detect.config(
+                text="QHY : la déconnexion ne répond pas (SDK bloqué) — "
+                     "fermez la fenêtre pour libérer la caméra, et "
+                     "relancez l'application.",
+                foreground="#d04040")
+            self.lbl_status.config(
+                text="Déconnexion en échec — fermez l'application.")
         # Jalon 19 : réglages de composition (gains R/G/B, radio « Canal L »)
         # lus CÔTÉ THREAD PRINCIPAL (variables Tk interdites dans le worker,
         # cf. piège) et poussés vers la façade si modifiés → appliqués au

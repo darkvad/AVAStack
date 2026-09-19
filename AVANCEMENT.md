@@ -11,30 +11,32 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version : AVAStack v2.14.3** (`avastack/__init__.py`), branche `master`.
-  Dernier jalon : **CORRECTIFS ROUE + DÉCONNEXION + INSTALLATEUR** (19/09/2026
-  soir, constats réels d'Alain).
-  - (1) « QHYCamera object has no attribute 'stop_live' » : le changement de
-    filtre appelait stop_live/begin_live sur la CLASSE — `QHYCamera` les
-    expose désormais (délégation au handle + trace, vérifié par le faux SDK,
-    32 vérifications).
-  - (2) « ⏏ Déconnecter » sans effet + fermeture impossible : les appels
-    natifs (TEC, close) partaient du thread Tk PENDANT la lecture du flux
-    par le worker → conflit du SDK natif. La déconnexion est maintenant une
-    DEMANDE exécutée par le worker (confirmation → _tick met à jour l'UI) ;
-    la fermeture demande, attend (borne 15 s, UI rafraîchie) puis détruit.
-  - (3) INSTALLATEUR : DLL des SDK constructeurs (ASICamera2, PlayerOne,
-    ToupCam, SVBCameraSDK) embarquées dans l'installateur (posées par Alain
-    à la racine — hors dépôt git : *.dll dans .gitignore) ; paquet pip
-    zwoasi installé (requirements.txt décommenté) ; LISEZMOI.txt et page SDK
-    mis à jour.
-  - Jalons précédents : v2.14.2 (connexion figée = variables Tk lues hors
-    thread Tk), v2.14.1 (connexion à la détection, Démarrer = empilement
-    seul, Arrêter = pause, relecture TEC 2 s), v2.14.0 (roue ctrl 17/48+n,
-    TEC 18/14/15/16, exposition log, gain 0-175, FITS FILTER).
-  - **À valider en réel (miniPC)** : filtre changeable pendant la pause ET
-    l'empilement, ⏏ Déconnecter effectif (TEC coupé, caméra refermée),
-    fermeture de la fenêtre immédiate, installateur avec DLL + zwoasi.
+- **Version : AVAStack v2.15.0** (`avastack/__init__.py`), branche `master`.
+  Dernier jalon : **OFFSET + ZONES DE SAISIE + DÉCONNEXION TRACÉE** (jalon 27,
+  demandes d'Alain du 19/09/2026).
+  - **OFFSET** : contrôle 7 (unités SDK) — contrat no-op `definir_offset`
+    (`CameraBase`), implémenté sur QHYCamera ; slider « Offset (0 – 255) »
+    (défaut 10) dans le cadre Caméra, poussé comme les réglages
+    (pending_offset, exécuté par le worker) et posé à la connexion. À
+    valider en réel (le SDK stocke sans valider — effet physique).
+  - **ZONES DE SAISIE** : Gain et Offset → Entry à la place du label de
+    valeur (Return/sortie de champ = application + bornage, curseur suit) ;
+    EXPOSITION → Entry dédiée acceptant « 100 », « 0,5 », « 12 ms », « 2 s »,
+    « 11 µs », avec bascule automatique d'échelle (courte ↔ longue) si la
+    valeur déborde.
+  - **DÉCONNEXION TRACÉE** : chaque étape dans le journal QHY ; close() en
+    premier (coupe flux + TEC — l'écriture TEC en régulation avant close
+    était le suspect du blocage silencieux) ; si pas de confirmation en
+    10 s → message rouge dans l'UI (fermer la fenêtre = sortie bornée 15 s).
+  - Jalons précédents : v2.14.3 (stop_live/begin_live sur la classe QHY,
+    déconnexion via le worker, DLL SDK embarquées + zwoasi), v2.14.2
+    (connexion figée = Tk hors thread), v2.14.1 (connexion à la détection,
+    Démarrer = empilement seul, Arrêter = pause, relecture TEC 2 s),
+    v2.14.0 (roue ctrl 17/48+n, TEC 18/14/15/16, exposition log, gain
+    0-175, FITS FILTER).
+  - **À valider en réel (miniPC)** : offset (effet physique), saisies
+    expo/gain/offset, ⏏ Déconnecter (si échec : message rouge + log QHY à
+    transmettre), filtre pendant pause/empilement.
 
   - **Verdict ROI automatique** (2e run réel, 19/09/2026) : le log de
     « Démarrer » ne contenait TOUJOURS aucune ligne `set_resolution`, même

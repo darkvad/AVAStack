@@ -56,7 +56,14 @@ CTRL_CFW_PORT = 17      # CfwPort    : position de la roue, ASCII → 48 + n
                         #             ctrl 44 « CfwSlotsNum » est INDISPO en
                         #             réel → la disponibilité se teste sur 17)
 CTRL_CONSIGNE = 18      # Cooler     : consigne de régulation (°C, mode auto)
+CTRL_OFFSET = 7         # Offset     : offset du capteur (unités SDK)
 VALEUR_ERREUR = 4294967295.0   # sentinelle d'erreur du SDK (0xFFFFFFFF)
+
+
+def tracer_evt(message):
+    """Point d'entrée de trace POUR L'APPLICATION (déconnexion, contrôles) :
+    écrit dans le même journal QHY (diagnostic des blocages natifs)."""
+    _tracer(message)
 
 
 def _tracer(message):
@@ -387,6 +394,13 @@ class QHYCamera(CameraBase):
             raise RuntimeError("caméra fermée — TEC inaccessible")
         self.cam.set_param(CTRL_MANUAL_PWM, 0.0)
         _tracer("arreter_refroidissement : set_param(16, 0) — TEC coupé")
+
+    def definir_offset(self, offset):
+        """Pose l'offset du capteur (contrôle 7, unités SDK)."""
+        if self.cam is None:
+            raise RuntimeError("caméra fermée — offset inaccessible")
+        self.cam.set_param(CTRL_OFFSET, float(offset))
+        _tracer(f"definir_offset : set_param({CTRL_OFFSET}, {float(offset):g})")
 
     def close(self):
         if self.cam is not None:

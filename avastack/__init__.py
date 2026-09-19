@@ -14,9 +14,35 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.14.3"
+AVASTACK_VERSION = "2.15.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.15.0 : OFFSET + ZONES DE SAISIE + DÉCONNEXION TRACÉE (jalon 27, demandes
+#          d'Alain du 19/09/2026 : « il manque l'offset ; pour l'exposition,
+#          l'offset et le gain, une zone de saisie en plus des sliders
+#          serait très pratique » + « Déconnecter n'a rien fait, pas de
+#          messages »).
+#          (1) OFFSET (contrôle 7, unités SDK) : contrat no-op
+#          `definir_offset` sur `CameraBase`, implémenté sur QHYCamera
+#          (set_param(7)) ; slider « Offset (0 – 255) » dans le cadre
+#          Caméra, valeur poussée comme les réglages (pending_offset,
+#          exécutée par le worker, jamais depuis Tk) ; posée aussi à la
+#          connexion. À VALIDER EN RÉEL (le SDK stocke sans valider : seul
+#          l'effet physique tranche — leçon du 19/09).
+#          (2) ZONES DE SAISIE : `_add_slider(..., saisie=True)` remplace le
+#          label de valeur par une Entry (Return ou sortie de champ =
+#          application + bornage sur la grille ; le curseur suit) — activé
+#          pour Gain et Offset. EXPOSITION : Entry dédiée acceptant « 100 »,
+#          « 0,5 », « 12 ms », « 2 s », « 11 µs » — bornée à l'échelle
+#          courante avec BASCULE AUTOMATIQUE d'échelle si la valeur déborde.
+#          (3) DÉCONNEXION TRACÉE : chaque étape de `_executer_deconnexion`
+#          passe dans le journal QHY (avastack_qhy_debug.log) — close() en
+#          PREMIER (coupe flux ET TEC en une opération ; l'écriture du
+#          contrôle TEC en régulation avant close était le suspect du
+#          blocage silencieux), arrêt TEC explicite en repli seulement ; si
+#          la déconnexion ne confirme pas en 10 s, message visible dans
+#          l'UI (rouge) invitant à fermer la fenêtre (fermeture bornée 15 s,
+#          puis sortie forcée).
 # v2.14.3 : CORRECTIFS ROUE + DÉCONNEXION + INSTALLATEUR (constats réels
 #          d'Alain, 19/09/2026 en fin de soirée).
 #          (1) CHANGEMENT DE FILTRE EN ÉCHEC (« QHYCamera object has no

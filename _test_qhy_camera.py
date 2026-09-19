@@ -336,6 +336,10 @@ def main():
         c8.arreter_refroidissement()
         verifie(("param", 16, 0.0) in _FakeSDK.seq,
                 "arreter_refroidissement → set_param(16, 0) (PWM manuel 0)")
+        _FakeSDK.seq.clear()
+        c8.definir_offset(130)
+        verifie(("param", 7, 130.0) in _FakeSDK.seq,
+                "definir_offset → set_param(7, valeur) (unités SDK)")
         c8.close()
     finally:
         if ancien is not None:
