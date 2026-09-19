@@ -282,35 +282,34 @@ dans le changelog du source et l'historique git.)
   forcément de la nuit courante).
 ---
 
-## 🔚 Clôture de session — 19/09/2026 (soir)
+## 🔚 Clôture de session — 19/09/2026 (fin de soirée)
 
-Demande d'Alain : « on clôture cette session ». État : tests **32/32 OK**
-(vérifiés par Alain), banc validé (test de fumée), **commit `1717b94` poussé**
-sur `master`. **Installateur NON rebuildé** (consigne de la session : on ne
-travaille que sur le diagnostic caméra) → l'artefact en place reste celui de
-la **v2.13.3** : à rebuilder à la prochaine occasion, la version source étant
-2.13.4.
+Demande d'Alain : « mon setup est en train d'imager, je testerai une autre
+fois, clôture la session ». État : **v2.15.0 poussée** (`0a10a3e`),
+installateur REBUILDÉ (avec DLL SDK + zwoasi), tests **32/32 OK**.
 
-**Prochaines étapes, dans l'ordre (à reprendre au début de la prochaine
-session) :**
+**Prochaines vérifications de nuit (à reprendre à la prochaine session,
+miniPC, version installée v2.15.0) — dans l'ordre :**
+1. **Connexion** : sélection QHY → « connectée » vert en quelques secondes ;
+   lignes Filtre + Refroidissement actives SANS démarrer l'empilement (jalon
+   26 — les jalons 26/27 n'ont PAS encore été validés en réel).
+2. **Refroidissement** : consigne (alim. 12 V branchée), % TEC, ⏹ Arrêter.
+3. **Filtre** : choisir L/R/G/B/… avant puis PENDANT l'empilement (le
+   stop_live AttributeError de v2.14.2 est corrigé — non revérifié en réel).
+4. **Offset + saisies** : effet physique de l'offset (SDK stocke sans
+   valider), saisie directe expo (« 2 s » → bascule d'échelle auto),
+   gain/offset.
+5. **⏏ Déconnecter** : message attendu « Caméra déconnectée. » — si blocage
+   encore silencieux, message rouge à 10 s puis transmettre
+   `%TEMP%\avastack_qhy_debug.log` (les étapes de déconnexion y sont
+   tracées depuis v2.15.0 — close() en premier).
+6. **Pause/reprise** : ▶/■ avec le MÊME empilement ; fermeture de la
+   fenêtre propre (borne 15 s).
+⚠️ Le setup IMAGE pendant ces tests : ne pas perturber la session
+N.I.N.A. en cours sur le miniPC (tester AVAStack sur une autre machine ou
+après la nuit).
 
-1. **Diagnostic caméra QHY — non terminé**. Le flux fonctionne (banc :
-   détection → ouverture → ROI posée → frames), mais deux points restent
-   ouverts :
-   - **ROI sur le miniPC** : confirmer par le bloc « fichiers réellement
-     chargés » + le **verdict ROI** du banc que la copie installée de
-     `avastack/cameras/qhy.py` est bien à jour (c'est la cause désignée du
-     plantage « Démarrer »).
-   - **Plage réelle du gain QHY : INCONNUE** (le balayage passe partout,
-     donc ne démontre rien) → méthode à changer : effet physique à gain
-     croissant, ou doc constructeur.
-2. **Relancer le banc ET l'appli en cas de reprise** : l'état du SDK QHY
-   n'est pas réinitialisable dans le process (après un Arrêter, plus aucune
-   frame) — limite qui vaut aussi pour l'appli (à traiter côté appli le jour
-   où ce sera prioritaire).
-3. **Ensuite seulement** : recalibrer le curseur de gain de l'appli (0,5-8,0
-   actuellement = échelle Player One, inadaptée au SDK QHY) et rebuilder
-   l'installateur.
+---
 
 ## ✅ Jalon 25 (v2.14.0) — CONTRÔLES CAMÉRA QHY : ROUE À FILTRES +
 ## REFROIDISSEMENT (19/09/2026, session suivante)
