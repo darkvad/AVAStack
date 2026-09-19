@@ -102,6 +102,33 @@ dans le changelog du source et l'historique git.)
   (dont `_test_qhy_camera.py`, banc auto-testé sans caméra). Jalon 24
   (v2.13.0, gradient + débruitage par couche) : validations réelles
   toujours en attente ; garde-fou jalon 23b actif en mono.
+- **Recherche « roue à filtres intégrée » (19/09/2026, en soirée) —
+  VOIE A VALIDÉE par Alain, AUCUN code écrit** (reprise prévue, cf. section
+  « Roue à filtres » plus bas) :
+  - La roue INTÉGRÉE de la MiniCam8M se pilote par les CONTRÔLES de la
+    caméra, avec les méthodes DÉJÀ exposées par le binding : nombre de slots
+    = `get_param(44)` (**CfwSlotsNum**), position courante = `get_param(17)`
+    (**CfwPort**, valeur **ASCII**), déplacement = `set_param(17, 48 + n)`,
+    disponibilité = `is_control_available(17/44)`. **Relevé réel d'Alain :
+    ctrl 17 = 49 alors qu'on était sur le filtre 1 → la convention est
+    `48 + n`** (celle de la crate Rust `qhyccd-rs`), et NON le `'0'` =
+    position 1 de la doc QHY / du pilote INDI, décalé d'un cran (l'ambiguïté
+    ne se tranche que par le slot PHYSIQUE, pas par une relecture).
+  - Le paquet PyPI `qhyccd` 0.1.3 **n'expose AUCUNE API de roue** (seuls
+    `Camera`, `init_sdk`, `scan_cameras` + utilitaires de chemins) : la
+    classe `FilterWheel` existe dans la crate Rust mais n'est pas exportée.
+    En revanche le SDK natif COMPLET est embarqué :
+    `venv\Lib\site-packages\vendor\lib\windows-x86_64\qhyccd.dll`
+    (**SDK QHYCCD 26-06-04**, 6 Mo) exporte `IsQHYCCDCFWPlugged`,
+    `GetQHYCCDCFWStatus`, `SendOrder2QHYCCDCFW`, `GetQHYCCDParam`,
+    `SetQHYCCDParam` et **`ReleaseQHYCCDResource`** — absente du binding :
+    la limite « état du SDK irréinitialisable dans le process » vient donc
+    du BINDING, pas de la DLL (la DLL, elle, connaît explicitement la
+    miniCAM8 : `QHYMINICAM8.CPP` / `.H`).
+  - **DÉCISION d'Alain : pas de ctypes du tout** → tout passe par les
+    contrôles 17/44 du binding ; les fonctions CFW natives ne seront pas
+    appelées.
+
 - **Pièges récents (jalon 20-24)** : `var.get()` Tkinter interdit hors
   thread principal (bouchons `_Val`) ; crash OpenCV 5/OpenCL au teardown
   (`cv2.ocl.setUseOpenCL(False)`) ; tout test qui crée `ui.App` doit être
@@ -168,6 +195,45 @@ dans le changelog du source et l'historique git.)
    constructeur, plage actuelle 0,5-8,0 = bridée). En cas de crash natif :
    `%TEMP%\avastack_qhy_debug.log` donne la dernière étape réussie.
 
+5. **Roue à filtres MiniCam8M (nouveau, 19/09/2026)** : sur le miniPC,
+   avec le banc — « 🔬 Lister les contrôles » doit montrer
+   `44 CfwSlotsNum` (le nombre RÉEL de slots) et `17 CfwPort` (48-55 = code
+   ASCII) ; puis « ✍ Écrire » ctrl 17 = 48+n et vérifier l'EFFET PHYSIQUE
+   (slot vide ou filtre opaque → l'image change). **Aucun code appli avant
+   ce verdict.**
+
+## 🎡 Roue à filtres MiniCam8M — conception validée (19/09/2026)
+
+- **Pilotage** : position = contrôle 17 (`CfwPort`) en ASCII `48 + n`
+  (n = 1..N), nombre de slots = 44 (`CfwSlotsNum`), roue présente =
+  `is_control_available(17)`. Position relue À LA DEMANDE, jamais mémorisée
+  (QHY précise que la position n'est fiable qu'une fois la rotation de retour
+  au « home » terminée — logiciel lancé trop tôt = position affichée fausse).
+- **Fin de rotation** : relecture de 17 en boucle jusqu'à la position cible,
+  **timeout 25 s** (valeur conseillée par la doc QHY) + temporisation entre
+  deux lectures. Écriture et attente DANS le thread de travail, jamais sur le
+  thread Tk.
+- **Jeu de filtres** : libellés configurables (L/R/G/B/Hα/SII/OIII…) et
+  **filtre écrit dans les en-têtes FITS** des images en sortie.
+- **Séquence d'acquisition** (décision d'Alain, vaut aussi pour le live
+  stacking MULTIBANDE) : le changement de filtre **arrête l'acquisition**
+  puis la **reprend** quand la rotation est terminée → **purge des frames
+  arrivées pendant la rotation** (ne jamais empiler deux filtres dans le
+  même empilement).
+- **À implémenter (prochaine session)** : contrat dans `cameras/base.py`
+  (no-op par défaut, dans l'esprit d'`apply_settings`) ; lecture /
+  disponibilité + déplacement TRACÉ dans `cameras/qhy.py` (log QHY existant) ;
+  ligne « Filtre » dans le cadre Caméra de `ui/app.py`, active seulement si
+  la source a une roue ; demande consommée par le `_worker` à la manière de
+  `pending_settings` (~ligne 2776) ; `_test_qhy_camera.py` étendu (faux SDK
+  gérant 17/44 — les 32 tests actuels doivent rester verts) ; bump de version
+  + changelog dans `avastack/__init__.py`. **Aucune dépendance nouvelle** →
+  `requirements.txt` inchangé.
+- **Pièges** : `48 + n` et non `47 + n` (un décalage d'un cran est invisible
+  sans comparaison au slot PHYSIQUE) ; roue absente
+  (`is_control_available(17)` faux) → l'UI reste inactive, sans erreur ;
+  ne jamais écrire 17 avant que la caméra soit ouverte.
+
 ## Rappels utiles (court terme)
 
 - **Tests** (PowerShell, venv) :
@@ -204,6 +270,15 @@ dans le changelog du source et l'historique git.)
   relevé quand la décision sert d'ANCRE (sans prédiction) ; (2) deux
   normalisations indépendantes rendent une SSD aveugle — toute
   comparaison d'images doit partager les bornes de normalisation.
+- **CLAUDE.md — 2 leçons « roue à filtres » ÉCRITES le 19/09/2026**
+  (accord explicite d'Alain, même session) : (1) avant de conclure qu'une
+  fonctionnalité manque, introspecter AUSSI les exports de la DLL native
+  embarquée sous le binding (et sa version) — la DLL `qhyccd.dll` (SDK
+  26-06-04) exporte toute l'API `...CFW...` alors que le binding Python
+  n'expose que `Camera`/`init_sdk`/`scan_cameras` ; (2) une correspondance
+  « valeur d'API ↔ position physique » ne se déduit ni d'une relecture ni d'une
+  doc : `'0'` (doc QHY/INDI) vs `48 + n` (crate Rust, relevé réel
+  `ctrl 17 = 49` sur le filtre 1) — seul l'effet sur le matériel tranche.
 - **CLAUDE.md — 3 leçons du diagnostic caméra QHY ÉCRITES le 19/09/2026**
   (accord explicite d'Alain en clôture de session) : (1) SDK natif :
   introspection d'abord (`init_sdk` une seule fois, aucune fonction de

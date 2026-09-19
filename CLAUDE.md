@@ -427,6 +427,38 @@ Pièges :
   réglage d'un balayage qui n'échoue jamais ; (c) une valeur « acceptée » par
   un SDK sans doc de bornes reste INCONNUE tant qu'un effet n'est pas mesuré.
 
+- **AVANT de conclure qu'une fonctionnalité MANQUE, introspecter AUSSI la
+  DLL native embarquée sous le binding Python** (constat réel du 19/09/2026,
+  roue à filtres de la MiniCam8M). Le paquet PyPI `qhyccd` n'expose que trois
+  entrées (`Camera`, `init_sdk`, `scan_cameras` + des utilitaires de chemins)
+  et AUCUNE API de roue à filtres — ce qui laissait croire qu'il faudrait
+  réimplémenter tout le cycle SDK en ctypes (init, scan, ouverture du handle,
+  code de la roue). Or la DLL que ce paquet EMBARQUE et charge lui-même
+  (`site-packages/vendor/lib/windows-x86_64/qhyccd.dll`, **SDK QHYCCD
+  26-06-04**) exporte l'API C complète : `IsQHYCCDCFWPlugged`,
+  `GetQHYCCDCFWStatus`, `SendOrder2QHYCCDCFW`, `GetQHYCCDParam`,
+  `SetQHYCCDParam` — et aussi `ReleaseQHYCCDResource`, ABSENTE du binding, ce
+  qui prouve que la limite « état global du SDK irréinitialisable dans le
+  process » vient du BINDING et non de la bibliothèque. Mieux : le pilotage
+  utile passait par de simples CONTRÔLES déjà exposés en Python
+  (`get_param(44)` = nombre de positions, `set_param(17, 48 + n)` =
+  position). Corollaire : l'introspection d'un binding se fait à DEUX niveaux
+  (surface Python ET exports de la DLL), le code source de la crate Rust qui
+  le sous-tend (ici `qhyccd-rs`, MIT/Apache) documente ce que la surface Python
+  ne montre pas, et la VERSION du SDK embarqué doit être relevée (un modèle
+  récent n'est pas forcément implémenté par une DLL ancienne).
+- **La correspondance « valeur d'API ↔ position PHYSIQUE » ne se déduit ni
+  d'une relecture ni d'une documentation : seul l'effet sur le matériel
+  tranche** (constat réel du 19/09/2026, position de la roue à filtres QHY). La
+  position s'échange en ASCII : la doc QHY et le pilote INDI encodent la
+  position 1 en `'0'`, tandis que la crate `qhyccd-rs` (donc le binding Python
+  utilisé) l'encode `'1'` — un cran d'écart entre deux implémentations de la
+  MÊME commande, et c'est la convention `48 + n` qui a été constatée sur la
+  caméra (`ctrl 17 = 49` alors que la roue était sur le filtre 1). Aucune
+  relecture ne distingue ce décalage : seul un repère VISIBLE dans l'image
+  (slot vide, filtre opaque, niveau de fond) dit quel slot physique a
+  réellement été appelé.
+
 ## Leçons générales transposables (projet pipeline siril)
 
 - **Toute fonction opérant sur des données image : vérifier si elle suppose
