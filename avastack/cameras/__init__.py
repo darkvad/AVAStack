@@ -7,6 +7,7 @@ __init__.py (le registre sera enrichi en commit B).
 """
 
 from .base import CameraBase
+from .capacites import Capacites, Controle, GAIN_UNITAIRE_CONNU
 from .simulated import SimulatedCamera
 from .opencv_cam import OpenCVCamera
 from .zwo import ZWOASICamera

@@ -14,9 +14,89 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.15.0"
+AVASTACK_VERSION = "2.16.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.16.0 : CAPACITÉS DYNAMIQUES PAR MARQUE (jalon 29, objectif d'Alain du
+#          19/09/2026 : « pour une marque, être capable EN DYNAMIQUE de
+#          connaître les capacités de la caméra » — il n'a pas accès à
+#          toutes les caméras de ces marques, donc RIEN ne doit être codé
+#          en dur par modèle) :
+#          - avastack/cameras/capacites.py (NOUVEAU) : modèle commun
+#            `Capacites` (plages expo/gain/offset, TEC + consigne, bins,
+#            formats, USB3, ST4, roue, série, énumération brute des
+#            contrôles) + `Controle` + table GAIN_UNITAIRE_CONNU
+#            (annotation par capteur — IMX585 : 210 — jamais un réglage) +
+#            vers_texte() (verdict) et vers_dict() (archivage JSON).
+#          - Contrat `detecter_capacites()` sur `CameraBase` (no-op →
+#            None), implémenté pour les 3 SDK qui exposent la découverte
+#            dynamique (vérifié dans les exports des DLL livrées) :
+#            * Player One : sonde `POASonde` (structures + validation du
+#              layout « récent/ancien » déplacées du banc dans
+#              playerone.py — UNE définition, le banc délègue désormais ;
+#              POASetConfig passe enfin la vraie union POAConfigValue au
+#              lieu d'un entier nu) ;
+#            * ZWO : ctypes direct sur ASICamera2.dll (ASIGetNumOfControls
+#              + ASIGetControlCaps + fiche ASI_CAMERA_INFO — structs du
+#              wrapper de référence python-zwoasi, MIT) ;
+#            * SVBONY : ctypes sur SVBCameraSDK.dll (SVBGetNumOfControls +
+#              SVBGetControlCaps + fiche SVBCameraProperty — structs du
+#              wrapper pysvbony, MIT) ;
+#            * QHY : le binding PyPI n'expose aucune fonction de plages →
+#              capacités PARTIELLES reportées (à compléter plus tard).
+#          - Sonde = sur caméra OUVERTE : à appeler entre open() et
+#            close(). Tests : nouveau `_test_capacites.py` (faux SDK) +
+#            banc POA refactoré (25/25) + batterie complète au vert.
+#          - PREMIER RELEVÉ RÉEL (Uranus-C Pro, 19/09/2026 soir, banc
+#            v2.16) : gain 0→750 (PAS ce qu'on aurait deviné — preuve que
+#            tout doit rester dynamique), offset 0→250, expo 10 µs→
+#            2000000000 µs (ctrl 0), bins [1,2,3,4] (bin 3 inclus !), TEC
+#            -50→30 °C, e-/ADU annoncé 11,4, formats RAW8/RAW16/RGB24/
+#            MONO8, ST4 non, n° série CAMD31905CE042109000. FOURNIT AUSSI
+#            4 DÉFAUTS, corrigés dans la foulée :
+#            (1) contrôles FLOTTANTS relus comme des ENTIERS par le banc
+#                (température affichée -1073741824 = bits du flottant -2.0)
+#                → le banc passe désormais par sonde.lister() qui remplit
+#                le cache de types (test 3b dédié) ;
+#            (2) libellé « EGAIN lu » trompeur (c'était le défaut, qui est
+#                d'ailleurs HORS de ses propres bornes [0,10] — signalé
+#                « attribut peu fiable ») → le verdict montre courant +
+#                défaut + avertissement de cohérence ;
+#            (3) padding du tableau imgFormats_ compté comme formats
+#                (4 × RAW8) → `dedupliquer()` appliqué aux bins/formats
+#                dans les 3 sondes ;
+#            (4) contrôle 31 « Exp » (exposition en SECONDES, flottant,
+#                max 7200 s — DIFFÉRENT du ctrl 0 en µs) : au-delà de
+#                l'enum documentée 0-30 → nommé, et signalé dans le
+#                verdict (« contrôles au-delà de l'enum ») ;
+#            (5) flux live sans diagnostic → état journalisé avant
+#                départ, relance UNIQUE de l'exposition à mi-patience,
+#                abandon expliqué (pistes : format/ROI lourds, expo
+#                pilotée ailleurs) ; aperçu DÉCIMÉ avant calcul (frame
+#                RGB24 plein format = 25 Mo) ; cadence d'UI accélérée
+#                pendant le flux ; une seule frame en attente (écrasement).
+#          - FLUX POA VALIDÉ EN RÉEL (~43 fps plein champ RGB24, >200 fps
+#            en bin 2, TEC/gain/offset posés et relus) — et la cause du 1er
+#            échec corrigée : _ouvrir() démarre l'exposition (POAStartExposure).
+#          - BANC SVBONY (jalon 28b, demande d'Alain : « je préfère que tu
+#            fasse le banc SVBony » — SV305C de guidage testable) :
+#            _diag_camera_svbony.py, même architecture que le banc POA
+#            (chargement diagnostiqué + garde « application trop ancienne »,
+#            sonde RÉUTILISÉE via SVBonyCamera.detecter_capacites, poses
+#            expo/gain/BlackLevel/TEC/flip/bin-ROI/format, flux live avec
+#            diagnostic + relance stop/start, verdict + rapport %TEMP%,
+#            mode --console). Spécificités SVBONY (en-tête officiel
+#            SVBCameraSDK.h, dépôt pysvb) : PAS de SVBInitCamera
+#            (SVBOpenCamera suffit, 36 exports vérifiés), températures en
+#            unités de 0,1 °C (le banc convertit), flip = UN seul contrôle
+#            (0-3), bin = taille FINALE dans SVBSetROIFormat, SupportedBins
+#            terminé par 0. svbony.py : + constante SVB_FLIP.
+#            plus d'effet grâce à défauts d'usine +
+#            SVBSetAutoSaveParam(0) ; format interne RÉEL = RGB32 (4
+#            o/pixel, déduit de la donnée — ni le set ni la relecture ne
+#            disaient la vérité).
+#            Installateur rebuildé (les 3 bancs embarqués : QHY, Player
+#            One, SVBONY).
 # v2.15.0 : OFFSET + ZONES DE SAISIE + DÉCONNEXION TRACÉE (jalon 27, demandes
 #          d'Alain du 19/09/2026 : « il manque l'offset ; pour l'exposition,
 #          l'offset et le gain, une zone de saisie en plus des sliders

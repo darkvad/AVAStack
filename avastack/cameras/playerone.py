@@ -20,6 +20,7 @@ import numpy as np
 
 from .base import CameraBase
 from .sdk_loader import charger_dll, nom_bibliotheque
+from .capacites import Capacites, Controle, dedupliquer
 
 IS_WINDOWS = platform.system() == "Windows"
 IS_MACOS = platform.system() == "Darwin"
@@ -28,13 +29,62 @@ IS_MACOS = platform.system() == "Darwin"
 POA_OK = 0
 
 # Formats d'image
+POA_RAW8 = 0
 POA_RAW16 = 1        # mono 16 bits
 POA_RGB24 = 2        # couleur débayerisée par la caméra
+POA_MONO8 = 3        # couleur convertie en mono par la caméra
 
 # Config IDs utilisés
 POA_EXPOSURE = 0     # µs
 POA_GAIN = 1
 POA_USB_BANDWIDTH_LIMIT = 28
+
+# --- Config IDs (enum officielle POAConfigID, cf. POACamera.h) --------------
+POA_TEMPERATURE = 3       # °C, flottant, lecture seule
+POA_OFFSET = 7
+POA_EGAIN = 15            # e-/ADU, flottant, change avec le gain
+POA_COOLER_POWER = 16     # % de puissance TEC
+POA_TARGET_TEMP = 17      # consigne °C
+POA_COOLER = 18           # régulation ON/OFF
+
+
+class _POAConfigValue(ctypes.Union):
+    """Union POAConfigValue du SDK récent (8 octets) : intValue (long),
+    floatValue (double), boolValue (POABool). float32 sert SEULEMENT si le
+    layout « ancien » est détecté (l'ancien SDK écrivait un float 32 bits)."""
+    _fields_ = [("intValue", ctypes.c_long),
+                ("floatValue", ctypes.c_double),
+                ("boolValue", ctypes.c_uint),
+                ("float32", ctypes.c_float)]
+
+
+class _POAConfigAttributes(ctypes.Structure):
+    """Layout du SDK récent (bindgen playerone-sdk-sys 0.1.1, SDK 2026)."""
+    _fields_ = [("isSupportAuto", ctypes.c_uint),
+                ("isWritable", ctypes.c_uint),
+                ("isReadable", ctypes.c_uint),
+                ("configID", ctypes.c_uint),
+                ("valueType", ctypes.c_uint),
+                ("maxValue", _POAConfigValue),
+                ("minValue", _POAConfigValue),
+                ("defaultValue", _POAConfigValue),
+                ("szConfName", ctypes.c_char * 64),
+                ("szDescription", ctypes.c_char * 128),
+                ("reserved", ctypes.c_char * 64)]
+
+
+class _POAConfigAttributesAncien(ctypes.Structure):
+    """Layout de l'ANCIEN SDK (szDescription en tête, c_long nus) — essayé
+    en repli si le layout récent ne se valide pas sur la DLL réellement
+    présente."""
+    _fields_ = [("szDescription", ctypes.c_char * 128),
+                ("maxValue", ctypes.c_long),
+                ("minValue", ctypes.c_long),
+                ("defaultValue", ctypes.c_long),
+                ("configID", ctypes.c_uint),
+                ("valueType", ctypes.c_uint),
+                ("isWritable", ctypes.c_uint),
+                ("isSupportAuto", ctypes.c_uint)]
 
 
 class _POACameraProperties(ctypes.Structure):
@@ -72,10 +122,219 @@ def _charger_sdk():
     dll.POAGetCameraProperties.argtypes = [ctypes.c_int,
                                            ctypes.POINTER(_POACameraProperties)]
     dll.POAGetCameraProperties.restype = ctypes.c_int
+    # prototypes de la sonde de capacités (structure attr passée en
+    # c_void_p : deux layouts possibles, cf. POASonde.valider_layout)
+    dll.POASetConfig.argtypes = [ctypes.c_int, ctypes.c_uint,
+                                 _POAConfigValue, ctypes.c_uint]
+    dll.POASetConfig.restype = ctypes.c_int
+    dll.POAGetConfig.argtypes = [ctypes.c_int, ctypes.c_uint,
+                                 ctypes.POINTER(_POAConfigValue),
+                                 ctypes.POINTER(ctypes.c_uint)]
+    dll.POAGetConfig.restype = ctypes.c_int
+    dll.POAGetConfigsCount.argtypes = [ctypes.c_int,
+                                       ctypes.POINTER(ctypes.c_int)]
+    dll.POAGetConfigsCount.restype = ctypes.c_int
+    dll.POAGetConfigAttributes.argtypes = [ctypes.c_int, ctypes.c_int,
+                                           ctypes.c_void_p]
+    dll.POAGetConfigAttributes.restype = ctypes.c_int
+    dll.POAGetConfigAttributesByConfigID.argtypes = [ctypes.c_int,
+                                                     ctypes.c_uint,
+                                                     ctypes.c_void_p]
+    dll.POAGetConfigAttributesByConfigID.restype = ctypes.c_int
     return dll
 
 
 _DLL = None          # chargé paresseusement (import sans matériel ne doit pas rater)
+
+# Noms lisibles des 31 contrôles (enum officielle POAConfigID) — utilisés
+# pour le verdict « possibilités » (partagés avec le banc).
+NOMS_CONFIGS = {
+    0: "Exposition (µs)",
+    1: "Gain (unités SDK)",
+    2: "Bin matériel",
+    3: "Température capteur (°C)",
+    4: "Balance des blancs R",
+    5: "Balance des blancs G",
+    6: "Balance des blancs B",
+    7: "Offset",
+    8: "Gain max (auto-expo)",
+    9: "Expo max (auto-expo, ms)",
+    10: "Ciblage luminosité (auto-expo)",
+    11: "Guidage N (ST4)",
+    12: "Guidage S (ST4)",
+    13: "Guidage E (ST4)",
+    14: "Guidage O (ST4)",
+    15: "e-/ADU (EGAIN, gain courant)",
+    16: "Puissance TEC (%)",
+    17: "Consigne température (°C)",
+    18: "Refroidissement ON/OFF",
+    19: "Chauffage antibué ON/OFF",
+    20: "Puissance chauffage (%)",
+    21: "Puissance ventilateur (%)",
+    22: "Flip : aucun",
+    23: "Flip : horizontal",
+    24: "Flip : vertical",
+    25: "Flip : les deux",
+    26: "Limite de frames (0 = illimité)",
+    27: "HQI (haute qualité, caméras sans DDR)",
+    28: "Limite bande passante USB",
+    29: "Bin : somme (sinon moyenne)",
+    30: "Bin mono (couleur → perd le motif Bayer)",
+    # 31 est AU-DELÀ de l'enum documentée (0-30) : la DLL du 18/02/2026
+    # l'expose réellement (« Exp », exposition en SECONDES, flottant, avec
+    # un maximum DIFFÉRENT du contrôle 0 en µs). Les noms affichés viennent
+    # d'abord du SDK (szConfName) — cette table n'est qu'un repli.
+    31: "Exp (secondes, contrôle additionnel du SDK)",
+}
+
+NOMS_FORMATS = {0: "RAW8", 1: "RAW16", 2: "RGB24", 3: "MONO8"}
+
+
+class POASonde:
+    """Sonde des capacités d'une caméra Player One OUVERTE.
+
+    Lit, via les fonctions du SDK, les attributs de chaque contrôle
+    (min/max/défaut/écriture/auto) et la valeur courante. Gère les DEUX
+    layouts possibles de POAConfigAttributes (récent 2026 / ancien) : le
+    layout n'est utilisé que s'il se VALIDE sur deux configs indépendantes
+    (0 puis 7) — jamais de confiance aveugle dans une structure.
+    Réutilisé par l'application (detecter_capacites) ET par le banc
+    (_diag_camera_playerone.py) : une seule définition, zéro duplication.
+    """
+
+    def __init__(self, dll, cam_id):
+        self.dll = dll
+        self.cam_id = cam_id
+        self.layout = "récent"          # validé par valider_layout()
+        self.valide = False
+        self.attributs_cache = {}       # confID → dict d'attributs
+
+    # --- lecture/écriture d'une POAConfigValue --------------------------------
+
+    def valeur_union(self, u, type_val):
+        """→ valeur Python d'une POAConfigValue selon le type déclaré."""
+        if type_val == 1:                       # VAL_FLOAT
+            if self.layout == "ancien":
+                return float(u.float32)
+            return float(u.floatValue)
+        if type_val == 2:                       # VAL_BOOL
+            return bool(u.boolValue)
+        return int(u.intValue)                  # VAL_INT
+
+    def union_depuis(self, val, type_val):
+        """→ POAConfigValue remplie pour poser une valeur."""
+        u = _POAConfigValue()
+        if type_val == 1:
+            u.floatValue = float(val)
+        else:
+            u.intValue = int(val)               # VAL_INT et VAL_BOOL
+        return u
+
+    # --- attributs d'un contrôle ----------------------------------------------
+
+    def attributs(self, conf_id):
+        """Lit les attributs d'une config (layout courant) → dict, ou None."""
+        if self.layout == "ancien":
+            attr = _POAConfigAttributesAncien()
+        else:
+            attr = _POAConfigAttributes()
+        err = self.dll.POAGetConfigAttributesByConfigID(
+            self.cam_id, conf_id, ctypes.byref(attr))
+        if err != POA_OK:
+            return None
+        if self.layout == "ancien":
+            return {"min": int(attr.minValue), "max": int(attr.maxValue),
+                    "defaut": int(attr.defaultValue),
+                    "type": int(attr.valueType),
+                    "ecrivable": bool(attr.isWritable),
+                    "lisible": True, "auto": bool(attr.isSupportAuto),
+                    "nom": NOMS_CONFIGS.get(conf_id, f"config {conf_id}"),
+                    "desc": attr.szDescription.decode("utf-8", "replace")}
+        return {"min": self.valeur_union(attr.minValue, attr.valueType),
+                "max": self.valeur_union(attr.maxValue, attr.valueType),
+                "defaut": self.valeur_union(attr.defaultValue,
+                                            attr.valueType),
+                "type": int(attr.valueType),
+                "ecrivable": bool(attr.isWritable),
+                "lisible": bool(attr.isReadable),
+                "auto": bool(attr.isSupportAuto),
+                "nom": attr.szConfName.decode("utf-8", "replace").strip()
+                       or NOMS_CONFIGS.get(conf_id, f"config {conf_id}"),
+                "desc": attr.szDescription.decode("utf-8", "replace")}
+
+    def valider_layout(self):
+        """Détecte le layout : configID relu == ID demandé sur DEUX configs
+        (0 puis 7 — un seul match ne prouve rien). → layout ou None."""
+        for essai in ("récent", "ancien"):
+            self.layout = essai
+            ok = True
+            for cid in (0, 7):
+                if essai == "ancien":
+                    attr = _POAConfigAttributesAncien()
+                else:
+                    attr = _POAConfigAttributes()
+                err = self.dll.POAGetConfigAttributesByConfigID(
+                    self.cam_id, cid, ctypes.byref(attr))
+                if err != POA_OK or attr.configID != cid:
+                    ok = False
+                    break
+                if essai == "récent" and attr.valueType > 2:
+                    ok = False
+                    break
+            if ok:
+                self.valide = True
+                return essai
+        self.layout = "récent"
+        self.valide = False
+        return None
+
+    # --- valeurs courantes ------------------------------------------------------
+
+    def lire(self, conf_id):
+        """→ (valeur, is_auto) courante d'une config, ou None si erreur."""
+        v = _POAConfigValue()
+        auto = ctypes.c_uint(0)
+        err = self.dll.POAGetConfig(self.cam_id, conf_id, ctypes.byref(v),
+                                    ctypes.byref(auto))
+        if err != POA_OK:
+            return None
+        t = self.attributs_cache.get(conf_id, {}).get("type", 0)
+        return self.valeur_union(v, t), bool(auto.value)
+
+    def poser(self, conf_id, val):
+        """Pose une valeur (type déduit des attributs connus) → booléen."""
+        t = self.attributs_cache.get(conf_id, {}).get("type", 0)
+        err = self.dll.POASetConfig(self.cam_id, conf_id,
+                                    self.union_depuis(val, t), 0)
+        if err != POA_OK:
+            return False
+        relue = self.lire(conf_id)
+        return relue is not None and relue[0] == val
+
+    def lister(self):
+        """Énumère TOUS les contrôles supportés → {confID: attributs}.
+        Remplit aussi le cache des types (indispensable pour poser)."""
+        n = ctypes.c_int(0)
+        err = self.dll.POAGetConfigsCount(self.cam_id, ctypes.byref(n))
+        if err != POA_OK:
+            return {}
+        cache = {}
+        for i in range(n.value):
+            if self.layout == "ancien":
+                attr = _POAConfigAttributesAncien()
+            else:
+                attr = _POAConfigAttributes()
+            err = self.dll.POAGetConfigAttributes(self.cam_id, i,
+                                                  ctypes.byref(attr))
+            if err != POA_OK:
+                continue
+            cid = attr.configID
+            a = self.attributs(cid)
+            if a is None:
+                continue
+            cache[cid] = a
+        self.attributs_cache = cache
+        return cache
 
 
 class PlayerOneCamera(CameraBase):
@@ -124,6 +383,7 @@ class PlayerOneCamera(CameraBase):
             raise RuntimeError("Impossible de lire les propriétés de la caméra")
         self.id = props.cameraID
         self._is_color = bool(props.isColorCamera)
+        self._props = props          # fiche SDK conservée pour la sonde
         self.name = props.cameraModelName.decode("utf-8", "replace").strip() or self.name
 
         if _DLL.POAOpenCamera(self.id) != POA_OK:
@@ -134,8 +394,11 @@ class PlayerOneCamera(CameraBase):
         _DLL.POASetImageFormat(self.id, POA_RGB24 if self._is_color else POA_RAW16)
         _DLL.POASetImageSize(self.id, props.maxWidth, props.maxHeight)
         self._w, self._h = props.maxWidth, props.maxHeight
-        # bande passante USB : défaut raisonnable
-        _DLL.POASetConfig(self.id, POA_USB_BANDWIDTH_LIMIT, 40, 0)
+        # bande passante USB : défaut raisonnable (union POAConfigValue —
+        # la signature du SDK attend l'union 8 octets, jamais un entier nu)
+        u = _POAConfigValue()
+        u.intValue = 40
+        _DLL.POASetConfig(self.id, POA_USB_BANDWIDTH_LIMIT, u, 0)
         _DLL.POAStartExposure(self.id, 0)     # 0 = mode vidéo continu
         self._started = True
 
@@ -171,8 +434,77 @@ class PlayerOneCamera(CameraBase):
     def apply_settings(self, exposure_ms, gain):
         if not self._started:
             return
-        _DLL.POASetConfig(self.id, POA_EXPOSURE, int(exposure_ms * 1000), 0)  # µs
-        _DLL.POASetConfig(self.id, POA_GAIN, int(gain), 0)
+        u = _POAConfigValue()
+        u.intValue = int(exposure_ms * 1000)               # µs
+        _DLL.POASetConfig(self.id, POA_EXPOSURE, u, 0)
+        u = _POAConfigValue()
+        u.intValue = int(gain)
+        _DLL.POASetConfig(self.id, POA_GAIN, u, 0)
+
+    def detecter_capacites(self):
+        """→ Capacites rempli EN DYNAMIQUE depuis la caméra OUVERTE.
+
+        Ouvre une sonde (POASonde) sur la caméra, valide le layout des
+        attributs, énumère TOUS les contrôles supportés et en déduit les
+        plages expo/gain/offset, le TEC (présent, plage de consigne,
+        température lisible), les bins, formats, bin matériel, USB3, ST4.
+        Ne suppose RIEN du modèle : tout vient des réponses du SDK."""
+        if self.id is None or _DLL is None:
+            return None
+        p = getattr(self, "_props", None)
+        if p is None:
+            return None
+        cap = Capacites("Player One",
+                        modele=p.cameraModelName.decode("utf-8",
+                                                        "replace").strip(),
+                        capteur=p.sensorModelName.decode("utf-8",
+                                                         "replace").strip(),
+                        couleur=bool(p.isColorCamera), bits=p.bitDepth,
+                        max_l=p.maxWidth, max_h=p.maxHeight,
+                        pixel_um=p.pixelSize)
+        cap.serie = p.SN.decode("utf-8", "replace").strip()
+        cap.usb3 = bool(p.isUSB3Speed)
+        cap.st4 = bool(p.isHasST4Port)
+        cap.bin_materiel = bool(p.isSupportHardBin)
+        cap.bins = dedupliquer([b for b in p.bins_ if 1 <= b <= 4])
+        # formats : le tableau du SDK a une taille FIXE dont la queue est du
+        # remplissage (zéro = RAW8, une valeur valide !) → dédupliquer, cf.
+        # relevé réel du 19/09/2026 (4 × RAW8 renvoyés).
+        cap.formats = dedupliquer(
+            [NOMS_FORMATS.get(f, str(f)) for f in p.imgFormats_
+             if 0 <= f <= 3])
+        sonde = POASonde(_DLL, self.id)
+        layout = sonde.valider_layout()
+        cache = sonde.lister()
+        cap.extras["layout_attributs"] = layout or "NON reconnu"
+        cap.extras["configs_supportees"] = sorted(cache)
+        # plages, si les contrôles correspondants sont supportés
+        a = cache.get(POA_EXPOSURE)
+        if a:
+            cap.expo_us = (a["min"], a["max"])
+        a = cache.get(POA_GAIN)
+        if a:
+            cap.gain = (a["min"], a["max"])
+        a = cache.get(POA_OFFSET)
+        if a:
+            cap.offset = (a["min"], a["max"])
+        # refroidissement : fiche + contrôles réellement présents
+        if p.isHasCooler:
+            cap.tec = True
+            a = cache.get(POA_TARGET_TEMP)
+            if a:
+                cap.tec_consigne = (a["min"], a["max"])
+            a = cache.get(POA_TEMPERATURE)
+            cap.temperature_lisible = bool(a and a["lisible"])
+        # énumération brute (pour l'affichage / le rapport)
+        for cid in sorted(cache):
+            a = cache[cid]
+            cap.controles.append(
+                Controle(cid, nom=a["nom"], type_val=a["type"],
+                         mini=a["min"], maxi=a["max"], defaut=a["defaut"],
+                         ecrivable=a["ecrivable"], lisible=a["lisible"],
+                         auto=a["auto"], desc=a["desc"]))
+        return cap
 
     def close(self):
         if self.id is not None and _DLL is not None:

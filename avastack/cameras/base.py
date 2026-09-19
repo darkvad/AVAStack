@@ -61,3 +61,10 @@ class CameraBase:
         """Pose l'offset du capteur (aucun effet par défaut : seules les
         caméras SDK qui l'exposent redéfinissent)."""
         pass
+
+    def detecter_capacites(self):
+        """→ objet `Capacites` rempli EN DYNAMIQUE depuis la caméra OUVERTE
+        (plages expo/gain/offset, TEC, bins, formats…), ou None si la
+        marque ne sait pas l'interroger (défaut : None). Nécessite une
+        caméra ouverte : appeler APRÈS open(), avant close()."""
+        return None

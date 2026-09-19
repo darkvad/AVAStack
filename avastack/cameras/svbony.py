@@ -21,6 +21,7 @@ import platform
 import numpy as np
 
 from .base import CameraBase
+from .capacites import Capacites, Controle, dedupliquer
 from .sdk_loader import charger_dll, nom_bibliotheque
 
 IS_WINDOWS = platform.system() == "Windows"
@@ -35,6 +36,33 @@ SVB_IMG_RGB24 = 10
 # contrôles utilisés (SVB_CONTROL_TYPE)
 SVB_EXPOSURE = 1     # µs
 SVB_GAIN = 0
+
+# --- autres contrôles utiles pour la détection de capacités ------------------
+SVB_FLIP = 7                  # 0=aucun, 1=horizontal, 2=vertical, 3=les deux
+SVB_BLACK_LEVEL = 13          # « offset » du SDK SVBONY
+SVB_COOLER_ENABLE = 14        # régulation ON/OFF
+SVB_TARGET_TEMPERATURE = 15   # consigne °C
+SVB_CURRENT_TEMPERATURE = 16  # lecture °C
+SVB_COOLER_POWER = 17         # % de puissance TEC
+
+# noms lisibles des types d'image (SVB_IMG_TYPE, SDK officiel)
+NOMS_FORMATS_SVB = {0: "RAW8", 1: "RAW10", 2: "RAW12", 3: "RAW14",
+                    4: "RAW16", 5: "Y8", 9: "Y16", 10: "RGB24",
+                    11: "RGB32"}
+
+
+class _SVBControlCaps(ctypes.Structure):
+    """SVB_CONTROL_CAPS du SDK officiel (cf. wrapper pysvbony, MIT) :
+    Name puis Description, c_long nus, drapeaux en c_int, Unused[32]."""
+    _fields_ = [("Name", ctypes.c_char * 64),
+                ("Description", ctypes.c_char * 128),
+                ("MaxValue", ctypes.c_long),
+                ("MinValue", ctypes.c_long),
+                ("DefaultValue", ctypes.c_long),
+                ("IsAutoSupported", ctypes.c_int),
+                ("IsWritable", ctypes.c_int),
+                ("ControlType", ctypes.c_int),
+                ("Unused", ctypes.c_char * 32)]
 
 
 class _SVBCameraInfo(ctypes.Structure):
@@ -76,6 +104,21 @@ def _charger_sdk():
                                     ctypes.c_long, ctypes.c_int]
     dll.SVBSetControlValue.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_long,
                                        ctypes.c_int]
+    # sonde de capacités (SVBGetNumOfControls/SVBGetControlCaps — même
+    # modèle que ZWO ASI, vérifié dans les exports de la DLL)
+    dll.SVBGetNumOfControls.argtypes = [ctypes.c_int,
+                                        ctypes.POINTER(ctypes.c_int)]
+    dll.SVBGetNumOfControls.restype = ctypes.c_int
+    dll.SVBGetControlCaps.argtypes = [ctypes.c_int, ctypes.c_int,
+                                      ctypes.POINTER(_SVBControlCaps)]
+    dll.SVBGetControlCaps.restype = ctypes.c_int
+    dll.SVBGetControlValue.argtypes = [ctypes.c_int, ctypes.c_int,
+                                       ctypes.POINTER(ctypes.c_long),
+                                       ctypes.POINTER(ctypes.c_int)]
+    dll.SVBGetControlValue.restype = ctypes.c_int
+    dll.SVBGetSensorPixelSize.argtypes = [ctypes.c_int,
+                                          ctypes.POINTER(ctypes.c_float)]
+    dll.SVBGetSensorPixelSize.restype = ctypes.c_int
     return dll
 
 
@@ -134,6 +177,7 @@ class SVBonyCamera(CameraBase):
             raise RuntimeError(f"Propriétés illisibles : {self.name}")
         self._is_color = bool(prop.IsColorCam)
         self._w, self._h = prop.MaxWidth, prop.MaxHeight
+        self._props = prop             # fiche SDK conservée pour la sonde
 
         if _DLL.SVBOpenCamera(self.id) != SVB_SUCCESS:
             raise RuntimeError(f"Ouverture impossible : {self.name}")
@@ -184,3 +228,76 @@ class SVBonyCamera(CameraBase):
             finally:
                 self.id = None
                 self._started = False
+
+    def detecter_capacites(self):
+        """→ Capacites rempli EN DYNAMIQUE depuis la caméra OUVERTE.
+
+        Énumère les contrôles du SDK (SVBGetNumOfControls +
+        SVBGetControlCaps — même modèle que ZWO, contrôles: GAIN=0,
+        EXPOSURE=1, BLACK_LEVEL=13 « offset », TEC 14/15/16/17) et les
+        complète par la fiche SVBCameraProperty (bins, formats, bits,
+        couleur). Ne suppose RIEN du modèle : tout vient du SDK.
+        À appeler APRÈS open(), avant close()."""
+        if self.id is None or _DLL is None:
+            return None
+        p = getattr(self, "_props", None)
+        if p is None:
+            return None
+        cap = Capacites("SVBONY", modele=self.name,
+                        capteur=self.name,   # le SDK SVB n'expose pas de
+                                             # nom de capteur séparé
+                        couleur=bool(p.IsColorCam), bits=p.MaxBitDepth,
+                        max_l=p.MaxWidth, max_h=p.MaxHeight)
+        cap.bins = dedupliquer([b for b in p.SupportedBins if 1 <= b <= 4])
+        cap.formats = dedupliquer([NOMS_FORMATS_SVB.get(f, str(f))
+                                   for f in p.SupportedVideoFormat
+                                   if f >= 0])[:8]
+        # taille de pixel (optionnelle, SDK récent)
+        try:
+            px = ctypes.c_float(0)
+            if _DLL.SVBGetSensorPixelSize(self.id, ctypes.byref(px)) == \
+                    SVB_SUCCESS:
+                cap.pixel_um = px.value
+        except AttributeError:
+            pass
+        # énumération des contrôles
+        n = ctypes.c_int(0)
+        if _DLL.SVBGetNumOfControls(self.id, ctypes.byref(n)) != SVB_SUCCESS:
+            return cap
+        caps = {}
+        for i in range(n.value):
+            c = _SVBControlCaps()
+            if _DLL.SVBGetControlCaps(self.id, i, ctypes.byref(c)) != \
+                    SVB_SUCCESS:
+                continue
+            cid = c.ControlType
+            dic = {"nom": c.Name.decode("utf-8", "replace").strip(),
+                   "desc": c.Description.decode("utf-8", "replace"),
+                   "min": c.MinValue, "max": c.MaxValue,
+                   "defaut": c.DefaultValue,
+                   "ecrivable": bool(c.IsWritable),
+                   "auto": bool(c.IsAutoSupported), "type": 0}
+            caps[cid] = dic
+            cap.controles.append(Controle(
+                cid, nom=dic["nom"], mini=dic["min"], maxi=dic["max"],
+                defaut=dic["defaut"], ecrivable=dic["ecrivable"],
+                lisible=True, auto=dic["auto"], desc=dic["desc"]))
+        # plages, si les contrôles correspondants sont supportés
+        c = caps.get(SVB_EXPOSURE)
+        if c:
+            cap.expo_us = (c["min"], c["max"])
+        c = caps.get(SVB_GAIN)
+        if c:
+            cap.gain = (c["min"], c["max"])
+        c = caps.get(SVB_BLACK_LEVEL)
+        if c:
+            cap.offset = (c["min"], c["max"])
+            cap.extras["offset"] = "BLACK_LEVEL (ctrl 13) du SDK SVBONY"
+        # refroidissement : contrôles réellement présents
+        if SVB_COOLER_ENABLE in caps:
+            cap.tec = True
+            c = caps.get(SVB_TARGET_TEMPERATURE)
+            if c:
+                cap.tec_consigne = (c["min"], c["max"])
+            cap.temperature_lisible = SVB_CURRENT_TEMPERATURE in caps
+        return cap

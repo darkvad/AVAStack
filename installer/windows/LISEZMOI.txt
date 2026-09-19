@@ -34,17 +34,71 @@ copie-la simplement dans CE dossier (ou définis une variable
 d'environnement pointant vers le dossier qui la contient, par exemple
 AVASTACK_PLAYERONE_DIR=C:\chemin\vers\SDK\PlayerOne).
 
-BANC DE DIAGNOSTIC CAMÉRA (QHY)
--------------------------------
-Un outil autonome est installé avec AVAStack : _diag_camera_qhy.py. Il
-réutilise le MÊME code caméra que l'application, mais hors application :
-idéal pour comprendre un problème de caméra sans toucher au live stacking.
+BANCS DE DIAGNOSTIC CAMÉRA
+--------------------------
+Trois outils autonomes sont installés avec AVAStack :
+  - _diag_camera_qhy.py        (caméras QHY / QHYCCD)
+  - _diag_camera_playerone.py  (caméras Player One, ex. Uranus-C Pro)
+  - _diag_camera_svbony.py     (caméras SVBONY, ex. SV305C de guidage)
 
-Pour le lancer :
+Ils réutilisent le MÊME code caméra que l'application, mais hors
+application : idéal pour comprendre un problème de caméra sans toucher au
+live stacking.
+
+Pour en lancer un :
   1. ouvre une invite de commandes dans ce dossier ;
-  2. tape :  venv\Scripts\python.exe _diag_camera_qhy.py
+  2. tape :  venv\Scripts\python.exe _diag_camera_playerone.py
+     (ou      venv\Scripts\python.exe _diag_camera_svbony.py
+      ou      venv\Scripts\python.exe _diag_camera_qhy.py)
 
-Il permet de :
+⚠ UN SEUL programme à la fois peut ouvrir une caméra : fermer le banc
+  avant de lancer AVAStack, et inversement.
+
+Le banc PLAYER ONE permet de :
+  - DÉTECTER les caméras Player One et lire leur fiche (modèle, capteur,
+    couleur/mono, taille, bins supportés, formats, TEC, USB3, ST4) ;
+  - OUVRIR la caméra et ÉNUMÉRER AUTOMATIQUEMENT tous ses contrôles
+    (attributs min/max/défaut + valeur courante) ;
+  - afficher un VERDICT « possibilités » : plages d'exposition, de gain
+    (avec le gain unitaire du capteur quand il est connu), d'offset,
+    refroidissement TEC, binning, ROI, formats ;
+  - RÉGLER en direct : exposition (µs), gain, offset, TEC (consigne +
+    arrêt + lecture °C et % de puissance), binning, ROI, format, flip,
+    bande passante USB ;
+  - AFFICHER le flux live avec les fps réels ;
+  - enregistrer un RAPPORT complet dans %TEMP% (bouton « 💾 Sauver le
+    rapport »).
+  Mode console (détection rapide, sans fenêtre) :
+     venv\Scripts\python.exe _diag_camera_playerone.py --console
+
+  ⚠ Le banc réutilise la sonde de l'application : si les fichiers
+    avastack\cameras\playerone.py et avastack\cameras\capacites.py
+    installés sont ANTÉRIEURS à la version du banc, celui-ci le signale
+    (bandeau rouge) au lieu de planter — réinstalle alors la version
+    courante d'AVAStack.
+
+Le banc SVBONY permet de (ex. SV305C de guidage) :
+  - DÉTECTER les caméras SVBONY (version du SDK, fiche : nom, n° série,
+    taille, couleur/mono, bits, Bayer, bins supportés, formats) ;
+  - OUVRIR la caméra (SVBOpenCamera — pas d'init séparée dans ce SDK) et
+    ÉNUMÉRER AUTOMATIQUEMENT tous ses contrôles via la sonde de
+    l'application (SVBGetNumOfControls + SVBGetControlCaps + valeur
+    courante) ;
+  - afficher un VERDICT « possibilités » : plages exposition / gain /
+    BlackLevel (« offset » SVBONY), TEC éventuel, bins, ROI, formats ;
+  - RÉGLER en direct : exposition (µs), gain, BlackLevel, TEC (⚠ les
+    températures SVBONY sont en unités de 0,1 °C — le banc convertit),
+    bin (via SVBSetROIFormat : taille FINALE après bin), format
+    (RAW8/RAW16/RGB24…), flip (UN seul contrôle 0-3) ;
+  - AFFICHER le flux live avec les fps réels ;
+  - enregistrer un RAPPORT complet dans %TEMP%.
+  Mode console : venv\Scripts\python.exe _diag_camera_svbony.py --console
+  ⚠ Même contrôle de version que le banc Player One : si
+    avastack\cameras\svbony.py ou avastack\cameras\capacites.py sont
+    antérieurs au banc, celui-ci le signale (bandeau rouge) au lieu de
+    planter.
+
+Le banc QHY permet de :
   - DÉTECTER les caméras QHY branchées ;
   - OUVRIR la caméra selon deux séquences (celle de l'application, et une
     pas-à-pas où chaque étape est tracée) ;

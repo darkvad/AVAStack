@@ -458,6 +458,64 @@ Pièges :
   relecture ne distingue ce décalage : seul un repère VISIBLE dans l'image
   (slot vide, filtre opaque, niveau de fond) dit quel slot physique a
   réellement été appelé.
+- **Un banc/outil qui RÉUTILISE le code de l'application doit charger ce code
+  de façon DIAGNOSTIQUÉE, et refuser proprement au lieu de planter** (constat
+  réel du 19/09/2026, banc Player One sur miniPC : banc v2.16 copié à côté
+  d'une application installée v2.15 → `AttributeError` nu sur un symbole que
+  l'ancienne copie n'expose pas). Depuis que la sonde du banc vit DANS
+  l'application (une seule définition — deux copies finissent par diverger),
+  le banc vérifie les symboles attendus à l'import, affiche la version lue +
+  chemins/dates des fichiers réellement chargés + les symboles manquants, et
+  refuse l'opération concernée AVEC le remède exact (les 2 fichiers à copier,
+  ou réinstaller). Il ne faut PAS recopier une version locale des définitions
+  « pour que ça marche » : c'est la duplication qui a créé le problème, et le
+  message clair qui est le correctif durable.
+- **Le TYPE d'une valeur lue d'un SDK doit venir de la MÊME routine qui l'a
+  énumérée (cache unique) — jamais d'un second parcours parallèle** (constat
+  réel du 19/09/2026, Uranus-C Pro : la température s'affichait
+  « -1073741824 » — ce sont les bits du flottant -2.0 lus comme entier — et
+  « Exp » 1202590843). Cause : le banc réénumérait les contrôles en dehors de
+  la sonde, dont le cache de types restait donc VIDE, et toute valeur
+  flottante était relue en `long` SANS AUCUN message d'erreur. Deux leçons
+  annexes du même constat : (a) les tableaux à taille FIXE des SDK
+  (`imgFormats_[8]`) n'ont pas toujours un vrai terminateur — leur remplissage
+  (zéro = `RAW8`, valeur d'énumération valide) doit être DÉDUPRIQUÉ et non
+  tronqué ; (b) les attributs d'un SDK peuvent être INCOHÉRENTS avec eux-mêmes
+  (défaut 11,40 hors de ses propres bornes [0, 10]) : afficher le défaut en le
+  présentant comme « lu » est trompeur — distinguer courant / défaut / bornes
+  et signaler l'incohérence. Et la DLL peut exposer des contrôles AU-DELÀ de
+  l'enum documentée (contrôle 31 « Exp » en secondes, max 7200 s, alors que le
+  contrôle 0 annonce 2000 s en µs) : les noms viennent d'abord du SDK, la
+  table locale n'est qu'un repli.
+
+- **TOUT thread secondaire doit avoir un try/except qui remonte au JOURNAL
+  de l'interface** (constat réel du 20/09/2026, flux du banc SVBONY) : une
+  exception non interceptée dans un thread tue le thread SANS AUCUN message
+  (ni console quand le programme a une fenêtre) — le programme paraît
+  simplement « morte » et le journal s'arrête net à la dernière étape
+  réussie. Symptôme signature : la dernière ligne du journal est une action
+  de démarrage, et ni le message d'échec attendu ni l'abandon ne viennent.
+  Correctif systématique : envelopper la boucle du thread, logger le
+  traceback complet (`traceback.format_exc()`) via la file de l'UI, et
+  journaliser périodiquement (1×/s) les boucles d'attente muettes — un
+  traceback ainsi journalisé a désigné la cause exacte du premier coup
+  (`access violation` dans `SVBGetVideoData`).
+- **La relecture d'un SDK peut MENTIR, et son buffer de réception peut être
+  écrit SANS vérification de taille : sur-allouer et déduire le format de
+  la DONNÉE** (constats réels des 19-20/09/2026, SV305C via
+  SVBCameraSDK.dll v1.13.4) : `SVBSetOutputImageType(RGB24)` renvoie OK,
+  la relecture `SVBGetOutputImageType` répond RAW8, et `SVBGetVideoData`
+  écrit sa frame AU-DELÀ du buffer alloué « nominal » → access violation
+  (crash avec 2,1 Mo nominal RAW8, PUIS avec 6,2 Mo RGB24 ; le format
+  interne réel est **RGB32, 4 o/pixel**). Méthode fiable : buffer
+  initialisé à zéro et sur-dimensionné (pire cas = 4 o/pixel + marge),
+  puis format réel DÉDUIT de la donnée par le DERNIER OCTET NON NUL (fin =
+  dernier indice non nul + 1 ; octets/pixel = ceil(fin / surface)) —
+  « frame entièrement à zéro » = image noire, à signaler. Et les PARAMÈTRES
+  du SDK peuvent RECHARGER leurs valeurs sauvegardées au redémarrage de la
+  capture (expo posée 30 ms revenue à 2000 ms après stop/start) →
+  désactiver l'auto-sauvegarde si le SDK l'expose (`SVBSetAutoSaveParam(0)`)
+  et reposer les réglages après chaque restart.
 
 ## Leçons générales transposables (projet pipeline siril)
 
