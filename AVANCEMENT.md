@@ -11,54 +11,38 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version : AVAStack v2.13.4** (`avastack/__init__.py`), branche `master`.
-  Dernier jalon : **DIAGNOSTIC CAMÉRA QHY v2.13.4** (19/09/2026) — consigne
-  d'Alain : « on ne bosse QUE sur le diagnostic caméra, arrête de rebuilder
-  l'installateur » → **installateur NON rebuildé** (l'artefact en place reste
-  celui de la v2.13.3).
-  - **Cause du dernier plantage identifiée** : le log du miniPC montrait
-    `begin_live` SANS AUCUN `set_resolution` alors que le fichier était censé
-    être en v2.13.2+ → **les deux fichiers n'avaient pas été copiés
-    ENSEMBLE** (banc récent + `avastack/cameras/qhy.py` resté en **v2.13.1**,
-    la version où `set_resolution` n'existait pas). D'où « Démarrer » qui
-    plante (pas de ROI posée → segfault natif), le pas-à-pas qui marche (le
-    banc pose la ROI lui-même) et la **case ROI qui semble ignorée**.
-  - **Le banc affiche désormais les fichiers réellement chargés** (chemin,
-    date, présence de `set_resolution`, signature de `open()`, version
-    d'avastack) à l'ouverture ET à chaque démarrage : une copie périmée
-    devient VISIBLE. Si `open()` n'accepte pas de ROI, le banc le dit au lieu
-    de lever un TypeError.
-  - Bouton unique « ▶ Démarrer (QHYCamera.open(), séquence APPLI) » qui
-    **transmet enfin la ROI cochée** via `open(roi=...)` ; case « forcer côté
-    banc » pour comparer (l'ancien pas-à-pas). Garde-fou `_SDK_PRET`
-    (init_sdk UNE seule fois par process) conservé.
-  - **Découverte des valeurs — NON CONCLUANTE (constat d'Alain, 19/09/2026
-    au soir)** : le balayage passe PARTOUT, sans aucun refus, sur gain (6),
-    offset (7) et USB traffic (12) → le SDK **stocke** les valeurs sans les
-    valider, donc la plage RÉELLE du gain QHY reste **INCONNUE** et le
-    recalibrage du curseur de l'appli n'est PAS encore possible. Méthode à
-    reprendre autrement : chercher un **effet physique** (niveau d'image /
-    bruit à gain croissant, en s'appuyant sur l'exposition qui, elle, est
-    PROUVÉE appliquée : 2000 ms → 0,5 fps exactement) ou consulter la doc
-    constructeur QHY du capteur IMX585 ; un balayage qui n'échoue jamais ne
-    démontre rien (leçon correspondante écrite dans CLAUDE.md).
-  - **Découverte des valeurs (outils)** : « Lister les contrôles » fait
-    2 passes — disponibles (nom officiel + valeur) puis **balayage exhaustif
-    0..63** avec valeur brute hexadécimale (distingue un contrôle ABSENT d'un
-    contrôle « drapeau » à sentinelle 0xFFFFFFFF) ; **« ▶ Balayer »**
-    pose/relit chaque valeur d'un id (cf. constat ci-dessus : non
-    concluant) ; **⏸ Pause 3 s** + horodatage des 5 premières frames +
-    compteur cumulé pour trancher « la caméra n'émet plus » vs « nos lectures
-    vident la file du SDK ».
-  - Contrôles nommés d'après l'enum OFFICIEL (crate `qhyccd-rs`) : gain=6,
-    offset=7, expo µs=8 (VÉRIFIÉS en réel), CurTemp=14, CurPWM=15,
-    ManualPWM=16, Cooler=18 ; 4294967295 = sentinelle d'erreur.
-  - **Constat à corriger (après le diagnostic)** : la MiniCam8M EST refroidie
-    (alim. 12 V requise — ma réponse précédente était fausse) et le curseur
-    Gain de l'appli est bridé à 8 alors que le SDK QHY raisonne en unités
-    constructeur (défaut 30, essai concluant à 90).
-  - Jalons précédents : banc embarqué v2.13.3, ROI QHY v2.13.2, double
-    ouverture v2.13.1.
+- **Version : AVAStack v2.14.0** (`avastack/__init__.py`), branche `master`.
+  Dernier jalon : **CONTRÔLES CAMÉRA QHY — ROUE À FILTRES + REFROIDISSEMENT**
+  (19/09/2026). **Installateur REBUILDÉ (v2.14.0)** →
+  `installer\windows\output\avastack-setup.exe`.
+  - Relevés réels d'Alain : le contrôle 44 (CfwSlotsNum) répond INDISPO mais
+    le contrôle **17 fonctionne** — changement de filtre validé EN RÉEL par
+    `48 + n` (48 = position 0 = slot noir « Dark », puis L R G B S H O).
+  - Implémenté : contrat no-op roue/refroidissement dans `cameras/base.py`
+    (`FILTRES_ROUE` = Dark,L,R,G,B,SII,Ha,OIII) ; `cameras/qhy.py` (dispo,
+    position et écriture sur le ctrl 17, attente de fin de rotation ≤ 25 s ;
+    consigne 18, lectures 14/15, arrêt = PWM manuel 16 à 0) ; UI cadre
+    « Caméra » : EXPOSITION log 11 µs → 5 s + case « Échelle longue »
+    (1 s → 900 s), GAIN 0 → 175 (défaut 30, unités SDK QHY), ligne « Filtre »
+    (combobox active seulement si la roue répond au sondage fait après la
+    1re frame), ligne refroidissement (consigne °C, ❄ Réguler / ⏹ Arrêter,
+    affichage « Capteur : x °C · TEC : n % (pwm/255) · consigne »). Demandes
+    (filtre/TEC) posées côté Tk, exécutées par le thread de travail ;
+    changement de filtre = stop_live → déplacement → begin_live → PURGE des
+    frames de la rotation (jamais deux filtres empilés) ; TEC coupé à
+    l'arrêt de session. Mot-clé FITS FILTER écrit à la sauvegarde.
+    `_test_qhy_camera.py` : 31 vérifications — 32/32 fichiers de tests OK.
+  - **À valider en réel (miniPC)** : déplacement de la roue DEPUIS L'APPLI,
+    régulation TEC (alim. 12 V branchée), bornes réelles du gain (0-175 =
+    plage SDK annoncée, à confirmer par effet physique). Rappel : après un
+    « ■ Arrêter », relancer l'appli (SDK QHY non réinitialisable dans le
+    process — le binding n'expose pas ReleaseQHYCCDResource).
+  - Jalons précédents : diagnostic QHY v2.13.4 (plage du gain toujours
+    INCONNUE — le balayage sans refus ne démontre rien), banc embarqué
+    v2.13.3, ROI QHY v2.13.2. Contrôles officiels : gain=6, offset=7,
+    expo µs=8, CurTemp=14, CurPWM=15, ManualPWM=16, CfwPort=17, Cooler=18 ;
+    4294967295 = sentinelle d'erreur.
+
   - **Verdict ROI automatique** (2e run réel, 19/09/2026) : le log de
     « Démarrer » ne contenait TOUJOURS aucune ligne `set_resolution`, même
     case ROI cochée → le banc relit la tranche de trace écrite PENDANT
@@ -332,4 +316,55 @@ session) :**
 3. **Ensuite seulement** : recalibrer le curseur de gain de l'appli (0,5-8,0
    actuellement = échelle Player One, inadaptée au SDK QHY) et rebuilder
    l'installateur.
+
+## ✅ Jalon 25 (v2.14.0) — CONTRÔLES CAMÉRA QHY : ROUE À FILTRES +
+## REFROIDISSEMENT (19/09/2026, session suivante)
+
+Reprise demandée par Alain : « j'ai fait les tests. Le contrôle 44 indique
+INDISPONIBLE mais le contrôle 17 fonctionne, j'ai pu changer les filtres
+avec 48 + n (48 = position 0 = black, ensuite LRGBSHO). Tu peux déjà
+implémenter cela. Dans le contrôle de la caméra : Exposition (11 µs → 900 s
+avec case pour changer l'échelle : de 11 µs à 5 s, et de 1 à 900 s), Gain
+de 0 à 175, température de consigne + affichage de la temp et du % de
+chauffe (PWM) + bouton arrêt chauffage, choix du filtre Dark, L, R, G, B,
+SII, Ha, OIII. » → **Implémenté, tests 32/32 OK, installateur REBUILDÉ
+(v2.14.0)**.
+
+- **`cameras/base.py`** : contrat no-op roue (`roue_disponible`,
+  `position_filtre`, `choisir_filtre`) et refroidissement
+  (`consigne_refroidissement`, `lire_refroidissement`,
+  `arreter_refroidissement`) + constante `FILTRES_ROUE` = (Dark, L, R, G, B,
+  SII, Ha, OIII) — position 0 = cran noir « Dark ».
+- **`cameras/qhy.py`** : implémentation par les contrôles du SDK — roue :
+  disponibilité testée sur **17 seul** (44 indispo en réel), position =
+  `get_param(17)` − 48 (sentinelle 0xFFFFFFFF / code < 48 → None, jamais
+  d'erreur), déplacement = `set_param(17, 48+n)` puis relectures jusqu'à
+  confirmation (timeout 25 s, doc QHY) ; refroidissement : consigne = ctrl
+  18 (mode auto), lectures = 14 (temp capteur) / 15 (PWM 0-255) / 18, arrêt
+  = **PWM manuel ctrl 16 à 0**. Trace du log QHY à chaque étape.
+- **`ui/app.py` — cadre Caméra** : exposition en CURSEUR LOGARITHMIQUE
+  (0-1000 → 11 µs…5 s par défaut ; case « Échelle longue » → 1 s…900 s ;
+  boutons ± au pas ×1,25 ; affichage µs/ms/s ; `var_expo` reste en ms
+  réelles — contrat apply_settings et tests inchangés) ; gain 0 → 175
+  (défaut 30, unités SDK QHY) ; ligne « Filtre : » (combobox
+  Dark/L/R/G/B/SII/Ha/OIII, ACTIVE seulement si le sondage — fait par le
+  worker après la 1re frame — trouve la roue) ; ligne refroidissement
+  (consigne °C + boutons ❄ Réguler / ⏹ Arrêter + affichage « Capteur :
+  x °C · TEC : n % (pwm/255) · consigne »). Demandes posées côté Tk,
+  exécutées par le thread de travail (jamais d'appel SDK dans Tk).
+  Changement de filtre : stop_live → déplacement → begin_live → PURGE des
+  frames arrivées pendant la rotation (jamais deux filtres empilés —
+  décision d'Alain). Le TEC est coupé automatiquement à l'arrêt de session.
+- **`images.py`** : `save_image(path, arr, entete=None)` — mot-clé FITS
+  FILTER = filtre courant (mono) / rôle (canaux composés).
+- **`_test_qhy_camera.py`** : faux SDK étendu (is_control_available,
+  get_param/set_param avec rotation simulée, contrôles TEC) — **31
+  vérifications**, les 32 fichiers de tests restent verts.
+- **Installateur REBUILDÉ** : `installer\windows\output\avastack-setup.exe`
+  (v2.14.0, lue automatiquement du source).
+- **À valider en réel (miniPC)** : déplacement de la roue DEPUIS L'APPLI,
+  régulation TEC (alim. 12 V branchée), bornes réelles du gain (0-175 =
+  plage SDK annoncée — seul l'effet physique tranche). Rappel : après un
+  « ■ Arrêter », relancer l'appli (SDK QHY non réinitialisable dans le
+  process).
 

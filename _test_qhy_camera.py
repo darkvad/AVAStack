@@ -62,6 +62,11 @@ class _FakeSDK:
     erreur_ctor = None
     roi_refusees = set()
     params = {}
+    controles_dispo = {17: True, 44: False}   # relevé réel : 44 INDISPO
+    rotation_restante = 0                     # relectures « en rotation »
+    rotation_infinie = False                  # rotation qui ne finit jamais
+    position_roue = 49.0                      # code 48+n (relevé réel : filtre 1)
+    cible_roue = 49.0
 
     @staticmethod
     def reset():
@@ -72,6 +77,11 @@ class _FakeSDK:
         _FakeSDK.erreur_ctor = None
         _FakeSDK.roi_refusees = set()
         _FakeSDK.params = {}
+        _FakeSDK.controles_dispo = {17: True, 44: False}
+        _FakeSDK.rotation_restante = 0
+        _FakeSDK.rotation_infinie = False
+        _FakeSDK.position_roue = 49.0
+        _FakeSDK.cible_roue = 49.0
 
     def __init__(self, cid):
         if _FakeSDK.erreur_ctor is not None:
@@ -95,10 +105,27 @@ class _FakeSDK:
 
     def set_param(self, cid, val):
         _FakeSDK.seq.append(("param", cid, val))
+        if cid == 17 and not _FakeSDK.rotation_infinie:
+            _FakeSDK.cible_roue = float(val)   # roue : écriture = rotation
+            _FakeSDK.rotation_restante = 2     # 2 relectures « en route »
 
     def get_param(self, cid):
         _FakeSDK.seq.append(("get_param", cid))
+        if cid == 17:
+            if 17 in _FakeSDK.params:          # forçage explicite (tests)
+                return _FakeSDK.params[17]
+            if (_FakeSDK.rotation_infinie
+                    or _FakeSDK.rotation_restante > 0):
+                if not _FakeSDK.rotation_infinie:
+                    _FakeSDK.rotation_restante -= 1
+                return _FakeSDK.position_roue  # encore en rotation
+            _FakeSDK.position_roue = _FakeSDK.cible_roue
+            return _FakeSDK.position_roue
         return _FakeSDK.params.get(cid, 0.0)
+
+    def is_control_available(self, cid):
+        _FakeSDK.seq.append(("dispo", cid))
+        return bool(_FakeSDK.controles_dispo.get(cid, False))
 
     def begin_live(self):
         _FakeSDK.seq.append(("live",))
@@ -236,6 +263,72 @@ def main():
                 "cause du « Démarrer ferme l'appli » sans détection préalable")
         verifie(mqhy._SDK_PRET, "drapeau _SDK_PRET levé après ouverture")
         c7.close()
+
+        # --- jalon 25 : roue à filtres intégrée + refroidissement TEC ------
+        # Relevés réels d'Alain (19/09/2026) : ctrl 44 INDISPO mais 17
+        # fonctionne ; position = code ASCII 48 + n (49 sur le filtre 1).
+        print("[8] roue à filtres : dispo (17 seul), position 48+n, attente")
+        _installer_fake()
+        _FakeSDK.reset()
+        c8 = QHYCamera(camera_id="QHYTEST123")
+        c8.open(roi=(3840, 2160))
+        verifie(c8.roue_disponible() is True,
+                "roue_disponible : ctrl 17 disponible → True (44 n'est PAS testé)")
+        _FakeSDK.controles_dispo[17] = False
+        verifie(c8.roue_disponible() is False,
+                "roue_disponible : ctrl 17 indisponible → False")
+        _FakeSDK.controles_dispo[17] = True
+        _FakeSDK.position_roue = 49.0
+        _FakeSDK.cible_roue = 49.0
+        _FakeSDK.rotation_restante = 0
+        verifie(c8.position_filtre() == 1,
+                "position_filtre : ctrl 17 = 49 → position 1 (convention 48+n)")
+        _FakeSDK.params[17] = 4294967295
+        verifie(c8.position_filtre() is None,
+                "position_filtre : sentinelle 0xFFFFFFFF → None (jamais d'erreur)")
+        _FakeSDK.params.pop(17)
+        _FakeSDK.position_roue = 20.0
+        _FakeSDK.cible_roue = 20.0
+        verifie(c8.position_filtre() is None,
+                "position_filtre : code < 48 → None (roue pas encore au home)")
+        _FakeSDK.position_roue = 49.0
+        _FakeSDK.cible_roue = 49.0
+        _FakeSDK.seq.clear()
+        verifie(c8.choisir_filtre(3, attente_s=0.01) == 3,
+                "choisir_filtre(3) : écrit 51 (48+3) puis attend la rotation")
+        verifie(("param", 17, 51) in _FakeSDK.seq,
+                "l'écriture roue passe par set_param(17, 48+n)")
+        _FakeSDK.rotation_infinie = True            # rotation qui ne finit pas
+        _FakeSDK.position_roue = 49.0               # reste « au cran 1 »
+        err = None
+        try:
+            c8.choisir_filtre(5, timeout_s=0.3, attente_s=0.02)
+        except RuntimeError as e:
+            err = e
+        verifie(err is not None and "pas confirmé" in str(err),
+                f"choisir_filtre en échec → RuntimeError claire ({err})")
+        _FakeSDK.rotation_infinie = False
+
+        print("[8b] refroidissement TEC : consigne 18, lectures 14/15/18, "
+              "arrêt = PWM manuel 16 à 0")
+        _FakeSDK.params[14] = -9.8          # CurTemp
+        _FakeSDK.params[15] = 128.0         # CurPWM
+        _FakeSDK.params[18] = -10.0         # consigne
+        froid = c8.lire_refroidissement()
+        verifie(froid == (-9.8, 128.0, -10.0),
+                f"lire_refroidissement → (temp, pwm, consigne) (reçu : {froid})")
+        _FakeSDK.params[15] = 4294967295
+        verifie(c8.lire_refroidissement() is None,
+                "lire_refroidissement : sentinelle sur un contrôle → None")
+        _FakeSDK.params[15] = 128.0
+        _FakeSDK.seq.clear()
+        c8.consigne_refroidissement(-12.5)
+        verifie(("param", 18, -12.5) in _FakeSDK.seq,
+                "consigne_refroidissement → set_param(18, °C) (mode auto)")
+        c8.arreter_refroidissement()
+        verifie(("param", 16, 0.0) in _FakeSDK.seq,
+                "arreter_refroidissement → set_param(16, 0) (PWM manuel 0)")
+        c8.close()
     finally:
         if ancien is not None:
             sys.modules["qhyccd"] = ancien

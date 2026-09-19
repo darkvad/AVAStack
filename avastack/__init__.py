@@ -14,9 +14,47 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.13.4"
+AVASTACK_VERSION = "2.14.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.14.0 : CONTRÔLES CAMÉRA QHY — ROUE À FILTRES + REFROIDISSEMENT (jalon 25,
+#          relevés réels d'Alain du 19/09/2026 : la roue INTÉGRÉE de la
+#          MiniCam8M fonctionne par le contrôle 17 alors que le contrôle 44
+#          « CfwSlotsNum » répond INDISPO — c'est 17 seul qui fait foi ; la
+#          position est le code ASCII 48 + n, 48 = cran 0 = slot NOIR « Dark »,
+#          puis L R G B SII Ha OIII ; 48+n testé EN RÉEL par Alain : la roue
+#          tourne et l'image change).
+#          (1) Contrat `cameras/base.py` : roue (roue_disponible /
+#          position_filtre / choisir_filtre) et refroidissement
+#          (consigne_refroidissement / lire_refroidissement /
+#          arreter_refroidissement) — no-op par défaut, comme apply_settings.
+#          (2) `cameras/qhy.py` : implémentation par les contrôles du SDK —
+#          roue = dispo/position/écriture sur 17 (attente de fin de rotation
+#          par relecture, timeout 25 s conseillé par la doc QHY) ;
+#          refroidissement = consigne 18 (mode auto), lectures 14 (temp
+#          capteur) / 15 (PWM 0-255) / 18, ARRÊT = PWM manuel 16 à 0.
+#          (3) UI, cadre « Caméra » : EXPOSITION en curseur logarithmique à
+#          deux échelles (11 µs → 5 s par défaut ; case « Échelle longue » →
+#          1 s → 900 s ; `var_expo` reste en ms réelles pour le contrat
+#          existant) ; GAIN 0 → 175 (unités SDK QHY, défaut 30) ; ligne
+#          « Filtre : » (combobox Dark/L/R/G/B/SII/Ha/OIII, active seulement
+#          si la roue répond au sondage) ; ligne refroidissement (consigne
+#          °C + boutons ❄ Réguler / ⏹ Arrêter + affichage « Capteur : x °C ·
+#          TEC : n % (pwm/255) · consigne »). TOUTES les demandes (filtre,
+#          TEC) sont posées côté thread Tk et exécutées par le thread de
+#          travail (aucun appel SDK depuis Tk) ; le sondage roue/TEC se fait
+#          après la 1re frame reçue. Changement de filtre : stop_live →
+#          déplacement → begin_live → PURGE des frames arrivées pendant la
+#          rotation (décision d'Alain : jamais deux filtres empilés).
+#          Arrêt de session : le TEC est COUPÉ automatiquement (⏹).
+#          (4) `images.save_image(path, arr, entete=None)` : mots-clés FITS
+#          optionnels — l'empilement sauvegardé porte désormais FILTER =
+#          filtre courant (mono) ou rôle (canaux composés).
+#          (5) `_test_qhy_camera.py` : faux SDK étendu (is_control_available,
+#          get_param/set_param avec rotation simulée, TEC) — 31 vérifications.
+#          À VALIDER EN RÉEL (miniPC) : déplacement réel de la roue depuis
+#          l'appli, régulation TEC (alim. 12 V branchée), bornes réelles du
+#          gain (0-175 = plage SDK annoncée, à confirmer par effet physique).
 # v2.13.4 : DIAGNOSTIC CAMÉRA (aucun changement de comportement de l'appli ;
 #          consigne d'Alain du 19/09/2026 : « on ne bosse que sur le
 #          diagnostic caméra, arrête de rebuilder l'installateur » — donc

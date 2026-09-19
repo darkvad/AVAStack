@@ -35,13 +35,28 @@ import time
 
 import numpy as np
 
-from .base import CameraBase
+from .base import CameraBase, FILTRES_ROUE
 from .sdk_loader import RACINE_PROJET
 
 FICHIER_TRACE = os.path.join(tempfile.gettempdir(), "avastack_qhy_debug.log")
 # CREATE_NO_WINDOW (Windows) : l'enfant ne doit pas faire clignoter une
 # console (l'application tourne normalement via pythonw, sans console).
 _CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
+
+# --- Contrôles SDK (ids d'après l'enum OFFICIEL, crate qhyccd-rs) ---------
+# Vérifiés en réel sur la MiniCam8M (banc + relevés d'Alain, 19/09/2026) :
+# la roue INTÉGRÉE se pilote par les contrôles (aucune API « filter wheel »
+# dans le binding) ; le refroidissement aussi (aucune méthode « cooler »).
+CTRL_CUR_TEMP = 14      # CurTemp    : température capteur LUE (°C)
+CTRL_CUR_PWM = 15       # CurPWM     : puissance TEC courante (0-255)
+CTRL_MANUAL_PWM = 16    # ManualPWM  : PWM manuel 0-255 (bascule le SDK en
+                        #             mode manuel — c'est l'« arrêt » du TEC)
+CTRL_CFW_PORT = 17      # CfwPort    : position de la roue, ASCII → 48 + n
+                        #             (relevé réel : 49 sur le filtre 1 ;
+                        #             ctrl 44 « CfwSlotsNum » est INDISPO en
+                        #             réel → la disponibilité se teste sur 17)
+CTRL_CONSIGNE = 18      # Cooler     : consigne de régulation (°C, mode auto)
+VALEUR_ERREUR = 4294967295.0   # sentinelle d'erreur du SDK (0xFFFFFFFF)
 
 
 def _tracer(message):
@@ -241,6 +256,111 @@ class QHYCamera(CameraBase):
             self.cam.set_gain(float(gain))
         except Exception as e:
             _tracer(f"apply_settings ignoré ({e})")   # hors limites firmware
+
+    # --- roue à filtres intégrée (contrôles 17/44 du SDK) ----------------
+    def roue_disponible(self):
+        """True si le contrôle de position (17) est disponible.
+
+        Relevé réel (Alain, 19/09/2026) : ctrl 44 « CfwSlotsNum » répond
+        INDISPO alors que la roue FONCTIONNE (17 accepte les écritures et la
+        roue tourne) → c'est 17, et lui seul, qui fait foi.
+        """
+        if self.cam is None:
+            return False
+        try:
+            dispo = bool(self.cam.is_control_available(CTRL_CFW_PORT))
+        except Exception as e:
+            _tracer(f"roue_disponible : {e}")
+            return False
+        _tracer(f"roue_disponible : ctrl {CTRL_CFW_PORT} → {dispo}")
+        return dispo
+
+    def position_filtre(self):
+        """→ position courante (0 = cran noir), None si inconnue.
+
+        Le contrôle renvoie un code ASCII : 48 + n (relevé réel : 49 sur le
+        filtre 1). Toute autre valeur (sentinelle d'erreur, code < 48) est
+        « position inconnue » — jamais une erreur : la roue peut être en
+        rotation, ou le logiciel lancé avant le retour au home de la roue.
+        """
+        if self.cam is None:
+            return None
+        try:
+            v = float(self.cam.get_param(CTRL_CFW_PORT))
+        except Exception as e:
+            _tracer(f"position_filtre : {e}")
+            return None
+        if v == VALEUR_ERREUR:
+            return None
+        n = int(v) - 48
+        return n if n >= 0 else None
+
+    def choisir_filtre(self, n, timeout_s=25.0, attente_s=0.3):
+        """Déplace la roue vers la position n (0 = cran noir) et attend.
+
+        Écriture de 48 + n dans le contrôle 17, puis relecture EN BOUCLE
+        jusqu'à la position cible — la position n'est fiable qu'une fois la
+        rotation terminée (doc QHY) —, timeout 25 s (valeur conseillée par
+        la doc). BLOQUANT : à appeler UNIQUEMENT depuis le thread de travail.
+        Lève une RuntimeError claire si la rotation n'est pas confirmée.
+        """
+        if self.cam is None:
+            raise RuntimeError("caméra fermée — la roue n'est pas accessible")
+        n = int(n)
+        cible = 48 + n
+        _tracer(f"choisir_filtre({n}) : set_param({CTRL_CFW_PORT}, {cible})")
+        self.cam.set_param(CTRL_CFW_PORT, cible)
+        pos = None
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < timeout_s:
+            time.sleep(attente_s)
+            pos = self.position_filtre()
+            _tracer(f"choisir_filtre({n}) : relecture → {pos}")
+            if pos == n:
+                return n
+        raise RuntimeError(
+            f"la roue n'a pas confirmé la position {n} "
+            f"({FILTRES_ROUE[n] if 0 <= n < len(FILTRES_ROUE) else '?'}) en "
+            f"{timeout_s:.0f} s — dernière relecture : {pos}")
+
+    # --- refroidissement TEC (contrôles 14/15/16/18 du SDK) --------------
+    def consigne_refroidissement(self, temp_c):
+        """Régulation automatique à `temp_c` °C (set_param du contrôle 18)."""
+        if self.cam is None:
+            raise RuntimeError("caméra fermée — TEC inaccessible")
+        self.cam.set_param(CTRL_CONSIGNE, float(temp_c))
+        _tracer(f"consigne_refroidissement : set_param(18, {float(temp_c):g})")
+
+    def lire_refroidissement(self):
+        """→ (temp capteur °C, PWM 0-255, consigne °C), None si indisponible.
+
+        Une sentinelle d'erreur (0xFFFFFFFF) sur l'une des trois lectures
+        signifie « refroidissement absent/inactif » → None, jamais d'erreur.
+        """
+        if self.cam is None:
+            return None
+        vals = []
+        for cid in (CTRL_CUR_TEMP, CTRL_CUR_PWM, CTRL_CONSIGNE):
+            try:
+                v = float(self.cam.get_param(cid))
+            except Exception as e:
+                _tracer(f"lire_refroidissement : ctrl {cid} : {e}")
+                return None
+            if v == VALEUR_ERREUR:
+                return None
+            vals.append(v)
+        return tuple(vals)
+
+    def arreter_refroidissement(self):
+        """Coupe le TEC : PWM MANUEL (contrôle 16) à 0.
+
+        Le passage en mode manuel (toute écriture dans 16) sort le SDK du
+        mode auto — PWM 0 = plus de refroidissement (mais la caméra reste
+        ouverte et le flux continue)."""
+        if self.cam is None:
+            raise RuntimeError("caméra fermée — TEC inaccessible")
+        self.cam.set_param(CTRL_MANUAL_PWM, 0.0)
+        _tracer("arreter_refroidissement : set_param(16, 0) — TEC coupé")
 
     def close(self):
         if self.cam is not None:

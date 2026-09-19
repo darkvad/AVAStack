@@ -5,6 +5,7 @@ externe sur instantané."""
 
 import os
 import time
+import math
 import queue
 import shutil
 import tempfile
@@ -23,6 +24,7 @@ from ..images import (CFA_MODE, lire_filtre_fits, load_image, save_image,
 from ..cameras import (SOURCES, SimulatedCamera, OpenCVCamera, ZWOASICamera,
                        FolderCamera, MultiFolderCamera, QHYCamera,
                        PlayerOneCamera, TouptekCamera, SVBonyCamera)
+from ..cameras.base import FILTRES_ROUE
 from ..cameras.qhy import lister_via_sous_processus
 from ..processing import Calibrator, StarAligner, LiveStacker, DisplayProcessor
 from ..processing import alignment as align_mod
@@ -42,6 +44,17 @@ RESTACK_MARGE = 1.5        # une brute doit battre la référence de ce facteur
 RESTACK_MIN_FRAMES = 5     # pas de re-stack auto avant ce nb de frames archivées
 RESTACK_CADENCE = 10       # nb de frames archivées entre deux re-stacks auto
 RESTACK_HIST_MAX = 12      # entrées conservées dans l'historique de session (jalon 18)
+
+
+def _fmt_expo(ms):
+    """Format d'affichage d'une exposition en ms : µs / ms / s selon l'ordre
+    de grandeur (le curseur log couvre 11 µs → 900 s)."""
+    ms = float(ms)
+    if ms < 1.0:
+        return f"{ms * 1000.0:.0f} µs"
+    if ms < 1000.0:
+        return f"{ms:.1f} ms" if ms < 100.0 else f"{ms:.0f} ms"
+    return f"{ms / 1000.0:.3g} s"
 
 # --- Jalon 17 : filtre anti-brutes TRÈS défocalisées (AVANT l'empilement) ---
 # Constat réel d'Alain (17/09/2026, après le jalon 15) : « ça a l'air OK sauf
@@ -96,6 +109,12 @@ class App:
         root.protocol("WM_DELETE_WINDOW", self._on_close)
 
         self.camera = self.thread = None
+        self.cam_pilotee = None          # jalon 25 : caméra QHY pilotée (TEC/roue)
+        self._lu_au_moins_une_fois = False
+        self._controles_sondes = False
+        self._roue_ok = False            # roue détectée (worker → _tick)
+        self._tec_ok = False             # refroidissement détecté (idem)
+        self.filtre_courant = None       # nom du filtre en place (FITS FILTER)
         self.running = False
         self.q = queue.Queue(maxsize=2)
         self.stacker = None
@@ -107,6 +126,8 @@ class App:
         self.rejet_methode = "kappa"     # "kappa" ou "winsorized" (satellites)
         self.rejet_fenetre = 8           # frames de la fenêtre glissante
         self.pending_settings = None
+        self.expo_ms = 100.0             # instantanés thread-safe (jalon 25)
+        self.gain_val = 30.0
         self.reset_request = self.ref_request = False
         self.save_request = self.saved_path = None
         self.save_canaux_request = None  # jalon 19 : dossier des canaux (compo)
@@ -507,6 +528,52 @@ class App:
         sauver_config(c)
 
     # ------------------------------------------------------------ construction UI
+    # Contrôles caméra QHY (jalon 25, demandes d'Alain du 19/09/2026) :
+    # exposition en curseur LOGARITHMIQUE à deux échelles (11 µs – 5 s, et
+    # 1 s – 900 s via la case « Échelle longue ») — un curseur linéaire ne
+    # peut pas couvrir un rapport 80 millions (11 µs → 900 s) : en log, le
+    # pas est multiplicatif et le réglage reste fin partout. `var_expo`
+    # reste TOUJOURS en ms réelles (contrat apply_settings + tests).
+    _EXPO_COURT = (0.011, 5000.0)      # ms : 11 µs → 5 s
+    _EXPO_LONG = (1000.0, 900000.0)    # ms : 1 s → 900 s
+
+    def _expo_bornes(self):
+        return self._EXPO_LONG if self.var_expo_longue.get() else self._EXPO_COURT
+
+    def _expo_depuis_pos(self, p):
+        """Curseur 0..1000 → ms (échelle logarithmique de l'échelle active)."""
+        lo, hi = self._expo_bornes()
+        p = min(max(float(p), 0.0), 1000.0)
+        return lo * (hi / lo) ** (p / 1000.0)
+
+    def _pos_depuis_expo(self, ms):
+        """ms → curseur 0..1000 (inverse du mapping ci-dessus, borné)."""
+        lo, hi = self._expo_bornes()
+        ms = min(max(float(ms), lo), hi)
+        return 1000.0 * math.log(ms / lo) / math.log(hi / lo)
+
+    def _maj_expo(self, ms, replacer=True):
+        """Pose l'exposition réelle (ms bornées), l'affichage et la demande."""
+        lo, hi = self._expo_bornes()
+        ms = min(max(float(ms), lo), hi)
+        self.var_expo.set(ms)
+        self.lbl_expo.config(text=_fmt_expo(ms))
+        if replacer:
+            self.s_expo.set(self._pos_depuis_expo(ms))
+        self._push_settings()
+
+    def _on_echelle_expo(self):
+        """Case « échelle longue » : garde la valeur réelle si elle reste
+        dans la nouvelle échelle, sinon la ramène à la borne la plus proche
+        (5 s ↔ 1 s : les deux échelles se touchent, aucune valeur ne saute)."""
+        self._maj_expo(self.var_expo.get())
+
+    def _on_curseur_expo(self, v):
+        self._maj_expo(self._expo_depuis_pos(v), replacer=False)
+
+    def _on_pas_expo(self, facteur):
+        self._maj_expo(self.var_expo.get() * facteur)
+
     def _build_ui(self):
         main = ttk.PanedWindow(self.root, orient="horizontal")
         main.pack(fill="both", expand=True)
@@ -555,11 +622,74 @@ class App:
                                    state="disabled")
         self.btn_stop.pack(side="left", expand=True, fill="x", padx=1)
         self.var_expo = tk.DoubleVar(value=100.0)
-        self.var_gain = tk.DoubleVar(value=1.0)
-        self._add_slider(box, "Exposition (ms)", self.var_expo, 5, 1000, 5,
-                         self._push_settings, "{:.0f}")
-        self._add_slider(box, "Gain", self.var_gain, 0.5, 8.0, 0.1,
-                         self._push_settings, "{:.1f}")
+        self.var_gain = tk.DoubleVar(value=30.0)
+        # Contrôles caméra QHY (jalon 25 — demandes d'Alain du 19/09/2026) :
+        # exposition log 11 µs → 5 s (case → 1 s à 900 s) ; gain 0 → 175
+        # (unités SDK QHY) ; refroidissement (consigne, lecture, arrêt) ;
+        # roue à filtres intégrée (0 = cran noir « Dark », puis LRGBSHO).
+        self.var_expo_longue = tk.BooleanVar(value=False)
+        self.var_tec_consigne = tk.StringVar(value="-10")
+        self.var_filtre = tk.StringVar(value=FILTRES_ROUE[0])
+        self._tec_dernier = None          # (temp, pwm, consigne) → _tick
+        self._tec_demande = None          # ("consigne", °C) | ("stop", None)
+        self._tec_info = None             # texte d'état TEC (thread → _tick)
+        self._filtre_demande = None       # index de position 0..N-1
+        self._filtre_info = None          # texte d'état roue (thread → _tick)
+        self._roue_ok = False             # roue détectée (worker → _tick)
+        # --- Exposition : curseur log dédié (11 µs – 5 s / 1 s – 900 s) ---
+        rowe = ttk.Frame(box)
+        rowe.pack(fill="x", pady=1)
+        heade = ttk.Frame(rowe)
+        heade.pack(fill="x")
+        ttk.Label(heade, text="Exposition").pack(side="left")
+        self.lbl_expo = ttk.Label(heade, text=_fmt_expo(100.0))
+        self.lbl_expo.pack(side="right")
+        lignee = ttk.Frame(rowe)
+        lignee.pack(fill="x")
+        b_em = ttk.Button(lignee, text="-", width=3, takefocus=False,
+                          command=lambda: self._on_pas_expo(1 / 1.25))
+        b_em.pack(side="left")
+        self.s_expo = ttk.Scale(lignee, from_=0, to=1000,
+                                value=self._pos_depuis_expo(100.0),
+                                command=self._on_curseur_expo)
+        self.s_expo.pack(side="left", fill="x", expand=True, padx=3)
+        b_ep = ttk.Button(lignee, text="+", width=3, takefocus=False,
+                          command=lambda: self._on_pas_expo(1.25))
+        b_ep.pack(side="left")
+        self.chk_expo_longue = ttk.Checkbutton(
+            box, text="Échelle longue (1 s – 900 s)",
+            variable=self.var_expo_longue, command=self._on_echelle_expo)
+        self.chk_expo_longue.pack(anchor="w")
+        self._add_slider(box, "Gain (0 – 175)", self.var_gain, 0.0, 175.0,
+                         1.0, self._push_settings, "{:.0f}")
+        # --- Roue à filtres intégrée (active si la roue répond, cf. worker)
+        rowf = ttk.Frame(box)
+        rowf.pack(fill="x", pady=(2, 0))
+        ttk.Label(rowf, text="Filtre :").pack(side="left")
+        self.cb_filtre = ttk.Combobox(rowf, textvariable=self.var_filtre,
+                                      state="disabled", width=7,
+                                      values=list(FILTRES_ROUE))
+        self.cb_filtre.pack(side="left", padx=4)
+        self.cb_filtre.bind("<<ComboboxSelected>>", self._on_filtre_choisi)
+        self.lbl_filtre = ttk.Label(rowf, text="", foreground="#888888")
+        self.lbl_filtre.pack(side="left", padx=(2, 0))
+        # --- Refroidissement TEC (consigne + lectures + arrêt) -----------
+        rowt = ttk.Frame(box)
+        rowt.pack(fill="x", pady=(2, 0))
+        ttk.Label(rowt, text="Consigne °C :").pack(side="left")
+        ttk.Entry(rowt, textvariable=self.var_tec_consigne, width=5
+                  ).pack(side="left", padx=(4, 4))
+        self.btn_tec_on = ttk.Button(rowt, text="❄ Réguler",
+                                     command=self._on_consigne_tec,
+                                     state="disabled")
+        self.btn_tec_on.pack(side="left", padx=(0, 2))
+        self.btn_tec_off = ttk.Button(rowt, text="⏹ Arrêter",
+                                      command=self._on_arret_tec,
+                                      state="disabled")
+        self.btn_tec_off.pack(side="left")
+        self.lbl_tec = ttk.Label(box, text="Capteur : — · TEC : —",
+                                 foreground="#888888")
+        self.lbl_tec.pack(anchor="w")
         # Détection des caméras « SDK constructeur » (correctif du
         # 19/09/2026 : aucune info au choix de la source). Le scan QHY
         # tourne dans un SOUS-PROCESSUS isolé : un segfault du SDK ne tue
@@ -1443,8 +1573,32 @@ class App:
             self._show_image(self.disp.process(self.last_show, live=False))
 
     def _push_settings(self):
+        # Instantanés « thread-safe » (attributs simples lus par le worker) :
+        # le worker n'a JAMAIS le droit de lire une variable Tk.
+        self.expo_ms = float(self.var_expo.get())
+        self.gain_val = float(self.var_gain.get())
         if self.camera is not None:
-            self.pending_settings = (self.var_expo.get(), self.var_gain.get())
+            self.pending_settings = (self.expo_ms, self.gain_val)
+
+    # --- contrôles caméra QHY (jalon 25) : demandes posées ICI (thread Tk),
+    # consommées par le thread de travail — jamais d'appel SDK depuis Tk.
+    def _on_filtre_choisi(self, _e=None):
+        try:
+            n = FILTRES_ROUE.index(self.var_filtre.get())
+        except ValueError:
+            return
+        self._filtre_demande = n
+
+    def _on_consigne_tec(self):
+        try:
+            t = float(self.var_tec_consigne.get().replace(",", "."))
+        except ValueError:
+            self._tec_info = ("Consigne TEC : nombre invalide", "#d04040")
+            return
+        self._tec_demande = ("consigne", min(max(t, -30.0), 45.0))
+
+    def _on_arret_tec(self):
+        self._tec_demande = ("stop", None)
 
     def _pick_dossier_compo(self, i):
         d = filedialog.askdirectory(
@@ -1725,6 +1879,24 @@ class App:
         self.ext_state = "idle"
         self.ext_t0 = None
         self._ext_popup = False
+        # Jalon 25 : état des contrôles caméra QHY — demandes et lignes UI
+        # repartent de zéro à chaque session (pas de relance héritée).
+        self.cam_pilotee = cam if isinstance(cam, QHYCamera) else None
+        self._roue_ok = self._tec_ok = False
+        self._controles_sondes = False
+        self._lu_au_moins_une_fois = False
+        self._filtre_demande = None
+        self._filtre_info = None
+        self._tec_demande = None
+        self._tec_dernier = None
+        self._tec_info = None
+        self.filtre_courant = None
+        self.var_filtre.set(FILTRES_ROUE[0])
+        self.cb_filtre.config(state="disabled")
+        self.lbl_filtre.config(text="")
+        self.btn_tec_on.config(state="disabled")
+        self.btn_tec_off.config(state="disabled")
+        self.lbl_tec.config(text="Capteur : — · TEC : —", foreground="#888888")
         self.btn_save_proc.config(state="disabled")
         self.zoom, self.view_cx, self.view_cy = 1.0, None, None
         self._last_disp = None
@@ -1737,6 +1909,19 @@ class App:
 
     def _stop(self):
         self.running = False
+        # Jalon 25 : un refroidissement laissé en régulation continue de
+        # consommer du courant et de givrer — on COUPE le TEC à l'arrêt de
+        # la session (le flux, lui, n'est pas redémarrable dans le process :
+        # cf. limite du binding, consignée au jalon 20-24).
+        cam = self.cam_pilotee or (self.camera
+                                   if isinstance(self.camera, QHYCamera)
+                                   else None)
+        if cam is not None:
+            try:
+                cam.arreter_refroidissement()
+            except Exception:
+                pass        # caméra déjà fermée / TEC absent : rien à faire
+        self.cam_pilotee = None
         if self.thread:
             self.thread.join(timeout=3)
             self.thread = None
@@ -2768,10 +2953,114 @@ class App:
             + "\n".join(f"• {l}" for l in lignes))
 
     # ------------------------------------------------------------ thread d'acquisition
+    # --- contrôles caméra QHY (jalon 25) : appelés UNIQUEMENT depuis le
+    # thread de travail (les appels SDK ne sont jamais faits côté Tk).
+    def _appliquer_filtre_demande(self):
+        """Change le filtre si une demande est en attente. Protocole de la
+        décision d'Alain (le changement ARRÊTE puis REPREND l'acquisition) :
+        stop_live → déplacement + attente de fin (≤ 25 s) → begin_live →
+        PURGE des frames arrivées pendant la rotation (aucune frame d'un
+        autre filtre ne doit entrer dans l'empilement). L'erreur est tracée
+        et signalée, mais NE tue PAS l'acquisition (nouvel essai possible)."""
+        n = self._filtre_demande
+        if n is None or self.camera is None or self.cam_pilotee is None:
+            return
+        self._filtre_demande = None
+        nom = FILTRES_ROUE[n] if 0 <= n < len(FILTRES_ROUE) else f"?{n}"
+        try:
+            self.cam_pilotee.stop_live()
+            self.cam_pilotee.choisir_filtre(n)
+            self.cam_pilotee.begin_live()
+            # PURGE TEMPORISÉE (piège : en flux live, read() ne renvoie
+            # JAMAIS None — la caméra émet en continu, une boucle « jusqu'à
+            # None » ne se terminerait jamais) : on jette les frames d'une
+            # fenêtre ~2,5 expositions (≥ 1 s, ≤ 5 s) après la reprise.
+            delai = min(5.0, max(1.0, 2.5 * getattr(self, "expo_ms",
+                                                    100.0) / 1000.0))
+            t_purge = time.monotonic()
+            while self.running and time.monotonic() - t_purge < delai:
+                self.camera.read()
+                time.sleep(0.01)
+            self._filtre_info = (f"Filtre {nom} (position {n})", "#1d7f1d")
+            self.filtre_courant = nom
+        except Exception as e:
+            try:
+                self.cam_pilotee.begin_live()   # repartir, même en échec
+            except Exception:
+                pass
+            self._filtre_info = (f"Filtre {nom} : {e}", "#d04040")
+
+    def _appliquer_demande_tec(self):
+        """Consigne de régulation ou arrêt du TEC — demande posée par le
+        thread Tk, exécutée ICI (thread de travail), résultat → _tick."""
+        dem = self._tec_demande
+        if dem is None or self.cam_pilotee is None:
+            return
+        self._tec_demande = None
+        try:
+            if dem[0] == "consigne":
+                self.cam_pilotee.consigne_refroidissement(dem[1])
+                self._tec_info = (f"Consigne TEC : {dem[1]:.0f} °C", "#1d7f1d")
+            else:
+                self.cam_pilotee.arreter_refroidissement()
+                self._tec_info = ("Refroidissement arrêté", "#c98a00")
+        except Exception as e:
+            self._tec_info = (f"TEC : {e}", "#d04040")
+
+    def _sonder_controles(self):
+        """Une fois par session : roue à filtres présente ? TEC présent ?
+        → active les lignes UI correspondantes (consommé par _tick). Si
+        `piloter` échoue, la caméra reste en simple lecture (flux intact).
+        Les lectures font partie du PROTOCOLE d'ouverture du SDK (la doc
+        QHY précise qu'elles précèdent begin_live en usage « capture ») :
+        la caméra est ouverte, le flux tourne, la 1re frame est déjà venue
+        — on reste donc sur un sondage protégé par try/except, comme tout
+        appel de contrôle."""
+        if self.cam_pilotee is not None:
+            try:
+                self._roue_ok = self.cam_pilotee.roue_disponible()
+            except Exception:
+                self._roue_ok = False
+            try:
+                if self.cam_pilotee.lire_refroidissement() is not None:
+                    self._tec_ok = True
+            except Exception:
+                pass
+            return
+        if isinstance(self.camera, QHYCamera):
+            try:
+                self._roue_ok = self.camera.roue_disponible()
+            except Exception:
+                self._roue_ok = False
+            try:
+                if self.camera.lire_refroidissement() is not None:
+                    self._tec_ok = True
+            except Exception:
+                pass
+
     def _worker(self):
         last_good = None
+        self._controles_sondes = False
         while self.running:
             t0 = time.perf_counter()
+
+            # Jalon 25 : sondage UNIQUE des contrôles (roue / TEC) — la
+            # 1re frame est la preuve que la caméra est réellement ouverte
+            # (le QHYSDK stocke les valeurs sans jamais les valider).
+            if not self._controles_sondes and self._lu_au_moins_une_fois:
+                self._controles_sondes = True
+                try:
+                    self._sonder_controles()
+                except Exception:
+                    pass
+
+            # Jalon 25 : demandes filtre / refroidissement (thread Tk →
+            # thread de travail — aucun appel SDK depuis le thread Tk).
+            try:
+                self._appliquer_filtre_demande()
+                self._appliquer_demande_tec()
+            except Exception:
+                pass
 
             if self.pending_settings is not None:
                 self.camera.apply_settings(*self.pending_settings)
@@ -2821,7 +3110,11 @@ class App:
                     and self.stacker.n > 0):
                 path, self.save_request = self.save_request, None
                 try:
-                    save_image(path, self.stacker.mean())
+                    # Jalon 25 : mot-clé FILTER (roue à filtres QHY) — utile
+                    # pour les dossiers N.I.N.A. et la détection des rôles.
+                    save_image(path, self.stacker.mean(),
+                               entete={"FILTER": self.filtre_courant}
+                               if self.filtre_courant else None)
                     self.saved_path = path
                 except Exception as e:
                     self.saved_path = f"ERREUR: {e}"
@@ -2836,7 +3129,8 @@ class App:
                 try:
                     for role, carte in self.stacker.moyennes().items():
                         save_image(os.path.join(
-                            d_canaux, f"canal_{role}.fit"), carte)
+                            d_canaux, f"canal_{role}.fit"), carte,
+                            entete={"FILTER": role})
                     self.saved_path = d_canaux
                 except Exception as e:
                     self.saved_path = f"ERREUR: {e}"
@@ -2845,6 +3139,7 @@ class App:
             if lu is None:
                 time.sleep(0.005)
                 continue
+            self._lu_au_moins_une_fois = True
             # Jalon 19 : source « composition » → read() renvoie (img, rôle).
             if self._mode_compo:
                 frame, role = lu
@@ -3159,6 +3454,41 @@ class App:
         if gains != self._compo_gains or mode_l != self._compo_mode_l:
             self._compo_gains = gains
             self._compo_mode_l = mode_l
+        # Jalon 25 : lecture de la température/PWM du TEC (attributs simples
+        # écrits par le thread de travail — jamais de variable Tk dans le
+        # worker) + activer les lignes Filtre/TEC quand le sondage a répondu.
+        if self.running:
+            dernier = self._tec_dernier
+            if dernier is not None:
+                self._tec_dernier = None
+                t, pwm, cons = dernier
+                pct = max(0, min(255, int(round(pwm)))) * 100 // 255
+                self.lbl_tec.config(
+                    text=f"Capteur : {t:.1f} °C · TEC : {pct} % ({int(pwm)}/255)"
+                         + (f" · consigne {cons:.0f} °C" if cons else ""),
+                    foreground="#1d7f1d")
+            if self._tec_ok:
+                self._tec_ok = False
+                self.btn_tec_on.config(state="normal")
+                self.btn_tec_off.config(state="normal")
+                try:
+                    self._tec_defaut = float(
+                        self.var_tec_consigne.get().replace(",", "."))
+                except ValueError:
+                    return self.root.after(30, self._tick)
+                self._tec_demande = ("consigne", self._tec_defaut)
+            if self._roue_ok:
+                self._roue_ok = False
+                self.cb_filtre.config(state="readonly")
+                self.lbl_filtre.config(text="roue détectée", foreground="#1d7f1d")
+            if self._filtre_info is not None:
+                txt, coul = self._filtre_info
+                self._filtre_info = None
+                self.lbl_filtre.config(text=txt, foreground=coul)
+            if self._tec_info is not None:
+                txt, coul = self._tec_info
+                self._tec_info = None
+                self.lbl_tec.config(text=txt, foreground=coul)
         try:
             while True:
                 show, hist, st = self.q.get_nowait()

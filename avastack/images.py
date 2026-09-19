@@ -133,11 +133,18 @@ def lire_filtre_fits(path):
 
 
 
-def save_image(path, arr):
-    """Sauve une image float [0..1] en FITS (si astropy) ou PNG/TIFF 16 bits."""
+def save_image(path, arr, entete=None):
+    """Sauve une image float [0..1] en FITS (si astropy) ou PNG/TIFF 16 bits.
+
+    entete : dict optionnel de mots-clés FITS (p.ex. {"FILTER": "Ha"})
+    — ignoré silencieusement pour les formats non FITS."""
     ext = os.path.splitext(path)[1].lower()
     if ext in (".fits", ".fit", ".fts") and FITS_OK:
-        fits.PrimaryHDU(arr.astype(np.float32)).writeto(path, overwrite=True)
+        hdu = fits.PrimaryHDU(arr.astype(np.float32))
+        if entete:
+            for k, v in entete.items():
+                hdu.header[str(k).upper()] = v
+        hdu.writeto(path, overwrite=True)
     else:
         u16 = (np.clip(arr, 0, 1) * 65535).astype(np.uint16)
         ok, buf = cv2.imencode(ext, u16)
