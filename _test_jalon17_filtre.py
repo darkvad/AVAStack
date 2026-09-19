@@ -198,6 +198,7 @@ try:
     # bloquer AVANT l'archivage, et la série doit reprendre normalement.
     app2.camera = CamFournit([NET, NET2, NET3, TRES, NET, NET2])
     app2.running = True
+    app2.empilement_on = True           # jalon 26 : le worker n'empile que si armé
     th = threading.Thread(target=app2._worker, daemon=True)
     th.start()
     t0 = time.time()

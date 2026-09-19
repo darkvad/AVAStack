@@ -14,9 +14,38 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.14.0"
+AVASTACK_VERSION = "2.14.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.14.1 : CONNEXION À LA DÉTECTION — RÉGLAGES AVANT L'EMPILEMENT (jalon 26,
+#          demande d'Alain : « souvent la caméra a le filtre Dark à la mise
+#          en marche ; que la caméra soit connectée quand elle est détectée,
+#          et que Démarrer ne démarre que l'empilement, comme ça on peut
+#          régler ce qu'on veut (attendre la bonne température) AVANT
+#          d'empiler »).
+#          (1) « 🔎 Détecter » CONNECTE désormais la caméra QHY (thread
+#          dédié : open() + flux + apply_settings) dès la détection — le
+#          sondage des contrôles (roue/TEC) et le refroidissement à la
+#          consigne par défaut s'exécutent SANS attendre une frame, donc
+#          AVANT l'empilement. Le thread de travail est PERMANENT : il
+#          continue de piloter les contrôles et relire le TEC toutes les 2 s
+#          même quand l'empilement est en pause.
+#          (2) « ▶ Démarrer » = lancement de l'EMPILEMENT seulement (reset
+#          complet de session exécuté par le worker via
+#          empilement_start_request, purge de la file du SDK limitée aux
+#          flux live — jamais pour les sources « dossier ») ; « ■ Arrêter »
+#          = PAUSE (caméra connectée, refroidissement maintenu, contrôles
+#          actifs, reprise sans rebrancher) ; nouveau bouton « ⏏
+#          Déconnecter » (coupe le TEC puis referme la caméra — rappel : le
+#          SDK QHY n'est pas réinitialisable dans le même process, il faut
+#          relancer l'application pour reconnecter) ; changement de source
+#          avec caméra connectée = déconnexion automatique (prévenue) ;
+#          fermeture de l'application = déconnexion complète.
+#          (3) Constat corrigé au passage : la relecture TEC (temp/PWM/18)
+#          n'était jamais faite dans le worker (l'affichage restait à « — »)
+#          → lecture périodique toutes les 2 s, en session comme en pause.
+#          (4) Tests adaptés au nouveau flux (empilement_armé dans les 9
+#          tests qui lancent le worker) — 32/32 fichiers au vert.
 # v2.14.0 : CONTRÔLES CAMÉRA QHY — ROUE À FILTRES + REFROIDISSEMENT (jalon 25,
 #          relevés réels d'Alain du 19/09/2026 : la roue INTÉGRÉE de la
 #          MiniCam8M fonctionne par le contrôle 17 alors que le contrôle 44

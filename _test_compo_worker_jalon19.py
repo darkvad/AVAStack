@@ -194,6 +194,7 @@ app._compo_nom = composition_pour_roles(cam.roles)
 verifie(app._compo_nom == "HOO", "composition déduite des rôles → HOO")
 
 app.running = True
+app.empilement_on = True             # jalon 26 : le worker n'empile que si armé
 th = threading.Thread(target=app._worker, daemon=True)
 th.start()
 

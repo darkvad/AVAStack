@@ -110,7 +110,15 @@ class App:
 
         self.camera = self.thread = None
         self.cam_pilotee = None          # jalon 25 : caméra QHY pilotée (TEC/roue)
-        self._lu_au_moins_une_fois = False
+        # Jalon 26 (demande d'Alain) : la caméra est CONNECTÉE dès la
+        # détection — les contrôles (roue, refroidissement, réglages) sont
+        # utilisables AVANT l'empilement (p.ex. attendre la bonne
+        # température) ; « ▶ Démarrer » ne lance plus que l'EMPILEMENT.
+        self.empilement_on = False       # empilement en cours (pause sinon)
+        self.empilement_start_request = False   # reset de session (worker)
+        self._connexion_busy = False     # une connexion QHY est en cours
+        self._connexion_result = None    # (cam|None, err|None) → _tick
+        self._tec_dernier_t0 = 0.0       # cadence de relecture TEC (2 s)
         self._controles_sondes = False
         self._roue_ok = False            # roue détectée (worker → _tick)
         self._tec_ok = False             # refroidissement détecté (idem)
@@ -700,6 +708,10 @@ class App:
                    command=self._detecter_camera).pack(side="left")
         self.lbl_detect = ttk.Label(rowd, text="", foreground="#666666")
         self.lbl_detect.pack(side="left", padx=(6, 0))
+        self.btn_deconnect = ttk.Button(rowd, text="⏏ Déconnecter", width=12,
+                                        command=self._deconnecter_camera,
+                                        state="disabled")
+        self.btn_deconnect.pack(side="right")
 
         # --- Dossier surveillé
         box = ttk.LabelFrame(left, text="Dossier surveillé", padding=6)
@@ -1663,7 +1675,20 @@ class App:
     _SOURCES_SDK = ("QHY", "ZWO", "Player One", "Touptek", "SVBONY")
 
     def _on_source_choisie(self, *_):
-        """Sélection d'une source : auto-détection si source « SDK »."""
+        """Sélection d'une source : auto-détection si source « SDK ».
+        Une caméra connectée est d'abord déconnectée (jalon 26 : la
+        connexion appartient à la source ; pour une QHY, la reconnexion
+        dans le même process est impossible — l'utilisateur est prévenu)."""
+        if self.camera is not None:
+            qhy = isinstance(self.camera, QHYCamera)
+            self._deconnecter_camera()
+            if qhy:
+                messagebox.showinfo(
+                    "Changement de source",
+                    "La caméra QHY a été déconnectée.\n\nAprès une "
+                    "déconnexion, relancez l'application pour reconnecter "
+                    "une caméra QHY (le SDK ne peut pas être réinitialisé "
+                    "dans le même process).")
         if self.var_source.get().startswith(self._SOURCES_SDK):
             self._detecter_camera()
         else:
@@ -1671,6 +1696,12 @@ class App:
 
     def _detecter_camera(self):
         """Lance la détection (thread : ne jamais bloquer l'UI)."""
+        if self.camera is not None:
+            messagebox.showinfo(
+                "Détection",
+                "Une caméra est déjà connectée — déconnectez-la d'abord "
+                "(⏏) pour en changer.")
+            return
         if self._detect_busy:
             return
         source = self.var_source.get()
@@ -1706,6 +1737,48 @@ class App:
             self._detect_result = (source, list(fn()), None)
         except Exception as e:
             self._detect_result = (source, None, str(e))
+
+    def _connecter_qhy(self):
+        """CONNEXION de la caméra QHY (jalon 26, thread dédié) : ouverture
+        SANS empilement — le sondage des contrôles (roue/TEC), l'application
+        des réglages et le refroidissement deviennent possibles AVANT le
+        « ▶ Démarrer » (qui ne lance plus que l'empilement)."""
+        try:
+            if self._qhy_id and not self._qhy_id.startswith("<"):
+                cam = QHYCamera(camera_id=self._qhy_id)
+            elif self._sdk_ids:
+                cam = QHYCamera(camera_id=str(self._sdk_ids[0]))
+            else:
+                cam = QHYCamera()
+            cam.open()
+            cam.apply_settings(self.var_expo.get(), self.var_gain.get())
+            self._connexion_result = ("ok", cam, None)
+        except Exception as e:
+            self._connexion_result = ("erreur", None, str(e))
+
+    def _connexion_terminee(self, etat, cam, err):
+        """Consommation du résultat de connexion (thread Tk seul) : état
+        des lignes de contrôles + message d'état. Un échec réactive le
+        bouton (on peut resscanner) ; un succès active « ▶ Démarrer » et
+        « ⏏ Déconnecter »."""
+        self._connexion_busy = False
+        if etat == "erreur":
+            self._detect_busy = False
+            self.lbl_detect.config(text=f"QHY : connexion impossible — {err}",
+                                   foreground="#d04040")
+            return
+        self.camera = cam
+        self.cam_pilotee = cam if isinstance(cam, QHYCamera) else None
+        self._controles_sondes = False
+        self._roue_ok = self._tec_ok = False
+        self.btn_start.config(state="normal")
+        self.btn_deconnecter.config(state="normal")
+        self._detect_busy = False
+        self.lbl_detect.config(text=f"QHY : connectée ({cam.name})",
+                               foreground="#1d7f1d")
+        self.lbl_status.config(
+            text="Caméra connectée — réglez (filtre, refroidissement, "
+                 "gain…) puis « ▶ Démarrer » pour empiler.")
 
     def _make_camera(self, key):
         if key.startswith("Simulée"):
@@ -1819,21 +1892,50 @@ class App:
         return gains
 
     def _start(self):
-        if self.running:
+        """« ▶ Démarrer » = lancer l'EMPILEMENT (jalon 26).
+
+        La caméra est déjà connectée (dès la détection) : ce bouton ne fait
+        plus qu'armer une NOUVELLE session d'empilement — le reset complet
+        est exécuté par le worker (`empilement_start_request`), qui reprend
+        ensuite la lecture du flux. Les réglages pris AVANT (température,
+        filtre, gain…) sont conservés."""
+        if self.empilement_on:
             return
         try:
-            cam = self._make_camera(self.var_source.get())
-            if isinstance(cam, MultiFolderCamera) and \
-                    composition_pour_roles(cam.roles) is None:
-                raise RuntimeError(
-                    "Rôles de dossiers sans composition connue : "
-                    + ", ".join(cam.roles))
-            cam.open()
-            cam.apply_settings(self.var_expo.get(), self.var_gain.get())
+            if self.camera is None:
+                cam = self._make_camera(self.var_source.get())
+                if isinstance(cam, MultiFolderCamera) and \
+                        composition_pour_roles(cam.roles) is None:
+                    raise RuntimeError(
+                        "Rôles de dossiers sans composition connue : "
+                        + ", ".join(cam.roles))
+                cam.open()
+            else:
+                cam = self.camera
         except Exception as e:
             messagebox.showerror("Caméra", str(e))
             return
         self.camera = cam
+        self.cam_pilotee = cam if isinstance(cam, QHYCamera) else None
+        # Jalon 19 : mode composition si la source est multi-dossiers — la
+        # composition est déduite des rôles configurés (choix UI en phase 3).
+        self._mode_compo = isinstance(cam, MultiFolderCamera)
+        self._compo_nom = (composition_pour_roles(cam.roles)
+                           if self._mode_compo else None)
+        # Jalon 19 phase 3 : gains + radio « Canal L » instantanés POUR LE
+        # THREAD (le worker n'a jamais le droit de lire les variables Tk).
+        self._compo_gains = self._lire_gains()
+        self._compo_mode_l = self.var_compo_mode_l.get()
+        self.btn_save_proc.config(state="disabled")
+        self.btn_deconnect.config(state="disabled")   # pas de déconnexion en session
+        self.empilement_on = False
+        self.empilement_start_request = True          # reset + purge (worker)
+        if self.thread is None or not self.thread.is_alive():
+            self.running = True
+            self.thread = threading.Thread(target=self._worker, daemon=True)
+            self.thread.start()
+        self.btn_start.config(state="disabled")
+        self.btn_stop.config(state="normal")
         # Jalon 19 : mode composition si la source est multi-dossiers — la
         # composition est déduite des rôles configurés (choix UI en phase 3).
         self._mode_compo = isinstance(cam, MultiFolderCamera)
@@ -1879,24 +1981,9 @@ class App:
         self.ext_state = "idle"
         self.ext_t0 = None
         self._ext_popup = False
-        # Jalon 25 : état des contrôles caméra QHY — demandes et lignes UI
-        # repartent de zéro à chaque session (pas de relance héritée).
-        self.cam_pilotee = cam if isinstance(cam, QHYCamera) else None
-        self._roue_ok = self._tec_ok = False
-        self._controles_sondes = False
-        self._lu_au_moins_une_fois = False
-        self._filtre_demande = None
-        self._filtre_info = None
-        self._tec_demande = None
-        self._tec_dernier = None
-        self._tec_info = None
-        self.filtre_courant = None
-        self.var_filtre.set(FILTRES_ROUE[0])
-        self.cb_filtre.config(state="disabled")
-        self.lbl_filtre.config(text="")
-        self.btn_tec_on.config(state="disabled")
-        self.btn_tec_off.config(state="disabled")
-        self.lbl_tec.config(text="Capteur : — · TEC : —", foreground="#888888")
+        # Jalon 26 : les contrôles caméra (filtre, TEC) vivent avec la
+        # CONNEXION — ils ne sont PAS réinitialisés au démarrage de
+        # l'empilement (on a pu refroidir et choisir le filtre avant).
         self.btn_save_proc.config(state="disabled")
         self.zoom, self.view_cx, self.view_cy = 1.0, None, None
         self._last_disp = None
@@ -1908,11 +1995,32 @@ class App:
         self.btn_stop.config(state="normal")
 
     def _stop(self):
+        """« ■ Arrêter » = PAUSE de l'empilement (jalon 26) : le worker
+        reste actif (il continue de piloter la caméra — TEC, filtre,
+        réglages) mais n'empile plus ; la caméra reste connectée et le
+        refroidissement continue (on peut repartir au « ▶ Démarrer » sans
+        rebrancher). Rappel limite SDK : le flux QHY ne redémarre pas dans
+        le même process — relancer l'application si plus aucune frame."""
+        self.empilement_on = False
+        self.btn_start.config(state="normal")
+        self.btn_stop.config(state="disabled")
+        self.btn_deconnect.config(state="normal")
+        self.lbl_status.config(
+            text="Empilement arrêté — caméra connectée, refroidissement "
+                 "maintenu.")
+
+    def _deconnecter_camera(self):
+        """« ⏏ Déconnecter » (jalon 26) : referme la caméra — coupe le TEC
+        d'abord (un refroidissement laissé en régulation continue de
+        consommer du courant et de givrer), arrête l'empilement, libère le
+        worker. LIMITE SDK (constat du banc) : après un close, une
+        reconnexion QHY dans le même process ne reçoit plus JAMAIS de
+        frame — relancer l'application pour rebrancher une caméra QHY."""
+        self.empilement_on = False
         self.running = False
-        # Jalon 25 : un refroidissement laissé en régulation continue de
-        # consommer du courant et de givrer — on COUPE le TEC à l'arrêt de
-        # la session (le flux, lui, n'est pas redémarrable dans le process :
-        # cf. limite du binding, consignée au jalon 20-24).
+        if self.thread:
+            self.thread.join(timeout=3)
+            self.thread = None
         cam = self.cam_pilotee or (self.camera
                                    if isinstance(self.camera, QHYCamera)
                                    else None)
@@ -1922,19 +2030,61 @@ class App:
             except Exception:
                 pass        # caméra déjà fermée / TEC absent : rien à faire
         self.cam_pilotee = None
-        if self.thread:
-            self.thread.join(timeout=3)
-            self.thread = None
         if self.camera:
             self.camera.close()
             self.camera = None
         self.btn_start.config(state="normal")
         self.btn_stop.config(state="disabled")
-        self.lbl_status.config(text="Arrêté.")
+        self.btn_deconnect.config(state="disabled")
+        self.cb_filtre.config(state="disabled")
+        self.btn_tec_on.config(state="disabled")
+        self.btn_tec_off.config(state="disabled")
+        self.lbl_tec.config(text="Capteur : — · TEC : —", foreground="#888888")
+        self.lbl_filtre.config(text="", foreground="#888888")
+        if cam is not None and isinstance(cam, QHYCamera):
+            self.lbl_detect.config(
+                text="QHY déconnectée — relancez l'application pour "
+                     "reconnecter (le SDK QHY ne peut pas être réinitialisé "
+                     "dans ce process).", foreground="#B06000")
+        else:
+            self.lbl_detect.config(text="Caméra déconnectée.",
+                                   foreground="#888888")
+        self.lbl_status.config(text="Caméra déconnectée.")
+
+    def _deconnecter_camera(self):
+        """« ⏏ Déconnecter » (jalon 26) : referme la caméra — le TEC est
+        coupé avant (un refroidissement laissé en régulation continue de
+        consommer du courant et de givrer)."""
+        if self.running:
+            self._stop()
+        cam = self.cam_pilotee or (self.camera
+                                   if isinstance(self.camera, QHYCamera)
+                                   else None)
+        if cam is not None:
+            try:
+                cam.arreter_refroidissement()
+            except Exception:
+                pass        # caméra déjà fermée / TEC absent : rien à faire
+        self.cam_pilotee = None
+        if self.camera:
+            self.camera.close()
+            self.camera = None
+        self.btn_start.config(state="disabled")
+        self.btn_deconnecter.config(state="disabled")
+        self.cb_filtre.config(state="disabled")
+        self.btn_tec_on.config(state="disabled")
+        self.btn_tec_off.config(state="disabled")
+        self.lbl_tec.config(text="Capteur : — · TEC : —", foreground="#888888")
+        self.lbl_detect.config(text="")
+        self._qhy_id = ""
+        self.lbl_status.config(text="Caméra déconnectée.")
 
     def _on_close(self):
         self._sauver_config_app()
-        self._stop()
+        # Jalon 26 : déconnexion COMPLÈTE à la fermeture — le TEC est coupé
+        # (un refroidissement laissé en régulation continue de consommer du
+        # courant et de givrer) puis la caméra est refermée.
+        self._deconnecter_camera()
         self.archive.vider()      # jalon 15 : dossier temp des frames supprimé
         self.root.destroy()
 
@@ -3008,14 +3158,12 @@ class App:
             self._tec_info = (f"TEC : {e}", "#d04040")
 
     def _sonder_controles(self):
-        """Une fois par session : roue à filtres présente ? TEC présent ?
-        → active les lignes UI correspondantes (consommé par _tick). Si
-        `piloter` échoue, la caméra reste en simple lecture (flux intact).
-        Les lectures font partie du PROTOCOLE d'ouverture du SDK (la doc
-        QHY précise qu'elles précèdent begin_live en usage « capture ») :
-        la caméra est ouverte, le flux tourne, la 1re frame est déjà venue
-        — on reste donc sur un sondage protégé par try/except, comme tout
-        appel de contrôle."""
+        """Sondage des contrôles (roue à filtres / refroidissement) après
+        la CONNEXION — plus besoin d'attendre une frame (jalon 26 : on doit
+        pouvoir refroidir et choisir le filtre AVANT d'empiler). Toutes les
+        lectures SDK sont protégées (try/except), comme tout appel de
+        contrôle : un échec = fonction absente, jamais un crash. Le
+        résultat est consommé par _tick (thread Tk seul)."""
         if self.cam_pilotee is not None:
             try:
                 self._roue_ok = self.cam_pilotee.roue_disponible()
@@ -3026,45 +3174,102 @@ class App:
                     self._tec_ok = True
             except Exception:
                 pass
-            return
-        if isinstance(self.camera, QHYCamera):
-            try:
-                self._roue_ok = self.camera.roue_disponible()
-            except Exception:
-                self._roue_ok = False
-            try:
-                if self.camera.lire_refroidissement() is not None:
-                    self._tec_ok = True
-            except Exception:
-                pass
 
     def _worker(self):
         last_good = None
         self._controles_sondes = False
+        # Jalon 26 : le thread est PERMANENT — tant que la caméra est
+        # connectée, il continue de piloter les contrôles (roue, TEC,
+        # réglages) même quand l'EMPILEMENT est en pause (« ■ Arrêter ») ;
+        # c'est ce qui permet de régler/refroidir AVANT puis ENTRE les
+        # sessions d'empilement.
         while self.running:
             t0 = time.perf_counter()
 
-            # Jalon 25 : sondage UNIQUE des contrôles (roue / TEC) — la
-            # 1re frame est la preuve que la caméra est réellement ouverte
-            # (le QHYSDK stocke les valeurs sans jamais les valider).
-            if not self._controles_sondes and self._lu_au_moins_une_fois:
+            # Sondage des contrôles une fois, dès la connexion (la caméra
+            # est ouverte : les contrôles répondent sans attendre une frame).
+            if not self._controles_sondes and self.cam_pilotee is not None:
                 self._controles_sondes = True
                 try:
                     self._sonder_controles()
                 except Exception:
                     pass
 
-            # Jalon 25 : demandes filtre / refroidissement (thread Tk →
-            # thread de travail — aucun appel SDK depuis le thread Tk).
+            # Demandes filtre / refroidissement posées côté Tk — traitées
+            # ICI (thread de travail, jamais d'appel SDK depuis le thread Tk).
             try:
                 self._appliquer_filtre_demande()
                 self._appliquer_demande_tec()
             except Exception:
                 pass
 
+            # Relecture TEC (temp/PWM/consigne) toutes les 2 s — display
+            # permanent, empilement démarré ou non.
+            if (self.cam_pilotee is not None
+                    and time.monotonic() - self._tec_dernier_t0 >= 2.0):
+                self._tec_dernier_t0 = time.monotonic()
+                try:
+                    self._tec_dernier = self.cam_pilotee.lire_refroidissement()
+                except Exception:
+                    pass
+
             if self.pending_settings is not None:
                 self.camera.apply_settings(*self.pending_settings)
                 self.pending_settings = None
+
+            # Jalon 26 : « ▶ Démarrer » (empilement_start_request) → RESET
+            # COMPLET de session exécuté ICI (thread de travail) — l'UI ne
+            # touche jamais aux objets vivants du worker. Purge d'abord des
+            # frames restées dans la file du SDK (sessions précédentes /
+            # attente caméra connectée).
+            if self.empilement_start_request:
+                self.empilement_start_request = False
+                self.empilement_on = False
+                self.aligner = StarAligner()
+                self.stacker = None
+                self.disp.reset()          # stats d'affichage repartent de zéro
+                self._vl_frames = None     # le 1er empilement relancera le solveur
+                self.bad_frames, self.fps = 0, 0.0
+                self.floues_rejetees = 0   # jalon 17 : compteur de session
+                self._fwhm_hist = []       # jalon 17 : mesures de session neuve
+                self._fwhm_par_role = {}   # jalon 19 : idem, PAR RÔLE (compo)
+                self.seeing, self.seeing_msg = None, ""   # jalon 10
+                self._seeing_t0 = 0.0      # → dès la 1re frame
+                self.disp.vl_seeing = None   # jalon 12 : PSF de session neuve
+                self.show_stack = None
+                self.last_show = None
+                self._session += 1         # invalide tout traitement externe en vol
+                self._vider_archive()      # jalon 15/16 : archive de session neuve
+                self.restack_request = False
+                self._ref_score = self._ancre_score = None
+                self._ancre_idx = None
+                self._ancre_role = None
+                self._restack_depuis = 0
+                self.restack_info = ""     # jalon 18 : état dédié de session neuve
+                self.restack_couleur = "#888888"
+                self.restack_total = 0
+                self.restack_hist = []
+                self.proc_show = self.proc_full = None
+                self.proc_new = False
+                self.save_asseen_request = None   # sauvegarde « tel que vu » annulée
+                self.asseen_busy = False
+                self.asseen_result = None
+                self.ext_request = False
+                self.ext_busy = False
+                self.ext_state = "idle"
+                self.ext_t0 = None
+                self._ext_popup = False
+                self.zoom, self.view_cx, self.view_cy = 1.0, None, None
+                self._last_disp = None
+                self.q = queue.Queue(maxsize=2)
+                if isinstance(self.camera, QHYCamera):
+                    # Purge de la file du SDK UNIQUEMENT pour un flux live
+                    # (les sources « dossier » consommeraient de VRAIES
+                    # frames — jamais jetées).
+                    t_purge = time.monotonic()
+                    while time.monotonic() - t_purge < 0.3:
+                        self.camera.read()
+                self.empilement_on = True
 
             # Traitement externe demandé → thread dédié, l'acquisition continue.
             # Placé AVANT la lecture d'une frame : doit fonctionner même si
@@ -3139,7 +3344,12 @@ class App:
             if lu is None:
                 time.sleep(0.005)
                 continue
-            self._lu_au_moins_une_fois = True
+            # Jalon 26 : empilement en pause (« ■ Arrêter ») → on maintient
+            # la lecture du flux (la caméra reste connectée, la file du SDK
+            # se vide) mais on n'empile rien.
+            if not self.empilement_on:
+                time.sleep(0.05)
+                continue
             # Jalon 19 : source « composition » → read() renvoie (img, rôle).
             if self._mode_compo:
                 frame, role = lu
@@ -3441,10 +3651,61 @@ class App:
             else:
                 self._sdk_ids = list(ids)
                 if source == "QHY":
-                    self._qhy_id = str(ids[0])   # ouverte au « Démarrer »
+                    self._qhy_id = str(ids[0])
+                    # Jalon 26 : la détection CONNECTE la caméra (thread
+                    # dédié — le constructeur qhyccd.Camera ouvre le
+                    # handle USB et peut prendre quelques secondes ; ne
+                    # jamais bloquer le thread Tk).
+                    if self.camera is None and not self._connexion_busy:
+                        self._connexion_busy = True
+                        self.lbl_detect.config(
+                            text="QHY : connexion de la caméra…",
+                            foreground="#c98a00")
+                        threading.Thread(target=self._connecter_qhy,
+                                         daemon=True).start()
+                    else:
+                        self.lbl_detect.config(
+                            text=f"{source} : {' — '.join(map(str, ids))}",
+                            foreground="#1d7f1d")
+                else:
+                    self.lbl_detect.config(
+                        text=f"{source} : {' — '.join(map(str, ids))}",
+                        foreground="#1d7f1d")
+        # Jalon 26 : consommation du résultat de CONNEXION QHY (thread →
+        # thread Tk). Succès : caméra attribuée, contrôles bientôt sondés
+        # (worker), « ▶ Démarrer » et « ⏏ Déconnecter » actifs.
+        if self._connexion_result is not None:
+            cam, err = self._connexion_result
+            self._connexion_result = None
+            self._connexion_busy = False
+            if err is not None:
                 self.lbl_detect.config(
-                    text=f"{source} : {' — '.join(map(str, ids))}",
-                    foreground="#1d7f1d")
+                    text=f"QHY : connexion impossible — {err}",
+                    foreground="#d04040")
+            else:
+                self.camera = cam
+                self.cam_pilotee = cam if isinstance(cam, QHYCamera) else None
+                self._controles_sondes = False
+                self._roue_ok = self._tec_ok = False
+                self.var_filtre.set(FILTRES_ROUE[0])
+                self.cb_filtre.config(state="disabled")
+                self.lbl_filtre.config(text="", foreground="#888888")
+                self.btn_tec_on.config(state="disabled")
+                self.btn_tec_off.config(state="disabled")
+                self.lbl_tec.config(text="Capteur : — · TEC : —",
+                                    foreground="#888888")
+                self.btn_start.config(state="normal")
+                self.btn_deconnect.config(state="normal")
+                self.lbl_detect.config(text=f"QHY : connectée ({cam.name})",
+                                       foreground="#1d7f1d")
+                self.lbl_status.config(
+                    text="Caméra connectée — réglez (température, filtre, "
+                         "gain…) puis « ▶ Démarrer » pour empiler.")
+                if self.thread is None or not self.thread.is_alive():
+                    self.running = True
+                    self.thread = threading.Thread(target=self._worker,
+                                                   daemon=True)
+                    self.thread.start()
         # Jalon 19 : réglages de composition (gains R/G/B, radio « Canal L »)
         # lus CÔTÉ THREAD PRINCIPAL (variables Tk interdites dans le worker,
         # cf. piège) et poussés vers la façade si modifiés → appliqués au
@@ -3454,10 +3715,11 @@ class App:
         if gains != self._compo_gains or mode_l != self._compo_mode_l:
             self._compo_gains = gains
             self._compo_mode_l = mode_l
-        # Jalon 25 : lecture de la température/PWM du TEC (attributs simples
-        # écrits par le thread de travail — jamais de variable Tk dans le
-        # worker) + activer les lignes Filtre/TEC quand le sondage a répondu.
-        if self.running:
+        # Jalon 25/26 : lecture de la température/PWM du TEC (attributs
+        # simples écrits par le thread de travail — jamais de variable Tk
+        # dans le worker) + activer les lignes Filtre/TEC quand le sondage
+        # a répondu — DÈS LA CONNEXION (pas besoin d'une session).
+        if self.camera is not None:
             dernier = self._tec_dernier
             if dernier is not None:
                 self._tec_dernier = None

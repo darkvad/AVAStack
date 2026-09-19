@@ -11,37 +11,34 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version : AVAStack v2.14.0** (`avastack/__init__.py`), branche `master`.
-  Dernier jalon : **CONTRÔLES CAMÉRA QHY — ROUE À FILTRES + REFROIDISSEMENT**
-  (19/09/2026). **Installateur REBUILDÉ (v2.14.0)** →
-  `installer\windows\output\avastack-setup.exe`.
-  - Relevés réels d'Alain : le contrôle 44 (CfwSlotsNum) répond INDISPO mais
-    le contrôle **17 fonctionne** — changement de filtre validé EN RÉEL par
-    `48 + n` (48 = position 0 = slot noir « Dark », puis L R G B S H O).
-  - Implémenté : contrat no-op roue/refroidissement dans `cameras/base.py`
-    (`FILTRES_ROUE` = Dark,L,R,G,B,SII,Ha,OIII) ; `cameras/qhy.py` (dispo,
-    position et écriture sur le ctrl 17, attente de fin de rotation ≤ 25 s ;
-    consigne 18, lectures 14/15, arrêt = PWM manuel 16 à 0) ; UI cadre
-    « Caméra » : EXPOSITION log 11 µs → 5 s + case « Échelle longue »
-    (1 s → 900 s), GAIN 0 → 175 (défaut 30, unités SDK QHY), ligne « Filtre »
-    (combobox active seulement si la roue répond au sondage fait après la
-    1re frame), ligne refroidissement (consigne °C, ❄ Réguler / ⏹ Arrêter,
-    affichage « Capteur : x °C · TEC : n % (pwm/255) · consigne »). Demandes
-    (filtre/TEC) posées côté Tk, exécutées par le thread de travail ;
-    changement de filtre = stop_live → déplacement → begin_live → PURGE des
-    frames de la rotation (jamais deux filtres empilés) ; TEC coupé à
-    l'arrêt de session. Mot-clé FITS FILTER écrit à la sauvegarde.
-    `_test_qhy_camera.py` : 31 vérifications — 32/32 fichiers de tests OK.
-  - **À valider en réel (miniPC)** : déplacement de la roue DEPUIS L'APPLI,
-    régulation TEC (alim. 12 V branchée), bornes réelles du gain (0-175 =
-    plage SDK annoncée, à confirmer par effet physique). Rappel : après un
-    « ■ Arrêter », relancer l'appli (SDK QHY non réinitialisable dans le
-    process — le binding n'expose pas ReleaseQHYCCDResource).
-  - Jalons précédents : diagnostic QHY v2.13.4 (plage du gain toujours
-    INCONNUE — le balayage sans refus ne démontre rien), banc embarqué
-    v2.13.3, ROI QHY v2.13.2. Contrôles officiels : gain=6, offset=7,
-    expo µs=8, CurTemp=14, CurPWM=15, ManualPWM=16, CfwPort=17, Cooler=18 ;
-    4294967295 = sentinelle d'erreur.
+- **Version : AVAStack v2.14.1** (`avastack/__init__.py`), branche `master`.
+  Dernier jalon : **CONNEXION À LA DÉTECTION — RÉGLAGES AVANT L'EMPILEMENT**
+  (19/09/2026, demande d'Alain : « souvent la caméra a le filtre Dark à la
+  mise en marche ; que la caméra soit connectée quand elle est détectée, et
+  que Démarrer ne démarre que l'empilement »).
+  - **Nouveau flux** : « 🔎 Détecter » CONNECTE la caméra QHY (thread dédié :
+    open + flux + réglages) → sondage roue/TEC et refroidissement à la
+    consigne SANS attendre une frame ; le worker est PERMANENT (il pilote
+    les contrôles et relit le TEC toutes les 2 s même en pause). « ▶
+    Démarrer » = lancement de l'EMPILEMENT seulement (reset de session
+    exécuté par le worker + purge de la file du SDK limitée aux flux live) ;
+    « ■ Arrêter » = PAUSE (caméra connectée, refroidissement maintenu,
+    reprise sans rebrancher) ; nouveau bouton « ⏏ Déconnecter » (coupe le
+    TEC puis referme — relancer l'application pour reconnecter une QHY,
+    limite SDK) ; changement de source avec caméra connectée = déconnexion
+    prévenue ; fermeture de l'appli = déconnexion complète.
+  - **Bug corrigé au passage** : la relecture TEC (14/15/18) n'était jamais
+    faite dans le worker (affichage resté à « — ») → lecture périodique 2 s.
+  - Jalons précédents : **v2.14.0** contrôles caméra QHY (roue à filtres via
+    ctrl 17, 48+n, purge des frames de rotation ; consigne 18, lectures
+    14/15, arrêt PWM 16 à 0 ; exposition log 11 µs–5 s + échelle longue
+    1–900 s ; gain 0–175 ; mot-clé FITS FILTER), diagnostic v2.13.4, banc
+    v2.13.3, ROI v2.13.2. Contrôles officiels : gain=6, offset=7, expo µs=8,
+    CurTemp=14, CurPWM=15, ManualPWM=16, CfwPort=17, Cooler=18 ; 4294967295
+    = sentinelle d'erreur.
+  - **À valider en réel (miniPC)** : connexion à la détection, régulation
+    TEC AVANT l'empilement (alim. 12 V), filtre choisi avant de démarrer,
+    pause/reprise (▶/■) avec le MÊME empilement, bornes du gain (0-175).
 
   - **Verdict ROI automatique** (2e run réel, 19/09/2026) : le log de
     « Démarrer » ne contenait TOUJOURS aucune ligne `set_resolution`, même

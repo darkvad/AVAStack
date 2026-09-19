@@ -190,6 +190,7 @@ app2._compo_nom = "HOO"
 
 try:
     app2.running = True
+    app2.empilement_on = True           # jalon 26 : le worker n'empile que si armé
     th = threading.Thread(target=app2._worker, daemon=True)
     th.start()
     t0 = time.time()

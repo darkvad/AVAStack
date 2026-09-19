@@ -248,6 +248,7 @@ app.camera = cam
 app._mode_compo = True
 app._compo_nom = "HOO"
 app.running = True
+app.empilement_on = True             # jalon 26 : le worker n'empile que si armé
 th = threading.Thread(target=app._worker, daemon=True)
 th.start()
 

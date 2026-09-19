@@ -266,6 +266,7 @@ try:
     app.stacker = LiveStacker((48, 64), k=None)
     app.aligner.set_reference(base)
     app.running = True
+    app.empilement_on = True            # jalon 26 : le worker n'empile que si armé
     th = threading.Thread(target=app._worker, daemon=True)
     th.start()
     t0 = time.time()
