@@ -32,12 +32,22 @@ dans le changelog du source et l'historique git.)
     **transmet enfin la ROI cochée** via `open(roi=...)` ; case « forcer côté
     banc » pour comparer (l'ancien pas-à-pas). Garde-fou `_SDK_PRET`
     (init_sdk UNE seule fois par process) conservé.
-  - **Découverte des valeurs** : « Lister les contrôles » fait 2 passes —
-    disponibles (nom officiel + valeur) puis **balayage exhaustif 0..63** avec
-    valeur brute hexadécimale (distingue un contrôle ABSENT d'un contrôle
-    « drapeau » à sentinelle 0xFFFFFFFF) ; **« ▶ Balayer »** pose/relit
-    chaque valeur d'un id et affiche la plage acceptée (outil de recalibrage
-    à venir). **⏸ Pause 3 s** + horodatage des 5 premières frames +
+  - **Découverte des valeurs — NON CONCLUANTE (constat d'Alain, 19/09/2026
+    au soir)** : le balayage passe PARTOUT, sans aucun refus, sur gain (6),
+    offset (7) et USB traffic (12) → le SDK **stocke** les valeurs sans les
+    valider, donc la plage RÉELLE du gain QHY reste **INCONNUE** et le
+    recalibrage du curseur de l'appli n'est PAS encore possible. Méthode à
+    reprendre autrement : chercher un **effet physique** (niveau d'image /
+    bruit à gain croissant, en s'appuyant sur l'exposition qui, elle, est
+    PROUVÉE appliquée : 2000 ms → 0,5 fps exactement) ou consulter la doc
+    constructeur QHY du capteur IMX585 ; un balayage qui n'échoue jamais ne
+    démontre rien (leçon correspondante écrite dans CLAUDE.md).
+  - **Découverte des valeurs (outils)** : « Lister les contrôles » fait
+    2 passes — disponibles (nom officiel + valeur) puis **balayage exhaustif
+    0..63** avec valeur brute hexadécimale (distingue un contrôle ABSENT d'un
+    contrôle « drapeau » à sentinelle 0xFFFFFFFF) ; **« ▶ Balayer »**
+    pose/relit chaque valeur d'un id (cf. constat ci-dessus : non
+    concluant) ; **⏸ Pause 3 s** + horodatage des 5 premières frames +
     compteur cumulé pour trancher « la caméra n'émet plus » vs « nos lectures
     vident la file du SDK ».
   - Contrôles nommés d'après l'enum OFFICIEL (crate `qhyccd-rs`) : gain=6,
@@ -194,6 +204,14 @@ dans le changelog du source et l'historique git.)
   relevé quand la décision sert d'ANCRE (sans prédiction) ; (2) deux
   normalisations indépendantes rendent une SSD aveugle — toute
   comparaison d'images doit partager les bornes de normalisation.
+- **CLAUDE.md — 3 leçons du diagnostic caméra QHY ÉCRITES le 19/09/2026**
+  (accord explicite d'Alain en clôture de session) : (1) SDK natif :
+  introspection d'abord (`init_sdk` une seule fois, aucune fonction de
+  libération donc état irréinitialisable dans le process, crash natif non
+  rattrapable → trace fichier + sous-processus) ; (2) vérifier l'identité des
+  fichiers réellement chargés AVANT d'interpréter un log de plantage (copie
+  périmée = symptômes d'un bug) ; (3) un réglage relu à l'identique ne prouve
+  pas qu'il est appliqué — seul l'effet physique le prouve.
 - **CLAUDE.md — 1 leçon du jalon 24 PROPOSÉE le 19/09/2026, EN ATTENTE
   d'approbation d'Alain** (ne pas écrire sans accord explicite) :
   valider les placeholders d'un gabarit de commande AVANT la
@@ -208,3 +226,35 @@ dans le changelog du source et l'historique git.)
   `TargetSchedulerSequence/<cible>/<expo>/LIGHT` sur le miniPC — un
   dossier peut MÉLANGER plusieurs nuits (la 1re frame par mtime n'est pas
   forcément de la nuit courante).
+---
+
+## 🔚 Clôture de session — 19/09/2026 (soir)
+
+Demande d'Alain : « on clôture cette session ». État : tests **32/32 OK**
+(vérifiés par Alain), banc validé (test de fumée), **commit `1717b94` poussé**
+sur `master`. **Installateur NON rebuildé** (consigne de la session : on ne
+travaille que sur le diagnostic caméra) → l'artefact en place reste celui de
+la **v2.13.3** : à rebuilder à la prochaine occasion, la version source étant
+2.13.4.
+
+**Prochaines étapes, dans l'ordre (à reprendre au début de la prochaine
+session) :**
+
+1. **Diagnostic caméra QHY — non terminé**. Le flux fonctionne (banc :
+   détection → ouverture → ROI posée → frames), mais deux points restent
+   ouverts :
+   - **ROI sur le miniPC** : confirmer par le bloc « fichiers réellement
+     chargés » + le **verdict ROI** du banc que la copie installée de
+     `avastack/cameras/qhy.py` est bien à jour (c'est la cause désignée du
+     plantage « Démarrer »).
+   - **Plage réelle du gain QHY : INCONNUE** (le balayage passe partout,
+     donc ne démontre rien) → méthode à changer : effet physique à gain
+     croissant, ou doc constructeur.
+2. **Relancer le banc ET l'appli en cas de reprise** : l'état du SDK QHY
+   n'est pas réinitialisable dans le process (après un Arrêter, plus aucune
+   frame) — limite qui vaut aussi pour l'appli (à traiter côté appli le jour
+   où ce sera prioritaire).
+3. **Ensuite seulement** : recalibrer le curseur de gain de l'appli (0,5-8,0
+   actuellement = échelle Player One, inadaptée au SDK QHY) et rebuilder
+   l'installateur.
+

@@ -380,6 +380,53 @@ Pièges :
   seulement l'absence d'exception — un « repli sûr » peut masquer un bug de
   forme.
 
+- **SDK natif d'une caméra : INTROSPECTION D'ABORD — ne jamais conclure à un
+  bug matériel avant** (constat réel du 19/09/2026, MiniCam8M via le paquet
+  `qhyccd`). Trois faits à établir avant toute autre piste, tous obtenus en
+  quelques secondes de `dir()` / `inspect` : (1) `init_sdk()` ne doit être
+  appelé qu'**UNE seule fois par process** — un second appel (ex. `lister()`
+  puis `open()`) laisse l'état global du SDK incohérent et l'application se
+  ferme sans message ; (2) le binding **n'expose AUCUNE fonction de
+  libération** du SDK (`dir(qhyccd)` = `Camera`, `init_sdk`, `scan_cameras`
+  + utilitaires de chemins : ni `release_sdk`, ni `ReleaseQHYCCDResource`) →
+  l'état global est **IRRÉINITIALISABLE dans le process** : après un
+  « Arrêter », une nouvelle ouverture ne reçoit PLUS JAMAIS de frame (relevé
+  réel : 126 lectures sans frame, sans planter) et la seule sortie est de
+  **relancer le programme** — limite qui vaut aussi pour l'application ;
+  (3) un **crash natif (segfault) n'est JAMAIS rattrapable par un `except`
+  Python** : il faut TRACER chaque étape dans un fichier (ici
+  `%TEMP%\avastack_qhy_debug.log`) et isoler les appels risqués en
+  **SOUS-PROCESSUS** (le scan QHY tourne ainsi, pour qu'un segfault du SDK ne
+  tue pas l'interface). Corollaire : 5 secondes d'introspection ont répondu à
+  des questions que des heures de tâtonnement matériel n'auraient pas
+  tranchées.
+- **AVANT d'interpréter un log de plantage, vérifier l'identité des fichiers
+  RÉELLEMENT chargés** (constat réel du 19/09/2026). Un `begin_live` présent
+  dans le log SANS AUCUNE ligne `set_resolution`, alors que le code était
+  censé poser la ROI depuis deux versions, a été pris pour un bug de
+  l'application — c'était une **copie PÉRIMÉE du module** sur la machine
+  d'essai. Comme un fichier ancien **ignore silencieusement l'argument**
+  qu'on lui passe, la case « imposer la ROI » cochée ne pouvait RIEN
+  démontrer : les deux symptômes (plantage au démarrage, ROI « ignorée »)
+  s'expliquaient par cette seule divergence de fichiers. Règle : tout outil
+  de diagnostic autonome doit **AFFICHER au lancement** les chemins, dates et
+  capacités (`set_resolution` présent ? signature de `open()` ?) des modules
+  qu'il importe, et une **erreur explicite** doit remplacer l'ignorance
+  silencieuse d'un paramètre ; sans cela, l'outil diagnostique un code qui
+  n'est pas celui qu'on croit.
+- **Un réglage RELU à l'identique ne prouve pas qu'il est APPLIQUÉ : seul son
+  EFFET PHYSIQUE le prouve** (constat réel du 19/09/2026, gain/exposition
+  QHY). `set_param` **accepte toute valeur** puis la relit telle quelle : un
+  balayage « tout accepté » (gain 0→100, offset, USB traffic) ne révèle donc
+  **AUCUNE borne réelle** et n'est pas concluant — c'est du simple STOCKAGE,
+  pas une validation. Le seul verdict fiable est l'effet mesurable :
+  exposition 2000 ms → **0,5 fps exactement** (donc réellement appliquée),
+  tandis qu'un balayage sans refus laisse la plage **INCONNUE**. À retenir :
+  (a) chercher l'effet physique (cadence, température du capteur, niveau
+  d'image) avant de croire un read-back ; (b) ne jamais déduire une plage de
+  réglage d'un balayage qui n'échoue jamais ; (c) une valeur « acceptée » par
+  un SDK sans doc de bornes reste INCONNUE tant qu'un effet n'est pas mesuré.
+
 ## Leçons générales transposables (projet pipeline siril)
 
 - **Toute fonction opérant sur des données image : vérifier si elle suppose
