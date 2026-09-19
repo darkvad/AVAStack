@@ -1917,6 +1917,7 @@ class App:
             return
         self.camera = cam
         self.cam_pilotee = cam if isinstance(cam, QHYCamera) else None
+        self.btn_deconnect.config(state="normal")
         # Jalon 19 : mode composition si la source est multi-dossiers — la
         # composition est déduite des rôles configurés (choix UI en phase 3).
         self._mode_compo = isinstance(cam, MultiFolderCamera)
