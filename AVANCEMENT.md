@@ -11,34 +11,28 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version : AVAStack v2.14.1** (`avastack/__init__.py`), branche `master`.
-  Dernier jalon : **CONNEXION À LA DÉTECTION — RÉGLAGES AVANT L'EMPILEMENT**
-  (19/09/2026, demande d'Alain : « souvent la caméra a le filtre Dark à la
-  mise en marche ; que la caméra soit connectée quand elle est détectée, et
-  que Démarrer ne démarre que l'empilement »).
-  - **Nouveau flux** : « 🔎 Détecter » CONNECTE la caméra QHY (thread dédié :
-    open + flux + réglages) → sondage roue/TEC et refroidissement à la
-    consigne SANS attendre une frame ; le worker est PERMANENT (il pilote
-    les contrôles et relit le TEC toutes les 2 s même en pause). « ▶
-    Démarrer » = lancement de l'EMPILEMENT seulement (reset de session
-    exécuté par le worker + purge de la file du SDK limitée aux flux live) ;
-    « ■ Arrêter » = PAUSE (caméra connectée, refroidissement maintenu,
-    reprise sans rebrancher) ; nouveau bouton « ⏏ Déconnecter » (coupe le
-    TEC puis referme — relancer l'application pour reconnecter une QHY,
-    limite SDK) ; changement de source avec caméra connectée = déconnexion
-    prévenue ; fermeture de l'appli = déconnexion complète.
-  - **Bug corrigé au passage** : la relecture TEC (14/15/18) n'était jamais
-    faite dans le worker (affichage resté à « — ») → lecture périodique 2 s.
-  - Jalons précédents : **v2.14.0** contrôles caméra QHY (roue à filtres via
-    ctrl 17, 48+n, purge des frames de rotation ; consigne 18, lectures
-    14/15, arrêt PWM 16 à 0 ; exposition log 11 µs–5 s + échelle longue
-    1–900 s ; gain 0–175 ; mot-clé FITS FILTER), diagnostic v2.13.4, banc
-    v2.13.3, ROI v2.13.2. Contrôles officiels : gain=6, offset=7, expo µs=8,
-    CurTemp=14, CurPWM=15, ManualPWM=16, CfwPort=17, Cooler=18 ; 4294967295
-    = sentinelle d'erreur.
-  - **À valider en réel (miniPC)** : connexion à la détection, régulation
-    TEC AVANT l'empilement (alim. 12 V), filtre choisi avant de démarrer,
-    pause/reprise (▶/■) avec le MÊME empilement, bornes du gain (0-175).
+- **Version : AVAStack v2.14.2** (`avastack/__init__.py`), branche `master`.
+  Dernier jalon : **CORRECTIF — CONNEXION QHY FIGÉE** (19/09/2026 soir).
+  Constat d'Alain : « Détecter » restait sur « connexion de la caméra… »,
+  aucun contrôle actif, fermeture impossible (process tué au gestionnaire).
+  - **CAUSE** : le thread de connexion lisait des variables Tkinter
+    (`var_expo.get()`) — un appel Tcl depuis un thread secondaire bloque sur
+    le verrou Tcl SANS JAMAIS rendre la main (pas d'exception) → résultat
+    jamais consommé, `_connexion_busy` resté vrai, fermeture en échec.
+  - **CORRECTIF** : le thread de connexion ne touche plus à AUCUNE variable
+    Tk (ouverture seule) ; les réglages sont posés par le worker via
+    `pending_settings` (instantanés `expo_ms`/`gain_val` tenus par le thread
+    Tk) ; détection ignorée pendant une connexion en cours ; « ⏏
+    Déconnecter » reste actif pendant l'empilement.
+  - Jalons précédents : **v2.14.1** connexion à la détection (Détecter =
+    connexion, sondage roue/TEC et refroidissement AVANT l'empilement,
+    Démarrer = empilement seul, Arrêter = pause, bouton ⏏, relecture TEC
+    2 s) ; **v2.14.0** contrôles QHY (roue ctrl 17 en 48+n, purge des frames
+    de rotation ; consigne 18, lectures 14/15, arrêt PWM 16 à 0 ; exposition
+    log 11 µs–5 s + échelle longue 1–900 s ; gain 0–175 ; FITS FILTER).
+  - **À valider en réel (miniPC)** : Détecter → « connectée » en vert, filtre
+    et TEC actifs AVANT Démarrer, pause/reprise, puis jalon 25 (roue, TEC,
+    gain).
 
   - **Verdict ROI automatique** (2e run réel, 19/09/2026) : le log de
     « Démarrer » ne contenait TOUJOURS aucune ligne `set_resolution`, même

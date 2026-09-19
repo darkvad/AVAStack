@@ -1702,7 +1702,7 @@ class App:
                 "Une caméra est déjà connectée — déconnectez-la d'abord "
                 "(⏏) pour en changer.")
             return
-        if self._detect_busy:
+        if self._detect_busy or self._connexion_busy:
             return
         source = self.var_source.get()
         if source.startswith("QHY"):
@@ -1742,7 +1742,17 @@ class App:
         """CONNEXION de la caméra QHY (jalon 26, thread dédié) : ouverture
         SANS empilement — le sondage des contrôles (roue/TEC), l'application
         des réglages et le refroidissement deviennent possibles AVANT le
-        « ▶ Démarrer » (qui ne lance plus que l'empilement)."""
+        « ▶ Démarrer » (qui ne lance plus que l'empilement).
+
+        PIÈGE (constat réel du 19/09/2026 : « connexion de la caméra… »
+        figée pour toujours) : ce thread n'a PAS le droit de toucher aux
+        variables Tkinter — `var_expo.get()` depuis un thread secondaire
+        bloque sur le verrou Tcl (jamais de retour, jamais d'exception).
+        Les instantanés `expo_ms`/`gain_val` (tenus à jour par
+        _push_settings côté thread Tk) sont les seuls accès sûrs ; les
+        réglages sont de toute façon (re)posés par le worker
+        (pending_settings) une fois la connexion consommée.
+        """
         try:
             if self._qhy_id and not self._qhy_id.startswith("<"):
                 cam = QHYCamera(camera_id=self._qhy_id)
@@ -1751,10 +1761,9 @@ class App:
             else:
                 cam = QHYCamera()
             cam.open()
-            cam.apply_settings(self.var_expo.get(), self.var_gain.get())
-            self._connexion_result = ("ok", cam, None)
+            self._connexion_result = (cam, None)
         except Exception as e:
-            self._connexion_result = ("erreur", None, str(e))
+            self._connexion_result = (None, str(e))
 
     def _connexion_terminee(self, etat, cam, err):
         """Consommation du résultat de connexion (thread Tk seul) : état
@@ -1928,7 +1937,6 @@ class App:
         self._compo_gains = self._lire_gains()
         self._compo_mode_l = self.var_compo_mode_l.get()
         self.btn_save_proc.config(state="disabled")
-        self.btn_deconnect.config(state="disabled")   # pas de déconnexion en session
         self.empilement_on = False
         self.empilement_start_request = True          # reset + purge (worker)
         if self.thread is None or not self.thread.is_alive():
@@ -3673,7 +3681,7 @@ class App:
                         text=f"{source} : {' — '.join(map(str, ids))}",
                         foreground="#1d7f1d")
         # Jalon 26 : consommation du résultat de CONNEXION QHY (thread →
-        # thread Tk). Succès : caméra attribuée, contrôles bientôt sondés
+        # thread Tk). Succès : réglages posés, contrôles bientôt sondés
         # (worker), « ▶ Démarrer » et « ⏏ Déconnecter » actifs.
         if self._connexion_result is not None:
             cam, err = self._connexion_result
@@ -3688,6 +3696,7 @@ class App:
                 self.cam_pilotee = cam if isinstance(cam, QHYCamera) else None
                 self._controles_sondes = False
                 self._roue_ok = self._tec_ok = False
+                self.pending_settings = (self.expo_ms, self.gain_val)
                 self.var_filtre.set(FILTRES_ROUE[0])
                 self.cb_filtre.config(state="disabled")
                 self.lbl_filtre.config(text="", foreground="#888888")

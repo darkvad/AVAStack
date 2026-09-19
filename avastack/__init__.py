@@ -14,9 +14,25 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.14.1"
+AVASTACK_VERSION = "2.14.2"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.14.2 : CORRECTIF — CONNEXION QHY FIGÉE À « connexion de la caméra… »
+#          (constat réel d'Alain, 19/09/2026 au soir : « Détecter » affichait
+#          le message pour toujours, aucun contrôle actif, fermeture
+#          impossible — tuer le process au gestionnaire des tâches).
+#          CAUSE : le thread de connexion lisait des VARIABLES TKINTER
+#          (var_expo.get() / var_gain.get() pour apply_settings) — un appel
+#          Tcl depuis un thread secondaire peut bloquer SUR LE VERROU Tcl
+#          SANS JAMAIS RENDRE LA MAIN (pas d'exception, thread mort-vivant) :
+#          le résultat n'arrivait jamais, la connexion ne se consommait plus
+#          et la fermeture de la fenêtre ne se faisait plus proprement.
+#          CORRECTIF : le thread de connexion ne touche plus à AUCUNE
+#          variable Tk — il se borne à ouvrir la caméra ; les réglages
+#          (expo/gain) sont posés par le worker (pending_settings,
+#          instantanés expo_ms/gain_val tenus par le thread Tk). Détection
+#          ignorée pendant une connexion en cours, et « ⏏ Déconnecter »
+#          reste actif pendant l'empilement (sortie de secours disponible).
 # v2.14.1 : CONNEXION À LA DÉTECTION — RÉGLAGES AVANT L'EMPILEMENT (jalon 26,
 #          demande d'Alain : « souvent la caméra a le filtre Dark à la mise
 #          en marche ; que la caméra soit connectée quand elle est détectée,
