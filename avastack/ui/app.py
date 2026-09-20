@@ -571,24 +571,31 @@ class App:
     _EXPO_LONG = (1000.0, 900000.0)    # ms : 1 s → 900 s
 
     # ------------------------------------------------------ case « Échelle longue »
-    # Jalon 34 (retours réels d'Alain, 20/09/2026) : avec des bornes RÉELLES
-    # (une seule plage log dynamique), la case n'a PLUS AUCUN effet
-    # (_expo_bornes la court-circuite) — la laisser visible serait un
-    # réglage factice ; on la masque à la connexion et on la remontre à la
-    # déconnexion. Sans sonde, son libellé suit désormais les bornes
-    # réellement actives au lieu du « 900 s » codé en dur (point 1 du
-    # relevé : avec la borne native 2000 s affichée ailleurs, un « 900 s »
-    # figé était trompeur).
+    # Jalon 34, CORRECTION d'Alain (20/09/2026, retour réel Player One) : la
+    # case reste TOUJOURS VISIBLE — la masquer (première mouture) n'était
+    # pas ce qui était demandé. Elle redevient même UTILE avec des bornes
+    # natives : cochée, le curseur log se concentre sur la longue portée
+    # (1 s → exposition max) pour un réglage fin des longues poses ;
+    # décochée, il couvre toute la plage (µs → max). Son libellé affiche la
+    # borne max RÉELLE (2000 s sur Uranus-C Pro) au lieu du « 900 s » codé
+    # en dur (point 1 du relevé d'Alain).
     def _maj_libelle_expo_longue(self):
-        lo, hi = self._EXPO_LONG
+        """Libellé « Échelle longue (1 s – max) » : max = borne RÉELLE de la
+        caméra si détectée, sinon 900 s (échelle fixe d'origine)."""
+        hi = (self._EXPO_DYN[1] if self._EXPO_DYN is not None
+              else self._EXPO_LONG[1])
         self.chk_expo_longue.config(
-            text=f"Échelle longue ({_fmt_expo(lo)} – {_fmt_expo(hi)})")
+            text=f"Échelle longue ({_fmt_expo(1000.0)} – {_fmt_expo(hi)})")
 
     def _expo_bornes(self):
         # Jalon 31 : bornes RÉELLES de la caméra connectée si la sonde les a
         # données (plage log unique couvrant toute la plage native) ;
         # sinon les deux échelles fixes d'origine.
         if self._EXPO_DYN is not None:
+            if self.var_expo_longue.get():
+                # Case cochée (jalon 34) : le curseur ne couvre que la
+                # longue portée (1 s → max), réglage plus fin à droite.
+                return (max(1000.0, self._EXPO_DYN[0]), self._EXPO_DYN[1])
             return self._EXPO_DYN
         return self._EXPO_LONG if self.var_expo_longue.get() else self._EXPO_COURT
 
@@ -635,11 +642,14 @@ class App:
         except ValueError:
             self.var_expo_saisie.set(_fmt_expo(self.var_expo.get()))
             return
-        if self._EXPO_DYN is None and ms > self._EXPO_COURT[1] \
-                and not self.var_expo_longue.get():
+        if self._EXPO_DYN is not None:
+            # Bornes natives : si la case longue est cochée et que la valeur
+            # saisie est courte, on décoche (retour à la pleine plage).
+            if self.var_expo_longue.get() and ms < self._EXPO_LONG[0]:
+                self.var_expo_longue.set(False)
+        elif ms > self._EXPO_COURT[1] and not self.var_expo_longue.get():
             self.var_expo_longue.set(True)    # bascule automatique
-        elif self._EXPO_DYN is None and ms < self._EXPO_LONG[0] \
-                and self.var_expo_longue.get():
+        elif ms < self._EXPO_LONG[0] and self.var_expo_longue.get():
             self.var_expo_longue.set(False)
         self._maj_expo(ms)
 
@@ -751,7 +761,6 @@ class App:
             command=self._on_echelle_expo)
         self._maj_libelle_expo_longue()   # libellé = bornes réelles (jalon 34)
         self.chk_expo_longue.pack(anchor="w")
-        self.chk_expo_longue._row = rowe    # jalon 34 : ancre de remontage
         self.sl_gain = self._add_slider(
             box, "Gain (0 – 175)", self.var_gain, 0.0, 175.0, 1.0,
             self._push_settings, "{:.0f}", saisie=True)
@@ -1736,10 +1745,10 @@ class App:
                 maj = getattr(self, "_maj_expo", None)
                 if maj is not None:
                     maj(self.var_expo.get())
-                # Jalon 34 : une seule plage log → la case est inutile.
-                chk = getattr(self, "chk_expo_longue", None)
-                if chk is not None:
-                    chk.pack_forget()
+                # Jalon 34 : le libellé de la case suit la borne max réelle.
+                maj_case = getattr(self, "_maj_libelle_expo_longue", None)
+                if maj_case is not None:
+                    maj_case()
         # --- gain / offset : reconstruction de la ligne complète ---------
         # Jalon 32 : cid résolu PAR MARQUE via cap.plage(rôle) — les ids
         # diffèrent entre les SDK (« 6 » = gain QHY, mais balance des blancs
@@ -2346,12 +2355,8 @@ class App:
         self.capacites = None
         self._EXPO_DYN = None
         self.tec_plage = None
-        # Jalon 34 : la case « Échelle longue » redevient visible —
-        # le libellé est régénéré (bornes réelles de la caméra précédente effacées).
-        chk = getattr(self, "chk_expo_longue", None)
-        if chk is not None:
-            self._maj_libelle_expo_longue()
-            chk.pack(anchor="w", after=chk._row)
+        # Jalon 34 : le libellé de la case revient à l'échelle fixe (900 s).
+        self._maj_libelle_expo_longue()
         self._filtres_dispo = FILTRES_ROUE
         self.cb_filtre.config(values=list(FILTRES_ROUE))
         self.lbl_tec_lib.config(text="Consigne °C :")

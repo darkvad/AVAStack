@@ -44,7 +44,7 @@ verifie(v == "3\u202f600 s", f"3 600 000 ms → « 3\u202f600 s » (obtenu « {v
 v = ui._fmt_expo(20_000_000.0)
 verifie(v == "20\u202f000 s", f"20 000 000 ms → « 20\u202f000 s » (obtenu « {v} »)")
 
-print("[2] Case « Échelle longue » : libellé dynamique, masquée si bornes réelles")
+print("[2] Case « Échelle longue » : toujours visible, libellé = borne réelle")
 root = tk.Tk()
 app = ui.App(root)
 root.update_idletasks()
@@ -56,16 +56,33 @@ cap = Capacites("Player One", modele="Uranus-C Pro", couleur=True,
 cap.expo_us = (10.0, 2_000_000_000.0)   # relevé réel : 10 µs → 2000 s
 app._adapter_ui_capacites(cap)
 root.update_idletasks()
-verifie(app.chk_expo_longue.winfo_manager() == "",
-        "bornes natives détectées → case masquée (une seule plage log)")
+txt1 = app.chk_expo_longue.cget("text")
+verifie(app.chk_expo_longue.winfo_manager() != "",
+        "case TOUJOURS visible avec des bornes natives (retour d'Alain)")
+verifie(txt1 == "Échelle longue (1 s – 2\u202f000 s)",
+        f"libellé = borne max RÉELLE (« {txt1} », 2000 s sur Uranus-C Pro)")
+verifie(app._expo_bornes() == (0.01, 2_000_000.0),
+        "case décochée : pleine plage native (10 µs → 2000 s)")
+app.var_expo_longue.set(True)
+verifie(app._expo_bornes() == (1000.0, 2_000_000.0),
+        "case cochée : longue portée seule (1 s → 2000 s), réglage fin")
+app._maj_expo(2_500_000.0)              # saisie 2500 s hors échelle courte
+verifie(app.var_expo_longue.get() and abs(app.var_expo.get() - 2_000_000.0) < 1e-9,
+        "saisie 2500 s avec case cochée : reste en échelle longue, clampée 2000 s")
+app._valider_expo_saisie = None         # (aucun effet, simple garde)
+app.var_expo_saisie.set("500 ms")
+app._valider_expo()
+verifie(not app.var_expo_longue.get(),
+        "saisie 500 ms : décoche automatiquement (retour pleine plage)")
+app.var_expo_longue.set(True)
 app._deconnecter_camera()
 root.update_idletasks()
 verifie(app.chk_expo_longue.winfo_manager() != "",
-        "déconnexion → case remontée")
-txt1 = app.chk_expo_longue.cget("text")
-verifie(txt1 == txt0, f"libellé régénéré au défaut (« {txt1} »)")
+        "déconnexion → case toujours visible")
+txt2 = app.chk_expo_longue.cget("text")
+verifie(txt2 == txt0, f"libellé régénéré au défaut (« {txt2} »)")
 
-print("[3] Sans sonde : la case reste au libellé des échelles fixes")
+print("[3] Sans sonde : la case garde le libellé des échelles fixes")
 app._adapter_ui_capacites(Capacites("SVBONY", modele="?"))   # sonde muette
 root.update_idletasks()
 verifie(app.chk_expo_longue.winfo_manager() != "" and

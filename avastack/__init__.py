@@ -14,9 +14,20 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.20.1"
+AVASTACK_VERSION = "2.20.2"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.20.2 : « ÉCHELLE LONGUE » RÉTABLIE (retour réel d'Alain du 20/09/2026 :
+#          « tu as carrément supprimé la case à cocher, ce n'est pas ce que
+#          j'avais demandé ») — la case reste TOUJOURS VISIBLE et redevient
+#          UTILE avec des bornes natives : cochée, le curseur log ne couvre
+#          que la longue portée (1 s → exposition max réelle, réglage fin
+#          des longues poses) ; décochée, pleine plage (µs → max) ; le
+#          libellé affiche la borne max RÉELLE (« Échelle longue
+#          (1 s – 2 000 s) » sur Uranus-C Pro), 900 s si aucune sonde — le
+#          point 1 (libellé en dur) reste donc corrigé ; la saisie d'une
+#          valeur courte décoche automatiquement (retour pleine plage) ;
+#          _test_expo_affichage_jalon34 mis en cohérence (17 vérifications).
 # v2.20.1 : AFFICHAGE DE L'EXPOSITION (jalon 34, points 1 et 2 de l'item 2d —
 #          retours RÉELS d'Alain du 20/09/2026, setup 2) :
 #          - (point 2) _fmt_expo ne produit JAMAIS de notation scientifique

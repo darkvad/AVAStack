@@ -11,9 +11,9 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.20.1** (`avastack/__init__.py`),
+- **Version stable de référence : AVAStack v2.20.2** (`avastack/__init__.py`),
   branche `master` — jalon 34 testé en dev (tout au vert), **COMMITÉ
-  (1900925) SANS POUSSER**, **installateur v2.20.1 REBUILD**
+  SANS POUSSER**, **installateur v2.20.2 REBUILD**
   (`installer/windows/output/avastack-setup.exe`) — poussée + copie de
   l'installateur vers le miniPC à faire.
 - **Dernier jalon (34, 20/09/2026) — AFFICHAGE EXPOSITION (points 1 et 2 de
@@ -22,10 +22,12 @@ dans le changelog du source et l'historique git.)
     — arrondi à l'entier au-delà de 10 s (pas réel ≥ 1 ms), milliers
     séparés par espace fine insécable (« 2 000 s », « 20 000 s ») ;
   - point 1 : case « Échelle longue » — libellé GÉNÉRÉ (plus de « 900 s »
-    en dur), et case MASQUÉE quand des bornes natives sont détectées
-    (une seule plage log la rend inutile), remontée au défaut à la
-    déconnexion (ancre `_row` = ligne du curseur expo, `after=`);
-  - Tests : _test_expo_affichage_jalon34 13/13 (NOUVEAU) ; jalon32 25/25 ;
+    en dur) : « Échelle longue (1 s – 2 000 s) » avec la borne max RÉELLE ;
+  - CORRECTION retour réel (v2.20.2) : la case doit rester VISIBLE — la
+    v2.20.1 la masquait à tort ; désormais cochée = longue portée seule
+    (1 s → max, réglage fin), décochée = pleine plage, saisie courte =
+    décochage auto ;
+  - Tests : _test_expo_affichage_jalon34 17/17 (NOUVEAU) ; jalon32 25/25 ;
     jalon31 15/15 ; sliders jalon6 OK.
 - **Reste à déboguer de l'item 2d : points 3 et 4** (TEC POA boutons ❄
   grisés ; connexion auto SVBONY refusée « Propriétés illisibles ») —
@@ -144,22 +146,23 @@ dans le changelog du source et l'historique git.)
   points puis en trainées » → origine du jalon 13 (alignement robuste).
   Banc POA : `_diag_camera_playerone.py` (jalon 28).
 
-## 🔚 Clôture de session — 20/09/2026 (v2.20.1, jalon 34)
+## 🔚 Clôture de session — 20/09/2026 (v2.20.2, jalon 34)
 
-État exact : **v2.20.1 COMMITÉE (1900925 code+test, d9898ec AVANCEMENT)
-SANS POUSSER, installateur v2.20.1 REBUILD** (points 1 et 2 de l'item 2d,
-passe de debug demandée par Alain — « on commence par 1 et 2 dans la même
-passe et on s'arrête »). Consignes NOTÉES à la demande d'Alain, écrites
-dans CLAUDE.md : (a) rebuild de l'installateur dès qu'une passe touche plus
-de 1-2 fichiers (FAIT pour v2.20.1) ; (b) « noter / se souvenir » =
-autorisation implicite de mettre CLAUDE.md à jour. Tout au vert en dev : _test_expo_affichage_jalon34 13/13
-(NOUVEAU : format décimal + case masquée/remontée), jalon32 25/25, jalon31
-15/15, sliders jalon6 OK. Réalisé : (a) point 2 — `_fmt_expo` sans
-notation scientifique (arrondi à l'entier au-delà de 10 s, milliers
-séparés par espace fine insécable) ; (b) point 1 — libellé de la case
-« Échelle longue » généré (plus de « 900 s » en dur), case masquée quand
-des bornes natives sont détectées (elle n'y a plus aucun effet) et
-remontée au défaut à la déconnexion.
+État exact : **v2.20.2 COMMITÉE SANS POUSSER, installateur v2.20.2
+REBUILD** (points 1 et 2 de l'item 2d, passe de debug demandée par Alain —
+« on commence par 1 et 2 dans la même passe et on s'arrête »). Consignes
+NOTÉES à la demande d'Alain, écrites dans CLAUDE.md : (a) rebuild de
+l'installateur dès qu'une passe touche plus de 1-2 fichiers (FAIT pour
+v2.20.1 puis v2.20.2) ; (b) « noter / se souvenir » = autorisation
+implicite de mettre CLAUDE.md à jour. Tout au vert en dev :
+_test_expo_affichage_jalon34 17/17, jalon32 25/25, jalon31 15/15, sliders
+jalon6 OK. Réalisé : (a) point 2 — `_fmt_expo` sans notation scientifique
+(arrondi à l'entier au-delà de 10 s, milliers séparés par espace fine
+insécable — VALIDÉ EN RÉEL par Alain) ; (b) point 1 — libellé de la case
+« Échelle longue » généré avec la borne max RÉELLE ; (c) CORRECTION du
+retour réel d'Alain (v2.20.2) : la case ne doit PAS être masquée — elle
+reste visible et utile (cochée = longue portée seule 1 s → max, décochée =
+pleine plage, saisie courte = décochage auto).
 
 **Prochaine étape** : (1) déboguer les points 3 et 4 de l'item 2d (TEC POA
 boutons ❄ grisés ; connexion auto SVBONY refusée) EN COMPARANT avec les
