@@ -11,31 +11,28 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.20.6** (`avastack/__init__.py`),
-  branche `master` — jalon 37 CORRIGÉ EN DEV (tout au vert), **COMMITÉ ET
-  POUSSÉ (a8a3930)**, **installateur v2.20.6 REBUILD**
+- **Version stable de référence : AVAStack v2.20.7** (`avastack/__init__.py`),
+  branche `master` — jalon 38 CORRIGÉ EN DEV (tout au vert), **COMMITÉ ET
+  POUSSÉ (d8d4055)**, **installateur v2.20.7 REBUILD**
   (`installer/windows/output/avastack-setup.exe`) — copie de l'installateur
-  vers le miniPC à faire + TEST RÉEL jalon 37 à faire.
-- **Dernier jalon (37, 20/09/2026) — SONDE TEC SVBONY PAR L'EFFET
-  (contrôles présents ≠ TEC présent)** :
-  - constat RÉEL d'Alain (test SV305C du 20/09, connexion du jalon 36 OK) :
-    sa SV305C SANS TEC affiche quand même les contrôles TEC 14-17
-    (temp 20 °C, puissance 0 % — valeurs bidon) et « Réguler » levait
-    « CoolerEnable refusé par le SDK — vérifier l'alimentation 12 V »
-    (firmware probablement commun avec la SV305C Pro refroidie) ;
-  - cause : le SDK énumère les contrôles TEC même sans TEC physique — la
-    présence de contrôles ne prouve RIEN ;
-  - correction (verdict par l'EFFET) : `detecter_capacites()` TENTE
-    `CoolerEnable = 1` — refus → `cap.tec` False + note dans extras +
-    `lire_refroidissement()` → None → **boutons ❄ RESTENT GRISÉS** ;
-    succès → TEC présent ET état initial de CoolerEnable RESTAURÉ (ne pas
-    laisser le TEC démarré pour une détection). Compatibilité : les bancs
-    qui appellent `lire_refroidissement()` sans `detecter_capacites()`
-    gardent l'ancien comportement (défaut = pilotable) ;
-  - Tests : _test_tec_sonde_jalon37 11/11 (NOUVEAU) ; _test_capacites
-    29/29 ; jalon36 8/8 ; jalon33 20/20 ; jalon35 15/15 ;
-    _test_camera_playerone 29/29 ; jalon31 15/15 ; jalon32 25/25 ;
-    jalon34 21/21.
+  vers le miniPC à faire.
+- **Dernier jalon (38, 20/09/2026) — BOUTONS ❄ TOUJOURS ACTIFS SUR SVBONY
+  (DÉCISION D'ALAIN, annule la logique du jalon 37)** :
+  - retour réel d'Alain : les boutons ❄ restaient actifs sur sa SV305C
+    sans TEC — et il PRÉFÈRE ainsi : « si on a une caméra refroidie et
+    qu'on a oublié de brancher l'alim, il suffit de la brancher et ça
+    fonctionnera sans avoir besoin de déconnecter et redétecter » (le
+    sondage périodique toutes les 2 s détecte le TEC dès que l'alim
+    arrive) ;
+  - correction : retour à « contrôles TEC énumérés → cap.tec True +
+    sondage → valeurs » ; la sonde par l'EFFET du jalon 37 est RETIRÉE ;
+    le constat réel ET la décision sont documentés DANS LE CODE
+    (detecter_capacites + lire_refroidissement) pour ne pas «
+    re-corriger » plus tard ; filet de sécurité inchangé : « Réguler »
+    sans TEC → message clair « alim 12 V » ;
+  - Tests : _test_tec_boutons_jalon38 9/9 (NOUVEAU, remplace
+    _test_tec_sonde_jalon37 supprimé) ; _test_capacites 29/29 ; jalon36
+    8/8 ; jalon33 20/20 ; jalon35 15/15 ; _test_camera_playerone 29/29.
 - **LIMITE QHY (toujours valable)** : après « ■ Arrêter », relancer
   l'appli — le binding qhyccd n'expose AUCUNE libération du SDK (état
   irréinitialisable dans le process) ; le banc QHY l'annonce et conseille
@@ -65,8 +62,9 @@ dans le changelog du source et l'historique git.)
 
 2d. **Item 2d CLOS** — les 4 points relevés en réel par Alain le
     20/09/2026 (setup 2) sont traités : 1-2 validés en réel (jalon 34),
-    3 validé en réel (jalon 35), 4 validé en réel (jalon 36) + sonde TEC
-    par l'effet en suivi (jalon 37, test réel ci-dessous).
+    3 validé en réel (jalon 35), 4 validé en réel (jalon 36) ; le résidu
+    TEC (contrôles affichés sur une caméra sans TEC) a été TRANCHÉ PAR
+    ALAIN : boutons ❄ toujours actifs (jalon 38).
    1. ✅ TRAITÉ ET VALIDÉ EN RÉEL (jalon 34, v2.20.3) — libellé « Échelle
       longue » généré (pivot 5 s + borne max réelle), coupure à 5 s.
    2. ✅ TRAITÉ ET VALIDÉ EN RÉEL (jalon 34, v2.20.1) — `_fmt_expo` sans
@@ -145,28 +143,27 @@ dans le changelog du source et l'historique git.)
   points puis en trainées » → origine du jalon 13 (alignement robuste).
   Banc POA : `_diag_camera_playerone.py` (jalon 28).
 
-## 🔚 Clôture de session — 20/09/2026 (v2.20.6, jalon 37)
+## 🔚 Clôture de session — 20/09/2026 (v2.20.7, jalon 38)
 
-État exact : **v2.20.6 COMMITÉE ET POUSSÉE (a8a3930), installateur REBUILD,
-ITEM 2D ENTIÈREMENT CLOS** — point 4 VALIDÉ EN RÉEL par Alain (connexion
-auto SV305C OK, correctif jalon 36) + jalon 37 en suivi : sa SV305C SANS
-TEC affichait quand même les contrôles TEC 14-17 (temp 20 °C, puissance
-0 % — firmware probablement commun avec la SV305C Pro) et « Réguler »
-levait « CoolerEnable refusé ». Correctif jalon 37 : sonde TEC PAR
-L'EFFET dans detecter_capacites() — tentative CoolerEnable = 1 ; refus →
-pas de TEC (cap.tec False, lire_refroidissement → None → boutons ❄
-GRISÉS) ; succès → TEC présent + état initial restauré. Tout au vert en
-dev : _test_tec_sonde_jalon37 11/11 (NOUVEAU), _test_capacites 29/29,
-jalon36 8/8, jalon33 20/20, jalon35 15/15, _test_camera_playerone 29/29,
-jalon31 15/15, jalon32 25/25, jalon34 21/21.
+État exact : **v2.20.7 COMMITÉE ET POUSSÉE (d8d4055), installateur REBUILD,
+ITEM 2D ENTIÈREMENT CLOS ET REVALIDÉ PAR ALAIN**. Enchaînement de la
+session : jalon 36 (connexion auto SVBONY rétablie — ouverture AVANT fiche)
+**VALIDÉ EN RÉEL par Alain** ; jalon 37 (sonde TEC par l'EFFET → boutons ❄
+grisés sans TEC) **ANNULÉ À LA DEMANDE D'ALAIN** — jalon 38 : boutons ❄
+TOUJOURS ACTIFS dès que les contrôles TEC sont énumérés, car si l'alim
+12 V d'une caméra refroidie est oubliée puis branchée en cours de session,
+le sondage périodique la fait fonctionner SANS déconnexion/re-détection.
+Constat + décision documentés dans le code (svbony.py). Tout au vert en
+dev : _test_tec_boutons_jalon38 9/9 (NOUVEAU), _test_capacites 29/29,
+jalon36 8/8, jalon33 20/20, jalon35 15/15, _test_camera_playerone 29/29.
 
-**Prochaine étape (session NEUVE)** : (1) copier l'installateur v2.20.6
-vers le miniPC ; (2) TEST RÉEL jalon 37 (setup 2, SV305C) : connexion
-auto → les boutons ❄ doivent rester GRISÉS (pas de TEC) et « Réguler »
-inaccessible — comportement normal ; (3) tests réels setup 1 (MiniCam8M) :
-TEC + roue à filtres (point 2c : plages + CFW, verdict par EFFET
-PHYSIQUE).
+**Prochaine étape (session NEUVE)** : (1) copier l'installateur v2.20.7
+vers le miniPC ; (2) tests réels setup 1 (MiniCam8M) : TEC + roue à
+filtres (point 2c : plages + CFW, verdict par EFFET PHYSIQUE) ;
+(3) SV305C : comportement final acté (boutons ❄ actifs, valeurs TEC
+bidon = normal, « Réguler » → message 12 V sans TEC).
 
-Sessions précédentes : v2.20.5 (jalon 36, point 4 item 2d — connexion
+Sessions précédentes : v2.20.6 (jalon 37, sonde TEC par l'EFFET — ANNULÉE
+au jalon 38, a8a3930) ; v2.20.5 (jalon 36, point 4 item 2d — connexion
 auto SVBONY, validé en réel par Alain, c09e191) ; v2.20.4 (jalon 35,
 0321914) — détail dans l'historique git et le changelog du source.
