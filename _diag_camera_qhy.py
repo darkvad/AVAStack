@@ -92,7 +92,7 @@ FICHIER_LOG = mqhy.FICHIER_TRACE
 # BIBLIOTHÈQUE installée, qui peut être antérieure au banc — c'est ce qui a
 # semé la confusion du 20/09 (log « 2.16.0 » alors que le banc était en
 # 2.17.0). Les deux sont affichées séparément.
-BANC_VERSION = "2.17.0"
+BANC_VERSION = "2.17.1"
 
 # Enum `Control` OFFICIEL du SDK QHY — source : crate Rust `qhyccd-rs` 0.1.9
 # (docs.rs), celle qui sous-tend le paquet PyPI `qhyccd`. Les clés sont les
@@ -362,10 +362,13 @@ def _binding_sans_liberation():
 def _trouver_dll_qhy():
     """→ chemin de la bibliothèque native QHYCCD, ou None.
 
-    Ordre de recherche : AVASTACK_QHY_DIR (fichier ou dossier) → dossier du
-    banc → DLL embarquée du paquet qhyccd (le MÊME fichier que charge le
-    binding : le chemin réel est affiché — ne JAMAIS interpréter un
-    diagnostic sans savoir quelle DLL a réellement répondu) → nom nu (PATH).
+    Ordre de recherche : AVASTACK_QHY_DIR (fichier ou dossier) → DLL
+    embarquée du paquet qhyccd (le MÊME fichier que déclare le binding via
+    os.add_dll_directory — les résultats restent donc comparables) →
+    dossier du banc → nom nu (PATH).
+    Piège corrigé le 20/09 : une VIEILLE qhyccd.dll traînait à la racine du
+    projet (vestige gitignoré d'essais antérieurs) et MASQUAIT la DLL
+    récente du paquet quand le banc est cherché avant le paquet.
     """
     noms = ("qhyccd.dll", "libqhyccd.so", "libqhyccd.dylib")
     candidats = []
@@ -373,8 +376,6 @@ def _trouver_dll_qhy():
     if env:
         candidats.append(env if os.path.isfile(env)
                          else os.path.join(env, noms[0]))
-    banc = os.path.dirname(os.path.abspath(__file__))
-    candidats.extend(os.path.join(banc, n) for n in noms)
     try:
         import qhyccd as _paquet
         # La DLL embarquée du paquet peut vivre DANS son dossier
@@ -392,6 +393,8 @@ def _trouver_dll_qhy():
                             candidats.append(os.path.join(rac, n))
     except Exception:
         pass
+    banc = os.path.dirname(os.path.abspath(__file__))
+    candidats.extend(os.path.join(banc, n) for n in noms)
     candidats.extend(noms)            # PATH système (en dernier recours)
     for c in candidats:
         if c and os.path.isfile(c):
@@ -434,6 +437,8 @@ def _charger_fonctions_qhy(chemin):
             [ctypes.c_char_p, ctypes.c_char_p])
     declare("OpenQHYCCD", H, [ctypes.c_char_p])
     declare("CloseQHYCCD", ctypes.c_uint32, [H])
+    declare("SetQHYCCDStreamMode", ctypes.c_uint32, [H, ctypes.c_ubyte])
+    declare("InitQHYCCD", ctypes.c_uint32, [H])
     declare("GetQHYCCDParam", ctypes.c_double, [H, ctypes.c_int])
     declare("GetQHYCCDParamMinMaxStep", ctypes.c_uint32,
             [H, ctypes.c_int, D, D, D])
@@ -451,10 +456,13 @@ def _sonde_plages(fns, h, res, info):
     """Lit disponibilité + MinMaxStep + valeur de chaque contrôle (0..62)."""
     controles = {}
     indispo = []
+    rc_dispo = {}                     # codes bruts de IsQHYCCDControlAvailable
     for cid_ in range(0, 63):        # 0..62 : jusqu'à CAM_HUMIDITY (enum)
         nom = _nom_ctrl(cid_)
-        if fns["IsQHYCCDControlAvailable"](h, cid_) != 1:
+        d = fns["IsQHYCCDControlAvailable"](h, cid_)
+        if d != 1:
             indispo.append(cid_)
+            rc_dispo[str(d)] = rc_dispo.get(str(d), 0) + 1
             continue
         mn, mx, st = (ctypes.c_double(), ctypes.c_double(),
                       ctypes.c_double())
@@ -478,6 +486,7 @@ def _sonde_plages(fns, h, res, info):
                 if rc == 0 else "pas de plage (rc=%d)" % rc))
     res["controles"] = controles
     res["indisponibles"] = indispo
+    res["dispo_rc"] = rc_dispo
     info("(%d contrôles disponibles, %d indisponibles)"
          % (len(controles), len(indispo)))
 
@@ -595,6 +604,18 @@ def _sonde_ctypes(action, camera_id, slot):
         err("OpenQHYCCD -> handle NULL (ouverture refusee)")
         return res
     info("OpenQHYCCD -> handle OK")
+    # Initialisation par handle : OBLIGATOIRE avant les lectures de
+    # contrôles (constat réel 20/09 : sans elle, IsQHYCCDControlAvailable
+    # répond « non disponible » pour TOUT, alors que la roue CFW répond
+    # quand même). Même logique que la séquence binding du banc :
+    # set_stream_mode puis init().
+    rcs = fns["SetQHYCCDStreamMode"](h, 1)
+    info("SetQHYCCDStreamMode(h, 1) -> %d (0 = OK)" % rcs)
+    rci = fns["InitQHYCCD"](h)
+    info("InitQHYCCD(h) -> %d (0 = OK) — initialisation par handle" % rci)
+    if rci != 0:
+        err("InitQHYCCD a echoue (%d) : les plages seront probablement "
+            "vides" % rci)
     try:
         if action == "plages":
             _sonde_plages(fns, h, res, info)
@@ -1846,6 +1867,14 @@ class BancQHY:
         if ind:
             self.q_msg.put("(indisponibles : " + ", ".join(map(str, ind))
                            + ")")
+        rcs = res.get("dispo_rc")
+        if rcs and not ctr:
+            self.q_msg.put(
+                "⚠ IsQHYCCDControlAvailable n'a JAMAIS répondu 1 (codes : "
+                + ", ".join(f"{k} ×{v}" for k, v in rcs.items())
+                + ") — regarde plus haut les codes de SetQHYCCDStreamMode et "
+                "InitQHYCCD : si InitQHYCCD != 0, c'est l'initialisation "
+                "par handle qui bloque (le rapporter tel quel).")
         cfw = res.get("cfw")
         if cfw:
             self._lignes_cfw(cfw)

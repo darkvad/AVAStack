@@ -14,9 +14,22 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.17.0"
+AVASTACK_VERSION = "2.17.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.17.1 : BANC QHY — CORRECTIF RÉEL (MiniCam8M, 20/09 matin) : les plages
+#          ctypes sortaient TOUTES « indisponibles » car la sonde appelait
+#          IsQHYCCDControlAvailable SANS l'initialisation par handle — le
+#          SDK exige SetQHYCCDStreamMode + InitQHYCCD(handle) APRÈS
+#          OpenQHYCCD (l'en-tête officiel le déclare ; la séquence binding
+#          du banc le faisait déjà). La sonde fait désormais les deux
+#          (codes retour tracés) et affiche un diagnostic explicite si la
+#          disponibilité ne répond toujours pas. EN RÉEL (20/09) : la roue
+#          CFW native est VALIDÉE en lecture — détectée, **8 slots**
+#          (ctrl 44 = 8, pas la valeur « 9 = non supporté » de la doc),
+#          statut relu '3' (= le code 51 que relit le binding sur ctrl 17 :
+#          les DEUX voies lisent le même ASCII — la convention '0' =
+#          position 1 de la doc reste à trancher par l'EFFET PHYSIQUE).
 # v2.17.0 : BANC QHY — SONDE CTYPES NATIVE (jalon 30, voie validée par
 #          Alain le 19/09/2026 ; banc UNIQUEMENT, aucun changement de
 #          comportement de l'application) :
