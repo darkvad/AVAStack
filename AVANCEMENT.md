@@ -13,7 +13,9 @@ dans le changelog du source et l'historique git.)
 
 - **Version stable de référence : AVAStack v2.20.1** (`avastack/__init__.py`),
   branche `master` — jalon 34 testé en dev (tout au vert), **COMMITÉ
-  (1900925) SANS POUSSER**.
+  (1900925) SANS POUSSER**, **installateur v2.20.1 REBUILD**
+  (`installer/windows/output/avastack-setup.exe`) — poussée + copie de
+  l'installateur vers le miniPC à faire.
 - **Dernier jalon (34, 20/09/2026) — AFFICHAGE EXPOSITION (points 1 et 2 de
   l'item 2d, retours réels setup 2)** :
   - point 2 : `_fmt_expo` sans notation scientifique (avant : « 2e+03 s »)
@@ -108,6 +110,11 @@ dans le changelog du source et l'historique git.)
   demande ; défauts des traitements confirmés (live = désactivé, NLM,
   force 0,5 ; externe = désactivé, GraXpert IA, force 0,5).
 - PIÈGE LANCEMENT : `python3` ≠ venv — toujours `python AVAStack.py`.
+- **Installateur à REBUILDER avant tout test réel dès que la passe de code
+  touche PLUS d'un ou deux fichiers** (`powershell -NoProfile
+  -ExecutionPolicy Bypass -File installer\windows\build_avastack.ps1`) —
+  à la charge de l'agent, sans qu'Alain ait à le demander (consigne du
+  20/09/2026, écrite dans CLAUDE.md).
 
 ## Statuts CLAUDE.md
 
@@ -139,9 +146,13 @@ dans le changelog du source et l'historique git.)
 
 ## 🔚 Clôture de session — 20/09/2026 (v2.20.1, jalon 34)
 
-État exact : **v2.20.1 NON COMITÉE** (points 1 et 2 de l'item 2d, passe de
-debug demandée par Alain — « on commence par 1 et 2 dans la même passe et
-on s'arrête »). Tout au vert en dev : _test_expo_affichage_jalon34 13/13
+État exact : **v2.20.1 COMMITÉE (1900925 code+test, d9898ec AVANCEMENT)
+SANS POUSSER, installateur v2.20.1 REBUILD** (points 1 et 2 de l'item 2d,
+passe de debug demandée par Alain — « on commence par 1 et 2 dans la même
+passe et on s'arrête »). Consignes NOTÉES à la demande d'Alain, écrites
+dans CLAUDE.md : (a) rebuild de l'installateur dès qu'une passe touche plus
+de 1-2 fichiers (FAIT pour v2.20.1) ; (b) « noter / se souvenir » =
+autorisation implicite de mettre CLAUDE.md à jour. Tout au vert en dev : _test_expo_affichage_jalon34 13/13
 (NOUVEAU : format décimal + case masquée/remontée), jalon32 25/25, jalon31
 15/15, sliders jalon6 OK. Réalisé : (a) point 2 — `_fmt_expo` sans
 notation scientifique (arrondi à l'entier au-delà de 10 s, milliers

@@ -94,6 +94,17 @@ soupçonner le code.
 dépendance ajoutée au script doit y être ajoutée — cf. Conventions
 non-négociables.
 
+**Installateur et tests réels (consigne d'Alain, 20/09/2026)** : dès qu'une
+passe de code touche PLUS d'un ou deux fichiers, REBUILDER l'installateur
+AVANT le test réel — sinon Alain teste une version sans les corrections.
+C'est à la CHARGE DE L'AGENT : le faire et le signaler en fin de passe,
+sans qu'Alain ait à y penser.
+
+```powershell
+# Rebuild de l installateur (lit la version dans avastack/__init__.py)
+powershell -NoProfile -ExecutionPolicy Bypass -File installer\windows\build_avastack.ps1
+```
+
 ## Conventions non-négociables
 
 - Commentaires et docstrings **en français**, cohérents avec l existant.
@@ -574,6 +585,13 @@ fondamentale : l agent ne modifie JAMAIS ce fichier de son propre chef.** Il
 doit : (1) identifier une information digne d être retenue, (2) proposer la
 mise à jour dans la conversation avec le texte exact, (3) attendre la
 confirmation explicite d Alain avant d agir, (4) confirmer l action réalisée.
+
+**EXCEPTION explicite (Alain, 20/09/2026)** : quand Alain demande à l agent
+de « noter » ou « se souvenir » de quelque chose, il autorise IMPLICITEMENT
+la mise à jour de CLAUDE.md si elle est pertinente : écrire l entrée dans
+la section appropriée, la signaler dans la réponse, sans attendre une
+confirmation séparée. Le dialogue de proposition reste la voie normale pour
+les ajouts qu Alain n a PAS lui-même demandé de noter.
 
 Déclencheurs de proposition : nouvelle erreur récurrente, nouveau
 comportement inattendu, découverte architecturale, modification importante
