@@ -11,31 +11,29 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.21.3** (`avastack/__init__.py`),
-  branche `master` — jalon 44 CORRIGÉ EN DEV (tout au vert), **COMMITÉ ET
-  POUSSÉ (voir clôture de session)**, **installateur v2.21.3 REBUILD**
+- **Version stable de référence : AVAStack v2.21.4** (`avastack/__init__.py`),
+  branche `master` — jalon 45 CORRIGÉ EN DEV (tout au vert), **COMMITÉ ET
+  POUSSÉ (voir clôture de session)**, **installateur v2.21.4 REBUILD**
   (`installer/windows/output/avastack-setup.exe`) — copie de l'installateur
   vers le miniPC à faire.
-- **Dernier jalon (44, 20/09/2026) — ÉTAT DE LA CADENCE VISIBLE EN DIRECT
-  (suite du retour d'Alain : « ça travaille toujours toutes les 5 s »)** :
-  - le correctif jalon 43 (v2.21.2) est en place ; deux causes possibles
-    pour un rythme inchangé : (a) version testée encore v2.21.1 (bug du
-    court-circuit par le scan interne de read()), (b) cadence réellement
-    « toutes les 5 s » → rafales toutes les 5 s = comportement CORRECT,
-    mais la chaîne composition dure bien plus que 5 s → sablier toujours
-    visible ;
-  - fait : le throttling est maintenant OBSERVABLE — étiquette
-    `lbl_cadence` sous la combobox « Empiler les brutes », tenue par
-    `_maj_lbl_cadence()` (appelée par _tick, mémo anti-spam) : fenêtre
-    armée → « prochaine rafale dans Xs · N brute(s) en attente » (ambre,
-    compte à rebours) ; échéance → « rafale en cours · N » (vert) ;
-    « — » = dès réception ; cadence sur source non dossier → « sans
-    objet » ;
-  - DIAGNOSTIC : étiquette restée « — » avec la cadence sélectionnée →
-    version exécutée antérieure à v2.21.1 ; compte à rebours visible → le
-    throttling fonctionne, choisir une cadence NETTEMENT au-dessus de la
-    durée de la chaîne (composition = chaîne PAR COUCHE) ;
-  - Tests : _test_cadence_jalon42 24/24 (étiquette étendue) ; jalon5 15/15.
+- **Dernier jalon (45, 20/09/2026) — CADENCE COMMUNE AUX DEUX MODES
+  (retour d'Alain : il teste EN COMPOSITION ; l'étiquette affichait
+  « cadence : sans objet (source non dossier) » AVANT même de démarrer,
+  et la combobox n'existait que dans « Dossier surveillé »)** :
+  - fait : helper `_creer_cadence(parent)` — UNE combobox + UNE étiquette
+    d'état PAR MODE (« Dossier surveillé » ET « Composition multi-filtres »),
+    partageant la MÊME variable (choisir dans l'un met l'autre à jour) ;
+    le worker appliquait DÉJÀ la cadence à la composition (porte
+    `_autoriser_lecture` couvre MultiFolderCamera) — c'était un problème
+    de PLACEMENT d'UI, pas de moteur ;
+  - `_maj_lbl_cadence()` : « — » quand AUCUNE source n'est connectée (ne
+    plus afficher « sans objet » avant la connexion) ; « sans objet »
+    réservé à une source réellement non dossier ;
+  - RAPPEL : en composition, choisir une cadence NETTEMENT au-dessus de la
+    durée de la chaîne PAR COUCHE (gradient + débruitage × 3-4 couches +
+    netteté + composition + étirement) — ex. « toutes les 5 min » ;
+  - Tests : _test_cadence_jalon42 29/29 (2 comboboxes partagées, étiquette
+    au repos sans source) ; jalon5 15/15.
 - **LIMITE QHY (toujours valable)** : après « ■ Arrêter », relancer
   l'appli — le binding qhyccd n'expose AUCUNE libération du SDK (état
   irréinitialisable dans le process) ; le banc QHY l'annonce et conseille
@@ -101,12 +99,13 @@ dans le changelog du source et l'historique git.)
 8. **Jalon 41 (v2.21.0)** : en mode STF, vérifier le nouveau cadre
    « Couleur live » (cases SCNR/démagenta efficaces à l'écran) et le cadre
    « État des calculs » (⏳ netteté pendant la déconvolution STF).
-9. **Jalon 42-44 (v2.21.1 → v2.21.3)** : en COMPOSITION multi-dossiers avec
-   GX/débruitage live par couche, régler « Empiler les brutes » sur 1-5 min
-   → l'étiquette sous la combobox doit montrer le compte à rebours
-   (« prochaine rafale dans Xs · N brute(s) en attente »), le sablier ne
-   doit travailler qu'une fois par rafale, et AUCUNE brute ne doit être
-   perdue (compte « Frames » = total des brutes des dossiers).
+9. **Jalon 42-45 (v2.21.1 → v2.21.4)** : en COMPOSITION multi-dossiers avec
+   GX/débruitage live par couche, régler « Empiler les brutes » (combobox
+   présente dans le cadre Composition aussi) sur 1-5 min → l'étiquette sous
+   la combobox doit montrer le compte à rebours (« prochaine rafale dans
+   Xs · N brute(s) en attente »), le sablier ne doit travailler qu'une fois
+   par rafale, et AUCUNE brute ne doit être perdue (compte « Frames » =
+   total des brutes des dossiers).
 
 ## Pièges récents (rappels opérationnels)
 
@@ -169,31 +168,31 @@ dans le changelog du source et l'historique git.)
   points puis en trainées » → origine du jalon 13 (alignement robuste).
   Banc POA : `_diag_camera_playerone.py` (jalon 28).
 
-## 🔚 Clôture de session — 20/09/2026 (v2.21.3, jalon 44)
+## 🔚 Clôture de session — 20/09/2026 (v2.21.4, jalon 45)
 
-État exact : **v2.21.3 COMMITÉE ET POUSSÉE (966edae), installateur REBUILD**.
-Session en six jalons après la v2.20.7 : jalon 39 (v2.20.8, cases couleur
+État exact : **v2.21.4 COMMITÉE ET POUSSÉE (265beff), installateur REBUILD**.
+Session en sept jalons après la v2.20.7 : jalon 39 (v2.20.8, cases couleur
 réactives) ; jalon 40 (v2.20.9, état du calcul : curseur + ⏳ + résultat) ;
-jalon 41 (v2.21.0, UI indépendante du moteur — cadres « Couleur live » et
-« État des calculs » en STF aussi) ; jalon 42 (v2.21.1, cadence
-d'empilement — combobox « Empiler les brutes ») ; jalon 43 (v2.21.2,
-CORRECTIF constaté en composition : le scan INTERNE de read()
-court-circuitait la fenêtre — la fenêtre armée bloque désormais TOUTE
-lecture) ; jalon 44 (v2.21.3, retour d'Alain « ça travaille toujours
-toutes les 5 s » → le throttling devient OBSERVABLE : étiquette sous la
-combobox « prochaine rafale dans Xs · N brute(s) en attente » / « rafale
-en cours » / « — » — distingue une version ancienne d'une cadence trop
-courte pour la chaîne). Tout au vert en dev : _test_cadence_jalon42 24/24,
-jalon5 15/15.
+jalon 41 (v2.21.0, UI indépendante du moteur — « Couleur live » et « État
+des calculs » en STF aussi) ; jalon 42 (v2.21.1, cadence d'empilement) ;
+jalon 43 (v2.21.2, CORRECTIF en composition : le scan INTERNE de read()
+court-circuitait la fenêtre — la fenêtre armée bloque TOUTE lecture) ;
+jalon 44 (v2.21.3, état de la cadence visible : compte à rebours) ; jalon
+45 (v2.21.4, CADENCE COMMUNE AUX DEUX MODES à la demande d'Alain qui teste
+en COMPOSITION : une combobox + une étiquette dans « Dossier surveillé » ET
+dans « Composition multi-filtres », même variable partagée ; étiquette « — »
+avant la connexion au lieu de « sans objet » ; le worker appliquait déjà la
+cadence à la composition — problème de PLACEMENT d'UI, pas de moteur).
+Tout au vert en dev : _test_cadence_jalon42 29/29, jalon5 15/15.
 
-**Prochaine étape** : (1) copier l'installateur v2.21.3 vers le miniPC ;
-(2) validation réelle : étiquette de cadence (compte à rebours visible),
-sablier une fois par rafale, AUCUNE brute perdue ; (3) suite des tests
-réels en attente (QHY MiniCam8M : TEC + roue à filtres, verdict par EFFET
-PHYSIQUE).
+**Prochaine étape** : (1) validation réelle EN COMPOSITION (Alain, depuis
+le dossier de dev — pas d'installateur nécessaire) : cadence « toutes les
+5 min », étiquette = compte à rebours, sablier une fois par rafale,
+AUCUNE brute perdue ; (2) suite des tests réels en attente (QHY MiniCam8M :
+TEC + roue à filtres, verdict par EFFET PHYSIQUE).
 
-Sessions précédentes : v2.21.2 (jalon 43, correctif cadence, d5b799d) ;
-v2.21.1 (jalon 42, cadence d'empilement, 11f6dfb) ; v2.21.0 (jalon 41,
-8ee2d8c) ; v2.20.9 (jalon 40, 45bbfc9) ; v2.20.8 (jalon 39, 097a9c8) ;
-v2.20.7 (jalon 38, d8d4055) — détail dans l'historique git et le
-changelog du source.
+Sessions précédentes : v2.21.3 (jalon 44, cadence visible, 966edae) ;
+v2.21.2 (jalon 43, correctif cadence, d5b799d) ; v2.21.1 (jalon 42,
+11f6dfb) ; v2.21.0 (jalon 41, 8ee2d8c) ; v2.20.9 (jalon 40, 45bbfc9) ;
+v2.20.8 (jalon 39, 097a9c8) ; v2.20.7 (jalon 38, d8d4055) — détail dans
+l'historique git et le changelog du source.
