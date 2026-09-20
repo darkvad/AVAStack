@@ -174,10 +174,17 @@ class FauxDLL_SVB:
     def SVBGetControlValue(self, cid, t, val, auto):
         return 0                                  # pas utilisé par la sonde
 
+    def SVBSetControlValue(self, cid, t, v, auto):
+        # jalon 37 : le sondage TEC pose CoolerEnable = 1 (verdict par
+        # l'EFFET) puis le restaure — le faux SDK l'accepte comme le vrai.
+        return 0
+
 
 cam = msvb.SVBonyCamera.__new__(msvb.SVBonyCamera)
 cam.id = 3
 cam.name = "SV605CC"
+cam._started = True                       # « ouverte » (detecter_capacites
+                                          # est à appeler APRÈS open())
 prop = msvb._SVBCameraProperty()
 prop.MaxWidth, prop.MaxHeight = 3000, 2000
 prop.IsColorCam = 0

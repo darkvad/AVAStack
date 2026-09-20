@@ -14,9 +14,35 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.20.5"
+AVASTACK_VERSION = "2.20.6"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.20.6 : SONDE TEC SVBONY PAR L'EFFET — CONTRÔLES PRÉSENTS ≠ TEC PRÉSENT
+#          (jalon 37, retour réel d'Alain du 20/09/2026 : la connexion auto
+#          SV305C du jalon 36 fonctionne, MAIS sa caméra SANS TEC affiche
+#          quand même les contrôles TEC (14-17) avec « 20 °C, puissance
+#          0 % » — valeurs bidon — et « Réguler » levait « CoolerEnable
+#          refusé par le SDK — vérifier l'alimentation 12 V » ; le firmware
+#          est probablement commun avec la SV305C Pro refroidie). CAUSE : le
+#          SDK énumère les contrôles TEC même sans TEC physique — la
+#          présence de contrôles ne prouve rien. CORRECTION (verdict par
+#          l'EFFET, règle « réglage relu ≠ réglage appliqué ») :
+#          detecter_capacites() TENTE CoolerEnable = 1 — refus → pas de TEC
+#          (cap.tec False, pas de plage de consigne, note explicative dans
+#          extras, lire_refroidissement() → None → boutons ❄ RESTENT
+#          GRISÉS) ; succès → TEC présent ET l'état initial de CoolerEnable
+#          est RESTAURÉ (ne pas laisser le TEC démarré rien que pour une
+#          détection). La sonde app (_sonder_controles →
+#          lire_refroidissement) reste le point d'activation des boutons :
+#          sondage → None → grisés. Compatibilité : les bancs qui appellent
+#          lire_refroidissement() sans detecter_capacites gardent
+#          l'ancien comportement (défaut = pilotable). Test :
+#          _test_tec_sonde_jalon37 (doubles de DLL : SV305C sans TEC qui
+#          REFUSE CoolerEnable comme en réel, caméra avec TEC) ;
+#          régression : _test_capacites, _test_tec_jalon33,
+#          _test_pilotage_jalon35, _test_connexion_svbony_jalon36.
+#          Point 4 de l'item 2d VALIDÉ EN RÉEL par Alain (connexion SV305C
+#          OK avec le correctif du jalon 36).
 # v2.20.5 : CONNEXION AUTOMATIQUE SVBONY RÉTABLIE (jalon 36, correctif du
 #          point 4 de l'item 2d — retour réel d'Alain : « SVBONY (SDK) :
 #          connexion impossible — Propriétés illisibles : SVBONY SV305C »)
