@@ -14,9 +14,29 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.20.3"
+AVASTACK_VERSION = "2.20.4"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.20.4 : PILOTAGE TEC ÉTENDU À TOUTES LES CAMÉRAS SDK (jalon 35, correctif
+#          du point 3 de l'item 2d — retour réel d'Alain du 20/09/2026,
+#          setup 2 : sur la POA Uranus-C Pro les contrôles TEC s'affichaient
+#          (bornes de consigne détectées) mais les boutons ❄ restaient
+#          GRISÉS) — CAUSE : `cam_pilotee` (la caméra que le thread de
+#          travail sonde et pilote) était resté QHY-only depuis le jalon 25,
+#          donc le sondage lire_refroidissement() n'était JAMAIS lancé pour
+#          Player One / SVBONY / ZWO / Touptek : les implémentations du
+#          jalon 33 étaient saines mais jamais appelées. CORRECTION :
+#          constante CAMERAS_PILOTEES = toutes les caméras SDK (QHY, POA,
+#          SVBONY, ZWO, Touptek), utilisée aux TROIS points d'installation
+#          de la caméra (connexion auto jalon 32, chemin QHY, repli
+#          « ▶ Démarrer ») ; les no-ops de CameraBase garantissent l'absence
+#          d'effet pour une marque sans TEC/roue (boutons ❄ grisés,
+#          combobox désactivée) ; garde hasattr(stop_live) sur le chemin
+#          filtre (seul QHYCamera l'expose aujourd'hui). Le point 4
+#          (connexion auto SVBONY « Propriétés illisibles ») reste à
+#          traiter. Tests : _test_pilotage_jalon35 14/14 (NOUVEAU — câblage
+#          app boutons ❄ POA + SVBONY) ; jalon33 21/21 ; jalon32 25/25 ;
+#          jalon31 14/14 ; jalon34 21/21.
 # v2.20.3 : COUPURE DE L'ÉCHELLE À 5 S (précision d'Alain du 20/09/2026,
 #          après retest réel : « décoché, le curseur va du min à 5 s, coché
 #          ça va de 5 s au max ») — pour TOUTES les caméras, bornes natives

@@ -11,35 +11,29 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.20.3** (`avastack/__init__.py`),
-  branche `master` — jalon 34 testé en dev (tout au vert), **COMMITÉ ET
-  POUSSÉ (ea7108c)**, **installateur v2.20.3 REBUILD** — **TEST RÉEL setup 2
-  (Player One) : POINTS 1 ET 2 VALIDÉS PAR ALAIN le 20/09/2026**.
-  (`installer/windows/output/avastack-setup.exe`) — poussée + copie de
-  l'installateur vers le miniPC à faire.
-- **Dernier jalon (34, 20/09/2026) — AFFICHAGE EXPOSITION (points 1 et 2 de
-  l'item 2d, retours réels setup 2)** :
-  - point 2 : `_fmt_expo` sans notation scientifique (avant : « 2e+03 s »)
-    — arrondi à l'entier au-delà de 10 s (pas réel ≥ 1 ms), milliers
-    séparés par espace fine insécable (« 2 000 s », « 20 000 s ») ;
-  - point 1 : case « Échelle longue » — libellé GÉNÉRÉ (plus de « 900 s »
-    en dur) : « Échelle longue (1 s – 2 000 s) » avec la borne max RÉELLE ;
-  - CORRECTION retour réel (v2.20.2) : la case doit rester VISIBLE — la
-    v2.20.1 la masquait à tort ;
-  - COUPURE À 5 S (précision d'Alain, v2.20.3, TOUTES les caméras) :
-    décochée = min → 5 s, cochée = 5 s → max réel ; pivot commun, bascule
-    auto à la saisie (> 5 s coche, < 5 s décoche) ; plage native
-    entièrement d'un côté du pivot → case décochée (sans effet) ;
-  - Tests : _test_expo_affichage_jalon34 21/21 (NOUVEAU) ; jalon32 25/25 ;
-    jalon31 15/15 ; sliders jalon6 OK.
-- **Reste à déboguer de l'item 2d : points 3 et 4** (TEC POA boutons ❄
-  grisés ; connexion auto SVBONY refusée « Propriétés illisibles ») —
-  comparer avec les bancs de diag VALIDÉS EN RÉEL (référence).
-- **Jalon 33 (v2.20.0, 20/09)** : pilotage TEC POA/SVBONY (poses éprouvées
-  par les bancs, lire → None si pas de TEC) + `_deconnecter_camera`
-  dédoublonnée (décision d'Alain, version du 19/09 conservée). Jalon 32
-  (v2.19.0) : capacités dynamiques toutes marques. Jalon 31 (v2.18.0) : UI
-  dynamique QHY (sonde native qhyct.py).
+- **Version stable de référence : AVAStack v2.20.4** (`avastack/__init__.py`),
+  branche `master` — jalon 35 CORRIGÉ EN DEV (tout au vert), **COMMITÉ ET
+  POUSSÉ, installateur v2.20.4 REBUILD** — **À VALIDER EN RÉEL** (setup 2,
+  POA : boutons ❄ activés).
+- **Dernier jalon (35, 20/09/2026) — BOUTONS ❄ GRISÉS SUR LA POA (point 3
+  de l'item 2d)** :
+  - cause : `cam_pilotee` (la caméra que le worker sonde/pilote) était
+    resté QHY-only depuis le jalon 25 → le sondage
+    `lire_refroidissement()` n'était JAMAIS lancé pour Player One /
+    SVBONY / ZWO / Touptek — les implémentations TEC du jalon 33 étaient
+    saines mais jamais appelées ;
+  - correction : constante `CAMERAS_PILOTEES` (toutes les caméras SDK)
+    aux 3 points d'installation de la caméra (app.py : connexion auto
+    jalon 32, chemin QHY, repli « ▶ Démarrer ») ; les no-ops de
+    CameraBase garantissent l'absence d'effet pour une marque sans
+    TEC/roue (boutons ❄ grisés, combobox désactivée) ; garde
+    `hasattr(stop_live)` sur le chemin filtre (seul QHY l'expose) ;
+  - Tests : _test_pilotage_jalon35 14/14 (NOUVEAU — câblage app boutons
+    ❄ POA + SVBONY) ; jalon33 21/21 ; jalon32 25/25 ; jalon31 14/14 ;
+    jalon34 21/21.
+- **Reste à déboguer de l'item 2d : point 4** (connexion auto SVBONY
+  refusée « Propriétés illisibles ») — comparer avec le banc de diag
+  SVBONY VALIDÉ EN RÉEL (référence).
 - **LIMITE QHY (toujours valable)** : après « ■ Arrêter », relancer
   l'appli — le binding qhyccd n'expose AUCUNE libération du SDK (état
   irréinitialisable dans le process) ; le banc QHY l'annonce et conseille
@@ -73,13 +67,13 @@ dans le changelog du source et l'historique git.)
       longue » généré (pivot 5 s + borne max réelle), coupure à 5 s.
    2. ✅ TRAITÉ ET VALIDÉ EN RÉEL (jalon 34, v2.20.1) — `_fmt_expo` sans
       notation scientifique : « 2 000 s » au lieu de « 2e+03 s ».
-   3. **Player One : contrôles TEC affichés mais boutons ❄ GRISÉS** —
-      alors que LE BANC DE DIAG POA VALIDAIT LE TEC EN RÉEL (régulation
-      + lecture température + puissance, _diag_camera_playerone.py).
-      La détection (bornes de consigne) s'affiche bien ; c'est
-      l'activation des boutons qui échoue (le sondage de l'app active
-      si `lire_refroidissement() is not None` — à tracer : la sonde
-      TEC répond-elle dans le process de l'app ?).
+   3. ✅ CORRIGÉ EN DEV (jalon 35, v2.20.4) — cause trouvée : `cam_pilotee`
+       (sondage/pilotage du worker) était resté QHY-only depuis le jalon 25,
+       le sondage `lire_refroidissement()` n'était JAMAIS lancé hors QHY
+       (les implémentations TEC du jalon 33 n'étaient jamais appelées).
+       Correctif : `CAMERAS_PILOTEES` = toutes les caméras SDK (app.py).
+       À REVALIDER EN RÉEL sur la POA (boutons ❄ activés, consigne,
+       descente de température dans le label).
    4. **SVBONY : connexion auto REFUSÉE** — message « SVBONY (SDK) :
       connexion impossible — Propriétés illisibles : SVBONY SV305C »
       lors de la détection automatique, alors que LE BANC DE DIAG
@@ -149,28 +143,25 @@ dans le changelog du source et l'historique git.)
   points puis en trainées » → origine du jalon 13 (alignement robuste).
   Banc POA : `_diag_camera_playerone.py` (jalon 28).
 
-## 🔚 Clôture de session — 20/09/2026 (v2.20.3, jalon 34)
+## 🔚 Clôture de session — 20/09/2026 (v2.20.4, jalon 35)
 
-État exact : **v2.20.3 COMMITÉE ET POUSSÉE (ea7108c), installateur
-v2.20.3 REBUILD, TEST RÉEL setup 2 OK** — Alain a validé les points 1 et 2
-de l'item 2d sur sa Player One (notation décimale « 2 000 s », case
-« Échelle longue » visible et coupée à 5 s). Consignes NOTÉES à la demande
-d'Alain, écrites dans CLAUDE.md : (a) rebuild de l'installateur dès qu'une
-passe touche plus de 1-2 fichiers (appliqué v2.20.1 → v2.20.3) ; (b)
-« noter / se souvenir » = autorisation implicite de mettre CLAUDE.md à
-jour. Tout au vert en dev : _test_expo_affichage_jalon34 21/21, jalon32
-25/25, jalon31 15/15, sliders jalon6 OK. Trois allers-retours avec Alain
-sur la case : ne PAS la masquer (v2.20.2), puis COUPURE À 5 S pour toutes
-les caméras (v2.20.3) : décochée = min → 5 s, cochée = 5 s → max, bascule
-auto à la saisie — VALIDÉ EN RÉEL.
+État exact : **v2.20.4 COMMITÉE ET POUSSÉE, installateur REBUILD** —
+Alain a demandé de reprendre au POINT 3 de l'item 2d puis de s'arrêter.
+Diagnostic + correctif posés : les boutons ❄ TEC POA restaient grisés
+parce que `cam_pilotee` (la caméra que le worker sonde/pilote) était resté
+QHY-only depuis le jalon 25 — les implémentations TEC du jalon 33 n'étaient
+JAMAIS appelées pour POA/SVBONY/ZWO/Touptek. Correctif : constante
+`CAMERAS_PILOTEES` (toutes les caméras SDK) aux 3 points d'installation
+(app.py) + garde `hasattr(stop_live)` sur le chemin filtre. Tout au vert
+en dev : _test_pilotage_jalon35 14/14 (NOUVEAU), jalon33 21/21, jalon32
+25/25, jalon31 14/14, jalon34 21/21.
 
-**Prochaine étape** : (1) déboguer les points 3 et 4 de l'item 2d (TEC POA
-boutons ❄ grisés ; connexion auto SVBONY refusée) EN COMPARANT avec les
-bancs de diag validés en réel, qui restent la référence ; (2) pousser +
-copier l'installateur vers le miniPC ; (3) refaire le test réel setup 1
-(MiniCam8M) et setup 2.
+**Prochaine étape** : (1) déboguer le point 4 de l'item 2d (connexion auto
+SVBONY refusée « Propriétés illisibles ») EN COMPARANT avec le banc de
+diag SVBONY validé en réel ; (2) test réel setup 2 : revalider les boutons
+❄ POA (et SVBONY une fois le point 4 réglé) ; (3) copier l'installateur
+v2.20.4 vers le miniPC + test réel setup 1 (MiniCam8M).
 
-Session précédente (v2.20.0, jalons 32 + 33) : capacités dynamiques toutes
-marques + TEC POA/SVBONY, commitée e70c6d7, installateur rebuild.
-Sessions v2.19.0 (jalon 32) e70c6d7 / v2.18.0 (jalon 31) bb84f72 : détail
-dans l'historique git et le changelog du source.
+Sessions précédentes : v2.20.3 (jalon 34, points 1-2 de l'item 2d,
+VALIDÉS EN RÉEL par Alain, ea7108c) ; v2.20.0 (jalons 32 + 33, e70c6d7) —
+détail dans l'historique git et le changelog du source.

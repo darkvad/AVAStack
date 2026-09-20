@@ -45,6 +45,19 @@ RESTACK_MIN_FRAMES = 5     # pas de re-stack auto avant ce nb de frames archivé
 RESTACK_CADENCE = 10       # nb de frames archivées entre deux re-stacks auto
 RESTACK_HIST_MAX = 12      # entrées conservées dans l'historique de session (jalon 18)
 
+# --- Jalon 35 : caméras « pilotées » (sondage roue/TEC, demandes de consigne)
+# TOUTES les caméras SDK, pas seulement QHY (correctif du point 3 de l'item
+# 2d, retour réel d'Alain du 20/09/2026, setup 2 : sur la POA Uranus-C Pro
+# les contrôles TEC s'affichaient — bornes de consigne détectées — mais les
+# boutons ❄ restaient GRISÉS). Cause : `cam_pilotee` était resté QHY-only
+# depuis le jalon 25, donc le sondage lire_refroidissement() du worker
+# n'était JAMAIS lancé pour les autres marques — les implémentations du
+# jalon 33 étaient saines mais jamais appelées. Les no-ops de CameraBase
+# garantissent qu'une marque sans roue/TEC (ZWO, Touptek) reste sans effet :
+# sondage → None → boutons ❄ grisés, combobox filtre désactivée.
+CAMERAS_PILOTEES = (QHYCamera, PlayerOneCamera, SVBonyCamera,
+                    ZWOASICamera, TouptekCamera)
+
 
 def _fmt_expo(ms):
     """Format d'affichage d'une exposition en ms : µs / ms / s selon l'ordre
@@ -2033,7 +2046,7 @@ class App:
         duplication. `source` : libellé de marque pour les messages
         (« QHY », « Player One (SDK) »…)."""
         self.camera = cam
-        self.cam_pilotee = cam if isinstance(cam, QHYCamera) else None
+        self.cam_pilotee = cam if isinstance(cam, CAMERAS_PILOTEES) else None
         self._controles_sondes = False
         self._roue_ok = self._tec_ok = False
         # Jalon 31 : détection des capacités puis ADAPTATION de l'UI
@@ -2081,7 +2094,7 @@ class App:
                                    foreground="#d04040")
             return
         self.camera = cam
-        self.cam_pilotee = cam if isinstance(cam, QHYCamera) else None
+        self.cam_pilotee = cam if isinstance(cam, CAMERAS_PILOTEES) else None
         self._controles_sondes = False
         self._roue_ok = self._tec_ok = False
         self.btn_start.config(state="normal")
@@ -2242,7 +2255,7 @@ class App:
             messagebox.showerror("Caméra", str(e))
             return
         self.camera = cam
-        self.cam_pilotee = cam if isinstance(cam, QHYCamera) else None
+        self.cam_pilotee = cam if isinstance(cam, CAMERAS_PILOTEES) else None
         self.btn_deconnect.config(state="normal")
         # Jalon 19 : mode composition si la source est multi-dossiers — la
         # composition est déduite des rôles configurés (choix UI en phase 3).
@@ -3427,6 +3440,8 @@ class App:
         n = self._filtre_demande
         if n is None or self.camera is None or self.cam_pilotee is None:
             return
+        if not hasattr(self.cam_pilotee, "stop_live"):
+            return      # roue : seul QHYCamera expose stop_live/begin_live
         self._filtre_demande = None
         nom = FILTRES_ROUE[n] if 0 <= n < len(FILTRES_ROUE) else f"?{n}"
         try:
