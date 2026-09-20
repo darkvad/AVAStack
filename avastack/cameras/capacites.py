@@ -13,14 +13,22 @@ renvoie un objet `Capacites`. RIEN n'est codé en dur par modèle : tout ce
 qui est dans l'objet vient des réponses du SDK. La seule table fixe est
 GAIN_UNITAIRE_CONNU, qui sert à ANNOTER le verdict (jamais à régler).
 
-État par marque (constat 19/09/2026, exports des DLL réellement livrées) :
+État par marque (constat 19/09/2026, exports des DLL réellement livrées ;
+complété pour QHY par la sonde ctypes native, jalon 30/31) :
   - Player One : POAGetConfigsCount / POAGetConfigAttributes (sonde
     POASonde de cameras/playerone.py, validée par _test_camera_playerone) ;
   - ZWO : ASIGetNumOfControls / ASIGetControlCaps (ASICamera2.dll) ;
   - SVBONY : SVBGetNumOfControls / SVBGetControlCaps (SVBCameraSDK.dll) ;
   - QHY : le binding Python (paquet qhyccd) n'expose AUCUNE fonction de
-    plages (ni GetQHYCCDParamMinMax) → capacités PARTIELLES (présence des
-    contrôles seulement, plages inconnues). À compléter plus tard.
+    plages → relevé NATIF par ctypes (qhyct.py : plages MinMaxStep +
+    roue CFW) fait À L'OUVERTURE, traduit par QHYCamera.detecter_capacites.
+
+⚠ Jalon 32 : le NUMÉROTAGE des contrôles DIFFÈRE par marque (enums
+officielles des SDK — cf. CID_CONTROLES_PAR_MARQUE). Le câblage de l'UI
+interroge des RÔLES (« gain », « offset »…) via Capacites.plage(), JAMAIS
+un cid littéral : « 6 » = gain QHY, mais balance des blancs B chez
+Player One et « Flip » chez SVBONY — un curseur construit dessus serait
+FAUX même si la sonde a bien répondu.
 """
 
 # Gains unitaires CONNUS (capteur → gain SDK où e-/ADU ≈ 1, spec
@@ -29,6 +37,28 @@ GAIN_UNITAIRE_CONNU, qui sert à ANNOTER le verdict (jamais à régler).
 # pour annoter le verdict (« le gain unitaire est dans la plage »).
 GAIN_UNITAIRE_CONNU = {
     "IMX585": 210,      # Player One Uranus-C Pro (demande d'Alain, 19/09/2026)
+}
+
+
+# --- Rôles → id de contrôle PAR MARQUE (jalon 32) ----------------------------
+# Chaque SDK numérote SES contrôles à sa façon : ce sont les enums
+# officielles, stables PAR MARQUE (pas par modèle). Le câblage de l'UI
+# interroge des RÔLES via Capacites.plage(), jamais un cid littéral —
+# un cid QHY est sans sens ailleurs (« 6 » = gain QHY, mais balance des
+# blancs B chez Player One, « Flip » chez SVBONY).
+# QHY : contrôles natifs (jalon 30, relevés par GetQHYCCDParamMinMaxStep) ;
+# ZWO : ASI_CONTROL_TYPE (ASICamera2.h) ; SVBONY : SVB_CONTROL_TYPE
+# (SVBCameraSDK.h — 13 = BlackLevel, l'« offset » du SDK SVB) ; Player One :
+# POAConfigID (POACamera.h).
+CID_CONTROLES_PAR_MARQUE = {
+    "QHY":        {"expo_us": "8", "gain": "6", "offset": "7",
+                   "tec_consigne": "18"},
+    "Player One": {"expo_us": 0,  "gain": 1,  "offset": 7,
+                   "tec_consigne": 17},
+    "SVBONY":     {"expo_us": 1,  "gain": 0,  "offset": 13,
+                   "tec_consigne": 15},
+    "ZWO":        {"expo_us": 1,  "gain": 0,  "offset": 5,
+                   "tec_consigne": 16},
 }
 
 
@@ -115,6 +145,29 @@ class Capacites:
         if mn >= mx or mx <= 0:
             return None
         return (mn, mx, st if st > 0 else 1.0)
+
+    def plage(self, nom):
+        """→ (min, max, step) du contrôle de RÔLE `nom` pour CETTE marque,
+        ou None. Jalon 32 : les cid dépendent de la MARQUE (enums des SDK) —
+        la résolution passe par CID_CONTROLES_PAR_MARQUE, la plage par
+        plage_controle (relevé extras : step natif quand le SDK l'expose).
+        Repli : plages déjà normalisées par la marque (tuples (min, max) —
+        step inconnu → 1, curseur entier). Plage incohérente → None (jamais
+        de curseur construit sur une plage bidon)."""
+        if nom not in ("expo_us", "gain", "offset", "tec_consigne"):
+            return None
+        cid = CID_CONTROLES_PAR_MARQUE.get((self.marque or "").strip(),
+                                           {}).get(nom)
+        if cid is not None:
+            p = self.plage_controle(cid)
+            if p is not None:
+                return p
+        v = getattr(self, nom, None)
+        if isinstance(v, (tuple, list)) and len(v) == 2:
+            mn, mx = float(v[0]), float(v[1])
+            if mx > mn:
+                return (mn, mx, 1.0)
+        return None
 
     # --- annotations -----------------------------------------------------------
 

@@ -14,9 +14,73 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.18.0"
+AVASTACK_VERSION = "2.20.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.20.0 : PILOTAGE TEC PLAYER ONE / SVBONY (jalon 33, demande d'Alain du
+#          20/09/2026) — le mécanisme app était DÉJÀ générique depuis le
+#          jalon 26 (sondage lire_refroidissement → boutons ❄ activés,
+#          demande consigne/arrêt exécutée dans le thread de travail,
+#          rafraîchissement 2 s) ; seules les implémentations SDK manquaient :
+#          - PlayerOneCamera : consigne POA_TARGET_TEMP (17, int OU float
+#            selon les attributs) PUIS POA_COOLER ON (18) — ordre éprouvé par
+#            le banc ; lire → (temp °C [ctrl 3 FLOAT], PWM 0-255 [puissance %
+#            ctrl 16 convertie], consigne) ; arrêt = POA_COOLER OFF ; sonde
+#            POASonde construite UNE fois (lister coûte ~31 lectures) ;
+#          - SVBonyCamera : CoolerEnable (14) PUIS TargetTemp ×10 (15 —
+#            unités de 0,1 °C, éprouvé par le banc) ; lire → (temp ctrl 16
+#            /10, PWM [puissance % ctrl 17], consigne ctrl 15 /10) ; arrêt =
+#            CoolerEnable 0 ; les trois méthodes ne lèvent JAMAIS sur caméra
+#            sans TEC : lire → None (l'app laisse les boutons ❄ grisés) ;
+#          - jalon 33 : _deconnecter_camera — la définition DUPLIQUÉE (la
+#            version threadée jalon 26b écrasée par la version simple du
+#            19/09 au soir) est supprimée ; DÉCISION ALAIN 20/09 : la version
+#            du 19/09 (worker arrêté D'ABORD dans _on_close, close dans le
+#            thread Tk) est celle qui fonctionnait, on la garde ;
+#          - _test_tec_jalon33.py : 20 vérifications sur des doubles de DLL
+#            (poses/lectures typées fidèles aux relevés réels, conversions
+#            % → PWM et 0,1 °C, refus SDK → messages clairs « 12 V », caméra
+#            sans TEC, caméra fermée).
+# v2.19.0 : CAPACITÉS DYNAMIQUES POUR TOUTES LES MARQUES (jalon 32, demande
+#          d'Alain du 20/09/2026 : « implémenter le mécanisme dynamique pour
+#          toutes les caméras validées avec les diagnostics » — constat : en
+#          réel, les bornes n'arrivaient QUE pour QHY) :
+#          - CONSTATS CODE : le câblage jalon 31 ne détectait qu'à la
+#            connexion QHY (Player One et SVBONY se connectaient au
+#            « ▶ Démarrer » SANS détection) ; et _adapter_ui_capacites
+#            cherchait les cid QHY LITTÉRAUX (« 6 » gain, « 7 » offset),
+#            qui chez Player One désignent la balance des blancs B (ctrl 6)
+#            et chez SVBONY « Flip » : les curseurs auraient été reconstruits
+#            sur des bornes FAUSSES si la sonde avait répondu ;
+#          - CID_CONTROLES_PAR_MARQUE (capacites.py) : ids PAR MARQUE des
+#            enums officielles des SDK (QHY gain 6 / offset 7 / expo 8 /
+#            TEC 18 ; Player One gain 1 / offset 7 / expo 0 / TEC 17 ;
+#            SVBONY gain 0 / offset 13 BlackLevel / expo 1 / TEC 15 ;
+#            ZWO gain 0 / offset 5 / expo 1 / TEC 16) ; Capacites.plage(rôle)
+#            résout le cid selon la marque puis lit la plage du relevé
+#            (repli : plages normalisées, step 1) ; l'UI n'interroge plus
+#            AUCUN cid littéral ;
+#          - detecter_capacites POA / SVB / ZWO : remplissent désormais
+#            extras PAR CONTRÔLE (clé = id string : min/max/step/valeur/nom)
+#            — les bancs réutilisent la même sonde, sans changement pour
+#            eux ;
+#          - App : connexion AUTOMATIQUE à la détection pour TOUTES les
+#            marques SDK (_connecter_sdk, thread dédié, comme QHY jalon 26)
+#            ; résultat consommé par _tick → detecter_capacites +
+#            _adapter_ui_capacites via le facteur commun
+#            _installer_camera_connectee (le chemin QHY appelle EXACTEMENT
+#            le même code) ; connexion annulée proprement (close) si la
+#            source change pendant l'ouverture ; « ▶ Démarrer » neutralisé
+#            pendant la connexion ; _start (chemin de repli) détecte aussi
+#            les capacités après open() ; dégradation silencieuse (sonde
+#            muette → défauts, jamais d'erreur) ;
+#          - déconnexion : inchangée (le vidage des capacités était déjà
+#            générique).
+#          Test : _test_capacites_ui_jalon32.py (POA Uranus-C Pro : gain
+#          0→750, offset 0→250, expo 10 µs→2000 s, TEC -50→30 ; SV305C :
+#          gain 0→450, BlackLevel 0→255, expo 36 µs→2000 s) ;
+#          _test_capacites (29/29) et _test_ui_dynamique_jalon31 (15/15)
+#          restent au vert.
 # v2.18.0 : UI DYNAMIQUE — LA FENÊTRE S'ADAPTE À LA CAMÉRA BRANCHÉE
 #          (jalon 31, demande d'Alain du 20/09/2026 : « quand tu connectes
 #          une caméra tu fais ce travail de détection et ensuite tu

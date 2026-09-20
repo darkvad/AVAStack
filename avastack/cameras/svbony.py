@@ -217,6 +217,62 @@ class SVBonyCamera(CameraBase):
         _DLL.SVBSetControlValue(self.id, SVB_EXPOSURE, int(exposure_ms * 1000), 0)
         _DLL.SVBSetControlValue(self.id, SVB_GAIN, int(gain), 0)
 
+    # --- refroidissement TEC (contrôles 14/15/16/17 du SDK) ---------------
+    def _lire_ctrl(self, cid):
+        """→ valeur courante d'un contrôle SDK, None si erreur ou contrôle
+        absent (jamais d'exception : le sondage de l'app en déduit « TEC
+        indisponible » et laisse les boutons ❄ grisés)."""
+        if self.id is None or _DLL is None or not self._started:
+            return None
+        v = ctypes.c_long(0)
+        auto = ctypes.c_int(0)
+        if _DLL.SVBGetControlValue(self.id, cid, ctypes.byref(v),
+                                   ctypes.byref(auto)) != SVB_SUCCESS:
+            return None
+        return v.value
+
+    def consigne_refroidissement(self, temp_c):
+        """Régulation automatique à `temp_c` °C.
+
+        ⚠ Les températures SVBONY sont en UNITÉS DE 0,1 °C (en-tête
+        officiel, éprouvé par le banc du 19/09/2026) → ×10 pour poser.
+        Pose éprouvée par le banc : CoolerEnable PUIS TargetTemp."""
+        if self.id is None or _DLL is None or not self._started:
+            raise RuntimeError("caméra fermée — TEC inaccessible")
+        if _DLL.SVBSetControlValue(self.id, SVB_COOLER_ENABLE, 1,
+                                   0) != SVB_SUCCESS:
+            raise RuntimeError("CoolerEnable refusé par le SDK — vérifier "
+                               "l'alimentation 12 V")
+        if _DLL.SVBSetControlValue(self.id, SVB_TARGET_TEMPERATURE,
+                                   int(round(float(temp_c) * 10)),
+                                   0) != SVB_SUCCESS:
+            raise RuntimeError("consigne TEC refusée par le SDK "
+                               "(TargetTemp)")
+
+    def lire_refroidissement(self):
+        """→ (temp capteur °C, PWM 0-255, consigne °C), None si indisponible
+        (caméra sans TEC ou contrôles absents). Températures SDK en unités
+        de 0,1 °C → conversion ; puissance en % → PWM 0-255 (convention
+        d'affichage commune à l'app)."""
+        t = self._lire_ctrl(SVB_CURRENT_TEMPERATURE)
+        p = self._lire_ctrl(SVB_COOLER_POWER)
+        c = self._lire_ctrl(SVB_TARGET_TEMPERATURE)
+        if t is None or p is None or c is None:
+            return None
+        pwm = int(round(min(max(float(p), 0.0), 100.0) * 255.0 / 100.0))
+        return (t / 10.0, pwm, c / 10.0)
+
+    def arreter_refroidissement(self):
+        """Coupe le TEC (CoolerEnable = 0 — la caméra reste ouverte et le
+        flux continue). Silencieux si la caméra est déjà fermée (appel
+        lors de la déconnexion / à la fermeture de l'app)."""
+        if self.id is None or _DLL is None or not self._started:
+            return
+        try:
+            _DLL.SVBSetControlValue(self.id, SVB_COOLER_ENABLE, 0, 0)
+        except Exception:
+            pass
+
     def close(self):
         if self.id is not None and _DLL is not None:
             try:
@@ -282,6 +338,14 @@ class SVBonyCamera(CameraBase):
                 cid, nom=dic["nom"], mini=dic["min"], maxi=dic["max"],
                 defaut=dic["defaut"], ecrivable=dic["ecrivable"],
                 lisible=True, auto=dic["auto"], desc=dic["desc"]))
+        # Jalon 32 : plages PAR CONTRÔLE (clé = id string) — le câblage de
+        # l'UI les lit via CID_CONTROLES_PAR_MARQUE (« gain » → 0,
+        # « offset » → 13 BlackLevel), jamais un cid QHY (« 6 » = Flip chez
+        # SVBONY). Le SDK SVB n'expose pas de pas → step 1.
+        for cid, dic in caps.items():
+            cap.extras[str(cid)] = {"min": dic["min"], "max": dic["max"],
+                                    "step": 1, "val": dic["defaut"],
+                                    "nom": dic["nom"]}
         # plages, si les contrôles correspondants sont supportés
         c = caps.get(SVB_EXPOSURE)
         if c:

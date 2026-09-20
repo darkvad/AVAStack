@@ -364,6 +364,7 @@ class PlayerOneCamera(CameraBase):
         self._started = False
         self._w = self._h = 0
         self._is_color = False
+        self._sonde = None      # POASonde TEC validée — construite paresseusement
 
     def open(self):
         global _DLL
@@ -441,6 +442,75 @@ class PlayerOneCamera(CameraBase):
         u.intValue = int(gain)
         _DLL.POASetConfig(self.id, POA_GAIN, u, 0)
 
+    # --- refroidissement TEC (contrôles 3/16/17/18 du SDK) ----------------
+    def _sonde_tec(self):
+        """→ POASonde VALIDÉE (layout reconnu + types des contrôles en
+        cache — indispensables pour lire/poser), construite UNE SEULE fois
+        (lister() coûte ~31 lectures d'attributs : inacceptable à chaque
+        rafraîchissement de 2 s), ou None si le SDK ne sait pas répondre
+        (jamais d'erreur : le sondage de l'app en déduit « TEC
+        indisponible » et laisse les boutons ❄ grisés)."""
+        if self.id is None or _DLL is None or not self._started:
+            return None
+        s = self._sonde
+        if s is None:
+            s = POASonde(_DLL, self.id)
+            if s.valider_layout() is None:
+                return None
+            s.lister()              # remplit le cache des types
+            self._sonde = s
+        return s
+
+    def consigne_refroidissement(self, temp_c):
+        """Régulation automatique à `temp_c` °C (POA_TARGET_TEMP puis
+        POA_COOLER ON — ordre ÉPROUVÉ par le banc du 19/09/2026 : la
+        consigne d'abord, l'activation ensuite)."""
+        sonde = self._sonde_tec()
+        if sonde is None:
+            raise RuntimeError("caméra fermée ou contrôles TEC illisibles")
+        a = sonde.attributs_cache.get(POA_TARGET_TEMP)
+        if a is not None:
+            val = float(temp_c) if a["type"] == 1 else int(round(temp_c))
+            u = sonde.union_depuis(val, a["type"])
+            if _DLL.POASetConfig(self.id, POA_TARGET_TEMP, u, 0) != POA_OK:
+                raise RuntimeError("consigne TEC refusée par le SDK "
+                                   "(POA_TARGET_TEMP)")
+        u = sonde.union_depuis(1, 2)    # POA_COOLER = ON (VAL_BOOL)
+        err = _DLL.POASetConfig(self.id, POA_COOLER, u, 0)
+        if err != POA_OK:
+            raise RuntimeError(f"POA_COOLER ON refusé (code {err}) — "
+                               "vérifier l'alimentation 12 V")
+
+    def lire_refroidissement(self):
+        """→ (temp capteur °C, PWM 0-255, consigne °C), None si indisponible
+        (caméra sans TEC ou contrôles absents). Puissance TEC du SDK en %
+        → convertie en PWM 0-255 (convention d'affichage commune à l'app)."""
+        sonde = self._sonde_tec()
+        if sonde is None:
+            return None
+        t = sonde.lire(POA_TEMPERATURE)     # °C (VAL_FLOAT)
+        p = sonde.lire(POA_COOLER_POWER)    # %
+        c = sonde.lire(POA_TARGET_TEMP)     # °C
+        if t is None or p is None or c is None:
+            return None
+        pwm = int(round(min(max(float(p[0]), 0.0), 100.0) * 255.0 / 100.0))
+        return (float(t[0]), pwm, float(c[0]))
+
+    def arreter_refroidissement(self):
+        """Coupe le TEC (POA_COOLER OFF — la caméra reste ouverte et le
+        flux continue). Silencieux si la caméra est déjà fermée (appel
+        lors de la déconnexion / à la fermeture de l'app)."""
+        if self.id is None or _DLL is None or not self._started:
+            return
+        sonde = self._sonde_tec()
+        if sonde is None:
+            return
+        try:
+            u = sonde.union_depuis(0, 2)    # POA_COOLER = OFF
+            _DLL.POASetConfig(self.id, POA_COOLER, u, 0)
+        except Exception:
+            pass
+
     def detecter_capacites(self):
         """→ Capacites rempli EN DYNAMIQUE depuis la caméra OUVERTE.
 
@@ -478,6 +548,14 @@ class PlayerOneCamera(CameraBase):
         cache = sonde.lister()
         cap.extras["layout_attributs"] = layout or "NON reconnu"
         cap.extras["configs_supportees"] = sorted(cache)
+        # Jalon 32 : plages PAR CONTRÔLE (clé = confID string) — le câblage
+        # de l'UI les lit via CID_CONTROLES_PAR_MARQUE (« gain » → 1,
+        # « offset » → 7), jamais un cid QHY. Le SDK POA n'expose pas de
+        # pas (POAConfigAttributes) → step 1 (curseur entier).
+        for cid, a in cache.items():
+            cap.extras[str(cid)] = {"min": a["min"], "max": a["max"],
+                                    "step": 1, "val": a["defaut"],
+                                    "nom": a["nom"]}
         # plages, si les contrôles correspondants sont supportés
         a = cache.get(POA_EXPOSURE)
         if a:
@@ -517,3 +595,4 @@ class PlayerOneCamera(CameraBase):
             finally:
                 self.id = None
                 self._started = False
+                self._sonde = None   # sonde TEC invalidée avec la caméra

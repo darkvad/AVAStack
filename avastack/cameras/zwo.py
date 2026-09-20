@@ -199,6 +199,14 @@ class ZWOASICamera(CameraBase):
                 cid, nom=dic["nom"], mini=dic["min"], maxi=dic["max"],
                 defaut=dic["defaut"], ecrivable=dic["ecrivable"],
                 lisible=True, auto=dic["auto"], desc=dic["desc"]))
+        # Jalon 32 : plages PAR CONTRÔLE (clé = id string) — le câblage de
+        # l'UI les lit via CID_CONTROLES_PAR_MARQUE (« gain » → 0,
+        # « offset » → 5), jamais un cid d'une autre marque. Le SDK ASI
+        # n'expose pas de pas → step 1.
+        for cid, dic in caps.items():
+            cap.extras[str(cid)] = {"min": dic["min"], "max": dic["max"],
+                                    "step": 1, "val": dic["defaut"],
+                                    "nom": dic["nom"]}
         # plages, si les contrôles correspondants sont supportés
         c = caps.get(ASI_EXPOSURE)
         if c:
