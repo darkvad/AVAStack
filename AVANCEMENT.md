@@ -12,8 +12,9 @@ dans le changelog du source et l'historique git.)
 ## État actuel
 
 - **Version stable de référence : AVAStack v2.20.3** (`avastack/__init__.py`),
-  branche `master` — jalon 34 testé en dev (tout au vert), **COMMITÉ
-  SANS POUSSER**, **installateur v2.20.3 REBUILD**
+  branche `master` — jalon 34 testé en dev (tout au vert), **COMMITÉ ET
+  POUSSÉ (ea7108c)**, **installateur v2.20.3 REBUILD** — **TEST RÉEL setup 2
+  (Player One) : POINTS 1 ET 2 VALIDÉS PAR ALAIN le 20/09/2026**.
   (`installer/windows/output/avastack-setup.exe`) — poussée + copie de
   l'installateur vers le miniPC à faire.
 - **Dernier jalon (34, 20/09/2026) — AFFICHAGE EXPOSITION (points 1 et 2 de
@@ -68,10 +69,10 @@ dans le changelog du source et l'historique git.)
 
 2d. **À DÉBOGUER avant de démarrer une nouvelle session** — 4 points
    relevés EN RÉEL par Alain le 20/09/2026 (setup 2) :
-   1. ✅ TRAITÉ (jalon 34, v2.20.1) — libellé « Échelle longue » généré
-      (bornes réelles), case masquée si bornes natives détectées.
-   2. ✅ TRAITÉ (jalon 34, v2.20.1) — `_fmt_expo` sans notation
-      scientifique : « 2 000 s » au lieu de « 2e+03 s ».
+   1. ✅ TRAITÉ ET VALIDÉ EN RÉEL (jalon 34, v2.20.3) — libellé « Échelle
+      longue » généré (pivot 5 s + borne max réelle), coupure à 5 s.
+   2. ✅ TRAITÉ ET VALIDÉ EN RÉEL (jalon 34, v2.20.1) — `_fmt_expo` sans
+      notation scientifique : « 2 000 s » au lieu de « 2e+03 s ».
    3. **Player One : contrôles TEC affichés mais boutons ❄ GRISÉS** —
       alors que LE BANC DE DIAG POA VALIDAIT LE TEC EN RÉEL (régulation
       + lecture température + puissance, _diag_camera_playerone.py).
@@ -150,21 +151,18 @@ dans le changelog du source et l'historique git.)
 
 ## 🔚 Clôture de session — 20/09/2026 (v2.20.3, jalon 34)
 
-État exact : **v2.20.3 COMMITÉE SANS POUSSER, installateur v2.20.3
-REBUILD** (points 1 et 2 de l'item 2d, passe de debug demandée par Alain —
-« on commence par 1 et 2 dans la même passe et on s'arrête »). Consignes
-NOTÉES à la demande d'Alain, écrites dans CLAUDE.md : (a) rebuild de
-l'installateur dès qu'une passe touche plus de 1-2 fichiers (FAIT pour
-v2.20.1 → v2.20.3) ; (b) « noter / se souvenir » = autorisation implicite
-de mettre CLAUDE.md à jour. Tout au vert en dev :
-_test_expo_affichage_jalon34 21/21, jalon32 25/25, jalon31 15/15, sliders
-jalon6 OK. Réalisé : (a) point 2 — `_fmt_expo` sans notation scientifique
-(arrondi à l'entier au-delà de 10 s, milliers séparés par espace fine
-insécable — VALIDÉ EN RÉEL par Alain) ; (b) point 1 — libellé de la case
-« Échelle longue » généré (pivot + borne max RÉELLE) ; (c) trois allers-
-retours avec Alain sur la case : ne PAS la masquer (v2.20.2), puis
-COUPURE À 5 S pour toutes les caméras (v2.20.3) : décochée = min → 5 s,
-cochée = 5 s → max, bascule auto à la saisie.
+État exact : **v2.20.3 COMMITÉE ET POUSSÉE (ea7108c), installateur
+v2.20.3 REBUILD, TEST RÉEL setup 2 OK** — Alain a validé les points 1 et 2
+de l'item 2d sur sa Player One (notation décimale « 2 000 s », case
+« Échelle longue » visible et coupée à 5 s). Consignes NOTÉES à la demande
+d'Alain, écrites dans CLAUDE.md : (a) rebuild de l'installateur dès qu'une
+passe touche plus de 1-2 fichiers (appliqué v2.20.1 → v2.20.3) ; (b)
+« noter / se souvenir » = autorisation implicite de mettre CLAUDE.md à
+jour. Tout au vert en dev : _test_expo_affichage_jalon34 21/21, jalon32
+25/25, jalon31 15/15, sliders jalon6 OK. Trois allers-retours avec Alain
+sur la case : ne PAS la masquer (v2.20.2), puis COUPURE À 5 S pour toutes
+les caméras (v2.20.3) : décochée = min → 5 s, cochée = 5 s → max, bascule
+auto à la saisie — VALIDÉ EN RÉEL.
 
 **Prochaine étape** : (1) déboguer les points 3 et 4 de l'item 2d (TEC POA
 boutons ❄ grisés ; connexion auto SVBONY refusée) EN COMPARANT avec les
