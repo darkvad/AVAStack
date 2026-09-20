@@ -12,8 +12,13 @@ dans le changelog du source et l'historique git.)
 ## État actuel
 
 - **Version stable de référence : AVAStack v2.17.0** (`avastack/__init__.py`),
-  branche `master` — NON poussée, installateur NON rebuildé : à faire AVANT
-  le test réel de demain matin (cf. « Prochaine étape »).
+  branche `master` — **COMMITÉE (414053a) et POUSSÉE** ; installateur
+  **REBUILDÉ** (`installer\windows\output\avastack-setup.exe`).
+  Reste : déployer sur le miniPC (réinstaller, ou copier SEULEMENT
+  `_diag_camera_qhy.py` — le banc v2.17 est autonome) ; la fenêtre du
+  nouveau banc affiche « BANC version : 2.17.0 » en tête (repère anti-
+  confusion : « avastack version » = bibliothèque installée, qui peut
+  rester 2.16.0 sans gêner la sonde).
 - **Dernier jalon (30, 20/09/2026) — BANC QHY : SONDE CTYPES NATIVE**
   (voie validée par Alain ; banc UNIQUEMENT, l'appli inchangée) :
   - `_diag_camera_qhy.py` appelle `qhyccd.dll` DIRECTEMENT (sans le binding
@@ -133,10 +138,15 @@ Demande d'Alain : « diag QHY avec les ctypes comme prévu, à tester demain mat
 1. Sonde ctypes native dans le banc QHY (sous-processus isolé) : plages GetQHYCCDParamMinMaxStep + roue native CFW (statut + rotation avec confirmation) ; exports de la DLL vérifiés par parseur PE ; signatures de l'en-tête officiel du SDK ; prototypes ctypes explicites ; DLL identifiée (chemin + date) à chaque sonde.
 2. UI : 3 boutons (📏 Plages, 🌀 Tourner, 📖 Statut CFW) + résumé « pour câbler l'UI » ; refus de la sonde si le flux est actif.
 3. Tests sans caméra : charge DLL + init OK + erreur propre JSON ; smoke UI OK ; _test_capacites 29/29 ; _test_qhy_camera 33/33.
-4. LISEZMOI.txt à jour. v2.17.0 NON commitée, NON poussée, installateur NON rebuildé.
+4. LISEZMOI.txt à jour. v2.17.0 COMMITÉE (414053a) et POUSSÉE ;
+   installateur REBUILDÉ (avastack-setup.exe, 20/09 09:10).
 
-**Prochaine étape (demain matin, miniPC, MiniCam8M + alim 12 V)** :
-1. Commiter/pousser v2.17.0, REBUIRDER l'installateur, réinstaller (ou copier _diag_camera_qhy.py + avastack/ dans le dossier d'installation).
+**Prochaine étape (test réel, MiniCam8M + alim 12 V)** :
+1. Sur le miniPC : réinstaller avec le NOUVEAU avastack-setup.exe, OU
+   copier SEULEMENT `_diag_camera_qhy.py` dans
+   `C:\Users\alain\AppData\Local\AVAStack` (banc autonome). Vérifier la
+   ligne « BANC version : 2.17.0 » en tête de fenêtre (sinon c'est encore
+   l'ancien banc).
 2. Banc QHY : « 📏 Plages (MinMaxStep) » → noter les plages réelles (expo/gain/offset/TEC) pour le futur câblage UI.
 3. Roue : « 📖 Statut CFW » puis « 🌀 Tourner » 1↔2 avec confirmation par relecture ET vérification de l'EFFET PHYSIQUE ; trancher la convention 48+n (binding) contre '0' = position 1 (doc).
 4. Ensuite : câblage de l'UI aux capacités dynamiques (jalon 29/30 : bornes réelles par caméra au lieu des valeurs figées).
