@@ -14,9 +14,34 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.21.2"
+AVASTACK_VERSION = "2.21.3"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.21.3 : ÉTAT DE LA CADENCE VISIBLE EN DIRECT (jalon 44, suite du retour
+#          d'Alain : « ça travaille toujours toutes les 5 s »). Le correctif
+#          jalon 43 (v2.21.2) est en place ; pour DISTINGUER les deux causes
+#          possibles d'un rythme inchangé — (a) version testée encore
+#          v2.21.1 (qui contenait le bug du court-circuit par le scan
+#          interne de read()), (b) cadence réellement sélectionnée « toutes
+#          les 5 s » (rafales toutes les 5 s = comportement CORRECT, mais
+#          la chaîne composition dure bien plus que 5 s → sablier toujours
+#          visible) — le throttling devient OBSERVABLE à l'écran :
+#          - avastack/ui/app.py : nouvelle étiquette `lbl_cadence` sous la
+#            combobox « Empiler les brutes », tenue à jour par
+#            `_maj_lbl_cadence()` (appelée à chaque _tick, mémo anti-spam) :
+#            pendant la fenêtre → « prochaine rafale dans Xs · N brute(s) en
+#            attente » (ambre, compte à rebours VISIBLE) ; à l'échéance →
+#            « rafale en cours · N » (vert) pendant le drain ; « — » = dès
+#            réception ; cadence posée sur une source non dossier → «
+#            cadence : sans objet (source non dossier) ».
+#          Si l'étiquette reste « — » alors que la cadence est sélectionnée,
+#          c'est que la version exécutée est antérieure à v2.21.1 ; si elle
+#          compte à rebours, le throttling FONCTIONNE et le sablier ne doit
+#          être visible qu'une fois par rafale (choisir une cadence
+#          NETTEMENT au-dessus de la durée de la chaîne — en composition,
+#          la chaîne lourde tourne PAR COUCHE).
+#          Test _test_cadence_jalon42 étendu (étiquette : compte à rebours,
+#          rafale en cours, dès réception) ; régression : _test_ui_jalon5.
 # v2.21.2 : CORRECTIF CADENCE — LA FENÊTRE ARMÉE BLOQUE TOUTE LECTURE
 #          (jalon 43, constat réel d'Alain en COMPOSITION multi-dossiers :
 #          « les frames s'empilent toujours à la même vitesse »). BUG du

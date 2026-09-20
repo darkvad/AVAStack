@@ -160,8 +160,43 @@ ui.CONFIG = {"cadence_lecture": "inconnu"}
 app3 = ui.App(root)
 verifie(app3.cadence_lecture == 0 and app3.var_cadence.get() == "dès réception",
         "restauration tolérante : valeur invalide → « dès réception »")
-ui.CONFIG = {}
-app3.camera = None
+# ==================================== [6] état de la cadence affiché en direct
+print("[6] étiquette d'état de la cadence (jalon 44)")
+app.camera = FolderCamera(tmp1)
+app._mode_compo = False
+app.var_cadence.set("toutes les 30 s")
+app._on_cadence()
+app.camera._pending.append("x.fits")
+app._prochaine_lecture = time.monotonic() + 12.0
+app._maj_lbl_cadence()
+coul_cd = str(app.lbl_cadence.cget("foreground"))
+verifie("prochaine rafale dans" in app.lbl_cadence.cget("text")
+        and "12" in app.lbl_cadence.cget("text")
+        and "1 brute(s) en attente" in app.lbl_cadence.cget("text")
+        and "#c98a00" in coul_cd,
+        f"fenêtre armée : « {app.lbl_cadence.cget('text')} » (compte à "
+        f"rebours visible)")
+app.camera._pending.clear()
+app._prochaine_lecture = time.monotonic() - 1.0
+app._maj_lbl_cadence()
+verifie("rafale en cours" in app.lbl_cadence.cget("text")
+        and "#1d7f1d" in str(app.lbl_cadence.cget("foreground")),
+        "fenêtre écoulée : « rafale en cours » (drain, en vert)")
+app.var_cadence.set("dès réception")
+app._on_cadence()
+app._maj_lbl_cadence()
+verifie(app.lbl_cadence.cget("text") == "—",
+        "dès réception : étiquette au repos (« — »)")
+app.var_cadence.set("toutes les 30 s")
+app._on_cadence()
+app.camera = _Muette()
+app._maj_lbl_cadence()
+verifie("sans objet" in app.lbl_cadence.cget("text"),
+        "cadence posée sur une source non dossier : « sans objet »")
+app.camera = None
+app._maj_lbl_cadence()
+verifie("sans objet" in app.lbl_cadence.cget("text"),
+        "aucune caméra : cadence sans objet")
 
 root.destroy()
 print()

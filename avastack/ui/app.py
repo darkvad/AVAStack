@@ -301,6 +301,7 @@ class App:
         self._prochaine_lecture = 0.0
         self._prochain_scan = 0.0
         self._a_lu_une_frame = False
+        self._cadence_lbl_txt = None    # mémo du texte affiché dans lbl_cadence
         self.ext_state = "idle"         # idle | busy | ok | error
         self.ext_t0 = None              # début du traitement en cours (chrono)
         self._ext_popup = False        # erreur à signaler par popup
@@ -895,6 +896,12 @@ class App:
         self.cb_cadence.pack(side="left", padx=(4, 0))
         self.cb_cadence.bind("<<ComboboxSelected>>",
                              lambda e: self._on_cadence())
+        # Jalon 44 : état de la cadence visible EN DIRECT (demande de
+        # débogage d'Alain) — « prochaine rafale dans Xs · N brute(s) en
+        # attente » prouve que la fenêtre est armée et que le throttling
+        # fonctionne ; « — » = dès réception ou source non dossier.
+        self.lbl_cadence = ttk.Label(box, text="—")
+        self.lbl_cadence.pack(anchor="w")
         self.lbl_last = ttk.Label(box, text="Dernier fichier : —")
         self.lbl_last.pack(anchor="w")
 
@@ -1960,6 +1967,32 @@ class App:
             self.var_cadence.get(), 0)
         if self.cadence_lecture <= 0:
             self._prochaine_lecture = 0.0   # « dès réception » : plus de fenêtre
+
+    def _maj_lbl_cadence(self):
+        """État de la cadence affiché EN DIRECT (jalon 44) : pendant la
+        fenêtre d'attente, « prochaine rafale dans Xs · N brute(s) en
+        attente » (ambre) — la preuve visible que le throttling retient les
+        brutes ; à l'échéance, « rafale en cours · N » (vert) pendant le
+        drain ; « — » = dès réception, ou cadence posée sur une source
+        non dossier (sans objet). Thread UI seul (appelé par _tick)."""
+        if self.cadence_lecture > 0 and self._cadence_dossier():
+            attente = self._brutes_en_attente()
+            reste = self._prochaine_lecture - time.monotonic()
+            if reste > 0:
+                txt = (f"prochaine rafale dans {reste:.0f} s · "
+                       f"{attente} brute(s) en attente")
+                coul = "#c98a00"
+            else:
+                txt = f"rafale en cours · {attente} brute(s) en attente"
+                coul = "#1d7f1d"
+        elif self.cadence_lecture > 0:
+            txt = "cadence : sans objet (source non dossier)"
+            coul = "#888888"
+        else:
+            txt, coul = "—", "#888888"
+        if txt != self._cadence_lbl_txt:
+            self._cadence_lbl_txt = txt
+            self.lbl_cadence.config(text=txt, foreground=coul)
 
     # --- contrôles caméra QHY (jalon 25) : demandes posées ICI (thread Tk),
     # consommées par le thread de travail — jamais d'appel SDK depuis Tk.
@@ -4398,6 +4431,7 @@ class App:
         self._sync_vl_denoise_vue()
         self._sync_vl_couleur_vue()
         self._sync_vl_sharp_vue()
+        self._maj_lbl_cadence()   # jalon 44 : état de la cadence en direct
         if self.disp.sh_new:      # netteté live : message du solveur (jalon 12)
             self.disp.sh_new = False
             self._maj_lbl_sharp()
