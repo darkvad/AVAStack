@@ -60,6 +60,9 @@ root.update_idletasks()
 
 # ==================================== [1] état initial (source par défaut)
 print("[1] état initial (Simulée = source caméra)")
+verifie(f"AVAStack v{ui.AVASTACK_VERSION}" in root.title(),
+        f"la barre de titre affiche la version du package "
+        f"(« {root.title()} », jalon 48)")
 verifie(est_packe(app.frm_ctrl_cam),
         "source caméra : contrôles caméra visibles (exposition, gain…)")
 verifie(est_packe(app.cb_source.master),

@@ -18,6 +18,7 @@ from tkinter import ttk, filedialog, messagebox
 from PIL import Image, ImageTk
 
 from ..compat import IS_WINDOWS
+from .. import AVASTACK_VERSION
 from ..config import CONFIG, sauver_config
 from ..images import (CFA_MODE, lire_filtre_fits, load_image, save_image,
                       find_output, auto_unflip)
@@ -147,7 +148,8 @@ class App:
 
     def __init__(self, root):
         self.root = root
-        root.title("AVAStack — live stacking (empilement temps réel)")
+        root.title(f"AVAStack v{AVASTACK_VERSION} — "
+                   "live stacking (empilement temps réel)")
         root.geometry("1300x820")
         root.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -1320,8 +1322,9 @@ class App:
         self.pb_vl = ttk.Progressbar(self.frm_etat, mode="indeterminate",
                                      length=220)
 
-        # --- Traitement externe (instantané de l'empilement)
-        box = ttk.LabelFrame(left, text="Traitement externe (instantané)", padding=6)
+        # --- Traitement externe (long : plusieurs minutes — cf. docstring
+        # de _run_external ; le « live » reste réservé aux étapes rapides)
+        box = ttk.LabelFrame(left, text="Traitement externe (long)", padding=6)
         box.pack(fill="x", pady=3)
         self.var_ext_graxpert = tk.BooleanVar(value=False)
         ttk.Checkbutton(box, text="1. GraXpert — retrait de gradient",

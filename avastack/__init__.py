@@ -14,9 +14,21 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.21.6"
+AVASTACK_VERSION = "2.21.7"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.21.7 : PETITES ERGONOMIES (jalon 48, demandes d'Alain) :
+#          - le numéro de version s'affiche dans la BARRE DE TITRE
+#            (« AVAStack v2.21.7 — live stacking (empilement temps réel) ») ;
+#          - le cadre « Traitement externe » est étiqueté « Traitement
+#            externe (long) » au lieu de « (instantané) » : GraXpert IA et
+#            BXT durent PLUSIEURS MINUTES — l'« instantané » décrit le
+#            mécanisme (copie de l'empilement traitée à part, l'accumulé
+#            reste linéaire), pas la durée perçue par l'utilisateur.
+#          - avastack/ui/app.py : titre en f-string avec AVASTACK_VERSION
+#            (source unique : avastack/__init__.py) ; texte du cadre.
+#          Test : _test_ui_visibilite_jalon47 étendu (titre = version du
+#          package).
 # v2.21.6 : COLONNE DE RÉGLAGES ÉPURÉE — cadres visibles selon la source
 #          (jalon 47, demande d'ergonomie d'Alain : « la partie droite de
 #          l'écran est surchargée inutilement » — en pratique la colonne de
