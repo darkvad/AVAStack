@@ -76,6 +76,32 @@ dans le changelog du source et l'historique git.)
    label (⚠ SV305C : vérifier que le refroidissement est branché —
    sans TEC les boutons restent gris, c'est normal) → « ▶ Démarrer » →
    ⏏ Déconnecter (le TEC doit être coupé à la déconnexion).
+
+2d. **À DÉBOGUER avant de démarrer une nouvelle session** — 4 points
+   relevés EN RÉEL par Alain le 20/09/2026 (setup 2) :
+   1. **Expo : bornes OK, libellé en dur** — la valeur max d'exposition
+      est bien prise en compte pour les caméras ; seul le libellé
+      « Échelle longue » garde 900 s CODÉ EN DUR. Pas grave, mais simple
+      à corriger (le libellé doit suivre la borne réelle).
+   2. **Expo : notation scientifique** — en augmentant l'exposition,
+      l'affichage finit par passer en « 2e+03 s » au lieu de « 2000 s » :
+      illisible pour un utilisateur lambda. Formatter la saisie/le
+      libellé en notation décimale lisible (les millisecondes /
+      secondes / minutes sont déjà gérées par le sélecteur d'unité).
+   3. **Player One : contrôles TEC affichés mais boutons ❄ GRISÉS** —
+      alors que LE BANC DE DIAG POA VALIDAIT LE TEC EN RÉEL (régulation
+      + lecture température + puissance, _diag_camera_playerone.py).
+      La détection (bornes de consigne) s'affiche bien ; c'est
+      l'activation des boutons qui échoue (le sondage de l'app active
+      si `lire_refroidissement() is not None` — à tracer : la sonde
+      TEC répond-elle dans le process de l'app ?).
+   4. **SVBONY : connexion auto REFUSÉE** — message « SVBONY (SDK) :
+      connexion impossible — Propriétés illisibles : SVBONY SV305C »
+      lors de la détection automatique, alors que LE BANC DE DIAG
+      SVBONY AVAIT ÉTÉ VALIDÉ EN RÉEL (ouverture + TEC + flux OK,
+      _diag_camera_svbony.py). À déboguer : comparer le chemin
+      d'ouverture de l'app (`_connecter_sdk` → `SVBGetCameraProperty`)
+      avec celui du banc.
 2c. **QHY par ctypes (jalon 30, CODE FAIT le 20/09/2026)** : la sonde ctypes est dans le banc (_diag_camera_qhy.py, sous-processus isolé) : plages via GetQHYCCDParamMinMaxStep (le nom réel dans les exports de la DLL — « ...MinMax » tout court n'existe pas) + roue via les fonctions natives CFW. RESTE LE TEST RÉEL (demain matin, MiniCam8M) : (a) « 📏 Plages » → noter min/max/step de expo/gain/offset/TEC pour câbler l'UI ; (b) « 📖 Statut CFW » → vérifier détection + statut ; (c) « 🌀 Tourner » → position 1 puis 2, CONFIRMATION PAR RELECTURE ET EFFET PHYSIQUE (slot vide/opaque → le flux change) ; trancher la convention binding 48+n contre doc QHY '0' = position 1.
 3. **Jalon 24** : gradient/débruitage par couche (live + externe) ;
    garde-fous GraXpert jalon 23b en mono ; SCNR doux (jalon 23).
@@ -133,31 +159,30 @@ dans le changelog du source et l'historique git.)
   points puis en trainées » → origine du jalon 13 (alignement robuste).
   Banc POA : `_diag_camera_playerone.py` (jalon 28).
 
-## 🔚 Clôture de session — 20/09/2026 (v2.19.0, jalon 32)
+## 🔚 Clôture de session — 20/09/2026 (v2.20.0, jalons 32 + 33)
 
-État exact : **v2.19.0 testée en dev, NON committée** (tout est au vert :
-jalon32 25/25, capacités 29/29, jalon31 15/15, POA 29/29, QHY 33/33,
-sliders OK). Réalisé : le câblage dynamique (capacités → UI aux bornes
-réelles) s'applique désormais À LA CONNEXION DE TOUTES LES MARQUES SDK,
-pas seulement QHY — cid par marque (`CID_CONTROLES_PAR_MARQUE` +
-`Capacites.plage(rôle)`, finis les cid QHY littéraux qui auraient donné
-des bornes fausses chez POA/SVBONY), extras remplies par les sondes
-POA/SVB/ZWO, connexion automatique à la détection (thread, comme QHY),
-facteur commun `_installer_camera_connectee`. AVANCEMENT.md à jour
-(jalon 32 + item 2b réécrit). Détails complets : changelog v2.19.0 dans
-`avastack/__init__.py`.
+État exact : **v2.20.0 commitée (e70c6d7 code + 58df2e2 AVANCEMENT) SANS
+POUSSER, installateur v2.20.0 REBUILD** (`installer/windows/output/
+avastack-setup.exe`, SDK embarqués). Tout au vert en dev : jalon33 20/20
+(NOUVEAU : TEC POA/SVBONY sur doubles de DLL), jalon32 25/25, capacités
+29/29, jalon31 15/15, POA 29/29, QHY 33/33, sliders OK. Réalisé cette
+session : (a) jalon 32 — câblage dynamique à la connexion de TOUTES les
+marques SDK (cid par marque, finis les cid QHY littéraux) ; (b) jalon 33 —
+pilotage TEC POA/SVBONY (poses éprouvées par les bancs, lire → None si
+pas de TEC, boutons ❄ gérés par le sondage existant) ; (c) décision
+d'Alain appliquée — `_deconnecter_camera` dédoublonnée, version du 19/09
+conservée. **Premier test réel** sur le setup 2 : 4 points à déboguer
+relevés (item 2d) — dont TEC POA boutons grisés et connexion SVBONY
+refusée, ALORS QUE LES DEUX PROGRAMMES DE DIAG AVAIENT ÉTÉ VALIDÉS EN
+RÉEL (TEC POA et TEC SVBONY fonctionnaient dans les bancs). Détails
+complets : changelog v2.20.0 dans `avastack/__init__.py`.
 
-**Prochaine étape** : (1) committer/pousser v2.19.0 + REBUILDER
-l'installateur ; (2) test réel miniPC : MiniCam8M (vérifier bornes QHY
-comme prévu au jalon 31) PUIS setup 2 : POA Uranus-C Pro et SV305C guidage
-(connexion auto → vérifier les bornes affichées contre les relevés
-POA 0–750/0–250/10 µs–2000 s/-50→30 et SVB 0–450/0–255/36 µs–2000 s) ;
-(3) trancher avec Alain le double `_deconnecter_camera` (détail dans
-l'état actuel) ; (4) chantier candidat : pilotage TEC POA/SVBONY
-(consigne + lecture température) — les bornes s'affichent déjà mais les
-classes restent en no-op.
+**Prochaine étape** : (1) pousser + copier l'installateur vers le miniPC ;
+(2) déboguer les 4 points de l'item 2d (en comparant avec les bancs de
+diag validés, qui restent la référence) ; (3) refaire le test réel
+setup 1 (MiniCam8M, bornes QHY du jalon 31) et setup 2.
 
-Session précédente (v2.18.0, jalon 31) : câblage dynamique QHY (sonde
-native qhyct.py, curseurs/TEC/roue aux bornes réelles), commitée bb84f72,
-installateur rebuildé — le test réel MiniCam8M reste à faire avec la
-v2.19.0.
+Session précédente (v2.19.0, jalon 32) : câblage dynamique toutes
+marques codé et testé en dev — committé ce jour dans e70c6d7. Session
+v2.18.0 (jalon 31) : câblage dynamique QHY (sonde native qhyct.py),
+commitée bb84f72.
