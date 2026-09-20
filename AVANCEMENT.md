@@ -36,7 +36,7 @@ dans le changelog du source et l'historique git.)
   irréinitialisable dans le process) ; le banc QHY l'annonce et conseille
   fermer + relancer.
 
-## ⏭ Validations réelles en attente
+## ✅ Validations réelles — TOUT EST CLOS (verdicts d'Alain, 20/09/2026)
 
 **CLOS le 20/09/2026 (verdicts d'Alain)** :
 1. **QHY miniPC (v2.15.0 installée)** : CLOS — tests MiniCam8M FAITS ET
@@ -60,15 +60,20 @@ dans le changelog du source et l'historique git.)
     version dans la barre de titre, cadre « Traitement externe (long) » ;
     verdicts : « ça me paraît bon », « c'est ok ».
 
-**Restent en attente :**
+**RIEN N'EST EN ATTENTE** (Alain, 20/09/2026 : « ces deux points sont
+testés et validés depuis longtemps ») :
 
-2. **Banc Player One (2e setup)** : cf. jalon 28 ci-dessus — détection
-   complète + verdict + TEC + bin + ROI + cadence ; copier le banc dans
-   le dossier d'installation si testé depuis le miniPC.
-3. **Jalon 24** : gradient/débruitage par couche (live + externe) ;
-   garde-fous GraXpert jalon 23b en mono ; SCNR doux (jalon 23).
-5. Suivi alignement en direct (« Align. : Δ(…) θ(…) » / « Frames non
-   alignées »).
+11. **Jalon 28 — banc Player One : CLOS** — détection complète + verdict +
+    TEC + bin + ROI + cadence : testés et validés depuis longtemps (verdict
+    d'Alain). Le banc `_diag_camera_playerone.py` reste installé pour tout
+    diagnostic matériel futur.
+12. **Jalon 24 — gradient/débruitage par couche + garde-fous mono + SCNR
+    doux : CLOS** — testé et validé depuis longtemps (verdict d'Alain).
+13. **Suivi alignement en direct (« Align. : Δ(…) θ(…) » / « Frames non
+    alignées ») : CLOS** — Alain n'en voit pas l'usage : l'alignement,
+    l'empilement et le stack fonctionnent bien en session réelle (verdict
+    du 20/09/2026). Ce suivi aurait affiché en direct le décalage/rotation
+    de chaque brute par rapport à la référence — inutile tant que ça marche.
 
 ## Pièges récents (rappels opérationnels)
 
@@ -158,10 +163,12 @@ jalon 5, config jalon 6 (régression large faite au jalon 47 : jalons
 5/6/19/32/34/35/36/38/39/40/41).
 
 **Prochaine étape (session NEUVE)** : (1) copier l'installateur v2.21.7
-vers le miniPC si besoin ; (2) restent en attente : banc Player One
-(jalon 28 : détection complète + verdict + TEC + bin + ROI + cadence),
-jalon 24 (gradient/débruitage par couche + garde-fous mono + SCNR doux),
-suivi alignement en direct.
+vers le miniPC si besoin ; (2) AUCUN chantier en attente — banc Player One
+(jalon 28), jalon 24 (gradient/débruitage par couche) et suivi alignement
+en direct sont tous CLOS (verdicts d'Alain du 20/09/2026 : « testés et
+validés depuis longtemps » ; l'alignement/l'empilement fonctionnent bien).
+La prochaine étape sera une NOUVELLE demande d'Alain (fonction ou
+ergonomie).
 
 Sessions précédentes : v2.21.6 (jalon 47, 3cc0522) ; v2.21.5 (jalon 46,
 plafond de rafale, f37c88e) ; v2.21.4 (jalon 45, cadence commune,
