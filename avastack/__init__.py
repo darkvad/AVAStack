@@ -14,9 +14,53 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.21.7"
+AVASTACK_VERSION = "2.21.8"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.21.8 : BANC DE DIAGNOSTIC TOUPTEK + CORRECTION DE LA SONDE (jalon 49) :
+#          - CONSTAT FONDATEUR (banc _diag_camera_touptek.py, 20/09/2026) :
+#            la sonde de la v2.2.0 était FAUSSE contre la DLL réelle
+#            (ToupCam.dll 59.30239.20251209) :
+#              · Toupcam_get_ExpoTimeRange N'EXISTE PAS → AttributeError au
+#                chargement (le vrai nom est Toupcam_get_ExpTimeRange) ;
+#              · Toupcam_Enum (legacy, déclarée obsolète dans toupcam.h)
+#                remplit des ToupcamDevice {pointeur modèle, displayname,
+#                id} et NON un tableau de modèles — la sonde lisait du
+#                charabia ;
+#              · Toupcam_Open veut l'ID OPAQUE de la caméra énumérée (champ
+#                id), pas le nom du modèle ;
+#          - avastack/cameras/touptek.py réécrite sur l'API MODERNE
+#            Toupcam_EnumV2 / ToupcamDeviceV2 (disposition VALIDÉE
+#            empiriquement sur la DLL : 201 modèles lisibles, champs
+#            cohérents), conforme à l'entête officiel toupcam.h ;
+#          - _diag_camera_touptek.py : banc autonome (détection V2 +
+#            drapeaux TOUPCAM_FLAG_*, réglages mesurés, verdict
+#            « possibilités », TEC piloté par OPTIONS (TOUPCAM_OPTION_TEC /
+#            TECTARGET — la DLL n'a PAS de CoolerOn), expo/gain/noir, ROI,
+#            binning matériel, flux événementiel (callback + PullImage),
+#            pose (Snap/STILLIMAGE), rapport %TEMP%, mode --console) ;
+#          - Test : _test_camera_touptek.py (fausse DLL, 37 vérifications,
+#            structures V2, sonde avec callback simulé, banc complet).
+#          - Test RÉEL d'Alain (G3M662M mono 16 bits USB3, 20/09/2026) :
+#            détection V2 / ouverture / flux / poses expo-gain OK. Trois
+#            constats intégrés : (a) deux prototypes ctypes manquants
+#            (get_MaxSpeed, get_StillResolutionNumber) → OverflowError
+#            « int too long » (handle 64 bits passé en int 32) — déclarés,
+#            avec get_StillResolution et get_FinalSize ; (b) l'auto-
+#            exposition « continue » ÉCRASE l'expo posée manuellement
+#            (l'expo retombait à 350 ms) → bouton 🅰 on/off + avertissement
+#            dans la liste ; (c) get_Roi relu suspecte (1080×1080×4 sur une
+#            caméra 1920×1080) → croisement get_Size + get_FinalSize
+#            journalisé après chaque pose ROI ; compteurs get_FrameRate
+#            peu fiables (« 1000 fps ») → le fps MESURÉ fait foi ;
+#            (d) second passage réel : Snap FONCTIONNE malgré 0 résolution
+#            pose (livre à la résolution courante, 1920×1080) ; auto-expo
+#            off/on validée en réel ; affichage « c_ulong(8) » du verdict
+#            corrigé en entier simple ; (e) ROI sur G3M662M : put_Roi ACCEPTE
+#            toute taille mais le flux ne livre QUE les 2 résolutions du
+#            modèle (1920×1080, 960×540) — ROI libre non exploitable sur ce
+#            capteur (constat d'Alain, « pas grave »), le banc journalise
+#            relu + get_Size/get_FinalSize pour le voir.
 # v2.21.7 : PETITES ERGONOMIES (jalon 48, demandes d'Alain) :
 #          - le numéro de version s'affiche dans la BARRE DE TITRE
 #            (« AVAStack v2.21.7 — live stacking (empilement temps réel) ») ;

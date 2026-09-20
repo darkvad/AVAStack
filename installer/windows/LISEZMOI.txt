@@ -36,10 +36,11 @@ AVASTACK_PLAYERONE_DIR=C:\chemin\vers\SDK\PlayerOne).
 
 BANCS DE DIAGNOSTIC CAMÉRA
 --------------------------
-Trois outils autonomes sont installés avec AVAStack :
+Quatre outils autonomes sont installés avec AVAStack :
   - _diag_camera_qhy.py        (caméras QHY / QHYCCD)
   - _diag_camera_playerone.py  (caméras Player One, ex. Uranus-C Pro)
   - _diag_camera_svbony.py     (caméras SVBONY, ex. SV305C de guidage)
+  - _diag_camera_touptek.py    (caméras Touptek/Altair et clones ToupCam)
 
 Ils réutilisent le MÊME code caméra que l'application, mais hors
 application : idéal pour comprendre un problème de caméra sans toucher au
@@ -49,7 +50,8 @@ Pour en lancer un :
   1. ouvre une invite de commandes dans ce dossier ;
   2. tape :  venv\Scripts\python.exe _diag_camera_playerone.py
      (ou      venv\Scripts\python.exe _diag_camera_svbony.py
-      ou      venv\Scripts\python.exe _diag_camera_qhy.py)
+      ou      venv\Scripts\python.exe _diag_camera_qhy.py
+      ou      venv\Scripts\python.exe _diag_camera_touptek.py)
 
 ⚠ UN SEUL programme à la fois peut ouvrir une caméra : fermer le banc
   avant de lancer AVAStack, et inversement.
@@ -96,6 +98,32 @@ Le banc SVBONY permet de (ex. SV305C de guidage) :
   ⚠ Même contrôle de version que le banc Player One : si
     avastack\cameras\svbony.py ou avastack\cameras\capacites.py sont
     antérieurs au banc, celui-ci le signale (bandeau rouge) au lieu de
+    planter.
+
+Le banc TOUPTEK permet de (Touptek/Altair et clones ToupCam) :
+  - DÉTECTER les caméras branchées via l'API MODERNE (Toupcam_EnumV2) et
+    lire leur fiche : nom, id opaque, drapeaux (mono/couleur, TEC, USB3,
+    ST4, RAW 10/12/14/16, ventilateur, roue à filtres...), taille de pixel,
+    résolutions live et pose, nombre de vitesses ;
+  - OUVRIR la caméra (Toupcam_Open sur l'ID opaque) en mode RGB24
+    (débayerisation par la caméra, comme dans l'appli) et MESURER sur la
+    caméra elle-même : plages d'exposition (µs) et de gain (% — 100 = 1x),
+    exposition RÉELLE, vitesse, niveau de noir, TEC (allumé/éteint,
+    consigne en 0,1 °C, température capteur), ventilateur ;
+  - RÉGLER en direct : exposition (µs), gain (%), noir, TEC (consigne °C),
+    résolution (put_eSize), binning MATÉRIEL (Average/Add/Skip), ROI
+    (départ + taille, PAIRES, min 8×8) ;
+  - AFFICHER le flux live (flux ÉVÉNEMENTIEL : le SDK pousse les frames via
+    un callback — les fps viennent aussi de Toupcam_get_FrameRate) ;
+  - DÉCLENCHER une pose (Toupcam_Snap → événement STILLIMAGE) ;
+  - afficher un VERDICT « possibilités » + identité complète (n° série,
+    versions firmware/hardware/FPGA, date de production, révision,
+    formats de pixel supportés, binning supporté) ;
+  - enregistrer un RAPPORT complet dans %TEMP%.
+  Mode console : venv\Scripts\python.exe _diag_camera_touptek.py --console
+  ⚠ Même contrôle de version que les autres bancs : si
+    avastack\cameras\touptek.py installée est ANTÉRIEURE à la correction
+    API V2 (≥ 2.21.8), le banc le signale (bandeau rouge) au lieu de
     planter.
 
 Le banc QHY permet de :

@@ -70,6 +70,7 @@ Source: "{#RepoRoot}\SVBCameraSDK.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}\_diag_camera_qhy.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}\_diag_camera_playerone.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}\_diag_camera_svbony.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#RepoRoot}\_diag_camera_touptek.py"; DestDir: "{app}"; Flags: ignoreversion
 ; veralux_core_headless.py : code tiers GPL-3.0-or-later (Riccardo Paterniti),
 ; copie tel quel (sa licence exige de transmettre le source a cote du binaire).
 Source: "{#RepoRoot}\veralux_core_headless.py"; DestDir: "{app}"; Flags: ignoreversion
