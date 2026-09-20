@@ -269,16 +269,18 @@ class SVBonyCamera(CameraBase):
 
     def lire_refroidissement(self):
         """→ (temp capteur °C, PWM 0-255, consigne °C), None si indisponible
-        (caméra sans TEC, sondage TEC négatif, ou contrôles absents).
-        Températures SDK en unités de 0,1 °C → conversion ; puissance en %
-        → PWM 0-255 (convention d'affichage commune à l'app)."""
-        # ⚠ sondage TEC négatif (jalon 37) : le SDK énumère les contrôles
-        # TEC même SANS TEC physique (constat réel SV305C d'Alain du
-        # 20/09/2026 : temp 20 °C, puissance 0 %, CoolerEnable REFUSÉ) →
-        # les valeurs lues sont bidon ; seule la sonde de
-        # detecter_capacites (CoolerEnable accepté ou non) tranche.
-        if not getattr(self, "_tec_pilotable", True):
-            return None
+        (caméra sans TEC ou contrôles absents). Températures SDK en unités
+        de 0,1 °C → conversion ; puissance en % → PWM 0-255 (convention
+        d'affichage commune à l'app).
+
+        ⚠ DÉCISION D'ALAIN (20/09/2026, jalon 38) : sur une caméra SANS
+        TEC, le SDK énumère quand même les contrôles (valeurs bidon : temp
+        20 °C, puissance 0 % — constat réel SV305C) et cette fonction les
+        renvoie TELLES QUELLES → les boutons ❄ restent ACTIFS. C'est
+        VOLONTAIRE : brancher l'alim 12 V d'une caméra refroidie en cours
+        de session doit suffire (sondage périodique), sans déconnexion/
+        re-détection. Un « Réguler » sans TEC échoue avec un message clair
+        (consigne_refroidissement)."""
         t = self._lire_ctrl(SVB_CURRENT_TEMPERATURE)
         p = self._lire_ctrl(SVB_COOLER_POWER)
         c = self._lire_ctrl(SVB_TARGET_TEMPERATURE)
@@ -382,39 +384,23 @@ class SVBonyCamera(CameraBase):
         if c:
             cap.offset = (c["min"], c["max"])
             cap.extras["offset"] = "BLACK_LEVEL (ctrl 13) du SDK SVBONY"
-        # refroidissement : contrôles PRÉSENTS ≠ TEC PRÉSENT (jalon 37).
-        # Constat réel (SV305C SANS refroidissement, Alain 20/09/2026) : le
-        # SDK énumère les contrôles 14-17 (temp 20 °C, puissance 0 %) mais
-        # REFUSE CoolerEnable → verdict par l'EFFET : on tente CoolerEnable
-        # = 1 puis on RESTAURE l'état initial. Refus → pas de TEC (ou alim
-        # 12 V absente) → cap.tec False → boutons ❄ grisés, sondage → None.
+        # refroidissement : contrôles réellement présents. ⚠ DÉCISION
+        # D'ALAIN (20/09/2026, jalon 38) : les contrôles TEC du SDK SVBONY
+        # existent même SANS TEC physique (constat réel SV305C : temp
+        # 20 °C, puissance 0 %, CoolerEnable refusé à la pose — firmware
+        # probablement commun avec la SV305C Pro refroidie) MAIS les
+        # boutons ❄ restent VOLONTAIREMENT ACTIFS quand les contrôles sont
+        # énumérés : si l'alim 12 V d'une caméra refroidie est branchée en
+        # cours de session, le sondage périodique (toutes les 2 s) la fait
+        # fonctionner IMMÉDIATEMENT, sans déconnexion/re-détection. Le
+        # refus reste signalé par un message clair (« alim 12 V ») si on
+        # clique « Réguler » sur une caméra sans TEC. NE PAS « corriger »
+        # en grisant les boutons (essai jalon 37, annulé à la demande
+        # d'Alain).
         if SVB_COOLER_ENABLE in caps:
-            pilotable = False
-            avant = self._lire_ctrl(SVB_COOLER_ENABLE)
-            try:
-                pose = _DLL.SVBSetControlValue(self.id, SVB_COOLER_ENABLE,
-                                               1, 0)
-                pilotable = (pose == SVB_SUCCESS)
-            except Exception:
-                pilotable = False
-            if pilotable:
-                # restaurer l'état d'avant le sondage (0 en général — ne pas
-                # laisser le TEC démarré rien que pour une détection)
-                try:
-                    _DLL.SVBSetControlValue(self.id, SVB_COOLER_ENABLE,
-                                            0 if avant is None else avant, 0)
-                except Exception:
-                    pass
-            self._tec_pilotable = pilotable
-            cap.tec = pilotable
-            if pilotable:
-                c = caps.get(SVB_TARGET_TEMPERATURE)
-                if c:
-                    cap.tec_consigne = (c["min"], c["max"])
-                cap.temperature_lisible = SVB_CURRENT_TEMPERATURE in caps
-            else:
-                cap.extras["tec"] = (
-                    "contrôles TEC présents dans le SDK mais CoolerEnable "
-                    "REFUSÉ (constat réel SV305C sans refroidissement, "
-                    "20/09/2026) : pas de TEC — ou alim 12 V absente")
+            cap.tec = True
+            c = caps.get(SVB_TARGET_TEMPERATURE)
+            if c:
+                cap.tec_consigne = (c["min"], c["max"])
+            cap.temperature_lisible = SVB_CURRENT_TEMPERATURE in caps
         return cap

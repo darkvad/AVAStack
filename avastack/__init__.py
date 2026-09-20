@@ -14,9 +14,27 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.20.6"
+AVASTACK_VERSION = "2.20.7"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.20.7 : BOUTONS ❄ TOUJOURS ACTIFS SUR SVBONY — DÉCISION D'ALAIN
+#          (jalon 38, annule la logique du jalon 37). Retour réel d'Alain
+#          (20/09/2026) : les boutons ❄ restaient actifs sur sa SV305C
+#          sans TEC — et il PRÉFÈRE ainsi : « si on a une caméra refroidie
+#          et qu'on a oublié de brancher l'alim, il suffit de la brancher
+#          et ça fonctionnera sans avoir besoin de déconnecter et
+#          redétecter » (le sondage périodique toutes les 2 s détecte le
+#          TEC dès que l'alim arrive). CORRECTION : retour au comportement
+#          « contrôles TEC énumérés → cap.tec True + sondage → valeurs » ;
+#          la sonde par l'EFFET du jalon 37 (tentative CoolerEnable = 1 à
+#          la détection) est RETIRÉE ; le constat réel ET la décision sont
+#          documentés DANS LE CODE (detecter_capacites + lire_refroidissement)
+#          pour ne pas « re-corriger » plus tard. Le filet de sécurité
+#          reste : « Réguler » sans TEC → message clair « vérifier
+#          l'alimentation 12 V » (refus SDK CoolerEnable). Test :
+#          _test_tec_boutons_jalon38 (remplace _test_tec_sonde_jalon37,
+#          supprimé — il testait le comportement annulé) ; régression :
+#          _test_capacites, _test_tec_jalon33, _test_pilotage_jalon35.
 # v2.20.6 : SONDE TEC SVBONY PAR L'EFFET — CONTRÔLES PRÉSENTS ≠ TEC PRÉSENT
 #          (jalon 37, retour réel d'Alain du 20/09/2026 : la connexion auto
 #          SV305C du jalon 36 fonctionne, MAIS sa caméra SANS TEC affiche

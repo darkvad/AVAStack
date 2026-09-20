@@ -1,20 +1,23 @@
 # -*- coding: utf-8 -*-
-"""Tests du jalon 37 — sonde TEC SVBONY PAR L'EFFET (contrôles présents ≠
-TEC présent).
+"""Tests du jalon 38 — boutons ❄ TOUJOURS ACTIFS sur SVBONY (décision
+d'Alain) : contrôles TEC présents dans le SDK = TEC « pilotable ».
 
-Constat RÉEL (Alain, test SV305C du 20/09/2026) : la SV305C de guidage
-n'a PAS de TEC, mais le SDK énumère quand même les contrôles 14-17
-(CoolerEnable, TargetTemp, Temperature, CoolerPower) qui affichent « 20 °C,
-puissance 0 % » — valeurs bidon. Résultat : les boutons ❄ s'activaient et
-« Réguler » levait « CoolerEnable refusé par le SDK — vérifier
-l'alimentation 12 V » (probablement un firmware commun avec la SV305C Pro
-refroidie).
+Historique : le jalon 37 avait grisés les boutons ❄ quand CoolerEnable est
+refusé à la pose (verdict par l'EFFET). Alain a PRÉFÉRÉ l'ancien
+comportement (20/09/2026) : les contrôles TEC du SDK SVBONY existent même
+SANS TEC physique (constat réel SV305C : temp 20 °C, puissance 0 % —
+firmware probablement commun avec la SV305C Pro refroidie) MAIS les
+boutons ❄ doivent rester ACTIFS dès que les contrôles sont énumérés : si
+l'alim 12 V d'une caméra refroidie est branchée en cours de session, le
+sondage périodique (toutes les 2 s) la fait fonctionner IMMÉDIATEMENT,
+sans déconnexion/re-détection. Un « Réguler » sans TEC échoue avec un
+message clair (« alim 12 V ») — filet de sécurité suffisant.
 
-Correctif jalon 37 : detecter_capacites() TENTE CoolerEnable = 1 (verdict
-par l'EFFET, cf. règle générale « réglage relu ≠ réglage appliqué ») :
-refus → pas de TEC (cap.tec False, lire_refroidissement → None → boutons ❄
-grisés) ; succès → TEC présent, puis l'état initial de CoolerEnable est
-RESTAURÉ (ne pas laisser le TEC démarré rien que pour une détection).
+Ce test rejoue le constat réel (SV305C sans TEC : CoolerEnable REFUSÉ à
+la pose, contrôles 14-17 énumérés avec valeurs bidon) et vérifie :
+  - la sonde de capacités n'essaie AUCUNE pose de CoolerEnable ;
+  - cap.tec True + plage de consigne + sondage → valeurs (boutons actifs) ;
+  - consigne_refroidissement → RuntimeError avec « 12 V » (filet).
 """
 
 import sys
@@ -47,8 +50,7 @@ class FauxDLL_SVB_TEC:
     """Reproduit le comportement RÉEL de la SV305C (20/09/2026) : les
     contrôles TEC 14-17 sont ÉNUMÉRÉS et LISIBLES (valeurs bidon : temp
     200 = 20,0 °C, puissance 0) mais CoolerEnable est REFUSÉ à la pose
-    quand il n'y a pas de TEC physique. Journalise les poses pour vérifier
-    la restauration après le sondage."""
+    quand il n'y a pas de TEC physique."""
 
     def __init__(self, tec_refuse=True):
         self.tec_refuse = tec_refuse
@@ -114,55 +116,53 @@ def _camera(fake):
 
 # === SUITE (tests + bilan) ===
 
-# --- 1) SV305C SANS TEC (le cas réel d'Alain) : CoolerEnable REFUSÉ --------
+# --- 1) SV305C SANS TEC (le cas réel d'Alain) : boutons ❄ ACTIFS -----------
 faux1 = FauxDLL_SVB_TEC(tec_refuse=True)
 cam1 = _camera(faux1)
 cap1 = cam1.detecter_capacites()
-verifie("pas de TEC : cap.tec FALSE malgré les contrôles 14-17 énumérés",
-        cap1.tec is False)
-verifie("pas de TEC : pas de plage de consigne, température non lisible",
-        cap1.tec_consigne is None and cap1.temperature_lisible is False)
-verifie("pas de TEC : note explicative « REFUSÉ » dans les extras",
-        "REFUSÉ" in cap1.extras.get("tec", ""))
-verifie("pas de TEC : sondage app → None (boutons ❄ RESTENT GRISÉS)",
-        cam1.lire_refroidissement() is None)
-verifie("pas de TEC : le sondage a tenté CoolerEnable = 1 (verdict par "
-        "l'EFFET) et n'a RIEN restauré (le set initial a été refusé)",
-        (msvb.SVB_COOLER_ENABLE, 1) in faux1.journal
-        and (msvb.SVB_COOLER_ENABLE, 0) not in faux1.journal)
-verifie("pas de TEC : le reste des capacités reste détecté",
+verifie("décision d'Alain : cap.tec TRUE dès que les contrôles TEC sont "
+        "énumérés, MÊME sans TEC physique",
+        cap1.tec is True)
+verifie("décision d'Alain : plage de consigne + température lisible "
+        "(curseur TEC reconstruit, boutons ❄ ACTIFS)",
+        cap1.tec_consigne == (-500, 500) and cap1.temperature_lisible is True)
+verifie("décision d'Alain : sondage app → valeurs (boutons ❄ ACTIFS, "
+        "rebrancher l'alim 12 V en cours de session suffit)",
+        cam1.lire_refroidissement() == (20.0, 0, -10.0))
+verifie("la sonde de capacités ne pose AUCUN CoolerEnable (pas de verdict "
+        "par l'EFFET — essai jalon 37 annulé)",
+        not any(t == msvb.SVB_COOLER_ENABLE for t, _ in faux1.journal))
+verifie("le reste des capacités reste détecté",
         cap1.gain == (0, 450) and cap1.offset == (0, 255)
         and cap1.expo_us == (36, 2000000000))
 
-# --- 2) caméra AVEC TEC : CoolerEnable accepté puis RESTAURÉ ---------------
+# --- 2) filet de sécurité : « Réguler » sans TEC → message clair -----------
+try:
+    cam1.consigne_refroidissement(-10.0)
+    verifie("sans TEC : « Réguler » doit lever RuntimeError (refus SDK)",
+            False)
+except RuntimeError as e:
+    verifie("sans TEC : « Réguler » → message clair avec « alim 12 V »",
+            "12 V" in str(e))
+verifie("sans TEC : la pose CoolerEnable = 1 a bien été REFUSÉE par le SDK "
+        "(l'app ne l'a pas contournée)",
+        (msvb.SVB_COOLER_ENABLE, 1) in faux1.journal
+        and faux1.cooler == 0)
+
+# --- 3) caméra AVEC TEC : comportement inchangé -----------------------------
 faux2 = FauxDLL_SVB_TEC(tec_refuse=False)
 cam2 = _camera(faux2)
 cap2 = cam2.detecter_capacites()
-verifie("avec TEC : cap.tec TRUE (CoolerEnable accepté par le SDK)",
-        cap2.tec is True)
-verifie("avec TEC : plage de consigne + température lisible",
-        cap2.tec_consigne == (-500, 500)
-        and cap2.temperature_lisible is True)
-verifie("avec TEC : sondage app → valeurs réelles (20,0 °C, PWM 0, -10 °C)",
-        cam2.lire_refroidissement() == (20.0, 0, -10.0))
-verifie("avec TEC : CoolerEnable = 1 tenté PUIS restauré à 0 (le TEC n'est "
-        "pas laissé démarré rien que pour une détection)",
-        faux2.journal == [(msvb.SVB_COOLER_ENABLE, 1),
-                          (msvb.SVB_COOLER_ENABLE, 0)]
-        and faux2.cooler == 0)
-
-# --- 3) compatibilité : sondage direct SANS detecter_capacites (bancs) -----
-# Les bancs appellent lire_refroidissement() directement, sans passer par
-# detecter_capacites : _tec_pilotable absent → comportement inchangé.
-faux3 = FauxDLL_SVB_TEC(tec_refuse=False)
-cam3 = _camera(faux3)
-verifie("compatibilité bancs : sans sondage préalable, lire_refroidissement "
-        "fonctionne comme avant (défaut = TEC pilotable)",
-        cam3.lire_refroidissement() == (20.0, 0, -10.0))
+verifie("avec TEC : cap.tec True + consigne + sondage (aucun changement)",
+        cap2.tec is True and cap2.tec_consigne == (-500, 500)
+        and cam2.lire_refroidissement() == (20.0, 0, -10.0))
+cam2.consigne_refroidissement(-10.5)
+verifie("avec TEC : régulation fonctionne (CoolerEnable = 1 puis consigne)",
+        faux2.cooler == 1)
 
 # --- bilan -------------------------------------------------------------------
 echecs = [l for l, ok in VERIFICATIONS if not ok]
-print(f"_test_tec_sonde_jalon37 : "
+print(f"_test_tec_boutons_jalon38 : "
       f"{len(VERIFICATIONS) - len(echecs)}/{len(VERIFICATIONS)} vérifications OK")
 for l in echecs:
     print("  ÉCHEC :", l)
