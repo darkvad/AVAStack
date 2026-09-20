@@ -14,9 +14,32 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.20.7"
+AVASTACK_VERSION = "2.20.8"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.20.8 : CASES COULEUR LIVE (SCNR / SCNR doux / démagenta) RÉACTIVES
+#          IMMÉDIATEMENT (jalon 39, constat réel d'Alain du 20/09/2026 :
+#          cliquer ces cases ne changeait l'affichage qu'à la prochaine
+#          frame empilée — ou pas du tout, jusqu'à bouger par ex. le fond
+#          cible VeraLux). CAUSE : les callbacks des trois cases couleur
+#          mettaient à jour l'état du solveur (disp.vl_scnr etc. — la clé
+#          changeait bien) mais OUBLIAIENT d'appeler _refresh_preview(),
+#          contrairement à tous les autres contrôles du panneau VeraLux
+#          (GraXpert live, débruitage, netteté, curseurs) : la nouvelle
+#          chaîne n'était donc soumise au solveur qu'au prochain appel de
+#          disp.process(), c.-à-d. à la frame suivante ou à un autre
+#          réglage. CORRECTION : même structure que le débruitage/netteté —
+#          _on_vl_scnr/_on_vl_scnr_doux/_on_vl_demagenta = sync de l'état +
+#          _refresh_preview() (le solveur applique la chaîne couleur PUIS
+#          l'étirement : le résultat est visible aussitôt résolu) ; nouvelles
+#          méthodes _sync_vl_scnr_vue/_sync_vl_scnr_doux_vue/
+#          _sync_vl_demagenta_vue (état SEUL) et _sync_vl_couleur_vue
+#          n'appelle PLUS les _on_* mais les _sync_* — sinon le rendu serait
+#          déclenché 3× toutes les 30 ms par _tick (qui suit la vue). Test :
+#          _test_couleurs_immediat_jalon39 (soumission immédiate à la case,
+#          aucun re-soumission en boucle via _sync_vl_couleur_vue) ;
+#          régression : _test_couleurs_jalon22, _test_veralux_jalon3,
+#          _test_denoise_live_jalon9, _test_sharp_live_jalon12.
 # v2.20.7 : BOUTONS ❄ TOUJOURS ACTIFS SUR SVBONY — DÉCISION D'ALAIN
 #          (jalon 38, annule la logique du jalon 37). Retour réel d'Alain
 #          (20/09/2026) : les boutons ❄ restaient actifs sur sa SV305C

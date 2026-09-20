@@ -1622,20 +1622,43 @@ class App:
     def _on_vl_scnr(self):
         """Case SCNR (jalon 22) : répercute dans le solveur — la clé des
         réglages change → re-résolution. Vue « empilement » uniquement
-        (en vue « traitée », l'image a déjà subi le traitement externe)."""
+        (en vue « traitée », l'image a déjà subi le traitement externe).
+        Jalon 39 : relance le rendu IMMÉDIATEMENT (comme GraXpert live,
+        le débruitage et la netteté) — sans ce rafraîchissement, la
+        nouvelle chaîne n'était soumise au solveur qu'à la prochaine
+        frame empilée ou au prochain réglage appelant _refresh_preview
+        (constat réel d'Alain : les cases couleur semblaient inertes
+        jusqu'à l'un des deux, par ex. bouger le fond cible)."""
+        self._sync_vl_scnr_vue()
+        self._refresh_preview()
+
+    def _sync_vl_scnr_vue(self):
+        """État SEUL (sans rendu) de la case SCNR : appelé par la case ET
+        par _tick/_on_view (la chaîne couleur suit la vue)."""
         actif = self.var_vl_scnr.get() and self.var_view.get() != "traitée"
         if actif != self.disp.vl_scnr:
             self.disp.vl_scnr = actif       # la clé change → re-résolution
 
     def _on_vl_demagenta(self):
-        """Case démagenta (jalon 22) : idem SCNR."""
+        """Case démagenta (jalon 22) : idem SCNR (jalon 39 : rendu immédiat)."""
+        self._sync_vl_demagenta_vue()
+        self._refresh_preview()
+
+    def _sync_vl_demagenta_vue(self):
+        """État SEUL (sans rendu) de la case démagenta."""
         actif = self.var_vl_demagenta.get() and self.var_view.get() != "traitée"
         if actif != self.disp.vl_demagenta:
             self.disp.vl_demagenta = actif  # la clé change → re-résolution
 
     def _on_vl_scnr_doux(self):
         """Case SCNR doux (jalon 23) : idem SCNR — bruit seul, structure
-        préservée (pensé pour les palettes narrowband)."""
+        préservée (pensé pour les palettes narrowband). Jalon 39 : rendu
+        immédiat."""
+        self._sync_vl_scnr_doux_vue()
+        self._refresh_preview()
+
+    def _sync_vl_scnr_doux_vue(self):
+        """État SEUL (sans rendu) de la case SCNR doux."""
         actif = self.var_vl_scnr_doux.get() \
             and self.var_view.get() != "traitée"
         if actif != self.disp.vl_scnr_doux:
@@ -1644,10 +1667,13 @@ class App:
     def _sync_vl_couleur_vue(self):
         """Chaîne couleur live (jalon 22/23 : SCNR, SCNR doux, démagenta) =
         vue « empilement » uniquement (même règle que le débruitage live) :
-        suit le changement de vue."""
-        self._on_vl_scnr()
-        self._on_vl_scnr_doux()
-        self._on_vl_demagenta()
+        suit le changement de vue. Appelée par _tick TOUTES les 30 ms :
+        elle ne touche qu'à l'ÉTAT (les _sync_*), JAMAIS au rendu — les
+        _on_* (avec _refresh_preview) ne sont appelés que par les cases
+        elles-mêmes (jalon 39 : un rendu ici serait déclenché 3× par tick)."""
+        self._sync_vl_scnr_vue()
+        self._sync_vl_scnr_doux_vue()
+        self._sync_vl_demagenta_vue()
 
     def _on_vl_sharp(self):
         """Case/curseur de la netteté live (jalon 12) : répercute les
