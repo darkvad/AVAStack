@@ -14,9 +14,33 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.16.0"
+AVASTACK_VERSION = "2.17.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.17.0 : BANC QHY — SONDE CTYPES NATIVE (jalon 30, voie validée par
+#          Alain le 19/09/2026 ; banc UNIQUEMENT, aucun changement de
+#          comportement de l'application) :
+#          - _diag_camera_qhy.py appelle qhyccd.dll DIRECTEMENT (sans le
+#            binding PyPI) dans un SOUS-PROCESSUS isolé (Init/Release du SDK
+#            sans danger, segfault éventuel ne tuant que l'enfant ; refus si
+#            le flux est actif — jamais deux ouvertures) ;
+#          - PLAGES des contrôles via GetQHYCCDParamMinMaxStep (absente du
+#            binding ; nom VÉRIFIÉ dans les exports réels de la DLL livrée
+#            par parseur PE — « GetQHYCCDParamMinMax » tout court n'existe
+#            pas) : disponibilité + min/max/step + valeur pour chaque
+#            contrôle 0..62, enum CONTROL_ID de l'en-tête officiel IDENTIQUE
+#            à la table NOMS_CTRL du banc ; résumé « pour câbler l'UI »
+#            (expo lisible en µs/ms/s, gain, offset, TEC, slots roue) ;
+#          - ROUE INTÉGRÉE via les fonctions natives CFW (IsQHYCCDCFWPlugged
+#            — 0 = roue trouvée, doc QHY —, GetQHYCCDCFWStatus, ordre ASCII
+#            '0'+(position-1), relecture 0,5 s / timeout 25 s) : statut +
+#            rotation avec VERDICT de confirmation ; l'EFFET PHYSIQUE reste
+#            à vérifier en réel (la voie binding écrit 48+n, la doc dit
+#            '0'=position 1 — à trancher demain matin sur la MiniCam8M) ;
+#          - prototypes ctypes explicites (restype/argtypes — leçon v2.16),
+#            buffers sur-alloués (leçon SVB), DLL recherchée dans
+#            AVASTACK_QHY_DIR / dossier du banc / DLL embarquée du paquet
+#            (site-packages/vendor/lib — chemin + date affichés).
 # v2.16.0 : CAPACITÉS DYNAMIQUES PAR MARQUE (jalon 29, objectif d'Alain du
 #          19/09/2026 : « pour une marque, être capable EN DYNAMIQUE de
 #          connaître les capacités de la caméra » — il n'a pas accès à

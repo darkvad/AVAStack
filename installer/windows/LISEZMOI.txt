@@ -112,7 +112,15 @@ Le banc QHY permet de :
     température du capteur et du PWM courant.
     ATTENTION : la MiniCam8M est une caméra REFROIDIE — il lui faut son
     alimentation 12 V pour que la régulation fonctionne (et pour que la
-    température lue ait un sens).
+    température lue ait un sens) ;
+  - SONDE CTYPES NATIVE (boutons "Plages (MinMaxStep)", "Tourner
+    (ctypes)", "Statut CFW") : appelle la DLL QHYCCD directement, sans
+    le paquet Python — lit les PLAGES réelles de tous les contrôles
+    (min/max/pas : exposition, gain, offset, TEC...) et pilote la ROUE
+    à filtres intégrée (détecter, lire la position, tourner avec
+    confirmation). La sonde s'exécute en tâche séparée, refuse de
+    tourner pendant que le flux est actif, et affiche le chemin exact
+    de la DLL utilisée.
 
 En cas de fermeture brutale de la fenêtre sans message (crash natif du
 SDK), le bouton "Ouvrir le log" — ou le fichier avastack_qhy_debug.log du

@@ -26,6 +26,15 @@ lectures = get_param(14) température et (15) PWM courant.
 refroidissement, par exemple, n'a pas de méthode dédiée — preuve à
 l'appui).
 
+Sonde ctypes native (ajout du 20/09/2026, voie validée par Alain) : la
+section « Sonde ctypes » appelle qhyccd.dll DIRECTEMENT (sans le binding)
+pour lire les PLAGES des contrôles (GetQHYCCDParamMinMaxStep — absente du
+binding) et piloter la ROUE INTÉGRÉE (IsQHYCCDCFWPlugged /
+GetQHYCCDCFWStatus / SendOrder2QHYCCDCFW). Elle tourne dans un
+SOUS-PROCESSUS isolé (état SDK propre, un éventuel segfault natif ne tue
+que l'enfant) et refuse de tourner pendant que le flux est actif : une
+caméra ne doit JAMAIS être ouverte deux fois.
+
 IMPORTANT — crash natif : si la fenêtre se ferme brutalement sans
 message, c'est un segfault du SDK natif (Python ne peut rien afficher).
 Ouvre alors le log d'étapes (bouton « 📄 Ouvrir le log » ou fichier
@@ -54,7 +63,9 @@ semble ignorée. En haut de la fenêtre, le banc AFFICHE donc les fichiers
 réellement chargés (chemins, dates, présence de set_resolution, signature de
 open()) : à vérifier AU MOINS une fois avant de me rapporter un plantage.
 """
+import ctypes
 import inspect
+import json
 import os
 import sys
 import queue
@@ -76,6 +87,12 @@ import avastack.cameras.qhy as mqhy
 from avastack.cameras.qhy import QHYCamera
 
 FICHIER_LOG = mqhy.FICHIER_TRACE
+
+# Version PROPRE DU BANC : « avastack version » (ci-dessous) est celle de la
+# BIBLIOTHÈQUE installée, qui peut être antérieure au banc — c'est ce qui a
+# semé la confusion du 20/09 (log « 2.16.0 » alors que le banc était en
+# 2.17.0). Les deux sont affichées séparément.
+BANC_VERSION = "2.17.0"
 
 # Enum `Control` OFFICIEL du SDK QHY — source : crate Rust `qhyccd-rs` 0.1.9
 # (docs.rs), celle qui sous-tend le paquet PyPI `qhyccd`. Les clés sont les
@@ -148,6 +165,16 @@ def _nb(val, suffixe=""):
         return str(val)
 
 
+def _fmt_duree(v_us):
+    """Durée en µs → lisible : « 12 µs », « 3,5 ms », « 2 s », « 3600 s »."""
+    v = float(v_us)
+    if v >= 1_000_000:
+        return f"{v / 1_000_000:g} s"
+    if v >= 1000:
+        return f"{v / 1000:g} ms"
+    return f"{v:g} µs"
+
+
 def _open_supporte_roi():
     """→ True si le QHYCamera CHARGÉ accepte open(roi=...).
 
@@ -211,6 +238,20 @@ def _infos_versions():
                   + ("" if _open_supporte_roi() else
                      "  ← PAS de paramètre roi : le banc ne peut pas "
                      "transmettre la case ROI"))
+    # DLL native pour la sonde ctypes : identité affichée comme les autres
+    # fichiers (une mauvaise DLL imite parfaitement un bug de code).
+    _dll_nat = _trouver_dll_qhy()
+    if _dll_nat:
+        try:
+            _md = time.strftime("%d/%m/%Y %H:%M:%S",
+                                time.localtime(os.path.getmtime(_dll_nat)))
+        except OSError:
+            _md = "?"
+        lignes.append(f"qhyccd native (sonde ctypes) : {_dll_nat}"
+                      f"  (modifiée le {_md})")
+    else:
+        lignes.append("qhyccd native (sonde ctypes) : INTROUVABLE — "
+                      "plages/roue ctypes indisponibles")
     lignes.append(f"banc _diag_camera_qhy.py : {os.path.abspath(__file__)}")
     lignes.append(f"avastack version : {avastack.AVASTACK_VERSION}")
     return lignes
@@ -267,6 +308,323 @@ def _binding_sans_liberation():
     return (not suspects), noms
 
 
+# ============================================================================
+# SONDE CTYPES NATIVE — qhyccd.dll appelée DIRECTEMENT (sans le binding PyPI)
+#
+# Voie validée par Alain (19/09/2026) : le binding n'expose AUCUNE fonction de
+# plages ; la fonction native existe et s'appelle GetQHYCCDParamMinMaxStep
+# (« GetQHYCCDParamMinMax » tout court N'EXISTE PAS) — vérifié le 20/09/2026
+# dans les exports RÉELS de la DLL livrée avec le paquet (parseur PE : 328
+# exports, dont aussi IsQHYCCDCFWPlugged, GetQHYCCDCFWStatus,
+# SendOrder2QHYCCDCFW, GetQHYCCDFWVersion et tout le cycle de vie du SDK).
+#
+# Signatures reprises de l'en-tête OFFICIEL du SDK (qhyccd.h +
+# qhyccdstruct.h) ; l'enum CONTROL_ID y est IDENTIQUE à la table NOMS_CTRL
+# ci-dessus (gain=6, offset=7, exposure µs=8 — cohérent avec le relevé réel
+# du binding) :
+#     uint32_t InitQHYCCDResource(void);
+#     uint32_t ReleaseQHYCCDResource(void);
+#     uint32_t ScanQHYCCD(void);                       -> nb de caméras
+#     uint32_t GetQHYCCDId(uint32_t index, char *id);
+#     uint32_t GetQHYCCDModel(char *id, char *model);
+#     qhyccd_handle *OpenQHYCCD(char *id);             -> NULL si échec
+#     uint32_t CloseQHYCCD(qhyccd_handle *handle);
+#     double   GetQHYCCDParam(qhyccd_handle *h, int controlId);
+#     uint32_t GetQHYCCDParamMinMaxStep(qhyccd_handle *h, int controlId,
+#                 double *min, double *max, double *step);
+#     uint32_t IsQHYCCDControlAvailable(qhyccd_handle *h, int controlId);
+#     uint32_t IsQHYCCDCFWPlugged(qhyccd_handle *h);   -> 0 = CFW TROUVÉ
+#                 (doc QHY « User Manual of Filter Wheel APIs » :
+#                 QHYCCD_SUCCESS = roue branchée — PAS un booléen « vrai »)
+#     uint32_t GetQHYCCDCFWStatus(qhyccd_handle *h, char *status);
+#                 -> status[0] = caractère ASCII '0'..'F', '0' = position 1
+#     uint32_t SendOrder2QHYCCDCFW(qhyccd_handle *h, char *order,
+#                                  uint32_t length);
+#                 -> ordre = 1 SEUL caractère ASCII, '0' + (position - 1)
+#     uint32_t GetQHYCCDFWVersion(qhyccd_handle *h, uint8_t *buf);
+# Conventions roue (même doc) : boucle de relecture avec pause de 0,5 s
+# (éviter le spam USB), timeout conseillé 25 s ; la rotation n'est confirmée
+# que lorsque le statut relu = le caractère envoyé.
+#
+# ISOLEMENT : la sonde tourne dans un SOUS-PROCESSUS (même mécanique que
+# lister_via_sous_processus) — Init/Release du SDK y sont SANS DANGER pour
+# l'état du banc (un 2e init DANS CE process est un suspect de crash
+# documenté ci-dessus), et un segfault natif ne tue que l'enfant. Le parent
+# refuse d'ailleurs de lancer la sonde si le flux est actif : une caméra ne
+# doit JAMAIS être ouverte deux fois (constat du 19/09/2026).
+#
+# Sortie de l'enfant : des lignes « # ... » (progression, ASCII
+# volontairement PUR — un caractère hors cp1252 ferait planter le décodage
+# du tube, cf. piège consigné) puis UNE ligne JSON (ensure_ascii).
+# ============================================================================
+
+
+def _trouver_dll_qhy():
+    """→ chemin de la bibliothèque native QHYCCD, ou None.
+
+    Ordre de recherche : AVASTACK_QHY_DIR (fichier ou dossier) → dossier du
+    banc → DLL embarquée du paquet qhyccd (le MÊME fichier que charge le
+    binding : le chemin réel est affiché — ne JAMAIS interpréter un
+    diagnostic sans savoir quelle DLL a réellement répondu) → nom nu (PATH).
+    """
+    noms = ("qhyccd.dll", "libqhyccd.so", "libqhyccd.dylib")
+    candidats = []
+    env = os.environ.get("AVASTACK_QHY_DIR")
+    if env:
+        candidats.append(env if os.path.isfile(env)
+                         else os.path.join(env, noms[0]))
+    banc = os.path.dirname(os.path.abspath(__file__))
+    candidats.extend(os.path.join(banc, n) for n in noms)
+    try:
+        import qhyccd as _paquet
+        # La DLL embarquée du paquet peut vivre DANS son dossier
+        # (.../qhyccd/vendor/lib) ou À CÔTÉ (…/site-packages/vendor/lib —
+        # vérifié en réel le 20/09/2026 : c'est le second) → on teste les
+        # deux racines, avec descente récursive.
+        ici_paquet = os.path.dirname(os.path.abspath(_paquet.__file__))
+        racines = [os.path.join(ici_paquet, "vendor"),
+                   os.path.join(os.path.dirname(ici_paquet), "vendor")]
+        for vend in racines:
+            if os.path.isdir(vend):
+                for rac, _sous, fichiers in os.walk(vend):
+                    for n in noms:
+                        if n in fichiers:
+                            candidats.append(os.path.join(rac, n))
+    except Exception:
+        pass
+    candidats.extend(noms)            # PATH système (en dernier recours)
+    for c in candidats:
+        if c and os.path.isfile(c):
+            return c
+    return None
+
+
+def _charger_fonctions_qhy(chemin):
+    """Charge la DLL et FIXE les prototypes (restype/argtypes).
+
+    Sans prototypes, ctypes renvoie des entiers tronqués pour les fonctions
+    à double (leçon v2.16 : température lue en bits) — chaque fonction est
+    déclarée explicitement. WinDLL sous Windows (STDCALL de l'en-tête ;
+    identique à CDLL en x64, correct en x86), CDLL ailleurs.
+    """
+    if os.name == "nt":
+        try:
+            os.add_dll_directory(os.path.dirname(chemin))
+        except (AttributeError, OSError):
+            pass
+        lib = ctypes.WinDLL(chemin)
+    else:
+        lib = ctypes.CDLL(chemin)
+    H = ctypes.c_void_p
+    D = ctypes.POINTER(ctypes.c_double)
+    fns = {}
+
+    def declare(nom, restype, argtypes):
+        f = getattr(lib, nom)
+        f.restype = restype
+        f.argtypes = argtypes
+        fns[nom] = f
+
+    declare("InitQHYCCDResource", ctypes.c_uint32, [])
+    declare("ReleaseQHYCCDResource", ctypes.c_uint32, [])
+    declare("ScanQHYCCD", ctypes.c_uint32, [])
+    declare("GetQHYCCDId", ctypes.c_uint32,
+            [ctypes.c_uint32, ctypes.c_char_p])
+    declare("GetQHYCCDModel", ctypes.c_uint32,
+            [ctypes.c_char_p, ctypes.c_char_p])
+    declare("OpenQHYCCD", H, [ctypes.c_char_p])
+    declare("CloseQHYCCD", ctypes.c_uint32, [H])
+    declare("GetQHYCCDParam", ctypes.c_double, [H, ctypes.c_int])
+    declare("GetQHYCCDParamMinMaxStep", ctypes.c_uint32,
+            [H, ctypes.c_int, D, D, D])
+    declare("IsQHYCCDControlAvailable", ctypes.c_uint32, [H, ctypes.c_int])
+    declare("IsQHYCCDCFWPlugged", ctypes.c_uint32, [H])
+    declare("GetQHYCCDCFWStatus", ctypes.c_uint32, [H, ctypes.c_char_p])
+    declare("SendOrder2QHYCCDCFW", ctypes.c_uint32,
+            [H, ctypes.c_char_p, ctypes.c_uint32])
+    declare("GetQHYCCDFWVersion", ctypes.c_uint32,
+            [H, ctypes.POINTER(ctypes.c_ubyte)])
+    return fns
+
+
+def _sonde_plages(fns, h, res, info):
+    """Lit disponibilité + MinMaxStep + valeur de chaque contrôle (0..62)."""
+    controles = {}
+    indispo = []
+    for cid_ in range(0, 63):        # 0..62 : jusqu'à CAM_HUMIDITY (enum)
+        nom = _nom_ctrl(cid_)
+        if fns["IsQHYCCDControlAvailable"](h, cid_) != 1:
+            indispo.append(cid_)
+            continue
+        mn, mx, st = (ctypes.c_double(), ctypes.c_double(),
+                      ctypes.c_double())
+        rc = fns["GetQHYCCDParamMinMaxStep"](h, cid_, ctypes.byref(mn),
+                                             ctypes.byref(mx),
+                                             ctypes.byref(st))
+        val = fns["GetQHYCCDParam"](h, cid_)
+        e = {"nom": nom, "val": val}
+        if val == VALEUR_ERREUR:
+            e["val_txt"] = "drapeau (0xFFFFFFFF)"
+        if rc == 0:
+            e["min"], e["max"], e["step"] = mn.value, mx.value, st.value
+            if mn.value > mx.value or (mn.value == 0.0 and mx.value == 0.0):
+                e["doute"] = "plage incohérente (min>max ou min=max=0)"
+        else:
+            e["rc_minmax"] = rc
+        controles[str(cid_)] = e
+        info("ctrl %2d %-24s valeur=%s  %s"
+             % (cid_, nom, e.get("val_txt", val),
+                ("plage=[%g .. %g] pas=%g" % (mn.value, mx.value, st.value))
+                if rc == 0 else "pas de plage (rc=%d)" % rc))
+    res["controles"] = controles
+    res["indisponibles"] = indispo
+    info("(%d contrôles disponibles, %d indisponibles)"
+         % (len(controles), len(indispo)))
+
+
+def _sonde_cfw(fns, h, res, action, slot, info):
+    """Roue intégrée via les fonctions CFW natives (« Filter Wheel APIs »).
+
+    IsQHYCCDCFWPlugged -> 0 = roue TROUVÉE ; statut et ordre sont des
+    caractères ASCII ('0' = position 1) ; le contrôle 44 (CfwSlotsNum)
+    renvoie 9 sur les caméras qui ne savent PAS le lire (doc QHY).
+    """
+    cfw = {}
+    plugged = fns["IsQHYCCDCFWPlugged"](h)
+    cfw["plugged_rc"] = plugged
+    cfw["plugged"] = (plugged == 0)
+    val44 = fns["GetQHYCCDParam"](h, 44)          # CONTROL_CFWSLOTSNUM
+    cfw["slots_param"] = None if val44 == VALEUR_ERREUR else val44
+    info("IsQHYCCDCFWPlugged -> %d %s"
+         % (plugged, "(0 = roue TROUVEE)" if plugged == 0
+            else "(non nul : pas de roue detectee)"))
+    info("CONTROL_CFWSLOTSNUM (ctrl 44) -> %s (9 = lecture non supportee, "
+         "doc QHY)" % val44)
+    buf = ctypes.create_string_buffer(128)
+    rc = fns["GetQHYCCDCFWStatus"](h, buf)
+    cfw["status_rc"] = rc
+    cfw["status"] = buf.value.decode("ascii", "replace")
+    info("GetQHYCCDCFWStatus -> rc=%d, statut=%r" % (rc, cfw["status"]))
+    if action == "cfw_order":
+        ascii_ordre = ord('0') + int(slot) - 1    # '0' = position 1 (doc QHY)
+        cfw["envoyee"] = {"position": int(slot), "ascii": chr(ascii_ordre)}
+        rc = fns["SendOrder2QHYCCDCFW"](h, bytes([ascii_ordre]), 1)
+        cfw["send_rc"] = rc
+        info("SendOrder2QHYCCDCFW(position %d, ASCII %r) -> rc=%d"
+             % (int(slot), chr(ascii_ordre), rc))
+        etats = []
+        confirme = False
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < 25.0:       # timeout doc QHY : 25 s
+            time.sleep(0.5)                       # pause doc QHY : 0,5 s
+            b2 = ctypes.create_string_buffer(128)
+            fns["GetQHYCCDCFWStatus"](h, b2)
+            s = b2.value.decode("ascii", "replace")
+            if not etats or etats[-1] != s:
+                etats.append(s)
+                if s:
+                    info("  statut relu : %r (position %d)"
+                         % (s, ord(s[0]) - ord('0') + 1))
+                else:
+                    info("  statut relu : (vide)")
+            if s and ord(s[0]) == ascii_ordre:
+                confirme = True
+                break
+        cfw["etats"] = etats
+        cfw["confirme"] = confirme
+        cfw["final"] = etats[-1] if etats else None
+        info("position CONFIRMEE par relecture" if confirme
+             else "PAS de confirmation en 25 s (voir statuts relus)")
+    res["cfw"] = cfw
+
+
+def _sonde_ctypes(action, camera_id, slot):
+    """Corps de la sonde, exécuté DANS L'ENFANT (sous-processus)."""
+    res = {"ok": False, "action": action, "erreurs": []}
+
+    def err(msg):
+        res["erreurs"].append(msg)
+        print("# ERREUR : " + msg, flush=True)
+
+    def info(msg):
+        print("# " + msg, flush=True)
+
+    chemin = _trouver_dll_qhy()
+    if chemin is None:
+        err("qhyccd.dll introuvable (ni AVASTACK_QHY_DIR, ni dossier du "
+            "banc, ni DLL embarquee du paquet qhyccd, ni PATH)")
+        return res
+    res["dll"] = chemin
+    try:
+        dte = time.strftime("%Y-%m-%d %H:%M:%S",
+                            time.localtime(os.path.getmtime(chemin)))
+    except OSError:
+        dte = "?"
+    info("DLL chargee : %s (mtime %s)" % (chemin, dte))
+    try:
+        fns = _charger_fonctions_qhy(chemin)
+    except Exception as e:
+        err("chargement ctypes impossible : " + repr(e))
+        return res
+    rc = fns["InitQHYCCDResource"]()
+    info("InitQHYCCDResource -> %d (0 = OK ; deja initialise : tolere)" % rc)
+    n = fns["ScanQHYCCD"]()
+    if n == 0 or n > 1024:
+        err("ScanQHYCCD -> %d : aucune camera exploitable (branchee ? "
+            "alimentation 12 V ? driver ?)" % n)
+        return res
+    ids = []
+    for i in range(n):
+        buf = ctypes.create_string_buffer(128)   # sur-allocation (leçon SVB)
+        if fns["GetQHYCCDId"](i, buf) == 0 and buf.value:
+            ids.append(buf.value.decode("utf-8", "replace"))
+    res["ids"] = ids
+    info("ScanQHYCCD -> %d camera(s) : %s"
+         % (n, ", ".join(ids) or "(aucun id lisible)"))
+    if not ids:
+        err("des cameras sont vues mais aucun id n'a pu etre lu")
+        return res
+    cid = camera_id if camera_id in ids else ids[0]
+    res["cid"] = cid
+    bufm = ctypes.create_string_buffer(128)
+    if fns["GetQHYCCDModel"](cid.encode(), bufm) == 0:
+        res["model"] = bufm.value.decode("utf-8", "replace")
+    info("lecture sur id=%r modele=%r" % (cid, res.get("model", "?")))
+    h = fns["OpenQHYCCD"](cid.encode())
+    if not h:
+        err("OpenQHYCCD -> handle NULL (ouverture refusee)")
+        return res
+    info("OpenQHYCCD -> handle OK")
+    try:
+        if action == "plages":
+            _sonde_plages(fns, h, res, info)
+        elif action in ("cfw_status", "cfw_order"):
+            _sonde_cfw(fns, h, res, action, slot, info)
+        else:
+            err("action inconnue : " + action)
+    finally:
+        rcc = fns["CloseQHYCCD"](h)
+        info("CloseQHYCCD -> %d (0 = OK)" % rcc)
+    rc = fns["ReleaseQHYCCDResource"]()
+    info("ReleaseQHYCCDResource -> %d (0 = OK)" % rc)
+    res["ok"] = not res["erreurs"]
+    return res
+
+
+def _ctypes_main(argv):
+    """Point d'entrée de l'ENFANT : _diag_camera_qhy.py --ctypes-sonde ..."""
+    action = argv[2] if len(argv) > 2 else "plages"
+    cid = argv[3] if len(argv) > 3 else ""
+    slot = int(argv[4]) if len(argv) > 4 else 1
+    try:
+        res = _sonde_ctypes(action, cid, slot)
+    except Exception as e:
+        print("# EXCEPTION : " + repr(e), flush=True)
+        res = {"ok": False, "action": action, "erreurs": [repr(e)]}
+    print(json.dumps(res, ensure_ascii=True), flush=True)
+    return 0
+
+
 # (fusion du 19/09/2026 : UNE SEULE définition de _infos_versions() et de
 #  _open_supporte_roi() — les doublons qui suivaient écrasaient la version la
 #  plus informative, seule conservée ci-dessus. Une redéfinition silencieuse
@@ -298,6 +656,8 @@ class BancQHY:
         # SDK natif n'est PAS réinitialisable (aucune fonction de libération
         # dans le binding) — la 2e ouverture est à risque (constat réel).
         self._deja_ouverte = False
+        self._ctypes_occupe = False   # sonde ctypes déjà en cours ?
+        self._lbl_ctypes_txt = None   # maj de l'étiquette sonde (via _tick)
         self._fps = 0.0
         self._n = 0
         self._t0 = 0.0
@@ -319,6 +679,11 @@ class BancQHY:
             self._log_direct(ligne)
         self._log_direct(f"case ROI transmise à open() : "
                          f"{'OUI' if _open_supporte_roi() else 'NON'}")
+        self._log_direct(f"BANC version : {BANC_VERSION} (la sonde ctypes "
+                         f"plages/roue n'existe qu'à partir de la 2.17.0 — "
+                         f"si cette ligne manque ou dit 2.16, le banc "
+                         f"exécuté est l'ANCIEN : remplacer "
+                         f"_diag_camera_qhy.py)")
         ok_libre, noms = _binding_sans_liberation()
         if ok_libre:
             self._log_direct(
@@ -503,6 +868,31 @@ class BancQHY:
                    command=self._relire_froid).pack(side="left",
                                                     padx=(6, 0))
 
+        # Sonde ctypes native : qhyccd.dll DIRECTEMENT (le binding n'expose
+        # ni les PLAGES (GetQHYCCDParamMinMaxStep) ni la ROUE (CFW*)). La
+        # sonde tourne dans un SOUS-PROCESSUS isolé : aucun conflit d'état
+        # SDK avec le banc, un segfault natif ne tue que l'enfant. Refus si
+        # le flux est actif : une caméra ne doit jamais être ouverte 2 fois.
+        boxc = ttk.LabelFrame(self.root,
+                              text="Sonde ctypes native (qhyccd.dll direct)"
+                                   " — plages des contrôles + roue intégrée",
+                              padding=6)
+        boxc.pack(fill="x", padx=6, pady=(4, 0))
+        ttk.Button(boxc, text="\U0001F4CF Plages (MinMaxStep)",
+                   command=self._plages_ctypes).pack(side="left")
+        ttk.Label(boxc, text="roue → position").pack(side="left",
+                                                     padx=(10, 2))
+        self.var_slot = tk.StringVar(value="1")
+        ttk.Entry(boxc, textvariable=self.var_slot, width=4).pack(
+            side="left")
+        ttk.Button(boxc, text="\U0001F300 Tourner (ctypes)",
+                   command=self._roue_ctypes).pack(side="left", padx=(4, 0))
+        ttk.Button(boxc, text="\U0001F4D6 Statut CFW",
+                   command=self._cfw_statut_ctypes).pack(side="left",
+                                                         padx=(6, 0))
+        self.lbl_ctypes = ttk.Label(boxc, text="—")
+        self.lbl_ctypes.pack(side="left", padx=10)
+
         self.lbl_img = ttk.Label(self.root, anchor="center",
                                  text="\n\n(le flux apparaîtra ici)\n\n")
         self.lbl_img.pack(fill="both", expand=True, padx=6, pady=4)
@@ -524,6 +914,9 @@ class BancQHY:
             self.lbl_cam.config(text=self._lbl_cam_txt,
                                 foreground="#1d7f1d")
             self._lbl_cam_txt = None
+        if self._lbl_ctypes_txt is not None:
+            self.lbl_ctypes.config(text=self._lbl_ctypes_txt)
+            self._lbl_ctypes_txt = None
         # Affichage de la dernière frame (normalisation min→max, mono)
         a = self._aperçu
         if a is not None:
@@ -1324,6 +1717,189 @@ class BancQHY:
                        "set_param(16, PWM 0-255) ; lecture 14 (temp) / "
                        "15 (PWM) — aucune méthode dédiée dans le binding.")
 
+    # --- sonde ctypes native (plages + roue intégrée) ---------------------
+
+    def _plages_ctypes(self):
+        self._lancer_sonde_ctypes("plages", 60)
+
+    def _cfw_statut_ctypes(self):
+        self._lancer_sonde_ctypes("cfw_status", 40)
+
+    def _roue_ctypes(self):
+        try:
+            pos = int(self.var_slot.get())
+        except ValueError:
+            messagebox.showerror("Roue", "Position : nombre entier (1..16).")
+            return
+        if not 1 <= pos <= 16:
+            messagebox.showerror("Roue",
+                                 "Position entre 1 et 16 (ASCII '0'..'F').")
+            return
+        self._lancer_sonde_ctypes("cfw_order", 50, pos)
+
+    def _lancer_sonde_ctypes(self, action, timeout_s, slot=1):
+        """Garde-fous puis lancement de la sonde dans un sous-processus.
+
+        Refus si le flux est actif (ou caméra encore ouverte côté binding) :
+        une caméra ne doit JAMAIS être ouverte deux fois (constat du
+        19/09/2026 : double ouverture du handle USB = segfault natif).
+        """
+        if (self.cam is not None and self.cam.cam is not None) \
+                or self._flux_actif:
+            self.q_msg.put("sonde ctypes : une caméra est OUVERTE côté banc "
+                           "(▶ Démarrer) — clique « ■ Arrêter » d'abord : "
+                           "une caméra ne doit jamais être ouverte deux "
+                           "fois.")
+            return
+        if self._ctypes_occupe:
+            self.q_msg.put("sonde ctypes : déjà en cours, patiente…")
+            return
+        self._ctypes_occupe = True
+        self._lbl_ctypes_txt = "sonde en cours…"
+        self._trace(f"sonde ctypes ({action}) : lancement du sous-processus")
+        threading.Thread(target=self._sonde_thread,
+                         args=(action, self.camera_id, slot, timeout_s),
+                         daemon=True).start()
+
+    def _sonde_thread(self, action, cid, slot, timeout_s):
+        """Exécute l'enfant, relaie ses lignes « # », puis affiche le JSON."""
+        try:
+            cmd = [sys.executable, os.path.abspath(__file__),
+                   "--ctypes-sonde", action, cid or "", str(slot)]
+            r = subprocess.run(cmd, capture_output=True, text=True,
+                               timeout=timeout_s,
+                               creationflags=mqhy._CREATE_NO_WINDOW)
+            for ligne in (r.stdout or "").splitlines():
+                if ligne.startswith("#"):
+                    self.q_msg.put("  " + ligne[1:].strip())
+            jsonl = None
+            for ligne in (r.stdout or "").splitlines():
+                if ligne.startswith("{"):
+                    jsonl = ligne
+            if jsonl is None:
+                det = (r.stderr or "").strip().splitlines()
+                self.q_msg.put(
+                    "sonde ctypes : le sous-processus n'a rien répondu"
+                    + (f" — dernier mot : {det[-1]}" if det else "")
+                    + " (segfault natif possible : retente une fois ; si ça "
+                      "se répète, note le chemin de la DLL affiché plus "
+                      "haut).")
+                return
+            res = json.loads(jsonl)
+            if res.get("action") == "plages":
+                self._afficher_plages(res)
+            else:
+                self._afficher_cfw(res)
+        except subprocess.TimeoutExpired:
+            self.q_msg.put(f"sonde ctypes : PAS DE RÉPONSE en {timeout_s} s "
+                           "— le SDK est resté bloqué ; retente, et si ça "
+                           "persiste, c'est la DLL native qu'il faudra "
+                           "examiner.")
+        except Exception as e:
+            self.q_msg.put(f"sonde ctypes : erreur inattendue ({e!r})")
+        finally:
+            self._ctypes_occupe = False
+            self._lbl_ctypes_txt = "—"
+
+    @staticmethod
+    def _ligne_controle(cid_, e, fmt=None):
+        """Une ligne lisible pour un contrôle de la sonde (min/max/step)."""
+        nom = e.get("nom", "")
+        base = f"ctrl {cid_:>2} {nom:<24}"
+        if "min" in e:
+            plage = f"[{e['min']:g} .. {e['max']:g}] pas {e['step']:g}"
+            if fmt == "duree":
+                plage += (f"   ({_fmt_duree(e['min'])} -> "
+                          f"{_fmt_duree(e['max'])})")
+            doute = ("   ⚠ " + e["doute"]) if "doute" in e else ""
+            return f"{base} {plage}{doute}"
+        return f"{base} pas de plage (rc={e.get('rc_minmax', '?')})"
+
+    def _afficher_plages(self, res):
+        self.q_msg.put("=== SONDE CTYPES (qhyccd.dll direct) — PLAGES ===")
+        if not res.get("ok"):
+            for e in res.get("erreurs", []):
+                self.q_msg.put("  échec : " + e)
+            if not res.get("controles"):
+                return
+        self.q_msg.put(f"  DLL : {res.get('dll', '?')}")
+        if res.get("model"):
+            self.q_msg.put(f"  modèle : {res['model']}   "
+                           f"id : {res.get('cid', '?')}")
+        ctr = res.get("controles", {})
+        self.q_msg.put("--- RÉSUMÉ (valeurs pour câbler les curseurs) ---")
+        for cid_, libelle, fmt in ((8, "EXPOSURE (µs)", "duree"),
+                                   (6, "GAIN", None),
+                                   (7, "OFFSET", None),
+                                   (18, "COOLER (consigne °C)", None),
+                                   (12, "UsbTraffic", None),
+                                   (44, "CfwSlotsNum", None)):
+            e = ctr.get(str(cid_))
+            if e is None:
+                self.q_msg.put(f"  {libelle:<24} INDISPONIBLE")
+            else:
+                self.q_msg.put("  " + self._ligne_controle(cid_, e, fmt))
+        self.q_msg.put("--- TOUS les contrôles disponibles ---")
+        for k in sorted(ctr, key=int):
+            self.q_msg.put("  " + self._ligne_controle(int(k), ctr[k]))
+        ind = res.get("indisponibles", [])
+        if ind:
+            self.q_msg.put("(indisponibles : " + ", ".join(map(str, ind))
+                           + ")")
+        cfw = res.get("cfw")
+        if cfw:
+            self._lignes_cfw(cfw)
+
+    def _afficher_cfw(self, res):
+        self.q_msg.put("=== SONDE CTYPES — ROUE INTÉGRÉE (CFW) ===")
+        if not res.get("ok"):
+            for e in res.get("erreurs", []):
+                self.q_msg.put("  échec : " + e)
+            if not res.get("cfw"):
+                return
+        self.q_msg.put(f"  DLL : {res.get('dll', '?')}")
+        if res.get("model"):
+            self.q_msg.put(f"  modèle : {res['model']}")
+        self._lignes_cfw(res.get("cfw", {}))
+
+    def _lignes_cfw(self, cfw):
+        """Verdicts roue : détection, slots, statut relu (ASCII doc QHY)."""
+        self.q_msg.put("--- ROUE INTÉGRÉE (fonctions natives CFW) ---")
+        if cfw.get("plugged"):
+            self.q_msg.put("  roue DÉTECTÉE (IsQHYCCDCFWPlugged = 0 = "
+                           "trouvé, doc QHY)")
+        else:
+            self.q_msg.put(f"  pas de roue détectée "
+                           f"(IsQHYCCDCFWPlugged = {cfw.get('plugged_rc')})")
+        sp = cfw.get("slots_param")
+        if sp is not None:
+            note = " (9 = lecture non supportée, doc QHY)" if sp == 9 else ""
+            self.q_msg.put(f"  slots (ctrl 44) : {sp:g}{note}")
+        statut = cfw.get("status", "")
+        if statut:
+            p = ord(statut[0]) - ord('0') + 1
+            self.q_msg.put(
+                f"  statut relu : {statut!r} -> position {p} selon la doc "
+                "('0' = position 1). Rappel : la voie binding lit/écrit "
+                "48+n (49 = « filtre 1 » relevé en réel) — si les deux ne "
+                "concordent pas, c'est l'EFFET PHYSIQUE qui tranche "
+                "(leçon CLAUDE.md).")
+        else:
+            self.q_msg.put("  statut relu : (chaîne vide)")
+        if "envoyee" in cfw:
+            en = cfw["envoyee"]
+            self.q_msg.put(f"  ordre envoyé : position {en['position']} "
+                           f"(ASCII {en['ascii']!r}), rc="
+                           f"{cfw.get('send_rc')}")
+            if cfw.get("confirme"):
+                self.q_msg.put("  VERDICT : rotation CONFIRMÉE par relecture "
+                               f"(statut final {cfw.get('final')!r}). "
+                               "⚠ Vérifie quand même l'EFFET PHYSIQUE "
+                               "(slot vide/opaque → le flux change).")
+            else:
+                self.q_msg.put("  VERDICT : PAS de confirmation en 25 s — "
+                               "voir les statuts relus ci-dessus.")
+
     def _ouvrir_log(self):
         if os.path.isfile(FICHIER_LOG):
             os.startfile(FICHIER_LOG)
@@ -1341,6 +1917,10 @@ class BancQHY:
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--ctypes-sonde":
+        # ENFANT de la sonde ctypes (sous-processus isolé, cf. section
+        # SONDE CTYPES NATIVE) : pas de fenêtre, JSON sur stdout.
+        sys.exit(_ctypes_main(sys.argv))
     root = tk.Tk()
     root.title("Banc de test QHY — AVAStack (diagnostic, même code caméra)")
     root.geometry("1020x860")
