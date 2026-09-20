@@ -83,6 +83,13 @@ class MultiFolderCamera(CameraBase):
         return None
 
     # -- état pour l'interface (par rôle) -----------------------------------
+    def scanner(self):
+        """Scan TOUS les dossiers SANS lire (jalon 42 : matière de la
+        cadence d'empilement — le worker sait ce qui attend sur le disque
+        avant de décider de lire)."""
+        for cam in self.cams:
+            cam._scan()
+
     def stats(self):
         """{rôle: {"count": n, "failed": n, "last_file": chemin}} — matière
         des lignes d'état par canal (« Ha: 12 · O3: 9 »)."""

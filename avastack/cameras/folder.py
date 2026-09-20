@@ -88,6 +88,19 @@ class FolderCamera(CameraBase):
         return None
 
     # -- interface CameraBase ---------------------------------------------
+    @property
+    def pending(self):
+        """Fichiers détectés mais pas encore lus (jalon 42 : matière de la
+        cadence d'empilement — même contrat que MultiFolderCamera)."""
+        return len(self._pending)
+
+    def scanner(self):
+        """Repère les nouvelles brutes complètes SANS les lire (jalon 42 :
+        permet au worker de savoir ce qui attend sur le disque AVANT de
+        décider de lire — la décision de cadence porte alors sur TOUT ce
+        qui est arrivé, pas seulement sur ce qui a déjà été détecté)."""
+        self._scan()
+
     def read(self, timeout=1.0):
         """→ prochaine image du dossier (attend jusqu'à `timeout` s), sinon None.
         `timeout` court (rotation round-robin de MultiFolderCamera) : le

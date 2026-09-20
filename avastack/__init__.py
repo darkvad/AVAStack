@@ -14,9 +14,40 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.21.0"
+AVASTACK_VERSION = "2.21.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.21.1 : CADENCE D'EMPILEMENT EN SURVEILLANCE DE DOSSIER (jalon 42,
+#          demande d'Alain) : avec la chaîne lourde live (gradient GraXpert,
+#          débruitage) en mode dossier/multi-dossiers, CHAQUE brute relançait
+#          la résolution — l'indicateur passait de « composition » à
+#          « étirement » sans interruption, sablier en permanence. NOUVEAU :
+#          combobox « Empiler les brutes » dans « Dossier surveillé »
+#          (dès réception / 5 s / 15 s / 30 s / 1 min / 5 min ; persistée
+#          `cadence_lecture`). SÉMANTIQUE : les brutes qui arrivent pendant
+#          la fenêtre d'attente RESTENT SUR LE DISQUE (aucune perte —
+#          FolderCamera/MultiFolderCamera ne lisent qu'un fichier détecté
+#          complet) puis sont DRAINÉES EN RAFALE à l'échéance ; le solveur
+#          VeraLux ne relance qu'une fois par rafale (dernier job gagnant)
+#          au lieu d'à chaque brute — entre les rafales, l'aperçu est au
+#          repos. L'empilement LINÉAIRE accumule TOUTES les brutes, la
+#          cadence ne change que le RYTHME, jamais le contenu.
+#          - avastack/cameras/folder.py : propriété `pending` (fichiers
+#            détectés non lus — même contrat que MultiFolderCamera) +
+#            `scanner()` (scan SANS lecture, pour que la décision de cadence
+#            porte sur TOUT ce qui est arrivé, pas seulement sur ce qui a
+#            déjà été détecté) ; avastack/cameras/multifolder.py :
+#            `scanner()` (tous dossiers).
+#          - avastack/ui/app.py : worker — scan (≤ 1/0,4 s) + porte
+#            `_autoriser_lecture()` AVANT read(), armement `_armer_cadence()`
+#            quand TOUTES les brutes détectées sont lues ; miroir thread-sûr
+#            `cadence_lecture` (int UI → worker) ; sources NON-dossier
+#            (caméras SDK, webcam, simulée) JAMAIS throttlées (leur file ne
+#            doit pas s'accumuler en mémoire). Persistance tolérante (valeur
+#            inconnue → « dès réception »).
+#          Test _test_cadence_jalon42 (porte/armement/miroir/config, dossier
+#          + composition) ; régression : _test_multifolder_jalon19,
+#          _test_ui_jalon5.
 # v2.21.0 : UI INDÉPENDANTE DU MOTEUR — COULEUR LIVE ET ÉTAT DES CALCULS
 #          VISIBLES DANS LES DEUX MODES (jalon 41, décision d'Alain :
 #          « rendre visible tout ce qui s'applique aussi en STF »).

@@ -114,6 +114,19 @@ class App:
     VL_DN_LABELS = dict(VL_DN_METHODES)    # code → libellé (restauration)
     VL_DN_CODES = {lib: code for code, lib in VL_DN_METHODES}
 
+    # Cadence d'empilement (jalon 42, demande d'Alain) : en surveillance de
+    # dossier, à quelle fréquence les brutes sont lues/empilées. Les brutes
+    # qui arrivent pendant la fenêtre d'attente RESTENT sur le disque (aucune
+    # perte) puis sont drainées en rafale à l'échéance — le solveur VeraLux
+    # ne relance qu'une fois par rafale (dernier job gagnant) au lieu d'à
+    # CHAQUE brute : c'est ce qui évite le sablier permanent avec la chaîne
+    # lourde (gradient/débruitage live).
+    CADENCES = (("dès réception", 0), ("toutes les 5 s", 5),
+                ("toutes les 15 s", 15), ("toutes les 30 s", 30),
+                ("toutes les 1 min", 60), ("toutes les 5 min", 300))
+    CADENCE_CODES = dict(CADENCES)         # libellé → secondes
+    CADENCE_LABELS = {s: l for l, s in CADENCES}   # secondes → libellé
+
     # Débruitage du TRAITEMENT EXTERNE (jalon 8, remis le 16/09/2026) :
     # mêmes algorithmes locaux que le live (ondelettes/NLM) ET le débruitage
     # GraXpert IA (lent) — au choix, force commune 0..1. En externe, les
@@ -279,6 +292,15 @@ class App:
         self._vl_lbl_txt = "—"          # mémo du texte affiché dans lbl_vl
                                         # (jalon 40 : anti-spam du ⏳ à 30 ms)
         self._vl_pb_active = False      # curseur de calcul actuellement visible
+        # Jalon 42 : cadence d'empilement (sources dossier). `cadence_lecture`
+        # = miroir thread-sûr (int écrit côté UI, lu par le worker) ;
+        # `_prochaine_lecture`/`_prochain_scan` = état du worker seul ;
+        # `_a_lu_une_frame` = drapeau « une brute vient d'être lue » (le
+        # worker arme la fenêtre quand TOUTES les brutes détectées sont lues).
+        self.cadence_lecture = 0
+        self._prochaine_lecture = 0.0
+        self._prochain_scan = 0.0
+        self._a_lu_une_frame = False
         self.ext_state = "idle"         # idle | busy | ok | error
         self.ext_t0 = None              # début du traitement en cours (chrono)
         self._ext_popup = False        # erreur à signaler par popup
@@ -488,6 +510,12 @@ class App:
         if c.get("vl_demagenta"):
             self.var_vl_demagenta.set(True)
             self._on_vl_demagenta()
+        # Jalon 42 : cadence d'empilement — restauration TOLÉRANTE (valeur
+        # absente/inconnue → « dès réception », jamais de surprise).
+        cad = c.get("cadence_lecture")
+        if isinstance(cad, (int, float)) and int(cad) in self.CADENCE_LABELS:
+            self.var_cadence.set(self.CADENCE_LABELS[int(cad)])
+            self._on_cadence()
         self._maj_lbl_sharp()        # étiquette juste dès le démarrage
         # Moteur d'étirement en DERNIER : la bascule VeraLux masque les
         # réglages STF et affiche le cadre VeraLux avec les valeurs ci-dessus.
@@ -540,6 +568,8 @@ class App:
         c["ext_scnr_doux"] = bool(self.var_ext_scnr_doux.get())
         c["ext_demagenta"] = bool(self.var_ext_demagenta.get())
         c["sigk"] = self.var_sigk.get()
+        # Jalon 42 : cadence d'empilement (mode dossier), en secondes.
+        c["cadence_lecture"] = int(self.cadence_lecture)
         c["target"] = self.var_target.get()
         c["gamma"] = self.var_gamma.get()
         c["saturation"] = self.var_saturation.get()
@@ -849,6 +879,22 @@ class App:
                      values=["Auto", "RGGB", "BGGR", "GRBG", "GBRG", "Non"]
                      ).pack(side="left", padx=(4, 0))
         self.var_cfa.trace_add("write", self._on_cfa)
+        # Jalon 42 (demande d'Alain) : cadence d'empilement — en surveillance
+        # avec la chaîne lourde (gradient/débruitage live), chaque brute
+        # relançait la résolution : le sablier tournait en PERMANENCE. Ici on
+        # choisit à quelle fréquence les brutes sont lues/empilées ; celles
+        # qui arrivent entre-temps attendent sur le disque (aucune perte)
+        # puis sont drainées en rafale — un seul recalcul par rafale.
+        rowcad = ttk.Frame(box)
+        rowcad.pack(fill="x", pady=(3, 0))
+        ttk.Label(rowcad, text="Empiler les brutes :").pack(side="left")
+        self.var_cadence = tk.StringVar(value="dès réception")
+        self.cb_cadence = ttk.Combobox(
+            rowcad, textvariable=self.var_cadence, state="readonly", width=16,
+            values=[lib for lib, _ in self.CADENCES])
+        self.cb_cadence.pack(side="left", padx=(4, 0))
+        self.cb_cadence.bind("<<ComboboxSelected>>",
+                             lambda e: self._on_cadence())
         self.lbl_last = ttk.Label(box, text="Dernier fichier : —")
         self.lbl_last.pack(anchor="w")
 
@@ -1858,6 +1904,54 @@ class App:
         if self.camera is not None:
             self.pending_settings = (self.expo_ms, self.gain_val)
             self.pending_offset = float(self.var_offset.get())
+
+    # --- cadence d'empilement (jalon 42, demande d'Alain) -------------------
+    def _brutes_en_attente(self):
+        """Brutes détectées sur le disque mais pas encore lues (jalon 42) —
+        sources dossier/composition uniquement ; 0 pour les autres."""
+        cam = self.camera
+        if cam is None:
+            return 0
+        if self._mode_compo:
+            return int(getattr(cam, "pending", 0))
+        return len(getattr(cam, "_pending", []))
+
+    def _cadence_dossier(self):
+        """True si la cadence s'applique à la source courante (jalon 42) :
+        dossier surveillé / composition multi-dossiers SEULEMENT — les
+        files des caméras SDK ne doivent jamais s'accumuler (mémoire)."""
+        return isinstance(self.camera, (FolderCamera, MultiFolderCamera))
+
+    def _autoriser_lecture(self):
+        """Décision de cadence (jalon 42) : True = le worker peut lire une
+        brute maintenant. En surveillance de dossier, les brutes qui
+        arrivent pendant la fenêtre d'attente RESTENT sur le disque (aucune
+        perte) puis sont drainées en rafale à l'échéance — le solveur
+        VeraLux ne relance alors qu'une fois par rafale (dernier job
+        gagnant) au lieu d'à CHAQUE brute : c'est ce qui évite le sablier
+        permanent avec la chaîne lourde (gradient/débruitage live).
+        cadence 0 = « dès réception » (comportement inchangé)."""
+        if self.cadence_lecture <= 0 or not self._cadence_dossier():
+            return True
+        if self._brutes_en_attente() == 0:
+            return True               # rien d'arrivé : read() attendra
+        return time.monotonic() >= self._prochaine_lecture
+
+    def _armer_cadence(self):
+        """(Ré)arme la fenêtre de cadence QUAND toutes les brutes détectées
+        ont été lues (jalon 42) — la prochaine rafale n'aura lieu qu'à
+        l'échéance. Appelé par le worker seul."""
+        if self.cadence_lecture > 0 and self._brutes_en_attente() == 0:
+            self._prochaine_lecture = time.monotonic() + self.cadence_lecture
+
+    def _on_cadence(self):
+        """Combobox « Empiler les brutes » (jalon 42) : répercute la cadence
+        dans le worker (miroir thread-sûr : int écrit côté UI, lu par le
+        worker — jamais d'accès Tk depuis le thread de travail)."""
+        self.cadence_lecture = self.CADENCE_CODES.get(
+            self.var_cadence.get(), 0)
+        if self.cadence_lecture <= 0:
+            self._prochaine_lecture = 0.0   # « dès réception » : plus de fenêtre
 
     # --- contrôles caméra QHY (jalon 25) : demandes posées ICI (thread Tk),
     # consommées par le thread de travail — jamais d'appel SDK depuis Tk.
@@ -3805,7 +3899,21 @@ class App:
                 except Exception as e:
                     self.saved_path = f"ERREUR: {e}"
 
-            lu = self.camera.read()
+            # Jalon 42 : cadence d'empilement (sources dossier, cf.
+            # _autoriser_lecture). Le scan SANS lecture ne tourne que si une
+            # cadence est posée, au plus toutes les 0,4 s — il permet de
+            # connaître les brutes EN ATTENTE SUR LE DISQUE avant de décider
+            # de lire (sinon la décision ne porterait que sur ce qui a déjà
+            # été détecté, et chaque brute isolée serait lue immédiatement).
+            if self.cadence_lecture > 0 and self._cadence_dossier():
+                maintenant = time.monotonic()
+                if maintenant >= self._prochain_scan:
+                    try:
+                        self.camera.scanner()
+                    except Exception:
+                        pass
+                    self._prochain_scan = maintenant + 0.4
+            lu = (self.camera.read() if self._autoriser_lecture() else None)
             if lu is None:
                 time.sleep(0.005)
                 continue
@@ -3821,6 +3929,7 @@ class App:
             else:
                 frame, role = lu, None
             frame = self.calib.apply(frame)
+            self._a_lu_une_frame = True   # jalon 42 : une brute vient d'être lue
 
             # Jalon 17 : filtre anti-brutes TRÈS DÉFOCALISÉES — AVANT tout le
             # reste (une frame rejetée n'est ni archivée ni empilable, donc
@@ -4090,6 +4199,13 @@ class App:
                 self.q.put_nowait((show, hist, st))
             except queue.Full:
                 pass
+            # Jalon 42 : quand TOUTES les brutes détectées ont été lues, la
+            # fenêtre de cadence est (ré)armée — la prochaine rafale n'aura
+            # lieu qu'à l'échéance (les brutes qui arrivent entre-temps
+            # attendent sur le disque, aucune perte).
+            if self._a_lu_une_frame:
+                self._armer_cadence()
+                self._a_lu_une_frame = False
             time.sleep(max(0.0, 1.0 / 20.0 - (time.perf_counter() - t0)))
 
     @staticmethod
