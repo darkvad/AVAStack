@@ -97,6 +97,15 @@ app.camera._pending.append("c.fits")     # une NOUVELLE brute arrive
 verifie(not app._autoriser_lecture(),
         "nouvelle brute pendant la fenêtre : lecture refusée (groupée)")
 app.camera._pending.clear()
+# Jalon 46 : plafond de rafale — dossiers déjà REMPLIS (acquisitions
+# d'autres soirées) : le drain ne doit pas vider TOUT le backlog d'un coup.
+app.camera._pending.append("d.fits")     # encore des brutes en attente
+app._rafale_reste = 0                    # budget de la rafale épuisé
+app._armer_cadence()
+verifie(app._prochaine_lecture > time.monotonic() + 29.0
+        and app._rafale_reste == app.RAFALE_MAX,
+        "budget de rafale épuisé : fenêtre armée MÊME avec des brutes en "
+        f"attente (plafond {app.RAFALE_MAX}), budget rechargé")
 
 # ==================================== [3] sources non-dossier : jamais throttlées
 print("[3] sources non-dossier (SDK, webcam…) jamais throttlées")
@@ -156,6 +165,9 @@ ui.CONFIG = dict(sauvegardes[-1])
 app2 = ui.App(root)
 verifie(app2.cadence_lecture == 15 and app2.var_cadence.get() == "toutes les 15 s",
         "restauration : cadence 15 s rendue (case + miroir worker)")
+verifie(app2._rafale_reste == app2.RAFALE_MAX,
+        "une App neuve démarre avec un budget de rafale complet "
+        f"({app2.RAFALE_MAX})")
 ui.CONFIG = {"cadence_lecture": "inconnu"}
 app3 = ui.App(root)
 verifie(app3.cadence_lecture == 0 and app3.var_cadence.get() == "dès réception",

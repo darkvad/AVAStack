@@ -127,6 +127,14 @@ class App:
     CADENCE_CODES = dict(CADENCES)         # libellé → secondes
     CADENCE_LABELS = {s: l for l, s in CADENCES}   # secondes → libellé
 
+    # Jalon 46 (retour d'Alain : dossiers déjà REMPLIS d'acquisitions
+    # d'autres soirées) : plafond de rafale. Sans lui, la première rafale
+    # devait vider TOUT le backlog d'un coup (des centaines de fichiers →
+    # sablier en continu pendant des minutes au démarrage). Avec le plafond,
+    # chaque rafale empile AU PLUS RAFALE_MAX brutes ; le reste attend les
+    # rafales suivantes (aucune perte — les fichiers restent sur le disque).
+    RAFALE_MAX = 10
+
     # Débruitage du TRAITEMENT EXTERNE (jalon 8, remis le 16/09/2026) :
     # mêmes algorithmes locaux que le live (ondelettes/NLM) ET le débruitage
     # GraXpert IA (lent) — au choix, force commune 0..1. En externe, les
@@ -301,6 +309,9 @@ class App:
         self._prochaine_lecture = 0.0
         self._prochain_scan = 0.0
         self._a_lu_une_frame = False
+        self._rafale_reste = self.RAFALE_MAX   # jalon 46 : budget de la
+                                               # rafale en cours (décrémenté
+                                               # à chaque brute lue)
         self._cadence_lbl_txt = None    # mémo du texte affiché dans lbl_cadence
         self._cadence_cbs = []          # combobox « Empiler les brutes » (une
         self._cadence_lbls = []         # par mode, jalon 45 : dossier + compo)
@@ -1949,11 +1960,17 @@ class App:
         return time.monotonic() >= self._prochaine_lecture
 
     def _armer_cadence(self):
-        """(Ré)arme la fenêtre de cadence QUAND toutes les brutes détectées
-        ont été lues (jalon 42) — la prochaine rafale n'aura lieu qu'à
-        l'échéance. Appelé par le worker seul."""
-        if self.cadence_lecture > 0 and self._brutes_en_attente() == 0:
+        """(Ré)arme la fenêtre de cadence (jalon 42/46) — appelé par le
+        worker quand une brute vient d'être lue. La rafale SE TERMINE quand
+        soit TOUTES les brutes détectées ont été lues (jalon 42), soit le
+        budget de rafale est épuisé (jalon 46 : RAFALE_MAX brutes — avec un
+        dossier déjà REMPLI d'acquisitions antérieures, le drain pouvait
+        durer des minutes d'affilée ; le plafond borne chaque rafale et le
+        reste des fichiers attend les rafales suivantes, aucune perte)."""
+        if self.cadence_lecture > 0 and (self._rafale_reste <= 0
+                                         or self._brutes_en_attente() == 0):
             self._prochaine_lecture = time.monotonic() + self.cadence_lecture
+            self._rafale_reste = self.RAFALE_MAX
 
     def _on_cadence(self):
         """Combobox « Empiler les brutes » (jalon 42) : répercute la cadence
@@ -4000,6 +4017,7 @@ class App:
                 frame, role = lu, None
             frame = self.calib.apply(frame)
             self._a_lu_une_frame = True   # jalon 42 : une brute vient d'être lue
+            self._rafale_reste -= 1       # jalon 46 : budget de rafale consommé
 
             # Jalon 17 : filtre anti-brutes TRÈS DÉFOCALISÉES — AVANT tout le
             # reste (une frame rejetée n'est ni archivée ni empilable, donc

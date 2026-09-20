@@ -14,9 +14,27 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.21.4"
+AVASTACK_VERSION = "2.21.5"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.21.5 : PLAFOND DE RAFALE (jalon 46, retour d'Alain en composition :
+#          « rafale en cours » avec un grand nombre de brutes — ses dossiers
+#          contiennent déjà les acquisitions d'AUTRES soirées, donc la
+#          première rafale devait vider TOUT le backlog d'un coup : sablier
+#          en continu pendant des minutes au démarrage). NOUVEAU : chaque
+#          rafale empile AU PLUS RAFALE_MAX brutes (10, constante
+#          App.RAFALE_MAX) ; à l'épuisement du budget, la fenêtre est
+#          (ré)armée MÊME s'il reste des brutes détectées — elles attendent
+#          les rafales suivantes (aucune perte, fichiers sur le disque) ;
+#          la rafale se termine aussi naturellement quand le backlog est
+#          vide (jalon 42). Le sablier ne peut donc plus durer plus que la
+#          chaîne × RAFALE_MAX par rafale.
+#          - avastack/ui/app.py : `App.RAFALE_MAX` (constante documentée),
+#            budget `_rafale_reste` initialisé plein, décrémenté à chaque
+#            brute lue (worker), `_armer_cadence()` arme sur budget épuisé
+#            OU backlog vide et recharge le budget.
+#          Test _test_cadence_jalon42 étendu (armement sur budget épuisé,
+#          budget rechargé, App neuve pleine) ; régression : _test_ui_jalon5.
 # v2.21.4 : CADENCE COMMUNE AUX DEUX MODES + ÉTIQUETTE AU REPOS AVANT
 #          CONNEXION (jalon 45, retour d'Alain : l'étiquette affichait
 #          « cadence : sans objet (source non dossier) » AVANT même de
