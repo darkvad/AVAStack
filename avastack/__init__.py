@@ -14,9 +14,33 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.21.1"
+AVASTACK_VERSION = "2.21.2"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.21.2 : CORRECTIF CADENCE — LA FENÊTRE ARMÉE BLOQUE TOUTE LECTURE
+#          (jalon 43, constat réel d'Alain en COMPOSITION multi-dossiers :
+#          « les frames s'empilent toujours à la même vitesse »). BUG du
+#          jalon 42 : quand AUCUNE brute n'était encore détectée
+#          (`pending == 0`), la porte de cadence laissait passer read() —
+#          or c'est le SCAN INTERNE des caméras dossier (à l'intérieur de
+#          read(), et du round-robin MultiFolderCamera) qui détecte les
+#          fichiers : la brute était renvoyée À L'INSTANT où elle devenait
+#          complète, court-circuitant la fenêtre. Conséquence : le PREMIER
+#          fichier de chaque « rafale » partait toujours immédiatement, et
+#          pour des arrivées plus espacées que la fenêtre (composition :
+#          un fichier par rôle à la cadence des poses), CHAQUE fichier
+#          était « le premier » — la cadence ne ralentissait RIEN.
+#          CORRECTION : `_autoriser_lecture()` n'a plus le cas « backlog
+#          vide → autorisé » ; la fenêtre armée bloque TOUTE lecture
+#          (read() n'est jamais appelé pendant la fenêtre — son scan
+#          interne ne peut plus rien renvoyer). Pendant la fenêtre, le
+#          worker ne fait que scanner (0,4 s) et attendre : les brutes
+#          complétées attendent sur le disque puis sont drainées ENSEMBLE
+#          à l'échéance — un recalcul par rafale, comme prévu. Cas « dès
+#          réception » et sources non-dossier inchangés.
+#          Test _test_cadence_jalon42 mis à jour (fenêtre armée + backlog
+#          vide → REFUS, dossier ET composition) ; régression :
+#          _test_multifolder_jalon19, _test_ui_jalon5.
 # v2.21.1 : CADENCE D'EMPILEMENT EN SURVEILLANCE DE DOSSIER (jalon 42,
 #          demande d'Alain) : avec la chaîne lourde live (gradient GraXpert,
 #          débruitage) en mode dossier/multi-dossiers, CHAQUE brute relançait

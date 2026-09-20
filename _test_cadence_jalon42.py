@@ -11,8 +11,9 @@ Les brutes qui arrivent pendant la fenêtre d'attente restent sur le disque
 Vérifie, SANS worker ni fichiers réels (deques remplis à la main) :
 
   [1] porte de lecture : cadence « dès réception » → toujours autorisé ;
-      fenêtre armée + brutes en attente → REFUS ; brutes en attente et
-      fenêtre écoulée → autorisé ; aucune brute en attente → autorisé ;
+      fenêtre ARMÉE → REFUS, MÊME sans brute détectée (jalon 43 : sinon
+      le read() interne des caméras dossier court-circuitait la fenêtre —
+      constat réel d'Alain en composition) ; fenêtre écoulée → autorisé ;
   [2] armement : _armer_cadence() ne pose la fenêtre QUE si toutes les
       brutes détectées sont lues ;
   [3] portée : sources NON-dossier (caméra SDK muette) jamais throttlées ;
@@ -66,11 +67,14 @@ app.var_cadence.set("toutes les 30 s")
 app._on_cadence()
 verifie(app.cadence_lecture == 30,
         "combobox « toutes les 30 s » → miroir worker = 30")
-verifie(app._autoriser_lecture(),
-        "fenêtre armée mais AUCUNE brute en attente : lecture autorisée "
-        "(read() attendra les nouvelles)")
-app.camera._pending.append("a.fits")     # une brute détectée, non lue
 app._prochaine_lecture = time.monotonic() + 30.0
+# Jalon 43 (bug du jalon 42) : la fenêtre armée bloque TOUTE lecture, MÊME
+# sans brute détectée — sinon le scan INTERNE de read() renvoyait la brute
+# à l'instant où elle devenait complète (cadence inopérante en composition).
+verifie(not app._autoriser_lecture(),
+        "fenêtre armée, AUCUNE brute détectée : lecture REFUSÉE (sinon le "
+        "read() interne court-circuitait la fenêtre)")
+app.camera._pending.append("a.fits")     # une brute détectée, non lue
 verifie(not app._autoriser_lecture(),
         "brute en attente + fenêtre pas écoulée : lecture REFUSÉE (elle "
         "reste sur le disque)")
@@ -132,6 +136,10 @@ mfc.cams[1]._pending.clear()
 app._armer_cadence()
 verifie(app._prochaine_lecture > time.monotonic() + 29.0,
         "composition : armement dès que TOUTES les brutes sont lues")
+# Jalon 43 : en composition aussi, la fenêtre armée bloque TOUTE lecture
+# (même sans brute détectée) — c'était le bug constaté par Alain.
+verifie(not app._autoriser_lecture(),
+        "composition : fenêtre armée, backlog vide → lecture REFUSÉE")
 app._mode_compo = False
 
 # ==================================== [5] persistance

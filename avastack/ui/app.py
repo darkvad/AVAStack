@@ -1930,11 +1930,19 @@ class App:
         VeraLux ne relance alors qu'une fois par rafale (dernier job
         gagnant) au lieu d'à CHAQUE brute : c'est ce qui évite le sablier
         permanent avec la chaîne lourde (gradient/débruitage live).
-        cadence 0 = « dès réception » (comportement inchangé)."""
+        cadence 0 = « dès réception » (comportement inchangé).
+        JALON 43 (bug du jalon 42, constat réel d'Alain en composition) :
+        la fenêtre armée bloque TOUTE lecture, MÊME sans brute détectée —
+        sinon le scan interne des caméras dossier (à l'intérieur de
+        read()) détectait la brute à l'instant où elle devenait complète
+        et la renvoyait immédiatement, court-circuitant la fenêtre : la
+        cadence ne ralentissait RIEN pour des arrivées plus espacées que
+        la fenêtre (le premier fichier de chaque « rafale » partait toujours
+        tout de suite). Pendant la fenêtre, le worker ne fait que scanner
+        (0,4 s) et attendre — la détection se fait par scanner(), la lecture
+        attend l'échéance."""
         if self.cadence_lecture <= 0 or not self._cadence_dossier():
             return True
-        if self._brutes_en_attente() == 0:
-            return True               # rien d'arrivé : read() attendra
         return time.monotonic() >= self._prochaine_lecture
 
     def _armer_cadence(self):
