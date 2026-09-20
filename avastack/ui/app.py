@@ -48,13 +48,22 @@ RESTACK_HIST_MAX = 12      # entrées conservées dans l'historique de session (
 
 def _fmt_expo(ms):
     """Format d'affichage d'une exposition en ms : µs / ms / s selon l'ordre
-    de grandeur (le curseur log couvre 11 µs → 900 s)."""
+    de grandeur (le curseur log couvre 11 µs → 3600 s selon la caméra).
+
+    Jamais de notation scientifique (retour réel d'Alain, 20/09/2026 :
+    « 2e+03 s » illisible) : au-delà de 10 s la valeur est arrondie à
+    l'entier — le pas réel de la caméra est ≥ 1 ms, le dixième de seconde
+    n'a plus de sens — et les milliers sont séparés par une espace fine
+    insécable (« 2 000 s », « 20 000 s »)."""
     ms = float(ms)
     if ms < 1.0:
         return f"{ms * 1000.0:.0f} µs"
     if ms < 1000.0:
         return f"{ms:.1f} ms" if ms < 100.0 else f"{ms:.0f} ms"
-    return f"{ms / 1000.0:.3g} s"
+    s = ms / 1000.0
+    if s < 10.0:
+        return f"{s:.2f}".rstrip("0").rstrip(".") + " s"
+    return f"{round(s):_}".replace("_", "\u202f") + " s"
 
 # --- Jalon 17 : filtre anti-brutes TRÈS défocalisées (AVANT l'empilement) ---
 # Constat réel d'Alain (17/09/2026, après le jalon 15) : « ça a l'air OK sauf
@@ -561,6 +570,20 @@ class App:
     _EXPO_COURT = (0.011, 5000.0)      # ms : 11 µs → 5 s
     _EXPO_LONG = (1000.0, 900000.0)    # ms : 1 s → 900 s
 
+    # ------------------------------------------------------ case « Échelle longue »
+    # Jalon 34 (retours réels d'Alain, 20/09/2026) : avec des bornes RÉELLES
+    # (une seule plage log dynamique), la case n'a PLUS AUCUN effet
+    # (_expo_bornes la court-circuite) — la laisser visible serait un
+    # réglage factice ; on la masque à la connexion et on la remontre à la
+    # déconnexion. Sans sonde, son libellé suit désormais les bornes
+    # réellement actives au lieu du « 900 s » codé en dur (point 1 du
+    # relevé : avec la borne native 2000 s affichée ailleurs, un « 900 s »
+    # figé était trompeur).
+    def _maj_libelle_expo_longue(self):
+        lo, hi = self._EXPO_LONG
+        self.chk_expo_longue.config(
+            text=f"Échelle longue ({_fmt_expo(lo)} – {_fmt_expo(hi)})")
+
     def _expo_bornes(self):
         # Jalon 31 : bornes RÉELLES de la caméra connectée si la sonde les a
         # données (plage log unique couvrant toute la plage native) ;
@@ -724,9 +747,11 @@ class App:
                           command=lambda: self._on_pas_expo(1.25))
         b_ep.pack(side="left")
         self.chk_expo_longue = ttk.Checkbutton(
-            box, text="Échelle longue (1 s – 900 s)",
-            variable=self.var_expo_longue, command=self._on_echelle_expo)
+            box, text="", variable=self.var_expo_longue,
+            command=self._on_echelle_expo)
+        self._maj_libelle_expo_longue()   # libellé = bornes réelles (jalon 34)
         self.chk_expo_longue.pack(anchor="w")
+        self.chk_expo_longue._row = rowe    # jalon 34 : ancre de remontage
         self.sl_gain = self._add_slider(
             box, "Gain (0 – 175)", self.var_gain, 0.0, 175.0, 1.0,
             self._push_settings, "{:.0f}", saisie=True)
@@ -1711,6 +1736,10 @@ class App:
                 maj = getattr(self, "_maj_expo", None)
                 if maj is not None:
                     maj(self.var_expo.get())
+                # Jalon 34 : une seule plage log → la case est inutile.
+                chk = getattr(self, "chk_expo_longue", None)
+                if chk is not None:
+                    chk.pack_forget()
         # --- gain / offset : reconstruction de la ligne complète ---------
         # Jalon 32 : cid résolu PAR MARQUE via cap.plage(rôle) — les ids
         # diffèrent entre les SDK (« 6 » = gain QHY, mais balance des blancs
@@ -2317,6 +2346,12 @@ class App:
         self.capacites = None
         self._EXPO_DYN = None
         self.tec_plage = None
+        # Jalon 34 : la case « Échelle longue » redevient visible —
+        # le libellé est régénéré (bornes réelles de la caméra précédente effacées).
+        chk = getattr(self, "chk_expo_longue", None)
+        if chk is not None:
+            self._maj_libelle_expo_longue()
+            chk.pack(anchor="w", after=chk._row)
         self._filtres_dispo = FILTRES_ROUE
         self.cb_filtre.config(values=list(FILTRES_ROUE))
         self.lbl_tec_lib.config(text="Consigne °C :")

@@ -14,9 +14,29 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.20.0"
+AVASTACK_VERSION = "2.20.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.20.1 : AFFICHAGE DE L'EXPOSITION (jalon 34, points 1 et 2 de l'item 2d —
+#          retours RÉELS d'Alain du 20/09/2026, setup 2) :
+#          - (point 2) _fmt_expo ne produit JAMAIS de notation scientifique
+#            (avant : « 2e+03 s » au-delà de 1000 s, illisible) — au-delà de
+#            10 s la valeur est arrondie à l'entier (le pas réel de la caméra
+#            est ≥ 1 ms) et les milliers sont séparés par une espace fine
+#            insécable (« 2 000 s », « 20 000 s ») ;
+#          - (point 1) la case « Échelle longue » : le libellé « 1 s – 900 s »
+#            était CODÉ EN DUR alors que la caméra va jusqu'à sa borne native
+#            (2000 s sur Uranus-C Pro / SV305C) — le libellé est désormais
+#            GÉNÉRÉ (_maj_libelle_expo_longue) ; ET comme la case n'a PLUS
+#            AUCUN EFFET quand des bornes natives sont détectées (une seule
+#            plage log dynamique, _expo_bornes la court-circuite), elle est
+#            MASQUÉE à la connexion (pack_forget dans _adapter_ui_capacites)
+#            et remontée au défaut à la déconnexion (ancre `_row` = la ligne
+#            du curseur expo, after= pour retrouver sa place exacte) ;
+#          - _test_expo_affichage_jalon34.py : 13 vérifications (format
+#            décimal, milliers séparés, case masquée/remontée/libellé
+#            régénéré) ; non-régression : jalon32 25/25, jalon31 15/15,
+#            sliders jalon6 OK.
 # v2.20.0 : PILOTAGE TEC PLAYER ONE / SVBONY (jalon 33, demande d'Alain du
 #          20/09/2026) — le mécanisme app était DÉJÀ générique depuis le
 #          jalon 26 (sondage lire_refroidissement → boutons ❄ activés,
