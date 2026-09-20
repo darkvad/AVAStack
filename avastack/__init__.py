@@ -14,9 +14,30 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.20.4"
+AVASTACK_VERSION = "2.20.5"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.20.5 : CONNEXION AUTOMATIQUE SVBONY RÉTABLIE (jalon 36, correctif du
+#          point 4 de l'item 2d — retour réel d'Alain : « SVBONY (SDK) :
+#          connexion impossible — Propriétés illisibles : SVBONY SV305C »)
+#          — CAUSE (constat RÉEL du banc _diag_camera_svbony.py du
+#          19/09/2026) : le SDK SVBONY REFUSE SVBGetCameraProperty tant que
+#          la caméra n'est PAS ouverte, contrairement à la procédure « fiche
+#          puis ouverture » de la doc (clone ZWO) ; SVBonyCamera.open()
+#          lisait donc la fiche AVANT SVBOpenCamera et levait « Propriétés
+#          illisibles » SANS JAMAIS tenter l'ouverture — alors que le banc,
+#          qui ouvre d'abord, fonctionne. CORRECTION : ordre inversé dans
+#          open() — SVBOpenCamera D'ABORD, fiche ENSUITE ; fiche encore
+#          illisible → SVBCloseCamera propre avant l'échec (pas de caméra
+#          orpheline) ; SVBSetAutoSaveParam(0) à l'ouverture (constat réel
+#          du banc du 20/09/2026 : le SDK recharge ses paramètres
+#          sauvegardés au redémarrage — expo/gain hérités sinon). Test :
+#          _test_connexion_svbony_jalon36 (double de DLL qui rejoue le
+#          refus pré-ouverture constaté en réel + vérification d'ordre) ;
+#          régression : _test_capacites, _test_tec_jalon33,
+#          _test_pilotage_jalon35. Test réel SV305C à faire par Alain
+#          (setup 2) : connexion auto → bornes curseurs → TEC (⚠ alim 12 V)
+#          → démarrage → déconnexion.
 # v2.20.4 : PILOTAGE TEC ÉTENDU À TOUTES LES CAMÉRAS SDK (jalon 35, correctif
 #          du point 3 de l'item 2d — retour réel d'Alain du 20/09/2026,
 #          setup 2 : sur la POA Uranus-C Pro les contrôles TEC s'affichaient

@@ -172,21 +172,39 @@ class SVBonyCamera(CameraBase):
         self.id = info.CameraID
         self.name = info.FriendlyName.decode("utf-8", "replace").strip() or self.name
 
+        # ⚠ CONSTAT RÉEL (SV305C, banc _diag_camera_svbony.py du 19/09/2026)
+        # : SVBGetCameraProperty échoue AVANT l'ouverture — le SDK SVBONY
+        # n'expose la fiche qu'une fois SVBOpenCamera passé, contrairement à
+        # la procédure « fiche puis ouverture » de la doc (clone ZWO).
+        # L'ancien ordre (fiche AVANT ouverture) levait donc « Propriétés
+        # illisibles » SANS JAMAIS tenter l'ouverture → connexion auto
+        # refusée. ORDRE VALIDÉ PAR LE BANC : ouvrir D'ABORD, fiche ENSUITE.
+        if _DLL.SVBOpenCamera(self.id) != SVB_SUCCESS:
+            self.id = None
+            raise RuntimeError(f"Ouverture impossible : {self.name}")
         prop = _SVBCameraProperty()
         if _DLL.SVBGetCameraProperty(self.id, ctypes.byref(prop)) != SVB_SUCCESS:
+            _DLL.SVBCloseCamera(self.id)   # ne pas laisser la caméra ouverte
+            self.id = None
             raise RuntimeError(f"Propriétés illisibles : {self.name}")
         self._is_color = bool(prop.IsColorCam)
         self._w, self._h = prop.MaxWidth, prop.MaxHeight
         self._props = prop             # fiche SDK conservée pour la sonde
 
-        if _DLL.SVBOpenCamera(self.id) != SVB_SUCCESS:
-            raise RuntimeError(f"Ouverture impossible : {self.name}")
         # format : RGB24 pour couleur (débayerisation par la caméra), RAW16 mono
         _DLL.SVBSetOutputImageType(self.id, SVB_IMG_RGB24 if self._is_color
                                    else SVB_IMG_RAW16)
         _DLL.SVBSetROIFormat(self.id, 0, 0, self._w, self._h, 1)
         if _DLL.SVBStartVideoCapture(self.id) != SVB_SUCCESS:
             raise RuntimeError(f"Démarrage du flux impossible : {self.name}")
+        # DÉSACTIVER l'auto-sauvegarde (constat réel du banc du 20/09/2026 :
+        # le SDK recharge ses paramètres sauvegardés au redémarrage — expo/
+        # gain hérités d'une session précédente sinon ; l'app pose les
+        # siens explicitement à chaque pose).
+        try:
+            _DLL.SVBSetAutoSaveParam(self.id, 0)
+        except AttributeError:
+            pass
         self._started = True
 
     def read(self):
