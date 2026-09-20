@@ -11,31 +11,29 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.20.4** (`avastack/__init__.py`),
-  branche `master` — jalon 35 CORRIGÉ EN DEV (tout au vert), **COMMITÉ ET
-  POUSSÉ (0321914)**, **installateur v2.20.4 REBUILD** — **TEST RÉEL setup 2
-  (Player One) : POINT 3 VALIDÉ PAR ALAIN le 20/09/2026** (boutons ❄ POA
-  activés). (`installer/windows/output/avastack-setup.exe`) — copie de
-  l'installateur vers le miniPC à faire.
-- **Dernier jalon (35, 20/09/2026) — BOUTONS ❄ GRISÉS SUR LA POA (point 3
-  de l'item 2d)** :
-  - cause : `cam_pilotee` (la caméra que le worker sonde/pilote) était
-    resté QHY-only depuis le jalon 25 → le sondage
-    `lire_refroidissement()` n'était JAMAIS lancé pour Player One /
-    SVBONY / ZWO / Touptek — les implémentations TEC du jalon 33 étaient
-    saines mais jamais appelées ;
-  - correction : constante `CAMERAS_PILOTEES` (toutes les caméras SDK)
-    aux 3 points d'installation de la caméra (app.py : connexion auto
-    jalon 32, chemin QHY, repli « ▶ Démarrer ») ; les no-ops de
-    CameraBase garantissent l'absence d'effet pour une marque sans
-    TEC/roue (boutons ❄ grisés, combobox désactivée) ; garde
-    `hasattr(stop_live)` sur le chemin filtre (seul QHY l'expose) ;
-  - Tests : _test_pilotage_jalon35 14/14 (NOUVEAU — câblage app boutons
-    ❄ POA + SVBONY) ; jalon33 21/21 ; jalon32 25/25 ; jalon31 14/14 ;
-    jalon34 21/21.
-- **Reste à déboguer de l'item 2d : point 4** (connexion auto SVBONY
-  refusée « Propriétés illisibles ») — comparer avec le banc de diag
-  SVBONY VALIDÉ EN RÉEL (référence).
+- **Version stable de référence : AVAStack v2.20.5** (`avastack/__init__.py`),
+  branche `master` — jalon 36 CORRIGÉ EN DEV (tout au vert), **COMMITÉ ET
+  POUSSÉ (c09e191)**, **installateur v2.20.5 REBUILD**
+  (`installer/windows/output/avastack-setup.exe`) — copie de l'installateur
+  vers le miniPC à faire + TEST RÉEL SV305C à faire.
+- **Dernier jalon (36, 20/09/2026) — CONNEXION AUTO SVBONY RÉTABLIE (point 4
+  de l'item 2d, DERNIER POINT DE L'ITEM)** :
+  - cause (constat RÉEL du banc `_diag_camera_svbony.py` du 19/09/2026,
+    déjà consigné dans le banc) : le SDK SVBONY REFUSE
+    `SVBGetCameraProperty` tant que la caméra n'est PAS ouverte, alors que
+    la doc (clone ZWO) recommande fiche AVANT ouverture ;
+    `SVBonyCamera.open()` lisait donc la fiche AVANT `SVBOpenCamera` et
+    levait « Propriétés illisibles » SANS JAMAIS tenter l'ouverture —
+    alors que le banc, qui ouvre d'abord, fonctionne ;
+  - correction : ordre inversé dans `open()` — `SVBOpenCamera` D'ABORD,
+    fiche ENSUITE ; fiche encore illisible → `SVBCloseCamera` propre avant
+    l'échec (pas de caméra orpheline) ; `SVBSetAutoSaveParam(0)` à
+    l'ouverture (constat réel du banc du 20/09 : le SDK recharge ses
+    paramètres sauvegardés au redémarrage — expo/gain hérités sinon) ;
+  - Tests : _test_connexion_svbony_jalon36 8/8 (NOUVEAU — double de DLL
+    qui rejoue le refus pré-ouverture + vérification d'ordre) ;
+    _test_capacites 29/29 ; _test_camera_playerone 29/29 ; jalon33 20/20 ;
+    jalon35 15/15 ; jalon31 15/15 ; jalon32 25/25 ; jalon34 21/21.
 - **LIMITE QHY (toujours valable)** : après « ■ Arrêter », relancer
   l'appli — le binding qhyccd n'expose AUCUNE libération du SDK (état
   irréinitialisable dans le process) ; le banc QHY l'annonce et conseille
@@ -76,13 +74,14 @@ dans le changelog du source et l'historique git.)
        (les implémentations TEC du jalon 33 n'étaient jamais appelées).
        Correctif : `CAMERAS_PILOTEES` = toutes les caméras SDK (app.py).
        Boutons ❄ POA activés — validé par Alain le 20/09/2026.
-   4. **SVBONY : connexion auto REFUSÉE** — message « SVBONY (SDK) :
-      connexion impossible — Propriétés illisibles : SVBONY SV305C »
-      lors de la détection automatique, alors que LE BANC DE DIAG
-      SVBONY AVAIT ÉTÉ VALIDÉ EN RÉEL (ouverture + TEC + flux OK,
-      _diag_camera_svbony.py). À déboguer : comparer le chemin
-      d'ouverture de l'app (`_connecter_sdk` → `SVBGetCameraProperty`)
-      avec celui du banc.
+   4. ✅ CORRIGÉ EN DEV (jalon 36, v2.20.5) — cause (constat réel du banc
+      SVBONY du 19/09) : le SDK refuse `SVBGetCameraProperty` tant que la
+      caméra n'est pas ouverte ; l'app lisait la fiche AVANT
+      `SVBOpenCamera` → « Propriétés illisibles » sans tenter l'ouverture.
+      Correctif : ordre inversé (ouverture d'abord, fiche ensuite) + close
+      propre + `SVBSetAutoSaveParam(0)`. **TEST RÉEL SV305C À FAIRE PAR
+      ALAIN** (installation v2.20.5 : connexion auto → bornes curseurs →
+      TEC ⚠ alim 12 V → « ▶ Démarrer » → ⏏ Déconnecter).
 2c. **QHY par ctypes (jalon 30, CODE FAIT le 20/09/2026)** : la sonde ctypes est dans le banc (_diag_camera_qhy.py, sous-processus isolé) : plages via GetQHYCCDParamMinMaxStep (le nom réel dans les exports de la DLL — « ...MinMax » tout court n'existe pas) + roue via les fonctions natives CFW. RESTE LE TEST RÉEL (demain matin, MiniCam8M) : (a) « 📏 Plages » → noter min/max/step de expo/gain/offset/TEC pour câbler l'UI ; (b) « 📖 Statut CFW » → vérifier détection + statut ; (c) « 🌀 Tourner » → position 1 puis 2, CONFIRMATION PAR RELECTURE ET EFFET PHYSIQUE (slot vide/opaque → le flux change) ; trancher la convention binding 48+n contre doc QHY '0' = position 1.
 3. **Jalon 24** : gradient/débruitage par couche (live + externe) ;
    garde-fous GraXpert jalon 23b en mono ; SCNR doux (jalon 23).
@@ -145,27 +144,30 @@ dans le changelog du source et l'historique git.)
   points puis en trainées » → origine du jalon 13 (alignement robuste).
   Banc POA : `_diag_camera_playerone.py` (jalon 28).
 
-## 🔚 Clôture de session — 20/09/2026 (v2.20.4, jalon 35)
+## 🔚 Clôture de session — 20/09/2026 (v2.20.5, jalon 36)
 
-État exact : **v2.20.4 COMMITÉE ET POUSSÉE (0321914), installateur
-REBUILD, POINT 3 DE L'ITEM 2D VALIDÉ EN RÉEL PAR ALAIN** (boutons ❄ POA
-activés sur le setup 2). Contenu du jalon : les boutons ❄ TEC POA
-restaient grisés parce que `cam_pilotee` (la caméra que le worker
-sonde/pilote) était resté QHY-only depuis le jalon 25 — les
-implémentations TEC du jalon 33 n'étaient JAMAIS appelées pour
-POA/SVBONY/ZWO/Touptek. Correctif : constante `CAMERAS_PILOTEES` (toutes
-les caméras SDK) aux 3 points d'installation (app.py) + garde
-`hasattr(stop_live)` sur le chemin filtre. Tout au vert en dev :
-_test_pilotage_jalon35 14/14 (NOUVEAU), jalon33 21/21, jalon32 25/25,
-jalon31 14/14, jalon34 21/21.
+État exact : **v2.20.5 COMMITÉE ET POUSSÉE (c09e191), installateur REBUILD,
+POINT 4 DE L'ITEM 2D CORRIGÉ EN DEV** — l'item 2d n'a plus que des tests
+réels en attente. Contenu du jalon : la connexion auto SVBONY était refusée
+(« Propriétés illisibles : SVBONY SV305C ») parce que `open()` lisait la
+fiche `SVBGetCameraProperty` AVANT `SVBOpenCamera`, alors que le SDK SVBONY
+(constat réel du banc du 19/09/2026) refuse la fiche tant que la caméra
+n'est pas ouverte — l'app levait donc l'erreur SANS JAMAIS tenter
+l'ouverture. Correctif : ordre inversé (ouverture d'abord, fiche ensuite),
+close propre si la fiche reste illisible, `SVBSetAutoSaveParam(0)` à
+l'ouverture (paramètres hérités sinon, constat banc du 20/09). Tout au
+vert en dev : _test_connexion_svbony_jalon36 8/8 (NOUVEAU),
+_test_capacites 29/29, _test_camera_playerone 29/29, jalon33 20/20,
+jalon35 15/15, jalon31 15/15, jalon32 25/25, jalon34 21/21.
 
-**Prochaine étape (session NEUVE)** : (1) déboguer le point 4 de l'item
-2d — DERNIER POINT RESTANT (connexion auto SVBONY refusée « Propriétés
-illisibles ») EN COMPARANT le chemin d'ouverture de l'app
-(`_connecter_sdk` → `SVBGetCameraProperty`) avec le banc de diag SVBONY
-validé en réel ; (2) copier l'installateur v2.20.4 vers le miniPC +
-tests réels setup 1 (MiniCam8M) et SV305C une fois le point 4 réglé.
+**Prochaine étape (session NEUVE)** : (1) copier l'installateur v2.20.5
+vers le miniPC ; (2) TEST RÉEL SV305C (setup 2) sur la connexion auto
+« Propriétés illisibles » corrigée : connexion auto → bornes curseurs
+(gain 0–450, offset 0–255, expo 36 µs–2000 s) → boutons ❄ (⚠ alim 12 V) →
+« ▶ Démarrer » → ⏏ Déconnecter ; (3) tests réels setup 1 (MiniCam8M) :
+TEC + roue à filtres (point 2c : plages + CFW, verdict par EFFET
+PHYSIQUE).
 
-Sessions précédentes : v2.20.3 (jalon 34, points 1-2 de l'item 2d,
-VALIDÉS EN RÉEL par Alain, ea7108c) ; v2.20.0 (jalons 32 + 33, e70c6d7) —
+Sessions précédentes : v2.20.4 (jalon 35, point 3 de l'item 2d, VALIDÉ EN
+RÉEL par Alain, 0321914) ; v2.20.3 (jalon 34, points 1-2, ea7108c) —
 détail dans l'historique git et le changelog du source.
