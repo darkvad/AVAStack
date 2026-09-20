@@ -12,10 +12,13 @@ dans le changelog du source et l'historique git.)
 ## État actuel
 
 - **Version stable de référence : AVAStack v2.21.5** (`avastack/__init__.py`),
-  branche `master` — jalon 46 CORRIGÉ EN DEV (tout au vert), **COMMITÉ ET
-  POUSSÉ (voir clôture de session)**, **installateur v2.21.5 REBUILD**
+  branche `master` — jalon 46 CORRIGÉ EN DEV (tout au vert), **VALIDÉ PAR
+  ALAIN (20/09/2026, « c'est ok » — test réel en COMPOSITION depuis le PC
+  de dev, dossiers pré-remplis d'acquisitions antérieures)**, **COMMITÉ ET
+  POUSSÉ (f37c88e + AVANCEMENT bf90913)**, **installateur v2.21.5 REBUILD**
   (`installer/windows/output/avastack-setup.exe`) — copie de l'installateur
-  vers le miniPC à faire.
+  vers le miniPC à faire (optionnel : les tests cadence se font depuis le
+  dossier de dev).
 - **Dernier jalon (46, 20/09/2026) — PLAFOND DE RAFALE (retour d'Alain :
   « rafale en cours » avec un grand nombre de brutes — ses dossiers
   contiennent déjà les acquisitions d'AUTRES soirées, donc la première
@@ -97,13 +100,13 @@ dans le changelog du source et l'historique git.)
 8. **Jalon 41 (v2.21.0)** : en mode STF, vérifier le nouveau cadre
    « Couleur live » (cases SCNR/démagenta efficaces à l'écran) et le cadre
    « État des calculs » (⏳ netteté pendant la déconvolution STF).
-9. **Jalon 42-45 (v2.21.1 → v2.21.4)** : en COMPOSITION multi-dossiers avec
-   GX/débruitage live par couche, régler « Empiler les brutes » (combobox
-   présente dans le cadre Composition aussi) sur 1-5 min → l'étiquette sous
-   la combobox doit montrer le compte à rebours (« prochaine rafale dans
-   Xs · N brute(s) en attente »), le sablier ne doit travailler qu'une fois
-   par rafale, et AUCUNE brute ne doit être perdue (compte « Frames » =
-   total des brutes des dossiers).
+9. **Jalon 42-46 (v2.21.1 → v2.21.5) : CLOS ET VALIDÉ PAR ALAIN le
+   20/09/2026** — cadence d'empilement en surveillance (dossier ET
+   composition, choix commun dans les deux cadres), correctif jalon 43
+   (fenêtre armée bloque TOUTE lecture), plafond de rafale RAFALE_MAX = 10
+   (dossiers pré-remplis) ; verdict Alain : « c'est ok ». L'étiquette de
+   cadence (compte à rebours / rafale en cours) reste un outil de
+   diagnostic utile en session.
 
 ## Pièges récents (rappels opérationnels)
 
@@ -166,9 +169,12 @@ dans le changelog du source et l'historique git.)
   points puis en trainées » → origine du jalon 13 (alignement robuste).
   Banc POA : `_diag_camera_playerone.py` (jalon 28).
 
-## 🔚 Clôture de session — 20/09/2026 (v2.21.5, jalon 46)
+## 🔚 Clôture de session — 20/09/2026 (v2.21.5, jalon 46 — VALIDÉE PAR ALAIN)
 
-État exact : **v2.21.5 COMMITÉE ET POUSSÉE (f37c88e), installateur REBUILD**.
+État exact : **v2.21.5 COMMITÉE ET POUSSÉE (f37c88e, AVANCEMENT bf90913),
+installateur REBUILD, JALON 46 VALIDÉ PAR ALAIN (« c'est ok » — test réel
+en COMPOSITION depuis le PC de dev, dossiers pré-remplis d'acquisitions
+antérieures)**.
 Session en huit jalons après la v2.20.7 : jalon 39 (v2.20.8, cases couleur
 réactives) ; jalon 40 (v2.20.9, état du calcul : curseur + ⏳ + résultat) ;
 jalon 41 (v2.21.0, UI indépendante du moteur) ; jalon 42 (v2.21.1, cadence
@@ -181,11 +187,10 @@ d'acquisitions antérieures → la première rafale vidait tout le backlog,
 sablier en continu ; le reste attend les rafales suivantes, aucune perte).
 Tout au vert en dev : _test_cadence_jalon42 32/32, jalon19 multi-dossiers.
 
-**Prochaine étape** : (1) validation réelle EN COMPOSITION (Alain, depuis
-le dossier de dev) : alternance « rafale en cours » (bref) ↔ compte à
-rebours, sablier borné, AUCUNE brute perdue au final ; (2) suite des tests
-réels en attente (QHY MiniCam8M : TEC + roue à filtres, verdict par EFFET
-PHYSIQUE).
+**Prochaine étape (session NEUVE)** : (1) copier l'installateur v2.21.5
+vers le miniPC (optionnel pour la cadence, testée depuis le dossier de
+dev) ; (2) suite des tests réels en attente (QHY MiniCam8M : TEC + roue à
+filtres, verdict par EFFET PHYSIQUE ; Player One setup 2 ; item 2b).
 
 Sessions précédentes : v2.21.4 (jalon 45, cadence commune, 265beff) ;
 v2.21.3 (jalon 44, 966edae) ; v2.21.2 (jalon 43, d5b799d) ; v2.21.1
