@@ -11,51 +11,45 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.17.2** (`avastack/__init__.py`),
-  branche `master` — **COMMITÉE (414053a) et POUSSÉE** ; installateur
-  **REBUILDÉ** (`installer\windows\output\avastack-setup.exe`).
-  Reste : déployer sur le miniPC (réinstaller, ou copier SEULEMENT
-  `_diag_camera_qhy.py` — le banc v2.17 est autonome) ; la fenêtre du
-  nouveau banc affiche « BANC version : 2.17.2 » en tête (repère anti-
-  confusion : « avastack version » = bibliothèque installée, qui peut
-  rester 2.16.0 sans gêner la sonde).
-- **Dernier jalon (30, 20/09/2026) — BANC QHY : SONDE CTYPES NATIVE** (v2.17.1, correctif du matin)
-  (voie validée par Alain ; banc UNIQUEMENT, l'appli inchangée) :
-  - `_diag_camera_qhy.py` appelle `qhyccd.dll` DIRECTEMENT (sans le binding
-    PyPI) via ctypes, dans un SOUS-PROCESSUS isolé (Init/Release du SDK
-    sans danger pour l'état du banc, un segfault natif ne tue que l'enfant ;
-    REFUS si le flux est actif — jamais deux ouvertures de caméra).
-  - **PLAGES** : `GetQHYCCDParamMinMaxStep` — nom VÉRIFIÉ dans les exports
-    RÉELS de la DLL livrée (parseur PE, 328 exports ; « GetQHYCCDParamMinMax
-    » tout court n'existe PAS) : disponibilité + min/max/step + valeur pour
-    chaque contrôle 0..62. Enum CONTROL_ID de l'en-tête officiel =
-    table NOMS_CTRL du banc (gain 6, offset 7, expo µs 8, temp 14-16, CFW
-    17/44, consigne 18) ; résumé « pour câbler l'UI » (expo lisible en
-    µs/ms/s, gain, offset, TEC, slots roue).
-  - **ROUE intégrée** : `IsQHYCCDCFWPlugged` (0 = roue TROUVÉE, doc QHY —
-    PAS un booléen), `GetQHYCCDCFWStatus` + `SendOrder2QHYCCDCFW` (ordre =
-    1 caractère ASCII '0'+(position-1), relecture 0,5 s, timeout 25 s)
-    avec VERDICT de confirmation ; l'EFFET PHYSIQUE reste à vérifier
-    (voie binding : 48+n ; doc : '0' = position 1 — à trancher en réel).
-  - Signatures prises dans l'en-tête OFFICIEL (qhyccd.h/qhyccdstruct.h) ;
-    prototypes ctypes explicites (leçon v2.16), buffers sur-alloués
-    (leçon SVB) ; DLL cherchée AVASTACK_QHY_DIR → dossier du banc → DLL
-    embarquée du paquet (site-packages/vendor/lib — chemin + date affichés).
-  - Testé SANS caméra (dev, 20/09) : DLL chargée, InitQHYCCDResource → 0,
-    ScanQHYCCD → 0 → erreur propre JSON ; smoke UI OK ; tests 29/29
-    (`_test_capacites`) et 33/33 (`_test_qhy_camera`) au vert.
-  - LISEZMOI.txt à jour (section banc QHY) ; **installateur à REBUIRDER**.
-- **Jalon 29 (v2.16.0, TERMINÉ, validé en réel)** : capacités dynamiques
-  par marque (`capacites.py` + contrat `detecter_capacites()` sur
-  caméra OUVERTE ; POA via sonde, ZWO et SVBONY via ctypes sur leurs DLL,
-  QHY PARTIEL → la sonde ctypes du jalon 30 le complète côté banc) +
-  bancs Player One et SVBONY validés en réel (Uranus-C Pro : **gain 0→750,
-  offset 0→250, expo 10 µs→2000 s** + ctrl 31 « Exp » en secondes, bins
-  1-4, TEC -50→30 °C, ~43 fps plein champ ; SV305C : **expo 36 µs→2000 s,
-  gain 0→450, BlackLevel 0→255, bins 1-2**, format interne RGB32 DÉDUIT DE
-  LA DONNÉE). Bancs chargeant l'appli de façon DIAGNOSTIQUÉE (bannière
-  « application trop ancienne »). Installateur 3 bancs rebuildé.
-- Jalons précédents : jalon 28 = banc Player One (v2.15.0, VALIDÉ EN RÉEL) + jalon 28b = banc SVBONY (validé en réel, format interne RGB32 déduit de la donnée) ; jalon 27 (v2.15.0) = offset QHY (ctrl 7), zones de saisie expo/gain/offset (µs/ms/s), déconnexion tracée ; v2.14.x = roue 17/48+n, TEC 18/14/15/16, expo log, stop_live/begin_live, DLL SDK embarquées + zwoasi.
+- **Version stable de référence : AVAStack v2.20.0** (`avastack/__init__.py`),
+  branche `master` — jalons 32+33 testés en dev (tous les tests au vert),
+  **installateur v2.20.0 REBUILD** (`installer/windows/output/
+  avastack-setup.exe`) — **COMMITÉ SANS POUSSER** (poussée + copie de
+  l'installateur vers le miniPC à faire).
+- **Dernier jalon (33, 20/09/2026) — PILOTAGE TEC PLAYER ONE / SVBONY**
+  (demande d'Alain : « il faut le faire quand la caméra le supporte ») :
+  - le mécanisme app était DÉJÀ générique depuis le jalon 26 (sondage
+    `lire_refroidissement` à la connexion → boutons ❄ activés, demandes
+    consigne/arrêt exécutées dans le thread de travail, rafraîchissement
+    2 s) : seules les implémentations SDK manquaient (no-op de la base) ;
+  - `PlayerOneCamera` : consigne POA_TARGET_TEMP (17, int OU float selon
+    les attributs) PUIS POA_COOLER ON (18) — ordre éprouvé par le banc ;
+    lire → (temp °C [ctrl 3 FLOAT], PWM 0-255 [puissance % ctrl 16
+    convertie], consigne) ; arrêt = POA_COOLER OFF ; sonde POASonde
+    construite UNE seule fois (cache) ; message « vérifier l'alim 12 V »
+    si le SDK refuse ;
+  - `SVBonyCamera` : CoolerEnable (14) PUIS TargetTemp ×10 (15 — unités
+    de 0,1 °C, éprouvé par le banc) ; lire → (temp ctrl 16 /10, PWM
+    [puissance % ctrl 17], consigne ctrl 15 /10) ; arrêt = CoolerEnable 0 ;
+  - les deux n'occupent JAMAIS une caméra sans TEC : `lire_refroidissement`
+    → None → l'app laisse les boutons ❄ grisés (comportement voulu) ;
+  - **Point 1 tranché (décision Alain du 20/09)** : la définition dupliquée
+    de `_deconnecter_camera` est supprimée — la version du 19/09 (worker
+    arrêté D'ABORD dans `_on_close`, close dans le thread Tk) est celle qui
+    fonctionnait, elle est conservée et documentée dans le code ;
+  - Tests : _test_tec_jalon33 20/20 (NOUVEAU — doubles de DLL fidèles aux
+    relevés réels) ; jalon32 25/25 ; _test_capacites 29/29 ; jalon31 15/15 ;
+    POA 29/29 ; QHY 33/33 ; sliders 6 OK.
+- **Jalon 32 (v2.19.0, FAIT)** : capacités dynamiques pour TOUTES les
+  marques — `CID_CONTROLES_PAR_MARQUE` (ids par marque des enums SDK),
+  `Capacites.plage(rôle)`, `extras` par contrôle POA/SVB/ZWO, connexion
+  automatique à la détection pour toutes les marques SDK (thread dédié,
+  `_installer_camera_connectee` facteur commun).
+- **Jalon 31 (v2.18.0, FAIT)** : UI dynamique à la connexion QHY (curseurs,
+  expo, TEC, roue aux bornes réelles, sonde native qhyct.py) ; jalon 30 =
+  sonde ctypes QHY dans le banc (validé en réel : plages MinMaxStep, roue 8
+  slots) ; jalon 29/28 = capacités par marque + bancs POA et SVBONY validés
+  en réel ; v2.15.x = offset QHY, saisies expo/gain/offset, TEC, roue.
 - **LIMITE QHY (toujours valable)** : après « ■ Arrêter », relancer
   l'appli — le binding qhyccd n'expose AUCUNE libération du SDK (état
   irréinitialisable dans le process) ; le banc QHY l'annonce et conseille
@@ -70,11 +64,18 @@ dans le changelog du source et l'historique git.)
 2. **Banc Player One (2e setup)** : cf. jalon 28 ci-dessus — détection
    complète + verdict + TEC + bin + ROI + cadence ; copier le banc dans
    le dossier d'installation si testé depuis le miniPC.
-2b. **Capacités dynamiques (jalon 29)** : dès que possible, appeler
-   `detecter_capacites()` sur CHAQUE caméra et noter le verdict — les
-   tableaux de bord (banc POA) et le futur câblage UI s'appuient dessus.
-   Toute valeur « codée en dur » encore présente dans l'UI (gain 0-175
-   QHY, etc.) devra céder la place aux plages découvertes.
+2b. **TEST RÉEL jalon 32 + 33 (v2.19.0/v2.20.0)** : la détection des
+   capacités + UI aux bornes réelles s'exécute à la connexion de CHAQUE
+   marque SDK, et le TEC POA/SVBONY est DÉSORMAIS PILOTABLE (les boutons
+   ❄ s'activent automatiquement quand la caméra répond). Sur les deux
+   setups (POA Uranus-C Pro puis SVBONY SV305C guidage) : choisir la
+   source → connexion automatique → VÉRIFIER les bornes des curseurs
+   (POA : gain 0–750, offset 0–250, expo 10 µs–2000 s, consigne -50 à 30 ;
+   SV305C : gain 0–450, offset 0–255, expo 36 µs–2000 s) → boutons ❄
+   activés, consigne posée, descente de température constatée dans le
+   label (⚠ SV305C : vérifier que le refroidissement est branché —
+   sans TEC les boutons restent gris, c'est normal) → « ▶ Démarrer » →
+   ⏏ Déconnecter (le TEC doit être coupé à la déconnexion).
 2c. **QHY par ctypes (jalon 30, CODE FAIT le 20/09/2026)** : la sonde ctypes est dans le banc (_diag_camera_qhy.py, sous-processus isolé) : plages via GetQHYCCDParamMinMaxStep (le nom réel dans les exports de la DLL — « ...MinMax » tout court n'existe pas) + roue via les fonctions natives CFW. RESTE LE TEST RÉEL (demain matin, MiniCam8M) : (a) « 📏 Plages » → noter min/max/step de expo/gain/offset/TEC pour câbler l'UI ; (b) « 📖 Statut CFW » → vérifier détection + statut ; (c) « 🌀 Tourner » → position 1 puis 2, CONFIRMATION PAR RELECTURE ET EFFET PHYSIQUE (slot vide/opaque → le flux change) ; trancher la convention binding 48+n contre doc QHY '0' = position 1.
 3. **Jalon 24** : gradient/débruitage par couche (live + externe) ;
    garde-fous GraXpert jalon 23b en mono ; SCNR doux (jalon 23).
@@ -132,47 +133,31 @@ dans le changelog du source et l'historique git.)
   points puis en trainées » → origine du jalon 13 (alignement robuste).
   Banc POA : `_diag_camera_playerone.py` (jalon 28).
 
-## 🔚 Clôture de session — 20/09/2026 (v2.18.0, demandée par Alain)
+## 🔚 Clôture de session — 20/09/2026 (v2.19.0, jalon 32)
 
-État exact : **v2.18.0** commitée et poussée (bb84f72, origin/master à
-jour), installateur REBUILDÉ (avastack-setup.exe v2.18.0), dépôt propre
-(aucun fichier non suivi). Réalisé dans la session : sonde ctypes native
-QHY dans le banc (jalon 30, correctifs 2.17.x validés EN RÉEL par Alain :
-plages MinMaxStep + roue 8 slots, statut relu) PUIS câblage dynamique de
-l'UI (jalon 31) — curseurs gain/offset, exposition, TEC et roue
-construits aux bornes réelles à la connexion, pour toutes les marques.
-Bugs corrigés : IsQHYCCDControlAvailable (0 = dispo), InitQHYCCD(handle)
-obligatoire, btn_deconnecter inexistant sur « ⏏ Déconnecter ».
+État exact : **v2.19.0 testée en dev, NON committée** (tout est au vert :
+jalon32 25/25, capacités 29/29, jalon31 15/15, POA 29/29, QHY 33/33,
+sliders OK). Réalisé : le câblage dynamique (capacités → UI aux bornes
+réelles) s'applique désormais À LA CONNEXION DE TOUTES LES MARQUES SDK,
+pas seulement QHY — cid par marque (`CID_CONTROLES_PAR_MARQUE` +
+`Capacites.plage(rôle)`, finis les cid QHY littéraux qui auraient donné
+des bornes fausses chez POA/SVBONY), extras remplies par les sondes
+POA/SVB/ZWO, connexion automatique à la détection (thread, comme QHY),
+facteur commun `_installer_camera_connectee`. AVANCEMENT.md à jour
+(jalon 32 + item 2b réécrit). Détails complets : changelog v2.19.0 dans
+`avastack/__init__.py`.
 
-**Prochaine étape** : test réel v2.18.0 (miniPC, réinstaller) — connexion
-MiniCam8M → vérifier que les bornes affichées correspondent au relevé
-(gain 0–230, offset 0–255, expo 1 µs–3600 s, consigne -50 à 50, roue 8) ;
-puis la rotation physique de la roue (« 🌀 Tourner » au banc) pour
-trancher la convention 48+n contre '0' = position 1.
+**Prochaine étape** : (1) committer/pousser v2.19.0 + REBUILDER
+l'installateur ; (2) test réel miniPC : MiniCam8M (vérifier bornes QHY
+comme prévu au jalon 31) PUIS setup 2 : POA Uranus-C Pro et SV305C guidage
+(connexion auto → vérifier les bornes affichées contre les relevés
+POA 0–750/0–250/10 µs–2000 s/-50→30 et SVB 0–450/0–255/36 µs–2000 s) ;
+(3) trancher avec Alain le double `_deconnecter_camera` (détail dans
+l'état actuel) ; (4) chantier candidat : pilotage TEC POA/SVBONY
+(consigne + lecture température) — les bornes s'affichent déjà mais les
+classes restent en no-op.
 
-Demande d'Alain : « diag QHY avec les ctypes comme prévu, à tester demain matin ». FAIT (jalon 30, v2.17.0) :
-1. Sonde ctypes native dans le banc QHY (sous-processus isolé) : plages GetQHYCCDParamMinMaxStep + roue native CFW (statut + rotation avec confirmation) ; exports de la DLL vérifiés par parseur PE ; signatures de l'en-tête officiel du SDK ; prototypes ctypes explicites ; DLL identifiée (chemin + date) à chaque sonde.
-2. UI : 3 boutons (📏 Plages, 🌀 Tourner, 📖 Statut CFW) + résumé « pour câbler l'UI » ; refus de la sonde si le flux est actif.
-3. Tests sans caméra : charge DLL + init OK + erreur propre JSON ; smoke UI OK ; _test_capacites 29/29 ; _test_qhy_camera 33/33.
-4. LISEZMOI.txt à jour. v2.17.0 COMMITÉE (414053a) et POUSSÉE ;
-   installateur REBUILDÉ (avastack-setup.exe, 20/09 09:10).
-
-**Prochaine étape (test réel, MiniCam8M + alim 12 V)** :
-1. Sur le miniPC : réinstaller avec le NOUVEAU avastack-setup.exe, OU
-   copier SEULEMENT `_diag_camera_qhy.py` dans
-   `C:\Users\alain\AppData\Local\AVAStack` (banc autonome). Vérifier la
-   ligne « BANC version : 2.17.2 » en tête de fenêtre (sinon c'est encore
-   l'ancien banc).
-2. Banc QHY : « 📏 Plages (MinMaxStep) » → noter les plages réelles (expo/gain/offset/TEC) pour le futur câblage UI.
-3. CORRECTIF DU MATIN (v2.17.1, fait) : les plages sortaient toutes « indisponibles » car la sonde ne faisait PAS SetQHYCCDStreamMode + InitQHYCCD(handle) après OpenQHYCCD — obligatoire pour les lectures de contrôles (la roue, elle, répondait déjà : VALIDÉE EN RÉEL — détectée, 8 slots, statut '3' = le code 51 relu par le binding sur ctrl 17, même ASCII des deux côtés). La convention '0'=position 1 de la doc reste à trancher par l'EFFET PHYSIQUE (Tourner 1 puis 2).
-   DLL : deux qhyccd.dll coexistent en dev — la racine du projet (posée par Alain avec les autres SDK en février) est le SDK 25.6.16 (janvier 2026), le paquet qhyccd embarque le 26.6.4 (juin 2026, celui du binding) : la sonde charge désormais le 26.6.4 en priorité (les DEUX exportent toutes les fonctions utiles, vérifié) ; AVASTACK_QHY_DIR permet de forcer l'autre.
-4. Ensuite : **FAIT (v2.18.0, jalon 31)** — l'UI se construit aux bornes
-   détectées à la connexion (curseurs gain/offset reconstruits, expo sur
-   la plage native 1 µs → 3600 s, TEC clampé -50→50 °C, roue aux 8 slots
-   réels ; déconnexion → défauts ; sonde muette → défauts, jamais
-   d'erreur). Test `_test_ui_dynamique_jalon31.py` 15/15 (fenêtre réelle,
-   valeurs du relevé MiniCam8M). Bug préexistant corrigé :
-   « ⏏ Déconnecter » référençait un bouton inexistant (AttributeError
-   garanti). v2.18.0 poussée (65de10e), installateur rebuildé. À TESTER
-   EN RÉEL : connexion MiniCam8M → vérifier les bornes affichées
-   (Gain 0–230, Offset 0–255, expo 1 µs–3600 s, consigne -50 à 50).
+Session précédente (v2.18.0, jalon 31) : câblage dynamique QHY (sonde
+native qhyct.py, curseurs/TEC/roue aux bornes réelles), commitée bb84f72,
+installateur rebuildé — le test réel MiniCam8M reste à faire avec la
+v2.19.0.
