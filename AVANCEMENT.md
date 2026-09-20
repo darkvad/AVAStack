@@ -11,30 +11,28 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.21.5** (`avastack/__init__.py`),
-  branche `master` — jalon 46 CORRIGÉ EN DEV (tout au vert), **VALIDÉ PAR
-  ALAIN (20/09/2026, « c'est ok » — test réel en COMPOSITION depuis le PC
-  de dev, dossiers pré-remplis d'acquisitions antérieures)**, **COMMITÉ ET
-  POUSSÉ (f37c88e + AVANCEMENT bf90913)**, **installateur v2.21.5 REBUILD**
-  (`installer/windows/output/avastack-setup.exe`) — copie de l'installateur
-  vers le miniPC à faire (optionnel : les tests cadence se font depuis le
-  dossier de dev).
-- **Dernier jalon (46, 20/09/2026) — PLAFOND DE RAFALE (retour d'Alain :
-  « rafale en cours » avec un grand nombre de brutes — ses dossiers
-  contiennent déjà les acquisitions d'AUTRES soirées, donc la première
-  rafale devait vider TOUT le backlog d'un coup : sablier en continu
-  pendant des minutes au démarrage)** :
-  - fait : chaque rafale empile AU PLUS `RAFALE_MAX` brutes (10,
-    constante App.RAFALE_MAX) ; budget `_rafale_reste` décrémenté à chaque
-    brute lue ; à l'épuisement du budget, la fenêtre est (ré)armée MÊME
-    s'il reste des brutes détectées — elles attendent les rafales
-    suivantes (aucune perte, fichiers sur le disque) ; la rafale se
-    termine aussi naturellement quand le backlog est vide (jalon 42) ;
-  - l'étiquette de cadence montre alors l'alternance attendue : « rafale
-    en cours · N » (bref) → « prochaine rafale dans Xs · N » (compte à
-    rebours) → … jusqu'à ce que le backlog soit vidé ;
-  - Tests : _test_cadence_jalon42 32/32 (budget épuisé → armement,
-    budget rechargé, App neuve pleine) ; jalon19 multi-dossiers.
+- **Version stable de référence : AVAStack v2.21.6** (`avastack/__init__.py`),
+  branche `master` — jalon 47 CORRIGÉ EN DEV (tout au vert), **EN ATTENTE DE
+  VALIDATION PAR ALAIN** (v2.21.5 précédente : validée « c'est ok », committée
+  et poussée f37c88e + AVANCEMENT bf90913, installateur rebuild).
+- **Dernier jalon (47, 20/09/2026) — ERGONOMIE : COLONNE DE RÉGLAGES ÉPURÉE
+  (retour d'Alain : « la partie droite de l'écran est surchargée
+  inutilement »)** :
+  - fait : les cadres suivent la SOURCE choisie — source caméra
+    (simulée/OpenCV/SDK) → contrôles caméra seuls (sous-cadre `frm_ctrl_cam`
+    : exposition, gain, offset, échelle longue, roue, TEC, détection) ;
+    « Dossier surveillé » → cadre dossier + cadence ; « Composition » →
+    cadre composition + cadence ; la combobox de source + Démarrer/Arrêter
+    restent toujours visibles ;
+  - le réglage de rafale (« Empiler les brutes », jalons 42/45) quitte les
+    deux cadres où il était DUPLIQUÉ : un seul cadre « Cadence
+    d'empilement » (`frm_rafale`) partagé dossier + composition ;
+  - masquer ≠ détruire (pack_forget) : les valeurs saisies (dossier, rôles,
+    gains…) survivent aux allers-retours ; replacement via l'ancre stable
+    `frm_calibration` → l'ordre des cadres ne bouge jamais ;
+  - Tests : nouveau _test_ui_visibilite_jalon47 (tout passe) ; section [7]
+    de _test_cadence_jalon42 mise à jour (un seul couple) ; régression
+    large UI au vert (jalons 5/6/19/32/34/35/36/38/39/40/41).
 - **LIMITE QHY (toujours valable)** : après « ■ Arrêter », relancer
   l'appli — le binding qhyccd n'expose AUCUNE libération du SDK (état
   irréinitialisable dans le process) ; le banc QHY l'annonce et conseille

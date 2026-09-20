@@ -313,8 +313,9 @@ class App:
                                                # rafale en cours (décrémenté
                                                # à chaque brute lue)
         self._cadence_lbl_txt = None    # mémo du texte affiché dans lbl_cadence
-        self._cadence_cbs = []          # combobox « Empiler les brutes » (une
-        self._cadence_lbls = []         # par mode, jalon 45 : dossier + compo)
+        self._cadence_cbs = []          # combobox « Empiler les brutes » —
+        self._cadence_lbls = []         # jalon 47 : UN SEUL exemplaire (cadre
+                                        # « Cadence d'empilement », partagé)
         self.ext_state = "idle"         # idle | busy | ok | error
         self.ext_t0 = None              # début du traitement en cours (chrono)
         self._ext_popup = False        # erreur à signaler par popup
@@ -537,6 +538,9 @@ class App:
         if c.get("moteur") == "VeraLux" and veralux_moteur.moteur_disponible():
             self.var_moteur.set("VeraLux")
             self._on_moteur()
+        # Jalon 47 : source connue → montrer uniquement les cadres utiles
+        # (no-op si la source n'a pas changé depuis la construction).
+        self._maj_visibilite_cadres()
 
     def _sauver_config_app(self):
         """Persiste les réglages de l'interface dans config.json (appelé à la
@@ -759,9 +763,16 @@ class App:
         canvas.bind_all("<Button-4>", _wheel)     # Linux
         canvas.bind_all("<Button-5>", _wheel)
 
-        # --- Caméra
+        # --- Caméra : la SOURCE + Démarrer/Arrêter sont TOUJOURS visibles ;
+        # les contrôles propres à la caméra (exposition, gain, roue, TEC,
+        # détection SDK…) vont dans un sous-cadre qui n'apparaît QUE pour une
+        # source caméra (jalon 47 : en dossier/composition, la colonne ne
+        # montre que ce qui sert au choix en cours — cf.
+        # _maj_visibilite_cadres).
         box = ttk.LabelFrame(left, text="Caméra", padding=6)
         box.pack(fill="x", pady=3)
+        self.frm_ctrl_cam = ttk.Frame(box)
+        self.frm_ctrl_cam.pack(fill="x")
         self.var_source = tk.StringVar(value=SOURCES[0])
         self.cb_source = ttk.Combobox(box, textvariable=self.var_source,
                                       values=SOURCES, state="readonly",
@@ -794,7 +805,7 @@ class App:
         # --- Exposition : curseur log dédié (11 µs – 5 s / 1 s – 900 s) ---
         # Jalon 27 (demande d'Alain) : zone de saisie en PLUS du curseur
         # (formats acceptés : « 100 », « 0,5 », « 12 ms », « 2 s », « 11 µs »).
-        rowe = ttk.Frame(box)
+        rowe = ttk.Frame(self.frm_ctrl_cam)
         rowe.pack(fill="x", pady=1)
         heade = ttk.Frame(rowe)
         heade.pack(fill="x")
@@ -820,18 +831,18 @@ class App:
                           command=lambda: self._on_pas_expo(1.25))
         b_ep.pack(side="left")
         self.chk_expo_longue = ttk.Checkbutton(
-            box, text="", variable=self.var_expo_longue,
+            self.frm_ctrl_cam, text="", variable=self.var_expo_longue,
             command=self._on_echelle_expo)
         self._maj_libelle_expo_longue()   # libellé = bornes réelles (jalon 34)
         self.chk_expo_longue.pack(anchor="w")
         self.sl_gain = self._add_slider(
-            box, "Gain (0 – 175)", self.var_gain, 0.0, 175.0, 1.0,
+            self.frm_ctrl_cam, "Gain (0 – 175)", self.var_gain, 0.0, 175.0, 1.0,
             self._push_settings, "{:.0f}", saisie=True)
         self.sl_offset = self._add_slider(
-            box, "Offset (0 – 255)", self.var_offset, 0.0, 255.0, 1.0,
+            self.frm_ctrl_cam, "Offset (0 – 255)", self.var_offset, 0.0, 255.0, 1.0,
             self._push_settings, "{:.0f}", saisie=True)
         # --- Roue à filtres intégrée (active si la roue répond, cf. worker)
-        rowf = ttk.Frame(box)
+        rowf = ttk.Frame(self.frm_ctrl_cam)
         rowf.pack(fill="x", pady=(2, 0))
         ttk.Label(rowf, text="Filtre :").pack(side="left")
         self.cb_filtre = ttk.Combobox(rowf, textvariable=self.var_filtre,
@@ -842,7 +853,7 @@ class App:
         self.lbl_filtre = ttk.Label(rowf, text="", foreground="#888888")
         self.lbl_filtre.pack(side="left", padx=(2, 0))
         # --- Refroidissement TEC (consigne + lectures + arrêt) -----------
-        rowt = ttk.Frame(box)
+        rowt = ttk.Frame(self.frm_ctrl_cam)
         rowt.pack(fill="x", pady=(2, 0))
         self.lbl_tec_lib = ttk.Label(rowt, text="Consigne °C :")
         self.lbl_tec_lib.pack(side="left")
@@ -856,14 +867,14 @@ class App:
                                       command=self._on_arret_tec,
                                       state="disabled")
         self.btn_tec_off.pack(side="left")
-        self.lbl_tec = ttk.Label(box, text="Capteur : — · TEC : —",
+        self.lbl_tec = ttk.Label(self.frm_ctrl_cam, text="Capteur : — · TEC : —",
                                  foreground="#888888")
         self.lbl_tec.pack(anchor="w")
         # Détection des caméras « SDK constructeur » (correctif du
         # 19/09/2026 : aucune info au choix de la source). Le scan QHY
         # tourne dans un SOUS-PROCESSUS isolé : un segfault du SDK ne tue
         # jamais l'application (message clair à la place).
-        rowd = ttk.Frame(box)
+        rowd = ttk.Frame(self.frm_ctrl_cam)
         rowd.pack(fill="x", pady=(2, 0))
         ttk.Button(rowd, text="🔎 Détecter", width=12,
                    command=self._detecter_camera).pack(side="left")
@@ -874,8 +885,19 @@ class App:
                                         state="disabled")
         self.btn_deconnect.pack(side="right")
 
-        # --- Dossier surveillé
-        box = ttk.LabelFrame(left, text="Dossier surveillé", padding=6)
+        # --- Jalon 47 : le réglage de RAFALE (« Empiler les brutes »,
+        # jalons 42/45) sort des cadres « Dossier surveillé » et
+        # « Composition multi-filtres » où il était DUPLIQUÉ : UN SEUL cadre
+        # « Cadence d'empilement », visible uniquement pour ces deux sources
+        # (sans objet pour une vraie caméra) — cf. _maj_visibilite_cadres.
+        self.frm_rafale = ttk.LabelFrame(left, text="Cadence d'empilement",
+                                         padding=6)
+        self._creer_cadence(self.frm_rafale)
+
+        # --- Dossier surveillé (visible uniquement pour cette source, jalon 47)
+        self.frm_dossier = ttk.LabelFrame(left, text="Dossier surveillé",
+                                          padding=6)
+        box = self.frm_dossier
         box.pack(fill="x", pady=3)
         row = ttk.Frame(box)
         row.pack(fill="x")
@@ -893,23 +915,18 @@ class App:
                      values=["Auto", "RGGB", "BGGR", "GRBG", "GBRG", "Non"]
                      ).pack(side="left", padx=(4, 0))
         self.var_cfa.trace_add("write", self._on_cfa)
-        # Jalon 42 (demande d'Alain) : cadence d'empilement — en surveillance
-        # avec la chaîne lourde (gradient/débruitage live), chaque brute
-        # relançait la résolution : le sablier tournait en PERMANENCE. Ici on
-        # choisit à quelle fréquence les brutes sont lues/empilées ; celles
-        # qui arrivent entre-temps attendent sur le disque (aucune perte)
-        # puis sont drainées en rafale — un seul recalcul par rafale.
-        # Jalon 45 : le choix est COMMUN aux deux modes (dossier surveillé ET
-        # composition multi-dossiers) — une combobox dans chaque cadre,
-        # partageant la même variable (créée par _creer_cadence).
-        self._creer_cadence(box)
+        # Jalon 42/45 : la cadence d'empilement (« Empiler les brutes ») est
+        # DÉPLACÉE hors de ce cadre (jalon 47) — un seul exemplaire partagé
+        # par dossier surveillé et composition, cf. frm_rafale ci-dessus.
         self.lbl_last = ttk.Label(box, text="Dernier fichier : —")
         self.lbl_last.pack(anchor="w")
 
         # --- Composition multi-filtres (jalon 19) : 1 à 4 dossiers surveillés,
         # un RÔLE (filtre) par dossier ; le composite temps réel combine les
         # empilements par rôle selon la composition choisie.
-        box = ttk.LabelFrame(left, text="Composition multi-filtres", padding=6)
+        self.frm_compo = ttk.LabelFrame(left, text="Composition multi-filtres",
+                                        padding=6)
+        box = self.frm_compo
         box.pack(fill="x", pady=3)
         row_c = ttk.Frame(box)
         row_c.pack(fill="x")
@@ -968,16 +985,15 @@ class App:
                       width=5).pack(side="left", padx=(4, 0))
         ttk.Button(box, text="🔎 Détecter les filtres (FITS FILTER)",
                    command=self._detecter_filtres).pack(fill="x", pady=(6, 0))
-        # Jalon 45 (demande d'Alain) : le choix de cadence est COMMUN aux
-        # deux modes — une combobox ICI aussi (composition multi-dossiers),
-        # partageant la même variable que celle du cadre « Dossier
-        # surveillé » : choisir dans l'un met l'autre à jour, et le worker
-        # applique la cadence aux DEUX sources.
-        self._creer_cadence(box)
+        # Jalon 45/47 : le choix de cadence est COMMUN aux deux modes —
+        # voir le cadre unique `frm_rafale` (plus de combobox ici).
         self._on_compo()    # pré-remplit les lignes de rôle de la compo par défaut
 
-        # --- Calibration
+        # --- Calibration (ancre STABLE : les cadres commutables jalon 47 se
+        # replacent toujours juste avant elle — l'ordre des cadres ne bouge
+        # jamais, quel que soit le nombre d'allers-retours de source)
         box = ttk.LabelFrame(left, text="Calibration", padding=6)
+        self.frm_calibration = box
         box.pack(fill="x", pady=3)
         ttk.Button(box, text="Charger un dark…", command=self._load_dark).pack(fill="x", pady=1)
         ttk.Button(box, text="Charger un flat…", command=self._load_flat).pack(fill="x", pady=1)
@@ -1432,6 +1448,10 @@ class App:
         self.cv_img.bind("<ButtonRelease-1>", self._on_img_release)
         self.cv_img.bind("<Double-Button-1>", self._on_img_dblclick)
         self.cv_img.bind("<Configure>", lambda e: self._render())
+
+        # Jalon 47 : état initial de la visibilité (source par défaut) —
+        # _restaurer_config la réappliquera si la config change quelque chose.
+        self._maj_visibilite_cadres()
 
     def _add_slider(self, parent, label, var, frm, to, res, onchange=None,
                     fmt="{:g}", saisie=False):
@@ -1982,14 +2002,14 @@ class App:
             self._prochaine_lecture = 0.0   # « dès réception » : plus de fenêtre
 
     def _creer_cadence(self, parent):
-        """Ligne « Empiler les brutes » (jalon 42, étendu jalon 45 à la
-        demande d'Alain) : une combobox + une étiquette d'état PAR MODE
-        (dossier surveillé ET composition multi-dossiers), partageant la
-        MÊME variable — choisir dans l'un met l'autre à jour, et la cadence
-        s'applique aux DEUX sources (le worker la porte). L'étiquette
-        (jalon 44) montre l'état du throttling en direct : « prochaine
-        rafale dans Xs · N brute(s) en attente » (fenêtre armée), « rafale
-        en cours » (drain), « — » (dès réception ou pas encore de source)."""
+        """Ligne « Empiler les brutes » (jalon 42 ; jalon 47 : UN SEUL
+        exemplaire, dans le cadre dédié « Cadence d'empilement » — fini la
+        duplication du jalon 45 dans les cadres dossier ET composition ; le
+        choix reste commun, la cadence s'applique aux DEUX sources dossier
+        car le worker la porte). L'étiquette (jalon 44) montre l'état du
+        throttling en direct : « prochaine rafale dans Xs · N brute(s) en
+        attente » (fenêtre armée), « rafale en cours » (drain), « — » (dès
+        réception ou pas encore de source)."""
         if not hasattr(self, "var_cadence"):
             self.var_cadence = tk.StringVar(value="dès réception")
         row = ttk.Frame(parent)
@@ -2212,12 +2232,52 @@ class App:
     # --- Détection des caméras SDK (correctif du 19/09/2026) -----------------
     _SOURCES_SDK = ("QHY", "ZWO", "Player One", "Touptek", "SVBONY")
 
+    # --- Jalon 47 : visibilité des cadres selon la source --------------------
+    def _maj_visibilite_cadres(self):
+        """N'afficher que les cadres UTILES à la source choisie (demande
+        d'ergonomie d'Alain, jalon 47 : « la partie droite est surchargée » —
+        la colonne de réglages à gauche de l'image) :
+          - source caméra (simulée, OpenCV, SDK) → contrôles caméra seuls ;
+          - « Dossier surveillé » → cadre dossier + cadence d'empilement ;
+          - « Composition multi-dossiers » → cadre composition + cadence.
+        Le réglage de rafale (« Empiler les brutes », jalons 42/45) est un
+        cadre UNIQUE (`frm_rafale`) partagé par les deux modes dossier — il
+        n'apparaît plus pour une vraie caméra (sans objet). On CACHE
+        (pack_forget), on ne détruit RIEN : les valeurs saisies (dossier,
+        rôles, gains…) sont conservées et la persistance ne change pas. Les
+        cadres visibles sont replacés dans l'ordre canonique (rafale →
+        dossier → composition) juste avant l'ancre stable `frm_calibration` :
+        l'ordre général de la colonne ne bouge jamais. Thread UI seul
+        (construction, _restaurer_config, _on_source_choisie)."""
+        source = self.var_source.get()
+        est_dossier = source.startswith("Dossier")
+        est_compo = source.startswith("Composition")
+        # Contrôles caméra : toute source qui n'est NI dossier NI composition
+        # (simulée, webcams OpenCV, SDK constructeur). La combobox de source
+        # et Démarrer/Arrêter restent visibles en toutes circonstances.
+        if est_dossier or est_compo:
+            self.frm_ctrl_cam.pack_forget()
+        elif self.frm_ctrl_cam.winfo_manager() == "":
+            self.frm_ctrl_cam.pack(fill="x")
+        visibles = ([self.frm_rafale, self.frm_dossier] if est_dossier else
+                    [self.frm_rafale, self.frm_compo] if est_compo else [])
+        for cadre in (self.frm_rafale, self.frm_dossier, self.frm_compo):
+            if cadre in visibles:
+                # pack(before=) replace le cadre (déjà géré ou non) à la même
+                # place relative — appelé dans l'ordre canonique ci-dessus.
+                cadre.pack(fill="x", pady=3, before=self.frm_calibration)
+            elif cadre.winfo_manager():
+                cadre.pack_forget()
+
     def _on_source_choisie(self, *_):
         """Sélection d'une source : auto-détection si source « SDK ».
         Une caméra connectée est d'abord déconnectée (jalon 26 : la
         connexion appartient à la source ; pour une QHY, la reconnexion
         dans le même process est impossible — l'utilisateur est prévenu et
         la re-détection automatique est évitée, elle échouerait)."""
+        # Jalon 47 : les cadres suivent la source AVANT toute autre action
+        # (y compris si la suite retourne tôt — cas de la déconnexion QHY).
+        self._maj_visibilite_cadres()
         if self.camera is not None:
             qhy = isinstance(self.camera, QHYCamera)
             self._deconnecter_camera()

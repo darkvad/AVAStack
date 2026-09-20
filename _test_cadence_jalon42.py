@@ -212,24 +212,17 @@ verifie(app.lbl_cadence.cget("text") == "—",
         "ne plus afficher « sans objet » avant la connexion)")
 
 # ==================================== [7] cadence commune aux deux modes
-print("[7] jalon 45 : combobox dans « Dossier surveillé » ET « Composition »")
-verifie(len(app._cadence_cbs) == 2 and len(app._cadence_lbls) == 2,
-        "deux combobox + deux étiquettes (un couple par mode)")
+print("[7] jalon 47 : UN SEUL cadre « Cadence d'empilement » partagé")
+verifie(len(app._cadence_cbs) == 1 and len(app._cadence_lbls) == 1,
+        "une combobox + une étiquette (la duplication du jalon 45 est levée)")
 verifie(app._cadence_cbs[0] is app.cb_cadence,
-        "la première combobox est celle du cadre « Dossier surveillé »")
-verifie(app._cadence_lbls[1].master.cget("text")
-        == "Composition multi-filtres",
-        "la 2e étiquette est dans le cadre « Composition multi-filtres »")
-verifie(app._cadence_cbs[0].cget("textvariable")
-        == app._cadence_cbs[1].cget("textvariable"),
-        "les DEUX comboboxes partagent la même variable (choix commun)")
+        "l'unique combobox reste exposée comme cb_cadence (compatibilité)")
+verifie(app._cadence_lbls[0].master.cget("text") == "Cadence d'empilement",
+        "l'unique couple vit dans le cadre « Cadence d'empilement »")
 app.var_cadence.set("toutes les 5 min")
 app._maj_lbl_cadence()
-verifie(app._cadence_lbls[0].cget("text")
-        == app._cadence_lbls[1].cget("text")
-        and "5 min" in app._cadence_cbs[0].get()
-        and "5 min" in app._cadence_cbs[1].get(),
-        "choisir dans l'un met l'autre à jour (même valeur affichée)")
+verifie("5 min" in app._cadence_cbs[0].get(),
+        "le choix de cadence reste piloté par l'unique combobox")
 app.var_cadence.set("dès réception")
 app._on_cadence()
 

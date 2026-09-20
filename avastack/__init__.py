@@ -14,9 +14,40 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.21.5"
+AVASTACK_VERSION = "2.21.6"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.21.6 : COLONNE DE RÉGLAGES ÉPURÉE — cadres visibles selon la source
+#          (jalon 47, demande d'ergonomie d'Alain : « la partie droite de
+#          l'écran est surchargée inutilement » — en pratique la colonne de
+#          réglages à gauche de l'image). Choisir une source n'affiche plus
+#          QUE les cadres utiles : source caméra (simulée/OpenCV/SDK) →
+#          contrôles caméra seuls (exposition, gain, offset, échelle longue,
+#          roue, TEC, détection) ; « Dossier surveillé » → cadre dossier +
+#          cadence d'empilement ; « Composition multi-dossiers » → cadre
+#          composition + cadence. La combobox de source et Démarrer/Arrêter
+#          restent toujours visibles.
+#          - avastack/ui/app.py : les contrôles caméra quittent le cadre
+#            « Caméra » pour un sous-cadre `frm_ctrl_cam` (masqué en
+#            dossier/composition) ; le réglage de rafale (« Empiler les
+#            brutes », jalons 42/45) sort des deux cadres où il était
+#            DUPLIQUÉ : un seul cadre « Cadence d'empilement »
+#            (`frm_rafale`) partagé dossier + composition, caché pour une
+#            vraie caméra (sans objet) ; nouvelle méthode
+#            `_maj_visibilite_cadres()` — pack_forget, AUCUNE destruction
+#            (les valeurs saisies survivent aux allers-retours), replacement
+#            via l'ancre stable `frm_calibration` (l'ordre des cadres ne
+#            bouge jamais) ; appelée à la construction, à la restauration de
+#            config et dans `_on_source_choisie` (AVANT la déconnexion,
+#            même si la suite retourne tôt — cas QHY).
+#          Tests : nouveau _test_ui_visibilite_jalon47 (visibilité par
+#          source, conservation des valeurs, ordre stable, cadence unique
+#          toujours reliée au moteur) ; _test_cadence_jalon42 section [7]
+#          mise à jour (un seul couple combobox/étiquette) ; régression
+#          large au vert : ui jalon 5, compo UI jalon 19, config jalon 6,
+#          capacités UI jalon 32, expo jalon 34, pilotage jalon 35,
+#          connexion SVBONY jalon 36, TEC jalon 38, couleurs jalon 39,
+#          état de calcul jalon 40, moteur jalon 41.
 # v2.21.5 : PLAFOND DE RAFALE (jalon 46, retour d'Alain en composition :
 #          « rafale en cours » avec un grand nombre de brutes — ses dossiers
 #          contiennent déjà les acquisitions d'AUTRES soirées, donc la
