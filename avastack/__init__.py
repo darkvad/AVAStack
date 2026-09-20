@@ -14,9 +14,33 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.17.2"
+AVASTACK_VERSION = "2.18.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.18.0 : UI DYNAMIQUE — LA FENÊTRE S'ADAPTE À LA CAMÉRA BRANCHÉE
+#          (jalon 31, demande d'Alain du 20/09/2026 : « quand tu connectes
+#          une caméra tu fais ce travail de détection et ensuite tu
+#          construis l'UI », pour TOUTES les marques — RIEN codé en dur) :
+#          - avastack/cameras/qhyct.py (NOUVEAU) : sonde ctypes native
+#            QHY extraite du banc (UNE définition — le banc délègue) :
+#            plages MinMaxStep + roue CFW, validations réelles du jalon 30 ;
+#          - QHYCamera.detecter_capacites() : traduit le relevé natif fait
+#            À L'OUVERTURE (avant que le binding ne réclame l'USB — accès
+#            séquentiel, PAS de ReleaseQHYCCDResource à côté du binding) ;
+#          - App._adapter_ui_capacites() : à la connexion, curseurs
+#            gain/offset RECONSTRUITS aux plages réelles (MiniCam8M : gain
+#            0→230, offset 0→255), exposition bornée par la plage native
+#            (1 µs → 3600 s — la case « échelle longue » devient inutile,
+#            toute la plage passe dans le curseur log), consigne TEC
+#            clampée à la plage réelle (-50 → 50 °C, bornes affichées),
+#            roue limitée aux SLOTS détectés (8 sur la MiniCam8M) ;
+#          - déconnexion → retour aux valeurs par défaut ; dégradation
+#            silencieuse (sonde muette → UI d'origine, jamais d'erreur) ;
+#          - BUG préexistant corrigé au passage : « ⏏ Déconnecter »
+#            référençait btn_deconnecter (inexistant — AttributeError
+#            garanti à l'usage) au lieu de btn_deconnect.
+#          Test : _test_ui_dynamique_jalon31.py (15/15, fenêtre réelle +
+#          Capacites du relevé MiniCam8M) ; 33/33 QHY ; 29/29 capacités.
 # v2.17.2 : BANC QHY — CORRECTIF RÉEL n°2 (MiniCam8M, 20/09 matin) :
 #          IsQHYCCDControlAvailable suit la convention du SDK ENTIER :
 #          **0 (QHYCCD_SUCCESS) = contrôle DISPONIBLE** (pas « 1 = vrai » ;

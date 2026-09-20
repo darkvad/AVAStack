@@ -186,6 +186,30 @@ class QHYCamera(CameraBase):
             raise RuntimeError("Aucune caméra QHY détectée (scan USB vide)")
         # camera_id fourni par l'UI (id exact du scan), sinon l'index
         cid = self.camera_id if self.camera_id in ids else ids[self.index]
+        # Jalon 31 : sonde native AVANT que le binding ne réclame le
+        # périphérique USB (accès SÉQUENTIEL — jamais deux handles ouverts
+        # en même temps). Les plages MinMaxStep + l'état de la roue sont
+        # relevés ici, stockés, puis exposés par detecter_capacites() SANS
+        # rouvrir quoi que ce soit. Aucune exception ne remonte : si le
+        # natif échoue, les capacités seront None et l'UI garde ses
+        # valeurs par défaut (dégradation, jamais un crash).
+        self.capacites_native = {}
+        self.roue_native = None
+        try:
+            from . import qhyct
+            _s = qhyct.QhyNatif()
+            if _s.ouvrir():
+                self.capacites_native = _s.plages()
+                self.roue_native = _s.cfw_info()
+                # PAS de ReleaseQHYCCDResource : le binding a déjà initialisé
+                # le SDK dans ce process — le libérer le casserait.
+                _s.fermer(release=False)
+                _tracer(f"sonde native : {len(self.capacites_native)} plages "
+                        f"lues, roue={self.roue_native!r}")
+            else:
+                _tracer("sonde native : pas de réponse (plages indisponibles)")
+        except Exception as e:
+            _tracer(f"sonde native : {e!r} (capacités natives indisponibles)")
         # Le CONSTRUCTEUR ouvre la caméra (doc officielle du paquet ; vérifié
         # en réel : RuntimeError "Failed to open camera" sur id inexistant).
         # NE PAS appeler open() ensuite — double ouverture = segfault natif
@@ -234,6 +258,49 @@ class QHYCamera(CameraBase):
                 f"Trace : {FICHIER_TRACE}")
         self.cam.begin_live()
         _tracer("begin_live() OK")
+
+    def detecter_capacites(self):
+        """→ Capacites rempli depuis le RELEVÉ NATIF fait à l'ouverture
+        (jalon 31 : plages MinMaxStep + roue via qhyccd.dll directe, cf.
+        open()). La caméra doit être OUVERTE (l'attribut existe) ; si la
+        sonde native n'a rien relevé → None (l'UI garde ses valeurs par
+        défaut, jamais une erreur)."""
+        if not getattr(self, "capacites_native", None):
+            return None
+        from .capacites import Capacites, Controle
+        cap = Capacites("QHY", modele=self.name)
+        ext = self.capacites_native
+        # Les clés extras sont les id de contrôle du SDK (strings).
+        if "8" in ext:
+            cap.expo_us = (float(ext["8"]["min"]), float(ext["8"]["max"]))
+        if "6" in ext:
+            cap.gain = (float(ext["6"]["min"]), float(ext["6"]["max"]))
+        if "7" in ext:
+            cap.offset = (float(ext["7"]["min"]), float(ext["7"]["max"]))
+        if "18" in ext:
+            cap.tec = True
+            cap.tec_consigne = (float(ext["18"]["min"]),
+                                float(ext["18"]["max"]))
+        if "14" in ext:
+            cap.temperature_lisible = True
+        if "10" in ext:
+            cap.bits = int(ext["10"].get("max", 16) or 16)
+        # Roue intégrée : détection + slots relevés en natif (jalon 30,
+        # validé en réel : MiniCam8M = 8 slots, ctrl 44).
+        if isinstance(self.roue_native, tuple) and self.roue_native[0]:
+            cap.roue_slots = (int(self.roue_native[1])
+                              if self.roue_native[1] else None)
+        cap.extras = dict(ext)
+        # Énumération brute (controles) : un Controle par entrée relevée.
+        for k, e in ext.items():
+            try:
+                cap.controles.append(Controle(
+                    int(k), nom=e.get("nom", k),
+                    mini=float(e.get("min", 0)), maxi=float(e.get("max", 0)),
+                    defaut=float(e.get("val", 0))))
+            except (TypeError, ValueError):
+                continue
+        return cap
 
     def read(self):
         """→ frame numpy 2D mono (float32 [0..1]) ou None."""

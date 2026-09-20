@@ -131,6 +131,13 @@ class App:
         self._controles_sondes = False
         self._roue_ok = False            # roue détectée (worker → _tick)
         self._tec_ok = False             # refroidissement détecté (idem)
+        # Jalon 31 : capacités détectées À LA CONNEXION → l'UI s'adapte
+        # (plages expo/gain/offset/TEC réelles, roue aux slots réels).
+        # None = sonde absente ou muette → valeurs par défaut conservées.
+        self.capacites = None
+        self._EXPO_DYN = None            # (min_ms, max_ms) réels, sinon None
+        self.tec_plage = None            # (min, max) °C réels, sinon None
+        self._filtres_dispo = FILTRES_ROUE
         self.filtre_courant = None       # nom du filtre en place (FITS FILTER)
         self.running = False
         self.q = queue.Queue(maxsize=2)
@@ -556,6 +563,11 @@ class App:
     _EXPO_LONG = (1000.0, 900000.0)    # ms : 1 s → 900 s
 
     def _expo_bornes(self):
+        # Jalon 31 : bornes RÉELLES de la caméra connectée si la sonde les a
+        # données (plage log unique couvrant toute la plage native) ;
+        # sinon les deux échelles fixes d'origine.
+        if self._EXPO_DYN is not None:
+            return self._EXPO_DYN
         return self._EXPO_LONG if self.var_expo_longue.get() else self._EXPO_COURT
 
     def _expo_depuis_pos(self, p):
@@ -601,9 +613,11 @@ class App:
         except ValueError:
             self.var_expo_saisie.set(_fmt_expo(self.var_expo.get()))
             return
-        if ms > self._EXPO_COURT[1] and not self.var_expo_longue.get():
+        if self._EXPO_DYN is None and ms > self._EXPO_COURT[1] \
+                and not self.var_expo_longue.get():
             self.var_expo_longue.set(True)    # bascule automatique
-        elif ms < self._EXPO_LONG[0] and self.var_expo_longue.get():
+        elif self._EXPO_DYN is None and ms < self._EXPO_LONG[0] \
+                and self.var_expo_longue.get():
             self.var_expo_longue.set(False)
         self._maj_expo(ms)
 
@@ -714,11 +728,12 @@ class App:
             box, text="Échelle longue (1 s – 900 s)",
             variable=self.var_expo_longue, command=self._on_echelle_expo)
         self.chk_expo_longue.pack(anchor="w")
-        self._add_slider(box, "Gain (0 – 175)", self.var_gain, 0.0, 175.0,
-                         1.0, self._push_settings, "{:.0f}", saisie=True)
-        self._add_slider(box, "Offset (0 – 255)", self.var_offset, 0.0,
-                         255.0, 1.0, self._push_settings, "{:.0f}",
-                         saisie=True)
+        self.sl_gain = self._add_slider(
+            box, "Gain (0 – 175)", self.var_gain, 0.0, 175.0, 1.0,
+            self._push_settings, "{:.0f}", saisie=True)
+        self.sl_offset = self._add_slider(
+            box, "Offset (0 – 255)", self.var_offset, 0.0, 255.0, 1.0,
+            self._push_settings, "{:.0f}", saisie=True)
         # --- Roue à filtres intégrée (active si la roue répond, cf. worker)
         rowf = ttk.Frame(box)
         rowf.pack(fill="x", pady=(2, 0))
@@ -733,7 +748,8 @@ class App:
         # --- Refroidissement TEC (consigne + lectures + arrêt) -----------
         rowt = ttk.Frame(box)
         rowt.pack(fill="x", pady=(2, 0))
-        ttk.Label(rowt, text="Consigne °C :").pack(side="left")
+        self.lbl_tec_lib = ttk.Label(rowt, text="Consigne °C :")
+        self.lbl_tec_lib.pack(side="left")
         ttk.Entry(rowt, textvariable=self.var_tec_consigne, width=5
                   ).pack(side="left", padx=(4, 4))
         self.btn_tec_on = ttk.Button(rowt, text="❄ Réguler",
@@ -1362,6 +1378,8 @@ class App:
             bouton.bind("<Leave>", relache)
         s._pas = pas                 # accès pour les tests
         s._boutons = (b_moins, b_plus)
+        s._row = row                 # reconstruction dynamique (jalon 31)
+        s._lbl_txt = label           # texte d'origine (idem)
         return s
 
     # ------------------------------------------------------------ callbacks UI
@@ -1671,6 +1689,80 @@ class App:
 
     # --- contrôles caméra QHY (jalon 25) : demandes posées ICI (thread Tk),
     # consommées par le thread de travail — jamais d'appel SDK depuis Tk.
+    def _adapter_ui_capacites(self, cap):
+        """Jalon 31 — DEMANDE D'ALAIN (20/09/2026) : à la connexion d'une
+        caméra (toute marque), l'UI est reconstruite avec les bornes RÉELLES
+        détectées par le SDK — RIEN n'est câblé en dur. `cap` = objet
+        Capacites (peut être None : on ne touche alors à rien).
+
+        Curseurs : reconstruits par DESTRUCTION/REMPLACEMENT (grid+pack
+        interdits dans le même conteneur — leçon des bancs), valeurs
+        courantes conservées si elles restent dans les nouvelles plages.
+        Exposition : plages log dynamiques (bornes natives en ms) ; TEC :
+        consigne bornée à la plage native (arrondie au pas) ; roue :
+        combobox limitée aux SLOTS réels ; étiquettes : bornes lues."""
+        if cap is None:
+            return
+        # --- exposition (µs natif → ms interne) : bornes log dynamiques ---
+        if getattr(cap, "expo_us", None):
+            lo_ms = max(float(cap.expo_us[0]) / 1000.0, 0.001)
+            hi_ms = float(cap.expo_us[1]) / 1000.0
+            if hi_ms > lo_ms:
+                self._EXPO_DYN = (lo_ms, hi_ms)
+                maj = getattr(self, "_maj_expo", None)
+                if maj is not None:
+                    maj(self.var_expo.get())
+        # --- gain / offset : reconstruction de la ligne complète ---------
+        for nom_attr, cid, var in (("sl_gain", "6", self.var_gain),
+                                   ("sl_offset", "7", self.var_offset)):
+            ancien = getattr(self, nom_attr, None)
+            if ancien is None or getattr(ancien, "_row", None) is None:
+                continue
+            p = cap.plage_controle(cid)
+            if p is None:
+                continue
+            mn, mx, st = p
+            base = getattr(ancien, "_lbl_txt", nom_attr).split(" (")[0]
+            try:
+                ancien._row.destroy()
+            except tk.TclError:
+                pass
+            var.set(min(max(var.get(), mn), mx))     # valeur dans la plage
+            parent = ancien._row.master   # le parent de la LIGNE détruite
+            setattr(self, nom_attr, self._add_slider(
+                parent, f"{base} ({mn:g} – {mx:g})", var,
+                mn, mx, st, self._push_settings, "{:.0f}", saisie=True))
+        # --- TEC : plage de consigne réelle ------------------------------
+        if getattr(cap, "tec_consigne", None) and cap.tec:
+            t = cap.tec_consigne
+            if t[0] < t[1]:
+                self.tec_plage = (float(t[0]), float(t[1]))
+        # --- roue : slots réels détectés ----------------------------------
+        n = getattr(cap, "roue_slots", None)
+        if n and n > 0:
+            self._filtres_dispo = (FILTRES_ROUE[:int(n)]
+                                   if int(n) < len(FILTRES_ROUE)
+                                   else FILTRES_ROUE)
+            self._roue_ok = True     # la roue a été vue par la sonde native
+        # --- partie Tk directe (méthode appelée depuis le thread UI) ------
+        # roue : valeurs = slots réels (Dark, L, R… jusqu'à n)
+        try:
+            self.cb_filtre.config(values=list(self._filtres_dispo))
+        except tk.TclError:
+            pass
+        if self.var_filtre.get() not in self._filtres_dispo:
+            self.var_filtre.set(self._filtres_dispo[0])
+        # consigne TEC : clamp à la plage réelle + bornes affichées
+        t = self.tec_plage
+        if t is not None:
+            try:
+                v = float(self.var_tec_consigne.get().replace(",", "."))
+                self.var_tec_consigne.set(f"{min(max(v, t[0]), t[1]):g}")
+            except ValueError:
+                pass
+            self.lbl_tec_lib.config(
+                text=f"Consigne °C ({t[0]:g} à {t[1]:g}) :")
+
     def _on_filtre_choisi(self, _e=None):
         try:
             n = FILTRES_ROUE.index(self.var_filtre.get())
@@ -1684,7 +1776,10 @@ class App:
         except ValueError:
             self._tec_info = ("Consigne TEC : nombre invalide", "#d04040")
             return
-        self._tec_demande = ("consigne", min(max(t, -30.0), 45.0))
+        # Jalon 31 : clamp à la plage RÉELLE de la caméra (plage native si
+        # détectée, bornes prudentes d'origine sinon).
+        plage = self.tec_plage or (-30.0, 45.0)
+        self._tec_demande = ("consigne", min(max(t, plage[0]), plage[1]))
 
     def _on_arret_tec(self):
         self._tec_demande = ("stop", None)
@@ -1874,7 +1969,7 @@ class App:
         self._controles_sondes = False
         self._roue_ok = self._tec_ok = False
         self.btn_start.config(state="normal")
-        self.btn_deconnecter.config(state="normal")
+        self.btn_deconnect.config(state="normal")
         self._detect_busy = False
         self.lbl_detect.config(text=f"QHY : connectée ({cam.name})",
                                foreground="#1d7f1d")
@@ -2195,10 +2290,18 @@ class App:
             self.camera.close()
             self.camera = None
         self.btn_start.config(state="disabled")
-        self.btn_deconnecter.config(state="disabled")
+        self.btn_deconnect.config(state="disabled")
         self.cb_filtre.config(state="disabled")
         self.btn_tec_on.config(state="disabled")
         self.btn_tec_off.config(state="disabled")
+        # Jalon 31 : retour aux valeurs par défaut (la prochaine connexion
+        # relancera la détection et reconstruira les bornes réelles).
+        self.capacites = None
+        self._EXPO_DYN = None
+        self.tec_plage = None
+        self._filtres_dispo = FILTRES_ROUE
+        self.cb_filtre.config(values=list(FILTRES_ROUE))
+        self.lbl_tec_lib.config(text="Consigne °C :")
         self.lbl_tec.config(text="Capteur : — · TEC : —", foreground="#888888")
         self.lbl_detect.config(text="")
         self._qhy_id = ""
@@ -3847,6 +3950,18 @@ class App:
                 self.cam_pilotee = cam if isinstance(cam, QHYCamera) else None
                 self._controles_sondes = False
                 self._roue_ok = self._tec_ok = False
+                # Jalon 31 : détection des capacités puis ADAPTATION de l'UI
+                # (curseurs aux plages réelles, roue aux slots réels, TEC
+                # borné) — demandé par Alain : « quand tu connectes une
+                # caméra tu fais ce travail de détection et ensuite tu
+                # construis l'UI », pour toutes les marques. La caméra est
+                # ouverte : detecter_capacites ne fait que traduire le
+                # relevé fait à l'ouverture (aucun appel SDK bloquant).
+                try:
+                    self.capacites = cam.detecter_capacites()
+                except Exception:
+                    self.capacites = None
+                self._adapter_ui_capacites(self.capacites)
                 self.pending_settings = (self.expo_ms, self.gain_val)
                 self.pending_offset = float(self.var_offset.get())
                 self.var_filtre.set(FILTRES_ROUE[0])

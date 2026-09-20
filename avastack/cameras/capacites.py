@@ -80,24 +80,41 @@ class Capacites:
         self.max_h = max_h
         self.pixel_um = pixel_um
         # plages (tuples (min, max)) ou None si le SDK ne les expose pas
-        self.expo_us = None               # µs
-        self.gain = None                  # unités SDK de la marque
-        self.offset = None                # unités SDK de la marque
-        # refroidissement
+        self.expo_us = None
+        self.gain = None
+        self.offset = None
         self.tec = False
-        self.tec_consigne = None          # (min, max) °C
+        self.tec_consigne = None
         self.temperature_lisible = False
-        # image
-        self.bins = []                    # [1, 2, ...]
+        self.bins = []
         self.bin_materiel = False
-        self.formats = []                 # noms ("RAW16", "RGB24"…)
-        # divers
+        self.formats = []
         self.usb3 = False
         self.st4 = False
-        self.roue_slots = None            # nb de slots (QHY, roue intégrée)
+        self.roue_slots = None
         self.serie = ""
-        self.controles = []               # liste de Controle (énum brute)
-        self.extras = {}                  # notes libres par marque
+        self.controles = []
+        # extras : tout ce que la sonde a lu et qui n'a pas de champ dédié
+        # (dict, clé = identifiant de contrôle de la marque, valeur = dict
+        # min/max/step/valeur) — le câblage dynamique de l'UI lit ICI les
+        # plages QHY natives (clés "6" gain, "7" offset, "8" expo, "18"
+        # consigne TEC…) sans y coder le moindre modèle.
+        self.extras = {}
+
+    def plage_controle(self, cid):
+        """→ (min, max, step) du contrôle `cid` depuis extras, ou None.
+
+        Contrôles D'ENTRÉE seulement (ceux qu'un curseur peut régler) : les
+        contrôles drapeaux (valeur sentinelle 0xFFFFFFFF, pas de plage) et
+        les plages incohérentes (min >= max) sont rejetés — jamais de
+        curseur construit sur une plage bidon."""
+        e = self.extras.get(str(cid))
+        if not isinstance(e, dict) or "min" not in e:
+            return None
+        mn, mx, st = float(e["min"]), float(e["max"]), float(e.get("step", 1))
+        if mn >= mx or mx <= 0:
+            return None
+        return (mn, mx, st if st > 0 else 1.0)
 
     # --- annotations -----------------------------------------------------------
 

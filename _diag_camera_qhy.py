@@ -1,6 +1,11 @@
 # -*- coding: utf-8 -*-
 """Banc de test autonome caméra QHY — utilise le MÊME code que l'appli.
 
+BANC version 2.18.0 : la sonde ctypes native (plages + roue) vit
+désormais dans l'application (avastack/cameras/qhyct.py) — ce banc la
+RÉUTILISE via son sous-processus d'isolation (le module embarque sa copie
+locale pour rester autonome si la bibliothèque installée est antérieure).
+
 Demande d'Alain (19/09/2026) : déboguer la caméra HORS de l'application,
 sans la complexité du live stacking ni la relance des tests de non-
 régression. Ce programme réutilise `avastack.cameras.qhy.QHYCamera` TEL
