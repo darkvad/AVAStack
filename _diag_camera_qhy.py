@@ -92,7 +92,7 @@ FICHIER_LOG = mqhy.FICHIER_TRACE
 # BIBLIOTHÈQUE installée, qui peut être antérieure au banc — c'est ce qui a
 # semé la confusion du 20/09 (log « 2.16.0 » alors que le banc était en
 # 2.17.0). Les deux sont affichées séparément.
-BANC_VERSION = "2.17.1"
+BANC_VERSION = "2.17.2"
 
 # Enum `Control` OFFICIEL du SDK QHY — source : crate Rust `qhyccd-rs` 0.1.9
 # (docs.rs), celle qui sous-tend le paquet PyPI `qhyccd`. Les clés sont les
@@ -333,6 +333,8 @@ def _binding_sans_liberation():
 #     uint32_t GetQHYCCDParamMinMaxStep(qhyccd_handle *h, int controlId,
 #                 double *min, double *max, double *step);
 #     uint32_t IsQHYCCDControlAvailable(qhyccd_handle *h, int controlId);
+#                 -> 0 = contrôle DISPONIBLE (même convention que la roue :
+#                 QHYCCD_SUCCESS ; confirmé par le driver INDI)
 #     uint32_t IsQHYCCDCFWPlugged(qhyccd_handle *h);   -> 0 = CFW TROUVÉ
 #                 (doc QHY « User Manual of Filter Wheel APIs » :
 #                 QHYCCD_SUCCESS = roue branchée — PAS un booléen « vrai »)
@@ -460,7 +462,11 @@ def _sonde_plages(fns, h, res, info):
     for cid_ in range(0, 63):        # 0..62 : jusqu'à CAM_HUMIDITY (enum)
         nom = _nom_ctrl(cid_)
         d = fns["IsQHYCCDControlAvailable"](h, cid_)
-        if d != 1:
+        if d != 0:
+            # 0 = QHYCCD_SUCCESS = contrôle DISPONIBLE (convention du SDK
+            # entier, cf. IsQHYCCDCFWPlugged ; confirmé par le driver INDI :
+            # « ... == QHYCCD_SUCCESS »). Constat réel 20/09 : 26 réponses 0
+            # = les contrôles disponibles, 37 × 0xFFFFFFFF = id inconnus.
             indispo.append(cid_)
             rc_dispo[str(d)] = rc_dispo.get(str(d), 0) + 1
             continue
@@ -1870,8 +1876,8 @@ class BancQHY:
         rcs = res.get("dispo_rc")
         if rcs and not ctr:
             self.q_msg.put(
-                "⚠ IsQHYCCDControlAvailable n'a JAMAIS répondu 1 (codes : "
-                + ", ".join(f"{k} ×{v}" for k, v in rcs.items())
+                "⚠ IsQHYCCDControlAvailable n'a JAMAIS répondu 0 (= dispo) "
+                "(codes : " + ", ".join(f"{k} ×{v}" for k, v in rcs.items())
                 + ") — regarde plus haut les codes de SetQHYCCDStreamMode et "
                 "InitQHYCCD : si InitQHYCCD != 0, c'est l'initialisation "
                 "par handle qui bloque (le rapporter tel quel).")

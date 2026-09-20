@@ -14,9 +14,18 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.17.1"
+AVASTACK_VERSION = "2.17.2"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.17.2 : BANC QHY — CORRECTIF RÉEL n°2 (MiniCam8M, 20/09 matin) :
+#          IsQHYCCDControlAvailable suit la convention du SDK ENTIER :
+#          **0 (QHYCCD_SUCCESS) = contrôle DISPONIBLE** (pas « 1 = vrai » ;
+#          confirmé par le driver INDI : « ... == QHYCCD_SUCCESS »). Le log
+#          réel (26 × 0, 37 × 0xFFFFFFFF) l'a révélé — les 26 réponses 0
+#          SONT les contrôles disponibles. Diagnostic affiché en clair si
+#          la dispo ne répond jamais 0. v2.17.1 : SetQHYCCDStreamMode +
+#          InitQHYCCD(handle) après OpenQHYCCD (obligatoire pour les
+#          lectures) ; roue CFW native VALIDÉE EN RÉEL (détectée, 8 slots).
 # v2.17.1 : BANC QHY — CORRECTIF RÉEL (MiniCam8M, 20/09 matin) : les plages
 #          ctypes sortaient TOUTES « indisponibles » car la sonde appelait
 #          IsQHYCCDControlAvailable SANS l'initialisation par handle — le
