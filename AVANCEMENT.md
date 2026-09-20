@@ -11,31 +11,31 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.21.0** (`avastack/__init__.py`),
-  branche `master` — jalon 41 CORRIGÉ EN DEV (tout au vert), **COMMITÉ ET
-  POUSSÉ (voir clôture de session)**, **installateur v2.21.0 REBUILD**
+- **Version stable de référence : AVAStack v2.21.1** (`avastack/__init__.py`),
+  branche `master` — jalon 42 CORRIGÉ EN DEV (tout au vert), **COMMITÉ ET
+  POUSSÉ (voir clôture de session)**, **installateur v2.21.1 REBUILD**
   (`installer/windows/output/avastack-setup.exe`) — copie de l'installateur
   vers le miniPC à faire.
-- **Dernier jalon (41, 20/09/2026) — UI INDÉPENDANTE DU MOTEUR (décision
-  d'Alain : « rendre visible tout ce qui s'applique aussi en STF »)** :
-  - la chaîne couleur (SCNR / SCNR doux / démagenta) SORT du cadre VeraLux
-    → nouveau cadre INDÉPENDANT « Couleur live (SCNR / démagenta) » :
-    cochable et EFFICACE en STF/manuel (le moteur STF applique déjà la
-    chaîne, testé jalon 22 — c'était un rangement d'UI, pas une limite) ;
-  - l'étiquette d'état + le curseur de calcul sortent AUSSI → cadre
-    « État des calculs (live) » visible dans les DEUX modes ; en STF ils
-    signalent le solveur de netteté dédié (⏳ netteté…, jalon 12) —
-    `_maj_lbl_vl` étendue + `sh_en_cours()` (display.py) ;
-  - GX live et débruitage live RESTENT dans le cadre VeraLux (ils ne
-    s'appliquent que dans son solveur) ;
-  - EXPLICATION CORRIGÉE (imprécision d'Alain relevée par lui) : le rendu
-    STF n'est PAS à 20 fois/s — le worker ne pousse qu'à CHAQUE IMAGE
-    REÇUE (caméras SDK → None entre deux poses) ; le 1/20 s n'est qu'un
-    PLAFOND anti-engorgement pour sources rapides (démo, webcams, poses
-    courtes) ;
-  - Tests : _test_ui_moteur_jalon41 9/9 (NOUVEAU) ;
-    _test_etat_calcul_jalon40 12/12 (section STF mise à jour) ; jalon5
-    15/15 ; jalon22 33/33 ; jalon39 12/12 ; jalon12 48/48.
+- **Dernier jalon (42, 20/09/2026) — CADENCE D'EMPILEMENT EN SURVEILLANCE
+  DE DOSSIER (demande d'Alain : « on peut le régler en permettant de
+  choisir la fréquence de lecture des images brutes » — AVIS : oui, c'est
+  le bon levier, et plus simple/sûr que de throttler le solveur)** :
+  - constat : avec la chaîne lourde (gradient, débruitage) en mode
+    dossier/multi-dossiers, CHAQUE brute relançait la résolution — sablier
+    en permanence (composition ↔ étirement sans interruption) ;
+  - fait : combobox « Empiler les brutes » dans « Dossier surveillé »
+    (dès réception / 5 s / 15 s / 30 s / 1 min / 5 min, persistée
+    `cadence_lecture`) ; les brutes qui arrivent pendant la fenêtre
+    RESTENT sur le disque (aucune perte) puis sont DRAINÉES EN RAFALE —
+    un seul recalcul VeraLux par rafale (dernier job gagnant) ; l'aperçu
+    est au repos entre les rafales. L'empilement LINÉAIRE accumule TOUTES
+    les brutes : la cadence change le RYTHME, jamais le contenu ;
+  - folder.py : propriété `pending` + `scanner()` (scan sans lecture) ;
+    multifolder.py : `scanner()` ; app.py : porte `_autoriser_lecture()`
+    avant read() + `_armer_cadence()` quand tout est lu ; sources
+    NON-dossier (SDK, webcam, simulée) JAMAIS throttlées (file mémoire) ;
+  - Tests : _test_cadence_jalon42 18/18 (NOUVEAU) ; jalon19 multi-dossiers
+    (régression) ; jalon5 15/15 ; jalon41 9/9 ; jalon40 12/12.
 - **LIMITE QHY (toujours valable)** : après « ■ Arrêter », relancer
   l'appli — le binding qhyccd n'expose AUCUNE libération du SDK (état
   irréinitialisable dans le process) ; le banc QHY l'annonce et conseille
@@ -101,6 +101,11 @@ dans le changelog du source et l'historique git.)
 8. **Jalon 41 (v2.21.0)** : en mode STF, vérifier le nouveau cadre
    « Couleur live » (cases SCNR/démagenta efficaces à l'écran) et le cadre
    « État des calculs » (⏳ netteté pendant la déconvolution STF).
+9. **Jalon 42 (v2.21.1)** : en surveillance de dossier avec GX/débruitage
+   live, régler « Empiler les brutes » sur 30 s ou 1 min → le sablier doit
+   travailler par RAFALES (un recalcul par rafale) et l'aperçu doit être au
+   repos entre les rafales ; vérifier qu'AUCUNE brute n'est perdue (compte
+   « Frames » = total des brutes du dossier).
 
 ## Pièges récents (rappels opérationnels)
 
@@ -163,32 +168,34 @@ dans le changelog du source et l'historique git.)
   points puis en trainées » → origine du jalon 13 (alignement robuste).
   Banc POA : `_diag_camera_playerone.py` (jalon 28).
 
-## 🔚 Clôture de session — 20/09/2026 (v2.21.0, jalon 41)
+## 🔚 Clôture de session — 20/09/2026 (v2.21.1, jalon 42)
 
-État exact : **v2.21.0 COMMITÉE ET POUSSÉE (8ee2d8c), installateur REBUILD**.
-Session en trois jalons après la v2.20.7 : jalon 39 (v2.20.8, cases couleur
-réactives immédiatement — `_refresh_preview()` manquant) ; jalon 40
-(v2.20.9, état du calcul matérialisé — `vl_stage` écrit par le solveur,
-UI : curseur animé + « ⏳ calcul : <étape>… », ligne de résultat
-GX ✓ · DN ✓ · NET ✓ · COUL ✓ · logD · fond) ; jalon 41 (v2.21.0, DÉCISION
-D'ALAIN : UI indépendante du moteur — cases couleur sorties du cadre
-VeraLux → cadre « Couleur live », état des calculs sorti → cadre
-« État des calculs » visible en STF aussi, où il signale le solveur de
-netteté dédié ; GX/débruitage restent VeraLux-only). AUSSI : explication
-CORRIGÉE du rythme d'affichage — le worker ne pousse qu'à chaque IMAGE
-reçue (le 1/20 s n'est qu'un plafond), le STF ne rend PAS 20 fois/s.
-Tout au vert en dev : _test_ui_moteur_jalon41 9/9 (NOUVEAU),
-_test_etat_calcul_jalon40 12/12, _test_couleurs_immediat_jalon39 12/12,
-jalon22 33/33, jalon5 15/15, jalon12 48/48.
+État exact : **v2.21.1 COMMITÉE ET POUSSÉE (11f6dfb), installateur REBUILD**.
+Session en quatre jalons après la v2.20.7 : jalon 39 (v2.20.8, cases
+couleur réactives immédiatement) ; jalon 40 (v2.20.9, état du calcul —
+curseur + ⏳ étape + résultat GX/DN/NET/COUL · logD · fond) ; jalon 41
+(v2.21.0, décision d'Alain : UI indépendante du moteur — cadre « Couleur
+live » et cadre « État des calculs » visibles/cochables EN STF aussi, où
+l'indicateur signale le solveur de netteté dédié) ; jalon 42 (v2.21.1,
+demande d'Alain : cadence d'empilement en surveillance de dossier —
+combobox « Empiler les brutes » [dès réception/5 s/15 s/30 s/1 min/5 min],
+les brutes attendent sur le disque puis sont drainées en rafale, UN seul
+recalcul VeraLux par rafale — plus de sablier permanent avec la chaîne
+lourde ; sources non-dossier jamais throttlées). AU PASSAGE : explication
+corrigée — le worker ne pousse l'aperçu qu'à CHAQUE IMAGE reçue (le 1/20 s
+n'est qu'un plafond anti-engorgement). Tout au vert en dev :
+_test_cadence_jalon42 18/18 (NOUVEAU), jalon19 multi-dossiers, jalon5
+15/15, jalon41 9/9, jalon40 12/12.
 
-**Prochaine étape** : (1) copier l'installateur v2.21.0 vers le miniPC ;
-(2) validations réelles des jalons 39/40/41 (cases couleur immédiates ;
-curseur + ⏳ + résultat ; cadres « Couleur live » et « État des calculs »
-en STF) ; (3) suite des tests réels en attente (QHY MiniCam8M : TEC +
-roue à filtres, verdict par EFFET PHYSIQUE).
+**Prochaine étape** : (1) copier l'installateur v2.21.1 vers le miniPC ;
+(2) validations réelles des jalons 39/40/41/42 (cases couleur immédiates ;
+curseur + ⏳ + résultat ; cadres STF ; cadence en surveillance avec
+GX/débruitage live — vérifier AUCUNE brute perdue) ; (3) suite des tests
+réels en attente (QHY MiniCam8M : TEC + roue à filtres, verdict par EFFET
+PHYSIQUE).
 
-Sessions précédentes : v2.20.9 (jalon 40, état du calcul, 45bbfc9) ;
-v2.20.8 (jalon 39, cases couleur réactives, 097a9c8) ; v2.20.7 (jalon 38,
-boutons ❄ toujours actifs — décision d'Alain, d8d4055) ; v2.20.6 (jalon
-37, a8a3930) ; v2.20.5 (jalon 36, c09e191) — détail dans l'historique git
-et le changelog du source.
+Sessions précédentes : v2.21.0 (jalon 41, UI indépendante du moteur,
+8ee2d8c) ; v2.20.9 (jalon 40, état du calcul, 45bbfc9) ; v2.20.8 (jalon
+39, cases couleur réactives, 097a9c8) ; v2.20.7 (jalon 38, d8d4055) ;
+v2.20.6 (jalon 37, a8a3930) ; v2.20.5 (jalon 36, c09e191) — détail dans
+l'historique git et le changelog du source.
