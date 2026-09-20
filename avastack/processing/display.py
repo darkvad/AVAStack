@@ -179,6 +179,11 @@ class DisplayProcessor:
         self._vl_lock = threading.Lock()
         self._vl_wake = threading.Event()
         self.vl_new = False           # un résultat vient d'arriver (lu par l'UI)
+        self.vl_stage = ""            # étape COURANTE du calcul (jalon 40 :
+                                      # "préparation"/"composition"/"GraXpert"…/
+                                      # "étirement"), écrite par le thread
+                                      # solveur, lue par l'UI (thread Tk) —
+                                      # "" = calcul terminé/rien en cours.
         self.vl_error = ""            # dernière erreur du solveur (pour l'UI)
         self.vl_log_d_resolu = None   # dernier logD utilisé/résolu (pour l'UI)
         self.vl_diagnostics = None    # dernier dict de diagnostics (pour l'UI)
@@ -254,6 +259,12 @@ class DisplayProcessor:
         with self._vl_lock:
             self._vl_force = True
 
+    def vl_en_cours(self):
+        """True si le thread solveur VeraLux a un calcul en marche (jalon 40 :
+        l'UI affiche alors l'étape courante `vl_stage` + un curseur animé).
+        Lecture thread-sûre (booléen écrit sous verrou par le worker)."""
+        return self._vl_pending
+
     def _vl_params(self):
         """Clé de hachage des réglages de la chaîne PRÉ-ÉTIREMENT VeraLux —
         GraXpert live, débruitage live, netteté live (jalon 12), SCNR et
@@ -294,6 +305,9 @@ class DisplayProcessor:
                     self._vl_pending = False
                 continue
             img, params, key, gx, dn, sh = job[:6]
+            # Jalon 40 : l'UI affiche l'étape courante (⏳) — le solveur est
+            # le SEUL écrivain de vl_stage (simple str lu par le thread Tk).
+            self.vl_stage = "préparation"
             gx_actif, gx_cmd = gx
             dn_actif, dn_methode, dn_force = dn
             sh_actif, sh_iter = sh
@@ -325,7 +339,8 @@ class DisplayProcessor:
             # brute, jamais d'image perdue).
             img_gx, err_gx = img, ""
             if compo is not None and (gx_actif or dn_actif):
-                canaux, nom_compo, gains, mode_l = compo
+                self.vl_stage = "composition"   # jalon 40 : gradient/débruitage
+                canaux, nom_compo, gains, mode_l = compo   # PAR COUCHE
                 msgs, traites = [], {}
                 for role, couche in canaux.items():
                     c = np.asarray(couche, dtype=np.float32)
@@ -384,6 +399,7 @@ class DisplayProcessor:
             img_gx, err_gx = (img_gx, err_gx) if compo is not None \
                 else (img, "")
             if gx_actif:
+                self.vl_stage = "GraXpert"      # jalon 40 : étape courante
                 # Jalon 23b : un canal MORT (SHO sans S → R = 0) rend le
                 # comportement de GraXpert imprévisible (sortie dégénérée →
                 # image noire en visu, constat réel d'Alain). On ne lance
@@ -416,6 +432,7 @@ class DisplayProcessor:
             # False — le composite est conservé tel quel, sans 2e débruitage.)
             img_dn, err_dn = img_gx, ""
             if dn_actif:
+                self.vl_stage = "débruitage"    # jalon 40 : étape courante
                 cle = (_gx_live.cle_image(img_gx), dn_methode,
                        round(dn_force, 2))
                 if self._dn_cache is not None and self._dn_cache[0] == cle:
@@ -436,6 +453,7 @@ class DisplayProcessor:
             # et cela évite une 2e détection d'étoiles.
             img_net, err_net = img_dn, ""
             if sh_actif:
+                self.vl_stage = "netteté"       # jalon 40 : étape courante
                 try:
                     img_net, err_net = _sharpness.deconvoluer(
                         img_dn, iterations=sh_iter, mesure=self.vl_seeing)
@@ -461,6 +479,7 @@ class DisplayProcessor:
             prefixe = ((f"GraXpert live : {err_gx} ; " if err_gx else "")
                        + (f"Débruitage live : {err_dn} ; " if err_dn else "")
                        + (f"Netteté live : {err_net} ; " if err_net else ""))
+            self.vl_stage = "étirement"         # jalon 40 : étape courante
             try:
                 result, log_d_util, diag = _veralux.etirer(img_net, **params)
             except Exception as exc:      # moteur absent, image dégénérée…
@@ -468,6 +487,7 @@ class DisplayProcessor:
                     self._vl_pending = False
                     self.vl_error = f"{prefixe}VeraLux : {exc}"
                     self.vl_new = True
+                    self.vl_stage = ""    # calcul terminé (en erreur) — jalon 40
                 continue
             with self._vl_lock:
                 self._vl_pending = False
@@ -476,6 +496,7 @@ class DisplayProcessor:
                 self.vl_log_d_resolu = log_d_util
                 self.vl_diagnostics = diag
                 self.vl_new = True
+                self.vl_stage = ""        # calcul terminé — jalon 40
 
     def _process_veralux(self, img, live=True):
         """Chemin VeraLux : rend le dernier résultat terminé (ou le STF en

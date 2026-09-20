@@ -276,6 +276,9 @@ class App:
         self.asseen_result = None       # chemin ou "ERREUR: …" — écrit par le thread, lu par _tick
         self.ext_msg = "—"              # message d'état (écrit par le thread, lu par _tick)
         self._ext_shown = None
+        self._vl_lbl_txt = "—"          # mémo du texte affiché dans lbl_vl
+                                        # (jalon 40 : anti-spam du ⏳ à 30 ms)
+        self._vl_pb_active = False      # curseur de calcul actuellement visible
         self.ext_state = "idle"         # idle | busy | ok | error
         self.ext_t0 = None              # début du traitement en cours (chrono)
         self._ext_popup = False        # erreur à signaler par popup
@@ -1173,6 +1176,11 @@ class App:
         self.lbl_vl = ttk.Label(self.frm_veralux, text="—",
                                 foreground="#888888", wraplength=310)
         self.lbl_vl.pack(anchor="w")
+        # Jalon 40 (demande d'Alain) : matérialiser le calcul en cours —
+        # curseur animé SOUS l'étiquette d'état, visible uniquement pendant
+        # qu'un job est en marche (pack/dépack + start/stop par _tick).
+        self.pb_vl = ttk.Progressbar(self.frm_veralux, mode="indeterminate",
+                                     length=220)
         # Jalon 5 : profil capteur du moteur VeraLux (réponse couleur du
         # capteur — Rec.709 par défaut). Fait partie de la clé des réglages :
         # changer de profil relance la résolution au prochain rendu.
@@ -1509,11 +1517,11 @@ class App:
             self.frm_stf.pack_forget()                    # réglages STF masqués
             self.frm_veralux.pack(fill="x", pady=(4, 0), after=self.rowm)
             self._sync_vl_mode()
-            self.lbl_vl.config(text="Calcul en cours…", foreground="#c98a00")
+            self._lbl_vl_texte("Calcul en cours…", "#c98a00")
         else:
             self.frm_veralux.pack_forget()
             self.frm_stf.pack(fill="x", after=self.rowm)  # position d'origine
-            self.lbl_vl.config(text="—", foreground="#888888")
+            self._lbl_vl_texte("—", "#888888")
         self._refresh_preview()
 
     def _sync_vl_mode(self):
@@ -1570,14 +1578,14 @@ class App:
                     "(elle doit contenir {input} et {output} ou {outbase}).")
                 return
             self.disp.vl_graxpert_cmd = cmd
-            self.lbl_vl.config(text="GraXpert live activé — calcul en cours…",
-                               foreground="#c98a00")
+            self._lbl_vl_texte("GraXpert live activé — calcul en cours…",
+                               "#c98a00")
         self._sync_vl_graxpert_vue()
         if actif and self.var_view.get() == "traitée":
-            self.lbl_vl.config(
-                text="Vue « traitée » : GraXpert live ignoré — l'image a déjà "
-                     "été traitée (il s'appliquera en vue « empilement »).",
-                foreground="#c98a00")
+            self._lbl_vl_texte(
+                "Vue « traitée » : GraXpert live ignoré — l'image a déjà "
+                "été traitée (il s'appliquera en vue « empilement »).",
+                "#c98a00")
         self._refresh_preview()
 
     def _on_vl_profil(self):
@@ -1725,6 +1733,57 @@ class App:
                    f"{psf}")
             coul = "#1d7f1d"
         self.lbl_sharp.config(text=txt, foreground=coul)
+
+    def _lbl_vl_texte(self, txt, coul):
+        """Écrit l'étiquette d'état VeraLux ET son mémo (jalon 40 : le ⏳
+        de _maj_lbl_vl ne doit pas être reconfiguré 30 fois par seconde —
+        tout autre écrivain de lbl_vl passe par ici pour garder le mémo
+        cohérent). Thread UI seul."""
+        self._vl_lbl_txt = txt
+        self.lbl_vl.config(text=txt, foreground=coul)
+
+    def _maj_lbl_vl(self):
+        """État du solveur VeraLux à l'écran (jalon 40, demande d'Alain :
+        matérialiser qu'un calcul tourne et qu'il est terminé). PENDANT un
+        calcul : curseur animé (pb_vl) + étape courante du worker
+        (⏳ préparation / composition / GraXpert / débruitage / netteté /
+        étirement). À LA FIN : ligne de RÉSULTAT — ✓ des étapes actives
+        (GX / DN / NET / COUL), logD utilisé, fond mesuré — ou erreur en
+        rouge. Un seul écrivain : le thread UI (lecture thread-sûre des
+        attributs du solveur, jamais d'appel Tk depuis le worker)."""
+        veralux = self.var_moteur.get() == "VeraLux"
+        en_cours = veralux and self.disp.vl_en_cours()
+        # Curseur de calcul : apparaît au DÉBUT d'un job, disparaît à la FIN
+        # (transitions seulement — pas de reconfiguration à chaque tick).
+        if en_cours != self._vl_pb_active:
+            self._vl_pb_active = en_cours
+            if en_cours:
+                self.pb_vl.pack(anchor="w", pady=(2, 0))
+                self.pb_vl.start(12)
+            else:
+                self.pb_vl.stop()
+                self.pb_vl.pack_forget()
+        if self.disp.vl_new:          # un calcul vient de se TERMINER
+            self.disp.vl_new = False
+            if veralux:
+                self._refresh_preview()
+                if self.disp.vl_error:
+                    self._lbl_vl_texte(self.disp.vl_error, "#d04040")
+                elif self.disp.vl_diagnostics is not None:
+                    d = self.disp.vl_diagnostics
+                    prefixe = ("GX ✓ · " if self.disp.vl_graxpert else "") \
+                        + ("DN ✓ · " if self.disp.vl_denoise else "") \
+                        + ("NET ✓ · " if self.disp.vl_sharp else "") \
+                        + ("COUL ✓ · " if (self.disp.vl_scnr
+                                           or self.disp.vl_scnr_doux
+                                           or self.disp.vl_demagenta) else "")
+                    self._lbl_vl_texte(
+                        f"{prefixe}logD {self.disp.vl_log_d_resolu:.2f} · "
+                        f"fond {d['median_luminance_finale']:.3f}", "#1d7f1d")
+        if en_cours:                  # un calcul TOURNE : l'étape courante
+            txt = f"⏳ calcul : {self.disp.vl_stage or 'préparation'}…"
+            if txt != self._vl_lbl_txt:
+                self._lbl_vl_texte(txt, "#c98a00")
 
     def _on_view(self):
         """Bascule empilement ↔ résultat traité (stats d'étirement réinitialisées :
@@ -4180,22 +4239,8 @@ class App:
         if self.disp.sh_new:      # netteté live : message du solveur (jalon 12)
             self.disp.sh_new = False
             self._maj_lbl_sharp()
-        if self.disp.vl_new:      # résultat du solveur VeraLux (thread dédié)
-            self.disp.vl_new = False
-            if self.var_moteur.get() == "VeraLux":
-                self._refresh_preview()
-                if self.disp.vl_error:
-                    self.lbl_vl.config(text=self.disp.vl_error,
-                                       foreground="#d04040")
-                elif self.disp.vl_diagnostics is not None:
-                    d = self.disp.vl_diagnostics
-                    prefixe = ("GX ✓ · " if self.disp.vl_graxpert else "") \
-                        + ("DN ✓ · " if self.disp.vl_denoise else "") \
-                        + ("NET ✓ · " if self.disp.vl_sharp else "")
-                    self.lbl_vl.config(
-                        text=f"{prefixe}logD {self.disp.vl_log_d_resolu:.2f} · "
-                             f"fond {d['median_luminance_finale']:.3f}",
-                        foreground="#1d7f1d")
+        self._maj_lbl_vl()        # état du solveur VeraLux (jalon 40) :
+                                  # ⏳ étape courante + curseur, puis résultat
         if self.proc_new:
             self.proc_new = False
             self.btn_save_proc.config(state="normal")

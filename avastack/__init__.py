@@ -14,9 +14,38 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.20.8"
+AVASTACK_VERSION = "2.20.9"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.20.9 : ÉTAT DU CALCUL VERA LUX MATÉRIALISÉ À L'ÉCRAN (jalon 40, demande
+#          d'Alain : « matérialiser qu'on applique le traitement et que
+#          c'est terminé »). Jusqu'ici, pendant un calcul (souvent plusieurs
+#          secondes avec GraXpert/débruitage/netteté), la ligne d'état du
+#          panneau VeraLux restait sur son texte précédent : impossible de
+#          savoir SI un calcul tournait ni OÙ il en était. NOUVEAU :
+#          - avastack/processing/display.py : le thread solveur écrit
+#            `vl_stage` (préparation → composition → GraXpert → débruitage
+#            → netteté → étirement) à CHAQUE étape, et le REMET à "" à la
+#            fin (succès comme erreur) ; `vl_en_cours()` = accès UI à
+#            _vl_pending. Écriture worker seule, lecture thread Tk
+#            (simple str/bool, aucun verrou côté UI).
+#          - avastack/ui/app.py : `_maj_lbl_vl()` (appelée à chaque _tick,
+#            un seul écrivain thread UI) — PENDANT un calcul : curseur
+#            INDETERMINATE animé (pb_vl, packé seulement pendant le calcul)
+#            + « ⏳ calcul : <étape>… » en ambre ; À LA FIN : ligne de
+#            RÉSULTAT avec les ✓ des étapes actives — GX ✓ · DN ✓ · NET ✓ ·
+#            COUL ✓ (nouveau : la chaîne couleur du jalon 22/23 est
+#            désormais signalée) — puis logD et fond mesuré ; erreur =
+#            rouge. Mémo `_vl_lbl_txt` : le ⏳ n'est jamais reconfiguré
+#            30 fois par seconde ; tous les autres écrivains de lbl_vl
+#            (_on_moteur, _on_vl_graxpert) passent par `_lbl_vl_texte()`
+#            pour garder le mémo cohérent. Le _refresh_preview sur résultat
+#            (ex-bloc vl_new de _tick) est déplacé DANS _maj_lbl_vl :
+#            comportement inchangé.
+#          Test _test_etat_calcul_jalon40 (séquence des étapes du solveur
+#          via outils factices + UI ⏳/curseur/résultat/erreur) ; régression :
+#          _test_couleurs_immediat_jalon39, _test_veralux_jalon3,
+#          _test_denoise_live_jalon9, _test_sharp_live_jalon12, _test_ui_jalon5.
 # v2.20.8 : CASES COULEUR LIVE (SCNR / SCNR doux / démagenta) RÉACTIVES
 #          IMMÉDIATEMENT (jalon 39, constat réel d'Alain du 20/09/2026 :
 #          cliquer ces cases ne changeait l'affichage qu'à la prochaine
