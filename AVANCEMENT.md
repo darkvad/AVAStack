@@ -13,8 +13,10 @@ dans le changelog du source et l'historique git.)
 
 - **Version stable de référence : AVAStack v2.20.4** (`avastack/__init__.py`),
   branche `master` — jalon 35 CORRIGÉ EN DEV (tout au vert), **COMMITÉ ET
-  POUSSÉ, installateur v2.20.4 REBUILD** — **À VALIDER EN RÉEL** (setup 2,
-  POA : boutons ❄ activés).
+  POUSSÉ (0321914)**, **installateur v2.20.4 REBUILD** — **TEST RÉEL setup 2
+  (Player One) : POINT 3 VALIDÉ PAR ALAIN le 20/09/2026** (boutons ❄ POA
+  activés). (`installer/windows/output/avastack-setup.exe`) — copie de
+  l'installateur vers le miniPC à faire.
 - **Dernier jalon (35, 20/09/2026) — BOUTONS ❄ GRISÉS SUR LA POA (point 3
   de l'item 2d)** :
   - cause : `cam_pilotee` (la caméra que le worker sonde/pilote) était
@@ -67,13 +69,13 @@ dans le changelog du source et l'historique git.)
       longue » généré (pivot 5 s + borne max réelle), coupure à 5 s.
    2. ✅ TRAITÉ ET VALIDÉ EN RÉEL (jalon 34, v2.20.1) — `_fmt_expo` sans
       notation scientifique : « 2 000 s » au lieu de « 2e+03 s ».
-   3. ✅ CORRIGÉ EN DEV (jalon 35, v2.20.4) — cause trouvée : `cam_pilotee`
+   3. ✅ CORRIGÉ ET VALIDÉ EN RÉEL (jalon 35, v2.20.4) — cause trouvée :
+       `cam_pilotee`
        (sondage/pilotage du worker) était resté QHY-only depuis le jalon 25,
        le sondage `lire_refroidissement()` n'était JAMAIS lancé hors QHY
        (les implémentations TEC du jalon 33 n'étaient jamais appelées).
        Correctif : `CAMERAS_PILOTEES` = toutes les caméras SDK (app.py).
-       À REVALIDER EN RÉEL sur la POA (boutons ❄ activés, consigne,
-       descente de température dans le label).
+       Boutons ❄ POA activés — validé par Alain le 20/09/2026.
    4. **SVBONY : connexion auto REFUSÉE** — message « SVBONY (SDK) :
       connexion impossible — Propriétés illisibles : SVBONY SV305C »
       lors de la détection automatique, alors que LE BANC DE DIAG
@@ -145,22 +147,24 @@ dans le changelog du source et l'historique git.)
 
 ## 🔚 Clôture de session — 20/09/2026 (v2.20.4, jalon 35)
 
-État exact : **v2.20.4 COMMITÉE ET POUSSÉE, installateur REBUILD** —
-Alain a demandé de reprendre au POINT 3 de l'item 2d puis de s'arrêter.
-Diagnostic + correctif posés : les boutons ❄ TEC POA restaient grisés
-parce que `cam_pilotee` (la caméra que le worker sonde/pilote) était resté
-QHY-only depuis le jalon 25 — les implémentations TEC du jalon 33 n'étaient
-JAMAIS appelées pour POA/SVBONY/ZWO/Touptek. Correctif : constante
-`CAMERAS_PILOTEES` (toutes les caméras SDK) aux 3 points d'installation
-(app.py) + garde `hasattr(stop_live)` sur le chemin filtre. Tout au vert
-en dev : _test_pilotage_jalon35 14/14 (NOUVEAU), jalon33 21/21, jalon32
-25/25, jalon31 14/14, jalon34 21/21.
+État exact : **v2.20.4 COMMITÉE ET POUSSÉE (0321914), installateur
+REBUILD, POINT 3 DE L'ITEM 2D VALIDÉ EN RÉEL PAR ALAIN** (boutons ❄ POA
+activés sur le setup 2). Contenu du jalon : les boutons ❄ TEC POA
+restaient grisés parce que `cam_pilotee` (la caméra que le worker
+sonde/pilote) était resté QHY-only depuis le jalon 25 — les
+implémentations TEC du jalon 33 n'étaient JAMAIS appelées pour
+POA/SVBONY/ZWO/Touptek. Correctif : constante `CAMERAS_PILOTEES` (toutes
+les caméras SDK) aux 3 points d'installation (app.py) + garde
+`hasattr(stop_live)` sur le chemin filtre. Tout au vert en dev :
+_test_pilotage_jalon35 14/14 (NOUVEAU), jalon33 21/21, jalon32 25/25,
+jalon31 14/14, jalon34 21/21.
 
-**Prochaine étape** : (1) déboguer le point 4 de l'item 2d (connexion auto
-SVBONY refusée « Propriétés illisibles ») EN COMPARANT avec le banc de
-diag SVBONY validé en réel ; (2) test réel setup 2 : revalider les boutons
-❄ POA (et SVBONY une fois le point 4 réglé) ; (3) copier l'installateur
-v2.20.4 vers le miniPC + test réel setup 1 (MiniCam8M).
+**Prochaine étape (session NEUVE)** : (1) déboguer le point 4 de l'item
+2d — DERNIER POINT RESTANT (connexion auto SVBONY refusée « Propriétés
+illisibles ») EN COMPARANT le chemin d'ouverture de l'app
+(`_connecter_sdk` → `SVBGetCameraProperty`) avec le banc de diag SVBONY
+validé en réel ; (2) copier l'installateur v2.20.4 vers le miniPC +
+tests réels setup 1 (MiniCam8M) et SV305C une fois le point 4 réglé.
 
 Sessions précédentes : v2.20.3 (jalon 34, points 1-2 de l'item 2d,
 VALIDÉS EN RÉEL par Alain, ea7108c) ; v2.20.0 (jalons 32 + 33, e70c6d7) —
