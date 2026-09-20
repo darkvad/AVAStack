@@ -577,6 +577,26 @@ Pièges :
   Sans cette référence, un « ça marche » visuel ne distingue pas la vraie
   formule d'une variante approximative (damping, ordre des convolutions,
   normalisation du noyau, gestion des bords).
+- **Quand un appariement sert d'ANCRE pour tout le reste, les appariements
+  doivent être MUTUELS et le seuil RELEVÉ en conséquence** (constat réel du
+  jalon 13 : étoiles « en plusieurs points puis en traînées » à 1280 mm) —
+  accord d'Alain, 20/09/2026. Un appariement non mutuel (A → B sans B → A)
+  injecte des correspondances fantômes qui faussent la transformation
+  estimée ; et comparer deux images chacune normalisée par SES propres
+  bornes (min/max locaux distincts) rend une SSD aveugle — les bornes
+  doivent être PARTAGÉES (min/max communs aux deux images) avant toute
+  comparaison pixel à pixel. Les deux règles ensemble : ancre fiable =
+  appariements mutuels à seuil relevé sur images normalisées de façon
+  commune.
+- **Valider les PLACEHOLDERS d'un gabarit AVANT la substitution**
+  (jalon 24, commandes des outils externes GraXpert/BXT) — accord d'Alain,
+  20/09/2026 : vérifier que les champs attendus ({input}, {output},
+  {outbase}…) sont présents et bien formés AVANT d'y injecter les chemins,
+  et rejeter une commande incomplète avec un message clair. Une substitution
+  dans un gabarit qui n'a pas la place produit une commande tronquée ou
+  fausse SILENCIEUSEMENT — découverte à l'exécution (voire jamais, si le
+  résultat est simplement mauvais) au lieu d'être attrapée à la
+  configuration.
 
 ## Maintenance des fichiers de connaissance (CLAUDE.md)
 

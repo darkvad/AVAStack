@@ -116,11 +116,11 @@ testés et validés depuis longtemps ») :
   libérable, crash → trace + sous-processus) ; identité des fichiers
   chargés avant toute interprétation ; réglage relu ≠ réglage appliqué
   (seul l'effet physique prouve).
-- Leçons PROPOSÉES, EN ATTENTE d'approbation d'Alain (ne pas écrire sans
-  accord) : jalon 13 (appariements mutuels + seuil relevé quand la
-  décision sert d'ANCRE ; deux normalisations rendent une SSD aveugle —
+- Leçons ÉCRITES le 20/09/2026 (accord d'Alain, « écris les 2 ») :
+  jalon 13 (appariements mutuels + seuil relevé quand la décision sert
+  d'ANCRE ; deux normalisations distinctes rendent une SSD aveugle —
   partager les bornes) ; jalon 24 (valider les placeholders d'un gabarit
-  AVANT la substitution).
+  AVANT la substitution). Plus AUCUNE leçon en attente.
 
 ## Setup d'Alain
 
