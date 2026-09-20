@@ -12,7 +12,8 @@ dans le changelog du source et l'historique git.)
 ## État actuel
 
 - **Version stable de référence : AVAStack v2.20.1** (`avastack/__init__.py`),
-  branche `master` — jalon 34 testé en dev (tout au vert), **NON COMITÉ**.
+  branche `master` — jalon 34 testé en dev (tout au vert), **COMMITÉ
+  (1900925) SANS POUSSER**.
 - **Dernier jalon (34, 20/09/2026) — AFFICHAGE EXPOSITION (points 1 et 2 de
   l'item 2d, retours réels setup 2)** :
   - point 2 : `_fmt_expo` sans notation scientifique (avant : « 2e+03 s »)
