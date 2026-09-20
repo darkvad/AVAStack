@@ -11,28 +11,29 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.20.7** (`avastack/__init__.py`),
-  branche `master` — jalon 38 CORRIGÉ EN DEV (tout au vert), **COMMITÉ ET
-  POUSSÉ (d8d4055)**, **installateur v2.20.7 REBUILD**
+- **Version stable de référence : AVAStack v2.20.8** (`avastack/__init__.py`),
+  branche `master` — jalon 39 CORRIGÉ EN DEV (tout au vert), **COMMITÉ ET
+  POUSSÉ (097a9c8)**, **installateur v2.20.8 REBUILD**
   (`installer/windows/output/avastack-setup.exe`) — copie de l'installateur
   vers le miniPC à faire.
-- **Dernier jalon (38, 20/09/2026) — BOUTONS ❄ TOUJOURS ACTIFS SUR SVBONY
-  (DÉCISION D'ALAIN, annule la logique du jalon 37)** :
-  - retour réel d'Alain : les boutons ❄ restaient actifs sur sa SV305C
-    sans TEC — et il PRÉFÈRE ainsi : « si on a une caméra refroidie et
-    qu'on a oublié de brancher l'alim, il suffit de la brancher et ça
-    fonctionnera sans avoir besoin de déconnecter et redétecter » (le
-    sondage périodique toutes les 2 s détecte le TEC dès que l'alim
-    arrive) ;
-  - correction : retour à « contrôles TEC énumérés → cap.tec True +
-    sondage → valeurs » ; la sonde par l'EFFET du jalon 37 est RETIRÉE ;
-    le constat réel ET la décision sont documentés DANS LE CODE
-    (detecter_capacites + lire_refroidissement) pour ne pas «
-    re-corriger » plus tard ; filet de sécurité inchangé : « Réguler »
-    sans TEC → message clair « alim 12 V » ;
-  - Tests : _test_tec_boutons_jalon38 9/9 (NOUVEAU, remplace
-    _test_tec_sonde_jalon37 supprimé) ; _test_capacites 29/29 ; jalon36
-    8/8 ; jalon33 20/20 ; jalon35 15/15 ; _test_camera_playerone 29/29.
+- **Dernier jalon (39, 20/09/2026) — CASES COULEUR LIVE RÉACTIVES
+  IMMÉDIATEMENT** :
+  - constat réel d'Alain : cocher SCNR / SCNR doux / démagenta (moteur
+    VeraLux) ne changeait l'affichage qu'à la frame suivante empilée — ou
+    pas du tout, jusqu'à bouger un autre réglage (ex. le fond cible) ;
+  - cause : les callbacks des trois cases couleur mettaient à jour l'état
+    du solveur (la clé changeait) mais OUBLIAIENT `_refresh_preview()` —
+    la nouvelle chaîne n'était soumise au solveur VeraLux qu'au prochain
+    `disp.process()` (frame entrante ou autre réglage) ;
+  - correction : même structure que débruitage/netteté — `_on_vl_*` = sync
+    de l'état + `_refresh_preview()` (chaîne couleur appliquée PUIS
+    étirement, résultat visible aussitôt résolu) ; nouvelles méthodes
+    `_sync_vl_scnr_vue` / `_sync_vl_scnr_doux_vue` / `_sync_vl_demagenta_vue`
+    (état SEUL) ; `_sync_vl_couleur_vue` (appelée par _tick toutes les 30 ms)
+    n'appelle PLUS les `_on_*` mais les `_sync_*` (sinon 3 rendus par tick) ;
+  - Tests : _test_couleurs_immediat_jalon39 12/12 (NOUVEAU) ;
+    _test_couleurs_jalon22 33/33 ; jalon3 22/22 ; jalon9 31/31 ; jalon12
+    48/48 ; jalon4 27/27 ; jalon5 15/15.
 - **LIMITE QHY (toujours valable)** : après « ■ Arrêter », relancer
   l'appli — le binding qhyccd n'expose AUCUNE libération du SDK (état
   irréinitialisable dans le process) ; le banc QHY l'annonce et conseille
@@ -87,6 +88,10 @@ dans le changelog du source et l'historique git.)
 4. **Roue à filtres MiniCam8M** : à tester au banc avec les DEUX voies (jalon 30) : la sonde ctypes native (bouton « 🌀 Tourner », ordre ASCII '0'+(position-1), statut relu) et la voie binding (écriture 17=48+n). **Aucun code appli avant le verdict par l'EFFET PHYSIQUE.**
 5. Suivi alignement en direct (« Align. : Δ(…) θ(…) » / « Frames non
    alignées »).
+6. **Jalon 39 (v2.20.8)** : en session réelle (moteur VeraLux, vue
+   « empilement »), cocher puis décocher SCNR, SCNR doux et démagenta →
+   effet VISIBLE immédiat, sans attendre la frame suivante ni bouger le
+   fond cible.
 
 ## Pièges récents (rappels opérationnels)
 
@@ -109,6 +114,12 @@ dans le changelog du source et l'historique git.)
   demande ; défauts des traitements confirmés (live = désactivé, NLM,
   force 0,5 ; externe = désactivé, GraXpert IA, force 0,5).
 - PIÈGE LANCEMENT : `python3` ≠ venv — toujours `python AVAStack.py`.
+- **Un callback UI qui change la CLÉ du solveur SANS rafraîchir ne produit
+  un effet qu'au prochain `disp.process()`** — c.-à-d. à la frame entrante
+  ou au prochain réglage qui rafraîchit (constat réel jalon 39 : les cases
+  couleur semblaient inertes). Convention : tout contrôle `_on_*` finit
+  par `_refresh_preview()` ; les `_sync_*_vue` (appelés par _tick toutes
+  les 30 ms) ne touchent qu'à l'ÉTAT, JAMAIS au rendu.
 - **Installateur à REBUILDER avant tout test réel dès que la passe de code
   touche PLUS d'un ou deux fichiers** (`powershell -NoProfile
   -ExecutionPolicy Bypass -File installer\windows\build_avastack.ps1`) —
@@ -143,27 +154,29 @@ dans le changelog du source et l'historique git.)
   points puis en trainées » → origine du jalon 13 (alignement robuste).
   Banc POA : `_diag_camera_playerone.py` (jalon 28).
 
-## 🔚 Clôture de session — 20/09/2026 (v2.20.7, jalon 38)
+## 🔚 Clôture de session — 20/09/2026 (v2.20.8, jalon 39)
 
-État exact : **v2.20.7 COMMITÉE ET POUSSÉE (d8d4055), installateur REBUILD,
-ITEM 2D ENTIÈREMENT CLOS ET REVALIDÉ PAR ALAIN**. Enchaînement de la
-session : jalon 36 (connexion auto SVBONY rétablie — ouverture AVANT fiche)
-**VALIDÉ EN RÉEL par Alain** ; jalon 37 (sonde TEC par l'EFFET → boutons ❄
-grisés sans TEC) **ANNULÉ À LA DEMANDE D'ALAIN** — jalon 38 : boutons ❄
-TOUJOURS ACTIFS dès que les contrôles TEC sont énumérés, car si l'alim
-12 V d'une caméra refroidie est oubliée puis branchée en cours de session,
-le sondage périodique la fait fonctionner SANS déconnexion/re-détection.
-Constat + décision documentés dans le code (svbony.py). Tout au vert en
-dev : _test_tec_boutons_jalon38 9/9 (NOUVEAU), _test_capacites 29/29,
-jalon36 8/8, jalon33 20/20, jalon35 15/15, _test_camera_playerone 29/29.
+État exact : **v2.20.8 COMMITÉE ET POUSSÉE (097a9c8), installateur REBUILD**.
+Constat réel d'Alain : les cases couleur live (SCNR / SCNR doux / démagenta,
+moteur VeraLux) ne réagissaient qu'à la frame suivante — ou pas du tout,
+jusqu'à bouger un autre réglage (ex. fond cible). Cause : les callbacks des
+trois cases changeaient bien la clé du solveur mais OUBLIAIENT
+`_refresh_preview()` — la nouvelle chaîne n'était soumise qu'au prochain
+`disp.process()`. Correction : `_on_vl_*` = sync + rendu immédiat (même
+structure que débruitage/netteté) ; `_sync_vl_couleur_vue` n'appelle plus
+les `_on_*` (sinon 3 rendus par tick via _tick) mais les nouvelles
+`_sync_vl_*_vue` (état seul). Tout au vert en dev :
+_test_couleurs_immediat_jalon39 12/12 (NOUVEAU), _test_couleurs_jalon22
+33/33, jalon3 22/22, jalon9 31/31, jalon12 48/48, jalon4 27/27, jalon5 15/15.
 
-**Prochaine étape (session NEUVE)** : (1) copier l'installateur v2.20.7
-vers le miniPC ; (2) tests réels setup 1 (MiniCam8M) : TEC + roue à
-filtres (point 2c : plages + CFW, verdict par EFFET PHYSIQUE) ;
-(3) SV305C : comportement final acté (boutons ❄ actifs, valeurs TEC
-bidon = normal, « Réguler » → message 12 V sans TEC).
+**Prochaine étape** : (1) copier l'installateur v2.20.8 vers le miniPC ;
+(2) validation réelle du jalon 39 en session (cocher/décocher les trois
+cases couleur → effet visible immédiat) ; (3) poursuivre les tests réels
+en attente ci-dessus (QHY MiniCam8M : TEC + roue à filtres, verdict par
+EFFET PHYSIQUE).
 
-Sessions précédentes : v2.20.6 (jalon 37, sonde TEC par l'EFFET — ANNULÉE
-au jalon 38, a8a3930) ; v2.20.5 (jalon 36, point 4 item 2d — connexion
-auto SVBONY, validé en réel par Alain, c09e191) ; v2.20.4 (jalon 35,
-0321914) — détail dans l'historique git et le changelog du source.
+Sessions précédentes : v2.20.7 (jalon 38, boutons ❄ toujours actifs —
+décision d'Alain, d8d4055) ; v2.20.6 (jalon 37, sonde TEC par l'EFFET —
+ANNULÉE au jalon 38, a8a3930) ; v2.20.5 (jalon 36, connexion auto SVBONY,
+validé en réel par Alain, c09e191) ; v2.20.4 (jalon 35, 0321914) — détail
+dans l'historique git et le changelog du source.
