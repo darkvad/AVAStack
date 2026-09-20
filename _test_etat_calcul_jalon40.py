@@ -188,14 +188,16 @@ verifie(app.lbl_vl.cget("text") == "boom test"
         and "#d04040" in coul_err,
         "erreur : texte en rouge")
 
-# --- mode STF : rien ne s'affiche (le cadre VeraLux y est caché)
+# --- mode STF (jalon 41 : le cadre d'état est visible dans les DEUX
+# modes, mais un calcul VERA LUX en attente ne s'y affiche pas — le solveur
+# VeraLux n'est pas utilisé en STF)
 app.var_moteur.set("STF")
 d2._vl_pending = True
 d2.vl_stage = "étirement"
 app._maj_lbl_vl()
 verifie(app.pb_vl.winfo_manager() == ""
         and app.lbl_vl.cget("text") == "boom test",
-        "mode STF : pas d'indicateur VeraLux, texte inchangé")
+        "mode STF : calcul VeraLux en attente ≠ indicateur, texte inchangé")
 
 root.destroy()
 print()

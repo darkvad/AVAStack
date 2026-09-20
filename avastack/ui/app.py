@@ -1155,32 +1155,13 @@ class App:
         # (image COULEUR du composite) et JUSTE AVANT l'étirement ; no-op sur
         # un composite monochrome (Mono). Vue « empilement » uniquement (en
         # vue « traitée », l'image a déjà subi le traitement externe).
-        self.var_vl_scnr = tk.BooleanVar(value=False)
-        ttk.Checkbutton(self.frm_veralux, text="SCNR — retrait du vert (live)",
-                        variable=self.var_vl_scnr,
-                        command=self._on_vl_scnr).pack(anchor="w", pady=(2, 0))
-        # Jalon 23 : SCNR doux borné par le bruit — ne retire que le
-        # grésillement vert (excès de vert ≤ 3σ), préserve la structure
-        # (nébuleuses) : pensé pour les palettes narrowband où le vert est
-        # de la DONNÉE (HOO : O3 ; SHO sans S : Ha).
-        self.var_vl_scnr_doux = tk.BooleanVar(value=False)
-        ttk.Checkbutton(self.frm_veralux,
-                        text="SCNR doux — bruit seul (live)",
-                        variable=self.var_vl_scnr_doux,
-                        command=self._on_vl_scnr_doux).pack(anchor="w")
-        self.var_vl_demagenta = tk.BooleanVar(value=False)
-        ttk.Checkbutton(self.frm_veralux,
-                        text="Démagenta — négatif + SCNR (live)",
-                        variable=self.var_vl_demagenta,
-                        command=self._on_vl_demagenta).pack(anchor="w")
-        self.lbl_vl = ttk.Label(self.frm_veralux, text="—",
-                                foreground="#888888", wraplength=310)
-        self.lbl_vl.pack(anchor="w")
-        # Jalon 40 (demande d'Alain) : matérialiser le calcul en cours —
-        # curseur animé SOUS l'étiquette d'état, visible uniquement pendant
-        # qu'un job est en marche (pack/dépack + start/stop par _tick).
-        self.pb_vl = ttk.Progressbar(self.frm_veralux, mode="indeterminate",
-                                     length=220)
+        # Jalon 41 (décision d'Alain) : les CASES couleur sont sorties du
+        # cadre VeraLux (cadre « Couleur live » indépendant, plus bas) — la
+        # chaîne couleur est appliquée par le solveur VeraLux ET par le
+        # moteur STF/manuel (process(), testé au jalon 22). L'étiquette et le
+        # curseur d'état des calculs sont sortis AUSSI (cadre « État des
+        # calculs », visible dans les DEUX modes).
+
         # Jalon 5 : profil capteur du moteur VeraLux (réponse couleur du
         # capteur — Rec.709 par défaut). Fait partie de la clé des réglages :
         # changer de profil relance la résolution au prochain rendu.
@@ -1217,6 +1198,51 @@ class App:
         self.lbl_sharp = ttk.Label(self.frm_sharp, text="Netteté désactivée",
                                    foreground="#888888", wraplength=310)
         self.lbl_sharp.pack(anchor="w", pady=(2, 0))
+
+        # --- Couleur live (jalon 41, décision d'Alain) : cadre INDÉPENDANT
+        # du moteur d'étirement — SCNR / SCNR doux / démagenta sont appliqués
+        # par le solveur VeraLux (jalons 22/23) ET par le moteur STF/manuel
+        # (process(), testé au jalon 22). Jalon 22 (décision d'Alain) :
+        # APRÈS composition (image COULEUR du composite) et JUSTE AVANT
+        # l'étirement ; no-op sur un composite monochrome (Mono). Vue
+        # « empilement » uniquement (en vue « traitée », l'image a déjà subi
+        # le traitement externe).
+        self.frm_couleur = ttk.LabelFrame(
+            left, text="Couleur live (SCNR / démagenta)", padding=6)
+        self.frm_couleur.pack(fill="x", pady=3)
+        self.var_vl_scnr = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self.frm_couleur, text="SCNR — retrait du vert (live)",
+                        variable=self.var_vl_scnr,
+                        command=self._on_vl_scnr).pack(anchor="w", pady=(2, 0))
+        # Jalon 23 : SCNR doux borné par le bruit — ne retire que le
+        # grésillement vert (excès de vert ≤ 3σ), préserve la structure
+        # (nébuleuses) : pensé pour les palettes narrowband où le vert est
+        # de la DONNÉE (HOO : O3 ; SHO sans S : Ha).
+        self.var_vl_scnr_doux = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self.frm_couleur,
+                        text="SCNR doux — bruit seul (live)",
+                        variable=self.var_vl_scnr_doux,
+                        command=self._on_vl_scnr_doux).pack(anchor="w")
+        self.var_vl_demagenta = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self.frm_couleur,
+                        text="Démagenta — négatif + SCNR (live)",
+                        variable=self.var_vl_demagenta,
+                        command=self._on_vl_demagenta).pack(anchor="w")
+
+        # --- État des calculs (jalons 40/41) : cadre INDÉPENDANT du moteur —
+        # visible en VeraLux (étapes du solveur : ⏳ préparation/composition/
+        # GraXpert/débruitage/netteté/étirement, puis résultat GX/DN/NET/COUL
+        # · logD · fond) ET en STF/manuel (⏳ netteté pendant la déconvolution
+        # du solveur dédié jalon 12). Un seul écrivain : _maj_lbl_vl (thread
+        # UI, appelée par _tick).
+        self.frm_etat = ttk.LabelFrame(left, text="État des calculs (live)",
+                                       padding=6)
+        self.frm_etat.pack(fill="x", pady=3)
+        self.lbl_vl = ttk.Label(self.frm_etat, text="—",
+                                foreground="#888888", wraplength=310)
+        self.lbl_vl.pack(anchor="w")
+        self.pb_vl = ttk.Progressbar(self.frm_etat, mode="indeterminate",
+                                     length=220)
 
         # --- Traitement externe (instantané de l'empilement)
         box = ttk.LabelFrame(left, text="Traitement externe (instantané)", padding=6)
@@ -1743,16 +1769,22 @@ class App:
         self.lbl_vl.config(text=txt, foreground=coul)
 
     def _maj_lbl_vl(self):
-        """État du solveur VeraLux à l'écran (jalon 40, demande d'Alain :
-        matérialiser qu'un calcul tourne et qu'il est terminé). PENDANT un
-        calcul : curseur animé (pb_vl) + étape courante du worker
-        (⏳ préparation / composition / GraXpert / débruitage / netteté /
-        étirement). À LA FIN : ligne de RÉSULTAT — ✓ des étapes actives
-        (GX / DN / NET / COUL), logD utilisé, fond mesuré — ou erreur en
-        rouge. Un seul écrivain : le thread UI (lecture thread-sûre des
-        attributs du solveur, jamais d'appel Tk depuis le worker)."""
+        """État des calculs live à l'écran (jalons 40/41, demande d'Alain :
+        matérialiser qu'un calcul tourne et qu'il est terminé). Le cadre
+        « État des calculs » est INDÉPENDANT du moteur (jalon 41) :
+        - VeraLux : PENDANT un calcul, curseur animé (pb_vl) + étape
+          courante du worker (⏳ préparation / composition / GraXpert /
+          débruitage / netteté / étirement) ; À LA FIN, ligne de RÉSULTAT —
+          ✓ des étapes actives (GX / DN / NET / COUL), logD utilisé, fond
+          mesuré — ou erreur en rouge ;
+        - STF/manuel : ⏳ netteté pendant la déconvolution du solveur
+          dédié (jalon 12), retour au repos ensuite.
+        Un seul écrivain : le thread UI (lecture thread-sûre des attributs
+        du solveur, jamais d'appel Tk depuis les threads)."""
         veralux = self.var_moteur.get() == "VeraLux"
-        en_cours = veralux and self.disp.vl_en_cours()
+        en_cours_vl = veralux and self.disp.vl_en_cours()
+        en_cours_sh = (not veralux) and self.disp.sh_en_cours()
+        en_cours = en_cours_vl or en_cours_sh
         # Curseur de calcul : apparaît au DÉBUT d'un job, disparaît à la FIN
         # (transitions seulement — pas de reconfiguration à chaque tick).
         if en_cours != self._vl_pb_active:
@@ -1763,7 +1795,7 @@ class App:
             else:
                 self.pb_vl.stop()
                 self.pb_vl.pack_forget()
-        if self.disp.vl_new:          # un calcul vient de se TERMINER
+        if self.disp.vl_new:          # un calcul VeraLux vient de se TERMINER
             self.disp.vl_new = False
             if veralux:
                 self._refresh_preview()
@@ -1780,10 +1812,16 @@ class App:
                     self._lbl_vl_texte(
                         f"{prefixe}logD {self.disp.vl_log_d_resolu:.2f} · "
                         f"fond {d['median_luminance_finale']:.3f}", "#1d7f1d")
-        if en_cours:                  # un calcul TOURNE : l'étape courante
+        if en_cours_vl:               # solveur VeraLux : l'étape courante
             txt = f"⏳ calcul : {self.disp.vl_stage or 'préparation'}…"
             if txt != self._vl_lbl_txt:
                 self._lbl_vl_texte(txt, "#c98a00")
+        elif en_cours_sh:             # solveur de netteté STF/manuel (jalon 12)
+            txt = "⏳ calcul : netteté…"
+            if txt != self._vl_lbl_txt:
+                self._lbl_vl_texte(txt, "#c98a00")
+        elif (not veralux) and self._vl_lbl_txt.startswith("⏳"):
+            self._lbl_vl_texte("—", "#888888")   # calcul STF fini : repos
 
     def _on_view(self):
         """Bascule empilement ↔ résultat traité (stats d'étirement réinitialisées :

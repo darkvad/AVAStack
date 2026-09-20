@@ -14,9 +14,40 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.20.9"
+AVASTACK_VERSION = "2.21.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.21.0 : UI INDÉPENDANTE DU MOTEUR — COULEUR LIVE ET ÉTAT DES CALCULS
+#          VISIBLES DANS LES DEUX MODES (jalon 41, décision d'Alain :
+#          « rendre visible tout ce qui s'applique aussi en STF »).
+#          - avastack/ui/app.py : la chaîne couleur (SCNR / SCNR doux /
+#            démagenta) SORT du cadre VeraLux → nouveau cadre INDÉPENDANT
+#            « Couleur live (SCNR / démagenta) » : les cases sont cochables
+#            et EFFICACES en STF/manuel (le moteur STF les applique déjà,
+#            testé au jalon 22 — c'était un rangement d'UI, pas une limite).
+#            GX live et débruitage live RESTENT dans le cadre VeraLux (ils
+#            ne s'appliquent QUE dans son solveur). L'étiquette d'état
+#            (lbl_vl) et le curseur de calcul (pb_vl) sortent AUSSI →
+#            nouveau cadre « État des calculs (live) » visible dans les
+#            DEUX modes.
+#          - _maj_lbl_vl étendue : en STF/manuel, elle signale le solveur
+#            de netteté DÉDIÉ (jalon 12) — « ⏳ calcul : netteté… » +
+#            curseur pendant la déconvolution, retour au repos (« — »)
+#            ensuite ; en VeraLux, le solveur dédié (inutilisé) ne
+#            déclenche RIEN. display.py : nouvelle méthode sh_en_cours()
+#            (accès UI à _sh_pending).
+#          - AU PASSAGE, correction d'une imprécision d'explication (pas un
+#            bug) : le rendu STF n'est PAS à 20 fois/s — le worker ne pousse
+#            l'aperçu qu'à CHAQUE IMAGE REÇUE (les caméras SDK renvoient
+#            None entre deux poses) ; le 1/20 s n'est qu'un PLAFOND de
+#            traitement pour les sources rapides (démo simulée, webcams,
+#            poses courtes) — avec des poses longues, l'aperçu est rendu
+#            une fois par pose, exactement à la fréquence des images.
+#          Test _test_ui_moteur_jalon41 (cadres visibles dans les deux
+#          modes, case SCNR efficace en STF, indicateur netteté STF) ;
+#          _test_etat_calcul_jalon40 mis à jour (section STF) ; régression :
+#          _test_ui_jalon5, _test_sharp_live_jalon12, _test_couleurs_jalon22,
+#          _test_couleurs_immediat_jalon39.
 # v2.20.9 : ÉTAT DU CALCUL VERA LUX MATÉRIALISÉ À L'ÉCRAN (jalon 40, demande
 #          d'Alain : « matérialiser qu'on applique le traitement et que
 #          c'est terminé »). Jusqu'ici, pendant un calcul (souvent plusieurs

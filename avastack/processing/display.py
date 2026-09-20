@@ -498,6 +498,13 @@ class DisplayProcessor:
                 self.vl_new = True
                 self.vl_stage = ""        # calcul terminé — jalon 40
 
+    def sh_en_cours(self):
+        """True si le solveur de netteté DÉDIÉ (modes STF/manuel, jalon 12)
+        a un calcul en marche — jalon 41 : le cadre « État des calculs »
+        est visible dans les DEUX modes, l'UI affiche ⏳ + curseur pendant
+        la déconvolution STF/manuel aussi."""
+        return self._sh_pending
+
     def _process_veralux(self, img, live=True):
         """Chemin VeraLux : rend le dernier résultat terminé (ou le STF en
         image d'attente) et soumet un calcul si l'image ou les réglages ont
