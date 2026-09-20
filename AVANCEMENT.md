@@ -11,26 +11,45 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.21.7** (`avastack/__init__.py`),
-  branche `master` — jalon 48 **VALIDÉ PAR ALAIN (20/09/2026, « c'est ok »),
-  COMMITÉ ET POUSSÉ (2c44e5c + AVANCEMENT), installateur v2.21.7 REBUILD
-  (`installer/windows/output/avastack-setup.exe`)** — session close :
-  TOUT est validé pour le moment, aucun test réel en attente.
-- **Dernier jalon (48, 20/09/2026) — petites ergonomies (demandes d'Alain)** :
-  - le numéro de version s'affiche dans la **barre de titre**
-    (« AVAStack v2.21.7 — live stacking (empilement temps réel) ») ;
-  - le cadre « Traitement externe » est étiqueté **« (long) »** au lieu de
-    « (instantané) » — GraXpert IA/BXT durent plusieurs minutes ; le mot
-    « instantané » reste valable en INTERNE (copie de l'empilement traitée
-    à part, l'accumulé reste linéaire) ;
-  - Tests : _test_ui_visibilite_jalon47 étendu (titre = version) ; suite UI
-    au vert.
-- **Jalon 47 (v2.21.6) — VALIDÉ PAR ALAIN (« ça me paraît bon »), COMMITÉ ET
-  POUSSÉ (3cc0522)** : colonne de réglages épurée — cadres visibles selon la
-  source (caméra → contrôles caméra seuls ; dossier → dossier + cadence ;
-  composition → composition + cadence) ; réglage de rafale sorti des deux
-  cadres : un seul cadre « Cadence d'empilement » partagé ; on cache sans
-  détruire (valeurs conservées), ancre stable « Calibration ».
+- **Version stable de référence : AVAStack v2.21.8** (`avastack/__init__.py`),
+  branche `master` — jalon 49 **VALIDÉ PAR ALAIN (20-21/09/2026, test RÉEL
+  sur G3M662M au miniPC), COMMITÉ (8f40606) ET POUSSÉ, installateur
+  v2.21.8 REBUILD (`installer/windows/output/avastack-setup.exe`, 21/09
+  00:42)** — session close : aucun chantier en attente.
+- **Dernier jalon (49, v2.21.8, 20-21/09/2026) — banc Touptek + CORRECTION
+  DE LA SONDE (API V2)** :
+  - CONSTAT FONDATEUR : la sonde `avastack/cameras/touptek.py` (v2.2.0,
+    jamais testée sur matériel) était FAUSSE contre la DLL réelle du dépôt
+    (ToupCam.dll 59.30239.20251209) : `Toupcam_get_ExpoTimeRange` n'existe
+    PAS (AttributeError au chargement ; le vrai nom est
+    `Toupcam_get_ExpTimeRange`) ; `Toupcam_Enum` (legacy, obsolète) remplit
+    des ToupcamDevice et NON des modèles (charabia lu) ; `Toupcam_Open`
+    veut l'ID opaque énuméré, pas le nom du modèle ;
+  - sonde RÉÉCRITE sur l'API moderne `Toupcam_EnumV2 / ToupcamDeviceV2`
+    (disposition VALIDÉE empiriquement : 201 modèles lisibles dans la DLL),
+    conforme à l'entête officiel toupcam.h (miroir INDIGO v60.32499) ;
+  - nouveau banc `_diag_camera_touptek.py` (réutilise la sonde) : détection
+    V2 + drapeaux, réglages mesurés, verdict, TEC par options (TEC 0x08 /
+    TECTARGET 0x0f — PAS de CoolerOn dans la DLL), expo/gain/noir,
+    auto-expo on/off, ROI, binning matériel, flux événementiel (callback +
+    PullImage), pose (Snap/STILLIMAGE), rapport, `--console` ; embarqué
+    dans l'installateur (avastack.iss + LISEZMOI) ;
+  - Tests sans matériel : `_test_camera_touptek.py` (fausse DLL) 37/37 OK ;
+    régression `_test_capacites` 29/29, `_test_camera_playerone` 29/29.
+  - **Tests RÉELS d'Alain (G3M662M mono 16 bits USB3/ST4, miniPC)** :
+    détection V2, ouverture, flux, poses expo/gain, bascule auto-expo,
+    Snap (malgré 0 résolution pose : livre à la résolution courante) →
+    **FONCTIONNE**. Constats intégrés : (a) 2 prototypes ctypes manquants
+    (`get_MaxSpeed`, `get_StillResolutionNumber`) → `OverflowError`
+    (« int too long » : handle 64 bits passé en int 32) — déclarés (+
+    `get_StillResolution`, `get_FinalSize`) ; (b) l'auto-exposition
+    « continue » ÉCRASE l'expo posée → bouton « 🅰 Auto-expo on/off » +
+    avertissement ; (c) `get_Roi` relu suspecte → croisement `get_Size` +
+    `get_FinalSize` journalisé ; compteurs `get_FrameRate` peu fiables →
+    fps MESURÉ fait foi ; (d) verdict : bits/pix affichés en entier simple ;
+    (e) **ROI** : `put_Roi` ACCEPTE toute taille mais le flux ne livre QUE
+    les 2 résolutions du modèle (1920×1080, 960×540) — ROI libre non
+    exploitable sur ce capteur (verdict Alain : « pas grave »).
 - **LIMITE QHY (toujours valable)** : après « ■ Arrêter », relancer
   l'appli — le binding qhyccd n'expose AUCUNE libération du SDK (état
   irréinitialisable dans le process) ; le banc QHY l'annonce et conseille
@@ -136,43 +155,20 @@ testés et validés depuis longtemps ») :
   points puis en trainées » → origine du jalon 13 (alignement robuste).
   Banc POA : `_diag_camera_playerone.py` (jalon 28).
 
-## 🔚 Clôture de session — 20/09/2026 (v2.21.7, jalon 48 — VALIDÉE PAR ALAIN)
+## 🔚 Clôture de session — 21/09/2026 (v2.21.8, jalon 49 — VALIDÉE PAR ALAIN)
 
-État exact : **v2.21.7 COMMITÉE ET POUSSÉE (2c44e5c + AVANCEMENT), 
-installateur REBUILD** ; jalon 47 (v2.21.6, ergonomie colonne) committé et
-poussé (3cc0522), jalon 46 (v2.21.5, plafond de rafale) validé plus tôt
-(f37c88e). **TOUT EST VALIDÉ PAR ALAIN POUR LE MOMENT** (« ça me paraît
-bon », « c'est ok ») — aucun test réel en attente.
+État exact : **v2.21.8 COMMITÉE (8f40606) ET POUSSÉE, installateur REBUILD**
+(`installer/windows/output/avastack-setup.exe`, 21/09 00:42, avec le banc
+Touptek + la sonde corrigée + ToupCam.dll). Verdict Alain sur test RÉEL
+G3M662M au miniPC : **VALIDÉ** (détection, ouverture, flux, expo/gain,
+auto-expo, snap, identité ; ROI libre muette sur ce capteur = constat
+consigné, « pas grave »).
 
-Session en deux jalons après la v2.21.5 :
-- jalon 47 (v2.21.6) — ERGONOMIE : colonne de réglages épurée, les cadres
-  suivent la SOURCE choisie (caméra → contrôles caméra seuls ; dossier →
-  dossier + cadence ; composition → composition + cadence) ; le réglage de
-  rafale « Empiler les brutes » sort des deux cadres où il était dupliqué
-  (jalons 42/45) → un seul cadre « Cadence d'empilement » partagé ; on
-  cache SANS détruire (valeurs conservées), ancre stable « Calibration »
-  (l'ordre des cadres ne bouge jamais) ; nouveau _test_ui_visibilite_jalon47,
-  section [7] de _test_cadence_jalon42 réécrite (cadence unique) ;
-- jalon 48 (v2.21.7) — version dans la BARRE DE TITRE (« AVAStack
-  v2.21.7 — live stacking… », f-string sur AVASTACK_VERSION, source
-  unique) ; cadre « Traitement externe (long) » au lieu de
-  « (instantané) » — l'instantané reste le mot INTERNE (copie de
-  l'empilement traitée à part, l'accumulé reste linéaire).
-Tout au vert : _test_ui_visibilite_jalon47, _test_cadence_jalon42, ui
-jalon 5, config jalon 6 (régression large faite au jalon 47 : jalons
-5/6/19/32/34/35/36/38/39/40/41).
+**Prochaine étape (session NEUVE)** : AUCUN chantier en attente — la
+prochaine étape sera une NOUVELLE demande d'Alain (fonction ou ergonomie).
+Copier l'installateur v2.21.8 vers le miniPC remplacera la copie manuelle
+des 2 fichiers faite pour le test.
 
-**Prochaine étape (session NEUVE)** : (1) copier l'installateur v2.21.7
-vers le miniPC si besoin ; (2) AUCUN chantier en attente — banc Player One
-(jalon 28), jalon 24 (gradient/débruitage par couche) et suivi alignement
-en direct sont tous CLOS (verdicts d'Alain du 20/09/2026 : « testés et
-validés depuis longtemps » ; l'alignement/l'empilement fonctionnent bien).
-La prochaine étape sera une NOUVELLE demande d'Alain (fonction ou
-ergonomie).
-
-Sessions précédentes : v2.21.6 (jalon 47, 3cc0522) ; v2.21.5 (jalon 46,
-plafond de rafale, f37c88e) ; v2.21.4 (jalon 45, cadence commune,
-265beff) ; v2.21.3 (jalon 44, 966edae) ; v2.21.2 (jalon 43, d5b799d) ;
-v2.21.1 (jalon 42, 11f6dfb) ; v2.21.0 (jalon 41, 8ee2d8c) ; v2.20.9
-(jalon 40, 45bbfc9) ; v2.20.8 (jalon 39, 097a9c8) ; v2.20.7 (jalon 38,
-d8d4055) — détail dans l'historique git et le changelog du source.
+Sessions précédentes : v2.21.7 (jalon 48, 2c44e5c) ; v2.21.6 (jalon 47,
+3cc0522) ; v2.21.5 (jalon 46, plafond de rafale, f37c88e) — détail dans
+l'historique git et le changelog du source.
