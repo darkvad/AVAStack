@@ -11,31 +11,32 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.21.1** (`avastack/__init__.py`),
-  branche `master` — jalon 42 CORRIGÉ EN DEV (tout au vert), **COMMITÉ ET
-  POUSSÉ (voir clôture de session)**, **installateur v2.21.1 REBUILD**
+- **Version stable de référence : AVAStack v2.21.2** (`avastack/__init__.py`),
+  branche `master` — jalon 43 CORRIGÉ EN DEV (tout au vert), **COMMITÉ ET
+  POUSSÉ (voir clôture de session)**, **installateur v2.21.2 REBUILD**
   (`installer/windows/output/avastack-setup.exe`) — copie de l'installateur
   vers le miniPC à faire.
-- **Dernier jalon (42, 20/09/2026) — CADENCE D'EMPILEMENT EN SURVEILLANCE
-  DE DOSSIER (demande d'Alain : « on peut le régler en permettant de
-  choisir la fréquence de lecture des images brutes » — AVIS : oui, c'est
-  le bon levier, et plus simple/sûr que de throttler le solveur)** :
-  - constat : avec la chaîne lourde (gradient, débruitage) en mode
-    dossier/multi-dossiers, CHAQUE brute relançait la résolution — sablier
-    en permanence (composition ↔ étirement sans interruption) ;
-  - fait : combobox « Empiler les brutes » dans « Dossier surveillé »
-    (dès réception / 5 s / 15 s / 30 s / 1 min / 5 min, persistée
-    `cadence_lecture`) ; les brutes qui arrivent pendant la fenêtre
-    RESTENT sur le disque (aucune perte) puis sont DRAINÉES EN RAFALE —
-    un seul recalcul VeraLux par rafale (dernier job gagnant) ; l'aperçu
-    est au repos entre les rafales. L'empilement LINÉAIRE accumule TOUTES
-    les brutes : la cadence change le RYTHME, jamais le contenu ;
-  - folder.py : propriété `pending` + `scanner()` (scan sans lecture) ;
-    multifolder.py : `scanner()` ; app.py : porte `_autoriser_lecture()`
-    avant read() + `_armer_cadence()` quand tout est lu ; sources
-    NON-dossier (SDK, webcam, simulée) JAMAIS throttlées (file mémoire) ;
-  - Tests : _test_cadence_jalon42 18/18 (NOUVEAU) ; jalon19 multi-dossiers
-    (régression) ; jalon5 15/15 ; jalon41 9/9 ; jalon40 12/12.
+- **Dernier jalon (43, 20/09/2026) — CORRECTIF CADENCE (bug du jalon 42,
+  constat réel d'Alain en COMPOSITION multi-dossiers : « les frames
+  s'empilent toujours à la même vitesse »)** :
+  - cause : quand AUCUNE brute n'était détectée (`pending == 0`), la porte
+    de cadence laissait passer `read()` — or c'est le SCAN INTERNE des
+    caméras dossier (dans read() et le round-robin MultiFolder) qui détecte
+    les fichiers : la brute était renvoyée à l'instant où elle devenait
+    complète → le PREMIER fichier de chaque « rafale » partait toujours
+    immédiatement, et pour des arrivées plus espacées que la fenêtre
+    (composition = un fichier par rôle à la cadence des poses), CHAQUE
+    fichier était « le premier » → cadence inopérante ;
+  - correction : la fenêtre armée bloque TOUTE lecture (read() jamais
+    appelé pendant la fenêtre) ; le worker ne fait que scanner (0,4 s) et
+    attendre — les brutes complétées sont drainées ENSEMBLE à l'échéance ;
+  - RAPPEL réglage : en composition, la chaîne lourde tourne PAR COUCHE
+    (gradient + débruitage × 3-4 couches + netteté + composition +
+    étirement) — choisir une cadence NETTEMENT au-dessus de la durée de la
+    chaîne (ex. 5 min) ;
+  - Tests : _test_cadence_jalon42 19/19 (mis à jour : fenêtre armée +
+    backlog vide → REFUS, dossier ET composition) ; jalon19 multi-dossiers ;
+    jalon5 15/15.
 - **LIMITE QHY (toujours valable)** : après « ■ Arrêter », relancer
   l'appli — le binding qhyccd n'expose AUCUNE libération du SDK (état
   irréinitialisable dans le process) ; le banc QHY l'annonce et conseille
@@ -101,11 +102,11 @@ dans le changelog du source et l'historique git.)
 8. **Jalon 41 (v2.21.0)** : en mode STF, vérifier le nouveau cadre
    « Couleur live » (cases SCNR/démagenta efficaces à l'écran) et le cadre
    « État des calculs » (⏳ netteté pendant la déconvolution STF).
-9. **Jalon 42 (v2.21.1)** : en surveillance de dossier avec GX/débruitage
-   live, régler « Empiler les brutes » sur 30 s ou 1 min → le sablier doit
-   travailler par RAFALES (un recalcul par rafale) et l'aperçu doit être au
-   repos entre les rafales ; vérifier qu'AUCUNE brute n'est perdue (compte
-   « Frames » = total des brutes du dossier).
+9. **Jalon 42/43 (v2.21.1/v2.21.2)** : en COMPOSITION multi-dossiers avec
+   GX/débruitage live, régler « Empiler les brutes » sur 1-5 min → le
+   sablier doit travailler par RAFALES (un recalcul par rafale) et l'aperçu
+   doit être au repos entre les rafales ; vérifier qu'AUCUNE brute n'est
+   perdue (compte « Frames » = total des brutes des dossiers).
 
 ## Pièges récents (rappels opérationnels)
 
@@ -168,34 +169,34 @@ dans le changelog du source et l'historique git.)
   points puis en trainées » → origine du jalon 13 (alignement robuste).
   Banc POA : `_diag_camera_playerone.py` (jalon 28).
 
-## 🔚 Clôture de session — 20/09/2026 (v2.21.1, jalon 42)
+## 🔚 Clôture de session — 20/09/2026 (v2.21.2, jalon 43)
 
-État exact : **v2.21.1 COMMITÉE ET POUSSÉE (11f6dfb), installateur REBUILD**.
-Session en quatre jalons après la v2.20.7 : jalon 39 (v2.20.8, cases
-couleur réactives immédiatement) ; jalon 40 (v2.20.9, état du calcul —
-curseur + ⏳ étape + résultat GX/DN/NET/COUL · logD · fond) ; jalon 41
-(v2.21.0, décision d'Alain : UI indépendante du moteur — cadre « Couleur
-live » et cadre « État des calculs » visibles/cochables EN STF aussi, où
-l'indicateur signale le solveur de netteté dédié) ; jalon 42 (v2.21.1,
-demande d'Alain : cadence d'empilement en surveillance de dossier —
-combobox « Empiler les brutes » [dès réception/5 s/15 s/30 s/1 min/5 min],
-les brutes attendent sur le disque puis sont drainées en rafale, UN seul
-recalcul VeraLux par rafale — plus de sablier permanent avec la chaîne
-lourde ; sources non-dossier jamais throttlées). AU PASSAGE : explication
-corrigée — le worker ne pousse l'aperçu qu'à CHAQUE IMAGE reçue (le 1/20 s
-n'est qu'un plafond anti-engorgement). Tout au vert en dev :
-_test_cadence_jalon42 18/18 (NOUVEAU), jalon19 multi-dossiers, jalon5
-15/15, jalon41 9/9, jalon40 12/12.
+État exact : **v2.21.2 COMMITÉE ET POUSSÉE (d5b799d), installateur REBUILD**.
+Session en cinq jalons après la v2.20.7 : jalon 39 (v2.20.8, cases couleur
+réactives immédiatement) ; jalon 40 (v2.20.9, état du calcul — curseur +
+⏳ étape + résultat GX/DN/NET/COUL · logD · fond) ; jalon 41 (v2.21.0, UI
+indépendante du moteur — cadres « Couleur live » et « État des calculs »
+visibles/cochables EN STF aussi) ; jalon 42 (v2.21.1, cadence d'empilement
+en surveillance de dossier — combobox « Empiler les brutes ») ; jalon 43
+(v2.21.2, CORRECTIF jalon 42 constaté en COMPOSITION par Alain : « les
+frames s'empilent toujours à la même vitesse » — le scan INTERNE de read()
+renvoyait chaque brute dès qu'elle était complète, court-circuitant la
+fenêtre ; la fenêtre armée bloque désormais TOUTE lecture, drain en rafale
+à l'échéance, un recalcul par rafale). AU PASSAGE : explication corrigée —
+le worker ne pousse l'aperçu qu'à CHAQUE IMAGE reçue (le 1/20 s n'est qu'un
+plafond). Tout au vert en dev : _test_cadence_jalon42 19/19, jalon19
+multi-dossiers, jalon5 15/15, jalon41 9/9, jalon40 12/12.
 
-**Prochaine étape** : (1) copier l'installateur v2.21.1 vers le miniPC ;
-(2) validations réelles des jalons 39/40/41/42 (cases couleur immédiates ;
-curseur + ⏳ + résultat ; cadres STF ; cadence en surveillance avec
-GX/débruitage live — vérifier AUCUNE brute perdue) ; (3) suite des tests
+**Prochaine étape** : (1) copier l'installateur v2.21.2 vers le miniPC ;
+(2) validations réelles des jalons 39-43 (cases couleur immédiates ; curseur
++ ⏳ + résultat ; cadres STF ; cadence EN COMPOSITION avec GX/débruitage
+live par couche — choisir une cadence NETTEMENT au-dessus de la durée de la
+chaîne, ex. 5 min — vérifier AUCUNE brute perdue) ; (3) suite des tests
 réels en attente (QHY MiniCam8M : TEC + roue à filtres, verdict par EFFET
 PHYSIQUE).
 
-Sessions précédentes : v2.21.0 (jalon 41, UI indépendante du moteur,
-8ee2d8c) ; v2.20.9 (jalon 40, état du calcul, 45bbfc9) ; v2.20.8 (jalon
-39, cases couleur réactives, 097a9c8) ; v2.20.7 (jalon 38, d8d4055) ;
-v2.20.6 (jalon 37, a8a3930) ; v2.20.5 (jalon 36, c09e191) — détail dans
-l'historique git et le changelog du source.
+Sessions précédentes : v2.21.1 (jalon 42, cadence d'empilement, 11f6dfb) ;
+v2.21.0 (jalon 41, UI indépendante du moteur, 8ee2d8c) ; v2.20.9 (jalon
+40, état du calcul, 45bbfc9) ; v2.20.8 (jalon 39, 097a9c8) ; v2.20.7
+(jalon 38, d8d4055) ; v2.20.6 (jalon 37, a8a3930) ; v2.20.5 (jalon 36,
+c09e191) — détail dans l'historique git et le changelog du source.
