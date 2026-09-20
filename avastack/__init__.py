@@ -14,9 +14,33 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.21.3"
+AVASTACK_VERSION = "2.21.4"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.21.4 : CADENCE COMMUNE AUX DEUX MODES + ÉTIQUETTE AU REPOS AVANT
+#          CONNEXION (jalon 45, retour d'Alain : l'étiquette affichait
+#          « cadence : sans objet (source non dossier) » AVANT même de
+#          démarrer, et la combobox n'existait que dans « Dossier
+#          surveillé » alors qu'il teste en COMPOSITION multi-dossiers).
+#          - avastack/ui/app.py : nouveau helper `_creer_cadence(parent)` —
+#            UNE combobox + UNE étiquette d'état PAR MODE (« Dossier
+#            surveillé » ET « Composition multi-filtres »), partageant la
+#            MÊME variable `var_cadence` : choisir dans l'un met l'autre à
+#            jour, et le worker applique la cadence aux DEUX sources
+#            (MultiFolderCamera était déjà couvert par la porte — c'était
+#            un problème de PLACEMENT d'UI, pas de moteur). Listes
+#            `_cadence_cbs`/`_cadence_lbls` ; `cb_cadence`/`lbl_cadence`
+#            restent les widgets de la première combobox (compatibilité
+#            tests/config).
+#          - `_maj_lbl_cadence()` : « — » quand AUCUNE source n'est
+#            connectée (au repos — ne plus afficher « sans objet » avant
+#            la connexion) ; « cadence : sans objet (source non dossier) »
+#            réservé à une source réellement non dossier (caméra SDK,
+#            webcam…) ; compte à rebours/rafale inchangés. Les deux
+#            étiquettes sont mises à jour ensemble.
+#          Test _test_cadence_jalon42 étendu : 2 comboboxes partageant la
+#          variable, 2e dans le cadre « Composition multi-filtres », étiquette
+#          « — » sans source ; régression : _test_ui_jalon5.
 # v2.21.3 : ÉTAT DE LA CADENCE VISIBLE EN DIRECT (jalon 44, suite du retour
 #          d'Alain : « ça travaille toujours toutes les 5 s »). Le correctif
 #          jalon 43 (v2.21.2) est en place ; pour DISTINGUER les deux causes

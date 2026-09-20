@@ -302,6 +302,8 @@ class App:
         self._prochain_scan = 0.0
         self._a_lu_une_frame = False
         self._cadence_lbl_txt = None    # mémo du texte affiché dans lbl_cadence
+        self._cadence_cbs = []          # combobox « Empiler les brutes » (une
+        self._cadence_lbls = []         # par mode, jalon 45 : dossier + compo)
         self.ext_state = "idle"         # idle | busy | ok | error
         self.ext_t0 = None              # début du traitement en cours (chrono)
         self._ext_popup = False        # erreur à signaler par popup
@@ -886,22 +888,10 @@ class App:
         # choisit à quelle fréquence les brutes sont lues/empilées ; celles
         # qui arrivent entre-temps attendent sur le disque (aucune perte)
         # puis sont drainées en rafale — un seul recalcul par rafale.
-        rowcad = ttk.Frame(box)
-        rowcad.pack(fill="x", pady=(3, 0))
-        ttk.Label(rowcad, text="Empiler les brutes :").pack(side="left")
-        self.var_cadence = tk.StringVar(value="dès réception")
-        self.cb_cadence = ttk.Combobox(
-            rowcad, textvariable=self.var_cadence, state="readonly", width=16,
-            values=[lib for lib, _ in self.CADENCES])
-        self.cb_cadence.pack(side="left", padx=(4, 0))
-        self.cb_cadence.bind("<<ComboboxSelected>>",
-                             lambda e: self._on_cadence())
-        # Jalon 44 : état de la cadence visible EN DIRECT (demande de
-        # débogage d'Alain) — « prochaine rafale dans Xs · N brute(s) en
-        # attente » prouve que la fenêtre est armée et que le throttling
-        # fonctionne ; « — » = dès réception ou source non dossier.
-        self.lbl_cadence = ttk.Label(box, text="—")
-        self.lbl_cadence.pack(anchor="w")
+        # Jalon 45 : le choix est COMMUN aux deux modes (dossier surveillé ET
+        # composition multi-dossiers) — une combobox dans chaque cadre,
+        # partageant la même variable (créée par _creer_cadence).
+        self._creer_cadence(box)
         self.lbl_last = ttk.Label(box, text="Dernier fichier : —")
         self.lbl_last.pack(anchor="w")
 
@@ -967,6 +957,12 @@ class App:
                       width=5).pack(side="left", padx=(4, 0))
         ttk.Button(box, text="🔎 Détecter les filtres (FITS FILTER)",
                    command=self._detecter_filtres).pack(fill="x", pady=(6, 0))
+        # Jalon 45 (demande d'Alain) : le choix de cadence est COMMUN aux
+        # deux modes — une combobox ICI aussi (composition multi-dossiers),
+        # partageant la même variable que celle du cadre « Dossier
+        # surveillé » : choisir dans l'un met l'autre à jour, et le worker
+        # applique la cadence aux DEUX sources.
+        self._creer_cadence(box)
         self._on_compo()    # pré-remplit les lignes de rôle de la compo par défaut
 
         # --- Calibration
@@ -1968,14 +1964,46 @@ class App:
         if self.cadence_lecture <= 0:
             self._prochaine_lecture = 0.0   # « dès réception » : plus de fenêtre
 
+    def _creer_cadence(self, parent):
+        """Ligne « Empiler les brutes » (jalon 42, étendu jalon 45 à la
+        demande d'Alain) : une combobox + une étiquette d'état PAR MODE
+        (dossier surveillé ET composition multi-dossiers), partageant la
+        MÊME variable — choisir dans l'un met l'autre à jour, et la cadence
+        s'applique aux DEUX sources (le worker la porte). L'étiquette
+        (jalon 44) montre l'état du throttling en direct : « prochaine
+        rafale dans Xs · N brute(s) en attente » (fenêtre armée), « rafale
+        en cours » (drain), « — » (dès réception ou pas encore de source)."""
+        if not hasattr(self, "var_cadence"):
+            self.var_cadence = tk.StringVar(value="dès réception")
+        row = ttk.Frame(parent)
+        row.pack(fill="x", pady=(3, 0))
+        ttk.Label(row, text="Empiler les brutes :").pack(side="left")
+        cb = ttk.Combobox(row, textvariable=self.var_cadence,
+                          state="readonly", width=16,
+                          values=[lib for lib, _ in self.CADENCES])
+        cb.pack(side="left", padx=(4, 0))
+        cb.bind("<<ComboboxSelected>>", lambda e: self._on_cadence())
+        self._cadence_cbs.append(cb)
+        if not hasattr(self, "cb_cadence"):
+            self.cb_cadence = cb            # compatibilité (première créée)
+        lbl = ttk.Label(parent, text="—")
+        lbl.pack(anchor="w")
+        self._cadence_lbls.append(lbl)
+        if not hasattr(self, "lbl_cadence"):
+            self.lbl_cadence = lbl          # compatibilité (première créée)
+
     def _maj_lbl_cadence(self):
         """État de la cadence affiché EN DIRECT (jalon 44) : pendant la
         fenêtre d'attente, « prochaine rafale dans Xs · N brute(s) en
         attente » (ambre) — la preuve visible que le throttling retient les
         brutes ; à l'échéance, « rafale en cours · N » (vert) pendant le
-        drain ; « — » = dès réception, ou cadence posée sur une source
-        non dossier (sans objet). Thread UI seul (appelé par _tick)."""
-        if self.cadence_lecture > 0 and self._cadence_dossier():
+        drain ; « — » = dès réception OU pas encore de source connectée
+        (jalon 45 : ne plus afficher « sans objet » avant la connexion —
+        constat d'Alain) ; cadence posée sur une source non dossier →
+        « sans objet ». Thread UI seul (appelé par _tick)."""
+        if self.camera is None:
+            txt, coul = "—", "#888888"      # pas encore de source : au repos
+        elif self.cadence_lecture > 0 and self._cadence_dossier():
             attente = self._brutes_en_attente()
             reste = self._prochaine_lecture - time.monotonic()
             if reste > 0:
@@ -1992,7 +2020,8 @@ class App:
             txt, coul = "—", "#888888"
         if txt != self._cadence_lbl_txt:
             self._cadence_lbl_txt = txt
-            self.lbl_cadence.config(text=txt, foreground=coul)
+            for lbl in self._cadence_lbls:
+                lbl.config(text=txt, foreground=coul)
 
     # --- contrôles caméra QHY (jalon 25) : demandes posées ICI (thread Tk),
     # consommées par le thread de travail — jamais d'appel SDK depuis Tk.

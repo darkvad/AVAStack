@@ -195,8 +195,31 @@ verifie("sans objet" in app.lbl_cadence.cget("text"),
         "cadence posée sur une source non dossier : « sans objet »")
 app.camera = None
 app._maj_lbl_cadence()
-verifie("sans objet" in app.lbl_cadence.cget("text"),
-        "aucune caméra : cadence sans objet")
+verifie(app.lbl_cadence.cget("text") == "—",
+        "aucune source connectée : étiquette au repos (« — », jalon 45 — "
+        "ne plus afficher « sans objet » avant la connexion)")
+
+# ==================================== [7] cadence commune aux deux modes
+print("[7] jalon 45 : combobox dans « Dossier surveillé » ET « Composition »")
+verifie(len(app._cadence_cbs) == 2 and len(app._cadence_lbls) == 2,
+        "deux combobox + deux étiquettes (un couple par mode)")
+verifie(app._cadence_cbs[0] is app.cb_cadence,
+        "la première combobox est celle du cadre « Dossier surveillé »")
+verifie(app._cadence_lbls[1].master.cget("text")
+        == "Composition multi-filtres",
+        "la 2e étiquette est dans le cadre « Composition multi-filtres »")
+verifie(app._cadence_cbs[0].cget("textvariable")
+        == app._cadence_cbs[1].cget("textvariable"),
+        "les DEUX comboboxes partagent la même variable (choix commun)")
+app.var_cadence.set("toutes les 5 min")
+app._maj_lbl_cadence()
+verifie(app._cadence_lbls[0].cget("text")
+        == app._cadence_lbls[1].cget("text")
+        and "5 min" in app._cadence_cbs[0].get()
+        and "5 min" in app._cadence_cbs[1].get(),
+        "choisir dans l'un met l'autre à jour (même valeur affichée)")
+app.var_cadence.set("dès réception")
+app._on_cadence()
 
 root.destroy()
 print()
