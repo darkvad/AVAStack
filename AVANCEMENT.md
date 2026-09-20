@@ -42,64 +42,32 @@ dans le changelog du source et l'historique git.)
 
 ## ⏭ Validations réelles en attente
 
-1. **QHY miniPC (v2.15.0 installée)** : connexion verte SANS démarrer
-   l'empilement, TEC (alim 12 V), filtre avant puis PENDANT l'empilement,
-   offset + saisies, ⏏ Déconnecter (en cas d'échec : log
-   `%TEMP%\avastack_qhy_debug.log` à transmettre).
+**CLOS le 20/09/2026 (verdicts d'Alain)** :
+1. **QHY miniPC (v2.15.0 installée)** : CLOS — tests MiniCam8M FAITS ET
+   CONCLUANTS (verdict Alain, 20/09/2026) : connexion, TEC (alim 12 V),
+   filtres, plages, roue à filtres.
+2b. **Jalon 32 + 33 : CLOS — VALIDÉ ET TESTÉ PAR ALAIN pour Player One ET SVBONY (20/09/2026)** : détection des capacités + UI aux bornes réelles + TEC pilotable (boutons ❄).
+2d. ✅ CLOS (jalons 34/35/36/38 — validés en réel par Alain le 20/09/2026).
+2c. ✅ CLOS — sonde ctypes testée et concluante sur MiniCam8M (verdict Alain, 20/09/2026).
+4. ✅ CLOS — roue à filtres MiniCam8M testée et concluante (verdict Alain, 20/09/2026).
+6-8. ✅ **Jalons 39-41 vérifiés en session** (cases couleur réactives ; curseur + ⏳ + ligne de résultat ; cadres « Couleur live » et « État des calculs » en STF).
+9. **Jalon 42-46 (v2.21.1 → v2.21.5) : CLOS ET VALIDÉ PAR ALAIN le
+   20/09/2026** — cadence d'empilement en surveillance (dossier ET
+   composition, choix commun dans les deux cadres), correctif jalon 43
+   (fenêtre armée bloque TOUTE lecture), plafond de rafale RAFALE_MAX = 10
+   (dossiers pré-remplis) ; verdict Alain : « c'est ok ». L'étiquette de
+   cadence (compte à rebours / rafale en cours) reste un outil de
+   diagnostic utile en session.
+
+**Restent en attente :**
+
 2. **Banc Player One (2e setup)** : cf. jalon 28 ci-dessus — détection
    complète + verdict + TEC + bin + ROI + cadence ; copier le banc dans
    le dossier d'installation si testé depuis le miniPC.
-2b. **TEST RÉEL jalon 32 + 33 (v2.19.0/v2.20.0)** : la détection des
-   capacités + UI aux bornes réelles s'exécute à la connexion de CHAQUE
-   marque SDK, et le TEC POA/SVBONY est DÉSORMAIS PILOTABLE (les boutons
-   ❄ s'activent automatiquement quand la caméra répond). Sur les deux
-   setups (POA Uranus-C Pro puis SVBONY SV305C guidage) : choisir la
-   source → connexion automatique → VÉRIFIER les bornes des curseurs
-   (POA : gain 0–750, offset 0–250, expo 10 µs–2000 s, consigne -50 à 30 ;
-   SV305C : gain 0–450, offset 0–255, expo 36 µs–2000 s) → boutons ❄
-   activés, consigne posée, descente de température constatée dans le
-   label (⚠ SV305C : vérifier que le refroidissement est branché —
-   sans TEC les boutons restent gris, c'est normal) → « ▶ Démarrer » →
-   ⏏ Déconnecter (le TEC doit être coupé à la déconnexion).
-
-2d. **Item 2d CLOS** — les 4 points relevés en réel par Alain le
-    20/09/2026 (setup 2) sont traités : 1-2 validés en réel (jalon 34),
-    3 validé en réel (jalon 35), 4 validé en réel (jalon 36) ; le résidu
-    TEC (contrôles affichés sur une caméra sans TEC) a été TRANCHÉ PAR
-    ALAIN : boutons ❄ toujours actifs (jalon 38).
-   1. ✅ TRAITÉ ET VALIDÉ EN RÉEL (jalon 34, v2.20.3) — libellé « Échelle
-      longue » généré (pivot 5 s + borne max réelle), coupure à 5 s.
-   2. ✅ TRAITÉ ET VALIDÉ EN RÉEL (jalon 34, v2.20.1) — `_fmt_expo` sans
-      notation scientifique : « 2 000 s » au lieu de « 2e+03 s ».
-   3. ✅ CORRIGÉ ET VALIDÉ EN RÉEL (jalon 35, v2.20.4) — cause trouvée :
-       `cam_pilotee`
-       (sondage/pilotage du worker) était resté QHY-only depuis le jalon 25,
-       le sondage `lire_refroidissement()` n'était JAMAIS lancé hors QHY
-       (les implémentations TEC du jalon 33 n'étaient jamais appelées).
-       Correctif : `CAMERAS_PILOTEES` = toutes les caméras SDK (app.py).
-       Boutons ❄ POA activés — validé par Alain le 20/09/2026.
-   4. ✅ **VALIDÉ EN RÉEL PAR ALAIN le 20/09/2026** (jalon 36, v2.20.5) —
-      connexion auto SV305C OK après correction de l'ordre
-      (ouverture d'abord, fiche ensuite). Résidu constaté au test → jalon 37
-      (v2.20.6) : contrôles TEC affichés sur une caméra SANS TEC → sonde
-      par l'EFFET (voir jalon 37 ci-dessus), boutons ❄ grisés attendus.
-2c. **QHY par ctypes (jalon 30, CODE FAIT le 20/09/2026)** : la sonde ctypes est dans le banc (_diag_camera_qhy.py, sous-processus isolé) : plages via GetQHYCCDParamMinMaxStep (le nom réel dans les exports de la DLL — « ...MinMax » tout court n'existe pas) + roue via les fonctions natives CFW. RESTE LE TEST RÉEL (demain matin, MiniCam8M) : (a) « 📏 Plages » → noter min/max/step de expo/gain/offset/TEC pour câbler l'UI ; (b) « 📖 Statut CFW » → vérifier détection + statut ; (c) « 🌀 Tourner » → position 1 puis 2, CONFIRMATION PAR RELECTURE ET EFFET PHYSIQUE (slot vide/opaque → le flux change) ; trancher la convention binding 48+n contre doc QHY '0' = position 1.
 3. **Jalon 24** : gradient/débruitage par couche (live + externe) ;
    garde-fous GraXpert jalon 23b en mono ; SCNR doux (jalon 23).
-4. **Roue à filtres MiniCam8M** : à tester au banc avec les DEUX voies (jalon 30) : la sonde ctypes native (bouton « 🌀 Tourner », ordre ASCII '0'+(position-1), statut relu) et la voie binding (écriture 17=48+n). **Aucun code appli avant le verdict par l'EFFET PHYSIQUE.**
 5. Suivi alignement en direct (« Align. : Δ(…) θ(…) » / « Frames non
    alignées »).
-6. **Jalon 39 (v2.20.8)** : en session réelle (moteur VeraLux, vue
-   « empilement »), cocher puis décocher SCNR, SCNR doux et démagenta →
-   effet VISIBLE immédiat, sans attendre la frame suivante ni bouger le
-   fond cible.
-7. **Jalon 40 (v2.20.9)** : pendant un calcul (ex. case GX cochée avec un
-   vrai GraXpert), vérifier le curseur animé + « ⏳ calcul : <étape>… »
-   dans le panneau VeraLux, puis la ligne de résultat (GX ✓ · … · logD ·
-   fond) une fois terminé.
-8. **Jalon 41 (v2.21.0)** : en mode STF, vérifier le nouveau cadre
-   « Couleur live » (cases SCNR/démagenta efficaces à l'écran) et le cadre
-   « État des calculs » (⏳ netteté pendant la déconvolution STF).
 9. **Jalon 42-46 (v2.21.1 → v2.21.5) : CLOS ET VALIDÉ PAR ALAIN le
    20/09/2026** — cadence d'empilement en surveillance (dossier ET
    composition, choix commun dans les deux cadres), correctif jalon 43
@@ -175,6 +143,13 @@ dans le changelog du source et l'historique git.)
 installateur REBUILD, JALON 46 VALIDÉ PAR ALAIN (« c'est ok » — test réel
 en COMPOSITION depuis le PC de dev, dossiers pré-remplis d'acquisitions
 antérieures)**.
+**VALIDATIONS RÉELLES notées par Alain en clôture** : tests QHY MiniCam8M
+(setup 1) FAITS ET CONCLUANTS — connexion, TEC (alim 12 V), filtres,
+plages et roue à filtres (sonde ctypes jalon 30, EFFET PHYSIQUE) ;
+jalon 32/33 (capacités + UI aux bornes réelles + TEC pilotable) VALIDÉ ET
+TESTÉ pour **Player One ET SVBONY** ; jalons 39-41 vérifiés en session
+(cases couleur immédiates, curseur/⏳/résultat, cadres STF) ; jalons
+42-46 (cadence) validés — « c'est ok ».
 Session en huit jalons après la v2.20.7 : jalon 39 (v2.20.8, cases couleur
 réactives) ; jalon 40 (v2.20.9, état du calcul : curseur + ⏳ + résultat) ;
 jalon 41 (v2.21.0, UI indépendante du moteur) ; jalon 42 (v2.21.1, cadence
@@ -189,8 +164,10 @@ Tout au vert en dev : _test_cadence_jalon42 32/32, jalon19 multi-dossiers.
 
 **Prochaine étape (session NEUVE)** : (1) copier l'installateur v2.21.5
 vers le miniPC (optionnel pour la cadence, testée depuis le dossier de
-dev) ; (2) suite des tests réels en attente (QHY MiniCam8M : TEC + roue à
-filtres, verdict par EFFET PHYSIQUE ; Player One setup 2 ; item 2b).
+dev) ; (2) restent en attente : banc Player One (jalon 28 : détection
+complète + verdict + TEC + bin + ROI + cadence), jalon 24 (gradient/
+débruitage par couche + garde-fous mono + SCNR doux), suivi alignement en
+direct.
 
 Sessions précédentes : v2.21.4 (jalon 45, cadence commune, 265beff) ;
 v2.21.3 (jalon 44, 966edae) ; v2.21.2 (jalon 43, d5b799d) ; v2.21.1
