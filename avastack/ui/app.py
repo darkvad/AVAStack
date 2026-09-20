@@ -562,13 +562,15 @@ class App:
 
     # ------------------------------------------------------------ construction UI
     # Contrôles caméra QHY (jalon 25, demandes d'Alain du 19/09/2026) :
-    # exposition en curseur LOGARITHMIQUE à deux échelles (11 µs – 5 s, et
-    # 1 s – 900 s via la case « Échelle longue ») — un curseur linéaire ne
-    # peut pas couvrir un rapport 80 millions (11 µs → 900 s) : en log, le
+    # exposition en curseur LOGARITHMIQUE à deux échelles — un curseur
+    # linéaire ne peut pas couvrir un rapport de 80 millions : en log, le
     # pas est multiplicatif et le réglage reste fin partout. `var_expo`
     # reste TOUJOURS en ms réelles (contrat apply_settings + tests).
+    # Coupure à 5 S (demande d'Alain, 20/09/2026, v2.20.3 — vaut pour
+    # TOUTES les caméras, bornes natives ou échelles fixes) : case
+    # DÉCOCHÉE = min → 5 s ; COCHÉE = 5 s → exposition max.
     _EXPO_COURT = (0.011, 5000.0)      # ms : 11 µs → 5 s
-    _EXPO_LONG = (1000.0, 900000.0)    # ms : 1 s → 900 s
+    _EXPO_LONG = (5000.0, 900000.0)    # ms : 5 s → 900 s
 
     # ------------------------------------------------------ case « Échelle longue »
     # Jalon 34, CORRECTION d'Alain (20/09/2026, retour réel Player One) : la
@@ -580,23 +582,26 @@ class App:
     # borne max RÉELLE (2000 s sur Uranus-C Pro) au lieu du « 900 s » codé
     # en dur (point 1 du relevé d'Alain).
     def _maj_libelle_expo_longue(self):
-        """Libellé « Échelle longue (1 s – max) » : max = borne RÉELLE de la
+        """Libellé « Échelle longue (5 s – max) » : max = borne RÉELLE de la
         caméra si détectée, sinon 900 s (échelle fixe d'origine)."""
         hi = (self._EXPO_DYN[1] if self._EXPO_DYN is not None
               else self._EXPO_LONG[1])
         self.chk_expo_longue.config(
-            text=f"Échelle longue ({_fmt_expo(1000.0)} – {_fmt_expo(hi)})")
+            text=f"Échelle longue ({_fmt_expo(self._EXPO_LONG[0])} – "
+                 f"{_fmt_expo(max(hi, self._EXPO_LONG[0]))})")
 
     def _expo_bornes(self):
-        # Jalon 31 : bornes RÉELLES de la caméra connectée si la sonde les a
-        # données (plage log unique couvrant toute la plage native) ;
-        # sinon les deux échelles fixes d'origine.
+        """Bornes actives du curseur log, coupure à 5 s (Alain, 20/09/2026) :
+        case DÉCOCHÉE = min → 5 s, COCHÉE = 5 s → max — identique pour
+        TOUTES les caméras (bornes natives ou échelles fixes d'origine)."""
         if self._EXPO_DYN is not None:
-            if self.var_expo_longue.get():
-                # Case cochée (jalon 34) : le curseur ne couvre que la
-                # longue portée (1 s → max), réglage plus fin à droite.
-                return (max(1000.0, self._EXPO_DYN[0]), self._EXPO_DYN[1])
-            return self._EXPO_DYN
+            lo, hi = self._EXPO_DYN
+            pivot = self._EXPO_LONG[0]          # 5 s
+            if lo < pivot < hi:
+                # La plage native chevauche la coupure : la case est utile.
+                return ((pivot, hi) if self.var_expo_longue.get()
+                        else (lo, pivot))
+            return (lo, hi)   # plage native d'un seul côté de 5 s : sans effet
         return self._EXPO_LONG if self.var_expo_longue.get() else self._EXPO_COURT
 
     def _expo_depuis_pos(self, p):
@@ -642,13 +647,10 @@ class App:
         except ValueError:
             self.var_expo_saisie.set(_fmt_expo(self.var_expo.get()))
             return
-        if self._EXPO_DYN is not None:
-            # Bornes natives : si la case longue est cochée et que la valeur
-            # saisie est courte, on décoche (retour à la pleine plage).
-            if self.var_expo_longue.get() and ms < self._EXPO_LONG[0]:
-                self.var_expo_longue.set(False)
-        elif ms > self._EXPO_COURT[1] and not self.var_expo_longue.get():
-            self.var_expo_longue.set(True)    # bascule automatique
+        # Bascule automatique d'échelle à la coupure 5 s (toutes caméras) :
+        # saisie > 5 s → case cochée ; saisie < 5 s → case décochée.
+        if ms > self._EXPO_LONG[0] and not self.var_expo_longue.get():
+            self.var_expo_longue.set(True)
         elif ms < self._EXPO_LONG[0] and self.var_expo_longue.get():
             self.var_expo_longue.set(False)
         self._maj_expo(ms)
@@ -656,7 +658,8 @@ class App:
     def _on_echelle_expo(self):
         """Case « échelle longue » : garde la valeur réelle si elle reste
         dans la nouvelle échelle, sinon la ramène à la borne la plus proche
-        (5 s ↔ 1 s : les deux échelles se touchent, aucune valeur ne saute)."""
+        (les deux échelles se touchent au pivot 5 s : aucune valeur ne saute,
+        et 5 s est le PIVOT commun — atteignable des deux côtés)."""
         self._maj_expo(self.var_expo.get())
 
     def _on_curseur_expo(self, v):
@@ -1742,10 +1745,15 @@ class App:
             hi_ms = float(cap.expo_us[1]) / 1000.0
             if hi_ms > lo_ms:
                 self._EXPO_DYN = (lo_ms, hi_ms)
+                # Jalon 34 (Alain) : coupure à 5 s — si la plage native est
+                # ENTIÈREMENT d'un côté du pivot, la case n'a aucun effet :
+                # on la décoche pour ne pas afficher un réglage factice.
+                if not (lo_ms < 5000.0 < hi_ms):
+                    self.var_expo_longue.set(False)
                 maj = getattr(self, "_maj_expo", None)
                 if maj is not None:
                     maj(self.var_expo.get())
-                # Jalon 34 : le libellé de la case suit la borne max réelle.
+                # Le libellé de la case suit la borne max réelle.
                 maj_case = getattr(self, "_maj_libelle_expo_longue", None)
                 if maj_case is not None:
                     maj_case()

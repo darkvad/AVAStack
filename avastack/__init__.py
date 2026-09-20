@@ -14,9 +14,23 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.20.2"
+AVASTACK_VERSION = "2.20.3"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.20.3 : COUPURE DE L'ÉCHELLE À 5 S (précision d'Alain du 20/09/2026,
+#          après retest réel : « décoché, le curseur va du min à 5 s, coché
+#          ça va de 5 s au max ») — pour TOUTES les caméras, bornes natives
+#          comme échelles fixes :
+#          - décochée : min → 5 s ; cochée : 5 s → exposition max (pivot
+#            commun, les deux échelles se touchent, aucune valeur ne saute) ;
+#          - le libellé affiche le pivot + la borne max RÉELLE (« Échelle
+#            longue (5 s – 2 000 s) » sur Uranus-C Pro, « 5 s – 900 s » sans
+#            sonde) ;
+#          - bascule automatique à la saisie : > 5 s coche, < 5 s décoche ;
+#          - plage native ENTIÈREMENT d'un côté du pivot : la case est
+#            décochée (elle n'y aurait aucun effet — pas de réglage factice) ;
+#          - _EXPO_LONG passe de (1 s, 900 s) à (5 s, 900 s) ;
+#          - _test_expo_affichage_jalon34 : 21 vérifications.
 # v2.20.2 : « ÉCHELLE LONGUE » RÉTABLIE (retour réel d'Alain du 20/09/2026 :
 #          « tu as carrément supprimé la case à cocher, ce n'est pas ce que
 #          j'avais demandé ») — la case reste TOUJOURS VISIBLE et redevient
