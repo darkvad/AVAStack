@@ -132,7 +132,7 @@ dans le changelog du source et l'historique git.)
   points puis en trainées » → origine du jalon 13 (alignement robuste).
   Banc POA : `_diag_camera_playerone.py` (jalon 28).
 
-## 🔚 État de session — 20/09/2026 (fin de nuit)
+## 🔚 État de session — 20/09/2026 (fin de nuit, v2.18.0)
 
 Demande d'Alain : « diag QHY avec les ctypes comme prévu, à tester demain matin ». FAIT (jalon 30, v2.17.0) :
 1. Sonde ctypes native dans le banc QHY (sous-processus isolé) : plages GetQHYCCDParamMinMaxStep + roue native CFW (statut + rotation avec confirmation) ; exports de la DLL vérifiés par parseur PE ; signatures de l'en-tête officiel du SDK ; prototypes ctypes explicites ; DLL identifiée (chemin + date) à chaque sonde.
@@ -150,4 +150,13 @@ Demande d'Alain : « diag QHY avec les ctypes comme prévu, à tester demain mat
 2. Banc QHY : « 📏 Plages (MinMaxStep) » → noter les plages réelles (expo/gain/offset/TEC) pour le futur câblage UI.
 3. CORRECTIF DU MATIN (v2.17.1, fait) : les plages sortaient toutes « indisponibles » car la sonde ne faisait PAS SetQHYCCDStreamMode + InitQHYCCD(handle) après OpenQHYCCD — obligatoire pour les lectures de contrôles (la roue, elle, répondait déjà : VALIDÉE EN RÉEL — détectée, 8 slots, statut '3' = le code 51 relu par le binding sur ctrl 17, même ASCII des deux côtés). La convention '0'=position 1 de la doc reste à trancher par l'EFFET PHYSIQUE (Tourner 1 puis 2).
    DLL : deux qhyccd.dll coexistent en dev — la racine du projet (posée par Alain avec les autres SDK en février) est le SDK 25.6.16 (janvier 2026), le paquet qhyccd embarque le 26.6.4 (juin 2026, celui du binding) : la sonde charge désormais le 26.6.4 en priorité (les DEUX exportent toutes les fonctions utiles, vérifié) ; AVASTACK_QHY_DIR permet de forcer l'autre.
-4. Ensuite : câblage de l'UI aux capacités dynamiques (jalon 29/30 : bornes réelles par caméra au lieu des valeurs figées).
+4. Ensuite : **FAIT (v2.18.0, jalon 31)** — l'UI se construit aux bornes
+   détectées à la connexion (curseurs gain/offset reconstruits, expo sur
+   la plage native 1 µs → 3600 s, TEC clampé -50→50 °C, roue aux 8 slots
+   réels ; déconnexion → défauts ; sonde muette → défauts, jamais
+   d'erreur). Test `_test_ui_dynamique_jalon31.py` 15/15 (fenêtre réelle,
+   valeurs du relevé MiniCam8M). Bug préexistant corrigé :
+   « ⏏ Déconnecter » référençait un bouton inexistant (AttributeError
+   garanti). v2.18.0 poussée (65de10e), installateur rebuildé. À TESTER
+   EN RÉEL : connexion MiniCam8M → vérifier les bornes affichées
+   (Gain 0–230, Offset 0–255, expo 1 µs–3600 s, consigne -50 à 50).
