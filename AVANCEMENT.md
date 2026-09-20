@@ -11,12 +11,12 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.17.1** (`avastack/__init__.py`),
+- **Version stable de référence : AVAStack v2.17.2** (`avastack/__init__.py`),
   branche `master` — **COMMITÉE (414053a) et POUSSÉE** ; installateur
   **REBUILDÉ** (`installer\windows\output\avastack-setup.exe`).
   Reste : déployer sur le miniPC (réinstaller, ou copier SEULEMENT
   `_diag_camera_qhy.py` — le banc v2.17 est autonome) ; la fenêtre du
-  nouveau banc affiche « BANC version : 2.17.1 » en tête (repère anti-
+  nouveau banc affiche « BANC version : 2.17.2 » en tête (repère anti-
   confusion : « avastack version » = bibliothèque installée, qui peut
   rester 2.16.0 sans gêner la sonde).
 - **Dernier jalon (30, 20/09/2026) — BANC QHY : SONDE CTYPES NATIVE** (v2.17.1, correctif du matin)
@@ -145,7 +145,7 @@ Demande d'Alain : « diag QHY avec les ctypes comme prévu, à tester demain mat
 1. Sur le miniPC : réinstaller avec le NOUVEAU avastack-setup.exe, OU
    copier SEULEMENT `_diag_camera_qhy.py` dans
    `C:\Users\alain\AppData\Local\AVAStack` (banc autonome). Vérifier la
-   ligne « BANC version : 2.17.1 » en tête de fenêtre (sinon c'est encore
+   ligne « BANC version : 2.17.2 » en tête de fenêtre (sinon c'est encore
    l'ancien banc).
 2. Banc QHY : « 📏 Plages (MinMaxStep) » → noter les plages réelles (expo/gain/offset/TEC) pour le futur câblage UI.
 3. CORRECTIF DU MATIN (v2.17.1, fait) : les plages sortaient toutes « indisponibles » car la sonde ne faisait PAS SetQHYCCDStreamMode + InitQHYCCD(handle) après OpenQHYCCD — obligatoire pour les lectures de contrôles (la roue, elle, répondait déjà : VALIDÉE EN RÉEL — détectée, 8 slots, statut '3' = le code 51 relu par le binding sur ctrl 17, même ASCII des deux côtés). La convention '0'=position 1 de la doc reste à trancher par l'EFFET PHYSIQUE (Tourner 1 puis 2).
