@@ -132,7 +132,23 @@ dans le changelog du source et l'historique git.)
   points puis en trainées » → origine du jalon 13 (alignement robuste).
   Banc POA : `_diag_camera_playerone.py` (jalon 28).
 
-## 🔚 État de session — 20/09/2026 (fin de nuit, v2.18.0)
+## 🔚 Clôture de session — 20/09/2026 (v2.18.0, demandée par Alain)
+
+État exact : **v2.18.0** commitée et poussée (bb84f72, origin/master à
+jour), installateur REBUILDÉ (avastack-setup.exe v2.18.0), dépôt propre
+(aucun fichier non suivi). Réalisé dans la session : sonde ctypes native
+QHY dans le banc (jalon 30, correctifs 2.17.x validés EN RÉEL par Alain :
+plages MinMaxStep + roue 8 slots, statut relu) PUIS câblage dynamique de
+l'UI (jalon 31) — curseurs gain/offset, exposition, TEC et roue
+construits aux bornes réelles à la connexion, pour toutes les marques.
+Bugs corrigés : IsQHYCCDControlAvailable (0 = dispo), InitQHYCCD(handle)
+obligatoire, btn_deconnecter inexistant sur « ⏏ Déconnecter ».
+
+**Prochaine étape** : test réel v2.18.0 (miniPC, réinstaller) — connexion
+MiniCam8M → vérifier que les bornes affichées correspondent au relevé
+(gain 0–230, offset 0–255, expo 1 µs–3600 s, consigne -50 à 50, roue 8) ;
+puis la rotation physique de la roue (« 🌀 Tourner » au banc) pour
+trancher la convention 48+n contre '0' = position 1.
 
 Demande d'Alain : « diag QHY avec les ctypes comme prévu, à tester demain matin ». FAIT (jalon 30, v2.17.0) :
 1. Sonde ctypes native dans le banc QHY (sous-processus isolé) : plages GetQHYCCDParamMinMaxStep + roue native CFW (statut + rotation avec confirmation) ; exports de la DLL vérifiés par parseur PE ; signatures de l'en-tête officiel du SDK ; prototypes ctypes explicites ; DLL identifiée (chemin + date) à chaque sonde.
