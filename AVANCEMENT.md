@@ -11,30 +11,31 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.20.9** (`avastack/__init__.py`),
-  branche `master` — jalon 40 CORRIGÉ EN DEV (tout au vert), **COMMITÉ ET
-  POUSSÉ (voir clôture de session)**, **installateur v2.20.9 REBUILD**
+- **Version stable de référence : AVAStack v2.21.0** (`avastack/__init__.py`),
+  branche `master` — jalon 41 CORRIGÉ EN DEV (tout au vert), **COMMITÉ ET
+  POUSSÉ (voir clôture de session)**, **installateur v2.21.0 REBUILD**
   (`installer/windows/output/avastack-setup.exe`) — copie de l'installateur
   vers le miniPC à faire.
-- **Dernier jalon (40, 20/09/2026) — ÉTAT DU CALCUL VERA LUX MATÉRIALISÉ** :
-  - demande d'Alain : matérialiser qu'un traitement live est appliqué et
-    qu'il est terminé (curseur de calcul + ligne d'état GX/NET/logD…) ;
-  - fait : le thread solveur écrit `vl_stage` (préparation → composition →
-    GraXpert → débruitage → netteté → étirement), remis à "" à la fin ;
-    l'UI (`_maj_lbl_vl`, un seul écrivain thread Tk) affiche PENDANT le
-    calcul un curseur animé + « ⏳ calcul : <étape>… » en ambre, À LA FIN
-    la ligne de résultat GX ✓ · DN ✓ · NET ✓ · COUL ✓ (nouveau : chaîne
-    couleur signalée) · logD · fond, ou l'erreur en rouge ; mémo
-    `_vl_lbl_txt` (jamais de reconfig à 30 ms) ;
-  - EXPLICATION DONNÉE À ALAIN (pas un bug) : GX/débruitage ne sont pas en
-    STF parce que la chaîne pré-étirement vit dans le solveur VeraLux seul
-    (STF rend ~20×/s, aucun solveur pré-étirement SAUF la netteté, jalon
-    12) ; SCNR/démagenta SONT déjà appliqués par le moteur en STF (testé
-    jalon 22) — seules les CASES sont rangées dans le cadre VeraLux
-    (choix d'UI, déplaçable si Alain le demande) ;
-  - Tests : _test_etat_calcul_jalon40 12/12 (NOUVEAU) ;
-    _test_couleurs_immediat_jalon39 12/12 ; jalon22 33/33 ; jalon3 22/22 ;
-    jalon9 31/31 ; jalon12 48/48 ; jalon4 27/27 ; jalon5 15/15.
+- **Dernier jalon (41, 20/09/2026) — UI INDÉPENDANTE DU MOTEUR (décision
+  d'Alain : « rendre visible tout ce qui s'applique aussi en STF »)** :
+  - la chaîne couleur (SCNR / SCNR doux / démagenta) SORT du cadre VeraLux
+    → nouveau cadre INDÉPENDANT « Couleur live (SCNR / démagenta) » :
+    cochable et EFFICACE en STF/manuel (le moteur STF applique déjà la
+    chaîne, testé jalon 22 — c'était un rangement d'UI, pas une limite) ;
+  - l'étiquette d'état + le curseur de calcul sortent AUSSI → cadre
+    « État des calculs (live) » visible dans les DEUX modes ; en STF ils
+    signalent le solveur de netteté dédié (⏳ netteté…, jalon 12) —
+    `_maj_lbl_vl` étendue + `sh_en_cours()` (display.py) ;
+  - GX live et débruitage live RESTENT dans le cadre VeraLux (ils ne
+    s'appliquent que dans son solveur) ;
+  - EXPLICATION CORRIGÉE (imprécision d'Alain relevée par lui) : le rendu
+    STF n'est PAS à 20 fois/s — le worker ne pousse qu'à CHAQUE IMAGE
+    REÇUE (caméras SDK → None entre deux poses) ; le 1/20 s n'est qu'un
+    PLAFOND anti-engorgement pour sources rapides (démo, webcams, poses
+    courtes) ;
+  - Tests : _test_ui_moteur_jalon41 9/9 (NOUVEAU) ;
+    _test_etat_calcul_jalon40 12/12 (section STF mise à jour) ; jalon5
+    15/15 ; jalon22 33/33 ; jalon39 12/12 ; jalon12 48/48.
 - **LIMITE QHY (toujours valable)** : après « ■ Arrêter », relancer
   l'appli — le binding qhyccd n'expose AUCUNE libération du SDK (état
   irréinitialisable dans le process) ; le banc QHY l'annonce et conseille
@@ -97,6 +98,9 @@ dans le changelog du source et l'historique git.)
    vrai GraXpert), vérifier le curseur animé + « ⏳ calcul : <étape>… »
    dans le panneau VeraLux, puis la ligne de résultat (GX ✓ · … · logD ·
    fond) une fois terminé.
+8. **Jalon 41 (v2.21.0)** : en mode STF, vérifier le nouveau cadre
+   « Couleur live » (cases SCNR/démagenta efficaces à l'écran) et le cadre
+   « État des calculs » (⏳ netteté pendant la déconvolution STF).
 
 ## Pièges récents (rappels opérationnels)
 
@@ -159,33 +163,32 @@ dans le changelog du source et l'historique git.)
   points puis en trainées » → origine du jalon 13 (alignement robuste).
   Banc POA : `_diag_camera_playerone.py` (jalon 28).
 
-## 🔚 Clôture de session — 20/09/2026 (v2.20.9, jalon 40)
+## 🔚 Clôture de session — 20/09/2026 (v2.21.0, jalon 41)
 
-État exact : **v2.20.9 COMMITÉE ET POUSSÉE (45bbfc9), installateur REBUILD**.
-Deux sujets traités après le jalon 39 (v2.20.8, cases couleur réactives
-immédiatement) : (1) EXPLICATION demandée par Alain — pourquoi GraXpert/
-débruitage/SCNR ne sont pas disponibles en STF (réponse : la chaîne
-pré-étirement vit dans le solveur VeraLux seul ; le STF rend ~20×/s et n'a
-de solveur dédié QUE pour la netteté, jalon 12 ; SCNR/démagenta sont DÉJÀ
-appliqués par le moteur en STF — seules les cases sont rangées dans le
-cadre VeraLux, déplaçables à la demande) ; (2) jalon 40 — état du calcul
-matérialisé à l'écran : `vl_stage` écrit par le solveur (préparation →
-composition → GraXpert → débruitage → netteté → étirement, "" à la fin),
-UI : curseur animé + « ⏳ calcul : <étape>… » pendant, ligne de résultat
-« GX ✓ · DN ✓ · NET ✓ · COUL ✓ · logD · fond » (ou erreur rouge) à la fin.
-Tout au vert en dev : _test_etat_calcul_jalon40 12/12 (NOUVEAU),
-_test_couleurs_immediat_jalon39 12/12, jalon22 33/33, jalon3 22/22,
-jalon9 31/31, jalon12 48/48, jalon4 27/27, jalon5 15/15.
+État exact : **v2.21.0 COMMITÉE ET POUSSÉE (8ee2d8c), installateur REBUILD**.
+Session en trois jalons après la v2.20.7 : jalon 39 (v2.20.8, cases couleur
+réactives immédiatement — `_refresh_preview()` manquant) ; jalon 40
+(v2.20.9, état du calcul matérialisé — `vl_stage` écrit par le solveur,
+UI : curseur animé + « ⏳ calcul : <étape>… », ligne de résultat
+GX ✓ · DN ✓ · NET ✓ · COUL ✓ · logD · fond) ; jalon 41 (v2.21.0, DÉCISION
+D'ALAIN : UI indépendante du moteur — cases couleur sorties du cadre
+VeraLux → cadre « Couleur live », état des calculs sorti → cadre
+« État des calculs » visible en STF aussi, où il signale le solveur de
+netteté dédié ; GX/débruitage restent VeraLux-only). AUSSI : explication
+CORRIGÉE du rythme d'affichage — le worker ne pousse qu'à chaque IMAGE
+reçue (le 1/20 s n'est qu'un plafond), le STF ne rend PAS 20 fois/s.
+Tout au vert en dev : _test_ui_moteur_jalon41 9/9 (NOUVEAU),
+_test_etat_calcul_jalon40 12/12, _test_couleurs_immediat_jalon39 12/12,
+jalon22 33/33, jalon5 15/15, jalon12 48/48.
 
-**Prochaine étape** : (1) copier l'installateur v2.20.9 vers le miniPC ;
-(2) validations réelles des jalons 39 et 40 (cases couleur immédiates ;
-curseur + ⏳ + ligne de résultat pendant/après un calcul) ; (3) suite des
-tests réels en attente (QHY MiniCam8M : TEC + roue à filtres, verdict par
-EFFET PHYSIQUE) ; (4) OUVERT : sortir les cases couleur du cadre VeraLux
-(dispo en STF aussi) si Alain le confirme.
+**Prochaine étape** : (1) copier l'installateur v2.21.0 vers le miniPC ;
+(2) validations réelles des jalons 39/40/41 (cases couleur immédiates ;
+curseur + ⏳ + résultat ; cadres « Couleur live » et « État des calculs »
+en STF) ; (3) suite des tests réels en attente (QHY MiniCam8M : TEC +
+roue à filtres, verdict par EFFET PHYSIQUE).
 
-Sessions précédentes : v2.20.8 (jalon 39, cases couleur réactives
-immédiatement, 097a9c8) ; v2.20.7 (jalon 38, boutons ❄ toujours actifs —
-décision d'Alain, d8d4055) ; v2.20.6 (jalon 37, sonde TEC par l'EFFET —
-ANNULÉE au jalon 38, a8a3930) ; v2.20.5 (jalon 36, c09e191) — détail dans
-l'historique git et le changelog du source.
+Sessions précédentes : v2.20.9 (jalon 40, état du calcul, 45bbfc9) ;
+v2.20.8 (jalon 39, cases couleur réactives, 097a9c8) ; v2.20.7 (jalon 38,
+boutons ❄ toujours actifs — décision d'Alain, d8d4055) ; v2.20.6 (jalon
+37, a8a3930) ; v2.20.5 (jalon 36, c09e191) — détail dans l'historique git
+et le changelog du source.
