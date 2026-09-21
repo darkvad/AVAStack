@@ -37,7 +37,8 @@ import numpy as np
 # façade multi-rôles tient la MÊME géométrie d'intersection (les helpers
 # privés _aire_signee/_clip_poly restent dans stacking.py, source unique).
 from .stacking import (LiveStacker, _aire_signee, _clip_poly,
-                       cadre_intersection, quad_alignement)
+                       cadre_intersection, quad_alignement,
+                       aligner_canaux)
 
 # Rôles possibles d'un dossier (un rôle = un filtre).
 ROLES = ("L", "R", "G", "B", "Ha", "O3", "S2")
@@ -308,6 +309,15 @@ class CompositeStacker:
         self._wb_force = 1.0
         self.gains = None                 # gains R/G/B (UI, phase 3)
         self.mode_l = "synthetise"        # radio « Canal L » (UI, phase 3)
+        # Recalage colorimétrique « Linear Fit » (jalon 54) : appliqué au
+        # COMPOSITE SEUL — JAMAIS aux couches (le solveur live re-fait la
+        # recomposition depuis les couches brutes et ré-applique le recalage
+        # lui-même, réglage transporté dans disp.vl_compo). Mode «
+        # gain_offset » par défaut (décision d'Alain).
+        self.linear_fit = False
+        self.linear_fit_mode = "gain_offset"
+        self.fit_diag = None              # gains/offsets mesurés (UI)
+        self._fit_cache = None
         self.role_courant = None          # rôle de la frame en cours d'ajout
         self.stackers = {}                # rôle → LiveStacker (canaux 2D)
         self._shape = None                # forme des canaux (posée au 1er add)
@@ -422,6 +432,8 @@ class CompositeStacker:
         self._poly = None
         self.cadre = None
         self._shape = None
+        self._fit_cache = None            # recalage Linear Fit (jalon 54)
+        self.fit_diag = None
 
     # -- lecture du composite -------------------------------------------------
     def _recadrer(self, img):
@@ -447,6 +459,9 @@ class CompositeStacker:
         le worker a besoin des DEUX à chaque nouvel empilement (composite pour
         l'affichage, couches pour le traitement par couche du solveur live) —
         une seule exécution de mean()/recadrage au lieu de deux.
+        Jalon 54 : le recalage « Linear Fit » est appliqué au COMPOSITE SEUL
+        (les couches restent brutes — elles alimentent les caches du solveur
+        et sa recomposition, qui ré-applique le recalage lui-même).
         → (composite ou None, dict — vide si aucun rôle n'a de frame)."""
         canaux = self.moyennes(recadre=recadre)
         if not canaux:
@@ -456,7 +471,31 @@ class CompositeStacker:
                             mode_l=self.mode_l)
         except ValueError:
             comp = None                   # formes hétérogènes (ne doit pas
-        return comp, canaux               # arriver : cadre commun) → rien
+        if comp is not None and self.linear_fit:   # arriver : cadre commun
+            comp = self._recaler_fit(comp)         # → case DÉCOCHÉE = brut
+        return comp, canaux
+
+    def _recaler_fit(self, comp):
+        """Recalage « Linear Fit » du composite (jalon 54) : cf.
+        CompositeStacker.linear_fit. Cache par (frames totales, gains, mode L,
+        mode) : les stats du composite dépendent de l'accumulation ET des
+        réglages qui la composent → recalcul seulement quand l'un change
+        (aucun pompage entre deux ticks). Dégénéré (canal plat, cf.
+        aligner_canaux) → composite inchangé + diag None."""
+        if comp.ndim != 3 or comp.shape[-1] != 3:
+            return comp
+        gains_sig = (tuple(round(float(self.gains.get(c, 1.0)), 4)
+                           for c in ("R", "G", "B"))
+                     if self.gains else None)
+        cle = (sum(s.n for s in self.stackers.values()),
+               self.linear_fit_mode, gains_sig, self.mode_l)
+        if self._fit_cache is not None and self._fit_cache[0] == cle:
+            out, diag = self._fit_cache[1]
+        else:
+            out, diag = aligner_canaux(comp, mode=self.linear_fit_mode)
+            self._fit_cache = (cle, (out, diag))
+        self.fit_diag = diag
+        return out if diag is not None else comp
 
     def mean(self, recadre=True):
         """Composite LINÉAIRE courant (composer : normalisation par canal +

@@ -242,6 +242,10 @@ class App:
         # lecture de variables Tk hors du thread principal — cf. pièges).
         self._compo_gains = None         # dict R/G/B → facteur
         self._compo_mode_l = "synthetise"
+        # Jalon 54 : instantané du recalage « Linear Fit » pour le worker —
+        # le worker n'a JAMAIS le droit de lire les variables Tk (piège
+        # « main thread is not in main loop », cf. régression constatée).
+        self._fit_actif = False
         self.archives = {}              # rôle → ArchiveFrames (mode compo)
         # Jalon 16 : re-stack sur la meilleure référence — score qualité
         # (nb d'étoiles) parallèle à archive.chemins, ancre courante, et
@@ -462,6 +466,10 @@ class App:
         # clé absente → défaut (rejet d'office).
         if "rejeter_flou" in c:
             self.var_rejeter_flou.set(bool(c.get("rejeter_flou")))
+        # --- Jalon 54 : recalage colorimétrique « Linear Fit » — booléen
+        # explicite (même convention : la clé absente garde le défaut).
+        if "linear_fit" in c:
+            self.var_fit.set(bool(c.get("linear_fit")))
         self._on_rejeter_flou()
         self._on_wb()
         # --- Jalon 6 : réglages VeraLux (moteur tiers opt-in)
@@ -607,6 +615,9 @@ class App:
         # Jalon 17 : filtre défocalisation — booléen explicite (comme les
         # autres cases : une case décochée ne doit pas hériter d'un True).
         c["rejeter_flou"] = bool(self.var_rejeter_flou.get())
+        # Jalon 54 : recalage colorimétrique « Linear Fit » — booléen
+        # explicite (comme les autres cases : False doit être persisté).
+        c["linear_fit"] = bool(self.var_fit.get())
         c["moteur"] = self.var_moteur.get()
         c["vl_mode_res"] = self.var_vl_mode_res.get()
         c["vl_target"] = self.var_vl_target.get()
@@ -1125,6 +1136,22 @@ class App:
         self.var_wb_force = tk.DoubleVar(value=1.0)
         self._add_slider(box, "Force de l'équilibrage",
                          self.var_wb_force, 0.0, 1.0, 0.05, self._on_wb, "{:.2f}")
+        # Jalon 54 : recalage colorimétrique « Linear Fit » — R et B alignés
+        # sur le VERT par une droite Gain + Offset (mesurée sur le composite
+        # linéaire, réf. = vert). Neutralise le masque coloré (fond bleu dans
+        # les poussières de M31, constat réel d'Alain) qui surgit à
+        # l'étirement quand les fonds des filtres diffèrent. Appliqué au
+        # composite (visu ET sauvegardes — le fichier linéaire reste un
+        # float32 simple). DÉCOCHÉE par défaut (décision d'Alain) ; le
+        # libellé montre les gains/offsets MESURÉS (règle : le réglage relu
+        # n'est pas le réglage appliqué — seul l'effet physique prouve).
+        self.var_fit = tk.BooleanVar(value=False)
+        ttk.Checkbutton(box, text="Recalage colorimétrique (Linear Fit)",
+                        variable=self.var_fit,
+                        command=self._on_linear_fit).pack(anchor="w")
+        self.lbl_fit = ttk.Label(box, text="", foreground="#888888")
+        self.lbl_fit.pack(anchor="w")
+        self._on_linear_fit()
         # Jalon 17 : filtre anti-brutes TRÈS défocalisées — rejet d'office
         # (décision d'Alain), cette case le désactive (les frames passent
         # comme avant le jalon 17 ; le compteur de rejets reste affiché).
@@ -1725,7 +1752,37 @@ class App:
         if self.stacker:
             self.stacker.wb_auto = bool(self.var_wb.get())
             self.stacker.wb_force = float(self.var_wb_force.get())
+        self._on_linear_fit()
         self._refresh_preview()
+
+    def _on_linear_fit(self):
+        """Jalon 54 : case « Recalage colorimétrique (Linear Fit) » —
+        posée sur l'empilement COURANT (mono LiveStacker ou façade
+        CompositeStacker, attribut commun) et appliqué au composite dès le
+        prochain rendu ; mode « gain_offset » par défaut (décision d'Alain)."""
+        if self.stacker is not None and hasattr(self.stacker, "linear_fit"):
+            self.stacker.linear_fit = bool(self.var_fit.get())
+            self.stacker.linear_fit_mode = "gain_offset"
+        self._maj_libelle_fit()
+
+    def _maj_libelle_fit(self):
+        """Libellé des gains/offsets MESURÉS par le recalage (effectif sur
+        le dernier mean() : R et B seulement, le vert est la référence)."""
+        if not hasattr(self, "lbl_fit"):
+            return
+        d = (self.stacker.fit_diag if self.stacker is not None else None)
+        if not getattr(self, "var_fit", None) or not self.var_fit.get():
+            self.lbl_fit.config(text="", foreground="#888888")
+            return
+        if d is None:
+            self.lbl_fit.config(text="Linear Fit : en attente de données…",
+                                foreground="#888888")
+            return
+        gr, ob = d["gains"][0], d["offsets"][0]
+        gb, obb = d["gains"][2], d["offsets"][2]
+        self.lbl_fit.config(
+            text=f"Fit R ×{gr:.3f}{ob:+.4f} · B ×{gb:.3f}{obb:+.4f}",
+            foreground="#1d7f1d")
 
     def _on_rejeter_flou(self):
         """Jalon 17 : active/désactive le filtre anti-brutes très défocalisées.
@@ -2787,6 +2844,8 @@ class App:
         # THREAD (le worker n'a jamais le droit de lire les variables Tk).
         self._compo_gains = self._lire_gains()
         self._compo_mode_l = self.var_compo_mode_l.get()
+        # Jalon 54 : instantané du recalage Linear Fit pour le thread.
+        self._fit_actif = bool(self.var_fit.get())
         self.btn_save_proc.config(state="disabled")
         self.empilement_on = False
         self.empilement_start_request = True          # reset + purge (worker)
@@ -2805,6 +2864,7 @@ class App:
         # THREAD (le worker n'a jamais le droit de lire les variables Tk).
         self._compo_gains = self._lire_gains()
         self._compo_mode_l = self.var_compo_mode_l.get()
+        self._fit_actif = bool(self.var_fit.get())   # jalon 54 (thread)
         self.aligner = StarAligner()
         self.stacker = None
         self.disp.reset()                      # stats d'affichage repartent de zéro
@@ -3764,6 +3824,9 @@ class App:
                          window=ancien.window)
         st.wb_auto = ancien.wb_auto
         st.wb_force = ancien.wb_force
+        # Jalon 54 : le recalage « Linear Fit » survit au re-stack.
+        st.linear_fit = ancien.linear_fit
+        st.linear_fit_mode = ancien.linear_fit_mode
         self.stacker = st
         n_ok = 0
         ident = np.eye(2, 3)
@@ -3865,6 +3928,9 @@ class App:
         st.mode_l = ancien.mode_l
         st.wb_auto = ancien.wb_auto
         st.wb_force = ancien.wb_force
+        # Jalon 54 : le recalage « Linear Fit » survit au re-stack compo.
+        st.linear_fit = ancien.linear_fit
+        st.linear_fit_mode = ancien.linear_fit_mode
         self.stacker = st
         # Rejouer les archives : rôles dans l'ordre de la composition, puis
         # les éventuels rôles supplémentaires (même ordre que etat()).
@@ -4330,6 +4396,12 @@ class App:
                                                window=self.rejet_fenetre)
                 self.stacker.wb_auto = bool(self.var_wb.get())
                 self.stacker.wb_force = float(self.var_wb_force.get())
+                # Jalon 54 : recalage « Linear Fit » posé dès la création —
+                # via l'INSTANTANÉ (le worker n'a jamais le droit de lire
+                # les variables Tk) ; les changements de la case passent
+                # par _on_linear_fit (thread principal).
+                self.stacker.linear_fit = bool(self._fit_actif)
+                self.stacker.linear_fit_mode = "gain_offset"
                 self.aligner.reset()
                 # Jalon 21 : HOO/SHO → TRIANGLES seuls pour toute la session.
                 self.aligner.triangles_seuls = self._narrowband_ha()
@@ -4472,7 +4544,16 @@ class App:
             # tête de _tick (le worker n'a jamais le droit de lire les Tk).
             if self._mode_compo and canaux:
                 self.disp.vl_compo = (dict(canaux), self.stacker.composition,
-                                      self._compo_gains, self._compo_mode_l)
+                                      self._compo_gains, self._compo_mode_l,
+                                      # Jalon 54 : recalage « Linear Fit »
+                                      # transporté au solveur (5e élément,
+                                      # déballage tolérant côté display) pour
+                                      # être ré-appliqué à la recomposition
+                                      # des couches traitées — la vue
+                                      # « traitée » reste calée comme la
+                                      # vue « empilement ».
+                                      (bool(self.stacker.linear_fit),
+                                       self.stacker.linear_fit_mode))
             else:
                 self.disp.vl_compo = None
 
@@ -4637,6 +4718,12 @@ class App:
         if gains != self._compo_gains or mode_l != self._compo_mode_l:
             self._compo_gains = gains
             self._compo_mode_l = mode_l
+        # Jalon 54 : instantané du recalage Linear Fit pour le worker
+        # (jamais de lecture de variable Tk hors du thread principal) +
+        # libellé des gains/offsets MESURÉS (écrits par le worker au dernier
+        # mean() — lecture d'attributs simples, jamais de variables Tk).
+        self._fit_actif = bool(self.var_fit.get())
+        self._maj_libelle_fit()
         # Jalon 25/26 : lecture de la température/PWM du TEC (attributs
         # simples écrits par le thread de travail — jamais de variable Tk
         # dans le worker) + activer les lignes Filtre/TEC quand le sondage

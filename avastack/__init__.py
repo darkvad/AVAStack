@@ -14,9 +14,45 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.22.0"
+AVASTACK_VERSION = "2.23.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.23.0 : RECALAGE COLORIMÉTRIQUE « LINEAR FIT » (jalon 54) :
+#          - DEMANDE D'ALAIN : neutraliser le MASQUE coloré qui surgit à
+#            l'étirement (fond bleu dans les poussières de M31) — cause :
+#            fonds de filtres différents dans le linéaire, que l'étirement
+#            (STF à points noir/blanc communs, VeraLux qui préserve les
+#            ratios) transforme en décalage de couleur ;
+#          - mécanique (équivalent live du Linear Fit d'APP, version
+#            robuste) : R et B recalés sur le VERT (référence) par une
+#            droite Gain + Offset mesurée sur les stats ROBUSTES du
+#            composite linéaire (médiane + MAD, quart central sous-
+#            échantillonné) ; gain = σG/σX borné [0.25, 4.0], offset =
+#            medG − gain·medX, plancher 0 ; mode « offset » seul possible
+#            en code (FIT_MODES) — gain_offset PAR DÉFAUT (décision
+#            d'Alain) ; canaux PLATS (rôle absent) → no-op explicite
+#            (diag None) ;
+#          - appliqué DANS mean() (décision d'Alain : visu ET sauvegardes)
+#            — LiveStacker (mono couleur, après WB et recadrage ; la
+#            référence d'alignement mean(recadre=False) reste BRUTE) et
+#            CompositeStacker (composite SEUL, couches brutes) ; cache par
+#            (n, mode, gains, mode L) → un seul calcul par frame empilée,
+#            aucun pompage ;
+#          - solveur live : le tuple vl_compo gagne un 5e élément (actif,
+#            mode) — déballage tolérant — ré-appliqué au composite
+#            RE-FAIT après la recomposition des couches traitées : la vue
+#            « traitée » reste calée comme la vue « empilement » ;
+#          - UI : case « Recalage colorimétrique (Linear Fit) » (décochée
+#            par défaut) + libellé des gains/offsets MESURÉS (« Fit R ×…
+#            · B ×… ») ; config `linear_fit` persistée (booléen explicite)
+#            ; réglages conservés aux re-stacks mono et compo ;
+#          - Tests : _test_fit_canaux_jalon54 (aligner_canaux confronté à
+#            une référence numpy indépendante : médianes alignées, entrée
+#            intacte, bornes, offset seul, plancher 0, dégénérés ;
+#            LiveStacker et CompositeStacker : cache, recadre=False brut,
+#            HOO dégénéré, couches brutes ; solveur : recomposition re-
+#            calée ; UI réelle : case, libellé, config, re-stack) +
+#            régressions au vert.
 # v2.22.0 : DARK/FLAT UNIQUE OU PAR COUCHE EN MODE COMPOSITION (jalon 53) :
 #          - DEMANDE D'ALAIN : en empilement multibande (composition
 #            multi-dossiers), chaque dark et chaque flat peut viser UN RÔLE

@@ -82,6 +82,89 @@ def gains_equilibre(img, cadre=None):
                      for b in bgs], np.float32)
 
 
+# --- Recalage colorimétrique « Linear Fit » (jalon 54) ------------------------
+# Équivalent live du Linear Fit d'Astro Pixel Processor (version robuste) :
+# les canaux R et B sont recalés sur le VERT (référence) par une droite
+# Gain + Offset, mesurée sur les statistiques ROBUSTES du composite
+# linéaire (médiane + MAD). La différence de fond de ciel (pollution qui
+# ne frappe pas pareillement les filtres) est un DÉCALAGE (offset), la
+# différence de sensibilité (transmission optique, QE, rendement debayer)
+# est un FACTEUR (gain) : la droite les corrige tous les deux, l'offset
+# seul ne corrige que le fond. Indispensable AVANT l'étirement : le STF
+# (points noir/blanc communs aux 3 canaux) et VeraLux (préserve les
+# ratios) amplifient sinon le décalage en un MASQUE coloré (constat réel
+# d'Alain : fond bleu dans les poussières de M31).
+FIT_GAIN_MIN, FIT_GAIN_MAX = 0.25, 4.0     # mêmes bornes que l'équilibrage
+FIT_MODES = ("gain_offset", "offset")
+
+
+def stats_canaux(rgb):
+    """Stats (médiane, σ_robuste = MAD × 1,4826) des 3 canaux d'une image
+    couleur, layouts (H, W, 3) ou (3, H, W) — quart central sous-
+    échantillonné ×4 (largement suffisant ; évite les bords jamais couverts
+    par les frames alignées, qui restent à zéro et fausseraient tout).
+    → {"med": (r, g, b), "sigma": (r, g, b)}, ou None si dégénéré (forme
+    inattendue, quart vide, ou canal PLAT — rôle absent, canal mort : la
+    droite n'y a pas de sens, l'appelant ne doit rien corriger)."""
+    a = np.asarray(rgb, dtype=np.float32)
+    hwc = a.ndim == 3 and a.shape[-1] == 3
+    if not hwc and not (a.ndim == 3 and a.shape[0] == 3):
+        return None
+    h, w = (a.shape[0], a.shape[1]) if hwc else (a.shape[1], a.shape[2])
+    sl_h = slice(h // 4, max(h // 4 + 1, 3 * h // 4), 4)
+    sl_w = slice(w // 4, max(w // 4 + 1, 3 * w // 4), 4)
+    z = a[sl_h, sl_w] if hwc else a[:, sl_h, sl_w]
+    if z.size == 0:
+        return None
+    med, sig = [], []
+    for c in range(3):
+        m = float(np.median(z[..., c]))
+        s = 1.4826 * float(np.median(np.abs(z[..., c] - m)))
+        med.append(m)
+        sig.append(s)
+    if min(sig) <= 1e-12:
+        return None
+    return {"med": tuple(med), "sigma": tuple(sig)}
+
+
+def aligner_canaux(rgb, mode="gain_offset"):
+    """Recalage « Linear Fit » : R et B recalés sur le VERT (référence).
+      gain_X   = σ_G / σ_X, borné [FIT_GAIN_MIN, FIT_GAIN_MAX] — 1.0 en
+                 mode « offset » (recalage du fond seul) ;
+      offset_X = med_G − gain_X · med_X
+      pixel    : X' = gain_X·X + offset_X, plancher 0 (un offset négatif ne
+                 doit jamais créer de valeurs négatives) ; G inchangé.
+    → (image corrigée — COPIE, diag) avec diag = {"mode", "gains", "offsets"}
+    (tuples (R, G, B), G = 1.0 / 0.0), ou (copie, None) si dégénéré (mono,
+    canal plat : cf. stats_canaux). L'entrée n'est JAMAIS modifiée ;
+    aucune exception (numpy seul)."""
+    a = np.asarray(rgb, dtype=np.float32)
+    hwc = a.ndim == 3 and a.shape[-1] == 3
+    if not hwc and not (a.ndim == 3 and a.shape[0] == 3):
+        return a.copy(), None
+    plan = a if hwc else np.transpose(a, (1, 2, 0))
+    st = stats_canaux(plan)
+    if st is None:
+        return a.copy(), None
+    if mode not in FIT_MODES:
+        mode = "gain_offset"
+    med, sig = st["med"], st["sigma"]
+    g = [1.0, 1.0, 1.0]
+    o = [0.0, 0.0, 0.0]
+    for c in (0, 2):
+        gc = (1.0 if mode == "offset"
+              else float(min(max(sig[1] / sig[c], FIT_GAIN_MIN),
+                             FIT_GAIN_MAX)))
+        g[c] = gc
+        o[c] = med[1] - gc * med[c]
+    out = plan.copy()
+    for c in (0, 2):
+        out[..., c] = np.clip(g[c] * plan[..., c] + o[c], 0.0, None)
+    res = out if hwc else np.transpose(out, (2, 0, 1))
+    diag = {"mode": mode, "gains": tuple(g), "offsets": tuple(o)}
+    return res.astype(np.float32, copy=False), diag
+
+
 def quad_alignement(M, shape):
     """Coins (x, y) de l'image `shape` transformés par la matrice affine
     `M` (2×3, celle de cv2.warpAffine) — le quadrilatère couvert par la
@@ -169,6 +252,13 @@ class LiveStacker:
         # voient donc l'ancien comportement.
         self.wb_auto = False
         self.wb_force = 1.0
+        # Recalage colorimétrique « Linear Fit » (jalon 54) : désactivé au
+        # niveau module — l'interface l'active (config persistée) ; les tests
+        # existants voient l'ancien comportement. Mode « gain_offset » par
+        # défaut (décision d'Alain).
+        self.linear_fit = False
+        self.linear_fit_mode = "gain_offset"
+        self.fit_diag = None              # gains/offsets mesurés (UI)
         self.reset()
 
     def reset(self):
@@ -183,6 +273,8 @@ class LiveStacker:
         self._poly = None      # intersection géométrique des zones couvertes
         self.cadre = None      # rectangle (y0, x0, y1, x1) du recadrage
         self._wb_cache = None  # (clé, gains) de l'équilibrage des canaux
+        self._fit_cache = None  # (clé, (image, diag)) du recalage Linear Fit
+        self.fit_diag = None
 
     def note_alignement(self, M):
         """Met à jour l'intersection géométrique des zones couvertes avec la
@@ -247,8 +339,31 @@ class LiveStacker:
             return img
         y0, x0, y1, x1 = self.cadre
         if img.ndim == 3 and img.shape[0] <= 4:    # (C, H, W)
-            return img[:, y0:y1, x0:x1]
-        return img[y0:y1, x0:x1, ...]              # (H, W) ou (H, W, C)
+            return self._recaler_fit(img[:, y0:y1, x0:x1])
+        return self._recaler_fit(img[y0:y1, x0:x1, ...])  # (H, W) ou (H,W,C)
+
+    def _recaler_fit(self, img):
+        """Recalage colorimétrique « Linear Fit » (jalon 54) : R et B
+        alignés sur le VERT (gain + offset), APRÈS l'équilibrage WB et le
+        recadrage — visu et sauvegardes uniquement (la référence
+        d'alignement, mean(recadre=False), reste BRUTE : un recalage
+        colorimétrique n'a rien à faire dans l'ancre de l'aligneur).
+        Cache par (n, mode) : mean() est appelée à chaque nouvelle frame
+        mais les stats ne dépendent que de l'accumulation → un seul calcul
+        par frame empilée, aucun pompage entre deux ticks. no-op en mono ou
+        si désactivé ; dégénéré (canal plat, cf. aligner_canaux) → image
+        inchangée + diag None."""
+        if not self.linear_fit or img.ndim != 3 \
+                or 3 not in (img.shape[-1], img.shape[0]):
+            return img
+        cle = (self.n, self.linear_fit_mode)
+        if self._fit_cache is not None and self._fit_cache[0] == cle:
+            out, diag = self._fit_cache[1]
+        else:
+            out, diag = aligner_canaux(img, mode=self.linear_fit_mode)
+            self._fit_cache = (cle, (out, diag))
+        self.fit_diag = diag
+        return out if diag is not None else img
 
     def _equilibrer(self, img):
         """Équilibrage des canaux (auto, jalon 13) : gains par canal dérivés

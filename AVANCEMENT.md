@@ -11,44 +11,43 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.22.0** (`avastack/__init__.py`),
-  branche `master` — **jalon 53 VALIDÉ PAR ALAIN (21/09/2026, « C'est Ok »
-  après test réel), COMMITÉ (225f026) ET POUSSÉ, installateur v2.22.0
-  REBUILD, SESSION CLOSE**.
-- **Jalon 53 (v2.22.0, 21/09/2026) — DARK/FLAT UNIQUE OU PAR COUCHE EN MODE
-  COMPOSITION — VALIDÉ PAR ALAIN, clos** :
-  - DEMANDE D'ALAIN : en empilement multibande (source « Composition
-    multi-dossiers »), pouvoir choisir un dark UNIQUE ou PAR COUCHE, et le
-    même choix pour les flats INDÉPENDAMMENT de celui des darks ;
-  - RETOURS D'ALAIN PENDANT LE TEST (pris en compte) : (a) la couche se
-    choisit AU CLIC sur « Charger un dark… » / « Charger un flat… » — boîte
-    modale « Ce dark s'applique à : Unique (toutes les couches) / la couche
-    « Ha »… » (rôles ACTIFS du cadre Composition), PLUS de menus déroulants
-    de ciblage préalable ; hors composition, aucun dialogue ; (b) les
-    libellés montrent TOUT : « Dark unique : nom (H×W) » PUIS « Dark Ha :
-    nom (H×W) » pour CHAQUE couche active (« Dark O3 : — » si le master de
-    cette couche manque) ;
-  - justification : les couches ont souvent des POSES différentes (le dark
-    dépend de la pose) et le vignettage/poussière dépend du FILTRE (le
-    flat aussi) — d'où un ciblage séparé dark/flat ;
-  - `Calibrator` : `darks`/`flats` = dictionnaires {rôle: image} (+ `*_sources`
-    = fichier d'origine de chaque master, pour l'affichage) ;
-    `load_dark(path, role=None)` / `load_flat(path, role=None)` /
-    `apply(img, role=…)` — le master DU RÔLE prime, repli sur l'UNIQUE
-    pour un rôle sans master dédié (mono inchangé) ; le worker passe le
-    rôle de la frame (`calib.apply(frame, role=role)`) ;
-  - GARDE-FOUS : annulation de la boîte = aucun chargement ; master de
-    forme incompatible ignoré (règle historique) ; « Effacer calibration »
-    vide tout (uniques ET par rôle) ; masters par rôle CONSERVÉS aux
-    allers-retours de source et réaffichés au retour en composition ;
-  - tests : `_test_calib_compo_jalon53` (Calibrator seul : repli,
-    indépendance dark/flat, flat non constant à gradient ; UI réelle : la
-    boîte modale pilotée par after — réponse Ha / unique / O3 / annulation,
-    libellés complets, allers-retours de source ; worker réel
-    multi-dossiers : le dark DÉDIÉ de chaque couche est appliqué — fonds
-    mesurés 0.130/0.090, jamais le dark du voisin) ; régressions au vert
-    (jalons 19/20/21/24/42/47/52, config 6, UI 5, cadence 42,
-    capacités UI 32, jalon 17).
+- **Version stable de référence : AVAStack v2.23.0** (`avastack/__init__.py`),
+  branche `master` — **jalon 54 (Linear Fit) IMPLÉMENTÉ, bancs AU VERT,
+  installateur rebuild, À TESTER PAR ALAIN (test réel RGB sur M31)**.
+  Jalon 53 (v2.22.0) VALIDÉ PAR ALAIN (21/09/2026, « C'est Ok »), commité
+  (225f026) et poussé — trace dans le changelog du source.
+- **Jalon 54 (v2.23.0, 21/09/2026) — RECALAGE COLORIMÉTRIQUE « LINEAR
+  FIT » — À TESTER PAR ALAIN** :
+  - DEMANDE D'ALAIN : neutraliser le masque coloré (fond bleu dans les
+    poussières de M31) qui surgit à l'étirement — cause : fonds des
+    filtres différents dans le linéaire, que le STF/VeraLux transforment
+    en décalage de couleur ;
+  - mécanique : R et B recalés sur le VERT (référence) par une droite
+    Gain + Offset (gain = σG/σX borné [0.25, 4.0], offset = medG − gain·medX,
+    plancher 0), stats ROBUSTES (médiane + MAD, quart central sous-
+    échantillonné) ; version simplifiée « offset seul » disponible en code
+    (`FIT_MODES`) mais Gain + Offset PAR DÉFAUT (décision d'Alain) ;
+  - appliqué DANS mean() (décision d'Alain : visu ET sauvegardes) —
+    LiveStacker (mono couleur, chemin recadré SEUL : la référence
+    d'alignement recadre=False reste BRUTE) et CompositeStacker (composite
+    SEUL, couches brutes) ; cache par (n, mode, gains, mode L) → aucun
+    pompage ; canaux plats (rôle absent, HOO : B ≡ G) → no-op explicite ;
+  - solveur live : tuple vl_compo à 5 éléments (actif, mode), déballage
+    tolérant, ré-appliqué au composite RE-FAIT → vue « traitée » calée
+    comme la vue « empilement » ;
+  - UI : case « Recalage colorimétrique (Linear Fit) » DÉCOCHÉE par défaut
+    (cadre Empilement) + libellé des gains/offsets mesurés (« Fit R ×…
+    · B ×… », vert = effectif) ; config `linear_fit` booléen explicite ;
+    réglage conservé aux re-stacks mono et compo ;
+  - PIÈGE CORRIGÉ pendant le jalon (règle connue, régression réelle) :
+    le worker lisait `var_fit.get()` → « main thread is not in main
+    loop » (bancs jalons 19/20) — instantané `_fit_actif` tenu par le
+    thread principal (_start/_tick), comme compo_gains/mode_l ;
+  - tests : `_test_fit_canaux_jalon54` (36 vérifications : aligner_canaux
+    vs référence numpy indépendante, entrée intacte, bornes, offset seul,
+    plancher, dégénérés ; stackers + cache ; solveur re-calé ; UI réelle,
+    config, re-stack) ; régressions AU VERT : jalons 19/20/21/22/24/13/16/
+    42/17/5/6/47/52/53.
 - **LIMITE QHY (toujours valable)** : après « ■ Arrêter », relancer
   l'appli — le binding qhyccd n'expose AUCUNE libération du SDK (état
   irréinitialisable dans le process) ; le banc QHY l'annonce et conseille
@@ -92,6 +91,10 @@ testés et validés depuis longtemps ») :
     l'empilement et le stack fonctionnent bien en session réelle (verdict
     du 20/09/2026). Ce suivi aurait affiché en direct le décalage/rotation
     de chaque brute par rapport à la référence — inutile tant que ça marche.
+14. **Jalon 53 (v2.22.0) — dark/flat unique ou par couche en composition :
+    CLOS — VALIDÉ PAR ALAIN (21/09/2026, « C'est Ok »)** — choix de la
+    couche AU CLIC sur « Charger un dark/flat… » (boîte modale), DEUX
+    ciblages indépendants dark/flat, libellés complets par couche.
 
 ## Pièges récents (rappels opérationnels)
 
@@ -154,22 +157,20 @@ testés et validés depuis longtemps ») :
   points puis en trainées » → origine du jalon 13 (alignement robuste).
   Banc POA : `_diag_camera_playerone.py` (jalon 28).
 
-## 🔚 Clôture de session — 21/09/2026 (v2.22.0, jalon 53 — À TESTER PAR ALAIN)
+## 🔚 Clôture de session — 21/09/2026 (v2.23.0, jalon 54 — À TESTER PAR ALAIN)
 
-État exact : **v2.22.0 COMMITÉE (225f026) ET POUSSÉE, installateur v2.22.0
-REBUILD** — jalon 53 validé par Alain au test réel (21/09/2026, « C'est Ok »).
-- **jalon 53 — calibration multibande** : en mode « Composition
-  multi-dossiers », un clic sur « Charger un dark… » / « Charger un
-  flat… » ouvre une boîte « Ce dark (resp. flat) s'applique à : » —
-  Unique (toutes les couches) ou une des couches actives de la
-  composition — DEUX choix INDÉPENDANTS. Un rôle sans master dédié
-  retombe sur le dark/flat UNIQUE (mono inchangé). Les libellés
-  détaillent TOUT : « Dark unique : … » puis « Dark Ha : … » par couche
-  (« Dark O3 : — » si le master manque). Testé et validé par Alain.
+État exact : **jalon 54 implémenté, tous bancs au vert, installateur
+REBUILD** — reste le TEST RÉEL d'Alain (RGB sur M31, cocher la case
+« Recalage colorimétrique (Linear Fit) » dans le cadre Empilement et
+regarder le fond des poussières + le libellé des gains mesurés).
+- **jalon 54 — Linear Fit** : R et B recalés sur le vert (gain + offset,
+  médiane/MAD du linéaire) DANS mean() — visu ET sauvegardes ; case
+  décochée par défaut, mode gain_offset ; solveur live re-calé ; config
+  `linear_fit` persistée ; réglage conservé au re-stack.
 
-**Prochaine étape** : rien en attente — session close. La trace durable du
-jalon 53 est dans le changelog de `avastack/__init__.py` et l'historique git ;
-le banc `_test_calib_compo_jalon53.py` reste installé pour les régressions.
+**Prochaine étape** : test réel Alain → si verdict OK, marquer jalon 54
+« VALIDÉ » dans AVANCEMENT.md (et ajuster si retour). Le banc
+`_test_fit_canaux_jalon54` reste installé pour les régressions.
 
 Sessions précédentes : v2.21.10 (jalons 50-52, banc Touptek + ergonomie
 caméra, 7d3034e, validés par Alain) ; v2.21.8 (jalon 49, banc Touptek +

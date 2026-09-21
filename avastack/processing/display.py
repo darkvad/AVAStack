@@ -11,6 +11,7 @@ from . import couleurs as _couleurs
 from . import composition as _composition
 from . import denoise as _denoise
 from . import sharpness as _sharpness
+from . import stacking as _stacking
 from . import veralux as _veralux
 
 
@@ -321,7 +322,12 @@ class DisplayProcessor:
             dm_actif = bool(coul[2]) if len(coul) > 2 else False
             # Jalon 24 : données de composition transportées dans le job
             # (8e élément : (canaux, nom, gains, mode_l), None en mode mono).
+            # Jalon 54 : 5e élément OPTIONNEL du tuple — (actif, mode) du
+            # recalage « Linear Fit » (déballage tolérant : les jobs des
+            # tests antérieurs n'ont que 4 éléments).
             compo = job[7] if len(job) > 7 else None
+            fit = (compo[4] if compo is not None and len(compo) > 4
+                   else None)
             # --- Jalon 24 : mode COMPOSITION — gradient ET débruitage PAR
             # COUCHE, AVANT recomposition (décision d'Alain du 19/09/2026 :
             # la pollution lumineuse et la clarté de la lune ne frappent pas
@@ -340,7 +346,10 @@ class DisplayProcessor:
             img_gx, err_gx = img, ""
             if compo is not None and (gx_actif or dn_actif):
                 self.vl_stage = "composition"   # jalon 40 : gradient/débruitage
-                canaux, nom_compo, gains, mode_l = compo   # PAR COUCHE
+                canaux, nom_compo, gains, mode_l = compo[:4]   # PAR COUCHE
+                                              # (jalon 54 : le 5e élément est
+                                              # le recalage Linear Fit, déjà
+                                              # déballé dans `fit` ci-dessus)
                 msgs, traites = [], {}
                 for role, couche in canaux.items():
                     c = np.asarray(couche, dtype=np.float32)
@@ -385,6 +394,12 @@ class DisplayProcessor:
                     comp = None             # arriver : cadre commun) → repli
                     msgs.append(f"Recomposition : {exc}")
                 if comp is not None:
+                    if fit is not None and fit[0]:
+                        # Jalon 54 : le recalage « Linear Fit » est appliqué
+                        # au composite RE-FAIT (les couches restent brutes)
+                        # — sinon la vue « traitée » perdrait le calage
+                        # colorimétrique de la vue « empilement ».
+                        comp, _ = _stacking.aligner_canaux(comp, mode=fit[1])
                     img_gx = comp           # composite re-fait depuis les
                     gx_actif = False        # couches traitées : la chaîne
                     dn_actif = False        # composite est sautée ci-dessous
