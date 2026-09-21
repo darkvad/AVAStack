@@ -12,12 +12,11 @@ dans le changelog du source et l'historique git.)
 ## État actuel
 
 - **Version stable de référence : AVAStack v2.21.10** (`avastack/__init__.py`),
-  branche `master` — jalon 51 **VALIDÉ PAR ALAIN (21/09/2026, « on est
-  bon »)**, installateur **v2.21.10 REBUILD** ; jalon 52 codé — **NON
-  COMMITÉ (à la demande d'Alain, commit sur validation, cf. jalon 49)**.
-- **Jalon en cours (52, 21/09/2026) — ERGONOMIE DU CADRE « CAMÉRA » — codé,
-  testé SANS matériel (ordre de packing vérifié en fenêtre réelle), À
-  CONFIRMER VISUELLEMENT au miniPC** :
+  branche `master` — **jalons 51 + 52 VALIDÉS PAR ALAIN (21/09/2026,
+  « tout est validé »), COMMITÉS (7d3034e) ET POUSSÉS, installateur
+  v2.21.10 REBUILD, SESSION CLOSE**.
+- **Jalon 52 (v2.21.10, 21/09/2026) — ERGONOMIE DU CADRE « CAMÉRA » —
+  VALIDÉ PAR ALAIN, clos** :
   - DEMANDE D'ALAIN : le choix de source (caméra/dossier/…) était SOUS les
     contrôles caméra au lancement ; choisir « Dossier » (contrôles cachés)
     le faisait passer EN HAUT (« c'est mieux ») et il y RESTAIT au retour
@@ -31,11 +30,12 @@ dans le changelog du source et l'historique git.)
   - `_test_ergonomie_jalon52` : ordre de packing RÉEL (pack_slaves),
     va-et-vient dossier/caméra, ligne dédiée — vert ; régressions UI
     (jalons 47/32/31/34/6) et batteries caméras : au vert.
-- **À CONFIRMER PAR ALAIN (miniPC)** : au lancement, choix de source en
-  haut du cadre « Caméra » ; bouton « ⏏ Déconnecter » visible en toutes
-  circonstances (même avec un long libellé de caméra détectée).
+- **Confirmé PAR ALAIN (21/09/2026) — jalon 52 clos** : choix de source en
+  haut du cadre « Caméra » dès le lancement ; bouton « ⏏ Déconnecter »
+  visible en toutes circonstances (même avec un long libellé de caméra
+  détectée).
 - **Jalon 51 (v2.21.10, 21/09/2026) — NOIR MESURÉ + OFFSET LU + TEC
-  TOUPTEK — VALIDÉ PAR ALAIN (21/09/2026)** :
+  TOUPTEK — VALIDÉ PAR ALAIN (21/09/2026), clos** :
   - CONSTAT RÉEL DU BANC (Alain, 21/09/2026, G3M662M) : la caméra REFUSE
     7936 (E_INVALIDARG) alors qu'elle ACCEPTE 31/30/0 et REFUSE 32 → sa
     plage de noir réelle est **0 → 31** ; la table de toupcam.h n'est donc
