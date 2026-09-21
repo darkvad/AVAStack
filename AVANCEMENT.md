@@ -11,12 +11,12 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.21.10** (`avastack/__init__.py`),
-  branche `master` — **jalons 51 + 52 VALIDÉS PAR ALAIN (21/09/2026,
-  « tout est validé »), COMMITÉS (7d3034e) ET POUSSÉS, installateur
-  v2.21.10 REBUILD, SESSION CLOSE**.
+- **Version stable de référence : AVAStack v2.22.0** (`avastack/__init__.py`),
+  branche `master` — **jalon 53 VALIDÉ PAR ALAIN (21/09/2026, « C'est Ok »
+  après test réel), COMMITÉ (225f026) ET POUSSÉ, installateur v2.22.0
+  REBUILD, SESSION CLOSE**.
 - **Jalon 53 (v2.22.0, 21/09/2026) — DARK/FLAT UNIQUE OU PAR COUCHE EN MODE
-  COMPOSITION — codé, suite verte SANS matériel, À TESTER/VALIDER PAR ALAIN** :
+  COMPOSITION — VALIDÉ PAR ALAIN, clos** :
   - DEMANDE D'ALAIN : en empilement multibande (source « Composition
     multi-dossiers »), pouvoir choisir un dark UNIQUE ou PAR COUCHE, et le
     même choix pour les flats INDÉPENDAMMENT de celui des darks ;
@@ -156,9 +156,8 @@ testés et validés depuis longtemps ») :
 
 ## 🔚 Clôture de session — 21/09/2026 (v2.22.0, jalon 53 — À TESTER PAR ALAIN)
 
-État exact : **v2.22.0 codée et testée SANS matériel** (jalon 53, retours
-d'Alain en cours de test pris en compte, suite verte), PAS encore commitée
-ni poussée à l'écriture de ces lignes ; installateur rebuild (v2.22.0).
+État exact : **v2.22.0 COMMITÉE (225f026) ET POUSSÉE, installateur v2.22.0
+REBUILD** — jalon 53 validé par Alain au test réel (21/09/2026, « C'est Ok »).
 - **jalon 53 — calibration multibande** : en mode « Composition
   multi-dossiers », un clic sur « Charger un dark… » / « Charger un
   flat… » ouvre une boîte « Ce dark (resp. flat) s'applique à : » —
@@ -166,20 +165,11 @@ ni poussée à l'écriture de ces lignes ; installateur rebuild (v2.22.0).
   composition — DEUX choix INDÉPENDANTS. Un rôle sans master dédié
   retombe sur le dark/flat UNIQUE (mono inchangé). Les libellés
   détaillent TOUT : « Dark unique : … » puis « Dark Ha : … » par couche
-  (« Dark O3 : — » si le master manque). Cas d'usage : un dark par filtre
-  (poses différentes par couche) avec un flat unique — ou l'inverse — ou
-  les deux par filtre. PREMIER TEST D'ALAIN : « cela semble bon ».
+  (« Dark O3 : — » si le master manque). Testé et validé par Alain.
 
-**Prochaine étape** : test d'Alain en composition (HOO p. ex.) —
-1) cadre Calibration : cliquer « Charger un dark… » → la boîte propose
-   « Unique (toutes les couches) » + les couches actives ; choisir « Ha » ;
-2) les libellés affichent TOUT : « Dark unique : — » / « Dark Ha : nom
-   (H×W) » / « Dark O3 : — » ; pareil pour les flats (indépendance) ;
-   « Effacer calibration » remet tout à zéro ;
-3) session réelle multi-dossiers : chaque couche doit être corrigée par SON
-   master (vérifier l'absence d'ampli-cœur résiduel différent d'une couche
-   à l'autre) ;
-4) si OK : commit + push v2.22.0 (jalon 53).
+**Prochaine étape** : rien en attente — session close. La trace durable du
+jalon 53 est dans le changelog de `avastack/__init__.py` et l'historique git ;
+le banc `_test_calib_compo_jalon53.py` reste installé pour les régressions.
 
 Sessions précédentes : v2.21.10 (jalons 50-52, banc Touptek + ergonomie
 caméra, 7d3034e, validés par Alain) ; v2.21.8 (jalon 49, banc Touptek +
