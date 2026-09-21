@@ -472,7 +472,12 @@ class CompositeStacker:
                             mode_l=self.mode_l)
         except ValueError:
             comp = None                   # formes hétérogènes (ne doit pas
-        if comp is not None and self.linear_fit:   # arriver : cadre commun
+        # Jalon 54d : le recalage ne s'applique QUE au chemin recadré
+        # (visu + sauvegardes). mean(recadre=False) est la RÉFÉRENCE
+        # d'alignement (jalon 13) : elle reste BRUTE — exactement comme
+        # LiveStacker.mean(recadre=False) en mono. Avant ce correctif, le
+        # fit contaminait la référence en mode compo (contrat violé).
+        if comp is not None and self.linear_fit and recadre:
             comp = self._recaler_fit(comp)         # → case DÉCOCHÉE = brut
         return comp, canaux
 

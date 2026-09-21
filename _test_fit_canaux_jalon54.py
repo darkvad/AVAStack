@@ -214,6 +214,10 @@ ok &= verifie(d_hoo is not None
               "offset 0), seul R (Ha) est recalé (choix de l'utilisateur)")
 ok &= verifie(not np.allclose(comp_ap, comp_av),
               "HOO : le composite EST recalé (R vers O3)")
+comp_ref, _ = fa.mean_avec_canaux(recadre=False)
+ok &= verifie(np.array_equal(comp_ref, comp_av),
+              "mean(recadre=False) : référence d'alignement BRUTE "
+              "(jalon 54d — le fit n'y a rien à faire, contrat jalon 13)")
 
 fa2 = CompositeStacker("RGB", k=None)
 for role in ("R", "G", "B"):

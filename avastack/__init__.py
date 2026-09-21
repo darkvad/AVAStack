@@ -14,9 +14,31 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.23.1"
+AVASTACK_VERSION = "2.23.2"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.23.2 : LINEAR FIT — RÉFÉRENCE D'ALIGNEMENT À NOUVEAU BRUTE (jalon 54d,
+#          reprise à froid de la régression, 21/09/2026) :
+#          - CONSTAT : le diagnostic optique d'Alain (_diag_canaux_compo,
+#            M31 RGB) montre des couches PARFAITEMENT enregistrées
+#            (Δ < 0,5 px, MAD 0,2 px) — le « comme décalé » ne peut pas être
+#            géométrique (le fit est photométrique pur) ;
+#          - BUG CORRIGÉ : en mode compo, mean_avec_canaux appliquait le fit
+#            MÊME à recadre=False → la RÉFÉRENCE D'ALIGNEMENT n'était plus
+#            brute (violation du contrat jalon 13, documenté dans les deux
+#            docstrings). Correctif : le fit ne s'applique qu'au chemin
+#            recadré (visu + sauvegardes) — exactement comme LiveStacker ;
+#          - DÉCOUVERTE DE CONFIG : le config.json d'Alain portait
+#            `linear_fit: true` (persisté des essais v2.23.0) — toutes les
+#            sessions de test depuis ont tourné AVEC le fit actif ; remis à
+#            false (l'A/B propre « case décochée » devient possible) ;
+#          - PISTE RENDU restante (si case cochée encore « dégradée ») : le
+#            plancher np.clip(0) sur un offset NÉGATIF (fond B > fond G)
+#            écrase le plancher de bruit du canal — fond sale à l'étirement
+#            fort ; à décider après l'A/B (replis possibles : ne pas clipper
+#            / bornes de l'offset) ;
+#          - Tests : banc jalon 54 à 39 vérifications (+ garde-fou permanent
+#            « mean(recadre=False) compo = BRUTE »).
 # v2.23.1 : LINEAR FIT — OFFSET SEUL PAR DÉFAUT (jalon 54b, retour du test
 #          réel d'Alain, 21/09/2026) :
 #          - CONSTAT : avec « gain + offset », le gain fondé sur le rapport

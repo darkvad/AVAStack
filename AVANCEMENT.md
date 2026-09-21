@@ -11,66 +11,38 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.23.1** (`avastack/__init__.py`),
-  branche `master` — **jalon 54b (Linear Fit → OFFSET SEUL par défaut)
-  IMPLÉMENTÉ, bancs AU VERT, installateur rebuild, À RE-TESTER PAR ALAIN
-  (RGB M31)**. Jalon 54 (v2.23.0, gain+offset) testé par Alain → VERDICT
-  « pas bon, image floue comme décalé » → diagnostic + correctif 54b.
-  Jalon 53 (v2.22.0) validé, commité (225f026), poussé.
-- **Jalon 54 (v2.23.0, 21/09/2026) — RECALAGE COLORIMÉTRIQUE « LINEAR
-  FIT » — À TESTER PAR ALAIN** :
-  - DEMANDE D'ALAIN : neutraliser le masque coloré (fond bleu dans les
-    poussières de M31) qui surgit à l'étirement — cause : fonds des
-    filtres différents dans le linéaire, que le STF/VeraLux transforment
-    en décalage de couleur ;
-  - mécanique : R et B recalés sur le VERT (référence) par une droite
-    Gain + Offset (gain = σG/σX borné [0.25, 4.0], offset = medG − gain·medX,
-    plancher 0), stats ROBUSTES (médiane + MAD, quart central sous-
-    échantillonné) ; version simplifiée « offset seul » disponible en code
-    (`FIT_MODES`) mais Gain + Offset PAR DÉFAUT (décision d'Alain) ;
-  - appliqué DANS mean() (décision d'Alain : visu ET sauvegardes) —
-    LiveStacker (mono couleur, chemin recadré SEUL : la référence
-    d'alignement recadre=False reste BRUTE) et CompositeStacker (composite
-    SEUL, couches brutes) ; cache par (n, mode, gains, mode L) → aucun
-    pompage ; canaux plats (rôle absent, HOO : B ≡ G) → no-op explicite ;
-  - solveur live : tuple vl_compo à 5 éléments (actif, mode), déballage
-    tolérant, ré-appliqué au composite RE-FAIT → vue « traitée » calée
-    comme la vue « empilement » ;
-  - UI : case « Recalage colorimétrique (Linear Fit) » DÉCOCHÉE par défaut
-    (cadre Empilement) + libellé des gains/offsets mesurés (« Fit R ×…
-    · B ×… », vert = effectif) ; config `linear_fit` booléen explicite ;
-    réglage conservé aux re-stacks mono et compo ;
-  - PIÈGE CORRIGÉ pendant le jalon (règle connue, régression réelle) :
-    le worker lisait `var_fit.get()` → « main thread is not in main
-    loop » (bancs jalons 19/20) — instantané `_fit_actif` tenu par le
-    thread principal (_start/_tick), comme compo_gains/mode_l ;
-  - **JALON 54b (v2.23.1) — VERDICT ALAIN : « pas bon, image floue comme
-    décalé »** — diagnostic : le GAIN fondé sur le rapport des bruits
-    (σG/σX) mesurait B ×1.52 sur son image OSC → halos/bruit bleus
-    enflés à l'étirement (le recalage est purement photométrique : AUCUN
-    décalage géométrique possible). DÉCISION D'ALAIN : OFFSET SEUL par
-    défaut ; gain+offset conservé via menu « Méthode » (narrowband) ;
-    config `linear_fit_mode` persistée ; instantané `_fit_mode` (jamais
-    de Tk dans le worker) ; mode inconnu → repli « offset » ;
-  - **JALON 54c (21/09/2026) — INFO DÉCISIVE D'ALAIN (fin de session) :
-    TOUTES les sessions de test depuis le début du projet utilisent LES
-    MÊMES BRUTES, et AVANT le jalon 54 les images étaient CORRECTES.
-    → la dégradation (« floue, comme décalée ») est une RÉGRESSION
-    introduite par l'implémentation du jalon 54 — ni les brutes, ni
-    l'optique, ni la défocalisation. Le correctif 54b (offset seul,
-    gains ×1.000 mesurés) n'a PAS supprimé le problème. À réexaminer à
-    froid, code du jalon 54 en priorité (mean()/mean_avec_canaux, cache
-    _fit_cache qui RENVOIE LE MÊME OBJET, chemins worker/solveur),
-    méthode A/B : case décochée = image correcte, case cochée =
-    dégradée. EN ATTENDANT : garder la case « Recalage colorimétrique
-    (Linear Fit) » DÉCOCHÉE (défaut v2.23.1).** Le banc
-    `_diag_canaux_compo.py` reste disponible (validé sur synthétique)
-    mais l'hypothèse « brutes/optique » est ÉCARTÉE par l'A/B d'Alain.
-  - tests : `_test_fit_canaux_jalon54` (38 vérifications : défaut
-    offset, gains 1.0, médianes alignées, référence numpy indépendante,
-    gain plafonné seulement en mode gain_offset, HOO dégénéré, couches
-    brutes, solveur re-calé, menu UI, config round-trip, re-stack) ;
-    régressions AU VERT : jalons 19/20/21/22/24/13/16/42/17/5/6/47/52/53.
+- **Version stable de référence : AVAStack v2.23.2** (`avastack/__init__.py`),
+  branche `master` — **jalon 54d (fit n'atteint PLUS la référence
+  d'alignement compo) IMPLÉMENTÉ, banc AU VERT (39 vérifications) — À
+  RE-TESTER PAR ALAIN (A/B : case DÉCOCHÉE d'abord)**. Découverte clé :
+  le config.json d'Alain portait `linear_fit: true` (persisté des essais
+  v2.23.0) → toutes les sessions de test depuis la v2.23.0 ont tourné AVEC
+  le fit actif ; remis à false côté config (21/09/2026). Jalon 53 (v2.22.0)
+  validé, commité (225f026), poussé.
+- **Jalon 54d (v2.23.2, 21/09/2026) — résumé du dernier jalon** :
+  - diag d'Alain (_diag_canaux_compo, M31 RGB) : couches PARFAITEMENT
+    enregistrées (Δ < 0,5 px, MAD 0,2 px) → le « comme décalé » n'est PAS
+    géométrique (le fit est photométrique pur) ;
+  - BUG CORRIGÉ : en mode compo, le fit s'appliquait AUSSI à
+    mean(recadre=False) → la référence d'alignement n'était plus brute
+    (contrat jalon 13 violé) ; correctif : `and recadre` dans
+    mean_avec_canaux — le fit ne touche que visu + sauvegardes ;
+  - garde-fou permanent ajouté au banc (39e vérification) ;
+  - PISTE RENDU restante (si case cochée encore dégradée) : le plancher
+    np.clip(0) sur un offset NÉGATIF (fond B > G) écrase le plancher de
+    bruit → fond sale à l'étirement fort ; à trancher après l'A/B.
+- **Jalons 54/54b/54c (v2.23.0/v2.23.1, 21/09/2026) — condensé** (détail
+  dans le changelog du source) : Linear Fit R/B→vert (offset = medG − medX,
+  gain optionnel borné, stats médiane+MAD quart central) appliqué DANS
+  mean() (visu + sauvegardes), solveur live re-calé (vl_compo 5 éléments,
+  déballage tolérant), UI case + menu « Méthode » + libellé des gains
+  mesurés, config persistée, instantanés `_fit_actif`/`_fit_mode` (jamais
+  de Tk dans le worker). Retours d'Alain : gain+offset → « floue comme
+  décalé » (gain mesurait B ×1.52) → offset seul par défaut ; mêmes brutes
+  qu'avant le jalon → régression confirmée, hyp. optique ÉCARTÉE
+  (54c : banc _diag_canaux_compo).
+  Tests : `_test_fit_canaux_jalon54` (39 vérifications) ; régressions AU
+  VERT : jalons 19/20/21/22/24/13/16/42/17/5/6/47/52/53.
 - **LIMITE QHY (toujours valable)** : après « ■ Arrêter », relancer
   l'appli — le binding qhyccd n'expose AUCUNE libération du SDK (état
   irréinitialisable dans le process) ; le banc QHY l'annonce et conseille
@@ -196,13 +168,16 @@ Fit) » doit rester DÉCOCHÉE en attendant le correctif.
   inter-couches, validé sur synthétique). INFO FINALE D'ALAIN : mêmes
   brutes que depuis le début → RÉGRESSION du jalon 54, pas la optique.
 
-**Prochaine étape (reprise à froid)** : chercher la régression dans le
-code du jalon 54 — priorité : le cache `_fit_cache` (il mémorise et
-renvoie le MÊME objet image corrigée ; un aliasing possible avec l'aperçu
-UI est à vérifier), puis les chemins worker/solveur. Test A/B simple :
-case décochée = image correcte, case cochée = dégradée → la faute est
-dans la chaîne du recalage. Ne PAS relancer le diagnostic optique.
-Le banc `_test_fit_canaux_jalon54` (38 vérifications) reste le filet.
+**Prochaine étape (reprise à froid — mise à jour jalon 54d)** : le fit
+contaminait la référence d'alignement compo (CORRIGÉ, v2.23.2) et la case
+était restée COCHÉE dans le config.json d'Alain depuis la v2.23.0 (remise
+à false). **Test d'Alain demandé** : session RGB M31 avec la case
+DÉCOCHÉE (état config actuel) → si image CORRECTE, l'état « avant le
+jalon 54 » est restauré ; recocher ensuite la case pour juger l'offset
+seul (s'il dégrade encore : piste = plancher np.clip(0) sur offset
+négatif, fond B > G). Repli d'ensemble si nécessaire : revenir avant le
+jalon 54 (v2.22.0, commit 225f026). Ne PAS relancer le diagnostic
+optique.
 
 Sessions précédentes : v2.21.10 (jalons 50-52, banc Touptek + ergonomie
 caméra, 7d3034e, validés par Alain) ; v2.21.8 (jalon 49, banc Touptek +
