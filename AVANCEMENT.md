@@ -52,21 +52,20 @@ dans le changelog du source et l'historique git.)
     défaut ; gain+offset conservé via menu « Méthode » (narrowband) ;
     config `linear_fit_mode` persistée ; instantané `_fit_mode` (jamais
     de Tk dans le worker) ; mode inconnu → repli « offset » ;
-  - **JALON 54c (21/09/2026) — re-test d'Alain : « même problème » avec
-    offset seul (libellé ×1.000, offsets ~0,02) → le Linear Fit est
-    quasi INACTIF : le dédoublement/flou résiduel est GÉOMÉTRIQUE
-    (entre couches R/G/B), hors de portée de tout recalage
-    photométrique. Réponse : OUTIL DE DIAGNOSTIC
-    `_diag_canaux_compo.py` (mesure FWHM PAR COUCHE via
-    stars.mesurer_seeing + translation inter-couches par appariement
-    MUTUEL des centroïdes ≤ 3 px, convention jalon 13) sur les canaux
-    sauvegardés par l'appli (« 💾 Enregistrer les canaux ») — validé
-    sur synthétique : décalage connu (+1,50/−2,00 px) retrouvé à
-    0,00 px de dispersion, défocalisation ×1,96 détectée. VERDICTS :
-    couche floue seule → refocalisation du filtre ; couche décalée
-    ≥ 0,5 px → correctif logiciel possible (ré-enregistrement,
-    jalon 55) ; rien des deux → chercher ailleurs.** ATTENTE : sortie
-    du diagnostic par Alain.
+  - **JALON 54c (21/09/2026) — INFO DÉCISIVE D'ALAIN (fin de session) :
+    TOUTES les sessions de test depuis le début du projet utilisent LES
+    MÊMES BRUTES, et AVANT le jalon 54 les images étaient CORRECTES.
+    → la dégradation (« floue, comme décalée ») est une RÉGRESSION
+    introduite par l'implémentation du jalon 54 — ni les brutes, ni
+    l'optique, ni la défocalisation. Le correctif 54b (offset seul,
+    gains ×1.000 mesurés) n'a PAS supprimé le problème. À réexaminer à
+    froid, code du jalon 54 en priorité (mean()/mean_avec_canaux, cache
+    _fit_cache qui RENVOIE LE MÊME OBJET, chemins worker/solveur),
+    méthode A/B : case décochée = image correcte, case cochée =
+    dégradée. EN ATTENDANT : garder la case « Recalage colorimétrique
+    (Linear Fit) » DÉCOCHÉE (défaut v2.23.1).** Le banc
+    `_diag_canaux_compo.py` reste disponible (validé sur synthétique)
+    mais l'hypothèse « brutes/optique » est ÉCARTÉE par l'A/B d'Alain.
   - tests : `_test_fit_canaux_jalon54` (38 vérifications : défaut
     offset, gains 1.0, médianes alignées, référence numpy indépendante,
     gain plafonné seulement en mode gain_offset, HOO dégénéré, couches
@@ -181,21 +180,29 @@ testés et validés depuis longtemps ») :
   points puis en trainées » → origine du jalon 13 (alignement robuste).
   Banc POA : `_diag_camera_playerone.py` (jalon 28).
 
-## 🔚 Clôture de session — 21/09/2026 (v2.23.1, jalon 54b — À RE-TESTER PAR ALAIN)
+## 🔚 Clôture de session — 21/09/2026 (v2.23.1, jalons 54/54b/54c — À REPRENDRE À FROID)
 
-État exact : **jalon 54b implémenté (Linear Fit → OFFSET SEUL par défaut,
-menu « Méthode » pour gain+offset), tous bancs au vert, installateur
-REBUILD** — reste le RE-TEST d'Alain (RGB sur M31).
+État exact : **jalon 54 (Linear Fit) CAUSE UNE RÉGRESSION confirmée par
+l'A/B d'Alain (mêmes brutes que depuis le début du projet : correctes
+AVANT le jalon 54, dégradées avec) — installateur v2.23.1 rebuildé et
+poussé (c174eba, df9f568)**. La case « Recalage colorimétrique (Linear
+Fit) » doit rester DÉCOCHÉE en attendant le correctif.
 - **jalon 54 — Linear Fit** : R et B recalés sur le vert DANS mean() —
   visu ET sauvegardes ; case décochée par défaut ; solveur live re-calé ;
   config persistée ; réglage conservé au re-stack.
-- **jalon 54b** : verdict Alain « pas bon, floue comme décalé » avec le
-  gain (B ×1.52 mesuré → halos bleus enflés) → offset seul par défaut,
-  gain+offset gardé en option (menu « Méthode », pour narrowband).
+- **jalon 54b** : gain+offset → offset seul par défaut (le gain mesurait
+  B ×1.52 et amplifiait halos/bruit bleus) + menu « Méthode ».
+- **jalon 54c** : `_diag_canaux_compo.py` (FWHM par couche + translation
+  inter-couches, validé sur synthétique). INFO FINALE D'ALAIN : mêmes
+  brutes que depuis le début → RÉGRESSION du jalon 54, pas la optique.
 
-**Prochaine étape** : re-test Alain (offset seul) → si verdict OK, marquer
-jalon 54b « VALIDÉ ». Le banc `_test_fit_canaux_jalon54` reste installé
-pour les régressions.
+**Prochaine étape (reprise à froid)** : chercher la régression dans le
+code du jalon 54 — priorité : le cache `_fit_cache` (il mémorise et
+renvoie le MÊME objet image corrigée ; un aliasing possible avec l'aperçu
+UI est à vérifier), puis les chemins worker/solveur. Test A/B simple :
+case décochée = image correcte, case cochée = dégradée → la faute est
+dans la chaîne du recalage. Ne PAS relancer le diagnostic optique.
+Le banc `_test_fit_canaux_jalon54` (38 vérifications) reste le filet.
 
 Sessions précédentes : v2.21.10 (jalons 50-52, banc Touptek + ergonomie
 caméra, 7d3034e, validés par Alain) ; v2.21.8 (jalon 49, banc Touptek +
