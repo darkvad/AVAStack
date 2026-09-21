@@ -14,9 +14,39 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.21.10"
+AVASTACK_VERSION = "2.22.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.22.0 : DARK/FLAT UNIQUE OU PAR COUCHE EN MODE COMPOSITION (jalon 53) :
+#          - DEMANDE D'ALAIN : en empilement multibande (composition
+#            multi-dossiers), chaque dark et chaque flat peut viser UN RÔLE
+#            (filtre) — DEUX CHOIX INDÉPENDANTS : un dark par filtre avec
+#            un flat unique, l'inverse, ou les deux par filtre ;
+#          - RETOUR D'ALAIN PENDANT LE TEST : la couche se choisit AU CLIC
+#            sur « Charger un dark… » / « Charger un flat… » — boîte
+#            modale « Ce dark s'applique à : Unique (toutes les couches) /
+#            la couche « Ha »… » (rôles ACTIFS du cadre Composition) ;
+#            PLUS de menus déroulants de ciblage préalable ; hors
+#            composition, aucun dialogue (cible unique directe) ;
+#          - RETOUR D'ALAIN : les libellés montrent TOUT ce qui est
+#            chargé — « Dark unique : nom (H×W) » PUIS « Dark Ha : nom
+#            (H×W) » pour chaque couche active (« Dark O3 : — » si le
+#            master de cette couche manque) ; le Calibrator mémorise le
+#            fichier d'origine de chaque master (*_sources) ;
+#          - mécanique : Calibrator.darks/flats = {rôle: image} +
+#            load_dark/load_flat(path, role=None) + apply(img, role=…) —
+#            le master DU RÔLE prime, repli sur l'UNIQUE pour un rôle sans
+#            master dédié (mono inchangé) ; le worker passe le rôle de la
+#            frame ; « Effacer calibration » vide tout ; annulation de la
+#            boîte = aucun chargement ; masters conservés aux allers-
+#            retours de source et réaffichés au retour en composition ;
+#          - Tests : _test_calib_compo_jalon53 (Calibrator : repli par
+#            rôle, indépendance dark/flat, flat non constant à gradient ;
+#            UI réelle : boîte modale pilotée par after — réponse Ha,
+#            unique, O3, annulation ; libellés complets ; worker réel : le
+#            dark DÉDIÉ de chaque couche appliqué, fonds mesurés 0.13/0.09,
+#            jamais le dark du voisin) + régressions au vert.
+
 # v2.21.10 : NOIR MESURÉ + OFFSET LU + TEC TOUPTEK PILOTABLE (jalon 51) :
 #          - CONSTAT RÉEL (Alain, banc 21/09/2026, G3M662M) : la caméra
 #            annonce 16 bits et la table de toupcam.h laissait croire à un
@@ -45,6 +75,17 @@ AVASTACK_VERSION = "2.21.10"
 #            (offset ADOPTÉ dans la fenêtre), _test_capacites (29/29),
 #            QHY 33, Player One 29/29, TEC jalons 33/38, UI jalons 31/34/35 :
 #            toutes les régressions au vert.
+
+# v2.22.0 : DARK/FLAT UNIQUE OU PAR COUCHE EN MODE COMPOSITION (jalon 53) —
+#          demandé par Alain : chaque dark et chaque flat peut viser UN
+#          RÔLE (filtre) via « Dark pour : » / « Flat pour : » (cadre
+#          Calibration) — DEUX CHOIX INDÉPENDANTS (un dark par filtre avec
+#          un flat unique, l'inverse, ou les deux par filtre) ; un rôle
+#          sans master dédié RETOMBE sur le dark/flat unique (mono
+#          inchangé) ; menus grisés hors composition, cibles ramenées à
+#          « Unique » ; Calibrator : darks/flats = {rôle: image} +
+#          apply(img, role=…) ; worker passe le rôle de la frame.
+#          Tests : _test_calib_compo_jalon53 + régressions au vert.
 
 # v2.21.10 : NOIR TOUPTEK MESURÉ + OFFSET LU (toutes marques) + TEC TOUPTEK
 #            PILOTABLE (jalon 51) + ERGONOMIE DU CADRE « CAMÉRA » (jalon 52) :

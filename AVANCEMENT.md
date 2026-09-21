@@ -15,69 +15,40 @@ dans le changelog du source et l'historique git.)
   branche `master` — **jalons 51 + 52 VALIDÉS PAR ALAIN (21/09/2026,
   « tout est validé »), COMMITÉS (7d3034e) ET POUSSÉS, installateur
   v2.21.10 REBUILD, SESSION CLOSE**.
-- **Jalon 52 (v2.21.10, 21/09/2026) — ERGONOMIE DU CADRE « CAMÉRA » —
-  VALIDÉ PAR ALAIN, clos** :
-  - DEMANDE D'ALAIN : le choix de source (caméra/dossier/…) était SOUS les
-    contrôles caméra au lancement ; choisir « Dossier » (contrôles cachés)
-    le faisait passer EN HAUT (« c'est mieux ») et il y RESTAIT au retour
-    caméra — sa place dépendait de l'histoire de la session. CORRIGÉ :
-    choix + Démarrer/Arrêter packés AVANT frm_ctrl_cam → en haut DÈS LE
-    DÉBUT, ordre stable au va-et-vient dossier/caméra ;
-  - DEMANDE D'ALAIN : « ⏏ Déconnecter » (side="right" de la ligne
-    Détecter) était poussé hors de la colonne par un long libellé de
-    caméra détectée (il fallait élargir la colonne pour l'atteindre).
-    CORRIGÉ : SA PROPRE ligne sous « 🔎 Détecter », toujours visible ;
-  - `_test_ergonomie_jalon52` : ordre de packing RÉEL (pack_slaves),
-    va-et-vient dossier/caméra, ligne dédiée — vert ; régressions UI
-    (jalons 47/32/31/34/6) et batteries caméras : au vert.
-- **Confirmé PAR ALAIN (21/09/2026) — jalon 52 clos** : choix de source en
-  haut du cadre « Caméra » dès le lancement ; bouton « ⏏ Déconnecter »
-  visible en toutes circonstances (même avec un long libellé de caméra
-  détectée).
-- **Jalon 51 (v2.21.10, 21/09/2026) — NOIR MESURÉ + OFFSET LU + TEC
-  TOUPTEK — VALIDÉ PAR ALAIN (21/09/2026), clos** :
-  - CONSTAT RÉEL DU BANC (Alain, 21/09/2026, G3M662M) : la caméra REFUSE
-    7936 (E_INVALIDARG) alors qu'elle ACCEPTE 31/30/0 et REFUSE 32 → sa
-    plage de noir réelle est **0 → 31** ; la table de toupcam.h n'est donc
-    qu'un PLAFOND : la borne max est désormais MESURÉE par dichotomie
-    posé/relu (`TouptekCamera._mesurer_noir`, valeur d'origine restaurée) ;
-  - OFFSET LU PLUTÔT QU'IMPOSÉ (demande d'Alain, valable pour TOUTES les
-    caméras) : la sonde lit la valeur courante du contrôle et l'appli
-    l'ADOPTe — Touptek (option 0x15), QHY (GetQHYCCDParam), ZWO
-    (ASIGetControlValue), SVBONY (SVBGetControlValue), Player One
-    (POAGetConfig) ; marque muette → comportement d'origine ;
-  - MISE À JOUR IMMÉDIATE (déjà en place, vérifié) : tout changement de
-    curseur est poussé au thread de travail instantanément
-    (`_push_settings` → `pending_settings`/`pending_offset` consommés à
-    chaque tick) pour TOUTES les marques — pas de redémarrage de session ;
-  - TEC TOUPTEK PILOTABLE (demande d'Alain, sans matériel de test possible) :
-    la DLL n'a PAS de CoolerOn → pilotage par OPTIONS (TECTARGET 0x0f
-    consigne en 0,1 °C, TEC 0x08, plage via TECTARGET_RANGE 0x6d champs
-    signés), température `get_Temperature` ; boutons ❄/étiquette branchés
-    (consigne_refroidissement/lire_refroidissement/arrêter_refroidissement) ;
-    un modèle sans TEC répond E_NOTIMPL → boutons grisés (aucun faux bouton) ;
-  - banc : la dichotomie est exécutée VIA LA FONCTION DE L'APPLI (une seule
-    source de vérité) ; lecture TEC/consigne/température ajoutée ;
-  - tests sans matériel : `_test_camera_touptek` **58/58** (faux SDK qui
-    refuse > 31), `_test_capacites_ui_jalon32` (offset ADOPTÉ dans la
-    fenêtre), `_test_capacites` 29/29, `_test_qhy_camera` 33,
-    `_test_camera_playerone` 29/29, TEC jalons 33/38, UI jalons 31/34/35/6/47,
-    `_test_connexion_svbony_jalon36` : tous au vert.
-- **TEC Touptek (jalon 51) : codé, SANS test matériel possible** (pas de
-  caméra refroidie Touptek au miniPC) — sur une caméra refroidie un jour :
-  boutons ❄ + étiquette « Capteur : x °C · TEC : — » (pas de PWM chez
-  Touptek) ; SUR UN MODÈLE SANS TEC : boutons ❄ restent grisés.
-- **Jalon 50 (v2.21.9, 21/09/2026) — VALIDÉ PAR ALAIN (test réel) :
-  capacités Touptek EN DYNAMIQUE** — `detecter_capacites()` = relevé direct
-  sur la caméra ouverte (expo µs, gain %, mono/bits/pixel), gain en %
-  (unité SDK), auto-exposition coupée par `apply_settings`,
-  `definir_offset()` implémenté (option BLACKLEVEL 0x15) → les curseurs
-  Expo/Gain/Offset passent aux bornes réelles (détail dans le changelog
-  v2.21.9 de `avastack/__init__.py`).
-- **Jalon 49 (v2.21.8, 20-21/09/2026) — VALIDÉ PAR ALAIN, clos** : banc
-  Touptek + correction de la sonde (API V2 EnumV2/DeviceV2) ; détection,
-  ouverture, flux, poses expo/gain, auto-expo, snap, identité OK au miniPC ;
-  ROI libre muette sur ce capteur (constat consigné, « pas grave »).
+- **Jalon 53 (v2.22.0, 21/09/2026) — DARK/FLAT UNIQUE OU PAR COUCHE EN MODE
+  COMPOSITION — codé, suite verte SANS matériel, À TESTER/VALIDER PAR ALAIN** :
+  - DEMANDE D'ALAIN : en empilement multibande (source « Composition
+    multi-dossiers »), pouvoir choisir un dark UNIQUE ou PAR COUCHE, et le
+    même choix pour les flats INDÉPENDAMMENT de celui des darks ;
+  - RETOURS D'ALAIN PENDANT LE TEST (pris en compte) : (a) la couche se
+    choisit AU CLIC sur « Charger un dark… » / « Charger un flat… » — boîte
+    modale « Ce dark s'applique à : Unique (toutes les couches) / la couche
+    « Ha »… » (rôles ACTIFS du cadre Composition), PLUS de menus déroulants
+    de ciblage préalable ; hors composition, aucun dialogue ; (b) les
+    libellés montrent TOUT : « Dark unique : nom (H×W) » PUIS « Dark Ha :
+    nom (H×W) » pour CHAQUE couche active (« Dark O3 : — » si le master de
+    cette couche manque) ;
+  - justification : les couches ont souvent des POSES différentes (le dark
+    dépend de la pose) et le vignettage/poussière dépend du FILTRE (le
+    flat aussi) — d'où un ciblage séparé dark/flat ;
+  - `Calibrator` : `darks`/`flats` = dictionnaires {rôle: image} (+ `*_sources`
+    = fichier d'origine de chaque master, pour l'affichage) ;
+    `load_dark(path, role=None)` / `load_flat(path, role=None)` /
+    `apply(img, role=…)` — le master DU RÔLE prime, repli sur l'UNIQUE
+    pour un rôle sans master dédié (mono inchangé) ; le worker passe le
+    rôle de la frame (`calib.apply(frame, role=role)`) ;
+  - GARDE-FOUS : annulation de la boîte = aucun chargement ; master de
+    forme incompatible ignoré (règle historique) ; « Effacer calibration »
+    vide tout (uniques ET par rôle) ; masters par rôle CONSERVÉS aux
+    allers-retours de source et réaffichés au retour en composition ;
+  - tests : `_test_calib_compo_jalon53` (Calibrator seul : repli,
+    indépendance dark/flat, flat non constant à gradient ; UI réelle : la
+    boîte modale pilotée par after — réponse Ha / unique / O3 / annulation,
+    libellés complets, allers-retours de source ; worker réel
+    multi-dossiers : le dark DÉDIÉ de chaque couche est appliqué — fonds
+    mesurés 0.130/0.090, jamais le dark du voisin) ; régressions au vert
+    (jalons 19/20/21/24/42/47/52, config 6, UI 5, cadence 42,
+    capacités UI 32, jalon 17).
 - **LIMITE QHY (toujours valable)** : après « ■ Arrêter », relancer
   l'appli — le binding qhyccd n'expose AUCUNE libération du SDK (état
   irréinitialisable dans le process) ; le banc QHY l'annonce et conseille
@@ -183,34 +154,35 @@ testés et validés depuis longtemps ») :
   points puis en trainées » → origine du jalon 13 (alignement robuste).
   Banc POA : `_diag_camera_playerone.py` (jalon 28).
 
-## 🔚 Clôture de session — 21/09/2026 (v2.21.10, jalons 50-51 — À TESTER PAR ALAIN)
+## 🔚 Clôture de session — 21/09/2026 (v2.22.0, jalon 53 — À TESTER PAR ALAIN)
 
-État exact : **v2.21.10 codée et testée SANS matériel** (suite verte), PAS
-encore commitée ni poussée à l'écriture de ces lignes. Objets cumulés :
-- jalon 50 : les curseurs Expo/Gain/Offset de l'APPLI passent enfin aux
-  bornes RÉELLES pour Touptek (100 µs → 1000 s, gain 100 % → 15000 %),
-  le gain est en POUR CENT (unité SDK), l'auto-exposition est coupée quand
-  l'appli pose ses réglages et le curseur offset AGIT (option BLACKLEVEL) ;
-- jalon 51 : le NOIR est MESURÉ (constat banc : plage réelle 0 → 31, la
-  caméra refuse 7936 et 32, accepte 31/30/0 — la table de toupcam.h ne sert
-  que de PLAFOND de recherche) ; l'OFFSET est LU sur la caméra et ADOPTÉ à
-  la connexion (demande d'Alain, règle valable pour TOUTES les marques) ;
-  le TEC Touptek est PILOTABLE (options TECTARGET 0x0f / TEC 0x08, plage
-  via TECTARGET_RANGE 0x6d, température get_Temperature — boutons ❄ et
-  étiquette branchés ; PWM inconnu chez Touptek → « TEC : — »).
+État exact : **v2.22.0 codée et testée SANS matériel** (jalon 53, retours
+d'Alain en cours de test pris en compte, suite verte), PAS encore commitée
+ni poussée à l'écriture de ces lignes ; installateur rebuild (v2.22.0).
+- **jalon 53 — calibration multibande** : en mode « Composition
+  multi-dossiers », un clic sur « Charger un dark… » / « Charger un
+  flat… » ouvre une boîte « Ce dark (resp. flat) s'applique à : » —
+  Unique (toutes les couches) ou une des couches actives de la
+  composition — DEUX choix INDÉPENDANTS. Un rôle sans master dédié
+  retombe sur le dark/flat UNIQUE (mono inchangé). Les libellés
+  détaillent TOUT : « Dark unique : … » puis « Dark Ha : … » par couche
+  (« Dark O3 : — » si le master manque). Cas d'usage : un dark par filtre
+  (poses différentes par couche) avec un flat unique — ou l'inverse — ou
+  les deux par filtre. PREMIER TEST D'ALAIN : « cela semble bon ».
 
-**Prochaine étape** : test RÉEL d'Alain au miniPC (G3M662M) —
-1) banc `_diag_camera_touptek.py` → ligne « noir bornes » (dichotomie
-exécutée par la fonction de l'appli) et verdict « plage CONSTATÉE 0 → 31 »
-attendu ;
-2) appli → l'offset affiché DOIT être celui de la caméra (1 sur G3M662M),
-curseurs Gain (100 – 15000) / Offset (0 – 31) / expo 100 µs → 1000 s,
-une pose change bien l'image (AE coupée), l'offset agit ;
-3) boutons ❄ : restent GRISÉS sur G3M662M (pas de TEC) — à essayer si une
-caméra refroidie Touptek est branchée (étiquette « Capteur : x °C ·
-TEC : — », Touptek n'expose pas de puissance de refroidissement).
+**Prochaine étape** : test d'Alain en composition (HOO p. ex.) —
+1) cadre Calibration : cliquer « Charger un dark… » → la boîte propose
+   « Unique (toutes les couches) » + les couches actives ; choisir « Ha » ;
+2) les libellés affichent TOUT : « Dark unique : — » / « Dark Ha : nom
+   (H×W) » / « Dark O3 : — » ; pareil pour les flats (indépendance) ;
+   « Effacer calibration » remet tout à zéro ;
+3) session réelle multi-dossiers : chaque couche doit être corrigée par SON
+   master (vérifier l'absence d'ampli-cœur résiduel différent d'une couche
+   à l'autre) ;
+4) si OK : commit + push v2.22.0 (jalon 53).
 
-Sessions précédentes : v2.21.8 (jalon 49, banc Touptek + sonde API V2,
-8f40606, validé en réel) ; v2.21.7 (jalon 48, 2c44e5c) ; v2.21.6 (jalon 47,
-3cc0522) ; v2.21.5 (jalon 46, plafond de rafale, f37c88e) — détail dans
-l'historique git et le changelog du source.
+Sessions précédentes : v2.21.10 (jalons 50-52, banc Touptek + ergonomie
+caméra, 7d3034e, validés par Alain) ; v2.21.8 (jalon 49, banc Touptek +
+sonde API V2, 8f40606, validé en réel) ; v2.21.7 (jalon 48, 2c44e5c) ;
+v2.21.6 (jalon 47, 3cc0522) — détail dans l'historique git et le changelog
+du source.

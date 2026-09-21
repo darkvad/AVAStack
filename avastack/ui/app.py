@@ -1023,6 +1023,12 @@ class App:
         self.lbl_dark.pack(anchor="w")
         self.lbl_flat = ttk.Label(box, text="Flat : —", foreground="#888888")
         self.lbl_flat.pack(anchor="w")
+        # Jalon 53 : chaque dark et chaque flat peut viser UN rôle (filtre)
+        # du cadre Composition — le choix se fait AU CLIC sur « Charger un
+        # dark/flat… » (boîte « ce dark s'applique à : »), jamais avant
+        # (retour d'Alain : plus intuitif). Les libellés détaillent TOUT ce
+        # qui est chargé : l'unique PUIS chaque couche active (— si le
+        # master de cette couche manque), cf. _maj_libelles_calib.
 
         # --- Empilement
         box = ttk.LabelFrame(left, text="Empilement", padding=6)
@@ -1473,6 +1479,120 @@ class App:
         # Jalon 47 : état initial de la visibilité (source par défaut) —
         # _restaurer_config la réappliquera si la config change quelque chose.
         self._maj_visibilite_cadres()
+
+    # --- Jalon 53 : dark/flat par couche (mode composition) ------------------
+
+    def _source_est_compo(self):
+        """True si la source choisie est la composition multi-dossiers —
+        le ciblage dark/flat par rôle n'a de sens que là."""
+        return self.var_source.get().startswith("Composition")
+
+    def _roles_actifs(self):
+        """Rôles remplis du cadre Composition (ordre des lignes, dédoublés)."""
+        roles, vus = [], set()
+        for v in self.var_compo_roles:
+            r = v.get().strip()
+            if r and r not in vus:
+                vus.add(r)
+                roles.append(r)
+        return roles
+
+    def _choisir_cible(self, famille):
+        """Cible d'un chargement de master (`famille` = « dark »/« flat ») :
+        → None si l'utilisateur annule ;
+        → "unique" hors composition (pas de dialogue : aucun choix possible) ;
+        → "unique" ou le rôle choisi via la boîte modale sinon.
+        Jalon 53 (retour d'Alain pendant le test) : la couche se choisit AU
+        MOMENT du clic sur « Charger un dark/flat… », pas par une sélection
+        préalable dans un menu déroulant."""
+        if not self._source_est_compo():
+            return "unique"
+        roles = self._roles_actifs()
+        if not roles:
+            return "unique"
+        return self._dialogue_cible(famille, roles)
+
+    def _dialogue_cible(self, famille, roles):
+        """Boîte modale « ce dark/flat s'applique à : » — Unique + les
+        rôles actifs de la composition. → None si annulé (croix, Annuler),
+        sinon "unique" ou le rôle choisi. Thread UI seul (wait_window) ;
+        widgets exposés (`_dlg_var`/`_dlg_ok`/`_dlg`) pour le test
+        automatisé."""
+        dlg = tk.Toplevel(self.root)
+        dlg.title(f"Charger un {famille}…")
+        dlg.transient(self.root)
+        dlg.resizable(False, False)
+        ttk.Label(dlg, text=f"Ce {famille} s'applique à :", padding=(10, 8)
+                  ).pack(anchor="w")
+        var = tk.StringVar(value="unique")
+        ttk.Radiobutton(dlg, text="Unique (toutes les couches)",
+                        value="unique", variable=var
+                        ).pack(anchor="w", padx=14)
+        for r in roles:
+            ttk.Radiobutton(dlg, text=f"la couche « {r} »", value=r,
+                            variable=var).pack(anchor="w", padx=14)
+        choix = []
+
+        def _valider():
+            choix.append(var.get())
+            dlg.destroy()
+
+        row = ttk.Frame(dlg, padding=(10, 8))
+        row.pack(fill="x")
+        ttk.Button(row, text="OK", width=10, command=_valider
+                   ).pack(side="left", expand=True, padx=3)
+        ttk.Button(row, text="Annuler", width=10, command=dlg.destroy
+                   ).pack(side="left", expand=True, padx=3)
+        dlg.protocol("WM_DELETE_WINDOW", dlg.destroy)
+        dlg.grab_set()
+        self._dlg = dlg                     # exposés pour le test automatisé
+        self._dlg_var = var
+        self._dlg_ok = _valider
+        try:
+            self.root.wait_window(dlg)      # boucle locale : boîte modale
+        finally:
+            self._dlg = self._dlg_var = self._dlg_ok = None
+        return choix[0] if choix else None
+
+    def _maj_libelles_calib(self):
+        """Détail COMPLET des masters chargés (jalon 53, retour d'Alain :
+        « voir tous les darks chargés pour chaque couche et unique ») :
+        l'unique PUIS chaque couche active de la composition (« — » si le
+        master de cette couche manque). Vert dès qu'un master de la famille
+        existe, gris sinon. Thread UI seul (événements Tk)."""
+        # Garde-fou de construction : _on_compo est appelée par _build_ui
+        # AVANT que le cadre Calibration (libellés) n'existe.
+        if not hasattr(self, "lbl_dark"):
+            return
+        roles = self._roles_actifs() if self._source_est_compo() else []
+
+        def _lignes(titre, img, source, dico, sources):
+            if img is not None:
+                h, w = img.shape[:2]
+                nom = os.path.basename(source) if source else "?"
+                lignes = [f"{titre} unique : {nom} ({h}×{w})"]
+            else:
+                lignes = [f"{titre} unique : —"]
+            for r in roles:
+                m = dico.get(r)
+                if m is not None:
+                    h, w = m.shape[:2]
+                    nom = os.path.basename(sources.get(r) or "?")
+                    lignes.append(f"{titre} {r} : {nom} ({h}×{w})")
+                else:
+                    lignes.append(f"{titre} {r} : —")
+            return lignes
+
+        ld = _lignes("Dark", self.calib.dark, self.calib.dark_source,
+                     self.calib.darks, self.calib.darks_sources)
+        lf = _lignes("Flat", self.calib.flat, self.calib.flat_source,
+                     self.calib.flats, self.calib.flats_sources)
+        coul_d = "#1d7f1d" if (self.calib.dark is not None
+                               or self.calib.darks) else "#888888"
+        coul_f = "#1d7f1d" if (self.calib.flat is not None
+                               or self.calib.flats) else "#888888"
+        self.lbl_dark.config(text="\n".join(ld), foreground=coul_d)
+        self.lbl_flat.config(text="\n".join(lf), foreground=coul_f)
 
     def _add_slider(self, parent, label, var, frm, to, res, onchange=None,
                     fmt="{:g}", saisie=False):
@@ -2300,6 +2420,10 @@ class App:
                 cadre.pack(fill="x", pady=3, before=self.frm_calibration)
             elif cadre.winfo_manager():
                 cadre.pack_forget()
+        # Jalon 53 : les libellés dark/flat suivent la source (détail par
+        # couche en composition, libellé simple hors composition).
+        if hasattr(self, "lbl_dark"):
+            self._maj_libelles_calib()
 
     def _on_source_choisie(self, *_):
         """Sélection d'une source : auto-détection si source « SDK ».
@@ -2566,6 +2690,7 @@ class App:
         etat = "normal" if nom == "LRGB" else "disabled"
         self.rb_l_syn.config(state=etat)
         self.rb_l_deg.config(state=etat)
+        self._maj_libelles_calib()   # jalon 53 : le détail suit les rôles
 
     def _pick_folder(self):
         d = filedialog.askdirectory(title="Dossier où arrivent les brutes")
@@ -2937,15 +3062,20 @@ class App:
             self.asseen_busy = False
 
     def _load_dark(self):
+        # Jalon 53 : la couche se choisit AU CLIC (boîte « ce dark
+        # s'applique à : ») — hors composition, cible unique directe.
+        cible = self._choisir_cible("dark")
+        if cible is None:
+            return
         p = filedialog.askopenfilename(filetypes=[
             ("Images", "*.fits *.fit *.fts *.png *.tif *.tiff *.jpg *.jpeg"), ("Tous", "*.*")])
         if p:
             try:
-                self.calib.load_dark(p)
-                h, w = self.calib.dark.shape[:2]
-                self.lbl_dark.config(text=f"Dark : {os.path.basename(p)}  ({h}×{w})",
-                                     foreground="#1d7f1d")
-                msg = f"Dark chargé : {p}"
+                role = None if cible == "unique" else cible
+                self.calib.load_dark(p, role=role)
+                self._maj_libelles_calib()
+                msg = (f"Dark{' pour « ' + role + ' »' if role else ''} "
+                       f"chargé : {p}")
                 if self.running:
                     msg += "  —  pensez à « Réinitialiser l'empilement » pour que tout soit calibré pareil"
                 self.lbl_status.config(text=msg)
@@ -2953,15 +3083,20 @@ class App:
                 messagebox.showerror("Dark", str(e))
 
     def _load_flat(self):
+        # Jalon 53 : cible INDÉPENDANTE de celle des darks (ex. flat par
+        # filtre et dark unique, ou l'inverse).
+        cible = self._choisir_cible("flat")
+        if cible is None:
+            return
         p = filedialog.askopenfilename(filetypes=[
             ("Images", "*.fits *.fit *.fts *.png *.tif *.tiff *.jpg *.jpeg"), ("Tous", "*.*")])
         if p:
             try:
-                self.calib.load_flat(p)
-                h, w = self.calib.flat.shape[:2]
-                self.lbl_flat.config(text=f"Flat : {os.path.basename(p)}  ({h}×{w})",
-                                     foreground="#1d7f1d")
-                msg = f"Flat chargé : {p}"
+                role = None if cible == "unique" else cible
+                self.calib.load_flat(p, role=role)
+                self._maj_libelles_calib()
+                msg = (f"Flat{' pour « ' + role + ' »' if role else ''} "
+                       f"chargé : {p}")
                 if self.running:
                     msg += "  —  pensez à « Réinitialiser l'empilement » pour que tout soit calibré pareil"
                 self.lbl_status.config(text=msg)
@@ -2970,8 +3105,7 @@ class App:
 
     def _clear_calib(self):
         self.calib.clear()
-        self.lbl_dark.config(text="Dark : —", foreground="#888888")
-        self.lbl_flat.config(text="Flat : —", foreground="#888888")
+        self._maj_libelles_calib()
 
     # ------------------------------------------------------------ traitement externe
     def _pick_exe(self, var):
@@ -4107,7 +4241,7 @@ class App:
                 frame, role = lu
             else:
                 frame, role = lu, None
-            frame = self.calib.apply(frame)
+            frame = self.calib.apply(frame, role=role)
             self._a_lu_une_frame = True   # jalon 42 : une brute vient d'être lue
             self._rafale_reste -= 1       # jalon 46 : budget de rafale consommé
 
