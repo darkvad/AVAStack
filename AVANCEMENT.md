@@ -52,6 +52,21 @@ dans le changelog du source et l'historique git.)
     défaut ; gain+offset conservé via menu « Méthode » (narrowband) ;
     config `linear_fit_mode` persistée ; instantané `_fit_mode` (jamais
     de Tk dans le worker) ; mode inconnu → repli « offset » ;
+  - **JALON 54c (21/09/2026) — re-test d'Alain : « même problème » avec
+    offset seul (libellé ×1.000, offsets ~0,02) → le Linear Fit est
+    quasi INACTIF : le dédoublement/flou résiduel est GÉOMÉTRIQUE
+    (entre couches R/G/B), hors de portée de tout recalage
+    photométrique. Réponse : OUTIL DE DIAGNOSTIC
+    `_diag_canaux_compo.py` (mesure FWHM PAR COUCHE via
+    stars.mesurer_seeing + translation inter-couches par appariement
+    MUTUEL des centroïdes ≤ 3 px, convention jalon 13) sur les canaux
+    sauvegardés par l'appli (« 💾 Enregistrer les canaux ») — validé
+    sur synthétique : décalage connu (+1,50/−2,00 px) retrouvé à
+    0,00 px de dispersion, défocalisation ×1,96 détectée. VERDICTS :
+    couche floue seule → refocalisation du filtre ; couche décalée
+    ≥ 0,5 px → correctif logiciel possible (ré-enregistrement,
+    jalon 55) ; rien des deux → chercher ailleurs.** ATTENTE : sortie
+    du diagnostic par Alain.
   - tests : `_test_fit_canaux_jalon54` (38 vérifications : défaut
     offset, gains 1.0, médianes alignées, référence numpy indépendante,
     gain plafonné seulement en mode gain_offset, HOO dégénéré, couches
