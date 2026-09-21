@@ -11,11 +11,12 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.23.0** (`avastack/__init__.py`),
-  branche `master` — **jalon 54 (Linear Fit) IMPLÉMENTÉ, bancs AU VERT,
-  installateur rebuild, À TESTER PAR ALAIN (test réel RGB sur M31)**.
-  Jalon 53 (v2.22.0) VALIDÉ PAR ALAIN (21/09/2026, « C'est Ok »), commité
-  (225f026) et poussé — trace dans le changelog du source.
+- **Version stable de référence : AVAStack v2.23.1** (`avastack/__init__.py`),
+  branche `master` — **jalon 54b (Linear Fit → OFFSET SEUL par défaut)
+  IMPLÉMENTÉ, bancs AU VERT, installateur rebuild, À RE-TESTER PAR ALAIN
+  (RGB M31)**. Jalon 54 (v2.23.0, gain+offset) testé par Alain → VERDICT
+  « pas bon, image floue comme décalé » → diagnostic + correctif 54b.
+  Jalon 53 (v2.22.0) validé, commité (225f026), poussé.
 - **Jalon 54 (v2.23.0, 21/09/2026) — RECALAGE COLORIMÉTRIQUE « LINEAR
   FIT » — À TESTER PAR ALAIN** :
   - DEMANDE D'ALAIN : neutraliser le masque coloré (fond bleu dans les
@@ -43,11 +44,19 @@ dans le changelog du source et l'historique git.)
     le worker lisait `var_fit.get()` → « main thread is not in main
     loop » (bancs jalons 19/20) — instantané `_fit_actif` tenu par le
     thread principal (_start/_tick), comme compo_gains/mode_l ;
-  - tests : `_test_fit_canaux_jalon54` (36 vérifications : aligner_canaux
-    vs référence numpy indépendante, entrée intacte, bornes, offset seul,
-    plancher, dégénérés ; stackers + cache ; solveur re-calé ; UI réelle,
-    config, re-stack) ; régressions AU VERT : jalons 19/20/21/22/24/13/16/
-    42/17/5/6/47/52/53.
+  - **JALON 54b (v2.23.1) — VERDICT ALAIN : « pas bon, image floue comme
+    décalé »** — diagnostic : le GAIN fondé sur le rapport des bruits
+    (σG/σX) mesurait B ×1.52 sur son image OSC → halos/bruit bleus
+    enflés à l'étirement (le recalage est purement photométrique : AUCUN
+    décalage géométrique possible). DÉCISION D'ALAIN : OFFSET SEUL par
+    défaut ; gain+offset conservé via menu « Méthode » (narrowband) ;
+    config `linear_fit_mode` persistée ; instantané `_fit_mode` (jamais
+    de Tk dans le worker) ; mode inconnu → repli « offset » ;
+  - tests : `_test_fit_canaux_jalon54` (38 vérifications : défaut
+    offset, gains 1.0, médianes alignées, référence numpy indépendante,
+    gain plafonné seulement en mode gain_offset, HOO dégénéré, couches
+    brutes, solveur re-calé, menu UI, config round-trip, re-stack) ;
+    régressions AU VERT : jalons 19/20/21/22/24/13/16/42/17/5/6/47/52/53.
 - **LIMITE QHY (toujours valable)** : après « ■ Arrêter », relancer
   l'appli — le binding qhyccd n'expose AUCUNE libération du SDK (état
   irréinitialisable dans le process) ; le banc QHY l'annonce et conseille
@@ -157,20 +166,21 @@ testés et validés depuis longtemps ») :
   points puis en trainées » → origine du jalon 13 (alignement robuste).
   Banc POA : `_diag_camera_playerone.py` (jalon 28).
 
-## 🔚 Clôture de session — 21/09/2026 (v2.23.0, jalon 54 — À TESTER PAR ALAIN)
+## 🔚 Clôture de session — 21/09/2026 (v2.23.1, jalon 54b — À RE-TESTER PAR ALAIN)
 
-État exact : **jalon 54 implémenté, tous bancs au vert, installateur
-REBUILD** — reste le TEST RÉEL d'Alain (RGB sur M31, cocher la case
-« Recalage colorimétrique (Linear Fit) » dans le cadre Empilement et
-regarder le fond des poussières + le libellé des gains mesurés).
-- **jalon 54 — Linear Fit** : R et B recalés sur le vert (gain + offset,
-  médiane/MAD du linéaire) DANS mean() — visu ET sauvegardes ; case
-  décochée par défaut, mode gain_offset ; solveur live re-calé ; config
-  `linear_fit` persistée ; réglage conservé au re-stack.
+État exact : **jalon 54b implémenté (Linear Fit → OFFSET SEUL par défaut,
+menu « Méthode » pour gain+offset), tous bancs au vert, installateur
+REBUILD** — reste le RE-TEST d'Alain (RGB sur M31).
+- **jalon 54 — Linear Fit** : R et B recalés sur le vert DANS mean() —
+  visu ET sauvegardes ; case décochée par défaut ; solveur live re-calé ;
+  config persistée ; réglage conservé au re-stack.
+- **jalon 54b** : verdict Alain « pas bon, floue comme décalé » avec le
+  gain (B ×1.52 mesuré → halos bleus enflés) → offset seul par défaut,
+  gain+offset gardé en option (menu « Méthode », pour narrowband).
 
-**Prochaine étape** : test réel Alain → si verdict OK, marquer jalon 54
-« VALIDÉ » dans AVANCEMENT.md (et ajuster si retour). Le banc
-`_test_fit_canaux_jalon54` reste installé pour les régressions.
+**Prochaine étape** : re-test Alain (offset seul) → si verdict OK, marquer
+jalon 54b « VALIDÉ ». Le banc `_test_fit_canaux_jalon54` reste installé
+pour les régressions.
 
 Sessions précédentes : v2.21.10 (jalons 50-52, banc Touptek + ergonomie
 caméra, 7d3034e, validés par Alain) ; v2.21.8 (jalon 49, banc Touptek +

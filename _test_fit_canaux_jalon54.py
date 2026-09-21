@@ -55,8 +55,10 @@ rgb[..., 1] = base                           # vert = référence
 rgb[..., 2] = base * 1.25 + 0.035            # fond bleu plus haut
 copie = rgb.copy()
 out, diag = aligner_canaux(rgb)
-ok &= verifie(diag is not None and diag["mode"] == "gain_offset",
-              "diag présent, mode gain_offset")
+ok &= verifie(diag is not None and diag["mode"] == "offset"
+              and diag["gains"] == (1.0, 1.0, 1.0),
+              "DÉFAUT = OFFSET SEUL (retour d'Alain : le gain amplifie "
+              "halos/bruit bleus), gains à 1.0")
 ok &= verifie(out.shape == rgb.shape and out.dtype == np.float32,
               "sortie (H, W, 3) float32")
 ok &= verifie(np.array_equal(rgb, copie), "entrée NON modifiée")
@@ -71,6 +73,11 @@ ok &= verifie(abs(m_ap[0] - m_av[1]) < 2e-4
 ok &= verifie(float(out.min()) >= 0.0, "plancher 0 (aucun négatif)")
 ok &= verifie(diag["gains"][1] == 1.0 and diag["offsets"][1] == 0.0,
               "vert : gain 1.0, offset 0.0")
+
+out_g, diag_g = aligner_canaux(rgb, mode="gain_offset")
+ok &= verifie(diag_g["mode"] == "gain_offset"
+              and abs(diag_g["gains"][2] - 0.8) < 0.05,
+              "mode « gain_offset » (option narrowband) : le gain agit")
 
 out3, diag3 = aligner_canaux(np.transpose(rgb, (2, 0, 1)))
 ok &= verifie(out3.shape == (3, H, W)
@@ -88,24 +95,22 @@ ok &= verifie(abs(m_off[0] - m_av[1]) < 2e-4
 
 noir = rgb.copy()
 noir[..., 0] = base * 0.001 + 1e-6           # rouge quasi noir MAIS bruité
-out_n, diag_n = aligner_canaux(noir)         # (constant → canal plat, no-op)
+out_n, diag_n = aligner_canaux(noir, mode="gain_offset")
 ok &= verifie(diag_n is not None
               and abs(diag_n["gains"][0] - stk_mod.FIT_GAIN_MAX) < 1e-6,
-              "canal quasi noir bruité → gain plafonné (pas d'amplification "
-              "folle)")
+              "canal quasi noir bruité (mode gain_offset) → gain plafonné "
+              "(pas d'amplification folle)")
 
 invalide = aligner_canaux(rgb, mode="valeur_inconnue")
-ok &= verifie(invalide[1]["mode"] == "gain_offset",
-              "mode inconnu → repli gain_offset (jamais de crash)")
+ok &= verifie(invalide[1]["mode"] == "offset",
+              "mode inconnu → repli OFFSET (le plus doux, jamais de crash)")
 
 # ============================================= [2] référence indépendante
 print("[2] référence numpy indépendante (droite recalculée à la main)")
 st = stats_canaux(rgb)
-g_ref = [1.0, 1.0, 1.0]
+g_ref = [1.0, 1.0, 1.0]                      # DÉFAUT offset : gains à 1.0
 o_ref = [0.0, 0.0, 0.0]
 for c in (0, 2):
-    g_ref[c] = min(max(st["sigma"][1] / st["sigma"][c],
-                       stk_mod.FIT_GAIN_MIN), stk_mod.FIT_GAIN_MAX)
     o_ref[c] = st["med"][1] - g_ref[c] * st["med"][c]
 ref = rgb.copy()
 for c in (0, 2):
@@ -295,9 +300,17 @@ app.stacker = s_u
 app.var_fit.set(True)
 app._on_linear_fit()
 ok &= verifie(s_u.linear_fit is True
-              and s_u.linear_fit_mode == "gain_offset",
-              "_on_linear_fit : réglage posé sur l'empilement courant "
-              "(mode gain_offset)")
+              and s_u.linear_fit_mode == "offset"
+              and app.var_fit_methode.get() == "Offset seul (fond)",
+              "_on_linear_fit : réglage posé, DÉFAUT = OFFSET SEUL "
+              "(retour test réel d'Alain)")
+app.var_fit_methode.set("Gain + offset")
+app._on_linear_fit()
+ok &= verifie(s_u.linear_fit_mode == "gain_offset",
+              "menu « Méthode » : « Gain + offset » → code gain_offset "
+              "(option narrowband conservée)")
+app.var_fit_methode.set("Offset seul (fond)")
+app._on_linear_fit()
 s_u.mean()                                   # génère les stats
 app._maj_libelle_fit()
 ok &= verifie("Fit R" in app.lbl_fit["text"] and "B ×" in app.lbl_fit["text"],
@@ -306,14 +319,21 @@ ok &= verifie("Fit R" in app.lbl_fit["text"] and "B ×" in app.lbl_fit["text"],
 sauvegardes = []
 ui.sauver_config = lambda dic: sauvegardes.append(dict(dic))
 app.var_fit.set(True)
+app.var_fit_methode.set("Gain + offset")
+app._on_linear_fit()
 app._sauver_config_app()
 ok &= verifie(len(sauvegardes) == 1
-              and sauvegardes[-1].get("linear_fit") is True,
-              "config écrite : linear_fit=True (booléen explicite)")
+              and sauvegardes[-1].get("linear_fit") is True
+              and sauvegardes[-1].get("linear_fit_mode") == "gain_offset",
+              "config écrite : linear_fit=True + mode (booléen ET chaîne "
+              "explicites)")
 app.var_fit.set(False)
+app.var_fit_methode.set("Offset seul (fond)")
+app._on_linear_fit()
 app._sauver_config_app()
-ok &= verifie(sauvegardes[-1].get("linear_fit") is False,
-              "config écrite : linear_fit=False persisté aussi")
+ok &= verifie(sauvegardes[-1].get("linear_fit") is False
+              and sauvegardes[-1].get("linear_fit_mode") == "offset",
+              "config écrite : linear_fit=False + offset persistés aussi")
 
 ancien = LiveStacker((H, W, 3), k=None, method="kappa", window=6)
 ancien.linear_fit = True

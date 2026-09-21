@@ -14,9 +14,30 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.23.0"
+AVASTACK_VERSION = "2.23.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.23.1 : LINEAR FIT — OFFSET SEUL PAR DÉFAUT (jalon 54b, retour du test
+#          réel d'Alain, 21/09/2026) :
+#          - CONSTAT : avec « gain + offset », le gain fondé sur le rapport
+#            des bruits (σ vert / σ canal) amplifie le bleu d'une image OSC
+#            déjà équilibrée par la case WB (mesuré : B ×1.52) → halos et
+#            bruit bleus enflés à l'étirement → image « floue, comme
+#            décalée » ;
+#          - DÉCISION D'ALAIN : OFFSET SEUL par défaut (les médianes des
+#            fonds sont alignées, le rapport signal/bruit n'est pas
+#            touché — l'offset seul est ce qui élimine le masque bleu) ;
+#            le gain reste disponible via un menu « Méthode » (« Offset
+#            seul (fond) » / « Gain + offset ») pour les palettes
+#            narrowband (équivalent du Linear Fit d'APP) ;
+#          - UI : menu « Méthode » sous la case ; config `linear_fit_mode`
+#            persistée (chaîne explicite) ; instantané `_fit_mode` pour le
+#            worker (jamais de lecture Tk hors thread principal) ;
+#            mode inconnu → repli « offset » (le plus doux) ;
+#          - Tests : banc jalon 54 étendu (38 vérifications : défaut
+#            offset, gain plafonné seulement en mode gain_offset,
+#            référence indépendante recalculée, menu UI, config round-
+#            trip) + régressions au vert.
 # v2.23.0 : RECALAGE COLORIMÉTRIQUE « LINEAR FIT » (jalon 54) :
 #          - DEMANDE D'ALAIN : neutraliser le MASQUE coloré qui surgit à
 #            l'étirement (fond bleu dans les poussières de M31) — cause :

@@ -312,10 +312,11 @@ class CompositeStacker:
         # Recalage colorimétrique « Linear Fit » (jalon 54) : appliqué au
         # COMPOSITE SEUL — JAMAIS aux couches (le solveur live re-fait la
         # recomposition depuis les couches brutes et ré-applique le recalage
-        # lui-même, réglage transporté dans disp.vl_compo). Mode «
-        # gain_offset » par défaut (décision d'Alain).
+        # lui-même, réglage transporté dans disp.vl_compo). Mode « offset »
+        # PAR DÉFAUT (retour du test réel d'Alain : le gain fondé sur le
+        # rapport des bruits amplifie halos/bruit bleus d'une image OSC).
         self.linear_fit = False
-        self.linear_fit_mode = "gain_offset"
+        self.linear_fit_mode = "offset"
         self.fit_diag = None              # gains/offsets mesurés (UI)
         self._fit_cache = None
         self.role_courant = None          # rôle de la frame en cours d'ajout

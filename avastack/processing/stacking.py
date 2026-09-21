@@ -127,10 +127,15 @@ def stats_canaux(rgb):
     return {"med": tuple(med), "sigma": tuple(sig)}
 
 
-def aligner_canaux(rgb, mode="gain_offset"):
+def aligner_canaux(rgb, mode="offset"):
     """Recalage « Linear Fit » : R et B recalés sur le VERT (référence).
       gain_X   = σ_G / σ_X, borné [FIT_GAIN_MIN, FIT_GAIN_MAX] — 1.0 en
-                 mode « offset » (recalage du fond seul) ;
+                 mode « offset » (recalage du fond seul, DÉFAUT — retour
+                 du test réel d'Alain, 21/09/2026 : le gain fondé sur le
+                 rapport des bruits amplifie halos et bruit du canal bleu
+                 d'une image OSC déjà équilibrée → aspect flou/décalé à
+                 l'étirement ; le gain reste disponible pour les palettes
+                 narrowband, via le menu de l'UI) ;
       offset_X = med_G − gain_X · med_X
       pixel    : X' = gain_X·X + offset_X, plancher 0 (un offset négatif ne
                  doit jamais créer de valeurs négatives) ; G inchangé.
@@ -147,7 +152,7 @@ def aligner_canaux(rgb, mode="gain_offset"):
     if st is None:
         return a.copy(), None
     if mode not in FIT_MODES:
-        mode = "gain_offset"
+        mode = "offset"                    # mode inconnu → le plus doux
     med, sig = st["med"], st["sigma"]
     g = [1.0, 1.0, 1.0]
     o = [0.0, 0.0, 0.0]
@@ -254,10 +259,12 @@ class LiveStacker:
         self.wb_force = 1.0
         # Recalage colorimétrique « Linear Fit » (jalon 54) : désactivé au
         # niveau module — l'interface l'active (config persistée) ; les tests
-        # existants voient l'ancien comportement. Mode « gain_offset » par
-        # défaut (décision d'Alain).
+        # existants voient l'ancien comportement. Mode « offset » PAR DÉFAUT
+        # (retour du test réel d'Alain, 21/09/2026 : le gain fondé sur le
+        # rapport des bruits amplifie halos/bruit bleus d'une image OSC
+        # équilibrée → aspect flou/décalé ; le gain reste en option UI).
         self.linear_fit = False
-        self.linear_fit_mode = "gain_offset"
+        self.linear_fit_mode = "offset"
         self.fit_diag = None              # gains/offsets mesurés (UI)
         self.reset()
 
