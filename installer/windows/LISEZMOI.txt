@@ -110,9 +110,17 @@ Le banc TOUPTEK permet de (Touptek/Altair et clones ToupCam) :
     caméra elle-même : plages d'exposition (µs) et de gain (% — 100 = 1x),
     exposition RÉELLE, vitesse, niveau de noir, TEC (allumé/éteint,
     consigne en 0,1 °C, température capteur), ventilateur ;
-  - RÉGLER en direct : exposition (µs), gain (%), noir, TEC (consigne °C),
-    résolution (put_eSize), binning MATÉRIEL (Average/Add/Skip), ROI
-    (départ + taille, PAIRES, min 8×8) ;
+  - ÉPROUVER la plage du NIVEAU DE NOIR : le SDK n'a AUCUNE fonction de
+    plage pour cette option — le banc affiche le PLAFOND déduit de l'entête
+    officiel (TOUPCAM_BLACKLEVELn_MAX = 31 × 2^(n-8), n = profondeur de
+    bits annoncée) puis MESURE la borne réelle par DICHOTOMIE posé/relu
+    (fonction de l'application, valeur d'origine restaurée). CONSTAT
+    G3M662M : la caméra annonce 16 bits mais refuse 7936 et accepte 31 →
+    plage réelle 0 → 31, le verdict affiche la plage CONSTATÉE ;
+  - RÉGLER en direct : exposition (µs), gain (%), noir, TEC (consigne °C,
+    marche/arrêt via les OPTIONS TECTARGET 0x0f et TEC 0x08 — la DLL n'a
+    PAS de CoolerOn), résolution (put_eSize), binning MATÉRIEL
+    (Average/Add/Skip), ROI (départ + taille, PAIRES, min 8×8) ;
   - AFFICHER le flux live (flux ÉVÉNEMENTIEL : le SDK pousse les frames via
     un callback — les fps viennent aussi de Toupcam_get_FrameRate) ;
   - DÉCLENCHER une pose (Toupcam_Snap → événement STILLIMAGE) ;
@@ -123,7 +131,9 @@ Le banc TOUPTEK permet de (Touptek/Altair et clones ToupCam) :
   Mode console : venv\Scripts\python.exe _diag_camera_touptek.py --console
   ⚠ Même contrôle de version que les autres bancs : si
     avastack\cameras\touptek.py installée est ANTÉRIEURE à la correction
-    API V2 (≥ 2.21.8), le banc le signale (bandeau rouge) au lieu de
+    API V2 (≥ 2.21.8), à la table de plage du niveau de noir du
+    jalon 50 (≥ 2.21.9) ou à la mesure du noir + TEC pilotable du
+    jalon 51 (≥ 2.21.10), le banc le signale (bandeau rouge) au lieu de
     planter.
 
 Le banc QHY permet de :

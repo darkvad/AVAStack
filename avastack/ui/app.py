@@ -774,7 +774,15 @@ class App:
         box = ttk.LabelFrame(left, text="Caméra", padding=6)
         box.pack(fill="x", pady=3)
         self.frm_ctrl_cam = ttk.Frame(box)
-        self.frm_ctrl_cam.pack(fill="x")
+        # Jalon 52 (demande d'Alain, 21/09/2026) : le CHOIX DE SOURCE doit
+        # être EN HAUT DU CADRE DÈS LE LANCEMENT. Avant, frm_ctrl_cam était
+        # packé en premier : le choix était SOUS les contrôles ; choisir
+        # « Dossier » (frm_ctrl_cam caché) le faisait remonter — mieux — et
+        # au retour caméra il RESTAIT en haut (le re-pack de
+        # _maj_visibilite_cadres réappend frm_ctrl_cam à la fin) : la place
+        # du choix dépendait de l'histoire de la session. En packant le choix
+        # et Démarrer/Arrêter AVANT frm_ctrl_cam (pack différé ci-dessous),
+        # l'ordre est stable et identique quel que soit le va-et-vient.
         self.var_source = tk.StringVar(value=SOURCES[0])
         self.cb_source = ttk.Combobox(box, textvariable=self.var_source,
                                       values=SOURCES, state="readonly",
@@ -788,6 +796,10 @@ class App:
         self.btn_stop = ttk.Button(rowbtn, text="■ Arrêter", command=self._stop,
                                    state="disabled")
         self.btn_stop.pack(side="left", expand=True, fill="x", padx=1)
+        # Jalon 52 : les contrôles caméra APRÈS le choix + Démarrer/Arrêter
+        # (le pack_forget/pack de _maj_visibilite_cadres réappend frm_ctrl_cam
+        # en fin d'ordre : sa place ne bouge donc jamais).
+        self.frm_ctrl_cam.pack(fill="x")
         self.var_expo = tk.DoubleVar(value=100.0)
         self.var_gain = tk.DoubleVar(value=30.0)
         self.var_offset = tk.DoubleVar(value=10.0)
@@ -882,10 +894,16 @@ class App:
                    command=self._detecter_camera).pack(side="left")
         self.lbl_detect = ttk.Label(rowd, text="", foreground="#666666")
         self.lbl_detect.pack(side="left", padx=(6, 0))
-        self.btn_deconnect = ttk.Button(rowd, text="⏏ Déconnecter", width=12,
+        # Jalon 52 (demande d'Alain, 21/09/2026) : « ⏏ Déconnecter » sur SA
+        # PROPRE ligne, sous « 🔎 Détecter ». Sur la même ligne (side="right"),
+        # un long libellé de caméra détectée (« Touptek : connectée (…) ») le
+        # poussait hors de la colonne : il fallait élargir la colonne pour
+        # l'atteindre. Une ligne dédiée le rend toujours visible.
+        self.btn_deconnect = ttk.Button(self.frm_ctrl_cam,
+                                        text="⏏ Déconnecter", width=12,
                                         command=self._deconnecter_camera,
                                         state="disabled")
-        self.btn_deconnect.pack(side="right")
+        self.btn_deconnect.pack(anchor="w", pady=(2, 0))
 
         # --- Jalon 47 : le réglage de RAFALE (« Empiler les brutes »,
         # jalons 42/45) sort des cadres « Dossier surveillé » et
@@ -2117,6 +2135,17 @@ class App:
             except tk.TclError:
                 pass
             var.set(min(max(var.get(), mn), mx))     # valeur dans la plage
+            # Jalon 51 (demande d'Alain : « offset lu plutôt que 10 par
+            # défaut, règle valable pour toutes les caméras ») : si la sonde
+            # a LU la valeur courante de ce rôle sur la caméra, l'appli
+            # l'ADOPTE — elle n'impose pas la sienne. Un offset de capteur
+            # écrasé silencieusement fausse les brutes (et les darks/flats
+            # associés). Aucune valeur lue (marque muette) → comportement
+            # d'origine : la valeur de l'UI est seulement ramenée dans la
+            # plage détectée.
+            actuel = cap.valeur_actuelle(role)
+            if actuel is not None:
+                var.set(min(max(actuel, mn), mx))
             parent = ancien._row.master   # le parent de la LIGNE détruite
             setattr(self, nom_attr, self._add_slider(
                 parent, f"{base} ({mn:g} – {mx:g})", var,
@@ -4483,11 +4512,21 @@ class App:
             if dernier is not None:
                 self._tec_dernier = None
                 t, pwm, cons = dernier
-                pct = max(0, min(255, int(round(pwm)))) * 100 // 255
-                self.lbl_tec.config(
-                    text=f"Capteur : {t:.1f} °C · TEC : {pct} % ({int(pwm)}/255)"
-                         + (f" · consigne {cons:.0f} °C" if cons else ""),
-                    foreground="#1d7f1d")
+                # Jalon 51 : toutes les marques n'exposent pas les MÊMES
+                # données — Touptek donne la température et la consigne mais
+                # AUCUNE puissance de refroidissement (pas d'option dans son
+                # SDK) → None s'affiche « — », jamais un « 0 % » qui
+                # laisserait croire que le TEC ne travaille pas.
+                txt = (f"Capteur : {t:.1f} °C" if t is not None
+                       else "Capteur : —")
+                if pwm is None:
+                    txt += " · TEC : —"
+                else:
+                    pct = max(0, min(255, int(round(pwm)))) * 100 // 255
+                    txt += f" · TEC : {pct} % ({int(pwm)}/255)"
+                if cons:
+                    txt += f" · consigne {cons:.0f} °C"
+                self.lbl_tec.config(text=txt, foreground="#1d7f1d")
             if self._tec_ok:
                 self._tec_ok = False
                 self.btn_tec_on.config(state="normal")

@@ -384,6 +384,14 @@ class SVBonyCamera(CameraBase):
         if c:
             cap.offset = (c["min"], c["max"])
             cap.extras["offset"] = "BLACK_LEVEL (ctrl 13) du SDK SVBONY"
+            # valeur COURANTE (SVBGetControlValue) — jalon 51 : l'appli
+            # l'ADOPTE au lieu d'imposer son défaut (réglage de CAPTEUR).
+            try:
+                v = self._lire_ctrl(SVB_BLACK_LEVEL)
+                if v is not None:
+                    cap.actuels["offset"] = float(v)
+            except Exception:
+                pass
         # refroidissement : contrôles réellement présents. ⚠ DÉCISION
         # D'ALAIN (20/09/2026, jalon 38) : les contrôles TEC du SDK SVBONY
         # existent même SANS TEC physique (constat réel SV305C : temp

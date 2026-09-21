@@ -11,45 +11,73 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.21.8** (`avastack/__init__.py`),
-  branche `master` — jalon 49 **VALIDÉ PAR ALAIN (20-21/09/2026, test RÉEL
-  sur G3M662M au miniPC), COMMITÉ (8f40606) ET POUSSÉ, installateur
-  v2.21.8 REBUILD (`installer/windows/output/avastack-setup.exe`, 21/09
-  00:42)** — session close : aucun chantier en attente.
-- **Dernier jalon (49, v2.21.8, 20-21/09/2026) — banc Touptek + CORRECTION
-  DE LA SONDE (API V2)** :
-  - CONSTAT FONDATEUR : la sonde `avastack/cameras/touptek.py` (v2.2.0,
-    jamais testée sur matériel) était FAUSSE contre la DLL réelle du dépôt
-    (ToupCam.dll 59.30239.20251209) : `Toupcam_get_ExpoTimeRange` n'existe
-    PAS (AttributeError au chargement ; le vrai nom est
-    `Toupcam_get_ExpTimeRange`) ; `Toupcam_Enum` (legacy, obsolète) remplit
-    des ToupcamDevice et NON des modèles (charabia lu) ; `Toupcam_Open`
-    veut l'ID opaque énuméré, pas le nom du modèle ;
-  - sonde RÉÉCRITE sur l'API moderne `Toupcam_EnumV2 / ToupcamDeviceV2`
-    (disposition VALIDÉE empiriquement : 201 modèles lisibles dans la DLL),
-    conforme à l'entête officiel toupcam.h (miroir INDIGO v60.32499) ;
-  - nouveau banc `_diag_camera_touptek.py` (réutilise la sonde) : détection
-    V2 + drapeaux, réglages mesurés, verdict, TEC par options (TEC 0x08 /
-    TECTARGET 0x0f — PAS de CoolerOn dans la DLL), expo/gain/noir,
-    auto-expo on/off, ROI, binning matériel, flux événementiel (callback +
-    PullImage), pose (Snap/STILLIMAGE), rapport, `--console` ; embarqué
-    dans l'installateur (avastack.iss + LISEZMOI) ;
-  - Tests sans matériel : `_test_camera_touptek.py` (fausse DLL) 37/37 OK ;
-    régression `_test_capacites` 29/29, `_test_camera_playerone` 29/29.
-  - **Tests RÉELS d'Alain (G3M662M mono 16 bits USB3/ST4, miniPC)** :
-    détection V2, ouverture, flux, poses expo/gain, bascule auto-expo,
-    Snap (malgré 0 résolution pose : livre à la résolution courante) →
-    **FONCTIONNE**. Constats intégrés : (a) 2 prototypes ctypes manquants
-    (`get_MaxSpeed`, `get_StillResolutionNumber`) → `OverflowError`
-    (« int too long » : handle 64 bits passé en int 32) — déclarés (+
-    `get_StillResolution`, `get_FinalSize`) ; (b) l'auto-exposition
-    « continue » ÉCRASE l'expo posée → bouton « 🅰 Auto-expo on/off » +
-    avertissement ; (c) `get_Roi` relu suspecte → croisement `get_Size` +
-    `get_FinalSize` journalisé ; compteurs `get_FrameRate` peu fiables →
-    fps MESURÉ fait foi ; (d) verdict : bits/pix affichés en entier simple ;
-    (e) **ROI** : `put_Roi` ACCEPTE toute taille mais le flux ne livre QUE
-    les 2 résolutions du modèle (1920×1080, 960×540) — ROI libre non
-    exploitable sur ce capteur (verdict Alain : « pas grave »).
+- **Version stable de référence : AVAStack v2.21.10** (`avastack/__init__.py`),
+  branche `master` — jalon 51 **VALIDÉ PAR ALAIN (21/09/2026, « on est
+  bon »)**, installateur **v2.21.10 REBUILD** ; jalon 52 codé — **NON
+  COMMITÉ (à la demande d'Alain, commit sur validation, cf. jalon 49)**.
+- **Jalon en cours (52, 21/09/2026) — ERGONOMIE DU CADRE « CAMÉRA » — codé,
+  testé SANS matériel (ordre de packing vérifié en fenêtre réelle), À
+  CONFIRMER VISUELLEMENT au miniPC** :
+  - DEMANDE D'ALAIN : le choix de source (caméra/dossier/…) était SOUS les
+    contrôles caméra au lancement ; choisir « Dossier » (contrôles cachés)
+    le faisait passer EN HAUT (« c'est mieux ») et il y RESTAIT au retour
+    caméra — sa place dépendait de l'histoire de la session. CORRIGÉ :
+    choix + Démarrer/Arrêter packés AVANT frm_ctrl_cam → en haut DÈS LE
+    DÉBUT, ordre stable au va-et-vient dossier/caméra ;
+  - DEMANDE D'ALAIN : « ⏏ Déconnecter » (side="right" de la ligne
+    Détecter) était poussé hors de la colonne par un long libellé de
+    caméra détectée (il fallait élargir la colonne pour l'atteindre).
+    CORRIGÉ : SA PROPRE ligne sous « 🔎 Détecter », toujours visible ;
+  - `_test_ergonomie_jalon52` : ordre de packing RÉEL (pack_slaves),
+    va-et-vient dossier/caméra, ligne dédiée — vert ; régressions UI
+    (jalons 47/32/31/34/6) et batteries caméras : au vert.
+- **À CONFIRMER PAR ALAIN (miniPC)** : au lancement, choix de source en
+  haut du cadre « Caméra » ; bouton « ⏏ Déconnecter » visible en toutes
+  circonstances (même avec un long libellé de caméra détectée).
+- **Jalon 51 (v2.21.10, 21/09/2026) — NOIR MESURÉ + OFFSET LU + TEC
+  TOUPTEK — VALIDÉ PAR ALAIN (21/09/2026)** :
+  - CONSTAT RÉEL DU BANC (Alain, 21/09/2026, G3M662M) : la caméra REFUSE
+    7936 (E_INVALIDARG) alors qu'elle ACCEPTE 31/30/0 et REFUSE 32 → sa
+    plage de noir réelle est **0 → 31** ; la table de toupcam.h n'est donc
+    qu'un PLAFOND : la borne max est désormais MESURÉE par dichotomie
+    posé/relu (`TouptekCamera._mesurer_noir`, valeur d'origine restaurée) ;
+  - OFFSET LU PLUTÔT QU'IMPOSÉ (demande d'Alain, valable pour TOUTES les
+    caméras) : la sonde lit la valeur courante du contrôle et l'appli
+    l'ADOPTe — Touptek (option 0x15), QHY (GetQHYCCDParam), ZWO
+    (ASIGetControlValue), SVBONY (SVBGetControlValue), Player One
+    (POAGetConfig) ; marque muette → comportement d'origine ;
+  - MISE À JOUR IMMÉDIATE (déjà en place, vérifié) : tout changement de
+    curseur est poussé au thread de travail instantanément
+    (`_push_settings` → `pending_settings`/`pending_offset` consommés à
+    chaque tick) pour TOUTES les marques — pas de redémarrage de session ;
+  - TEC TOUPTEK PILOTABLE (demande d'Alain, sans matériel de test possible) :
+    la DLL n'a PAS de CoolerOn → pilotage par OPTIONS (TECTARGET 0x0f
+    consigne en 0,1 °C, TEC 0x08, plage via TECTARGET_RANGE 0x6d champs
+    signés), température `get_Temperature` ; boutons ❄/étiquette branchés
+    (consigne_refroidissement/lire_refroidissement/arrêter_refroidissement) ;
+    un modèle sans TEC répond E_NOTIMPL → boutons grisés (aucun faux bouton) ;
+  - banc : la dichotomie est exécutée VIA LA FONCTION DE L'APPLI (une seule
+    source de vérité) ; lecture TEC/consigne/température ajoutée ;
+  - tests sans matériel : `_test_camera_touptek` **58/58** (faux SDK qui
+    refuse > 31), `_test_capacites_ui_jalon32` (offset ADOPTÉ dans la
+    fenêtre), `_test_capacites` 29/29, `_test_qhy_camera` 33,
+    `_test_camera_playerone` 29/29, TEC jalons 33/38, UI jalons 31/34/35/6/47,
+    `_test_connexion_svbony_jalon36` : tous au vert.
+- **TEC Touptek (jalon 51) : codé, SANS test matériel possible** (pas de
+  caméra refroidie Touptek au miniPC) — sur une caméra refroidie un jour :
+  boutons ❄ + étiquette « Capteur : x °C · TEC : — » (pas de PWM chez
+  Touptek) ; SUR UN MODÈLE SANS TEC : boutons ❄ restent grisés.
+- **Jalon 50 (v2.21.9, 21/09/2026) — VALIDÉ PAR ALAIN (test réel) :
+  capacités Touptek EN DYNAMIQUE** — `detecter_capacites()` = relevé direct
+  sur la caméra ouverte (expo µs, gain %, mono/bits/pixel), gain en %
+  (unité SDK), auto-exposition coupée par `apply_settings`,
+  `definir_offset()` implémenté (option BLACKLEVEL 0x15) → les curseurs
+  Expo/Gain/Offset passent aux bornes réelles (détail dans le changelog
+  v2.21.9 de `avastack/__init__.py`).
+- **Jalon 49 (v2.21.8, 20-21/09/2026) — VALIDÉ PAR ALAIN, clos** : banc
+  Touptek + correction de la sonde (API V2 EnumV2/DeviceV2) ; détection,
+  ouverture, flux, poses expo/gain, auto-expo, snap, identité OK au miniPC ;
+  ROI libre muette sur ce capteur (constat consigné, « pas grave »).
 - **LIMITE QHY (toujours valable)** : après « ■ Arrêter », relancer
   l'appli — le binding qhyccd n'expose AUCUNE libération du SDK (état
   irréinitialisable dans le process) ; le banc QHY l'annonce et conseille
@@ -155,20 +183,34 @@ testés et validés depuis longtemps ») :
   points puis en trainées » → origine du jalon 13 (alignement robuste).
   Banc POA : `_diag_camera_playerone.py` (jalon 28).
 
-## 🔚 Clôture de session — 21/09/2026 (v2.21.8, jalon 49 — VALIDÉE PAR ALAIN)
+## 🔚 Clôture de session — 21/09/2026 (v2.21.10, jalons 50-51 — À TESTER PAR ALAIN)
 
-État exact : **v2.21.8 COMMITÉE (8f40606) ET POUSSÉE, installateur REBUILD**
-(`installer/windows/output/avastack-setup.exe`, 21/09 00:42, avec le banc
-Touptek + la sonde corrigée + ToupCam.dll). Verdict Alain sur test RÉEL
-G3M662M au miniPC : **VALIDÉ** (détection, ouverture, flux, expo/gain,
-auto-expo, snap, identité ; ROI libre muette sur ce capteur = constat
-consigné, « pas grave »).
+État exact : **v2.21.10 codée et testée SANS matériel** (suite verte), PAS
+encore commitée ni poussée à l'écriture de ces lignes. Objets cumulés :
+- jalon 50 : les curseurs Expo/Gain/Offset de l'APPLI passent enfin aux
+  bornes RÉELLES pour Touptek (100 µs → 1000 s, gain 100 % → 15000 %),
+  le gain est en POUR CENT (unité SDK), l'auto-exposition est coupée quand
+  l'appli pose ses réglages et le curseur offset AGIT (option BLACKLEVEL) ;
+- jalon 51 : le NOIR est MESURÉ (constat banc : plage réelle 0 → 31, la
+  caméra refuse 7936 et 32, accepte 31/30/0 — la table de toupcam.h ne sert
+  que de PLAFOND de recherche) ; l'OFFSET est LU sur la caméra et ADOPTÉ à
+  la connexion (demande d'Alain, règle valable pour TOUTES les marques) ;
+  le TEC Touptek est PILOTABLE (options TECTARGET 0x0f / TEC 0x08, plage
+  via TECTARGET_RANGE 0x6d, température get_Temperature — boutons ❄ et
+  étiquette branchés ; PWM inconnu chez Touptek → « TEC : — »).
 
-**Prochaine étape (session NEUVE)** : AUCUN chantier en attente — la
-prochaine étape sera une NOUVELLE demande d'Alain (fonction ou ergonomie).
-Copier l'installateur v2.21.8 vers le miniPC remplacera la copie manuelle
-des 2 fichiers faite pour le test.
+**Prochaine étape** : test RÉEL d'Alain au miniPC (G3M662M) —
+1) banc `_diag_camera_touptek.py` → ligne « noir bornes » (dichotomie
+exécutée par la fonction de l'appli) et verdict « plage CONSTATÉE 0 → 31 »
+attendu ;
+2) appli → l'offset affiché DOIT être celui de la caméra (1 sur G3M662M),
+curseurs Gain (100 – 15000) / Offset (0 – 31) / expo 100 µs → 1000 s,
+une pose change bien l'image (AE coupée), l'offset agit ;
+3) boutons ❄ : restent GRISÉS sur G3M662M (pas de TEC) — à essayer si une
+caméra refroidie Touptek est branchée (étiquette « Capteur : x °C ·
+TEC : — », Touptek n'expose pas de puissance de refroidissement).
 
-Sessions précédentes : v2.21.7 (jalon 48, 2c44e5c) ; v2.21.6 (jalon 47,
+Sessions précédentes : v2.21.8 (jalon 49, banc Touptek + sonde API V2,
+8f40606, validé en réel) ; v2.21.7 (jalon 48, 2c44e5c) ; v2.21.6 (jalon 47,
 3cc0522) ; v2.21.5 (jalon 46, plafond de rafale, f37c88e) — détail dans
 l'historique git et le changelog du source.

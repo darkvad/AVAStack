@@ -566,6 +566,15 @@ class PlayerOneCamera(CameraBase):
         a = cache.get(POA_OFFSET)
         if a:
             cap.offset = (a["min"], a["max"])
+            # valeur COURANTE (POAGetConfig) — jalon 51 : l'appli l'ADOPTE au
+            # lieu d'imposer son défaut (réglage de CAPTEUR : l'écraser
+            # fausserait les brutes et les darks associés).
+            try:
+                lu = sonde.lire(POA_OFFSET)
+                if lu is not None:
+                    cap.actuels["offset"] = float(lu[0])
+            except Exception:
+                pass
         # refroidissement : fiche + contrôles réellement présents
         if p.isHasCooler:
             cap.tec = True

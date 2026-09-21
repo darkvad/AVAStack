@@ -14,9 +14,125 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.21.8"
+AVASTACK_VERSION = "2.21.10"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.21.10 : NOIR MESURÉ + OFFSET LU + TEC TOUPTEK PILOTABLE (jalon 51) :
+#          - CONSTAT RÉEL (Alain, banc 21/09/2026, G3M662M) : la caméra
+#            annonce 16 bits et la table de toupcam.h laissait croire à un
+#            noir 0 → 7936, mais elle REFUSE 7936 (E_INVALIDARG), ACCEPTE
+#            31/30/0 et REFUSE 32 → plage réelle 0 → 31. Ni constante ni
+#            fonction du SDK n'est fiable : la borne est MESURÉE
+#            (TouptekCamera._mesurer_noir — dichotomie « posé puis RELU »,
+#            plafonnée par la table documentée, valeur d'origine restaurée) ;
+#          - OFFSET LU PLUTÔT QU'IMPOSÉ (demande d'Alain, « règle valable
+#            pour TOUTES les caméras ») : la sonde lit la valeur courante du
+#            contrôle (Capacites.valeur_actuelle) et l'appli l'ADOPTe —
+#            Touptek (get_Option 0x15), QHY (GetQHYCCDParam), ZWO
+#            (ASIGetControlValue), SVBONY (SVBGetControlValue), Player One
+#            (POAGetConfig) ; aucune marque muette n'est forcée ;
+#          - TEC TOUPTEK PILOTABLE (demande d'Alain, même sans matériel de
+#            test) : la DLL n'a PAS de CoolerOn — pilotage par OPTIONS
+#            (TECTARGET 0x0f consigne en 0,1 °C, TEC 0x08 marche/arrêt,
+#            plage lue via TECTARGET_RANGE 0x6d), température via
+#            get_Temperature ; les boutons ❄/étiquette TEC de l'appli
+#            fonctionnent dès que la caméra expose l'option (sinon E_NOTIMPL
+#            → boutons grisés, aucune promesse en l'air) ;
+#          - banc : dichotomie exécutée via la fonction de l'APPLICATION
+#            (une seule source de vérité) + lecture TEC/consigne/température.
+#          - Tests : _test_camera_touptek (58/58 — plage mesurée par la
+#            caméra factice qui refuse > 31), _test_capacites_ui_jalon32
+#            (offset ADOPTÉ dans la fenêtre), _test_capacites (29/29),
+#            QHY 33, Player One 29/29, TEC jalons 33/38, UI jalons 31/34/35 :
+#            toutes les régressions au vert.
+
+# v2.21.10 : NOIR TOUPTEK MESURÉ + OFFSET LU (toutes marques) + TEC TOUPTEK
+#            PILOTABLE (jalon 51) + ERGONOMIE DU CADRE « CAMÉRA » (jalon 52) :
+#          - JALON 51 — CONSTAT RÉEL DU BANC (Alain, 21/09/2026, G3M662M) :
+#            la caméra REFUSE 7936 (E_INVALIDARG) mais ACCEPTE 31/30/0 et
+#            REFUSE 32 → plage de noir RÉELLE 0 → 31 : la table de toupcam.h
+#            n'est qu'un PLAFOND de recherche — la borne max est désormais
+#            MESURÉE par DICHOTOMIE posé/relu (TouptekCamera._mesurer_noir,
+#            valeur d'origine restaurée) ; le banc exécute CETTE fonction de
+#            l'appli (une seule source de vérité) ;
+#          - OFFSET LU PLUTÔT QU'IMPOSÉ (demande d'Alain, valable pour
+#            TOUTES les caméras) : la sonde lit la valeur COURANTE du
+#            contrôle (cap.actuels) et l'appli l'ADOPTe au lieu d'écraser
+#            avec son défaut — Touptek (option 0x15), QHY (GetQHYCCDParam),
+#            ZWO (ASIGetControlValue), SVBONY (SVBGetControlValue),
+#            Player One (POAGetConfig) ; marque muette → comportement
+#            d'origine (valeur seulement ramenée dans la plage détectée) ;
+#          - TEC TOUPTEK PILOTABLE (demande d'Alain, sans matériel de test
+#            possible) : la DLL n'a PAS de CoolerOn → pilotage par OPTIONS :
+#            TECTARGET 0x0f (consigne en 0,1 °C), TEC 0x08 (marche/arrêt),
+#            plage lue via TECTARGET_RANGE 0x6d (champs SIGNÉS), température
+#            get_Temperature ; consigne_refroidissement /
+#            lire_refroidissement / arreter_refroidissement implémentés et
+#            branchés sur les boutons ❄ de l'appli (un modèle sans TEC
+#            répond E_NOTIMPL → boutons grisés ; chez Touptek PAS de
+#            puissance PWM → étiquette « TEC : — », jamais un faux 0 %) ;
+#          - MISE À JOUR IMMÉDIATE vérifiée (déjà en place) : chaque
+#            mouvement de curseur est poussé au thread de travail
+#            instantanément (_push_settings → pending_settings /
+#            pending_offset consommés à chaque tick) pour TOUTES les marques
+#            — sans redémarrer la session ;
+#          - JALON 52 (demandes d'Alain, 21/09/2026) : le CHOIX DE SOURCE
+#            (caméra/dossier/…) est EN HAUT du cadre « Caméra » DÈS LE
+#            LANCEMENT — avant il était sous les contrôles, remontait dès
+#            qu'on choisissait « Dossier » (contrôles cachés) et y restait
+#            au retour caméra : sa place dépendait de l'histoire de la
+#            session. Choix + Démarrer/Arrêter packés AVANT les contrôles →
+#            ordre stable au va-et-vient ;
+#          - « ⏏ Déconnecter » a SA PROPRE ligne sous « 🔎 Détecter » :
+#            sur la même ligne (side="right"), un long libellé de caméra
+#            détectée le poussait hors de la colonne (il fallait élargir la
+#            colonne de gauche pour l'atteindre) ;
+#          - Tests : _test_camera_touptek 58/58 (faux SDK qui refuse > 31),
+#            _test_ergonomie_jalon52 (ordre de packing RÉEL + va-et-vient +
+#            ligne dédiée), régressions _test_capacites 29/29,
+#            _test_qhy_camera 33, _test_camera_playerone 29/29, TEC 33/38,
+#            UI 47/32/31/34/35/6 : tous au vert.
+
+# v2.21.9 : CAPACITÉS TOUPTEK (EXPO/GAIN/NOIR) → CURSEURS AUX BORNES RÉELLES
+#           (jalon 50) :
+#          - CONSTAT FONDATEUR (Alain, 21/09/2026, miniPC/G3M662M) : le banc
+#            mesurait 100 µs → 1000 s et 100 % → 15000 % mais l'APPLI gardait
+#            ses bornes EN DUR (« Gain (0 – 175) », « Offset (0 – 255) »,
+#            échelles d'expo fixes) : TouptekCamera n'implémentait PAS
+#            detecter_capacites() (seules QHY/POA/SVB/ZWO le faisaient) ;
+#          - avastack/cameras/touptek.py : detecter_capacites() = RELEVÉ
+#            DIRECT sur la caméra ouverte — Toupcam_get_ExpTimeRange (µs),
+#            Toupcam_get_ExpoAGainRange (%), get_MonoMode, get_MaxBitDepth,
+#            get_PixelSize ; le NOIR (option BLACKLEVEL 0x15 — l'« offset »
+#            chez Touptek) se déduit de la table DOCUMENTÉE de toupcam.h
+#            (TOUPCAM_BLACKLEVELn_MAX = 31 << (n - 8), indexée par la
+#            profondeur annoncée par get_MaxBitDepth, les bits étant codés
+#            dans le HRESULT) — profondeur hors table ⇒ AUCUNE plage
+#            (jamais de curseur construit sur une valeur inventée). Les
+#            signatures nouvelles passent par _proto() : une DLL plus
+#            ancienne ne casse plus le chargement du SDK ;
+#          - GAIN exprimé en POUR CENT (unité SDK, 100 = 1×) : les autres
+#            marques passent leurs unités SDK telles quelles (l'ancien ×100
+#            supposait un curseur gradué en « × » et aurait faussé le
+#            curseur aux bornes réelles) ; l'AUTO-EXPOSITION est COUPÉE par
+#            apply_settings (relevé réel : l'AE « continue » écrase l'expo
+#            posée — les curseurs auraient menti) ;
+#          - definir_offset() implémenté (put_Option BLACKLEVEL, borné à la
+#            plage détectée) : le curseur « offset » AGIT enfin chez Touptek
+#            (il était silencieusement sans effet, la base étant un no-op) ;
+#          - capacites.py : rôle « offset » → option BLACKLEVEL 0x15 pour la
+#            marque Touptek ; le TEC n'est PAS annoncé (l'appli ne sait pas
+#            encore le piloter pour cette marque : pas de bouton ❄ factice) ;
+#          - banc _diag_camera_touptek.py : affiche la plage DOCUMENTÉE du
+#            noir ET l'ÉPROUVE sur la caméra (pose 0 puis la borne max,
+#            RELIT après chaque pose, restaure la valeur d'origine) → verdict
+#            « plage CONSTATÉE 0 → N » ;
+#          - Tests : _test_camera_touptek (57/57 — capacités, unités du gain,
+#            plage du noir, restauration, AE coupée), _test_capacites_ui_jalon32
+#            (sonde Touptek RÉELLE sur fausse DLL → curseurs 100→15000 et
+#            0→7936 dans la fenêtre) ; _test_capacites (29/29) et le reste
+#            des régressions au vert.
+
 # v2.21.8 : BANC DE DIAGNOSTIC TOUPTEK + CORRECTION DE LA SONDE (jalon 49) :
 #          - CONSTAT FONDATEUR (banc _diag_camera_touptek.py, 20/09/2026) :
 #            la sonde de la v2.2.0 était FAUSSE contre la DLL réelle

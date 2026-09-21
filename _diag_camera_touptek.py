@@ -36,6 +36,15 @@ Règles du SDK (entête officiel toupcam.h, miroir INDIGO) :
   - pose (still) : Toupcam_Snap → TOUPCAM_EVENT_STILLIMAGE (0x0005) →
     Toupcam_PullStillImage.
 
+⚠ Complément du 21/09/2026 (jalon 50) : les curseurs de l'APPLI gardaient
+leurs bornes EN DUR pour Touptek (« Gain (0 – 175) », « Offset (0 – 255) »,
+échelles d'expo fixes) — la sonde n'implémentait pas detecter_capacites().
+Le banc montre maintenant, pour le NIVEAU DE NOIR (option BLACKLEVEL 0x15),
+la plage déduite de la table DOCUMENTÉE de toupcam.h
+(TOUPCAM_BLACKLEVELn_MAX = 31 << (n - 8), n = profondeur annoncée par la
+caméra) ET la plage RÉELLEMENT CONSTATÉE : le banc POSE les bornes, RELIT
+après chaque pose (posé ≠ relu), puis RESTAURE la valeur d'origine.
+
 Lancement (venv, dossier du projet ou %LOCALAPPDATA%/AVAStack) :
     venv/Scripts/python.exe _diag_camera_touptek.py
 Mode console (détection rapide sans fenêtre) :
@@ -81,6 +90,9 @@ if mtt is not None:
                  "TOUPCAM_OPTION_FAN", "TOUPCAM_OPTION_TEC",
                  "TOUPCAM_OPTION_RGB", "TOUPCAM_OPTION_TECTARGET",
                  "TOUPCAM_OPTION_BLACKLEVEL", "S_OK", "S_FALSE",
+                 # jalon 50 : table documentée de la plage du noir + _proto
+                 "TOUPCAM_BLACKLEVEL_MIN", "TOUPCAM_BLACKLEVEL_MAX_PAR_BITS",
+                 "TOUPCAM_FLAG_BLACKLEVEL", "_proto",
                  "TouptekCamera", "_charger_sdk"):
         if not hasattr(mtt, _nom):
             _MANQUE.append(_nom)
@@ -120,10 +132,12 @@ def message_appli_trop_ancienne():
         "",
         "Depuis la correction du 20/09/2026, le banc RÉUTILISE la sonde",
         "de l'application (API V2 Toupcam_EnumV2 / ToupcamDeviceV2).",
+        "Depuis le 21/09/2026 (jalon 50), il lui demande aussi la table",
+        "DOCUMENTÉE de la plage du niveau de noir (TOUPCAM_BLACKLEVELn_MAX).",
         "",
         "À FAIRE (dossier d'installation, ex. %LOCALAPPDATA%\\AVAStack) :",
         "  copier avastack\\cameras\\touptek.py depuis le dépôt (ou",
-        "  réinstaller ≥ 2.21.8), puis relancer ce banc.",
+        "  réinstaller ≥ 2.21.9), puis relancer ce banc.",
     ]
     return "\n".join(lignes)
 
@@ -865,6 +879,29 @@ class BancToup:
             return None
         return buf.value.decode("utf-8", "replace").strip("\x00 ").strip()
 
+    def _eprouver_noir(self, val0, bits):
+        """ÉPROUVE la plage du niveau de noir sur la caméra (thread de travail).
+
+        Le banc n'a PAS sa propre mesure : il fait exécuter à la caméra
+        OUVERTE la fonction de l'application (TouptekCamera._mesurer_noir —
+        dichotomie « posé puis RELU », bornée par la table de toupcam.h), puis
+        il lit la valeur pour montrer que la caméra a bien été RESTAURÉE.
+
+        Jalon 51 — CONSTAT RÉEL du 21/09/2026 (Alain, G3M662M) : la table
+        annonçait 0 → 7936 (profondeur 16 bits) mais la caméra REFUSE 7936
+        (E_INVALIDARG) alors qu'elle ACCEPTE 31 et 30 et refuse 32 → plage
+        réelle 0 → 31. Le banc ne suppose donc plus rien : il MESURE.
+        → (min, max accepté) ou None si la mesure n'a pas abouti."""
+        cam = mtt.TouptekCamera.__new__(mtt.TouptekCamera)
+        cam._flag = 0                 # éprouver sans filtre de drapeaux
+        maxi = cam._mesurer_noir(self.dll, self.handle, bits, val0)
+        relu = ctypes.c_int(0)
+        self.dll.Toupcam_get_Option(self.handle, mtt.TOUPCAM_OPTION_BLACKLEVEL,
+                                    ctypes.byref(relu))
+        self._log(f"  noir bornes: dichotomie posé/relu → max ACCEPTÉ "
+                  f"{maxi} · valeur d'origine restaurée : relu {relu.value}")
+        return (mtt.TOUPCAM_BLACKLEVEL_MIN, maxi) if maxi else None
+
     def _lister_controles(self):
         """Tableau des réglages LUS sur la caméra ouverte (Touptek n'expose
         pas de liste de contrôles comme ZWO/SVBONY : on sonde les points
@@ -943,6 +980,20 @@ class BancToup:
         if hr >= 0:
             faits["noir"] = noir.value
             self._log(f"  noir      : {noir.value} (option BLACKLEVEL 0x15)")
+            # PLAGE (jalons 50/51) : le SDK n'expose AUCUNE fonction de plage
+            # pour le noir — la table DOCUMENTÉE de toupcam.h
+            # (TOUPCAM_BLACKLEVELn_MAX = 31 << (n - 8), n = profondeur
+            # annoncée) sert de PLAFOND DE RECHERCHE, et la borne réelle est
+            # MESURÉE par la fonction de l'application (dichotomie posé/relu,
+            # restaurée ensuite) : le constat réel a démenti la table.
+            prof = d.Toupcam_get_MaxBitDepth(h)      # bits dans le HRESULT
+            plafond = mtt.TOUPCAM_BLACKLEVEL_MAX_PAR_BITS.get(prof)
+            self._log(f"  noir plafond: profondeur {prof} bits → table "
+                      f"toupcam.h {mtt.TOUPCAM_BLACKLEVEL_MIN} → "
+                      f"{plafond if plafond else '? (profondeur HORS table)'}"
+                      f" (plafond de recherche, PAS la borne réelle)")
+            if plafond:
+                faits["noir_plage"] = self._eprouver_noir(noir.value, prof)
         else:
             self._log(f"  noir      : non supporté ({self._err(hr)})")
 
@@ -1052,9 +1103,14 @@ class BancToup:
                           f"{cible_txt}, get_Temperature OK)")
         else:
             lignes.append("TEC       : non exposé (get_Option TEC en échec)")
-        lignes.append(f"NOIR      : {'réglable, actuel ' + str(faits['noir'])}"
-                      if "noir" in faits else
-                      "NOIR      : non supporté sur ce modèle")
+        if "noir" in faits:
+            pl = faits.get("noir_plage")
+            txt = f"réglable, actuel {faits['noir']}"
+            if pl and None not in pl:
+                txt += f" · plage CONSTATÉE {pl[0]} → {pl[1]}"
+            lignes.append("NOIR      : " + txt)
+        else:
+            lignes.append("NOIR      : non supporté sur ce modèle")
         lignes.append(f"BINS       : {bins if bins else 'aucun exposé'}")
         lignes.append(f"FORMATS    : {formats if formats else 'non exposés'}")
         lignes.append(f"IDENTITÉ   : SN {sn} · fw {fw} · hw {hw} · fpga {fpga}"

@@ -7,9 +7,17 @@ RELEVÉS RÉELS d'Alain (jalons 28/28b) :
     TEC consigne -50→30 °C ;
   - SVBONY SV305C : gain 0→450, BlackLevel (« offset » du SDK SVB, ctrl 13)
     0→255, expo 36 µs→2000 s, pas de TEC.
+Jalon 50/51 : s'y ajoute TOUPTEK, dont les capacités sont ici RELEVÉES par la
+vraie sonde TouptekCamera.detecter_capacites() sur une fausse DLL qui se
+comporte comme la G3M662M RÉELLE d'Alain (gain 100 %→15000 %, expo 100 µs
+→1000 s ; noir : garde 0→31, refuse au-delà en E_INVALIDARG — la table
+« 7936 pour 16 bits » DÉMENTIE au banc, borne MESURÉE par dichotomie ;
+TEC : l'option TEC répond E_NOTIMPL, ce modèle n'en a pas) — le constat
+fondateur : les curseurs de l'appli gardaient leurs bornes en dur faute de
+sonde, et l'appli ADOpte désormais la valeur lue de l'offset (jalon 51).
 Vérifie : plages résolues PAR RÔLE (les cid diffèrent selon la marque —
 « 6 » = gain QHY mais balance des blancs B POA et Flip SVB), curseurs
-reconstruits aux bornes réelles pour les DEUX marques sur la même fenêtre,
+reconstruits aux bornes réelles pour les TROIS marques sur la même fenêtre,
 clamp des valeurs, consommation du résultat de connexion (échec propre,
 annulation si la source change pendant l'ouverture), retour aux défauts à
 la déconnexion. Jeter après usage."""
@@ -18,6 +26,7 @@ import sys
 import tkinter as tk
 
 sys.path.insert(0, r"c:\Astro\AstroLiveStack")
+import avastack.cameras.touptek as mtt
 import avastack.ui.app as ui
 from avastack.cameras.capacites import Capacites
 
@@ -91,6 +100,79 @@ verifie(cap_qhy.plage("gain") == (0.0, 230.0, 1.0)
         and cap_qhy.plage("offset") == (0.0, 255.0, 1.0),
         "QHY : rôles résolus comme au jalon 31 (non-régression)")
 
+
+# Touptek (jalon 50) : capacités RELEVÉES par la VRAIE sonde de l'appli sur
+# une fausse DLL qui répond ce que la G3M662M d'Alain a mesuré au banc.
+class _FauxDLLToup:
+    """Faux toupcam.dll : uniquement les lectures de capacités du jalon 50."""
+
+    def Toupcam_get_ExpTimeRange(self, h, pmin, pmax, pdef):
+        pmin._obj.value, pmax._obj.value = 100, 1_000_000_000
+        pdef._obj.value = 10_000
+        return 0
+
+    def Toupcam_get_ExpoAGainRange(self, h, pmin, pmax, pdef):
+        pmin._obj.value, pmax._obj.value, pdef._obj.value = 100, 15_000, 100
+        return 0
+
+    # noir (jalon 51) : la G3M662M réelle GARDE 0 → 31 et refuse au-delà
+    # (E_INVALIDARG) ; TEC : l'option TEC répond E_NOTIMPL (ni TEC ni sonde).
+    E_NOTIMPL = 0x80004001 - (1 << 32)
+    E_INVALIDARG = 0x80070057 - (1 << 32)
+
+    def __init__(self):
+        self.noir = 1                       # niveau de noir COURANT
+        self.noir_max = 31                  # plage réelle constatée au banc
+
+    def Toupcam_put_Option(self, h, opt, val):
+        if opt == mtt.TOUPCAM_OPTION_BLACKLEVEL:
+            if val <= self.noir_max:        # la caméra garde ce qu'elle accepte
+                self.noir = val
+                return 0
+            return self.E_INVALIDARG
+        return 0
+
+    def Toupcam_get_Option(self, h, opt, p):
+        if opt == mtt.TOUPCAM_OPTION_BLACKLEVEL:
+            p._obj.value = self.noir        # relu = ce que la caméra a gardé
+            return 0
+        if opt in (mtt.TOUPCAM_OPTION_TEC, mtt.TOUPCAM_OPTION_TECTARGET,
+                   mtt.TOUPCAM_OPTION_TECTARGET_RANGE):
+            return self.E_NOTIMPL
+        p._obj.value = 0
+        return 0
+
+    def Toupcam_get_MaxBitDepth(self, h):
+        return 16                           # le HRESULT EST la profondeur
+
+    def Toupcam_get_MonoMode(self, h):
+        return mtt.S_OK                     # mono
+
+    def Toupcam_get_PixelSize(self, h, idx, px, py):
+        px._obj.value, py._obj.value = 2.90, 2.90
+        return 0
+
+
+mtt._DLL = _FauxDLLToup()
+cam_toup = mtt.TouptekCamera(0)
+cam_toup.name = "G3M662M"
+cam_toup._handle = 0x01
+cam_toup._w, cam_toup._h = 1920, 1080
+cap_toup = cam_toup.detecter_capacites()
+mtt._DLL = None
+verifie(cap_toup.expo_us == (100, 1_000_000_000),
+        "Touptek : plage d'expo réelle relevée (100 µs → 1000 s)")
+verifie(cap_toup.plage("gain") == (100.0, 15000.0, 1.0),
+        "Touptek : plage('gain') en % — unités du SDK (100 % = 1×)")
+verifie(cap_toup.plage("offset") == (0.0, 31.0, 1.0),
+        "Touptek : plage('offset') MESURÉE 0 → 31 (jalon 51 : la table "
+        "« 7936 pour 16 bits » est démentie par la caméra)")
+verifie(cap_toup.actuels.get("offset") == 1.0,
+        "Touptek : valeur COURANTE du noir lue (l'appli l'adopte, jalon 51)")
+verifie(cap_toup.tec is False and cap_toup.plage("tec_consigne") is None,
+        "Touptek : pas de TEC annoncé (l'option TEC répond E_NOTIMPL — "
+        "G3M662M, constat jalon 51)")
+
 print("[2] UI Player One : curseurs aux bornes réelles (relevé)")
 root = tk.Tk()
 app = ui.App(root)
@@ -108,6 +190,28 @@ verifie(app._EXPO_DYN == (0.01, 2_000_000.0),
 verifie(app.tec_plage == (-50.0, 30.0), "plage TEC réelle (-50 → 30)")
 verifie(not app._roue_ok, "pas de roue détectée (la POA n'en a pas)")
 verifie(0.0 <= app.var_gain.get() <= 750.0, "valeur gain clampée")
+
+print("[2b] UI Touptek : bornes réelles du constat d'Alain (jalon 50)")
+app.var_gain.set(30.0)           # défaut de l'appli : HORS plage Touptek
+app.var_offset.set(10.0)
+app._adapter_ui_capacites(cap_toup)
+root.update_idletasks()
+g = app.sl_gain
+o = app.sl_offset
+verifie(abs(g.cget("from") - 100.0) < 1e-9
+        and abs(g.cget("to") - 15000.0) < 1e-9,
+        "curseur gain reconstruit 100 → 15000 (% du SDK)")
+verifie(abs(o.cget("from") - 0.0) < 1e-9 and abs(o.cget("to") - 31.0) < 1e-9,
+        "curseur offset (niveau de noir) reconstruit 0 → 31")
+verifie(app.var_offset.get() == 1.0,
+        "offset 10 (défaut UI) REMPLACÉ par la valeur LUE sur la caméra (1)")
+verifie(app.var_gain.get() == 100.0,
+        "gain 30 (défaut) clampé à la borne réelle 100 % = 1×")
+verifie(app._EXPO_DYN == (0.1, 1_000_000.0),
+        "bornes expo dynamiques (100 µs → 1000 s, en ms)")
+verifie(cap_toup.tec is False and cap_toup.roue_slots is None
+        and not app._roue_ok,
+        "ni TEC ni roue annoncés (pas de bouton ❄ / combobox factice)")
 
 print("[3] UI SVBONY : reconstruction sur la même fenêtre")
 app.var_gain.set(900.0)          # hors plage SVB → sera clampé à 450

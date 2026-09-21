@@ -59,6 +59,10 @@ CID_CONTROLES_PAR_MARQUE = {
                    "tec_consigne": 15},
     "ZWO":        {"expo_us": 1,  "gain": 0,  "offset": 5,
                    "tec_consigne": 16},
+    # Touptek (jalon 50) : le « offset » est l'OPTION BLACKLEVEL (0x15) — le
+    # SDK Touptek n'énumère pas de contrôles ; la clé est l'id de l'option,
+    # comme le relevé extras que produit TouptekCamera.detecter_capacites.
+    "Touptek":    {"offset": 0x15},
 }
 
 
@@ -124,12 +128,36 @@ class Capacites:
         self.roue_slots = None
         self.serie = ""
         self.controles = []
+        # Valeurs COURANTES des rôles réglables, lues sur la caméra par la
+        # sonde (jalon 51, demande d'Alain) : {"offset": 12, …}. L'appli
+        # ADOPTE ces valeurs au lieu d'imposer les siennes — un réglage de
+        # CAPTEUR (l'offset/le noir) doit rester celui de la caméra, sinon on
+        # fausse silencieusement les brutes (et donc les darks/flats).
+        # Une marque qui ne sait pas les lire n'y met rien : l'UI garde alors
+        # son comportement d'origine (aucune valeur inventée).
+        self.actuels = {}
         # extras : tout ce que la sonde a lu et qui n'a pas de champ dédié
         # (dict, clé = identifiant de contrôle de la marque, valeur = dict
         # min/max/step/valeur) — le câblage dynamique de l'UI lit ICI les
         # plages QHY natives (clés "6" gain, "7" offset, "8" expo, "18"
         # consigne TEC…) sans y coder le moindre modèle.
         self.extras = {}
+
+    def valeur_actuelle(self, role):
+        """→ valeur COURANTE du contrôle de rôle `nom` sur la caméra, ou None.
+
+        Jalon 51 (demande d'Alain) : l'appli lit AVANT d'écrire. Pour
+        l'offset (« offset lu plutôt que 10 par défaut, règle valable pour
+        toutes les caméras »), la valeur lue est adoptée telle quelle par
+        l'UI. Les marques qui ne remplissent pas `actuels` → None (l'UI
+        garde son comportement d'origine)."""
+        if role not in ("expo_us", "gain", "offset", "tec_consigne"):
+            return None
+        v = self.actuels.get(role)
+        try:
+            return float(v) if v is not None else None
+        except (TypeError, ValueError):
+            return None
 
     def plage_controle(self, cid):
         """→ (min, max, step) du contrôle `cid` depuis extras, ou None.
@@ -196,6 +224,7 @@ class Capacites:
             "tec_consigne": list(self.tec_consigne)
                             if self.tec_consigne else None,
             "temperature_lisible": self.temperature_lisible,
+            "actuels": dict(self.actuels),
             "bins": list(self.bins), "bin_materiel": self.bin_materiel,
             "formats": list(self.formats),
             "usb3": self.usb3, "st4": self.st4,

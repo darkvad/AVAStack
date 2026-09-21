@@ -277,6 +277,12 @@ class QHYCamera(CameraBase):
             cap.gain = (float(ext["6"]["min"]), float(ext["6"]["max"]))
         if "7" in ext:
             cap.offset = (float(ext["7"]["min"]), float(ext["7"]["max"]))
+            # valeur COURANTE (GetQHYCCDParam au relevé natif) : l'appli
+            # l'adopte au lieu d'imposer la sienne (jalon 51)
+            try:
+                cap.actuels["offset"] = float(ext["7"]["val"])
+            except (KeyError, TypeError, ValueError):
+                pass
         if "18" in ext:
             cap.tec = True
             cap.tec_consigne = (float(ext["18"]["min"]),

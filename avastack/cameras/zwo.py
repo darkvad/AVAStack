@@ -217,6 +217,18 @@ class ZWOASICamera(CameraBase):
         c = caps.get(ASI_OFFSET)
         if c:
             cap.offset = (c["min"], c["max"])
+            # valeur COURANTE (ASIGetControlValue) — jalon 51 : l'appli
+            # l'ADOPTE au lieu d'imposer son défaut (l'offset est un réglage
+            # de CAPTEUR : l'écraser fausserait les brutes et les darks).
+            try:
+                if hasattr(dll, "ASIGetControlValue"):
+                    v, _auto = ctypes.c_long(0), ctypes.c_int(0)
+                    if dll.ASIGetControlValue(self.index, ASI_OFFSET,
+                                              ctypes.byref(v),
+                                              ctypes.byref(_auto)) == 0:
+                        cap.actuels["offset"] = float(v.value)
+            except Exception:
+                pass
         # bin matériel : contrôle réellement présent (pas la fiche)
         if ASI_HARDWARE_BIN in caps:
             cap.bin_materiel = caps[ASI_HARDWARE_BIN]["ecrivable"]

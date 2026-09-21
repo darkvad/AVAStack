@@ -79,6 +79,11 @@ class _FauxDLLSonde:
         self.handle = 0x1234
         self._callback = None
         self._w = self._h = 4
+        # noir (jalon 51) : la G3M662M RÉELLE garde 0 → 31 et refuse au-delà
+        # (E_INVALIDARG) — on imite le comportement MESURÉ au banc, pas la
+        # table de toupcam.h qui laissait croire à 0 → 7936 pour 16 bits.
+        self.noir = 1                    # niveau courant (relu = ce qui est gardé)
+        self.noir_max = 31               # plage réelle constatée (jalon 51)
 
     def Toupcam_EnumV2(self, arr):
         self.appels.append("EnumV2")
@@ -94,6 +99,54 @@ class _FauxDLLSonde:
 
     def Toupcam_put_Option(self, h, opt, val):
         self.appels.append(("put_Option", opt, val))
+        if opt == mtt.TOUPCAM_OPTION_BLACKLEVEL:
+            if val <= self.noir_max:     # la caméra GARDE ce qu'elle accepte
+                self.noir = val
+                return 0
+            return 0x80070057 - (1 << 32)   # E_INVALIDARG (constat jalon 51)
+        return 0
+
+    # --- réglages / capacités (jalon 50) : mêmes valeurs que la référence
+    #     MESURÉE sur la G3M662M d'Alain (banc du 20/09/2026)
+    def Toupcam_put_ExpoTime(self, h, t):
+        self.appels.append(("ExpoTime", t))
+        return 0
+
+    def Toupcam_put_ExpoAGain(self, h, g):
+        self.appels.append(("ExpoAGain", g))
+        return 0
+
+    def Toupcam_put_AutoExpoEnable(self, h, mode):
+        self.appels.append(("AutoExpoEnable", mode))
+        return 0
+
+    def Toupcam_get_ExpTimeRange(self, h, pmin, pmax, pdef):
+        pmin._obj.value, pmax._obj.value = 100, 1_000_000_000
+        pdef._obj.value = 10_000
+        return 0
+
+    def Toupcam_get_ExpoAGainRange(self, h, pmin, pmax, pdef):
+        pmin._obj.value, pmax._obj.value, pdef._obj.value = 100, 15_000, 100
+        return 0
+
+    def Toupcam_get_MonoMode(self, h):
+        return mtt.S_OK                 # mono 16 bits (G3M662M)
+
+    def Toupcam_get_MaxBitDepth(self, h):
+        return 16                       # les bits SONT la valeur du HRESULT
+
+    def Toupcam_get_PixelSize(self, h, idx, px, py):
+        px._obj.value, py._obj.value = 2.90, 2.90
+        return 0
+
+    def Toupcam_get_Option(self, h, opt, p):
+        if opt == mtt.TOUPCAM_OPTION_BLACKLEVEL:
+            p._obj.value = self.noir     # relu = ce que la caméra a gardé
+            return 0
+        if opt in (mtt.TOUPCAM_OPTION_TEC, mtt.TOUPCAM_OPTION_TECTARGET,
+                   mtt.TOUPCAM_OPTION_TECTARGET_RANGE):
+            return E_NOTIMPL             # ni TEC ni sonde (G3M662M réelle)
+        p._obj.value = 0
         return 0
 
     def Toupcam_StartPullModeWithCallback(self, h, cb, ctx):
@@ -170,6 +223,55 @@ verifie("read() → None tant qu'aucune nouvelle frame", cam.read() is None)
 faux._callback(mtt.TOUPCAM_EVENT_IMAGE, None)
 verifie("read() → nouvelle frame si nouvel événement",
         cam.read() is not None)
+# --- 3b) capacités et réglages de la sonde (jalon 50) --------------------------
+# Constat réel d'Alain (21/09/2026) : les curseurs de l'appli gardaient leurs
+# bornes EN DUR parce que TouptekCamera n'implémentait pas detecter_capacites.
+cap = cam.detecter_capacites()
+verifie("capacites : marque/modèle/mono/bits/pixel lus sur la caméra",
+        cap.marque == "Touptek" and cap.modele == "SkyEye26AM"
+        and cap.couleur is False and cap.bits == 16
+        and abs(cap.pixel_um - 2.9) < 1e-6)
+verifie("capacites : plage d'expo RÉELLE (100 µs → 1e9 µs, 1000 s)",
+        cap.expo_us == (100, 1_000_000_000))
+verifie("capacites : plage de gain RÉELLE en % (100 % → 15000 % = 1× → 150×)",
+        cap.gain == (100, 15000))
+verifie("capacites : noir = plage MESURÉE 0 → 31 (jalon 51 : la table "
+        "« 7936 pour 16 bits » est DÉMENTIE par la caméra)",
+        cap.offset == (0, 31) and cap.extras["21"]["val"] == 1
+        and cap.extras["21"]["nom"] == "BlackLevel")
+verifie("capacites : valeur COURANTE du noir lue (l'appli l'adopte, jalon 51)",
+        cap.actuels.get("offset") == 1.0)
+verifie("capacites : plage('offset') résolue par la marque Touptek",
+        cap.plage("offset") == (0.0, 31.0, 1.0))
+verifie("capacites : verdict lisible (expo/gain/offset)",
+        "EXPOSITION : 100 µs" in cap.vers_texte()
+        and "100 → 15000" in cap.vers_texte()
+        and "OFFSET : 0 → 31" in cap.vers_texte())
+# profondeur HORS table → aucune plage annoncée (jamais de valeur inventée)
+_depth = faux.Toupcam_get_MaxBitDepth
+faux.Toupcam_get_MaxBitDepth = lambda h: 13
+cam._noir_max = None
+cap13 = cam.detecter_capacites()
+verifie("capacites : profondeur 13 bits (hors table) → pas de plage de noir",
+        cap13.offset is None and cap13.plage("offset") is None
+        and cap13.gain == (100, 15000))
+faux.Toupcam_get_MaxBitDepth = _depth
+# réglages : gain en % (unité SDK) + auto-expo COUPÉE (elle écrase l'expo)
+cam.apply_settings(350.0, 500.0)
+verifie("apply_settings : expo 350 ms → 350000 µs",
+        ("ExpoTime", 350000) in faux.appels)
+verifie("apply_settings : gain passé en % tel quel (500 % = 5×)",
+        ("ExpoAGain", 500) in faux.appels)
+verifie("apply_settings : auto-exposition coupée (AE off)",
+        ("AutoExpoEnable", 0) in faux.appels)
+# offset = niveau de NOIR (option BLACKLEVEL), borné à la plage documentée
+cam._noir_max = mtt.TOUPCAM_BLACKLEVEL_MAX_PAR_BITS[16]
+cam.definir_offset(300)
+verifie("definir_offset : put_Option(BLACKLEVEL 0x15, 300)",
+        ("put_Option", mtt.TOUPCAM_OPTION_BLACKLEVEL, 300) in faux.appels)
+cam.definir_offset(99999)
+verifie("definir_offset : valeur hors plage bornée au max documenté (7936)",
+        ("put_Option", mtt.TOUPCAM_OPTION_BLACKLEVEL, 7936) in faux.appels)
 cam.close()
 verifie("close() : Stop + Close appelés",
         "Stop" in faux.appels and "Close" in faux.appels)
@@ -186,6 +288,7 @@ class _FauxDLLBanc:
         self.appels = []
         self.temp = -52            # 0,1 °C
         self.consigne = -100       # 0,1 °C
+        self.noir = 25             # niveau de noir courant (option 0x15)
 
     # exposition / gain
     def Toupcam_get_ExpTimeRange(self, h, pmin, pmax, pdef):
@@ -221,7 +324,7 @@ class _FauxDLLBanc:
         return 0
     def Toupcam_get_Option(self, h, opt, p):
         if opt == mtt.TOUPCAM_OPTION_BLACKLEVEL:
-            p._obj.value = 25
+            p._obj.value = self.noir      # relu après chaque pose (jalon 50)
         elif opt == mtt.TOUPCAM_OPTION_TEC:
             p._obj.value = 0
         elif opt == mtt.TOUPCAM_OPTION_TECTARGET:
@@ -233,6 +336,8 @@ class _FauxDLLBanc:
         return 0
     def Toupcam_put_Option(self, h, opt, val):
         self.appels.append(("put_Option", opt, val))
+        if opt == mtt.TOUPCAM_OPTION_BLACKLEVEL:
+            self.noir = val               # le faux SDK GARDE ce qu'on lui pose
         return 0
     def Toupcam_put_Temperature(self, h, t):
         self.appels.append(("put_Temperature", t))
@@ -363,6 +468,39 @@ verifie("verdict : SN lu", "TP110826145730ABCD1234FEDC56787" in verdict)
 verifie("verdict : fw/hw/fpga lus",
         "3.2.1.20260922" in verdict and "3.12" in verdict
         and "1.13" in verdict)
+
+# --- 4b) plage du NOIR : table DOCUMENTÉE puis ÉPROUVÉE (jalon 50) -------------
+verifie("banc : profondeur 12 bits → table toupcam.h 31 × 16 = 496",
+        mtt.TOUPCAM_BLACKLEVEL_MAX_PAR_BITS[12] == 496
+        and mtt.TOUPCAM_BLACKLEVEL_MAX_PAR_BITS[16] == 7936
+        and mtt.TOUPCAM_BLACKLEVEL_MIN == 0)
+verifie("banc : bornes du noir ÉPROUVÉES (posé 0 puis 496 → relu pareil)",
+        b.caps.get("noir_plage") == (0, 496))
+verifie("banc : valeur d'origine du noir RESTAURÉE après l'essai",
+        faux_b.noir == 25 and b.caps.get("noir") == 25)
+verifie("verdict : plage du noir CONSTATÉE affichée",
+        "NOIR      : réglable, actuel 25 · plage CONSTATÉE 0 → 496"
+        in verdict)
+
+# la SONDE de l'appli sur le même faux SDK (12 bits) → bornes des curseurs
+cam_b = mtt.TouptekCamera(0)
+cam_b.name = "SkyEye26AM"
+cam_b._handle = 0x4242
+cam_b._w, cam_b._h = 3856, 2180
+mtt._DLL = faux_b
+cap_b = cam_b.detecter_capacites()
+verifie("capacites (12 bits) : expo 24 µs → 2e9 µs et gain % 100 → 2600",
+        cap_b.expo_us == (24, 2_000_000_000) and cap_b.gain == (100, 2600))
+verifie("capacites (12 bits) : couleur (get_MonoMode = S_FALSE) et 12 bits",
+        cap_b.couleur is True and cap_b.bits == 12)
+verifie("capacites (12 bits) : noir 0 → 496, valeur courante 25",
+        cap_b.offset == (0, 496) and cap_b.extras["21"]["val"] == 25
+        and cap_b.plage("offset") == (0.0, 496.0, 1.0))
+cam_b.definir_offset(50)
+verifie("definir_offset : posé tel quel dans la plage détectée",
+        ("put_Option", mtt.TOUPCAM_OPTION_BLACKLEVEL, 50) in faux_b.appels
+        and cam_b._noir_max == 496)
+mtt._DLL = None
 
 # --- 5) poses : expo, gain, TEC (0,1 °C), ROI (pair, min 8×8) -------------------
 b._pose_expo(50_000)
