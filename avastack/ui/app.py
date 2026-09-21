@@ -242,6 +242,12 @@ class App:
         # lecture de variables Tk hors du thread principal — cf. pièges).
         self._compo_gains = None         # dict R/G/B → facteur
         self._compo_mode_l = "synthetise"
+        # Jalon 55 : un réglage compo/fit changé SANS nouvelle brute (mode
+        # dossier consommé) doit quand même rafraîchir le rendu — le worker
+        # recalcule et repousse UNE fois (sinon affichage figé jusqu'à la
+        # prochaine frame, constat Alain : « bouger un gain ne change rien »).
+        self._rafraichir_rendu = False
+        self._dernier_st = None          # dernier dict d'état poussé (réutilisé)
         # Jalon 54 : instantanés du recalage « Linear Fit » pour le worker —
         # le worker n'a JAMAIS le droit de lire les variables Tk (piège
         # « main thread is not in main loop », cf. régression constatée).
@@ -1801,6 +1807,11 @@ class App:
             self.stacker.linear_fit = bool(self.var_fit.get())
             self.stacker.linear_fit_mode = self._code_fit_methode()
         self._maj_libelle_fit()
+        # Jalon 55 : le rendu suit sans attendre la prochaine brute (mode
+        # dossier consommé) ; la résolution VeraLux est forcée aussi.
+        self._rafraichir_rendu = True
+        if getattr(self, "disp", None) is not None:
+            self.disp.notify_new_stack()
 
     def _maj_libelle_fit(self):
         """Libellé des gains/offsets MESURÉS par le recalage (effectif sur
@@ -4317,6 +4328,27 @@ class App:
                 except Exception as e:
                     self.saved_path = f"ERREUR: {e}"
 
+            # Jalon 55 : réglages saisis en cours de session (gains compo,
+            # canal L, Linear Fit) — resynchronisés sur le stacker À CHAQUE
+            # tour. AVANT : posés à la création SEULEMENT (jalon 19) — un
+            # gain changé en cours de session n'avait AUCUN effet sur la
+            # vue « empilement » ni sur les sauvegardes (constat Alain :
+            # « bouger un gain ne change rien »).
+            if self.stacker is not None:
+                if self._mode_compo:
+                    self.stacker.gains = dict(self._compo_gains or {})
+                    self.stacker.mode_l = self._compo_mode_l
+                self.stacker.linear_fit = bool(self._fit_actif)
+                self.stacker.linear_fit_mode = self._fit_mode
+                # Aucune brute à lire (mode dossier consommé, pause…) : si
+                # un réglage vient de changer, le rendu est recalculé et
+                # repoussé UNE fois — sinon l'affichage reste figé sur les
+                # réglages du démarrage jusqu'à la prochaine brute.
+                if self._rafraichir_rendu:
+                    self._rafraichir_rendu = False
+                    if self.stacker.n > 0 and self._dernier_st is not None:
+                        self._pousser_rendu()
+
             # Jalon 42 : cadence d'empilement (sources dossier, cf.
             # _autoriser_lecture). Le scan SANS lecture ne tourne que si une
             # cadence est posée, au plus toutes les 0,4 s — il permet de
@@ -4629,7 +4661,8 @@ class App:
             if self.stacker is not None and self.stacker.cadre is not None:
                 y0, x0, y1, x1 = self.stacker.cadre
                 st["crop_w"], st["crop_h"] = x1 - x0, y1 - y0
-            try:
+            self._dernier_st = st           # jalon 55 : réutilisé par
+            try:                            # _pousser_rendu (sans brute)
                 self.q.put_nowait((show, hist, st))
             except queue.Full:
                 pass
@@ -4641,6 +4674,38 @@ class App:
                 self._armer_cadence()
                 self._a_lu_une_frame = False
             time.sleep(max(0.0, 1.0 / 20.0 - (time.perf_counter() - t0)))
+
+    def _pousser_rendu(self):
+        """Jalon 55 : recalcule le composite/empilement courant (un réglage
+        a changé SANS nouvelle brute — mode dossier consommé) et le pousse à
+        l'UI : même chaîne que la fin de boucle (recadrage/fit inclus dans
+        mean(), aperçu réduit, couches vers le solveur), SANS l'alignement
+        ni la mesure de seeing (rien n'a changé pour eux). Le dict d'état
+        du dernier rendu est réutilisé : les compteurs n'ont pas bougé."""
+        canaux = None
+        if self._mode_compo and hasattr(self.stacker, "mean_avec_canaux"):
+            stack, canaux = self.stacker.mean_avec_canaux()
+        else:
+            stack = self.stacker.mean()
+        if stack is None:
+            return
+        h, w = stack.shape[:2]
+        scale = min(1.0, 1600.0 / float(max(h, w)))
+        show = (cv2.resize(stack, None, fx=scale, fy=scale,
+                           interpolation=cv2.INTER_AREA) if scale < 1.0
+                else stack)
+        if self._mode_compo and canaux:
+            self.disp.vl_compo = (dict(canaux), self.stacker.composition,
+                                  self._compo_gains, self._compo_mode_l,
+                                  (bool(self.stacker.linear_fit),
+                                   self.stacker.linear_fit_mode))
+        else:
+            self.disp.vl_compo = None
+        try:
+            self.q.put_nowait((show, self._compute_hist(show),
+                               self._dernier_st))
+        except queue.Full:
+            pass
 
     @staticmethod
     def _compute_hist(img):
@@ -4757,6 +4822,13 @@ class App:
         if gains != self._compo_gains or mode_l != self._compo_mode_l:
             self._compo_gains = gains
             self._compo_mode_l = mode_l
+            # Jalon 55 : le rendu suit SANS attendre la prochaine brute
+            # (le worker resynchronise et recalcule), et la résolution
+            # VeraLux est forcée — les gains ne font pas partie de sa clé,
+            # elle ne se rendrait jamais compte seule.
+            self._rafraichir_rendu = True
+            if getattr(self, "disp", None) is not None:
+                self.disp.notify_new_stack()
         # Jalon 54 : instantané du recalage Linear Fit pour le worker
         # (jamais de lecture de variable Tk hors du thread principal) +
         # libellé des gains/offsets MESURÉS (écrits par le worker au dernier

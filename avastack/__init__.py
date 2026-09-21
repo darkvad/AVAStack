@@ -14,9 +14,31 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.23.2"
+AVASTACK_VERSION = "2.23.3"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.23.3 : GAINS COMPO SUIVIS EN TEMPS RÉEL — MÊME SANS NOUVELLE BRUTE
+#          (jalon 55, constat Alain du 21/09/2026 : « bouger un gain de
+#          composition ne change rien, même en forçant VeraLux ») :
+#          - BUG jalon 19 (oubli) : les gains R/G/B et la radio « Canal L »
+#            n'étaient posés sur le stacker qu'à la CRÉATION de la session —
+#            les saisies suivantes n'atteignaient que l'instantané
+#            _compo_gains (vue « traitée » du solveur) et JAMAIS
+#            stacker.gains → vue « empilement » et sauvegardes figées sur
+#            les gains du démarrage, toute la session ;
+#          - mode dossier SANS brute à lire : le worker faisait `continue`
+#            AVANT tout le reste — rendu jamais recalculé ni repoussé tant
+#            qu'aucune frame n'arrive ; désormais les réglages sont
+#            resynchronisés à CHAQUE tour de boucle, et un changement de
+#            réglage déclenche un recalcul + push du rendu (réutilise le
+#            dernier dict d'état — les compteurs n'ont pas bougé) ;
+#          - la résolution VeraLux est forcée quand gains/canal L/Linear
+#            Fit changent (notify_new_stack) : ces réglages ne font pas
+#            partie de sa clé, le solveur ne se serait jamais rendu compte
+#            seul (c'est ce qui biaisait l'A/B Linear Fit d'Alain sans
+#            nouvelle brute) ;
+#          - Tests : bancs jalon 19 (UI + worker), 20 (re-stack), 54 au
+#            vert.
 # v2.23.2 : LINEAR FIT — RÉFÉRENCE D'ALIGNEMENT À NOUVEAU BRUTE (jalon 54d,
 #          reprise à froid de la régression, 21/09/2026) :
 #          - CONSTAT : le diagnostic optique d'Alain (_diag_canaux_compo,

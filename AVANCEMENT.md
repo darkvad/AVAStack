@@ -11,26 +11,39 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.23.2** (`avastack/__init__.py`),
-  branche `master` — **jalon 54d (fit n'atteint PLUS la référence
-  d'alignement compo) IMPLÉMENTÉ, banc AU VERT (39 vérifications) — À
-  RE-TESTER PAR ALAIN (A/B : case DÉCOCHÉE d'abord)**. Découverte clé :
-  le config.json d'Alain portait `linear_fit: true` (persisté des essais
-  v2.23.0) → toutes les sessions de test depuis la v2.23.0 ont tourné AVEC
-  le fit actif ; remis à false côté config (21/09/2026). Jalon 53 (v2.22.0)
-  validé, commité (225f026), poussé.
-- **Jalon 54d (v2.23.2, 21/09/2026) — résumé du dernier jalon** :
-  - diag d'Alain (_diag_canaux_compo, M31 RGB) : couches PARFAITEMENT
-    enregistrées (Δ < 0,5 px, MAD 0,2 px) → le « comme décalé » n'est PAS
-    géométrique (le fit est photométrique pur) ;
-  - BUG CORRIGÉ : en mode compo, le fit s'appliquait AUSSI à
-    mean(recadre=False) → la référence d'alignement n'était plus brute
-    (contrat jalon 13 violé) ; correctif : `and recadre` dans
-    mean_avec_canaux — le fit ne touche que visu + sauvegardes ;
-  - garde-fou permanent ajouté au banc (39e vérification) ;
-  - PISTE RENDU restante (si case cochée encore dégradée) : le plancher
-    np.clip(0) sur un offset NÉGATIF (fond B > G) écrase le plancher de
-    bruit → fond sale à l'étirement fort ; à trancher après l'A/B.
+- **Version stable de référence : AVAStack v2.23.3** (`avastack/__init__.py`),
+  branche `master` — **jalon 55 (gains compo + Linear Fit suivis en temps
+  réel, MÊME SANS nouvelle brute) IMPLÉMENTÉ, bancs AU VERT — À TESTER PAR
+  ALAIN (M31 RGB : bouger un gain doit changer l'image tout de suite)**.
+  Jalon 53 (v2.22.0) validé, commité (225f026), poussé.
+- **Jalon 55 (v2.23.3, 21/09/2026) — résumé du dernier jalon** :
+  - constat d'Alain : bouger un gain de composition ne changeait RIEN, même
+    en forçant VeraLux (target_bg), en mode dossier avec toutes les brutes
+    consommées ;
+  - BUG jalon 19 (oubli) : gains R/G/B + canal L posés sur le stacker à la
+    CRÉATION de la session SEULEMENT — les saisies suivantes n'atteignaient
+    jamais stacker.gains (vue « empilement » + sauvegardes figées) ;
+  - 2e cause : en mode dossier sans brute à lire, le worker faisait
+    `continue` avant TOUT — rendu jamais recalculé ni repoussé ;
+  - correctif : réglages resynchronisés à CHAQUE tour de boucle worker ;
+    changement de réglage → recalcul + push du rendu (_pousser_rendu,
+    dernier dict d'état réutilisé) ; résolution VeraLux forcée
+    (notify_new_stack) quand gains/canal L/Linear Fit changent ;
+  - conséquence : l'A/B Linear Fit d'Alain sans nouvelle brute était biaisé
+    par ce double blocage — à REFAIRE proprement maintenant ;
+  - tests : bancs 19 UI + worker, 16, 20, 54 (39 vérifs), VeraLux 2/3,
+    jalon 5 — tous au vert.
+- **Jalon 54d (v2.23.2) — condensé** : diag d'Alain (_diag_canaux_compo,
+  M31 RGB) → couches parfaitement enregistrées (Δ < 0,5 px) — pas de
+  désalignement géométrique ; BUG corrigé : le fit s'appliquait AUSSI à
+  mean(recadre=False) compo (référence d'alignement non brute, contrat
+  jalon 13) → `and recadre` dans mean_avec_canaux + garde-fou au banc.
+  Découverte : config.json d'Alain portait `linear_fit: true` (persisté des
+  essais v2.23.0) → remis à false. Verdict d'Alain après test : session
+  M31 SANS problème d'image. Piste rendu restante : voile bleu = SNR du
+  canal B (IMX585 très sensible au rouge : noyau/poussières chauds, bruit
+  bleu domine les zones faibles) — remèdes : gains compo (R↓ ou B↑),
+  débruitage par rôle (à venir ?), plus de poses en bleu.
 - **Jalons 54/54b/54c (v2.23.0/v2.23.1, 21/09/2026) — condensé** (détail
   dans le changelog du source) : Linear Fit R/B→vert (offset = medG − medX,
   gain optionnel borné, stats médiane+MAD quart central) appliqué DANS
@@ -168,16 +181,15 @@ Fit) » doit rester DÉCOCHÉE en attendant le correctif.
   inter-couches, validé sur synthétique). INFO FINALE D'ALAIN : mêmes
   brutes que depuis le début → RÉGRESSION du jalon 54, pas la optique.
 
-**Prochaine étape (reprise à froid — mise à jour jalon 54d)** : le fit
-contaminait la référence d'alignement compo (CORRIGÉ, v2.23.2) et la case
-était restée COCHÉE dans le config.json d'Alain depuis la v2.23.0 (remise
-à false). **Test d'Alain demandé** : session RGB M31 avec la case
-DÉCOCHÉE (état config actuel) → si image CORRECTE, l'état « avant le
-jalon 54 » est restauré ; recocher ensuite la case pour juger l'offset
-seul (s'il dégrade encore : piste = plancher np.clip(0) sur offset
-négatif, fond B > G). Repli d'ensemble si nécessaire : revenir avant le
-jalon 54 (v2.22.0, commit 225f026). Ne PAS relancer le diagnostic
-optique.
+**Prochaine étape (jalon 55, v2.23.3)** : Alain re-teste sur la session
+M31 RGB (mode dossier, brutes consommées) : bouger un gain R/G/B doit
+maintenant changer l'image IMMÉDIATEMENT (resync worker + recalcul du
+rendu + forçage VeraLux), de même que la case Linear Fit. L'A/B du fit est
+à refaire proprement — l'ancien était biaisé par le double blocage (gains
+jamais propagés + rendu jamais recalculé sans nouvelle brute). Si le voile
+bleu persiste après équilibrage des gains : piste = débruitage par rôle
+(force B plus forte) et/ou MAD par canal dans _diag_canaux_compo. Repli
+d'ensemble si nécessaire : revenir avant le jalon 54 (v2.22.0, 225f026).
 
 Sessions précédentes : v2.21.10 (jalons 50-52, banc Touptek + ergonomie
 caméra, 7d3034e, validés par Alain) ; v2.21.8 (jalon 49, banc Touptek +
