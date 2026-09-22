@@ -11,10 +11,11 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.26.0** (`avastack/__init__.py`),
-  branche `master` — **jalon 56 ÉTAPE 3 (propagation WCS par composition) :
-  banc au vert le 22/09/2026**. Jalon 55 (v2.23.3) validé par Alain en
-  réel (M31 RGB), commité aca5ca5.
+- **Version stable de référence : AVAStack v2.27.0** (`avastack/__init__.py`),
+  branche `master` — **jalon 56 étape 3 (propagation WCS) : banc au vert le
+  22/09/2026 ; étape 2 (solveur interne) : RÉSOLU EN RÉEL le 22/09/2026**
+  (repli RANSAC de paires, cf. bloc « RÉSOLU » ci-dessous). Jalon 55
+  (v2.23.3) validé par Alain en réel (M31 RGB), commité aca5ca5.
 - **Jalon 56, étape 3 (v2.26.0, 22/09/2026) — résumé du dernier jalon** :
   - livré : `avastack/catalogues/propagation.py` (numpy pur, SANS
     dépendance vers processing — le cycle d'import resterait interdit) :
@@ -40,8 +41,11 @@ dans le changelog du source et l'historique git.)
     M(p)), `vers_pixels` pose le ciel en M⁻¹(p_ref) — confondu une fois
     (46 px), tranché par la vérité analytique ;
   - bancs étapes 1 et 2 relancés : toujours au vert.
-- **Tâche en cours** : étape 4 — photométrie + facteurs par bande
-  (appariement catalogue Gaia ↔ étoiles de l'accumulation via le WCS),
+- **Tâche en cours** : **branchement du solveur au worker** (v2.27.0 : le
+  solve réel est désormais validé — cf. bloc « RÉSOLU » ; brancher = solve
+  UNE fois sur l'accumulation avec les indices de la cible puis propagation
+  WCS à chaque re-stack), suivie de l'étape 4 — photométrie + facteurs par
+  bande (appariement catalogue Gaia ↔ étoiles de l'accumulation via le WCS),
   puis étape 5 (application aux gains du stacker), étape 6 (validation
   Siril + test réel multibande).
 - **Prochaine étape** : branchement au worker (solve sur l'accumulation
@@ -107,16 +111,32 @@ propagation est prête, le BRANCHEMENT + la PHOTOMÉTRIE par bande (étape 4) su
   (jusqu'à ~14 sur M31) sont normales (normalisation par canal) — ce
   n'était PAS la cause. Bancs jalon 14 / save linéaire / worker compo
   repassés au vert.
-- **TEST RÉEL PRÊT (à la charge d'Alain)** : `_diag_solve_reel.py` —
-  résout l'astrométrie d'une VRAIE image (empilement M31 du jalon 55…) avec
-  le solveur INTERNE, confronte à ASTAP, verdict ″. Ex. :
-  `python _diag_solve_reel.py <stack.fit> --ra 0h42m44s --dec +41d16m09s --focal 1280 --pixel 2.9`
-  (ou `--champ 0.50` ; sans --ra/--dec, ASTAP d'abord et son centre sert
-  d'indice). Validé sur synthétique (centre exact, garde-fous d'échelle OK).
-  ⚠ EN RÉEL (m31_astro.fits, champ 2,6° @ 243 mm) : le solve INTERNE échoue
-  (« pas assez de correspondances mutuelles (4) ») ET ASTAP échoue aussi —
-  appariement par triangles à creuser sur les champs larges (l'affinité
-  trouvée est dégénérée, score 7/120). À INVESTIGUER (prochaine action).
+- **RÉSOLU (v2.27.0, 22/09/2026) — le solve INTERNE résout maintenant les
+  vraies images d'Alain** : `_diag_solve_reel.py` avait montré l'échec en
+  réel (empilement composite 2,6° @ 243 mm ET brute G N.I.N.A. : « pas assez
+  de correspondances mutuelles (4) »). Cause : sur un champ large/riche, le
+  top-12 d'image ≡ top-20 de catalogue PAR INVARIANTS ne tient plus (listes
+  qui ne coïncident plus : saturation, limmag, bruit) → l'affinité exacte
+  3 points est dégénérée. Correctif : **repli RANSAC de paires**
+  (`_ransac_paires`, esprit astrometry.net) — vote (échelle, angle) sur
+  toutes les paires top-60 image × top-120 catalogue en 4 parités, similitude
+  exacte 2 points évaluée par appariements mutuels, puis stabilisation
+  Umeyama à rayon croissant ; les DEUX chemins passent par le même
+  `_finaliser` (Gauss-Newton + 3σ + garde-fous) et se remplacent quand l'un
+  est REJETÉ ; `info["methode"]` trace le chemin retenu.
+  - banc RÉEL `_test_solveur_reel_m31.py` AU VERT : composite 2,6° → 86
+    étoiles, rms 0,59 px, 2,4650″/px (centre à 20″ des indices) ; brute G →
+    70 étoiles, rms 0,44 px, 2,4652″/px. Même optique → échelles concordant
+    au millième (contrôle croisé gratuit) ;
+  - **validation croisée ASTAP (brute G)** : écart max 2,78″ sur bords +
+    centre, Δ échelle 0,0013″/px, Δ orientation locale 0,004° ;
+  - pièges : le vote doit comparer des PIXELS à des PIXELS (catalogue passé
+    dans la grille indicée) ; remettre `best_M = None` après échec des
+    mutuelles (sinon `_finaliser(None, None, …)` fabrique un axe parasite) ;
+    l'angle du CD brut n'est PAS comparable entre deux CRVAL différents
+    (0,57° d'écart apparent pour des positions concordant à 2,8″) ;
+  - bancs jalon 56 étapes 1/2/3 relancés : TOUJOURS AU VERT (le chemin
+    triangles reste le principal, le repli est un filet).
 - Prochaine étape (à froid) : **branchement au worker** (solve une fois
   sur l'accumulation avec les indices de la cible ; propagation à chaque
   re-stack : UN seul alignement nouvelle référence ↔ ancien empilement),

@@ -66,6 +66,25 @@ TRI_INLIERS_MIN = 6     # correspondances mutuelles requises
 TRI_RAYON = 3.0         # rayon de score d'une étoile après affinité (px)
 MUTUEL_RAYON = 2.0      # rayon des correspondances mutuelles finales (px)
 
+# --- RANSAC de paires (repli des triangles — retour réel d'Alain, 22/09) ----
+# Constat : sur un champ LARGE (2,6° @ 243 mm, empilement composite M31),
+# l'affinité exacte 3 points des triangles se verrouille sur une solution
+# dégénérée (7 inliers au lieu de 53) — le champ est trop riche/trop étendu
+# pour que le top-12 d'image ≡ top-20 de catalogue par invariants. Le RANSAC
+# de PAIRES (esprit astrometry.net) est insensible à ce piège : vote
+# (échelle, angle) sur toutes les paires, puis similitude EXACTE issue de
+# 2 correspondances, évaluée par appariements mutuels.
+RANSAC_N_IMG = 60        # étoiles les plus brillantes côté image (vote)
+RANSAC_N_CAT = 120       # côté catalogue (vote)
+RANSAC_ECH_REL = 0.35    # fenêtre d'échelle ±35 % autour de l'indice
+RANSAC_PAS_ECH = 0.0025  # pas du vote (échelle relative)
+RANSAC_PAS_ANG = 0.004   # pas du vote (rad)
+RANSAC_TOL_E = 0.004     # demi-fenêtre de collecte autour du pic
+RANSAC_TOL_A = 0.008
+RANSAC_PAIRES_MIN = 30   # longueur minimale d'un vecteur votant (px)
+RANSAC_RAYONS = (3.0, 5.0, 8.0)   # stabilisation à rayon croissant
+RANSAC_INLIERS_MIN = 6
+
 N_CAT_MAX = 400         # étoiles de catalogue gardées (les plus brillantes)
 MARGE_INDICES = 0.5     # marge fixe du rayon d'extraction (deg) — couvre
                         # l'erreur d'indication de la monture/cible
@@ -308,7 +327,151 @@ def _appariements_mutuels(a, b, rayon):
     return ia, ja[ia], da[ia]
 
 
-# ======================================================= ajustement TAN
+# ======================================== RANSAC de paires (repli triangles)
+def _grille_indice(cat_xy, ech_deg, forme, miroir):
+    """Projeté du catalogue sur la grille indicée (px, centre de l'image,
+    nord en haut) — x retourné si `miroir` (la parité est absorbée par la
+    rotation/translation de la similitude, seul le MIROIR doit être testé)."""
+    h_img, w_img = int(forme[0]), int(forme[1])
+    g = np.empty_like(cat_xy)
+    g[:, 0] = (-1.0 if miroir else 1.0) * cat_xy[:, 0] / ech_deg \
+        + (w_img - 1) / 2.0
+    g[:, 1] = -cat_xy[:, 1] / ech_deg + (h_img - 1) / 2.0
+    return g
+
+
+def _ransac_paires(pos, cat_xy, ech_deg, forme):
+    """Appariement image ↔ catalogue par RANSAC de paires (repli des
+    triangles, cf. constat en tête). `cat_xy` : (ξ, η) en degrés ; `ech_deg` :
+    échelle indicée (deg/px). → (ia, ib, A, t, miroir, "") en succès — ia/ib :
+    correspondances mutuelles finales (indices dans pos / cat_xy), A/t :
+    similitude grille indicée → image (linéaire 2×2 + translation, à l'état
+    du DERNIER raffinement) ; (None, None, None, None, None, message) sinon.
+    Convention du projet : jamais d'exception, jamais de panne silencieuse."""
+    h_img, w_img = int(forme[0]), int(forme[1])
+    n = min(RANSAC_N_IMG, len(pos))
+    m = min(RANSAC_N_CAT, len(cat_xy))
+    if n < 3 or m < 3:
+        return None, None, None, None, None, "trop peu d'étoiles pour le vote"
+
+    # --- 1) vote (échelle, angle) sur toutes les paires des top-N ------------
+    # PIÈGE (corrigé) : le vote doit comparer des PIXELS à des PIXELS. Le
+    # catalogue est donc passé dans la GRILLE INDICÉE (px) avant de mesurer
+    # longueurs et angles — sinon li/lc vaut ≈ 1/ech_deg (~1400) et aucun
+    # bin de la fenêtre ±35 % ne peut être atteint.
+    P = pos[:n]
+    C = cat_xy[:m]
+    G_f = _grille_indice(C, ech_deg, forme, False)
+    G_t = _grille_indice(C, ech_deg, forme, True)
+    ii_p = np.array([(a, b) for a in range(n) for b in range(a + 1, n)])
+    kk_p = np.array([(a, b) for a in range(m) for b in range(a + 1, m)])
+    vi = P[ii_p[:, 1]] - P[ii_p[:, 0]]
+    li = np.hypot(vi[:, 0], vi[:, 1])
+    ai = np.arctan2(vi[:, 1], vi[:, 0])
+    vf = G_f[kk_p[:, 1]] - G_f[kk_p[:, 0]]
+    vt = G_t[kk_p[:, 1]] - G_t[kk_p[:, 0]]
+    lc = np.hypot(vf[:, 0], vf[:, 1])       # ‖·‖ identique avec/sans miroir
+    ac_f = np.arctan2(vf[:, 1], vf[:, 0])
+    ac_t = np.arctan2(vt[:, 1], vt[:, 0])
+    garde_i = li >= RANSAC_PAIRES_MIN
+    garde_c = lc >= RANSAC_PAIRES_MIN
+    ii_p, li, ai = ii_p[garde_i], li[garde_i], ai[garde_i]
+    kk_p, lc = kk_p[garde_c], lc[garde_c]
+    ac_f, ac_t = ac_f[garde_c], ac_t[garde_c]
+    if not len(ii_p) or not len(kk_p):
+        return None, None, None, None, None, "aucune paire votante assez longue"
+    e_lo = 1.0 - RANSAC_ECH_REL
+    e_hi = 1.0 + RANSAC_ECH_REL
+    n_e = int(round((e_hi - e_lo) / RANSAC_PAS_ECH))
+    n_a = int(round(2.0 * math.pi / RANSAC_PAS_ANG))
+    edges_e = np.linspace(e_lo, e_hi, n_e + 1)
+    edges_a = np.linspace(-math.pi, math.pi, n_a + 1)
+    vote = np.zeros((n_e, n_a), np.int32)
+    cas = ((ac_f, 0, False), (ac_f + math.pi, 1, False),
+           (ac_t, 0, True), (ac_t + math.pi, 1, True))
+    CH = 64
+    for ang_cat, _anc, _mir in cas:
+        for a_ in range(0, len(ii_p), CH):
+            b_ = min(a_ + CH, len(ii_p))
+            dang = (ai[a_:b_, None] - ang_cat[None, :] + math.pi) \
+                % (2.0 * math.pi) - math.pi
+            ech = li[a_:b_, None] / lc[None, :]
+            ok = (ech >= e_lo) & (ech <= e_hi)
+            H, _, _ = np.histogram2d(ech[ok], dang[ok],
+                                     bins=(edges_e, edges_a))
+            vote += H.astype(np.int32)
+    pic = np.unravel_index(vote.argmax(), vote.shape)
+    ech_pic = 0.5 * (edges_e[pic[0]] + edges_e[pic[0] + 1])
+    ang_pic = 0.5 * (edges_a[pic[1]] + edges_a[pic[1] + 1])
+    if int(vote[pic]) < RANSAC_INLIERS_MIN:
+        return None, None, None, None, None, (
+            f"vote (échelle, angle) trop faible ({int(vote[pic])} paires)")
+
+    # --- 2) candidats du bin → similitude EXACTE 2 points --------------------
+    meilleur = None
+    n_stop = min(len(pos), len(cat_xy))
+    for ang_cat, anc, mir in cas:
+        G = _grille_indice(cat_xy, ech_deg, forme, mir)
+        for a_ in range(0, len(ii_p), CH):
+            b_ = min(a_ + CH, len(ii_p))
+            dang = (ai[a_:b_, None] - ang_cat[None, :] + math.pi) \
+                % (2.0 * math.pi) - math.pi
+            ech = li[a_:b_, None] / lc[None, :]
+            ok = (np.abs(ech - ech_pic) < RANSAC_TOL_E) & \
+                 (np.abs(dang - ang_pic) < RANSAC_TOL_A)
+            rws, cls = np.nonzero(ok)   # lignes = paires image, col = catalogue
+            if not len(rws):
+                continue
+            for r_, c_ in zip(rws, cls):
+                i1, i2 = ii_p[a_ + r_]
+                k1, k2 = kk_p[c_]
+                ka_, kb_ = (k1, k2) if anc == 0 else (k2, k1)
+                src = np.array([G[ka_], G[kb_]])
+                dst = np.array([P[i1], P[i2]])
+                vs, vd = src[1] - src[0], dst[1] - dst[0]
+                ls, ld = math.hypot(*vs), math.hypot(*vd)
+                if ls < RANSAC_PAIRES_MIN or ld < RANSAC_PAIRES_MIN:
+                    continue
+                cth = (vs @ vd) / (ls * ld)
+                sth = (vs[0] * vd[1] - vs[1] * vd[0]) / (ls * ld)
+                A = (ld / ls) * np.array([[cth, -sth], [sth, cth]])
+                tt = dst[0] - A @ src[0]
+                ia, ib = _appariements_mutuels(pos, G @ A.T + tt,
+                                               MUTUEL_RAYON)[:2]
+                if meilleur is None or len(ia) > len(meilleur[0]):
+                    meilleur = (ia.copy(), ib.copy(), A, tt, mir)
+            if meilleur is not None and len(meilleur[0]) >= n_stop:
+                break
+        if meilleur is not None and len(meilleur[0]) >= n_stop:
+            break
+    if meilleur is None or len(meilleur[0]) < RANSAC_INLIERS_MIN:
+        n_best = 0 if meilleur is None else len(meilleur[0])
+        return None, None, None, None, None, (
+            f"aucune similitude convaincante autour du pic "
+            f"(meilleur : {n_best} inliers, échelle "
+            f"{ech_pic * ech_deg * 3600.0:.3f}\"/px)")
+
+    # --- 3) stabilisation : similitude LSQ + rayon croissant -----------------
+    ia, ib, A, t, mir = meilleur
+    G = _grille_indice(cat_xy, ech_deg, forme, mir)
+    for rayon in RANSAC_RAYONS:
+        P_q, G_q = pos[ia], G[ib]
+        Pc, Gc = P_q - P_q.mean(0), G_q - G_q.mean(0)
+        H = Gc.T @ Pc
+        U, S_, Vt = np.linalg.svd(H)
+        D_ = np.eye(2)
+        if np.linalg.det(Vt.T @ U.T) < 0:   # similitude DIRECTE imposée
+            D_[1, 1] = -1.0                 # (le miroir est déjà dans G)
+        R = Vt.T @ D_ @ U.T
+        var = float((Gc ** 2).sum())
+        if var <= 0.0:
+            break
+        ech = float((S_ * np.diag(D_)).sum()) / var   # Umeyama
+        A = ech * R
+        t = P_q.mean(0) - G_q.mean(0) @ A.T
+        ia, ib = _appariements_mutuels(pos, G @ A.T + t, rayon)[:2]
+    return ia, ib, A, t, mir, ""
+
 def _ajuster_tan(xy, ra, dec, wcs0, iterations=30):
     """Ajuste un WcsTan aux paires (pixels mesurés ↔ ciel catalogue) par
     Gauss-Newton (8 paramètres : CRVAL, CRPIX, CD ; Jacobienne numérique).
@@ -385,10 +548,12 @@ def resoudre(img, ra0, dec0, champ_deg, dossier=None, limmag=None):
     → (WcsTan, info dict, "") en succès ; (None, info, message) sinon —
     convention du projet : jamais d'exception, jamais de panne silencieuse.
     `info` : n_etoiles_img, n_etoiles_cat, n_appariements, rms_px,
-    rms_arcsec, echelle_arcsec_px, angle_deg."""
+    rms_arcsec, echelle_arcsec_px, angle_deg, methode (« triangles » ou
+    « paires-ransac » — le chemin effectivement VALIDÉ ; None si échec,
+    jamais un chemin seulement candidat)."""
     info = {"n_etoiles_img": 0, "n_etoiles_cat": 0, "n_appariements": 0,
             "rms_px": None, "rms_arcsec": None, "echelle_arcsec_px": None,
-            "angle_deg": None}
+            "angle_deg": None, "methode": None}
     try:
         h_img, w_img = _canonise_img(img).shape
     except Exception as exc:
@@ -430,88 +595,142 @@ def resoudre(img, ra0, dec0, champ_deg, dossier=None, limmag=None):
     info["n_etoiles_cat"] = int(len(xi))
     cat_xy = np.column_stack([xi, eta])
 
-    # 3) appariement global par triangles ------------------------------------
+    ech_deg = champ_deg / w_img           # échelle INDICÉE (deg/px)
+    # 3) appariement global par TRIANGLES (rapide, éprouvé) ------------------
+    # RANSAC de paires en REPLI (retour réel d'Alain, 22/09/2026 : champ
+    # large 2,6° composite — l'affinité exacte 3 points s'y verrouille sur
+    # une solution dégénérée, cf. constat en tête de module).
+    ia = ib = None
+    best_M = None
+    msg_tri = ""
     inv_img, som_img, _ = _invariants_triangles(pos)
     inv_cat, som_cat, _ = _invariants_triangles(cat_xy, TRI_N_MAX_CAT)
     if inv_img is None or inv_cat is None:
-        return None, info, "moins de 3 étoiles d'un côté de l'appariement"
-    ecart = np.abs(inv_img[:, None, :] - inv_cat[None, :, :]).max(-1)
-    paires = np.argwhere(ecart <= TRI_TOL)
-    if not len(paires):
-        return None, info, ("aucun triangle image ≈ triangle catalogue — "
-                            "indices faux ou champ hors catalogue ?")
-    if len(paires) > TRI_PAIRS_MAX:
-        ordre = np.argsort(ecart[paires[:, 0], paires[:, 1]])[:TRI_PAIRS_MAX]
-        paires = paires[ordre]
+        msg_tri = "moins de 3 étoiles d'un côté de l'appariement"
+    else:
+        ecart = np.abs(inv_img[:, None, :] - inv_cat[None, :, :]).max(-1)
+        paires = np.argwhere(ecart <= TRI_TOL)
+        if not len(paires):
+            msg_tri = ("aucun triangle image ≈ triangle catalogue — "
+                       "indices faux ou champ hors catalogue ?")
+        else:
+            if len(paires) > TRI_PAIRS_MAX:
+                ordre = np.argsort(ecart[paires[:, 0], paires[:, 1]])
+                paires = paires[ordre[:TRI_PAIRS_MAX]]
+            ones_cat = np.column_stack([cat_xy, np.ones(len(cat_xy))])
+            n_stop = min(len(pos), len(cat_xy))
+            best_M, best_n = None, 0
+            for ir, ic in paires:
+                # affinité EXACTE 3 points : plan tangent (deg) → pixels
+                A = np.column_stack([cat_xy[som_cat[ic]], np.ones(3)])
+                try:
+                    M = np.linalg.solve(A, pos[som_img[ir]])
+                except np.linalg.LinAlgError:
+                    continue
+                if not np.isfinite(M).all():
+                    continue
+                pred = ones_cat @ M
+                d = np.hypot(pred[:, None, 0] - pos[None, :, 0],
+                             pred[:, None, 1] - pos[None, :, 1])
+                n = int((d.min(1) <= TRI_RAYON).sum())
+                if n > best_n:
+                    best_n, best_M = n, M
+                    if best_n >= n_stop:
+                        break                # impossible de mieux
+            if best_M is None or best_n < TRI_INLIERS_MIN:
+                best_M = None
+                msg_tri = (f"aucune affinité convaincante "
+                           f"(meilleur score : {best_n} étoiles)")
+            else:
+                # 4) correspondances mutuelles à ±2 px ------------------------
+                pred = ones_cat @ best_M
+                ia, ib, _d = _appariements_mutuels(pos, pred, MUTUEL_RAYON)
+                if len(ia) < TRI_INLIERS_MIN:
+                    # PIÈGE : remettre best_M à None ! Sinon le bloc de
+                    # résolution ci-dessous croit le chemin « triangles »
+                    # valide et appelle _finaliser(None, None, ...) →
+                    # pos[None] fabrique un axe parasite (1, N, 2).
+                    ia = ib = None
+                    best_M = None
+                    msg_tri = "pas assez de correspondances mutuelles"
 
-    ones_cat = np.column_stack([cat_xy, np.ones(len(cat_xy))])
-    n_stop = min(len(pos), len(cat_xy))
-    best_M, best_n = None, 0
-    for ir, ic in paires:
-        # affinité EXACTE 3 points : plan tangent (deg) → pixels
-        A = np.column_stack([cat_xy[som_cat[ic]], np.ones(3)])
-        try:
-            M = np.linalg.solve(A, pos[som_img[ir]])
-        except np.linalg.LinAlgError:
-            continue
-        if not np.isfinite(M).all():
-            continue
-        pred = ones_cat @ M
-        d = np.hypot(pred[:, None, 0] - pos[None, :, 0],
-                     pred[:, None, 1] - pos[None, :, 1])
-        n = int((d.min(1) <= TRI_RAYON).sum())
-        if n > best_n:
-            best_n, best_M = n, M
-            if best_n >= n_stop:
-                break                    # impossible de mieux
-    if best_M is None or best_n < TRI_INLIERS_MIN:
-        return None, info, (f"aucune affinité convaincante "
-                            f"(meilleur score : {best_n} étoiles)")
-
-    # 4) correspondances mutuelles à ±2 px -----------------------------------
-    pred = ones_cat @ best_M
-    ia, ib, _d = _appariements_mutuels(pos, pred, MUTUEL_RAYON)
-    if len(ia) < TRI_INLIERS_MIN:
-        return None, info, (f"pas assez de correspondances mutuelles "
-                            f"({len(ia)})")
-
-    # 5) ajustement TAN (Gauss-Newton) + réjection 3σ itérative --------------
-    xy_f, ra_f, dec_f = pos[ia], ra_clip[ib], dec_clip[ib]
-    # initialisation : l'affinité (3, 2) vérifie x = ξ·M[0,0] + η·M[1,0] +
-    # M[2,0] → partie linéaire = M[:2, :].T, d'où CD = inverse ; CRVAL =
-    # point tangent des indices. (PIÈGE : M[:2,:] SANS transposée inverse la
-    # rotation de départ — faux minimum constaté en 3c du banc.)
-    try:
-        cd0 = np.linalg.inv(best_M[:2, :].T)
-    except np.linalg.LinAlgError:
-        return None, info, "affinité dégénérée"
-    wcs0 = WcsTan((ra0, dec0), best_M[2, :], cd0, forme=(h_img, w_img))
-    wcs, rms = _ajuster_tan(xy_f, ra_f, dec_f, wcs0)
-    for _ in range(2):
-        res = np.hypot(*(wcs.vers_pixels(ra_f, dec_f) - xy_f).T)
-        sigma = 1.4826 * float(np.median(np.abs(res - np.median(res))))
-        garde = res <= max(3.0 * sigma, 1.5)
-        if garde.all() or int(garde.sum()) < TRI_INLIERS_MIN:
-            break
-        xy_f, ra_f, dec_f = xy_f[garde], ra_f[garde], dec_f[garde]
-        wcs, rms = _ajuster_tan(xy_f, ra_f, dec_f, wcs)
-
-    # 6) garde-fous ------------------------------------------------------------
-    echelle = wcs.echelle_arcsec
+    # 3b/5/6) résolution : chaque chemin (triangles, RANSAC) est VALIDÉ par
+    # les garde-fous de l'étape 6 ; si l'un échoue, l'autre prend le relais.
+    # (Retour réel d'Alain : sur la brute G, l'affinité des triangles passe
+    # les correspondances mutuelles puis DIVERGE dans Gauss-Newton — échelle
+    # résolue absurde. Un chemin en succès n'est pas un chemin juste.)
     echelle_indice = 3600.0 * champ_deg / w_img
-    if not (ECHELLE_ARCSEC_MIN <= echelle <= ECHELLE_ARCSEC_MAX):
-        return None, info, f"échelle résolue absurde : {echelle:.3f}\"/px"
-    if not (1.0 - ECHELLE_TOL_RELATIVE <= echelle / echelle_indice
-            <= 1.0 + ECHELLE_TOL_RELATIVE):
-        return None, info, (f"échelle résolue ({echelle:.3f}\"/px) trop "
-                            f"éloignée de l'indice "
-                            f"({echelle_indice:.3f}\"/px)")
-    if rms > RMS_PX_MAX or len(xy_f) < TRI_INLIERS_MIN:
-        return None, info, (f"ajustement insuffisant : rms {rms:.2f} px "
-                            f"sur {len(xy_f)} étoiles")
 
-    info.update({"n_appariements": int(len(xy_f)), "rms_px": float(rms),
-                 "rms_arcsec": float(rms * echelle),
-                 "echelle_arcsec_px": float(echelle),
-                 "angle_deg": float(wcs.angle_deg)})
+    def _acquerir_ransac():
+        """Repli complet : RANSAC de paires → (ia, ib, wcs0, message)."""
+        ia_r, ib_r, A_sim, t_sim, miroir_r, msg_r = _ransac_paires(
+            pos, cat_xy, ech_deg, (h_img, w_img))
+        if ia_r is None:
+            return None, None, None, msg_r
+        # image = A·grille + t  et  grille = D⁻¹(ξ, η) + c0 avec
+        # D = diag(±ech, −ech) (parité de la grille indicée) ; d'où
+        # (ξ,η) = D·A⁻¹·(pixel − t) − D·c0 → CD = D·A⁻¹, CRPIX = A·c0 + t.
+        D = np.diag([(-1.0 if miroir_r else 1.0) * ech_deg, -ech_deg])
+        cd0 = D @ np.linalg.inv(A_sim)
+        c0 = np.array([(w_img - 1) / 2.0, (h_img - 1) / 2.0])
+        return (ia_r, ib_r,
+                WcsTan((ra0, dec0), t_sim + A_sim @ c0, cd0,
+                       forme=(h_img, w_img)), "")
+
+    def _finaliser(ia_f, ib_f, wcs0_f):
+        """Ajustement TAN + réjection 3σ + garde-fous.
+        → (wcs, n_appariements, rms_px, message) ; wcs None si rejeté."""
+        xy_l, ra_l, dec_l = pos[ia_f], ra_clip[ib_f], dec_clip[ib_f]
+        wcs_l, rms_l = _ajuster_tan(xy_l, ra_l, dec_l, wcs0_f)
+        for _ in range(2):
+            res = np.hypot(*(wcs_l.vers_pixels(ra_l, dec_l) - xy_l).T)
+            sigma = 1.4826 * float(np.median(np.abs(res - np.median(res))))
+            garde = res <= max(3.0 * sigma, 1.5)
+            if garde.all() or int(garde.sum()) < TRI_INLIERS_MIN:
+                break
+            xy_l, ra_l, dec_l = xy_l[garde], ra_l[garde], dec_l[garde]
+            wcs_l, rms_l = _ajuster_tan(xy_l, ra_l, dec_l, wcs_l)
+        # garde-fous
+        ech_l = wcs_l.echelle_arcsec
+        if not (ECHELLE_ARCSEC_MIN <= ech_l <= ECHELLE_ARCSEC_MAX):
+            return None, 0, 0.0, f"échelle résolue absurde : {ech_l:.3f}\"/px"
+        if not (1.0 - ECHELLE_TOL_RELATIVE <= ech_l / echelle_indice
+                <= 1.0 + ECHELLE_TOL_RELATIVE):
+            return None, 0, 0.0, (f"échelle résolue ({ech_l:.3f}\"/px) trop "
+                                  f"éloignée de l'indice "
+                                  f"({echelle_indice:.3f}\"/px)")
+        if rms_l > RMS_PX_MAX or len(xy_l) < TRI_INLIERS_MIN:
+            return None, 0, 0.0, (f"ajustement insuffisant : rms {rms_l:.2f} px "
+                                  f"sur {len(xy_l)} étoiles")
+        return wcs_l, int(len(xy_l)), float(rms_l), ""
+
+    wcs, n_ok, rms, msg_f = None, 0, 0.0, ""
+    if best_M is not None:
+        # initialisation « triangles » : l'affinité (3, 2) vérifie
+        # x = ξ·M[0,0] + η·M[1,0] + M[2,0] → partie linéaire = M[:2, :].T,
+        # d'où CD = inverse ; CRVAL = point tangent des indices. (PIÈGE :
+        # M[:2,:] SANS transposée inverse la rotation de départ — faux
+        # minimum constaté en 3c du banc.)
+        try:
+            cd0 = np.linalg.inv(best_M[:2, :].T)
+            wcs0 = WcsTan((ra0, dec0), best_M[2, :], cd0, forme=(h_img, w_img))
+            wcs, n_ok, rms, msg_f = _finaliser(ia, ib, wcs0)
+        except np.linalg.LinAlgError:
+            wcs, msg_f = None, "affinité dégénérée"
+        if wcs is not None:
+            info["methode"] = "triangles"
+    if wcs is None:
+        msg_premier = msg_tri or msg_f or "appariement impossible"
+        ia, ib, wcs0, msg_r = _acquerir_ransac()
+        if ia is None:
+            return None, info, f"{msg_premier} ; RANSAC paires : {msg_r}"
+        wcs, n_ok, rms, msg_r = _finaliser(ia, ib, wcs0)
+        if wcs is None:
+            return None, info, (f"{msg_premier} ; RANSAC paires : similitude "
+                                f"trouvée mais {msg_r}")
+        info["methode"] = "paires-ransac"
+    info.update({"n_appariements": n_ok, "rms_px": rms,
+                 "rms_arcsec": rms * wcs.echelle_arcsec,
+                 "echelle_arcsec_px": wcs.echelle_arcsec,
+                 "angle_deg": wcs.angle_deg})
     return wcs, info, ""

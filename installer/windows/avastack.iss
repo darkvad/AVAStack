@@ -73,6 +73,10 @@ Source: "{#RepoRoot}\_diag_camera_playerone.py"; DestDir: "{app}"; Flags: ignore
 Source: "{#RepoRoot}\_diag_camera_svbony.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}\_diag_camera_touptek.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}\_diag_solve_reel.py"; DestDir: "{app}"; Flags: ignoreversion
+; Banc de regression REEL du solveur (v2.27.0) : resout les vraies images
+; M31 (empilement composite + brute G) et confronte a ASTAP ; saute
+; proprement si les images de test sont absentes.
+Source: "{#RepoRoot}\_test_solveur_reel_m31.py"; DestDir: "{app}"; Flags: ignoreversion
 ; veralux_core_headless.py : code tiers GPL-3.0-or-later (Riccardo Paterniti),
 ; copie tel quel (sa licence exige de transmettre le source a cote du binaire).
 Source: "{#RepoRoot}\veralux_core_headless.py"; DestDir: "{app}"; Flags: ignoreversion

@@ -14,9 +14,59 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.26.1"
+AVASTACK_VERSION = "2.27.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.27.0 : SOLVEUR INTERNE — REPLI RANSAC DE PAIRES + VALIDATION RÉELLE
+#          (retour réel d'Alain, 22/09/2026 : sur SES images M31 — empilement
+#          composite 2,6° @ 243 mm ET brute unique N.I.N.A. 3856×2180 — le
+#          solve INTERNE échouait « pas assez de correspondances mutuelles (4) »,
+#          les triangles se verrouillant sur une affinité dégénérée) :
+#          - CAUSE : sur un champ large/riche, le top-12 d'image ≡ top-20 de
+#            catalogue PAR INVARIANTS ne tient plus (les deux listes ne
+#            coïncident plus : saturation, limmag, bruit de détection) →
+#            l'affinité exacte 3 points est dégénérée et ne passe jamais les
+#            garde-fous ;
+#          - AJOUT : `_ransac_paires` (esprit astrometry.net) — vote
+#            (échelle, angle) sur TOUTES les paires des top-60 image × top-120
+#            catalogue (4 parités : direct/miroir × 2 sens), pic de vote →
+#            similitude EXACTE issue de 2 correspondances évaluée par
+#            appariements mutuels, puis stabilisation Umeyama (échelle +
+#            rotation) à rayon croissant (3/5/8 px) ;
+#          - PIÈGE n°1 (corrigé, attrapé par le banc réel) : le vote doit
+#            comparer des PIXELS à des PIXELS — le catalogue est d'abord passé
+#            dans la GRILLE INDICÉE ; voter longueurs d'image (px) contre
+#            longueurs de catalogue (deg) donnait li/lc ≈ 1400 et AUCUN bin
+#            atteignable (0 paire votante) ;
+#          - PIÈGE n°2 : après échec des correspondances mutuelles, remettre
+#            `best_M` à None — sinon le chemin « triangles » paraît valide et
+#            `_finaliser(None, None, …)` fabrique un axe parasite
+#            (pos[None] → (1, N, 2)) au lieu de basculer sur le repli ;
+#          - ARCHITECTURE : les deux chemins (triangles, RANSAC) passent par
+#            le MÊME `_finaliser` (Gauss-Newton + réjection 3σ + garde-fous
+#            d'échelle/rms/nombre) et le repli prend le relais quand l'un est
+#            REJETÉ — un chemin qui « réussit » n'est pas un chemin juste
+#            (sur la brute G, l'affinité des triangles passait les mutuelles
+#            puis divergeait : échelle résolue 369 841″/px) ;
+#          - `info["methode"]` = « triangles » | « paires-ransac » : la méthode
+#            effectivement retenue est désormais traçable (diagnostic réel) ;
+#          - banc RÉEL ajouté `_test_solveur_reel_m31.py` (TOUT AU VERT) :
+#            empilement composite 2,6° → 86 étoiles, rms 0,59 px, 2,4650″/px,
+#            centre à 20″ des indices ; brute G → 70 étoiles, rms 0,44 px,
+#            2,4652″/px — les DEUX images sortent de la même optique, donc
+#            échelles concordantes au millième = contrôle croisé indépendant ;
+#          - VALIDATION CROISÉE ASTAP sur la brute G : écart max 2,78″ sur
+#            bords + centre, Δ échelle 0,0013″/px, Δ orientation locale au
+#            centre 0,004° ;
+#          - PIÈGE n°3 (mesuré, pas une régression) : l'angle du CD brut n'est
+#            PAS comparable entre deux WCS de point tangent DIFFÉRENT (notre
+#            solveur garde CRVAL = centre indicé, ASTAP le pose sur son pixel
+#            de référence : 0,6° d'écart de CRVAL → 0,57° d'écart d'angle
+#            apparent, alors que les positions concordent à 2,8″) — comparer
+#            l'orientation LOCALE au même point du ciel (différence finie) ;
+#          - bancs jalon 56 étapes 2 et 3 relancés : TOUJOURS AU VERT (le
+#            chemin triangles reste le chemin principal ; le repli n'est
+#            qu'un filet).
 # v2.26.1 : CORRECTIF AXES FITS COULEUR (retour réel d'Alain, 22/09/2026 :
 #          « Enregistrer l'empilement (linéaire) » produit un fichier où
 #          ASIFitsView ne montre AUCUNE étoile) :
