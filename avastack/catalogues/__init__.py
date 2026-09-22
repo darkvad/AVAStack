@@ -23,6 +23,8 @@ from .healpix import (NIVEAU_CATALOGUE, NPIX_NIVEAU8, ang2pix_nest,
 from .siril_cat import (CatalogueSiril, DTYPE_ASTRO, DTYPE_XPSAMP,
                         TAILLE_ENTETE, TYPE_ASTRO, TYPE_XPSAMP, lire_entete)
 from .solveur import WcsTan, projection_tan, projection_tan_inverse, resoudre
+from .propagation import (WcsCompose, compose_M, infos_M, inverse_M,
+                          propager)
 from .astap import trouver_astap, resoudre_avec_astap
 from .telechargeur import (RECORD_ASTRO, RECORD_XPSAMP, etat_local,
                            sommaire_zenodo, telecharger,
@@ -39,6 +41,7 @@ __all__ = [
     "sommaire_zenodo", "telecharger_catalogue_astro",
     "telecharger_chunk_xpsamp", "dossier_catalogues",
     "WcsTan", "projection_tan", "projection_tan_inverse", "resoudre",
+    "WcsCompose", "propager", "compose_M", "inverse_M", "infos_M",
     "trouver_astap", "resoudre_avec_astap",
 ]
 

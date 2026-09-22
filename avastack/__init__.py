@@ -14,9 +14,43 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.25.0"
+AVASTACK_VERSION = "2.26.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.26.0 : PROPAGATION DU WCS PAR COMPOSITION — JALON 56, ÉTAPE 3 (décision
+#          d'Alain : PAS de re-solve à chaque réempilement — solve UNE fois
+#          sur la référence, puis propagation le long des transformations) :
+#          - avastack/catalogues/propagation.py (numpy pur, sans dépendance
+#            vers processing — le cycle d'import resterait interdit) :
+#            `propager(wcs_ref, M)` → WcsCompose, le WCS EXACT du repère
+#            transformé, M en convention ALIGNEUR (frame → référence,
+#            warpAffine) ; `WcsCompose.vers_radec/vers_pixels` = composition
+#            exacte (aucun ajustement) ; `compose_M` / `inverse_M` pour les
+#            chaînes (réempilement : W1 = propager(W0, M10), un SEUL
+#            alignement entre anciennes et nouvelles grilles) ;
+#            `WcsCompose.vers_tan()` ré-ajuste un WcsTan équivalent pour
+#            l'interopérabilité FITS (initialisation analytique cd₀ =
+#            cd_ref·A, crpix₀ = A⁻¹(crpix_ref − t)) ;
+#          - DÉCOUVERTE du banc : l'aligneur n'estime que des SIMILITUDES
+#            (estimateAffinePartial2D) et la composition d'un TAN avec une
+#            similitude est EXACTEMENT un autre TAN (rotation 3D du point
+#            tangent) — le ré-ajustement retombe au bruit machine (2,6e-11 px)
+#            et la propagation est SANS PERTE (2,3e-13 px vs vérité) ;
+#          - SENS DES MATRICES (piège tranché au banc) : M d'aligneur =
+#            frame→référence ; `vers_radec` lit le ciel à M(p) (le pixel p
+#            montre le contenu arrivé de M(p)), `vers_pixels` pose le ciel en
+#            M⁻¹(p_ref) — confondu une fois (46 px), tranché par la vérité
+#            analytique puis verrouillé par StarAligner RÉEL (0,42 px) ;
+#          - banc _test_propagation_jalon56.py TOUT AU VERT : compose_M/
+#            inverse_M exactes (2e-13 px), identité/aller-retours (8e-11 px),
+#            vérité analytique + centroïdes détectés (médian 0,14 px, max
+#            0,60 px = rééchantillonnage bilinéaire), vers_tan ≡ astropy.wcs
+#            (2,6e-14°), re-SOLVE indépendant ≈ propagé à 0,46″, chaîne de
+#            réempilement exacte, échecs propres (NaN, forme, dégénérée,
+#            échelle aberrante, WCS absent, vers_tan sans forme) ;
+#          - rien d'UI ni de branché au worker : la propagation est prête,
+#            la PHOTOMÉTRIE par bande (étape 4) suit ;
+#          - bancs étapes 1 et 2 relancés : toujours au vert.
 # v2.25.0 : SOLVEUR ASTROMÉTRIQUE INTERNE — JALON 56, ÉTAPE 2 (accord
 #          d'Alain : résolution interne avec indices, ASTAP en référence
 #          indépendante + repli) :

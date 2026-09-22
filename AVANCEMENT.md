@@ -11,41 +11,42 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.25.0** (`avastack/__init__.py`),
-  branche `master` — **jalon 56 ÉTAPE 2 (solveur astrométrique interne) :
+- **Version stable de référence : AVAStack v2.26.0** (`avastack/__init__.py`),
+  branche `master` — **jalon 56 ÉTAPE 3 (propagation WCS par composition) :
   banc au vert le 22/09/2026**. Jalon 55 (v2.23.3) validé par Alain en
   réel (M31 RGB), commité aca5ca5.
-- **Jalon 56, étape 2 (v2.25.0, 22/09/2026) — résumé du dernier jalon** :
-  - livré : `avastack/catalogues/solveur.py` (WcsTan : WCS TAN minimal
-    CRVAL/CRPIX/CD, conversions pixels↔ciel, mots-clés FITS ; projection
-    TAN gnomonique numpy pur ; détection d'étoiles recopiée de
-    processing/stars pour éviter le cycle d'import ; triangles canoniques
-    jalon 15 ; ajustement TAN Gauss-Newton + réjection 3σ) et
-    `avastack/catalogues/astap.py` (wrapper astap_cli, référence
-    indépendante + repli) ;
-  - banc `_test_solveur_jalon56.py` TOUT AU VERT : TAN ≡ astropy.wcs
-    (écart 5e-14° sur 3 parités/orientations) ; solve interne 0,07–0,10″
-    de la vérité sur images synthétiques construites depuis le VRAI
-    catalogue Gaia de Siril (indices exacts, bruités ~6′, parité
-    inversée) ; validation croisée astap_cli ≈ interne à 0,2″ ; échecs
-    PROPRES vérifiés (indices faux à 1,5°, image sans étoiles, image
-    absente pour ASTAP) ;
-  - PIÈGES TRANCHÉS : `-spd` d'astap_cli = 90 **+** dec (l'écho « Start
-    position » a tranché — 90 − dec cherche à −dec) ; `-ra` en HEURES ;
-    `-fov` = hauteur du champ en degrés ; CRPIX FITS 1-based vs tableau
-    0-based (±1) ; l'affinité `np.linalg.solve(A, dst)` est (3, 2),
-    partie linéaire = `M[:2,:].T` (sans la transposée, la rotation de
-    départ est inversée) ; le catalogue doit être CLIPPÉ au rectangle
-    indicatif AVANT le top-N (sinon le top-N du cône d'extraction n'est
-    pas celui de l'image et les triangles corrects n'existent plus) ;
-  - chemin d'ASTAP surchargeable par la variable d'environnement
-    `AVASTACK_ASTAP` (défaut : install Windows, puis PATH).
-- **Tâche en cours** : étape 3 — propagation WCS au réempilement
-  (composition de transformations, PAS de re-solve à chaque frame),
-  puis étape 4 (photométrie + facteurs par bande), étape 5 (application
-  aux gains du stacker), étape 6 (validation Siril + test réel
-  multibande).
-- **Prochaine étape** : démarrer l'étape 3 à froid.
+- **Jalon 56, étape 3 (v2.26.0, 22/09/2026) — résumé du dernier jalon** :
+  - livré : `avastack/catalogues/propagation.py` (numpy pur, SANS
+    dépendance vers processing — le cycle d'import resterait interdit) :
+    `propager(wcs_ref, M)` → `WcsCompose`, le WCS EXACT du repère
+    transformé (M en convention ALIGNEUR : frame → référence, warpAffine) ;
+    `compose_M` / `inverse_M` pour les chaînes de réempilement
+    (W1 = propager(W0, M10) — UN SEUL alignement entre anciennes et
+    nouvelles grilles) ; `WcsCompose.vers_tan()` ré-ajuste un WcsTan
+    équivalent pour les en-têtes FITS (init analytique) ;
+  - banc `_test_propagation_jalon56.py` TOUT AU VERT : composition exacte
+    vs vérité analytique (2,3e-13 px), `vers_tan` ≡ astropy.wcs (2,6e-14°),
+    re-SOLVE indépendant (étape 2) de l'image warpée ≈ propagé à 0,46″,
+    chaîne de réempilement G0→G1→frame exacte, StarAligner RÉEL (sens des
+    matrices) 0,42 px, échecs propres (NaN, forme, dégénérée, échelle,
+    WCS absent, vers_tan sans forme) ;
+  - DÉCOUVERTE (à retenir) : l'aligneur n'estime que des SIMILITUDES
+    (`estimateAffinePartial2D`) et la composition d'un TAN avec une
+    similitude est EXACTEMENT un autre TAN (rotation 3D du point tangent)
+    → propagation SANS PERTE, le ré-ajustement retombe au bruit machine
+    (2,6e-11 px) ;
+  - PIÈGE SENS DES MATRICES tranché au banc : M d'aligneur = frame→référence ;
+    `vers_radec` lit le ciel à M(p) (le pixel p montre le contenu arrivé de
+    M(p)), `vers_pixels` pose le ciel en M⁻¹(p_ref) — confondu une fois
+    (46 px), tranché par la vérité analytique ;
+  - bancs étapes 1 et 2 relancés : toujours au vert.
+- **Tâche en cours** : étape 4 — photométrie + facteurs par bande
+  (appariement catalogue Gaia ↔ étoiles de l'accumulation via le WCS),
+  puis étape 5 (application aux gains du stacker), étape 6 (validation
+  Siril + test réel multibande).
+- **Prochaine étape** : branchement au worker (solve sur l'accumulation
+  avec les indices de la cible, propagation à chaque re-stack), puis
+  l'étape 4 à froid.
 
 ## Statuts CLAUDE.md
 
@@ -80,28 +81,28 @@ dans le changelog du source et l'historique git.)
   (`C:\Program Files\astap`, astap_cli.exe + base D80 Gaia DR3 1,24 Go)
   ; PAS d'astrometry.net/ANSVR.
 
-## 🔚 Clôture de session — 22/09/2026 (v2.25.0, jalon 56 étape 2 : livré, bancs au vert)
+## 🔚 Clôture de session — 22/09/2026 (v2.26.0, jalon 56 étape 3 : livré, bancs au vert)
 
-État exact : **jalon 56 étape 2 (solveur astrométrique interne) LIVRÉ,
-banc `_test_solveur_jalon56.py` TOUT AU VERT (exit 0)** — projection TAN
-conforme à astropy.wcs (5e-14°), solve interne 0,07–0,10″ de la vérité sur
-images synthétiques construites depuis le VRAI catalogue Gaia (indices
-exacts/bruités/parité inversée), validation croisée astap_cli ≈ interne à
-0,2″, échecs propres vérifiés. Banc étape 1 relancé : toujours au vert.
-Rien d'UI ni de branché au worker : le solveur est prêt, la PROPAGATION
-WCS (étape 3) suit.
-- Décisions de la session (accord d'Alain, reports de la veille) : SPCC
-  local multibande MiniCam8M en premier puis OSC ; solveur astrométrique
-  interne avec indices (pas de re-solve à chaque réempilement :
-  propagation WCS par composition de transformations) ; ASTAP =
-  référence indépendante/repli.
+État exact : **jalon 56 étape 3 (propagation WCS par composition) LIVRÉ,
+banc `_test_propagation_jalon56.py` TOUT AU VERT (exit 0)** — composition
+exacte 2,3e-13 px vs vérité analytique, `vers_tan` ≡ astropy.wcs (2,6e-14°),
+re-solve indépendant ≈ propagé à 0,46″, chaîne de réempilement exacte,
+StarAligner réel 0,42 px, échecs propres vérifiés. Bancs étapes 1 et 2
+relancés : toujours au vert. Découverte validée : similitude ∘ TAN = TAN
+exact (propagation SANS PERTE). Rien d'UI ni de branché au worker : la
+propagation est prête, le BRANCHEMENT + la PHOTOMÉTRIE par bande (étape 4) suivent.
+- Décisions de la session (accord d'Alain) : SPCC local multibande
+  MiniCam8M en premier puis OSC ; solveur astrométrique interne avec
+  indices (pas de re-solve à chaque réempilement : propagation WCS par
+  composition de transformations) ; ASTAP = référence indépendante/repli.
 - Conventions astap_cli VÉRIFIÉES EN RÉEL (22/09/2026, CLI-2024.11.17) :
   `-ra` en heures, `-spd` = 90 + dec, `-fov` = hauteur du champ en degrés,
   succès = exit 0 + `.wcs` (matrice CD) + `PLTSOLVD=T`.
-- Prochaine étape (à froid) : **étape 3 — propagation WCS au
-  réempilement** (composition de transformations entre frames, re-solve
-  interne seulement à la référence), puis étape 4 (photométrie + facteurs
-  par bande), 5 (gains du stacker), 6 (validation Siril + réel).
+- Prochaine étape (à froid) : **branchement au worker** (solve une fois
+  sur l'accumulation avec les indices de la cible ; propagation à chaque
+  re-stack : UN seul alignement nouvelle référence ↔ ancien empilement),
+  puis **étape 4 — photométrie + facteurs par bande**, 5 (gains du
+  stacker), 6 (validation Siril + réel).
 
 Sessions précédentes : v2.23.3 (jalon 55 : gains compo temps réel,
 aca5ca5, validé Alain) ; v2.21.10 (jalons 50-52, banc Touptek +
