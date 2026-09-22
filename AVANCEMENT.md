@@ -98,12 +98,25 @@ propagation est prête, le BRANCHEMENT + la PHOTOMÉTRIE par bande (étape 4) su
 - Conventions astap_cli VÉRIFIÉES EN RÉEL (22/09/2026, CLI-2024.11.17) :
   `-ra` en heures, `-spd` = 90 + dec, `-fov` = hauteur du champ en degrés,
   succès = exit 0 + `.wcs` (matrice CD) + `PLTSOLVD=T`.
+- **BUG CORRIGÉ EN COURS DE SESSION (v2.26.1, retour réel d'Alain)** :
+  « Enregistrer l'empilement (linéaire) » écrivait le RGB avec les canaux
+  sur NAXIS1 → ASIFitsView/Siril voyaient N images de 3 px de large
+  (image « noire »). save_image écrit maintenant les canaux sur NAXIS3
+  (convention astro) et load_image normalise en (H, W, C) ;
+  `_test_save_rgb_axes.py` au vert. Les valeurs > 1 d'un composite
+  (jusqu'à ~14 sur M31) sont normales (normalisation par canal) — ce
+  n'était PAS la cause. Bancs jalon 14 / save linéaire / worker compo
+  repassés au vert.
 - **TEST RÉEL PRÊT (à la charge d'Alain)** : `_diag_solve_reel.py` —
   résout l'astrométrie d'une VRAIE image (empilement M31 du jalon 55…) avec
   le solveur INTERNE, confronte à ASTAP, verdict ″. Ex. :
   `python _diag_solve_reel.py <stack.fit> --ra 0h42m44s --dec +41d16m09s --focal 1280 --pixel 2.9`
   (ou `--champ 0.50` ; sans --ra/--dec, ASTAP d'abord et son centre sert
   d'indice). Validé sur synthétique (centre exact, garde-fous d'échelle OK).
+  ⚠ EN RÉEL (m31_astro.fits, champ 2,6° @ 243 mm) : le solve INTERNE échoue
+  (« pas assez de correspondances mutuelles (4) ») ET ASTAP échoue aussi —
+  appariement par triangles à creuser sur les champs larges (l'affinité
+  trouvée est dégénérée, score 7/120). À INVESTIGUER (prochaine action).
 - Prochaine étape (à froid) : **branchement au worker** (solve une fois
   sur l'accumulation avec les indices de la cible ; propagation à chaque
   re-stack : UN seul alignement nouvelle référence ↔ ancien empilement),

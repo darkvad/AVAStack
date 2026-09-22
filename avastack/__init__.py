@@ -14,9 +14,31 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.26.0"
+AVASTACK_VERSION = "2.26.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.26.1 : CORRECTIF AXES FITS COULEUR (retour réel d'Alain, 22/09/2026 :
+#          « Enregistrer l'empilement (linéaire) » produit un fichier où
+#          ASIFitsView ne montre AUCUNE étoile) :
+#          - CAUSE : save_image écrivait le RGB en numpy (H, W, C) → FITS
+#            NAXIS1 = 3 : tout lecteur externe (ASIFitsView, Siril…)
+#            interprète NAXIS1 comme la LARGEUR → N images de 3 px de large
+#            (« 4/4 », tranches noires). Le projet contournait déjà le piège
+#            pour GraXpert (jalon 14) mais PAS dans la sauvegarde standard ;
+#          - FIX : save_image écrit les canaux sur NAXIS3 ((C, H, W) côté
+#            astropy — LA convention astro) ; load_image normalise en
+#            (H, W, C) UNE fois pour toutes (convention interne de l'appli) ;
+#            mono 2D inchangé ;
+#          - _test_save_rgb_axes.py (NAXIS vérifiés, aller-retour, lecture
+#            d'un FITS « Siril », canal R identifié, mono, PNG) TOUT AU VERT ;
+#            banc jalon 14 adapté (l'outil externe est lu avec astropy brut,
+#            comme le vrai GraXpert) et repassé au vert ; sauvegarde
+#            linéaire (fix v2.5.1) et worker compo (jalon 19) repassés ;
+#          - NOTE : les valeurs > 1 d'un composite linéaire (jusqu'à ~14 sur
+#            M31) sont NORMALES — normalisation par canal du composite
+#            (Linear Fit/gains) ; les lecteurs externes étirent sans
+#            problème. Ce n'était PAS la cause de l'image noire ;
+#          - installateur rebuilit.
 # v2.26.0 : PROPAGATION DU WCS PAR COMPOSITION — JALON 56, ÉTAPE 3 (décision
 #          d'Alain : PAS de re-solve à chaque réempilement — solve UNE fois
 #          sur la référence, puis propagation le long des transformations) :

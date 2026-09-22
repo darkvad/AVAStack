@@ -70,7 +70,10 @@ rgb = np.clip(rgb, 0.0, None)
 tmp = tempfile.mkdtemp(prefix="avastack_test_ext_")
 f_rgb = os.path.join(tmp, "entree_rgb.fits")
 gx_live._ecrire_entree(f_rgb, rgb)
-d = load_image(f_rgb)
+# ce que voit un outil externe = astropy BRUT (load_image normalise
+# désormais en (H, W, C) pour l'appli — correctif axes du 22/09/2026)
+from astropy.io import fits as _fits
+d = np.asarray(_fits.getdata(f_rgb), dtype=np.float32)
 verifie(d.shape == (3, 48, 64),
         f"RGB écrit canaux-en-tête : l'outil voit {d.shape} (= (C, H, W))")
 retour = gx_live._lire_sortie(f_rgb)

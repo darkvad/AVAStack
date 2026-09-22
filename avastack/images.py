@@ -97,6 +97,14 @@ def load_image(path):
     if p.endswith((".fits", ".fit", ".fts")) and FITS_OK:
         with fits.open(path) as hd:
             a = np.asarray(hd[0].data)
+        if a.ndim == 3 and a.shape[0] <= 4 and a.shape[-1] > 4:
+            # PIÈGE axes FITS couleur (même convention que
+            # alignment.canal_alignement) : un FITS RGB standard écrit les
+            # canaux sur NAXIS3 — astropy le rend (C, H, W). Toute l'appli
+            # travaille en (H, W, C) → normalisation ICI, une fois pour toutes
+            # (nos propres sauvegardes RGB incluses depuis le correctif
+            # « save_image canaux sur NAXIS3 »).
+            a = np.ascontiguousarray(np.transpose(a, (1, 2, 0)))
     else:
         a = cv2.imdecode(np.fromfile(path, np.uint8), cv2.IMREAD_UNCHANGED)
         if a is None:
@@ -134,13 +142,24 @@ def lire_filtre_fits(path):
 
 
 def save_image(path, arr, entete=None):
-    """Sauve une image float [0..1] en FITS (si astropy) ou PNG/TIFF 16 bits.
+    """Sauve une image float en FITS (si astropy) ou PNG/TIFF 16 bits.
+
+    Couleur : l'appli travaille en (H, W, C) mais un FITS RGB lisible par
+    les outils externes (Siril, ASIFitsView, GraXpert, PixInsight…) exige
+    les canaux sur NAXIS3 → écrit en (C, H, W) (c'est LA convention astro ;
+    le piège inverse — (H, W, C) → NAXIS1 = 3 pixels de large, image « noire
+    » chez tous les lecteurs — a été constaté en réel par Alain le
+    22/09/2026 sur un empilement M31 : cf. aussi le contournement jalon 14
+    pour GraXpert). Mono 2D inchangé.
 
     entete : dict optionnel de mots-clés FITS (p.ex. {"FILTER": "Ha"})
     — ignoré silencieusement pour les formats non FITS."""
     ext = os.path.splitext(path)[1].lower()
     if ext in (".fits", ".fit", ".fts") and FITS_OK:
-        hdu = fits.PrimaryHDU(arr.astype(np.float32))
+        d = np.asarray(arr)
+        if d.ndim == 3 and d.shape[-1] <= 4 and d.shape[0] > 4:
+            d = np.transpose(d, (2, 0, 1))     # (H, W, C) → (C, H, W)
+        hdu = fits.PrimaryHDU(np.ascontiguousarray(d, dtype=np.float32))
         if entete:
             for k, v in entete.items():
                 hdu.header[str(k).upper()] = v
