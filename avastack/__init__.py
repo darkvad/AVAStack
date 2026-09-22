@@ -14,9 +14,77 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.23.3"
+AVASTACK_VERSION = "2.25.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.25.0 : SOLVEUR ASTROMÉTRIQUE INTERNE — JALON 56, ÉTAPE 2 (accord
+#          d'Alain : résolution interne avec indices, ASTAP en référence
+#          indépendante + repli) :
+#          - avastack/catalogues/solveur.py : WcsTan (WCS TAN minimal :
+#            CRVAL/CRPIX/matrice CD, conversions pixels↔ciel, mots-clés
+#            FITS aller-retour — PIÈGE CRPIX 1-based en FITS vs 0-based en
+#            tableau, tranché contre astropy.wcs) ; projection TAN
+#            gnomonique numpy pur ; détection d'étoiles (recopie adaptée
+#            de processing/stars pour éviter le cycle d'import
+#            processing↔catalogues) ; appariement GLOBAL par triangles
+#            canoniques (jalon 15, top-12 image vs top-20 catalogue APRÈS
+#            clip du rectangle indicatif — sans ce clip, le top-N du cône
+#            d'extraction n'est pas celui de l'image et les triangles
+#            corrects n'existent plus) ; affinité exacte 3 points (PIÈGE :
+#            l'affinité np.linalg.solve(A, dst) est (3, 2), partie
+#            linéaire = M[:2,:].T — la transposée manquante inversait la
+#            rotation de départ) ; ajustement TAN Gauss-Newton (8
+#            paramètres) + réjection 3σ itérative + garde-fous (échelle
+#            cohérente avec l'indice, rms ≤ 2 px, 6 appariements min) ;
+#          - banc _test_solveur_jalon56.py TOUT AU VERT : projection TAN
+#            ≡ astropy.wcs (écart 5e-14° sur 3 parités/orientations),
+#            solve interne 0,07–0,10″ de la vérité sur images synthétiques
+#            construites depuis le VRAI catalogue Gaia de Siril (indices
+#            exacts, bruités ~6′, parité inversée ; échecs propres si
+#            indices faux ou image sans étoiles), validation croisée
+#            astap_cli ≈ interne à 0,2″ ;
+#          - avastack/catalogues/astap.py : wrapper astap_cli —
+#            conventions VÉRIFIÉES EN RÉEL le 22/09/2026 (CLI-2024.11.17) :
+#            -ra en HEURES, -spd = 90 + dec (distance au pôle SUD ; l'écho
+#            « Start position » a tranché : 90 − dec cherche à −dec),
+#            -fov = hauteur du champ en degrés ; succès = exit 0 + .wcs
+#            (matrice CD) + PLTSOLVD=T ; AVASTACK_ASTAP (variable
+#            d'environnement) surcharge le chemin, sinon install Windows
+#            par défaut puis PATH ;
+#          - suite (étapes 3–6) : propagation WCS au réempilement, puis
+#            photométrie et facteurs par bande posés sur les gains.
+# v2.24.0 : ÉTALONNAGE PHOTOMÉTRIQUE (SPCC LOCAL) — JALON 56, ÉTAPE 1 :
+#          FONDATIONS CATALOGUES (accord d'Alain, plan du 22/09/2026) :
+#          - sous-package `avastack/catalogues` : HEALPix NESTED en numpy
+#            PUR (healpix.py : entrelacement, pix2ang, ang2pix, pixels
+#            d'un cône, chunks niveau 1) — validé contre astropy-healpix
+#            (22 valeurs de référence en dur dans le banc, écart max
+#            5e-11°, roundtrip exact sur 2000 directions) ;
+#          - lecture du format « Siril HEALpixel Catalog » v1.0.0 (spec
+#            Zenodo 14697486, CC-BY) : catalogue Gaia DR3 astrométrique
+#            (monolithique, 16 o/étoile) ET spectrophotométrique xp_sampled
+#            (48 chunks, 701 o/étoile, spectres 336–1020 nm en float16 +
+#            exposant partagé) — en-têtes vérifiés (chunked, plages de
+#            pixels = chunk<<14), lecture par seeks via index cumulatif ;
+#            PIÈGE TRANCHE PAR LE SOURCE DE SIRIL (healpix.cpp) : l'index
+#            d'un chunk de niveau L fait 4^(8-L) entrées (16 384 pour
+#            L=1), PAS 12·4^(8-L) — toutes les extractions en dépendent ;
+#          - téléchargeur Zenodo intégré (à froid, hors session) : reprise
+#            Range/206 (repart de zéro si le serveur ignore Range),
+#            sha256 vérifié contre le .sha256sum officiel, écriture .part
+#            → rename atomique, en-têtes navigateur (Zenodo 403 les
+#            clients nus) ; catalogue astro (record 14692304, 1,1 Go) et
+#            chunks xpsamp (record 14738271) ;
+#          - détection automatique : dossier des catalogues Siril si
+#            présent (chunks d'Alain déjà là, y compris sous-dossier
+#            `siril_cat1_healpix8_xpsamp/`), sinon config AVAStack ;
+#          - banc _test_catalogues_jalon56 TOUT AU VERT : 48/48 chunks
+#            lisibles, 201 étoiles M31 (flux finis positifs, G 8,9–15,0),
+#            686 étoiles astro, cohérence croisée xpsamp ⊂ astro 201/201
+#            à < 0,02°, téléchargeur (reprise Range, serveur sans Range),
+#            sommaire Zenodo skippé proprement si réseau coupé ;
+#          - suite (étapes 2–6) : solveur astrométrique interne, puis
+#            facteurs par bande posés sur les gains du stacker.
 # v2.23.3 : GAINS COMPO SUIVIS EN TEMPS RÉEL — MÊME SANS NOUVELLE BRUTE
 #          (jalon 55, constat Alain du 21/09/2026 : « bouger un gain de
 #          composition ne change rien, même en forçant VeraLux ») :
