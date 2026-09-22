@@ -98,6 +98,12 @@ propagation est prête, le BRANCHEMENT + la PHOTOMÉTRIE par bande (étape 4) su
 - Conventions astap_cli VÉRIFIÉES EN RÉEL (22/09/2026, CLI-2024.11.17) :
   `-ra` en heures, `-spd` = 90 + dec, `-fov` = hauteur du champ en degrés,
   succès = exit 0 + `.wcs` (matrice CD) + `PLTSOLVD=T`.
+- **TEST RÉEL PRÊT (à la charge d'Alain)** : `_diag_solve_reel.py` —
+  résout l'astrométrie d'une VRAIE image (empilement M31 du jalon 55…) avec
+  le solveur INTERNE, confronte à ASTAP, verdict ″. Ex. :
+  `python _diag_solve_reel.py <stack.fit> --ra 0h42m44s --dec +41d16m09s --focal 1280 --pixel 2.9`
+  (ou `--champ 0.50` ; sans --ra/--dec, ASTAP d'abord et son centre sert
+  d'indice). Validé sur synthétique (centre exact, garde-fous d'échelle OK).
 - Prochaine étape (à froid) : **branchement au worker** (solve une fois
   sur l'accumulation avec les indices de la cible ; propagation à chaque
   re-stack : UN seul alignement nouvelle référence ↔ ancien empilement),
