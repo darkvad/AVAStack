@@ -11,9 +11,11 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.27.0** (`avastack/__init__.py`),
-  branche `master` — **jalon 56 étape 3 (propagation WCS) : banc au vert le
-  22/09/2026 ; étape 2 (solveur interne) : RÉSOLU EN RÉEL le 22/09/2026**
+- **Version stable de référence : AVAStack v2.27.1** (`avastack/__init__.py`),
+  branche `master` — **PRIORITÉ livrée le 22/09/2026 : ÉCHELLE des fichiers
+  linéaires (empilement compo RGB non résolvable par ASTAP + « saturé »),
+  cf. bloc « PRIORITÉ RÉSOLUE » ci-dessous. Jalon 56 étape 3 (propagation
+  WCS) : banc au vert ; étape 2 (solveur interne) : RÉSOLU EN RÉEL**
   (repli RANSAC de paires, cf. bloc « RÉSOLU » ci-dessous). Jalon 55
   (v2.23.3) validé par Alain en réel (M31 RGB), commité aca5ca5.
 - **Jalon 56, étape 3 (v2.26.0, 22/09/2026) — résumé du dernier jalon** :
@@ -42,12 +44,14 @@ dans le changelog du source et l'historique git.)
     (46 px), tranché par la vérité analytique ;
   - bancs étapes 1 et 2 relancés : toujours au vert.
 - **Tâche en cours** : **branchement du solveur au worker** (v2.27.0 : le
-  solve réel est désormais validé — cf. bloc « RÉSOLU » ; brancher = solve
-  UNE fois sur l'accumulation avec les indices de la cible puis propagation
-  WCS à chaque re-stack), suivie de l'étape 4 — photométrie + facteurs par
-  bande (appariement catalogue Gaia ↔ étoiles de l'accumulation via le WCS),
+  solve réel est validé — cf. bloc « RÉSOLU » ; brancher = solve UNE fois
+  sur l'accumulation avec les indices de la cible puis propagation WCS à
+  chaque re-stack), suivie de l'étape 4 — photométrie + facteurs par bande
+  (appariement catalogue Gaia ↔ étoiles de l'accumulation via le WCS),
   puis étape 5 (application aux gains du stacker), étape 6 (validation
-  Siril + test réel multibande).
+  Siril + test réel multibande). La PRIORITÉ demandée par Alain le
+  22/09/2026 (échelle des fichiers linéaires, v2.27.1) est LIVRÉE ET
+  VÉRIFIÉE : elle ne bloque plus la route.
 - **Prochaine étape** : branchement au worker (solve sur l'accumulation
   avec les indices de la cible, propagation à chaque re-stack), puis
   l'étape 4 à froid.
@@ -107,10 +111,53 @@ propagation est prête, le BRANCHEMENT + la PHOTOMÉTRIE par bande (étape 4) su
   sur NAXIS1 → ASIFitsView/Siril voyaient N images de 3 px de large
   (image « noire »). save_image écrit maintenant les canaux sur NAXIS3
   (convention astro) et load_image normalise en (H, W, C) ;
-  `_test_save_rgb_axes.py` au vert. Les valeurs > 1 d'un composite
-  (jusqu'à ~14 sur M31) sont normales (normalisation par canal) — ce
-  n'était PAS la cause. Bancs jalon 14 / save linéaire / worker compo
-  repassés au vert.
+  `_test_save_rgb_axes.py` au vert. La note d'alors (« les valeurs > 1 d'un
+  composite — jusqu'à ~14 sur M31 — sont normales ») a été CORRIGÉE en
+  v2.27.1 : ces valeurs rendaient le fichier NON résolvable par ASTAP et
+  « saturé » pour tout lecteur qui suppose [0,1]. Ce n'était bien PAS la
+  cause de l'image noire (c'était NAXIS1 = 3). Bancs jalon 14 / save
+  linéaire / worker compo repassés au vert.
+- **PRIORITÉ RÉSOLUE (v2.27.1, 22/09/2026) — l'empilement linéaire d'une
+  composition est maintenant RÉSOLVABLE par ASTAP** (consigne d'Alain :
+  « l'empilement linéaire en sortie, mode dossiers (compo RGB), est saturé
+  et non solvable par ASTAP ») :
+  - MESURES sur son fichier (`c:\Astro\test\m31_test_solve.fits`,
+    3×2165×3839 float32, canaux sur NAXIS3 — axes donc BONS depuis v2.26.1) :
+    fond à 0,02, **max 14,1**, 0,3 % des pixels > 1 ; en-tête sans aucun
+    mot-clé d'échelle ;
+  - DIAGNOSTIC ASTAP (astap_cli CLI-2024.11.17) : **« Only 0 stars found in
+    image »** → `ERROR=Not enough stars` dans le .ini ; le MÊME contenu borné
+    à 1 se résout en 0,2 s (143 quads sur 144). Cause : sa conversion 16 bits
+    écrase un fond à 0,04. Et un lecteur qui suppose [0,1] clippe le cœur de
+    M31 + les cœurs d'étoiles en blanc — l'image « paraît saturée »
+    (aperçus PNG comparés : clip-à-1 vs percentiles) ;
+  - CAUSE RACINE : `composition.normaliser` (percentiles 0,25/99,7 SANS
+    clip) — sur M31 le cœur vaut ~14× le p99,7. Le composite est la SEULE
+    donnée de l'appli hors [0,1], alors que VeraLux (clip d'entrée + piège
+    max > 1,1 → /65535), le débruitage, les sorties TIFF/PNG et ASTAP
+    supposent tous [0,1] ;
+  - FIX : `images.borner_lineaire(arr, entete)` — UN facteur GLOBAL (jamais
+    par canal : couleurs et linéarité au bit près), consigné dans l'en-tête
+    (**AVASCALE**, réversible, + HISTORY), nan/inf neutralisés et comptés
+    (**AVANAN**). Appliqué aux 3 écritures linéaires (empilement, résultat
+    traité, canaux `canal_*.fit`) ; no-op dès que max ≤ 1 ;
+  - POURQUOI PAS au niveau du composite : VeraLux travaille en valeurs
+    ABSOLUES (target_bg, logD résolu) → changer l'échelle du composite
+    changerait la vue live et le rendu « tel que vu ». **La vue ne change
+    PAS** : ce sont les FICHIERS qui redeviennent lisibles ;
+  - BANCS : `_test_save_lineaire_echelle.py` (nouveau) TOUT AU VERT — [1]
+    bornage + AVASCALE + réversibilité, [2] no-op si ≤ 1, [3] nan/inf, [4]
+    worker réel → fichier borné / (C,H,W) / FILTER / proportionnalité, [5]
+    mono 0,25 au bit près, [6] TIFF : 693 px blancs → 1, [7] **ASTAP RÉEL
+    résout le fichier borné : 2,4639″/px ≈ la brute G du même setup** (et
+    l'original non borné reste non résolu — contrôle informatif, un outil
+    tiers ne fait pas échouer le banc) ; `_test_solveur_reel_m31.py` passe
+    désormais ASTAP sur la version BORNÉE du composite : Δ max 4,73″,
+    Δ échelle 0,0010″/px, Δ orientation locale 0,006° ;
+  - bancs repassés au vert : axes FITS couleur, save linéaire (v2.5.1),
+    worker compo (jalon 19 — attendu adapté : le fichier = composite /
+    AVASCALE), compo UI (canaux), calib compo, re-stack compo, tel que vu ;
+  - installateur rebuili (v2.27.1).
 - **RÉSOLU (v2.27.0, 22/09/2026) — le solve INTERNE résout maintenant les
   vraies images d'Alain** : `_diag_solve_reel.py` avait montré l'échec en
   réel (empilement composite 2,6° @ 243 mm ET brute G N.I.N.A. : « pas assez

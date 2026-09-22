@@ -14,9 +14,57 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.27.0"
+AVASTACK_VERSION = "2.27.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.27.1 : EMPILEMENT LINÉAIRE BORNÉ À [0,1] AVANT ÉCRITURE (retour réel
+#          d'Alain, 22/09/2026 — PRIORITÉ : « l'empilement linéaire en sortie,
+#          mode dossiers (compo RGB), est saturé et non solvable par ASTAP ») :
+#          - CONSTAT MESURÉ sur son fichier (3×2165×3839, float32, 3 canaux
+#            sur NAXIS3 — les axes étaient donc BONS depuis v2.26.1) :
+#            fond à 0,02 mais max 14,1, 0,3 % des pixels > 1, 25 000 px/canal.
+#            L'en-tête ne portait AUCUN mot-clé d'échelle ;
+#          - DEUX EFFETS, une seule cause. ASTAP ne résolvait pas : sortie
+#            « Only 0 stars found in image » (sa conversion 16 bits écrase des
+#            valeurs d'un fond à 0,04) → `ERROR=Not enough stars` dans le .ini
+#            d'Alain — il ne voyait AUCUNE étoile de l'image, alors que le
+#            MÊME contenu borné à 1 se résout en 0,2 s (143 quads sur 144,
+#            échelle 2,4627″/px, identique à sa brute G du même setup). Et
+#            tout lecteur qui suppose [0,1] clippe le cœur de M31 + les cœurs
+#            d'étoiles en blanc : l'image « paraît saturée » (aperçus PNG
+#            comparés : clip-à-1 vs percentiles) ;
+#          - CAUSE RACINE : `composition.normaliser` cale chaque rôle sur ses
+#            percentiles 0,25/99,7 SANS clip (voulu pour l'affichage : le
+#            cœur garde sa tête linéaire). Sur M31 le cœur vaut ~14× le
+#            p99,7 → composite à 14. C'est la SEULE donnée de l'appli qui
+#            sort de [0,1] — or TOUT le reste suppose cette plage (VeraLux
+#            clippe en entrée et piège « max > 1,1 → /65535 », le débruitage
+#            clippe, les sorties TIFF/PNG clippent, ASTAP l' suppose) ;
+#          - CORRECTIF (portée voulue : les FICHIERS, pas la vue) :
+#            `images.borner_lineaire(arr, entete)` retire UN SEUL facteur
+#            GLOBAL (jamais par canal : équilibre des couleurs et linéarité
+#            préservés au bit près), le consigne dans l'en-tête (AVASCALE,
+#            donc réversible, + HISTORY), neutralise/compte les valeurs non
+#            finies (AVANAN). Appliqué aux trois écritures linéaires : bouton
+#            « Enregistrer l'empilement (linéaire) », « Enregistrer le
+#            résultat traité (linéaire) », sauvegarde des canaux (canal_*.fit)
+#            — no-op dès que max ≤ 1 (mono, traitements externes) ;
+#          - POURQUOI PAS au niveau du composite : le moteur VeraLux travaille
+#            en valeurs ABSOLUES (target_bg, logD résolu) et clippe l'entrée à
+#            1 → changer l'échelle du composite changerait la vue live (et le
+#            rendu « tel que vu ») sans nécessité. La vue ne change donc pas :
+#            ce sont les FICHIERS qui redeviennent lisibles ;
+#          - NOTE v2.26.1 CORRIGÉE : elle affirmait « les valeurs > 1 d'un
+#            composite linéaire sont NORMALES et les lecteurs externes étirent
+#            sans problème ». FAUX pour ASTAP (0 étoile détectée → jamais
+#            résolu) et pour tout lecteur qui suppose [0,1] (cœur clippé
+#            blanc). Seule la phrase « ce n'était pas la cause de l'image
+#            noire » restait juste (c'était bien NAXIS1 = 3) ;
+#          - bancs : `_test_save_lineaire_echelle.py` (composite > 1 → fichier
+#            borné, AVASCALE exact, FILTER conservé, forme (C,H,W), mono
+#            intact au bit près, ASTAP RÉEL sur l'empilement M31 du disque si
+#            présent) ; `_test_save_rgb_axes.py`, sauvegarde
+#            linéaire (v2.5.1) et worker compo (jalon 19) repassés au vert.
 # v2.27.0 : SOLVEUR INTERNE — REPLI RANSAC DE PAIRES + VALIDATION RÉELLE
 #          (retour réel d'Alain, 22/09/2026 : sur SES images M31 — empilement
 #          composite 2,6° @ 243 mm ET brute unique N.I.N.A. 3856×2180 — le
@@ -84,10 +132,14 @@ AVASTACK_VERSION = "2.27.0"
 #            banc jalon 14 adapté (l'outil externe est lu avec astropy brut,
 #            comme le vrai GraXpert) et repassé au vert ; sauvegarde
 #            linéaire (fix v2.5.1) et worker compo (jalon 19) repassés ;
-#          - NOTE : les valeurs > 1 d'un composite linéaire (jusqu'à ~14 sur
-#            M31) sont NORMALES — normalisation par canal du composite
-#            (Linear Fit/gains) ; les lecteurs externes étirent sans
-#            problème. Ce n'était PAS la cause de l'image noire ;
+#          - NOTE (v2.26.1) : les valeurs > 1 d'un composite linéaire (jusqu'à
+#            ~14 sur M31) venaient de la normalisation par percentile du
+#            composite (Linear Fit/gains). Cette note concluait à tort que
+#            « les lecteurs externes étirent sans problème » → CORRIGÉ en
+#            v2.27.1 : ASTAP n'y détectait AUCUNE étoile (non résolvable) et
+#            tout lecteur supposant [0,1] clippait le cœur en blanc. Les
+#            fichiers sont désormais bornés à [0,1] à l'écriture. Ce n'était
+#            bien PAS la cause de l'image noire (c'était NAXIS1 = 3) ;
 #          - installateur rebuilit.
 # v2.26.0 : PROPAGATION DU WCS PAR COMPOSITION — JALON 56, ÉTAPE 3 (décision
 #          d'Alain : PAS de re-solve à chaque réempilement — solve UNE fois

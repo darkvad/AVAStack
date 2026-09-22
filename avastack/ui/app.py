@@ -20,8 +20,8 @@ from PIL import Image, ImageTk
 from ..compat import IS_WINDOWS
 from .. import AVASTACK_VERSION
 from ..config import CONFIG, sauver_config
-from ..images import (CFA_MODE, lire_filtre_fits, load_image, save_image,
-                      find_output, auto_unflip)
+from ..images import (CFA_MODE, borner_lineaire, lire_filtre_fits,
+                      load_image, save_image, find_output, auto_unflip)
 from ..cameras import (SOURCES, SimulatedCamera, OpenCVCamera, ZWOASICamera,
                        FolderCamera, MultiFolderCamera, QHYCamera,
                        PlayerOneCamera, TouptekCamera, SVBonyCamera)
@@ -3303,7 +3303,12 @@ class App:
             filetypes=[("FITS", "*.fits"), ("TIFF 16 bits", "*.tif"), ("PNG 16 bits", "*.png")])
         if path:
             try:
-                save_image(path, self.proc_full)
+                # v2.27.1 : même garantie d'échelle que la sauvegarde de
+                # l'empilement linéaire (un résultat d'outil externe peut
+                # lui aussi dépasser 1 : le borner évite un fichier que les
+                # lecteurs supposant [0,1] afficheraient « saturé »).
+                img, _ = borner_lineaire(self.proc_full)
+                save_image(path, img)
                 messagebox.showinfo("Enregistrer", f"Résultat traité sauvegardé :\n{path}")
             except Exception as e:
                 messagebox.showerror("Enregistrer", str(e))
@@ -4305,9 +4310,19 @@ class App:
                 try:
                     # Jalon 25 : mot-clé FILTER (roue à filtres QHY) — utile
                     # pour les dossiers N.I.N.A. et la détection des rôles.
-                    save_image(path, self.stacker.mean(),
-                               entete={"FILTER": self.filtre_courant}
-                               if self.filtre_courant else None)
+                    # v2.27.1 : l'empilement est BORNÉ à [0,1] avant écriture
+                    # (borner_lineaire) — le composite d'une composition
+                    # multi-dossiers dépasse largement 1 (cœur de galaxie
+                    # normalisé par percentiles) : écrit tel quel, le fichier
+                    # n'était PAS résolvable par ASTAP (« Only 0 stars found
+                    # in image ») et paraissait saturé partout ailleurs
+                    # (retour réel d'Alain, 22/09/2026, M31 RGB en mode
+                    # dossiers). Mono : no-op (l'empilement est déjà ≤ 1).
+                    img, entete = borner_lineaire(
+                        self.stacker.mean(),
+                        {"FILTER": self.filtre_courant}
+                        if self.filtre_courant else None)
+                    save_image(path, img, entete=entete)
                     self.saved_path = path
                 except Exception as e:
                     self.saved_path = f"ERREUR: {e}"
@@ -4321,9 +4336,14 @@ class App:
                     self.save_canaux_request, None
                 try:
                     for role, carte in self.stacker.moyennes().items():
+                        # v2.27.1 : même garantie d'échelle que la sauvegarde
+                        # du composite (no-op ici en pratique : une moyenne de
+                        # rôles reste ≤ 1).
+                        bordee, entete = borner_lineaire(carte,
+                                                         {"FILTER": role})
                         save_image(os.path.join(
-                            d_canaux, f"canal_{role}.fit"), carte,
-                            entete={"FILTER": role})
+                            d_canaux, f"canal_{role}.fit"), bordee,
+                            entete=entete)
                     self.saved_path = d_canaux
                 except Exception as e:
                     self.saved_path = f"ERREUR: {e}"

@@ -141,6 +141,54 @@ def lire_filtre_fits(path):
 
 
 
+def borner_lineaire(arr, entete=None, seuil=1.0):
+    """Ramène une image LINÉAIRE dans [0, seuil] AVANT sauvegarde, en
+    consignant le facteur global retiré dans l'en-tête FITS (AVASCALE).
+
+    Pourquoi : toute l'appli travaille en float [0..1] (load_image normalise
+    selon le dtype réel, et l'affichage VeraLux, le débruitage, les sorties
+    TIFF/PNG et le solveur supposent cette plage). SEULE exception : le
+    composite d'une composition multi-dossiers — `composition.normaliser`
+    cale chaque rôle sur ses percentiles 0,25/99,7 SANS clip, donc le cœur
+    d'une galaxie monte beaucoup plus haut que 1 (constat RÉEL du
+    22/09/2026 sur l'empilement RGB M31 d'Alain en mode dossiers : max 14,1
+    pour un fond à 0,02 — 0,3 % des pixels au-dessus de 1). Écrit tel quel,
+    un tel fichier est inutilisable par l'extérieur :
+      • ASTAP convertit en 16 bits et n'y détecte plus AUCUNE étoile
+        (« Only 0 stars found in image » → « Not enough stars » → jamais
+        résolu) ; le même contenu borné à 1 est résolu en 0,2 s (143 quads
+        sur 144, échelle identique à celle de la brute du même setup) ;
+      • tout lecteur qui suppose [0..1] (ASIFitsView, Siril…) clippe le
+        cœur et les cœurs d'étoiles en blanc : l'empilement « paraît
+        saturé » alors qu'il est simplement hors échelle.
+
+    Un SEUL facteur GLOBAL est retiré (jamais par canal) : l'équilibre des
+    couleurs et la linéarité sont préservés au bit près, et l'opération est
+    RÉVERSIBLE (facteur dans l'en-tête). Les valeurs non finies (nan/inf)
+    sont neutralisées et comptées (AVANAN) : astropy les écrirait telles
+    quelles, et aucun outil externe ne sait les lire.
+
+    arr    : image float 2D ou (H, W, C) — JAMAIS modifiée sur place.
+    entete : dict de mots-clés FITS à compléter (optionnel).
+    seuil  : plafond de l'écriture (1.0 par défaut = convention du projet).
+    → (arr float32 borné, entete dict) ; arr inchangé si max <= seuil.
+    """
+    d = np.asarray(arr, dtype=np.float32)
+    entete = dict(entete or {})
+    fini = np.isfinite(d)
+    if not bool(fini.all()):
+        entete["AVANAN"] = int(fini.size - int(fini.sum()))
+        d = np.where(fini, d, 0.0).astype(np.float32)
+    if d.size:
+        mx = float(d.max())
+        if mx > float(seuil) and mx > 0.0:
+            d = (d / mx).astype(np.float32)
+            entete["AVASCALE"] = (mx, "facteur global retire a l'ecriture")
+            entete["HISTORY"] = ("donnees lineaires bornees a [0,1] par "
+                                 "AVAStack (cf. AVASCALE)")
+    return d, entete
+
+
 def save_image(path, arr, entete=None):
     """Sauve une image float en FITS (si astropy) ou PNG/TIFF 16 bits.
 

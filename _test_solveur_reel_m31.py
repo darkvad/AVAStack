@@ -4,6 +4,7 @@ brute G (N.I.N.A., cas facile). Confrontation ASTAP incluse (référence
 indépendante) : les deux images sortent de la MÊME optique, donc les échelles
 résolues doivent coïncider au millième — contrôle croisé gratuit."""
 import math
+import os
 import sys
 import tempfile
 
@@ -11,7 +12,7 @@ import numpy as np
 
 from avastack.catalogues import resoudre
 from avastack.catalogues.astap import resoudre_avec_astap
-from avastack.images import load_image
+from avastack.images import borner_lineaire, load_image, save_image
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -56,6 +57,24 @@ for chemin, champ, nom in CAS:
         wcs_a, msg_a = resoudre_avec_astap(chemin, RA0, DEC0, rayon_deg=1.0,
                                            fov_deg=champ * h / w,
                                            dossier_sortie=tmp)
+        if wcs_a is None and float(img.max()) > 1.0:
+            # v2.27.1 : le fichier SUR LE DISQUE peut être antérieur au
+            # correctif d'échelle (composite > 1 : ASTAP ne détecte alors
+            # aucune étoile — « Only 0 stars found in image », constat réel
+            # d'Alain du 22/09/2026). On rejoue sur une copie BORNÉE à [0,1],
+            # telle que l'appli l'écrit désormais : c'est cette image-là qui
+            # doit être confrontée à notre solveur.
+            borne, entete = borner_lineaire(img, {"FILTER": "L"})
+            copie = os.path.join(tmp, "composite_borne.fits")
+            save_image(copie, borne, entete=entete)
+            wcs_a, msg_a = resoudre_avec_astap(copie, RA0, DEC0,
+                                               rayon_deg=1.0,
+                                               fov_deg=champ * h / w,
+                                               dossier_sortie=tmp)
+            if wcs_a is not None:
+                print("  (fichier du disque antérieur au correctif "
+                      "d'échelle : ASTAP résout la version BORNÉE, celle que "
+                      "l'appli écrit désormais)")
     if wcs_a is None:
         print(f"  astap_cli : indisponible ({msg_a}) — comparaison sautée")
     else:

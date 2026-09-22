@@ -273,9 +273,17 @@ verifie(app.saved_path == p_save and os.path.exists(p_save),
         "sauvegarde consommée par le worker (façade transparente)")
 if os.path.exists(p_save):
     lu = load_image(p_save)
+    # v2.27.1 : le fichier écrit est le composite BORNÉ à [0,1] — contenu
+    # identique à un facteur GLOBAL près (AVASCALE dans l'en-tête), ce qui
+    # rend le fichier lisible par ASTAP et les lecteurs qui supposent [0,1]
+    # (avant, un composite à max > 1 n'était pas résolvable — constat réel
+    # d'Alain du 22/09/2026 sur son empilement M31).
+    ech = max(float(comp.max()), 1.0)     # facteur retiré par borner_lineaire
     verifie(lu.shape == comp.shape
-            and np.allclose(lu, comp, rtol=1e-5, atol=1e-6),
+            and np.allclose(lu, comp / ech, rtol=1e-5, atol=1e-6),
             "fichier sauvegardé = composite courant (linéaire)")
+    verifie(float(lu.max()) <= 1.0 + 1e-6,
+            f"fichier borné à [0,1] (max {float(lu.max()):.5f})")
 
 app.running = False
 th.join(timeout=5)
