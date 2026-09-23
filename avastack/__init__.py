@@ -14,9 +14,17 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.28.0"
+AVASTACK_VERSION = "2.28.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.28.1 : ERGONOMIE astrométrie — bouton 📷 « Lire depuis l'image
+#          courante » dans l'UI (case Astrométrie) : pré-remplit les trois
+#          champs AD/Dec/champ depuis le header FITS de la dernière brute
+#          reçue (`camera.last_file`) ou du dernier empilement linéaire
+#          sauvegardé (`saved_path`) — lecture STRICTE (OBJCTRA/OBJCTDEC +
+#          FOCALLEN/XPIXSZ), jamais d'invention ; si header incomplet,
+#          le libellé annonce la raison. L'utilisateur n'a plus qu'à valider
+#          (Entrée / FocusOut) pour transmettre au worker.
 # v2.28.0 : BRANCHEMENT DU SOLVEUR AU WORKER — astrométrie de l'empilement
 #          (jalon 56, décision d'Alain du 22/09/2026) : le solveur interne
 #          résout l'astrométrie UNE SEULE FOIS sur l'accumulation COMPLÈTE
