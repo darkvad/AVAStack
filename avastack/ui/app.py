@@ -1174,6 +1174,10 @@ class App:
         self.var_astro_champ = tk.StringVar(value="")
         e_ch = ttk.Entry(row_a, textvariable=self.var_astro_champ, width=6)
         e_ch.pack(side="left", padx=(2, 0))
+        # Bouton : lire AD/Dec/champ depuis l'image courante (dernière brute
+        # reçue ou dernier empilement sauvegardé) — remplit les trois champs.
+        ttk.Button(row_a, text="📷", width=3,
+                   command=self._lire_indices_image).pack(side="left", padx=(6, 0))
         # Les champs sont relus à la VALIDATION (Entrée / sortie du champ) —
         # pas à chaque frappe : un indice à moitié tapé serait refusé pour rien.
         for e in (e_ra, e_dec, e_ch):
@@ -1922,6 +1926,52 @@ class App:
         else:
             txt, col = "Astrométrie : en attente d'indices", "#c98a00"
         self.lbl_astro.config(text=txt, foreground=col)
+
+    def _lire_indices_image(self):
+        """Jalon 56 : lit AD/Dec/champ depuis l'image COURANTE (dernière brute
+        reçue ou dernier empilement linéaire sauvegardé) et pré-remplit les
+        trois champs — l'utilisateur n'a plus qu'à valider (Entrée / FocusOut).
+        Priorité : 1) `camera.last_file` (brute reçue), 2) `save_request` chemin
+        demandé, 3) dernier FITS dans le dossier d'empilement, 4) empilement
+        courant sauvegardé via `images.save_image` (le worker connaît le chemin).
+        La lecture est STRICTE (OBJCTRA/OBJCTDEC + FOCALLEN/XPIXSZ) — si le
+        header n'a pas les mots-clés, rien n'est rempli et le libellé l'annonce.
+        """
+        from ..images import indices_entete_fits
+        chemin = None
+        # 1) dernière brute lue par la caméra (mode live / dossier)
+        chemin = getattr(self.camera, "last_file", "") or ""
+        # 2) dernier empilement linéaire sauvé par le worker (chemin mémorisé)
+        if not chemin:
+            chemin = getattr(self, "saved_path", "") or ""
+            if chemin and chemin.startswith("ERREUR"):
+                chemin = ""
+        # 3) si on est en mode dossier, regarder les dossiers de la composition
+        if not chemin and self._mode_compo:
+            try:
+                stats = self.camera.stats() or {}
+                cands = [v.get("last_file") or "" for v in stats.values()]
+                cands = [c for c in cands if c]
+                if cands:
+                    chemin = max(cands, key=lambda p: os.path.getmtime(p))
+            except Exception:
+                pass
+        if not chemin or not os.path.isfile(chemin):
+            self._astro_msg_indices = "aucune image disponible (dernière brute ou empilement)"
+            self._maj_astro_vue()
+            return
+        ra, dec, champ, msg = indices_entete_fits(chemin)
+        if ra is None or dec is None or champ is None:
+            self._astro_msg_indices = f"lecture {os.path.basename(chemin)} : {msg}"
+            self._maj_astro_vue()
+            return
+        # Remplit les champs avec les VALEURS ANALYSÉES (format décimal degrés)
+        self.var_astro_ra.set(f"{ra:.6f}")
+        self.var_astro_dec.set(f"{dec:+.6f}")
+        self.var_astro_champ.set(f"{champ:.5f}")
+        self._astro_msg_indices = ""
+        self._astro_source = f"image {os.path.basename(chemin)}"
+        self._on_astro()        # valide et transmet au worker
 
     def _on_linear_fit(self):
         """Jalon 54 : case « Recalage colorimétrique (Linear Fit) » + menu
