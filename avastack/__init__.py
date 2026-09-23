@@ -14,9 +14,31 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.27.1"
+AVASTACK_VERSION = "2.28.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.28.0 : BRANCHEMENT DU SOLVEUR AU WORKER — astrométrie de l'empilement
+#          (jalon 56, décision d'Alain du 22/09/2026) : le solveur interne
+#          résout l'astrométrie UNE SEULE FOIS sur l'accumulation COMPLÈTE
+#          (grille de l'aligneur, `mean(recadre=False)`), avec les INDICES
+#          de la cible (saisis OU lus dans l'en-tête OBJCTRA/OBJCTDEC des
+#          brutes). À chaque RÉEMPILEMENT, le WCS est PROPAGÉ par composition
+#          de transformations (module `catalogues/propagation.py` — étape 3
+#          validée au banc), AUCUN re-solve, AUCUN accès au catalogue.
+#          ASTAP reste la référence indépendante/repli hors session.
+#          Module de GLUE `processing/astrometrie.py` (numpy pur, sans cycle
+#          d'import) : `SuiviAstrometrie` gère le cycle de vie (indices →
+#          résolution unique → propagation cumulative), réessais espacés et
+#          bornés, invalidation si indices changent, mots-clés FITS WCS
+#          (CTYPE/CRVAL/CRPIX/CD) écrits à CHAQUE sauvegarde linéaire sur la
+#          grille RÉELLEMENT écrite (recadrage d'intersection inclus).
+#          UI : case « Astrométrie » + AD/Dec/champ (sexagésimal/heures/
+#          décimal, interprétation explicite affichée), lecture d'en-tête
+#          STRICTE (OBJCTRA/OBJCTDEC + FOCALLEN/XPIXSZ, jamais d'invention),
+#          ligne d'état dédiée (mesure ou raison d'attente, jamais muette).
+#          Banc : _test_astro_branchement_jalon56.py (6 sections : parseurs,
+#          en-tête FITS, SuiviAstrometrie, propagation/recadrage/astropy.wcs,
+#          worker réel FITS WCS + ligne d'état, re-stack réel propagation).
 # v2.27.1 : EMPILEMENT LINÉAIRE BORNÉ À [0,1] AVANT ÉCRITURE (retour réel
 #          d'Alain, 22/09/2026 — PRIORITÉ : « l'empilement linéaire en sortie,
 #          mode dossiers (compo RGB), est saturé et non solvable par ASTAP ») :

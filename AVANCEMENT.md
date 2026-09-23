@@ -11,50 +11,35 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.27.1** (`avastack/__init__.py`),
-  branche `master` — **PRIORITÉ livrée le 22/09/2026 : ÉCHELLE des fichiers
-  linéaires (empilement compo RGB non résolvable par ASTAP + « saturé »),
-  cf. bloc « PRIORITÉ RÉSOLUE » ci-dessous. Jalon 56 étape 3 (propagation
-  WCS) : banc au vert ; étape 2 (solveur interne) : RÉSOLU EN RÉEL**
-  (repli RANSAC de paires, cf. bloc « RÉSOLU » ci-dessous). Jalon 55
-  (v2.23.3) validé par Alain en réel (M31 RGB), commité aca5ca5.
-- **Jalon 56, étape 3 (v2.26.0, 22/09/2026) — résumé du dernier jalon** :
-  - livré : `avastack/catalogues/propagation.py` (numpy pur, SANS
-    dépendance vers processing — le cycle d'import resterait interdit) :
-    `propager(wcs_ref, M)` → `WcsCompose`, le WCS EXACT du repère
-    transformé (M en convention ALIGNEUR : frame → référence, warpAffine) ;
-    `compose_M` / `inverse_M` pour les chaînes de réempilement
-    (W1 = propager(W0, M10) — UN SEUL alignement entre anciennes et
-    nouvelles grilles) ; `WcsCompose.vers_tan()` ré-ajuste un WcsTan
-    équivalent pour les en-têtes FITS (init analytique) ;
-  - banc `_test_propagation_jalon56.py` TOUT AU VERT : composition exacte
-    vs vérité analytique (2,3e-13 px), `vers_tan` ≡ astropy.wcs (2,6e-14°),
-    re-SOLVE indépendant (étape 2) de l'image warpée ≈ propagé à 0,46″,
-    chaîne de réempilement G0→G1→frame exacte, StarAligner RÉEL (sens des
-    matrices) 0,42 px, échecs propres (NaN, forme, dégénérée, échelle,
-    WCS absent, vers_tan sans forme) ;
-  - DÉCOUVERTE (à retenir) : l'aligneur n'estime que des SIMILITUDES
-    (`estimateAffinePartial2D`) et la composition d'un TAN avec une
-    similitude est EXACTEMENT un autre TAN (rotation 3D du point tangent)
-    → propagation SANS PERTE, le ré-ajustement retombe au bruit machine
-    (2,6e-11 px) ;
-  - PIÈGE SENS DES MATRICES tranché au banc : M d'aligneur = frame→référence ;
-    `vers_radec` lit le ciel à M(p) (le pixel p montre le contenu arrivé de
-    M(p)), `vers_pixels` pose le ciel en M⁻¹(p_ref) — confondu une fois
-    (46 px), tranché par la vérité analytique ;
-  - bancs étapes 1 et 2 relancés : toujours au vert.
-- **Tâche en cours** : **branchement du solveur au worker** (v2.27.0 : le
-  solve réel est validé — cf. bloc « RÉSOLU » ; brancher = solve UNE fois
-  sur l'accumulation avec les indices de la cible puis propagation WCS à
-  chaque re-stack), suivie de l'étape 4 — photométrie + facteurs par bande
+- **Version stable de référence : AVAStack v2.28.0** (`avastack/__init__.py`),
+  branche `master` — **BRANCHEMENT DU SOLVEUR AU WORKER livré le 23/09/2026
+  (jalon 56, étape « branchement ») : le solveur interne résout l'astrométrie
+  UNE SEULE FOIS sur l'accumulation COMPLÈTE (grille de l'aligneur,
+  `mean(recadre=False)`), avec les INDICES de la cible (saisis OU lus dans
+  l'en-tête OBJCTRA/OBJCTDEC des brutes). À chaque RÉEMPILEMENT, le WCS est
+  PROPAGÉ par composition de transformations (`catalogues/propagation.py` —
+  étape 3 banc au vert), AUCUN re-solve, AUCUN accès au catalogue.
+  Module de GLUE `processing/astrometrie.py` (numpy pur, sans cycle d'import) :
+  `SuiviAstrometrie` gère le cycle de vie (indices → résolution unique →
+  propagation cumulative), réessais espacés et bornés, invalidation si indices
+  changent, mots-clés FITS WCS (CTYPE/CRVAL/CRPIX/CD) écrits à CHAQUE
+  sauvegarde linéaire sur la grille RÉELLEMENT écrite (recadrage d'intersection
+  inclus). UI : case « Astrométrie » + AD/Dec/champ (sexagésimal/heures/
+  décimal, interprétation explicite affichée), lecture d'en-tête STRICTE
+  (OBJCTRA/OBJCTDEC + FOCALLEN/XPIXSZ, jamais d'invention), ligne d'état
+  dédiée (mesure ou raison d'attente, jamais muette).
+  Banc : `_test_astro_branchement_jalon56.py` (6 sections : parseurs, en-tête
+  FITS, SuiviAstrometrie, propagation/recadrage/astropy.wcs, worker réel FITS
+  WCS + ligne d'état, re-stack réel propagation) — TOUT AU VERT.
+  Jalon 56 étape 3 (propagation WCS) : banc au vert ; étape 2 (solveur
+  interne) : RÉSOLU EN RÉEL (repli RANSAC de paires). Jalon 55 (v2.23.3)
+  validé par Alain en réel (M31 RGB), commité aca5ca5.
+- **Tâche en cours** : **étape 4 — photométrie + facteurs par bande**
   (appariement catalogue Gaia ↔ étoiles de l'accumulation via le WCS),
-  puis étape 5 (application aux gains du stacker), étape 6 (validation
-  Siril + test réel multibande). La PRIORITÉ demandée par Alain le
-  22/09/2026 (échelle des fichiers linéaires, v2.27.1) est LIVRÉE ET
-  VÉRIFIÉE : elle ne bloque plus la route.
-- **Prochaine étape** : branchement au worker (solve sur l'accumulation
-  avec les indices de la cible, propagation à chaque re-stack), puis
-  l'étape 4 à froid.
+  suivie de l'étape 5 (application aux gains du stacker), étape 6 (validation
+  Siril + test réel multibande). La PRIORITÉ demandée par Alain le 22/09/2026
+  (échelle des fichiers linéaires, v2.27.1) est LIVRÉE ET VÉRIFIÉE.
+- **Prochaine étape** : photométrie + facteurs par bande (étape 4) à froid.
 
 ## Statuts CLAUDE.md
 

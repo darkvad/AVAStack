@@ -96,6 +96,11 @@ from ..processing import stars as seeing_live
 from ..processing import sharpness as nettete_live
 from ..external import live as gx_live
 from ..processing import veralux as veralux_moteur
+# Jalon 56 (branchement du solveur) : astrométrie de l'empilement — module de
+# GLUE (résolution UNIQUE du WCS sur la grille complète, puis PROPAGATION à
+# chaque réempilement). Le worker ne touche jamais au catalogue lui-même
+# (processing → catalogues, jamais l'inverse : pas de cycle d'import).
+from ..processing import astrometrie as astro_mod
 from ..external.detection import (
     DEFAULT_CMD_GRAXPERT, DEFAULT_CMD_GRAXPERT_DN, DEFAULT_CMD_BXT,
     commande_avec_strength, commande_par_defaut_graxpert,
@@ -275,6 +280,19 @@ class App:
         self.restack_couleur = "#888888" # gris (rien) / vert (succès) / ambre (échec)
         self.restack_total = 0           # re-stacks RÉUSSIS de la session
         self.restack_hist = []           # historique horodaté (récent en tête)
+        # Jalon 56 (branchement du solveur) : astrométrie de l'empilement.
+        # L'objet SuiviAstrometrie vit dans le WORKER (résolution UNIQUE sur la
+        # grille complète puis PROPAGATION à chaque réempilement) ; l'UI ne lit
+        # que des attributs simples (astro_info), comme la ligne de re-stack.
+        # Les INDICES de la cible arrivent par INSTANTANÉ (jamais lus dans les
+        # widgets par le worker, cf. piège « main thread is not in main loop »).
+        self.suivi_astro = astro_mod.SuiviAstrometrie()
+        self.astro_info = ""             # texte de la ligne dédiée ("" = rien)
+        self.astro_couleur = "#888888"   # gris / vert (résolu) / ambre (souci)
+        self._astro_actif = False        # case « Astrométrie » (instantané Tk)
+        self._astro_indices = None       # (ra, dec, champ) validés (instantané)
+        self._astro_msg_indices = ""     # raison d'un refus des indices saisis
+        self._astro_source = ""          # « saisie » ou « en-tête <fichier> »
         # Jalon 17 : filtre anti-brutes très défocalisées (rejet d'office,
         # case pour désactiver — décision d'Alain). Mesure par frame à
         # l'arrivée (fwhm, nb d'étoiles) ; le filtre compare à la médiane des
@@ -485,6 +503,18 @@ class App:
                 break
         self._on_rejeter_flou()
         self._on_wb()
+        # --- Jalon 56 : astrométrie (case + indices de la cible) — chaînes
+        # relues par le parseur à l'activation ; case persistée comme les
+        # autres (booléen EXPLICITE : décochée doit rester décochée).
+        for cle, var in (("astro_ra", self.var_astro_ra),
+                         ("astro_dec", self.var_astro_dec),
+                         ("astro_champ", self.var_astro_champ)):
+            v = c.get(cle)
+            if isinstance(v, str):
+                var.set(v.strip())
+        if "astro_actif" in c:
+            self.var_astro.set(bool(c.get("astro_actif")))
+        self._on_astro()
         # --- Jalon 6 : réglages VeraLux (moteur tiers opt-in)
         mode_res = c.get("vl_mode_res")
         if mode_res in ("fond cible (auto)", "logD forcé"):
@@ -634,6 +664,14 @@ class App:
         # test réel d'Alain).
         c["linear_fit"] = bool(self.var_fit.get())
         c["linear_fit_mode"] = self._code_fit_methode()
+        # Jalon 56 : astrométrie — case d'activation (booléen explicite) et
+        # indices de la cible, persistés TELS QUE SAISIS (le parseur les relit
+        # à l'activation ; une chaîne non interprétable est refusée à ce
+        # moment-là, jamais silencieusement convertie).
+        c["astro_actif"] = bool(self.var_astro.get())
+        c["astro_ra"] = self.var_astro_ra.get().strip()
+        c["astro_dec"] = self.var_astro_dec.get().strip()
+        c["astro_champ"] = self.var_astro_champ.get().strip()
         c["moteur"] = self.var_moteur.get()
         c["vl_mode_res"] = self.var_vl_mode_res.get()
         c["vl_target"] = self.var_vl_target.get()
@@ -1111,6 +1149,39 @@ class App:
         ttk.Button(row_rs, text="ⓘ", width=3,
                    command=self._montrer_restack_hist).pack(side="left",
                                                             padx=(4, 0))
+        # Jalon 56 : ASTROMÉTRIE de l'empilement — case + indices de la cible.
+        # Le solveur interne résout l'astrométrie UNE fois sur l'empilement
+        # (ces indices l'y aident), puis le WCS est PROPAGÉ à chaque
+        # réempilement. En mode dossier, les champs peuvent rester VIDES : des
+        # indices sont alors lus dans l'en-tête des brutes (OBJCTRA/OBJCTDEC).
+        # Interprétation : « 0h42m44s » ou « 00 42 44 » = HEURES (« 0.7123h »
+        # aussi) ; un décimal nu (« 10.68333 ») = DEGRÉS. La ligne d'état
+        # rappelle les indices retenus — aucune interprétation silencieuse.
+        row_a = ttk.Frame(box)
+        row_a.pack(fill="x", pady=(4, 0))
+        self.var_astro = tk.BooleanVar(value=False)
+        ttk.Checkbutton(row_a, text="Astrométrie", variable=self.var_astro,
+                        command=self._on_astro).pack(side="left")
+        ttk.Label(row_a, text="AD :").pack(side="left", padx=(6, 0))
+        self.var_astro_ra = tk.StringVar(value="")
+        e_ra = ttk.Entry(row_a, textvariable=self.var_astro_ra, width=12)
+        e_ra.pack(side="left", padx=(2, 0))
+        ttk.Label(row_a, text="Dec :").pack(side="left", padx=(4, 0))
+        self.var_astro_dec = tk.StringVar(value="")
+        e_dec = ttk.Entry(row_a, textvariable=self.var_astro_dec, width=12)
+        e_dec.pack(side="left", padx=(2, 0))
+        ttk.Label(row_a, text="champ° :").pack(side="left", padx=(4, 0))
+        self.var_astro_champ = tk.StringVar(value="")
+        e_ch = ttk.Entry(row_a, textvariable=self.var_astro_champ, width=6)
+        e_ch.pack(side="left", padx=(2, 0))
+        # Les champs sont relus à la VALIDATION (Entrée / sortie du champ) —
+        # pas à chaque frappe : un indice à moitié tapé serait refusé pour rien.
+        for e in (e_ra, e_dec, e_ch):
+            e.bind("<Return>", lambda ev: self._on_astro())
+            e.bind("<FocusOut>", lambda ev: self._on_astro())
+        self.lbl_astro = ttk.Label(box, text="Astrométrie : —",
+                                   foreground="#888888")
+        self.lbl_astro.pack(anchor="w", pady=(2, 0))
         ttk.Label(box, text="Rejet kappa-sigma :").pack(anchor="w")
         self.var_kappa = tk.StringVar(value="3σ")
         cb = ttk.Combobox(box, textvariable=self.var_kappa, state="readonly", width=8,
@@ -1795,6 +1866,62 @@ class App:
             if lib == self.var_fit_methode.get():
                 return code
         return "offset"                        # inconnu → le plus doux
+
+    def _on_astro(self):
+        """Jalon 56 : case « Astrométrie » + indices de la cible (AD, Dec,
+        champ) — relus dans le thread Tk et transmis au worker par INSTANTANÉ
+        (`_astro_indices`) : le worker n'a JAMAIS le droit de lire les
+        variables Tk. Ne touche QU'À L'ÉTAT (la ligne d'état suit ensuite par
+        _update_status, qui l'affiche pour tous les états).
+
+        Une saisie refusée (valeur illisible, champ hors bornes) est signalée
+        TELLE QUELLE : rien n'est deviné, et le suivi reste sans indices —
+        l'astrométrie ne se lancera pas sur une valeur à moitié comprise."""
+        self._astro_actif = bool(self.var_astro.get())
+        ra, dec, champ, msg = astro_mod.analyser_indices(
+            self.var_astro_ra.get().strip(),
+            self.var_astro_dec.get().strip(),
+            self.var_astro_champ.get().strip())
+        self._astro_msg_indices = msg
+        self._astro_source = ""
+        if msg:
+            self._astro_indices = None
+        else:
+            self._astro_indices = (ra, dec, champ)
+            self._astro_source = "saisie"
+            if self.suivi_astro is not None \
+                    and self.suivi_astro.indice(ra, dec, champ):
+                # Indices DIFFÉRENTS : le WCS déjà résolu ne décrit plus la
+                # même cible/le même champ → oublié (indice() s'en charge) et
+                # l'affichage repart de zéro.
+                self.astro_info = ""
+                self.astro_couleur = "#888888"
+        if not self._astro_actif and self.suivi_astro is not None:
+            self.suivi_astro.reset()
+        self._rafraichir_rendu = True     # la ligne d'état suit SANS brute
+        self._maj_astro_vue()
+
+    def _maj_astro_vue(self):
+        """Affiche l'état de l'astrométrie CONNU CÔTÉ UI (avant toute
+        tentative) : la ligne reflète la saisie ; la mesure (étoiles, rms,
+        ″/px, chemin du solveur) arrive ensuite du worker par `astro_info`.
+        Jamais de ligne muette : soit une mesure, soit la raison de son
+        absence."""
+        if getattr(self, "lbl_astro", None) is None:
+            return
+        if not self._astro_actif:
+            txt, col = "Astrométrie : désactivée", "#888888"
+        elif self._astro_msg_indices:
+            txt = f"Astrométrie : indices refusés — {self._astro_msg_indices}"
+            col = "#c98a00"
+        elif self.astro_info:
+            txt, col = self.astro_info, self.astro_couleur
+        elif self._astro_indices:
+            txt = "Astrométrie : indices posés — résolution au 1er empilement"
+            col = "#888888"
+        else:
+            txt, col = "Astrométrie : en attente d'indices", "#c98a00"
+        self.lbl_astro.config(text=txt, foreground=col)
 
     def _on_linear_fit(self):
         """Jalon 54 : case « Recalage colorimétrique (Linear Fit) » + menu
@@ -2941,6 +3068,13 @@ class App:
         self.restack_couleur = "#888888"
         self.restack_total = 0
         self.restack_hist = []
+        # Jalon 56 : astrométrie de session neuve — les INDICES de la cible
+        # (saisis ou lus) restent posés, le WCS résolu ne vaut plus rien.
+        self.suivi_astro.reset()
+        self.astro_info = ""
+        self.astro_couleur = "#888888"
+        self._astro_source = ""
+        self._maj_astro_vue()
         self.proc_show = self.proc_full = None
         self.proc_new = False
         self.save_asseen_request = None       # sauvegarde « tel que vu » annulée
@@ -3772,6 +3906,165 @@ class App:
         except Exception:
             return 0
 
+    # ------------------------------------ jalon 56 : astrométrie de l'empilement
+    def _astro_tour(self, stacker):
+        """Appelé par le worker APRÈS le re-stack (la grille est alors celle
+        qui sera affichée et sauvegardée) : indices → RÉSOLUTION UNIQUE → état.
+
+        - WCS déjà résolu : rien à faire, la ligne rappelle la mesure (et le
+          nombre de propagations) ;
+        - case décochée / indices manquants : la ligne DIT pourquoi (jamais de
+          silence) ; en mode dossier, une lecture des indices dans l'en-tête
+          de la brute courante est tentée AVANT de renoncer ;
+        - sinon `peut_essayer` décide (frames empilées, délai, plafond) : une
+          résolution coûte du temps d'acquisition, elle n'est tentée que sur
+          un empilement déjà consistant, et au plus une fois par délai."""
+        if self.suivi_astro is None or stacker is None or stacker.n <= 0:
+            return
+        if self.suivi_astro.resolu:
+            self._maj_astro_etat()
+            return
+        if not self._astro_actif:
+            self.astro_info = "Astrométrie : désactivée"
+            self.astro_couleur = "#888888"
+            return
+        if self._astro_indices is None:
+            self._astro_indices_entete()
+        if self._astro_indices is None:
+            self.astro_info = ("Astrométrie : " + (self._astro_msg_indices
+                               or "indices de la cible manquants"))
+            self.astro_couleur = "#c98a00"
+            return
+        if not self.suivi_astro.pret:
+            self.suivi_astro.indice(*self._astro_indices)
+        if not self.suivi_astro.peut_essayer(stacker.n):
+            raison = self.suivi_astro.raison_attente()
+            if raison:
+                self.astro_info = f"Astrométrie : {raison}"
+                self.astro_couleur = "#c98a00"
+            return
+        img = stacker.mean(recadre=False)
+        if img is None:
+            return
+        # Message posé AVANT le calcul : le thread Tk le lit PENDANT la
+        # résolution (le worker, lui, est occupé) — l'utilisateur voit ainsi
+        # d'où vient la pause d'acquisition d'une frame environ.
+        self.astro_info = (f"Astrométrie : résolution en cours "
+                           f"({stacker.n} frames)…")
+        self.astro_couleur = "#888888"
+        okk, msg = self.suivi_astro.resoudre_sur(img)
+        if okk:
+            self._maj_astro_etat()
+            return
+        essais = self.suivi_astro.essais
+        self.astro_couleur = ("#c98a00" if essais < astro_mod.ASTRO_MAX_ESSAIS
+                              else "#d04040")
+        self.astro_info = (f"Astrométrie : échec — {msg}"
+                           f" ({essais}/{astro_mod.ASTRO_MAX_ESSAIS} essais)")
+
+    def _maj_astro_etat(self):
+        """Recopie l'état du suivi (étoiles, rms, ″/px, propagations) dans la
+        ligne dédiée — seulement si le texte change : Tk relit `astro_info`
+        ~20×/s, inutile de réécrire la même chaîne."""
+        if self.suivi_astro is None:
+            return
+        txt = self.suivi_astro.texte_resume()
+        if txt and txt != self.astro_info:
+            self.astro_info = txt
+        if self.suivi_astro.resolu:
+            self.astro_couleur = "#1d7f1d"
+
+    def _astro_indices_entete(self):
+        """Indices de la cible déduits de l'en-tête de la brute courante
+        (source DOSSIER) quand la saisie est vide — lecture STRICTE
+        (OBJCTRA/OBJCTDEC + FOCALLEN/XPIXSZ), jamais de supposition : sans
+        mots-clés explicites, rien n'est inventé et le message le dit."""
+        chemin = getattr(self.camera, "last_file", "") or ""
+        if not chemin:
+            try:      # composition : dernier fichier du rôle le plus récent
+                stats = self.camera.stats() or {}
+                cands = [v.get("last_file") or "" for v in stats.values()]
+                cands = [c for c in cands if c]
+                if cands:
+                    chemin = max(cands, key=os.path.getmtime)
+            except Exception:
+                chemin = ""
+        if not chemin:
+            return
+        ra, dec, champ, msg = astro_mod.indices_entete_fits(chemin)
+        if ra is None or champ is None:
+            self._astro_msg_indices = msg
+            return
+        self._astro_indices = (ra, dec, champ)
+        self._astro_msg_indices = ""
+        self._astro_source = f"en-tête {os.path.basename(chemin)}"
+        self.suivi_astro.indice(ra, dec, champ)
+
+    def _astro_propager_restack(self, ancien, ref):
+        """Jalon 56 : le RÉEMPILEMENT change la référence d'alignement, donc la
+        GRILLE de l'empilement — le WCS est PROPAGÉ (aucun re-solve, aucun
+        accès au catalogue : décision d'Alain du 22/09/2026).
+
+        `M10` (nouvelle grille → ANCIENNE grille) est mesuré par un aligneur
+        PRIVÉ : référence = l'ancien empilement COMPLET (`mean(recadre=False)`
+        — le même repère que toutes les frames alignées, contrat du jalon 13),
+        source = la nouvelle référence. C'est exactement le chemin confronté au
+        StarAligner réel par le banc du jalon 56 (étape 3) ; l'aligneur de la
+        SESSION n'est pas touché (il est sur le point d'être re-référencé).
+
+        Échec (appariement refusé, WCS absent) : SANS EFFET sur l'empilement,
+        message exposé sur la ligne dédiée — un WCS d'ancienne grille est
+        signalé, jamais présenté comme valable."""
+        if self.suivi_astro is None or not self.suivi_astro.resolu:
+            return
+        try:
+            base = ancien.mean(recadre=False)
+        except Exception:
+            base = None
+        if base is None:
+            return
+        al = StarAligner()
+        al.triangles_seuls = bool(self.aligner.triangles_seuls)  # HOO/SHO
+        try:
+            al.set_reference(base)
+            M, okk = al.compute(ref)
+        except Exception as exc:
+            self.astro_couleur = "#c98a00"
+            self.astro_info = f"Astrométrie : propagation impossible ({exc})"
+            return
+        if not okk or M is None:
+            self.astro_couleur = "#c98a00"
+            self.astro_info = ("Astrométrie : propagation refusée (nouvelle "
+                               "référence ↔ ancien empilement) — le WCS reste "
+                               "celui de l'ancienne grille")
+            return
+        ok2, msg = self.suivi_astro.propager(M)
+        if ok2:
+            self._maj_astro_etat()
+        else:
+            self.astro_couleur = "#c98a00"
+            self.astro_info = f"Astrométrie : propagation refusée — {msg}"
+
+    def _astro_entete_sauvegarde(self, entete=None, forme=None):
+        """Jalon 56 : complète un en-tête de sauvegarde avec les mots-clés WCS
+        de la grille ACTUELLE (recadrage d'intersection inclus) — le FITS écrit
+        devient localisable par Siril, astropy, PixInsight… Sans astrométrie
+        résolue : en-tête INCHANGÉ (jamais de mot-clé faux dans un fichier)."""
+        entete = dict(entete or {})
+        if self.suivi_astro is None or not self.suivi_astro.resolu:
+            return entete
+        cadre = None
+        if self.stacker is not None:
+            cadre = getattr(self.stacker, "cadre", None)
+        mc, msg = self.suivi_astro.mots_cles(cadre, forme=forme)
+        if not mc:
+            if msg:
+                self.astro_info = f"Astrométrie : en-tête WCS indisponible — {msg}"
+                self.astro_couleur = "#c98a00"
+            return entete
+        entete.update(mc)
+        return entete
+
     def _definir_reference(self, img):
         """Remplace la référence d'alignement ET mesure son score (le score
         de la référence sert de seuil au déclencheur auto du re-stack)."""
@@ -3874,6 +4167,11 @@ class App:
         # Jalon 18 : mémoriser l'état AVANT le recalcul pour afficher le GAIN.
         n_avant = ancien.n
         ref_score_avant = self._ref_score
+        # Jalon 56 : la référence d'alignement change → la GRILLE change. Le
+        # WCS (résolu sur l'ancienne grille) est PROPAGÉ depuis l'ancien
+        # empilement complet, AVANT que la référence de la session ne soit
+        # remplacée (l'aligneur privé de la propagation a besoin de l'ancien).
+        self._astro_propager_restack(ancien, ref)
         self._definir_reference(ref)
         st = LiveStacker(ancien.shape, k=ancien.k, method=ancien.method,
                          window=ancien.window)
@@ -3976,6 +4274,9 @@ class App:
         n_arch = sum(a.n for a in self.archives.values())
         # Référence de l'aligneur PARTAGÉ = canal extrait de la meilleure
         # brute (même mesure que les scores — cf. _meilleure_archive_compo).
+        # Jalon 56 : propagation du WCS AVANT le remplacement (nouvelle
+        # référence = une brute dans SON repère pixel, donc nouvelle grille).
+        self._astro_propager_restack(ancien, canal_ref)
         self._definir_reference(canal_ref)
         st = CompositeStacker(ancien.composition, k=ancien.k,
                               method=ancien.method, window=ancien.window)
@@ -4242,6 +4543,11 @@ class App:
                 self.restack_couleur = "#888888"
                 self.restack_total = 0
                 self.restack_hist = []
+                # Jalon 56 : astrométrie de session neuve — indices conservés
+                # (ils viennent de l'UI/instantané), WCS oublié.
+                self.suivi_astro.reset()
+                self.astro_info = ""
+                self.astro_couleur = "#888888"
                 self.proc_show = self.proc_full = None
                 self.proc_new = False
                 self.save_asseen_request = None   # sauvegarde « tel que vu » annulée
@@ -4318,10 +4624,17 @@ class App:
                     # in image ») et paraissait saturé partout ailleurs
                     # (retour réel d'Alain, 22/09/2026, M31 RGB en mode
                     # dossiers). Mono : no-op (l'empilement est déjà ≤ 1).
-                    img, entete = borner_lineaire(
-                        self.stacker.mean(),
+                    img = self.stacker.mean()
+                    # Jalon 56 : mots-clés WCS de la grille RÉELLEMENT écrite
+                    # (recadrage d'intersection inclus) — le FITS devient
+                    # localisable par Siril/astropy/PixInsight. Sans
+                    # astrométrie résolue : en-tête inchangé (jamais de
+                    # mot-clé faux dans un fichier).
+                    entete = self._astro_entete_sauvegarde(
                         {"FILTER": self.filtre_courant}
-                        if self.filtre_courant else None)
+                        if self.filtre_courant else None,
+                        img.shape[:2] if img is not None else None)
+                    img, entete = borner_lineaire(img, entete)
                     save_image(path, img, entete=entete)
                     self.saved_path = path
                 except Exception as e:
@@ -4339,8 +4652,13 @@ class App:
                         # v2.27.1 : même garantie d'échelle que la sauvegarde
                         # du composite (no-op ici en pratique : une moyenne de
                         # rôles reste ≤ 1).
-                        bordee, entete = borner_lineaire(carte,
-                                                         {"FILTER": role})
+                        # Jalon 56 : les couches sont empilées sur la MÊME
+                        # grille que le composite → mêmes mots-clés WCS que
+                        # la sauvegarde de l'empilement (recadrage inclus).
+                        bordee, entete = borner_lineaire(
+                            carte,
+                            self._astro_entete_sauvegarde(
+                                {"FILTER": role}, carte.shape[:2]))
                         save_image(os.path.join(
                             d_canaux, f"canal_{role}.fit"), bordee,
                             entete=entete)
@@ -4596,6 +4914,13 @@ class App:
                     self.align_info = info
                     stack = self.stacker.mean()   # affichage immédiat
 
+            # Jalon 56 : astrométrie de l'empilement — APRÈS le re-stack (le
+            # WCS doit décrire la grille COURANTE : la propagation vient d'y
+            # pourvoir), AVANT la construction de l'état poussé à l'UI (la
+            # ligne d'état part alors avec le bon texte).
+            if self.stacker is not None and self.stacker.n > 0:
+                self._astro_tour(self.stacker)
+
             show = stack if stack is not None else (last_good if last_good is not None else frame)
 
             # Jalon 24 : couches de la composition (même passe que le
@@ -4677,7 +5002,8 @@ class App:
                       compo=(self.stacker.etat()
                              if self._mode_compo and self.stacker is not None
                              else None),
-                      restack=self.restack_info, restack_n=self.restack_total)
+                      restack=self.restack_info, restack_n=self.restack_total,
+                      astro=self.astro_info)
             if self.stacker is not None and self.stacker.cadre is not None:
                 y0, x0, y1, x1 = self.stacker.cadre
                 st["crop_w"], st["crop_h"] = x1 - x0, y1 - y0
@@ -5132,6 +5458,16 @@ class App:
         detail_rs = st.get("restack", self.restack_info) or ""
         self.lbl_restack.config(text=detail_rs or "Re-stack : —",
                                 foreground=self.restack_couleur)
+        # Jalon 56 : ligne d'état de l'ASTROMÉTRIE — même logique que le
+        # re-stack (jamais écrasée par les messages de frames) ; un dict
+        # d'état d'ancien format (sans clé « astro ») laisse la ligne telle
+        # quelle, et un état vide retombe sur le texte de SAISIE (côté UI).
+        detail_as = st.get("astro", self.astro_info) or ""
+        if detail_as:
+            self.lbl_astro.config(text=detail_as,
+                                  foreground=self.astro_couleur)
+        else:
+            self._maj_astro_vue()
         # Jalon 10 : seeing live (mesuré par le thread d'acquisition) —
         # jamais de silence : soit la mesure, soit la RAISON de son absence.
         s = st.get("seeing") or {}

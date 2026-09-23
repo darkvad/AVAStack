@@ -290,6 +290,8 @@ finally:
 print("[7] UI réelle : case, libellé, config round-trip, re-stack")
 import avastack.ui.app as ui
 
+ui.CONFIG = {}                      # bac à sable : JAMAIS le vrai config.json
+ui.sauver_config = lambda d: None   # n'écrit jamais le vrai fichier
 root = tk.Tk()
 root.withdraw()
 app = ui.App(root)

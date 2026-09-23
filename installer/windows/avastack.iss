@@ -1,4 +1,4 @@
-; avastack.iss - Installateur Windows pour AVAStack (live stacking)
+﻿; avastack.iss - Installateur Windows pour AVAStack (live stacking)
 ;
 ; Deploiement LOCAL : copie l'application dans un dossier choisi par
 ; l'utilisateur, cree un venv, installe les dependances (numpy, opencv,
@@ -8,8 +8,8 @@
 ; Les SDK binaires constructeurs poses par Alain a la racine du depot
 ; (ASICamera2.dll, PlayerOneCamera.dll, ToupCam.dll, SVBCameraSDK.dll) sont
 ; EMBARQUES dans l'installateur depuis le 19/09/2026 (decision d'Alain :
-; « j'ai mis dans le dossier principal toutes les dll des sdk, donc inclut
-; les ») - les paquet pip associes (zwoasi ; PlayerOne/Touptek/SVBONY en
+; Â« j'ai mis dans le dossier principal toutes les dll des sdk, donc inclut
+; les Â») - les paquet pip associes (zwoasi ; PlayerOne/Touptek/SVBONY en
 ; ctypes direct, pas de paquet) sont installes via requirements.txt.
 ;
 ; Compilation : powershell -NoProfile -ExecutionPolicy Bypass -File build_avastack.ps1
@@ -82,6 +82,9 @@ Source: "{#RepoRoot}\_test_solveur_reel_m31.py"; DestDir: "{app}"; Flags: ignore
 ; ASTAP RESOUT le fichier M31 du disque ; saute proprement si absent.
 Source: "{#RepoRoot}\_test_save_lineaire_echelle.py"; DestDir: "{app}"; Flags: ignoreversion
 ; veralux_core_headless.py : code tiers GPL-3.0-or-later (Riccardo Paterniti),
+; Banc de branchement du solveur au worker (v2.28.0) : astrometrie de l`empilement
+; (indices -> resolution unique -> propagation par composition, mots-cles FITS WCS).
+Source: "{#RepoRoot}\_test_astro_branchement_jalon56.py"; DestDir: "{app}"; Flags: ignoreversion
 ; copie tel quel (sa licence exige de transmettre le source a cote du binaire).
 Source: "{#RepoRoot}\veralux_core_headless.py"; DestDir: "{app}"; Flags: ignoreversion
 ; Lisez-moi explicatif (SDK cameras)
@@ -310,3 +313,4 @@ begin
   // modifie dynamiquement : simplest = recree ici)
   WizardForm.StatusLabel.Caption := 'Installation terminee.';
 end;
+
