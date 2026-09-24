@@ -11,7 +11,7 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.34.2** (`avastack/__init__.py`),
+- **Version stable de référence : AVAStack v2.34.3** (`avastack/__init__.py`),
   branche `master` — **SPCC ABSOLUE BRANCHÉE ET VALIDÉE CONTRE SIRIL (jalon 58,
   24/09/2026)** :
   - **VALIDATION CROISÉE RÉUSSIE** : à partir du log SPCC réel de Siril fourni
@@ -55,9 +55,32 @@ dans le changelog du source et l'historique git.)
     (`spcc.coherence_bandes`, partagé module/UI), et les avertissements de
     bandes + pente se cumulent. **ACTION UTILISATEUR** : remettre « Filtre R »
     sur `QHYCCD MiniCam8M Red`.
-  - **Bancs** : SPCC 11 sections (panne numpy reproduite en supprimant
-    `np.trapz`, banc rendu HERMÉTIQUE en vidant la config de la machine) ; tous
-    les autres bancs au vert.
+  - **BIAIS DE MESURE CORRIGÉ (v2.34.3, révélé par le 1er essai réel d'Alain le
+    24/09/2026)** : l'appli ne mesurait que les **300 étoiles les plus
+    brillantes** et n'écartait que celles à moins de 0,5 mag de la plus
+    brillante. Or les étoiles brillantes ont le cœur **comprimé** (saturation)
+    → contraste de couleur écrasé → pente de régression ATTÉNUÉE : sur ses
+    couches, 150 étoiles → pente R/G 0,518 (B/R ×1,255), 300 → 0,576
+    (×1,311), 900 → 0,765 (×1,480), 2400 → **0,817 (×1,499, converge)**. Sa
+    mesure (R ×0,7192 / G ×0,8626 / B ×1,0000) était donc fausse (K_R 7 % trop
+    haut). **Correctif** : `MAX_ETOILES` 300 → **1200** et `MARGE_SATURATION`
+    0,5 → **1,5 mag** → 946 étoiles retenues, pentes 0,819 (σ 0,037) / 0,782
+    (σ 0,017), K = **0,6683 / 0,7548 / 1,0000** (B/R ×1,496) en **0,9 s**.
+    Les σ faibles (0,032/0,074) ne révélaient pas le problème : c'était un
+    BIAIS, pas du bruit — leçon retenue.
+  - **VÉRIFIÉ** : l'**équilibrage des canaux (auto)** et la **profondeur de
+    l'empilement** n'affectent pas la mesure — `CompositeStacker.moyennes()`
+    ne renvoie que les couches **BRUTES** par rôle (l'équilibrage est no-op sur
+    une carte 2D). La SPCC porte donc bien sur l'image brute, comme il faut.
+  - **PIDGE DE BANC** corrigé : les étoiles synthétiques du banc n'avaient pas
+    de plage de luminosité (spectres normalisés à 500 nm) → toutes les
+    magnitudes voisines, et le nouveau seuil de saturation les écartait toutes.
+    Le banc tire désormais une magnitude (0-5 mag) indépendante de la couleur.
+  - **RESTE À FAIRE** : la photométrie Gaia du jalon 56 garde ses réglages
+    (300 étoiles, marge 0,5 mag) — même famille de biais possible sur ses
+    ZÉRO-POINTS, à mesurer avant de modifier un module validé ; et la
+    validation croisée finale avec Siril (image brute + log, cf. plus haut).
+
 
   - **À FAIRE (prochaine étape)** : validation croisée FINALE avec Siril sur une
     image **SANS gradient** (Siril signale lui-même sa solution comme imprécise

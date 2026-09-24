@@ -280,9 +280,21 @@ def noms_base():
 # Réglages surchargeables par les bancs (même convention que photometrie).
 RAYON_FLUX_PX = 3.0          # rayon d'ouverture du flux (px)
 ANNEAU_FOND = (5.0, 8.0)     # anneau de mesure du fond local (px)
-MAX_ETOILES = 300            # étoiles les plus brillantes analysées
-MARGE_SATURATION = 0.5       # écart (mag) à l'étoile la plus brillante :
-                             # cœur de PSF non linéaire → mesure fausse
+MAX_ETOILES = 1200           # étoiles les plus brillantes analysées.
+                             # PIÈGE MESURÉ (24/09/2026, empilement réel
+                             # d'Alain) : avec 150 ou 300 étoiles, la pente de
+                             # régression s'EFFONDRE (0,52 / 0,58 pour R/G) et
+                             # les coefficients deviennent faux (B/R ×1,26 au
+                             # lieu de ×1,50) — les étoiles brillantes ont le
+                             # cœur COMPRIMÉ (saturation, sortie de linéarité),
+                             # ce qui écrase leur contraste de couleur. La
+                             # pente ne se stabilise (0,82 / 0,78) qu'à partir
+                             # de ~900 étoiles.
+MARGE_SATURATION = 1.5       # écart (mag) à l'étoile la plus brillante :
+                             # cœur de PSF non linéaire → mesure fausse. 0,5 mag
+                             # ne suffisait pas (les étoiles les plus brillantes
+                             # restaient dans l'échantillon) ; 1,5 mag écarte
+                             # franchement la zone comprimée.
 CIEL_PUR_SIGMA = 3.0         # écarte les étoiles posées sur un objet ÉTENDU
                              # (halo de galaxie dans l'anneau → flux biaisé)
 SIGMA_MAX = 0.5              # dispersion (mag) au-delà de laquelle la mesure

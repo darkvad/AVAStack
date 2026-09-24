@@ -14,9 +14,45 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.34.2"
+AVASTACK_VERSION = "2.34.3"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.34.3 : SÉLECTION DES ÉTOILES CORRIGÉE — un BIAIS RÉEL de mesure, révélé par
+#          l'écart entre l'appli et les bancs (constat Alain, 24/09/2026).
+#          L'appli mesurait sur les 300 étoiles les PLUS BRILLANTES seulement, et
+#          n'écartait que celles à moins de 0,5 mag de la plus brillante.
+#          MESURE sur les couches réelles d'Alain (1179 étoiles appariées) :
+#            • 150 étoiles → pente R/G 0,518 et B/R ×1,255 ;
+#            • 300 étoiles (réglage d'alors) → 0,576 et ×1,311 ;
+#            • 900 étoiles → 0,765 et ×1,480 ;
+#            • 2400 étoiles → 0,817 et ×1,499 (CONVERGE).
+#          POURQUOI : les étoiles brillantes ont le cœur COMPRIMÉ (saturation,
+#          sortie de linéarité du capteur) → leur contraste de COULEUR est
+#          écrasé, ce qui atténue la pente de régression et fausse les
+#          coefficients (chez Alain : K_R 0,7192 au lieu de 0,6683, soit une
+#          correction de rouge fausse de 7 % et un rapport B/R de ×1,39 au lieu
+#          de ×1,50). Les ±σ de l'appli (0,032 / 0,074) ne le voyaient pas : la
+#          dispersion restait faible, c'était un BIAIS, pas du bruit.
+#          CORRECTIF : MAX_ETOILES 300 → 1200 et MARGE_SATURATION 0,5 → 1,5 mag
+#          (les deux constantes portent le constat complet en commentaire).
+#          RÉSULTAT sur les mêmes couches : 946 étoiles retenues, pentes 0,819
+#          (σ 0,037) et 0,782 (σ 0,017), K = 0,6683 / 0,7548 / 1,0000 — mesure
+#          ENTIÈRE en 0,9 s (détection + catalogue spectral + régressions).
+#          PIÈGE DE BANC corrigé au passage : les étoiles synthétiques du banc
+#          n'avaient pas de plage de LUMINOSITÉ (les spectres sont normalisés à
+#          500 nm par `photons`), donc toutes les magnitudes étaient voisines :
+#          le nouveau seuil de saturation en écartaient la quasi-totalité et le
+#          test ne mesurait plus rien. Le banc tire désormais une magnitude
+#          (0-5 mag) indépendante de la couleur — la vérité analytique tient
+#          toujours (pentes 0,6999 / 1,2998 retrouvées).
+#          VERIFIÉ AUSSI : l'ÉQUILIBRAGE des canaux (auto) n'influence PAS la
+#          SPCC ni la photométrie (`CompositeStacker.moyennes()` ne renvoie que
+#          les couches BRUTES par rôle, et l'équilibrage est no-op sur une carte
+#          2D) — la mesure porte bien sur l'image brute, comme il faut.
+#          RESTE À FAIRE (noté, non fait) : la photométrie Gaia du jalon 56
+#          garde MAX_ETOILES_PHOTO = 300 et sa marge de 0,5 mag — même famille
+#          de biais possible sur ses ZÉRO-POINTS (à mesurer avant de toucher un
+#          module validé).
 # v2.34.2 : DEUX BUGS RÉELS CORRIGÉS (constatés par Alain sur la 2.34.0).
 #          • np.trapz SUPPRIMÉ de numpy 2.x (renommé np.trapezoid, puis retiré
 #            des versions suivantes : chez Alain, Python 3.14 + numpy récent) :

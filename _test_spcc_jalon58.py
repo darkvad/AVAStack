@@ -296,7 +296,14 @@ pred = SP.flux_par_canal(SP.photons(sp), rep)   # flux en COMPTAGE DE PHOTONS,
 # exactement ce que la SPCC recalcule : si l'image est fabriquée sans la
 # conversion ×λ, les pentes trouvées sont fausses d'environ 20 % (piège vécu).
 gains_vrais = np.array([0.7, 1.0, 1.3])          # vérité à retrouver
-amp = (pred * gains_vrais) / np.max(pred * gains_vrais) * 1.0e5
+# LUMINOSITÉ indépendante de la couleur : indispensable, sinon les étoiles ont
+# toutes la même magnitude dans chaque bande (les spectres sont normalisés à
+# 500 nm par `photons`), le filtre de saturation en écarte la quasi-totalité et
+# le test ne mesure plus rien (piège rencontré le 24/09/2026).
+_rng = np.random.default_rng(58)
+lum = 10.0 ** (-0.4 * _rng.uniform(0.0, 5.0, len(pos)))
+_flux = pred * gains_vrais[None, :] * lum[:, None]
+amp = _flux / np.max(_flux) * 1.0e5
 canaux = {"R": image_depuis(pos, amp[:, 0]),
           "G": image_depuis(pos, amp[:, 1]),
           "B": image_depuis(pos, amp[:, 2])}
