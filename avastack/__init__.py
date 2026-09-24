@@ -14,9 +14,49 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.31.2"
+AVASTACK_VERSION = "2.31.3"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.31.3 : BUG DU SOLVEUR INTERNE — APPARIEMENT DIRECT/CROISÉ (jalon 56,
+#          retour réel d'Alain, 24/09/2026 : « l'astrométrie reste en attente
+#          sur un empilement M31 de 12 frames alors que les étoiles ne
+#          manquent pas »). L'écran montrait « 2/20 essais » (le quota
+#          corrigé en v2.31.1 fonctionnait) et « en attente d'un empilement
+#          plus profond » ; or le seeing annonçait 195 étoiles. DIAGNOSTIC
+#          sur les fichiers frais d'Alain (m31_stacl_lineaire.fits + canaux) :
+#            • ASTAP (référence indépendante) trouve le champ à 2,7″/4,9″ des
+#              indices, échelle 2,4633″/px → INDICES ET CADRAGE PARFAITS ;
+#            • le WCS vrai d'ASTAP montre que les 120 étoiles détectées
+#              tombent sur Gaia à 0,91 px de médiane (98 sur 120 à < 2 px),
+#              et les 60 étoiles du vote à 95 % → les DONNÉES sont bonnes ;
+#            • le vote (échelle, angle) était LUI AUSSI juste : pic 714 paires,
+#              échelle 1,0012 (2,4723″/px), angle −89,83° ;
+#            • mais l'étape 2 ne récoltait que 4 inliers.
+#          CAUSE RACINE (par couple identifié) : le vote accumule 4 cas —
+#          parité × sens — dans des cases distinctes, et le code DÉDUISAIT
+#          l'ordre des correspondances du cas gagnant (`anc`). C'est FAUX :
+#          l'appariement d'une paire n'est pas observable au vote (direct
+#          i1↔k1 et croisé i1↔k2 ne diffèrent que de π sur l'angle, soit
+#          exactement le décalage porté par `ac + π`). Mesure sur un couple
+#          connu bon (img 43,48 ↔ cat 28,79, miroir=True) : sa vraie
+#          correspondance est DIRECTE, mais elle vote dans le pic du cas
+#          « anc=1 » (336 paires) → appariement croisé imposé → 4 inliers ;
+#          la similitude construite depuis les vraies correspondances donne
+#          les 94 inliers attendus. CORRECTIF : le vote ne retient plus qu'un
+#          PIC PAR PARITÉ (le plus peuplé), et le raffinement essaie les DEUX
+#          appariements de chaque paire candidate (coût inchangé : 2 parités
+#          × 2 appariements = les 4 cas d'avant).
+#          VÉRIFIÉ EN RÉEL sur les fichiers d'Alain : couche R 96
+#          appariements, G 94, B 83, composite RGB 94 et fichier composite
+#          sauvegardé 94 (rms 0,59-0,63 px) — tous RÉSOLUS là où les 5
+#          échouaient. Bancs : solveur synthétique, banc RÉEL M31
+#          (« TOUT AU VERT », 86 étoiles sur le composite 2,6°), branchement
+#          astro jalon 56, photométrie jalon 56 — tous au vert.
+#          Latence mesurée du solve interne : 6,6 s sur 3844×2171 (une seule
+#          fois par empilement, puis propagation).
+#          Nouveaux outils de diagnostic embarqués : `_diag_vote.py`
+#          (instrumente le vote et l'étape 2, compare au WCS vrai d'ASTAP) et
+#          `_diag_appariement.py` (écart de chaque étoile détectée à Gaia).
 # v2.31.2 : OUTIL `_diag_solve_compo.py` — diagnostic de la résolution d'une
 #          COMPOSITION : résout CHACUNE des couches séparées (canal_R/G/B.fit
 #          écrits par « Enregistrer les canaux ») ET le composite — exactement

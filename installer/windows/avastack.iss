@@ -94,6 +94,13 @@ Source: "{#RepoRoot}\_diag_astap_aveugle.py"; DestDir: "{app}"; Flags: ignorever
 ; Diagnostic de resolution d'une COMPOSITION (v2.31.2) : compare chaque
 ; couche separee et le composite (celui que l'appli analyse).
 Source: "{#RepoRoot}\_diag_solve_compo.py"; DestDir: "{app}"; Flags: ignoreversion
+; Diagnostic du VOTE RANSAC (v2.31.3) : instrumente le vote (echelle, angle) et
+; le raffinement, et compare au WCS vrai d'ASTAP (qui correspond a qui) —
+; c'est cet outil qui a identifie le bug d'appariement direct/croise.
+Source: "{#RepoRoot}\_diag_vote.py"; DestDir: "{app}"; Flags: ignoreversion
+; Diagnostic d'appariement (v2.31.3) : ecart de CHAQUE etoile detectee a
+; l'etoile de catalogue Gaia la plus proche, via le WCS vrai d'ASTAP.
+Source: "{#RepoRoot}\_diag_appariement.py"; DestDir: "{app}"; Flags: ignoreversion
 ; veralux_core_headless.py : code tiers GPL-3.0-or-later (Riccardo Paterniti),
 ; copie tel quel (sa licence exige de transmettre le source a cote du binaire).
 Source: "{#RepoRoot}\veralux_core_headless.py"; DestDir: "{app}"; Flags: ignoreversion

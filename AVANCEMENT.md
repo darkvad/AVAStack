@@ -11,7 +11,7 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.31.0** (`avastack/__init__.py`),
+- **Version stable de référence : AVAStack v2.31.3** (`avastack/__init__.py`),
   branche `master` — **ÉTAPES 4 ET 5 LIVRÉES les 23/09/2026 (jalon 56)** :
   - **étape 4, MESURE** (v2.30.0) : étoiles de l'empilement appariées
     MUTUELLEMENT au catalogue Gaia (positions + G) via le WCS résolu/propagé,
@@ -34,22 +34,38 @@ dans le changelog du source et l'historique git.)
   Rappel v2.29.0 : repli ASTAP quand aucun indice — le poste d'Alain n'a que
   **D80** (pas de base de balayage) : l'appli le DIT au lieu d'attendre pour
   rien ; le solveur interne tolère des coordonnées approximatives (~1°).
-- **PIÈGE RÉSOLU (v2.31.1/2, constat réel d'Alain le 23/09/2026)** —
-  « l'astrométrie qui passait après quelques frames ne passe plus à 33
-  frames » : le message d'Alain (`échec après 6 tentatives — meilleur score :
-  5 étoiles ; RANSAC : 4 inliers, échelle 2.459″/px`) montrait une échelle
-  JUSTE mais trop peu d'appariements → l'empilement était encore **pauvre au
-  moment des essais**, et le quota (6 essais × délai FIXE de 20 s) était
-  épuisé en ~2 minutes → **plus aucune tentative de la session**. Correctifs :
-  plafond 20, délai CROISSANT (20/40/60… plafonné 5 min), essai IMMÉDIAT dès
-  que l'empilement DOUBLÉ (information neuve), messages d'état explicites
-  (compteurs + « réessai automatique »). **VÉRIFIÉ** par le nouvel outil
-  `_diag_solve_compo.py` sur les canaux M31 d'Alain : couches R/G/B ET
-  composite RGB résolvent tous (77-85 appariements, rms 0,60 px, 2,465″/px) →
-  le composite n'est pas en cause, la profondeur au moment de l'essai l'était.
-  Au passage : **13 bancs + le jalon 19 n'étaient pas hermétiques** (ils
-  lisaient le vrai config.json, qui contient désormais astrométrie cochée +
-  indices → de vraies résolutions pendant les bancs) — tous corrigés.
+- **BUG TROUVÉ ET CORRIGÉ (v2.31.3, retour réel d'Alain le 24/09/2026)** —
+  « l'astrométrie reste en attente d'un empilement plus profond (2/20 essais)
+  alors que les étoiles ne manquent pas » (195 étoiles au seeing). Le quota de
+  réessais corrigé en v2.31.1/2 fonctionnait bien (2 essais sur 20) : le vrai
+  défaut était **DANS le solveur interne**. Diagnostic mené sur les fichiers
+  FRAIS d'Alain (`C:\Astro\test\m31_stacl_lineaire.fits` + canaux) : ASTAP
+  place le champ à 2,7″/4,9″ des indices (échelle 2,4633″/px) et son WCS vrai
+  montre que 98 des 120 étoiles détectées tombent sur Gaia à moins de 2 px
+  (médiane 0,91 px) → **indices, cadrage et données parfaits** ; le vote
+  (échelle, angle) était juste lui aussi (pic 714 paires, échelle 1,0012,
+  angle −89,83°) mais le raffinement ne récoltait que **4 inliers**.
+  **CAUSE RACINE** : le vote ne peut PAS dire si l'appariement d'une paire est
+  direct (i1↔k1) ou croisé (i1↔k2) — les deux ne diffèrent que de π sur
+  l'angle, soit exactement le décalage porté par `ac + π` ; le code DÉDUISAIT
+  l'ordre des correspondances du cas gagnant (`anc`). Sur M31, le pic de 336
+  paires du cas « anc=1 » était peuplé de paires **directes**, auxquelles il
+  imposait donc l'appariement croisé (mesuré sur un couple connu bon : 4
+  inliers au lieu de 94). **CORRECTIF** : un pic PAR PARITÉ (le plus peuplé)
+  et les DEUX appariements essayés au raffinement (coût inchangé : 2 parités
+  × 2 appariements = les 4 cas d'avant).
+  **VÉRIFIÉ EN RÉEL** : couche R 96 appariements, G 94, B 83, composite RGB
+  94, fichier composite 94 — tous RÉSOLUS (rms 0,59-0,63 px) là où les 5
+  échouaient. Bancs solveur + banc RÉEL M31 + astro jalon 56 + photométrie
+  jalon 56 : tous au vert. Latence mesurée du solve : **6,6 s** sur
+  3844×2171 (une seule fois par empilement, puis propagation — piste
+  d'optimisation : borner les candidats du bin si besoin).
+  Outils de diagnostic ajoutés : `_diag_vote.py` (vote et raffinement
+  instrumentés, comparés au WCS vrai d'ASTAP), `_diag_appariement.py` (écart
+  de chaque étoile détectée à Gaia). Au passage : **13 bancs + le jalon 19
+  n'étaient pas hermétiques** (ils lisaient le vrai config.json, qui contient
+  astrométrie cochée + indices → de vraies résolutions pendant les bancs) —
+  tous corrigés.
 - **Tâche en cours** : **étape 6 — validation Siril + test réel multibande**
   (vérifier que les en-têtes WCS écrits sont relus par Siril, et juger les
   gains photométriques sur une vraie série multi-filtres d'Alain).

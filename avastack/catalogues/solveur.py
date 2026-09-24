@@ -74,6 +74,16 @@ MUTUEL_RAYON = 2.0      # rayon des correspondances mutuelles finales (px)
 # de PAIRES (esprit astrometry.net) est insensible à ce piège : vote
 # (échelle, angle) sur toutes les paires, puis similitude EXACTE issue de
 # 2 correspondances, évaluée par appariements mutuels.
+#
+# PIÈGE MAJEUR (corrigé le 24/09/2026, retour réel d'Alain sur le MÊME champ) :
+# le vote NE SAIT PAS dire si l'appariement d'une paire est DIRECT (i1↔k1) ou
+# CROISÉ (i1↔k2) — les deux ne diffèrent que de π sur l'angle de la paire,
+# soit exactement le décalage porté par `ac + π`. Déduire l'ordre des
+# correspondances du cas gagnant donnait 4 inliers là où 94 existaient, avec
+# une échelle ET un angle pourtant justes (le pic de 336 paires était peuplé
+# par des paires DIRECTES rangées dans le cas « anc=1 » → appariement croisé
+# imposé). Le vote ne retient donc qu'un pic PAR PARITÉ et le raffinement
+# essaie les DEUX appariements (cf. `_ransac_paires`).
 RANSAC_N_IMG = 60        # étoiles les plus brillantes côté image (vote)
 RANSAC_N_CAT = 120       # côté catalogue (vote)
 RANSAC_ECH_REL = 0.35    # fenêtre d'échelle ±35 % autour de l'indice
@@ -347,7 +357,11 @@ def _ransac_paires(pos, cat_xy, ech_deg, forme):
     correspondances mutuelles finales (indices dans pos / cat_xy), A/t :
     similitude grille indicée → image (linéaire 2×2 + translation, à l'état
     du DERNIER raffinement) ; (None, None, None, None, None, message) sinon.
-    Convention du projet : jamais d'exception, jamais de panne silencieuse."""
+    Convention du projet : jamais d'exception, jamais de panne silencieuse.
+
+    Le vote ne retient qu'un pic PAR PARITÉ (le sens d'appariement direct /
+    croisé n'est PAS déductible du vote, cf. en-tête du module) et le
+    raffinement essaie les DEUX appariements de chaque paire candidate."""
     h_img, w_img = int(forme[0]), int(forme[1])
     n = min(RANSAC_N_IMG, len(pos))
     m = min(RANSAC_N_CAT, len(cat_xy))
@@ -386,11 +400,12 @@ def _ransac_paires(pos, cat_xy, ech_deg, forme):
     n_a = int(round(2.0 * math.pi / RANSAC_PAS_ANG))
     edges_e = np.linspace(e_lo, e_hi, n_e + 1)
     edges_a = np.linspace(-math.pi, math.pi, n_a + 1)
-    vote = np.zeros((n_e, n_a), np.int32)
     cas = ((ac_f, 0, False), (ac_f + math.pi, 1, False),
            (ac_t, 0, True), (ac_t + math.pi, 1, True))
     CH = 64
+    votes = []
     for ang_cat, _anc, _mir in cas:
+        v = np.zeros((n_e, n_a), np.int32)
         for a_ in range(0, len(ii_p), CH):
             b_ = min(a_ + CH, len(ii_p))
             dang = (ai[a_:b_, None] - ang_cat[None, :] + math.pi) \
@@ -399,18 +414,43 @@ def _ransac_paires(pos, cat_xy, ech_deg, forme):
             ok = (ech >= e_lo) & (ech <= e_hi)
             H, _, _ = np.histogram2d(ech[ok], dang[ok],
                                      bins=(edges_e, edges_a))
-            vote += H.astype(np.int32)
-    pic = np.unravel_index(vote.argmax(), vote.shape)
-    ech_pic = 0.5 * (edges_e[pic[0]] + edges_e[pic[0] + 1])
-    ang_pic = 0.5 * (edges_a[pic[1]] + edges_a[pic[1] + 1])
-    if int(vote[pic]) < RANSAC_INLIERS_MIN:
+            v += H.astype(np.int32)
+        votes.append(v)
+    # PIÈGE MAJEUR (corrigé le 24/09/2026, M31 2,6° d'Alain) : le vote ne sait
+    # PAS dire si l'appariement est DIRECT (i1↔k1) ou CROISÉ (i1↔k2) — les
+    # deux ne diffèrent que de π sur l'angle de la paire, soit exactement le
+    # décalage porté par `ac + π`. Un pic peut donc être peuplé par des paires
+    # DIRECTES rangées dans le cas « anc=1 » : en déduire l'ordre des
+    # correspondances donnait 4 inliers là où 94 existaient. On ne retient
+    # donc qu'un pic PAR PARITÉ (le plus peuplé), et les deux appariements
+    # sont essayés au raffinement (cf. 2 ci-dessous).
+    pics = []
+    for mir in (False, True):
+        k = max((i for i in range(len(cas)) if cas[i][2] == mir),
+                key=lambda i: int(votes[i].max()))
+        v = votes[k]
+        p = np.unravel_index(v.argmax(), v.shape)
+        if int(v[p]) < RANSAC_INLIERS_MIN:
+            continue
+        pics.append((int(v[p]),
+                     0.5 * (edges_e[p[0]] + edges_e[p[0] + 1]),
+                     0.5 * (edges_a[p[1]] + edges_a[p[1] + 1]),
+                     mir, cas[k][0]))
+    if not pics:
+        n_top = max(int(v.max()) for v in votes)
         return None, None, None, None, None, (
-            f"vote (échelle, angle) trop faible ({int(vote[pic])} paires)")
+            f"vote (échelle, angle) trop faible ({n_top} paires)")
+    pics.sort(key=lambda t: -t[0])
 
     # --- 2) candidats du bin → similitude EXACTE 2 points --------------------
+    # Les DEUX appariements de la paire (direct i1↔k1 et croisé i1↔k2) sont
+    # essayés : le vote ne les distingue pas (cf. 1). Coût maîtrisé : un pic
+    # par parité seulement.
     meilleur = None
     n_stop = min(len(pos), len(cat_xy))
-    for ang_cat, anc, mir in cas:
+    for _n_pic, ech_pic, ang_pic, mir, ang_cat in pics:
+        if meilleur is not None and len(meilleur[0]) >= n_stop:
+            break
         G = _grille_indice(cat_xy, ech_deg, forme, mir)
         for a_ in range(0, len(ii_p), CH):
             b_ = min(a_ + CH, len(ii_p))
@@ -425,31 +465,33 @@ def _ransac_paires(pos, cat_xy, ech_deg, forme):
             for r_, c_ in zip(rws, cls):
                 i1, i2 = ii_p[a_ + r_]
                 k1, k2 = kk_p[c_]
-                ka_, kb_ = (k1, k2) if anc == 0 else (k2, k1)
-                src = np.array([G[ka_], G[kb_]])
                 dst = np.array([P[i1], P[i2]])
-                vs, vd = src[1] - src[0], dst[1] - dst[0]
-                ls, ld = math.hypot(*vs), math.hypot(*vd)
-                if ls < RANSAC_PAIRES_MIN or ld < RANSAC_PAIRES_MIN:
-                    continue
-                cth = (vs @ vd) / (ls * ld)
-                sth = (vs[0] * vd[1] - vs[1] * vd[0]) / (ls * ld)
-                A = (ld / ls) * np.array([[cth, -sth], [sth, cth]])
-                tt = dst[0] - A @ src[0]
-                ia, ib = _appariements_mutuels(pos, G @ A.T + tt,
-                                               MUTUEL_RAYON)[:2]
-                if meilleur is None or len(ia) > len(meilleur[0]):
-                    meilleur = (ia.copy(), ib.copy(), A, tt, mir)
+                for ka_, kb_ in ((k1, k2), (k2, k1)):   # direct, puis croisé
+                    src = np.array([G[ka_], G[kb_]])
+                    vs, vd = src[1] - src[0], dst[1] - dst[0]
+                    ls, ld = math.hypot(*vs), math.hypot(*vd)
+                    if ls < RANSAC_PAIRES_MIN or ld < RANSAC_PAIRES_MIN:
+                        continue
+                    cth = (vs @ vd) / (ls * ld)
+                    sth = (vs[0] * vd[1] - vs[1] * vd[0]) / (ls * ld)
+                    A = (ld / ls) * np.array([[cth, -sth], [sth, cth]])
+                    tt = dst[0] - A @ src[0]
+                    ia, ib = _appariements_mutuels(pos, G @ A.T + tt,
+                                                   MUTUEL_RAYON)[:2]
+                    if meilleur is None or len(ia) > len(meilleur[0]):
+                        meilleur = (ia.copy(), ib.copy(), A, tt, mir)
+                    if len(ia) >= n_stop:
+                        break
+                if meilleur is not None and len(meilleur[0]) >= n_stop:
+                    break
             if meilleur is not None and len(meilleur[0]) >= n_stop:
                 break
-        if meilleur is not None and len(meilleur[0]) >= n_stop:
-            break
     if meilleur is None or len(meilleur[0]) < RANSAC_INLIERS_MIN:
         n_best = 0 if meilleur is None else len(meilleur[0])
         return None, None, None, None, None, (
             f"aucune similitude convaincante autour du pic "
             f"(meilleur : {n_best} inliers, échelle "
-            f"{ech_pic * ech_deg * 3600.0:.3f}\"/px)")
+            f"{pics[0][1] * ech_deg * 3600.0:.3f}\"/px)")
 
     # --- 3) stabilisation : similitude LSQ + rayon croissant -----------------
     ia, ib, A, t, mir = meilleur
