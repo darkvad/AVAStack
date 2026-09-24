@@ -81,10 +81,14 @@ Source: "{#RepoRoot}\_test_solveur_reel_m31.py"; DestDir: "{app}"; Flags: ignore
 ; l'empilement lineaire ecrit est borne a [0,1] (AVASCALE reversible) et que
 ; ASTAP RESOUT le fichier M31 du disque ; saute proprement si absent.
 Source: "{#RepoRoot}\_test_save_lineaire_echelle.py"; DestDir: "{app}"; Flags: ignoreversion
-; veralux_core_headless.py : code tiers GPL-3.0-or-later (Riccardo Paterniti),
-; Banc de branchement du solveur au worker (v2.28.0) : astrometrie de l`empilement
-; (indices -> resolution unique -> propagation par composition, mots-cles FITS WCS).
+; Banc de branchement du solveur au worker (v2.28.0) : astrometrie de l'empilement
+; (indices -> resolution unique -> propagation mots-cles WCS).
 Source: "{#RepoRoot}\_test_astro_branchement_jalon56.py"; DestDir: "{app}"; Flags: ignoreversion
+; Diagnostic ASTAP en balayage (v2.29.0) : essaie plusieurs -fov, affiche
+; le verdict brut et liste les bases installees (D80 seule = balayage
+; impossible) ; confronte au resultat du solveur interne indice.
+Source: "{#RepoRoot}\_diag_astap_aveugle.py"; DestDir: "{app}"; Flags: ignoreversion
+; veralux_core_headless.py : code tiers GPL-3.0-or-later (Riccardo Paterniti),
 ; copie tel quel (sa licence exige de transmettre le source a cote du binaire).
 Source: "{#RepoRoot}\veralux_core_headless.py"; DestDir: "{app}"; Flags: ignoreversion
 ; Lisez-moi explicatif (SDK cameras)

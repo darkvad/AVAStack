@@ -26,6 +26,7 @@ from .solveur import WcsTan, projection_tan, projection_tan_inverse, resoudre
 from .propagation import (WcsCompose, compose_M, infos_M, inverse_M,
                           propager)
 from .astap import trouver_astap, resoudre_avec_astap
+from .astap import balayage_possible, bases_installees
 from .telechargeur import (RECORD_ASTRO, RECORD_XPSAMP, etat_local,
                            sommaire_zenodo, telecharger,
                            telecharger_catalogue_astro,
@@ -42,7 +43,8 @@ __all__ = [
     "telecharger_chunk_xpsamp", "dossier_catalogues",
     "WcsTan", "projection_tan", "projection_tan_inverse", "resoudre",
     "WcsCompose", "propager", "compose_M", "inverse_M", "infos_M",
-    "trouver_astap", "resoudre_avec_astap",
+    "trouver_astap", "resoudre_avec_astap", "balayage_possible",
+    "bases_installees",
 ]
 
 

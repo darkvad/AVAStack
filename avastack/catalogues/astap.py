@@ -49,6 +49,45 @@ def trouver_astap(chemin=None):
     return None
 
 
+def bases_installees(chemin_astap=None):
+    """Familles de BASES de stars présentes à côté de astap_cli → set (ex.
+    {"d80"}), ou set() si le dossier est illisible/absent.
+
+    Pourquoi c'est important (constat RÉEL du 23/09/2026, poste d'Alain) :
+    ASTAP ne cherche une solution « à l'aveugle » (sans position de départ)
+    qu'avec une base de BALAYAGE (G05/G12/G18, H16/H17/H18, W08, V05) ; avec
+    une base de type D50/D80 — « solution voisine », la plus courante — il
+    EXIGE une position approximative (`-ra`/`-spd`). Le dossier d'Alain ne
+    contient QUE `d80_*.1476` : tout balayage échoue en ~0,4 s, quel que soit
+    `-fov`. Cette sonde sert à DIRE la cause dans les messages (jamais à
+    bloquer un appel : un solve avec indices reste possible)."""
+    exe = trouver_astap(chemin_astap)
+    if exe is None:
+        return set()
+    dossier = os.path.dirname(os.path.abspath(exe))
+    familles = set()
+    try:
+        for nom in os.listdir(dossier):
+            base = nom.split("_")[0]
+            if len(base) < 3:
+                continue
+            if base[0].isalpha() and base[1:].isdigit():
+                familles.add(base.lower())
+    except OSError:
+        return set()
+    return familles
+
+
+def balayage_possible(chemin_astap=None):
+    """True si une base de BALAYAGE est installée (l'« aveugle » peut aboutir).
+    Bases de balayage : G05/G12/G18, H16/H17/H18, W08, V05 — les familles D*
+    (D50/D80) ne cherchent qu'AU VOISINAGE d'une position donnée."""
+    for b in bases_installees(chemin_astap):
+        if b[0] in ("g", "h", "w", "v"):
+            return True
+    return False
+
+
 def resoudre_avec_astap(chemin_image, ra0=None, dec0=None, rayon_deg=None,
                         fov_deg=0.0, chemin_astap=None, timeout=300,
                         dossier_sortie=None):

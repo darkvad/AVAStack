@@ -19,7 +19,13 @@ au re-stack. ASTAP reste la référence indépendante hors session.
     WCS de la GRILLE RECADRÉE, et la ligne d'état annonce la mesure ;
 [6] re-stack RÉEL : le WCS est PROPAGÉ par le chemin de production
     (`_do_restack` → aligneur privé → `SuiviAstrometrie.propager`) et la
-    vérité analytique reste respectée.
+    vérité analytique reste respectée ;
+[7] bouton 📷 « Lire depuis l'image courante » : champs pré-remplis depuis
+    l'en-tête FITS d'une brute, origine annoncée, rien d'inventé sans image ;
+[8] repli ASTAP aveugle : aucun indice nulle part → ASTAP balaie et son centre
+    sert d'indice (solve interne), ou son WCS est ADOPTÉ si l'interne refuse ;
+    balayages bornés, état toujours clair — confrontation ASTAP RÉELLE sur
+    l'image M31 du disque si elle est présente (sinon sautée proprement).
 
 Exécution : python _test_astro_branchement_jalon56.py
 """
@@ -36,8 +42,8 @@ from astropy.io import fits
 from astropy.wcs import WCS as WcsAstropy
 
 import avastack.ui.app as ui
-from avastack.catalogues import WcsTan
-from avastack.images import save_image
+from avastack.catalogues import WcsTan, resoudre
+from avastack.images import load_image, save_image
 from avastack.processing import astrometrie as astro
 from avastack.processing.alignment import StarAligner
 from avastack.processing.framestore import ArchiveFrames
@@ -476,6 +482,201 @@ verifie(app.var_astro_ra.get() == ""
         f"sans image disponible : rien d'inventé (« {app._astro_msg_indices} »)")
 
 root.destroy()
+
+# ================= [8] repli ASTAP aveugle (aucun indice nulle part)
+print("[8] repli ASTAP aveugle : indices d'ASTAP, puis repli de son WCS")
+_capt = {}
+# Fenêtre Tk NEUVE (celle des sections [5]-[7] vient d'être détruite).
+root8 = tk.Tk()
+root8.withdraw()
+
+
+def faux_astap_ok(img, fov_deg=0.0, chemin_astap=None, timeout=None,
+                  dossier=None, garder=False):
+    """ASTAP factice qui réussit : mêmes arguments/retour que le vrai."""
+    _capt["appels"] = _capt.get("appels", 0) + 1
+    _capt["fov"] = float(fov_deg)
+    _capt["forme"] = tuple(np.asarray(img).shape[:2])
+    return (W_VRAI, CRVAL[0], CRVAL[1], CHAMP, "ASTAP aveugle (factice)")
+
+
+_astap_reel = astro.resoudre_aveugle_astap
+astro.resoudre_aveugle_astap = faux_astap_ok
+try:
+    # (a) ASTAP fournit les indices → le solveur INTERNE résout (chemin normal)
+    app3 = ui.App(root8)
+    app3.var_astro.set(True)
+    app3.suivi_astro = astro.SuiviAstrometrie(solveur=faux_solveur(W_VRAI))
+    app3._astro_balayage = True       # base de BALAYAGE présente (simulée)
+    app3._on_astro()          # case cochée, champs VIDES → aucun indice saisi
+    st3 = LiveStacker(FORME, k=None, method="kappa", window=8)
+    for _ in range(4):
+        st3.add(base)
+    st3.note_alignement(np.eye(2, 3))
+    app3.stacker = st3
+    app3._astro_tour(st3)
+    verifie(_capt.get("appels") == 1 and app3.suivi_astro.resolu,
+            f"ASTAP aveugle appelé UNE fois ({_capt.get('appels')}), puis "
+            f"solve interne → résolu")
+    verifie(app3._astro_source.startswith("ASTAP")
+            and app3.suivi_astro.essais == 1,
+            f"indices marqués « {app3._astro_source} » ; solve interne : "
+            f"{app3.suivi_astro.essais} essai")
+    verifie(_capt.get("forme") == FORME,
+            f"image soumise à ASTAP = empilement COMPLET {_capt.get('forme')}")
+
+    # (a-bis) champ SEUL saisi (focale connue, coordonnées inconnues) : le
+    # balayage ASTAP est GUIDÉ par ce champ — constat RÉEL du 23/09/2026 : sans
+    # champ indicatif le balayage complet ÉCHOUE sur M31 ; avec, il résout.
+    app3b = ui.App(root8)
+    app3b.var_astro.set(True)
+    app3b.var_astro_champ.set("2.600")
+    app3b.suivi_astro = astro.SuiviAstrometrie(solveur=faux_solveur(W_VRAI))
+    app3b._astro_balayage = True      # base de BALAYAGE présente (simulée)
+    app3b._on_astro()                     # AD/Dec vides, champ renseigné
+    verifie(app3b._astro_indices is None
+            and app3b._astro_champ_seul is not None,
+            f"champ seul retenu ({app3b._astro_champ_seul}°) malgré des "
+            f"coordonnées vides (aucun indice inventé)")
+    st3b = LiveStacker(FORME, k=None, method="kappa", window=8)
+    for _ in range(4):
+        st3b.add(base)
+    st3b.note_alignement(np.eye(2, 3))
+    app3b.stacker = st3b
+    _capt.pop("fov", None)
+    app3b._astro_tour(st3b)
+    verifie(_capt.get("fov") == 2.6 and app3b.suivi_astro.resolu,
+            f"balayage GUIDÉ par le champ saisi (fov={_capt.get('fov')}° )")
+
+    # (b) le solveur INTERNE refuse → le WCS d'ASTAP est ADOPTÉ (repli)
+    app4 = ui.App(root8)
+    app4.var_astro.set(True)
+    app4.suivi_astro = astro.SuiviAstrometrie(
+        solveur=lambda *a, **k: (None, {},
+                                 "pas assez de correspondances mutuelles"))
+    app4._on_astro()          # case cochée, champs VIDES → aucun indice saisi
+    app4._astro_balayage = True       # base de BALAYAGE présente (simulée)
+    st4 = LiveStacker(FORME, k=None, method="kappa", window=8)
+    for _ in range(4):
+        st4.add(base)
+    st4.note_alignement(np.eye(2, 3))
+    app4.stacker = st4
+    app4._astro_tour(st4)
+    verifie(app4.suivi_astro.resolu
+            and app4.suivi_astro.info.get("methode") == "astap",
+            f"repli : WCS ASTAP adopté (méthode "
+            f"« {app4.suivi_astro.info.get('methode')} »)")
+    verifie(app4.suivi_astro.essais == 1 and app4.suivi_astro.propagations == 0,
+            "repli adopté SANS re-solve ni propagation")
+    w_rep, _ = app4.suivi_astro.wcs_grille(None, forme=FORME)
+    verifie(ecart_wcs_deg(w_rep, W_VRAI, FORME) * 3600.0 < 1e-6,
+            f"le WCS adopté EST exactement celui d'ASTAP "
+            f"({ecart_wcs_deg(w_rep, W_VRAI, FORME) * 3600.0:.2e}″)")
+
+    # (c) ASTAP échoue : état clair, balayages bornés, aucun crash
+    def faux_astap_ko(*a, **k):
+        _capt["ko"] = _capt.get("ko", 0) + 1
+        return None, None, None, None, "astap_cli : pas de solution"
+
+    astro.resoudre_aveugle_astap = faux_astap_ko
+    app5 = ui.App(root8)
+    app5.var_astro.set(True)
+    app5.suivi_astro = astro.SuiviAstrometrie(solveur=faux_solveur(W_VRAI))
+    app5._on_astro()          # case cochée, champs VIDES → aucun indice saisi
+    app5._astro_balayage = True       # base de BALAYAGE présente (simulée)
+    st5 = LiveStacker(FORME, k=None, method="kappa", window=8)
+    for _ in range(4):
+        st5.add(base)
+    st5.note_alignement(np.eye(2, 3))
+    app5.stacker = st5
+    for _ in range(2):
+        app5._astro_dernier_aveugle = 0.0     # délai neutralisé (banc)
+        app5._astro_tour(st5)
+    verifie(_capt.get("ko") == 1,
+            f"MÊME champ → un seul balayage ({_capt.get('ko')} appel) : "
+            f"aucun balayage inutilement répété")
+    # Un AUTRE champ indicatif relance un balayage (information nouvelle)…
+    app5.var_astro_champ.set("1.200")
+    app5._on_astro()
+    app5._astro_dernier_aveugle = 0.0
+    app5._astro_tour(st5)
+    verifie(_capt.get("ko") == 2,
+            f"champ DIFFÉRENT → nouveau balayage ({_capt.get('ko')} appels)")
+    # …mais le PLAFOND global arrête là (chaque balayage coûte des secondes).
+    app5.var_astro_champ.set("3.400")
+    app5._on_astro()
+    app5._astro_dernier_aveugle = 0.0
+    app5._astro_tour(st5)
+    verifie(_capt.get("ko") == astro.ASTRO_MAX_AVEUGLES,
+            f"plafond global de {astro.ASTRO_MAX_AVEUGLES} balayages "
+            f"respecté ({_capt.get('ko')} appels)")
+    verifie(not app5.suivi_astro.resolu and "ASTAP" in app5.astro_info,
+            f"ASTAP en échec : état clair (« {app5.astro_info[:44]}… »)")
+
+    # (d) AUCUNE base de BALAYAGE (cas réel du poste d'Alain : D80 seule) :
+    # l'appli ne lance même pas un balayage voué à l'échec — et DIT pourquoi
+    # (constat réel du 23/09/2026 : tout balayage D80 échoue en ~0,4 s).
+    app6 = ui.App(root8)
+    app6.var_astro.set(True)
+    app6.suivi_astro = astro.SuiviAstrometrie(solveur=faux_solveur(W_VRAI))
+    app6._on_astro()
+    app6._astro_balayage = False          # sonde simulée : pas de base G/H/W
+    app6._astro_bases = "d80"
+    st6 = LiveStacker(FORME, k=None, method="kappa", window=8)
+    for _ in range(4):
+        st6.add(base)
+    st6.note_alignement(np.eye(2, 3))
+    app6.stacker = st6
+    _capt.pop("ko", None)
+    app6._astro_tour(st6)
+    verifie(_capt.get("ko") is None,
+            "aucun balayage lancé sans base de balayage (pas d'attente inutile)")
+    verifie("d80" in app6.astro_info and "BALAYAGE" in app6.astro_info,
+            f"la cause est dite (« {app6.astro_info[:58]}… »)")
+finally:
+    astro.resoudre_aveugle_astap = _astap_reel
+
+# ------------- ASTAP RÉEL en aveugle (si installé ET image de test là) ------
+_img_reelle = r"c:\Astro\test\m31_test_solve.fits"
+if not os.path.isfile(_img_reelle):
+    print("  (image de test absente : confrontation ASTAP RÉELLE sautée)")
+else:
+    img_r = None
+    try:
+        img_r = load_image(_img_reelle)
+    except Exception as exc:
+        print(f"  (lecture impossible : {exc}) — sauté")
+    if img_r is not None:
+        # Champ indicatif 2,6° (ordre de grandeur connu pour ce setup) : le
+        # balayage COMPLET (fov=0) a été essayé en réel le 23/09/2026 et a
+        # ÉCHOUÉ (« No solution found! » sur cet empilement), alors que le même
+        # contenu est résolu en 0,2 s avec un ordre de grandeur de champ.
+        wcs_ap, ra_ap, dec_ap, champ_ap, msg_ap = \
+            astro.resoudre_aveugle_astap(img_r, fov_deg=2.6)
+        if wcs_ap is None:
+            print(f"  astap_cli indisponible/en échec ({msg_ap}) — sauté")
+        else:
+            print(f"  {msg_ap}")
+            verifie(2.0 <= champ_ap <= 3.2,
+                    f"champ trouvé plausible pour M31 ({champ_ap:.3f}° ≈ 2,6°)")
+            wcs_in, info_in, msg_in = resoudre(img_r, ra_ap, dec_ap, champ_ap)
+            if wcs_in is None:
+                print(f"  solve interne (indices d'ASTAP) : {msg_in}"
+                      f" — comparaison sautée")
+            else:
+                h_r, w_r = img_r.shape[:2]
+                pts = np.array([[0.0, 0.0], [w_r - 1.0, 0.0],
+                                [0.0, h_r - 1.0], [w_r - 1.0, h_r - 1.0],
+                                [(w_r - 1) / 2.0, (h_r - 1) / 2.0]])
+                r1, d1 = wcs_in.vers_radec(pts)
+                r2, d2 = wcs_ap.vers_radec(pts)
+                sep = 3600.0 * np.hypot((r1 - r2) * np.cos(np.radians(d1)),
+                                        d1 - d2)
+                d_ech = abs(wcs_in.echelle_arcsec - wcs_ap.echelle_arcsec)
+                verifie(sep.max() < 5.0 and d_ech < 0.01,
+                        f"interne (indices d'ASTAP) ≡ ASTAP : écart max "
+                        f"{sep.max():.2f}″, Δ échelle {d_ech:.4f}″/px")
+root8.destroy()
 
 # ============================================================ récapitulatif
 print()

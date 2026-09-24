@@ -14,9 +14,44 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.28.2"
+AVASTACK_VERSION = "2.29.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.29.0 : REPLI ASTAP quand AUCUN INDICE n'est disponible (accord d'Alain,
+#          23/09/2026) : caméra live sans en-tête FITS, ni saisie, ni
+#          OBJCTRA/OBJCTDEC → ASTAP tente de localiser l'empilement LUI-MÊME
+#          et son centre sert d'indice au solveur interne (le WCS d'ASTAP sert
+#          ensuite de REPLI si l'interne refuse : « ASTAP = référence
+#          indépendante/repli »).
+#          CONSTAT RÉEL DÉCISIF (23/09/2026) : ASTAP ne sait chercher SANS
+#          position de départ qu'avec une base de BALAYAGE (G18/H18/W08/V05) ;
+#          avec une base D50/D80 — la plus courante, seule installée chez
+#          Alain — il ne cherche qu'AU VOISINAGE d'une position : tout
+#          balayage échoue en ~0,4 s, quel que soit `-fov` (mesuré sur son
+#          empilement M31 ; le même fichier est résolu en 0,2 s avec indices).
+#          L'appli SONDE donc les bases (`astap.bases_installees` /
+#          `balayage_possible`) et, sans base de balayage, n'engage PAS
+#          d'attente inutile : elle DIT la cause et conseille la saisie d'une
+#          position approximative (le solveur interne tolère ~1°).
+#          GARDE-FOUS pour ne jamais bloquer l'acquisition : 1 seul balayage
+#          par valeur de champ (`fov`), plafond ASTRO_MAX_AVEUGLES = 2 par
+#          session, délai entre balayages, timeout 90 s, image écrite BORNÉE à
+#          [0,1] dans un dossier temporaire (leçon v2.27.1) ; le WCS rendu est
+#          adopté par `SuiviAstrometrie.adopter` (repli, méthode « astap »)
+#          et reste propageable aux réempilements (WcsTan en référence).
+#          PIÈGE DE CONVENTION tranché en réel : `-fov` d'ASTAP est la HAUTEUR
+#          du champ (l'appli raisonne en LARGEUR est-ouest) — passer 2,6° pour
+#          1,47° attendu échoue aussi.
+#          UI : le champ de saisie peut rester SEUL (focale connue, cible
+#          inconnue) — il guide le balayage ; messages d'état toujours
+#          explicites (origine des indices, cause d'un échec, bases trouvées).
+#          OUTIL : `_diag_astap_aveugle.py` (diagnostic réel : essaie plusieurs
+#          `-fov`, affiche le verdict brut d'ASTAP, liste les bases installées
+#          et confronte au solveur interne indicé).
+#          BANC : `_test_astro_branchement_jalon56.py` section [8] (ASTAP
+#          factice : indices fournis → solve interne ; interne en échec → WCS
+#          ASTAP adopté ; échec ASTAP → état clair ; sans base de balayage →
+#          aucun essai ; confrontation ASTAP RÉELLE si l'image M31 est là).
 # v2.28.2 : CORRECTIF du bouton 📷 (v2.28.1) — `indices_entete_fits` vit dans
 #          `processing/astrometrie`, pas dans `images` : l'import local du
 #          bouton levait ImportError au premier clic (attrapé par le banc,

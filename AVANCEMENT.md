@@ -11,42 +11,33 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.28.2** (`avastack/__init__.py`),
-  branche `master` — **BRANCHEMENT DU SOLVEUR AU WORKER livré le 23/09/2026
-  (v2.28.0, jalon 56, étape « branchement ») + ERGONOMIE v2.28.1/2 le 23/09** :
-  le solveur interne résout l'astrométrie UNE SEULE FOIS sur l'accumulation
-  COMPLÈTE (grille de l'aligneur, `mean(recadre=False)`), avec les INDICES de
-  la cible (saisis OU lus dans l'en-tête OBJCTRA/OBJCTDEC des brutes). À chaque
-  RÉEMPILEMENT, le WCS est PROPAGÉ par composition de transformations
-  (`catalogues/propagation.py` — étape 3 banc au vert), AUCUN re-solve,
-  AUCUN accès au catalogue.
-  Module de GLUE `processing/astrometrie.py` (numpy pur, sans cycle d'import) :
-  `SuiviAstrometrie` gère le cycle de vie (indices → résolution unique →
-  propagation cumulative), réessais espacés et bornés, invalidation si indices
-  changent, mots-clés FITS WCS (CTYPE/CRVAL/CRPIX/CD) écrits à CHAQUE
-  sauvegarde linéaire sur la grille RÉELLEMENT écrite (recadrage d'intersection
-  inclus).
-  UI : case « Astrométrie » + AD/Dec/champ (sexagésimal/heures/décimal,
-  interprétation explicite affichée), lecture d'en-tête STRICTE
-  (OBJCTRA/OBJCTDEC + FOCALLEN/XPIXSZ, jamais d'invention), ligne d'état
-  dédiée (mesure ou raison d'attente, jamais muette) + **bouton 📷 « Lire
-  depuis l'image courante »** : pré-remplit AD/Dec/champ depuis le header FITS
-  de la dernière brute reçue (`camera.last_file`) ou du dernier empilement
-  linéaire sauvegardé (`saved_path`) — format décimal degrés, validation par
-  Entrée/FocusOut ; le libellé annonce l'origine des indices (« image
-  <fichier> » ou « saisie »).
-  Banc : `_test_astro_branchement_jalon56.py` (7 sections : parseurs, en-tête
-  FITS, SuiviAstrometrie, propagation/recadrage/astropy.wcs, worker réel FITS
-  WCS + ligne d'état, re-stack réel propagation, bouton 📷) — TOUT AU VERT.
-  Jalon 56 étape 3 (propagation WCS) : banc au vert ; étape 2 (solveur
-  interne) : RÉSOLU EN RÉEL (repli RANSAC de paires). Jalon 55 (v2.23.3)
-  validé par Alain en réel (M31 RGB), commité aca5ca5.
+- **Version stable de référence : AVAStack v2.29.0** (`avastack/__init__.py`),
+  branche `master` — **REPLI ASTAP livré le 23/09/2026 (v2.29.0)** : quand
+  AUCUN indice n'est disponible (caméra live sans en-tête FITS, ni saisie, ni
+  OBJCTRA/OBJCTDEC), ASTAP tente de localiser l'empilement lui-même et son
+  centre sert d'indice au solveur interne ; son WCS est le REPLI si l'interne
+  refuse (`SuiviAstrometrie.adopter`, méthode « astap »). Le champ de saisie
+  peut rester SEUL (focale connue, cible inconnue) : il guide le balayage.
+  **CONSTAT RÉEL DÉCISIF (23/09/2026, banc + `_diag_astap_aveugle.py`)** :
+  ASTAP ne balaie le ciel SANS position de départ qu'avec une base de BALAYAGE
+  (G18/H18/W08/V05) ; le poste d'Alain n'a que **D80** (base « solution
+  voisine ») → tout balayage échoue en ~0,4 s, quel que soit `-fov` (le même
+  fichier est résolu en 0,2 s AVEC indices). L'appli SONDE donc les bases
+  (`astap.bases_installees` / `balayage_possible`) et n'engage pas d'attente
+  inutile : elle dit la cause et conseille AD/Dec approximatifs (le solveur
+  interne tolère ~1°). Garde-fous : 1 balayage par valeur de champ, plafond 2
+  par session, timeout 90 s, image temporaire bornée [0,1]. PIÈGE tranché en
+  réel : `-fov` d'ASTAP = HAUTEUR du champ (l'appli raisonne en LARGEUR).
+  Outil `_diag_astap_aveugle.py` embarqué dans l'installateur.
+  Banc `_test_astro_branchement_jalon56.py` section [8] TOUT AU VERT
+  (indices d'ASTAP → solve interne ; interne en échec → WCS ASTAP adopté ;
+  échec ASTAP → état clair ; sans base de balayage → aucun essai).
 - **Tâche en cours** : **étape 4 — photométrie + facteurs par bande**
-  (appariement catalogue Gaia ↔ étoiles de l'accumulation via le WCS),
-  suivie de l'étape 5 (application aux gains du stacker), étape 6 (validation
-  Siril + test réel multibande). La PRIORITÉ demandée par Alain le 22/09/2026
-  (échelle des fichiers linéaires, v2.27.1) est LIVRÉE ET VÉRIFIÉE.
-- **Prochaine étape** : photométrie + facteurs par bande (étape 4) à froid.
+  (appariement catalogue Gaia ↔ étoiles de l'accumulation via le WCS), suivie
+  de l'étape 5 (application aux gains du stacker), étape 6 (validation Siril +
+  test réel multibande).
+- **Prochaine étape** : étape 4 (photométrie) — appariement Gaia ↔ étoiles de
+  l'accumulation avec le WCS propagé, puis facteurs par bande.
 
 ## Statuts CLAUDE.md
 

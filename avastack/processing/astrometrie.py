@@ -43,12 +43,17 @@ l'acquisition.
 
 import os
 import re
+import shutil
+import tempfile
 import time
 
 import numpy as np
 
 from ..catalogues import WcsTan, compose_M, propager
+from ..catalogues import balayage_possible, bases_installees
 from ..catalogues import resoudre as _resoudre_interne
+from ..catalogues import resoudre_avec_astap as _resoudre_astap
+from ..images import borner_lineaire, save_image
 
 try:
     from astropy.io import fits
@@ -61,6 +66,8 @@ ASTRO_MIN_FRAMES = 3        # pas de tentative avant ce nombre de frames empilé
 ASTRO_ESSAI_DELAI_S = 20.0  # délai minimal entre deux tentatives (réessais)
 ASTRO_MAX_ESSAIS = 6        # plafond de tentatives par session (jamais de boucle)
 ASTRO_CHAMP_MIN, ASTRO_CHAMP_MAX = 0.05, 30.0   # bornes du champ indicé (°)
+ASTRO_MAX_AVEUGLES = 2      # plafond des balayages ASTAP (session) — LENTS
+ASTRO_ASTAP_TIMEOUT_S = 90.0    # délai d'un balayage (borné pour le live)
 
 # Séparateurs des coordonnées sexagésimales (« 41d16'09" », « 0h42m44s »,
 # « 00 42 44 », « 0:42:44 ») — l'espace en fait partie : les logiciels
@@ -120,6 +127,21 @@ def analyser_indices(ra_txt, dec_txt, champ_txt):
         return None, None, None, (f"champ hors bornes ({ASTRO_CHAMP_MIN}–"
                                   f"{ASTRO_CHAMP_MAX}°) : {champ}")
     return ra % 360.0, dec, champ, ""
+
+
+def analyser_champ(txt):
+    """Champ indicatif SEUL (« 2.6 », largeur est-ouest en degrés) →
+    (valeur, message). Sert au REPLI ASTAP quand les coordonnées sont
+    inconnues mais que l'échantillonnage l'est (une focale se connaît
+    toujours) : ASTAP balaie alors BEAUCOUP plus vite et surement."""
+    try:
+        v = float(str(txt if txt is not None else "").strip().replace(",", "."))
+    except ValueError:
+        return None, f"champ illisible : « {txt} »"
+    if not (ASTRO_CHAMP_MIN <= v <= ASTRO_CHAMP_MAX):
+        return None, (f"champ hors bornes ({ASTRO_CHAMP_MIN}–"
+                      f"{ASTRO_CHAMP_MAX}°) : {v}")
+    return v, ""
 
 
 def champ_depuis_optique(focale_mm, pixel_um, n_pixels):
@@ -221,6 +243,101 @@ def indices_entete_fits(chemin):
                 f"champ calculé hors bornes ({champ:.3f}°) — "
                 f"vérifier FOCALLEN/XPIXSZ")
     return ra % 360.0, dec, champ, f"indices lus dans l'en-tête ({source})"
+
+def resoudre_aveugle_astap(img, fov_deg=0.0, ra0=None, dec0=None,
+                           rayon_deg=None, chemin_astap=None,
+                           timeout=ASTRO_ASTAP_TIMEOUT_S, dossier=None,
+                           garder=False):
+    """Résolution ASTAP SANS AUCUN INDICE (« aveugle ») sur une image EN MÉMOIRE.
+
+    Décision d'Alain (23/09/2026) : quand ni la saisie ni l'en-tête des brutes
+    ne fournit d'indices (caméra live sans en-tête FITS), ASTAP résout seul et
+    son CENTRE sert d'indice au solveur interne — chemin déjà VALIDÉ EN RÉEL par
+    `_diag_solve_reel.py`. Le WCS d'ASTAP sert aussi de REPLI si le solveur
+    interne refuse ensuite (décision : « ASTAP = référence indépendante/repli »).
+
+    L'image est écrite dans un FITS TEMPORAIRE borné à [0,1] (leçon v2.27.1 :
+    sur un composite hors [0,1] — cœur de galaxie à 14 — ASTAP ne détecte
+    AUCUNE étoile, « Only 0 stars found in image »).
+
+    `fov_deg` : LARGEUR de champ INDICATIVE en degrés (0 = balayage complet) —
+    même convention que `catalogues.resoudre` ; elle est convertie en hauteur
+    pour ASTAP (piège de convention, cf. plus bas). CONSTAT RÉEL du 23/09/2026 :
+    sur l'empilement M31 d'Alain, le balayage COMPLET échoue (« No solution
+    found » en 0,4 s) alors que le même fichier est résolu en 0,2 s dès qu'une
+    position de départ est donnée — un champ indicatif seul NE SUFFIT PAS avec
+    une base D50/D80 (cf. `balayage_possible`).
+
+    `ra0`/`dec0` (+ `rayon_deg`) : position APPROXIMATIVE (degrés) pour une
+    résolution GUIDÉE — elle peut être fausse de plusieurs degrés (rayon
+    élargi en conséquence) ; c'est le SEUL chemin qui aboutit avec les bases
+    D50/D80.
+
+    → (wcs WcsTan, ra_deg, dec_deg, champ_deg, message) ;
+      (None, None, None, None, message) sinon — jamais d'exception.
+    `champ_deg` = LARGEUR du champ (est-ouest), même convention que
+    `catalogues.resoudre` (le solveur en déduit son échelle indicative)."""
+    a = np.asarray(img)
+    if a.ndim not in (2, 3) or min(a.shape[:2]) < 16:
+        return (None, None, None, None,
+                f"image inexploitable pour un balayage ({a.shape})")
+    h, w = int(a.shape[0]), int(a.shape[1])
+    tmp = dossier or tempfile.mkdtemp(prefix="avastack_astro_")
+    propre = dossier is None
+    chemin = os.path.join(tmp, "empilement_aveugle.fits")
+    try:
+        bornee, _ = borner_lineaire(img)
+        save_image(chemin, bornee)
+    except Exception as exc:
+        if propre and not garder:
+            shutil.rmtree(tmp, ignore_errors=True)
+        return None, None, None, None, f"écriture temporaire impossible ({exc})"
+    try:
+        # PIÈGE de convention : `-fov` d'ASTAP est la HAUTEUR du champ, alors
+        # que `fov_deg` reçu ici (comme `catalogues.resoudre`) est la LARGEUR
+        # est-ouest → conversion par la forme de l'image. Se tromper d'un
+        # facteur h/w fait chercher à la mauvaise échelle et ASTAP répond
+        # « No solution found! » (constaté en réel le 23/09/2026 : 2,6° passé
+        # pour 1,47° attendu → échec ; avec la conversion → résolu).
+        fov_h = (float(fov_deg) * (h / float(w))) if fov_deg else 0.0
+        wcs, msg = _resoudre_astap(chemin, ra0=ra0, dec0=dec0,
+                                   rayon_deg=rayon_deg, fov_deg=fov_h,
+                                   chemin_astap=chemin_astap,
+                                   timeout=timeout, dossier_sortie=tmp)
+    except Exception as exc:          # un wrapper ne doit jamais remonter
+        wcs, msg = None, f"exception ASTAP ({exc})"
+    if not garder and propre:
+        shutil.rmtree(tmp, ignore_errors=True)
+    if wcs is None:
+        # Message ENRICHI : quand aucune base de BALAYAGE n'est installée et
+        # qu'aucune position n'a été donnée, ASTAP ne PEUT pas trouver (les
+        # bases D50/D80 ne cherchent qu'au voisinage d'une position) — dire la
+        # cause évite de croire à un bug de l'appli.
+        if ra0 is None and not balayage_possible(chemin_astap):
+            bases = ", ".join(sorted(bases_installees(chemin_astap))) or "aucune"
+            return (None, None, None, None,
+                    f"ASTAP : {msg} — bases installées : {bases} (aucune base "
+                    f"de BALAYAGE) : ASTAP a besoin d'une position de départ "
+                    f"approximative. Saisir AD/Dec (même à quelques degrés), "
+                    f"ou installer une base G18/H18")
+        return None, None, None, None, f"ASTAP : {msg}"
+    try:
+        cx, cy = (w - 1) / 2.0, (h - 1) / 2.0
+        ra_c, dec_c = wcs.vers_radec(np.array([[cx, cy]]))
+        ra_c = float(np.ravel(ra_c)[0])
+        dec_c = float(np.ravel(dec_c)[0])
+        champ = w * float(wcs.echelle_arcsec) / 3600.0
+    except Exception as exc:
+        return None, None, None, None, f"WCS ASTAP inexploitable ({exc})"
+    if not (ASTRO_CHAMP_MIN <= champ <= ASTRO_CHAMP_MAX):
+        return (None, None, None, None,
+                f"champ résolu par ASTAP hors bornes ({champ:.3f}°)")
+    return (wcs, ra_c % 360.0, dec_c, champ,
+            f"ASTAP{' aveugle' if not fov_deg else f' (champ indicatif {float(fov_deg):.3f}°)'}"
+            f" : {champ:.3f}° de champ, {float(wcs.echelle_arcsec):.3f}″/px, "
+            f"centre ({ra_c % 360.0:.4f}°, {dec_c:+.4f}°)")
+
+
 
 
 class SuiviAstrometrie:
@@ -324,6 +441,46 @@ class SuiviAstrometrie:
                     + (f" — {self.derniere_erreur}"
                        if self.derniere_erreur else ""))
         return ""
+
+    # -- repli : adopter un WCS résolu ailleurs (ASTAP) ----------------------
+    def adopter(self, wcs, forme, methode="astap"):
+        """Adopte un WCS DÉJÀ RÉSOLU ailleurs — REPLI ASTAP (décision d'Alain :
+        « ASTAP = référence indépendante/repli »). Les indices (centre du champ,
+        largeur) sont EXTRAITS du WCS, et la propagation s'appliquera ensuite
+        exactement comme après un solve interne (le WCS adopté est un WcsTan,
+        seule entrée acceptée par `propager`).
+
+        `forme` = (h, w) de la grille décrite par ce WCS — REQUISE : ASTAP ne
+        rend pas la forme de l'image, et le centre ne se lit pas sans elle.
+        → (True, texte d'état) / (False, message) ; jamais d'exception."""
+        if wcs is None:
+            return False, "WCS de repli absent"
+        try:
+            h, w = int(forme[0]), int(forme[1])
+        except (TypeError, IndexError, ValueError):
+            return False, "forme (h, w) requise pour adopter un WCS"
+        if h <= 0 or w <= 0:
+            return False, f"forme invalide ({forme})"
+        try:
+            ra_c, dec_c = wcs.vers_radec(np.array([[(w - 1) / 2.0,
+                                                    (h - 1) / 2.0]]))
+            ra_c = float(np.ravel(ra_c)[0])
+            dec_c = float(np.ravel(dec_c)[0])
+            champ = w * float(wcs.echelle_arcsec) / 3600.0
+        except Exception as exc:
+            return False, f"WCS de repli inexploitable ({exc})"
+        if not (ASTRO_CHAMP_MIN <= champ <= ASTRO_CHAMP_MAX):
+            return False, (f"champ du WCS de repli hors bornes "
+                           f"({champ:.3f}°) — WCS refusé")
+        self.ra0, self.dec0, self.champ = ra_c % 360.0, dec_c, float(champ)
+        self.wcs = wcs
+        self.matrice = np.eye(2, 3)
+        self.info = {"n_etoiles_img": 0, "n_etoiles_cat": 0, "n_appariements": 0,
+                     "rms_px": None, "rms_arcsec": None,
+                     "echelle_arcsec_px": float(wcs.echelle_arcsec),
+                     "angle_deg": float(wcs.angle_deg), "methode": str(methode)}
+        self.derniere_erreur = ""
+        return True, self.texte_resume()
 
     # -- résolution -----------------------------------------------------------
     def resoudre_sur(self, img):

@@ -291,8 +291,26 @@ class App:
         self.astro_couleur = "#888888"   # gris / vert (résolu) / ambre (souci)
         self._astro_actif = False        # case « Astrométrie » (instantané Tk)
         self._astro_indices = None       # (ra, dec, champ) validés (instantané)
+        # Champ SEUL (sans coordonnées) : saisi par l'utilisateur qui connaît sa
+        # focale mais pas ses coordonnées — sert de `fov` indicatif au balayage
+        # ASTAP (CONSTAT RÉEL du 23/09/2026 : sans ordre de grandeur de champ,
+        # le balayage complet d'ASTAP échoue sur M31 ; avec, il résout en 0,2 s).
+        self._astro_champ_seul = None
+        self._astro_fov_essayes = set()  # valeurs de fov DÉJÀ tentées (1 essai
+                                         # par valeur : un balayage identique
+                                         # redonnerait le même échec)
+        self._astro_balayage = None      # base de balayage ASTAP ? (sonde UNE
+                                         # fois par session — listdir coûteux)
+        self._astro_bases = ""           # familles de bases installées (état)
         self._astro_msg_indices = ""     # raison d'un refus des indices saisis
-        self._astro_source = ""          # « saisie » ou « en-tête <fichier> »
+        self._astro_source = ""          # « saisie », « image <fichier> », « ASTAP »…
+        # Repli ASTAP « aveugle » (décision d'Alain, 23/09/2026) : tenté quand
+        # AUCUN indice n'est disponible (caméra live sans en-tête FITS). Le WCS
+        # rendu par ASTAP est gardé ici pour servir de repli si le solveur
+        # interne refuse ensuite ; compteur borné (un balayage est LENT).
+        self._astro_wcs_secours = None
+        self._astro_aveugles = 0
+        self._astro_dernier_aveugle = 0.0
         # Jalon 17 : filtre anti-brutes très défocalisées (rejet d'office,
         # case pour désactiver — décision d'Alain). Mesure par frame à
         # l'arrivée (fwhm, nb d'étoiles) ; le filtre compare à la médiane des
@@ -1888,6 +1906,10 @@ class App:
             self.var_astro_champ.get().strip())
         self._astro_msg_indices = msg
         self._astro_source = ""
+        # Champ SEUL (indépendamment des coordonnées) : c'est lui qui guidera un
+        # éventuel balayage ASTAP si les coordonnées manquent.
+        self._astro_champ_seul, _ = astro_mod.analyser_champ(
+            self.var_astro_champ.get().strip())
         if msg:
             self._astro_indices = None
         else:
@@ -3128,6 +3150,11 @@ class App:
         self.astro_info = ""
         self.astro_couleur = "#888888"
         self._astro_source = ""
+        self._astro_wcs_secours = None       # repli ASTAP de l'ancienne session
+        self._astro_aveugles = 0
+        self._astro_dernier_aveugle = 0.0
+        self._astro_fov_essayes = set()
+        self._astro_balayage = None          # sonde des bases ASTAP refaite
         self._maj_astro_vue()
         self.proc_show = self.proc_full = None
         self.proc_new = False
@@ -3985,6 +4012,12 @@ class App:
         if self._astro_indices is None:
             self._astro_indices_entete()
         if self._astro_indices is None:
+            # Jalon 56 : ni saisie ni en-tête de brute (caméra live sans
+            # en-tête FITS) → REPLI ASTAP « aveugle » : c'est LUI qui fournit
+            # les indices (son centre), puis le solveur interne reprend la main
+            # sur un champ indicé fiable (chemin validé par _diag_solve_reel).
+            self._astro_aveugle(stacker)
+        if self._astro_indices is None:
             self.astro_info = ("Astrométrie : " + (self._astro_msg_indices
                                or "indices de la cible manquants"))
             self.astro_couleur = "#c98a00"
@@ -4010,11 +4043,101 @@ class App:
         if okk:
             self._maj_astro_etat()
             return
+        # Jalon 56 : le solveur INTERNE a refusé — si ASTAP avait résolu en
+        # aveugle, son WCS devient le WCS de la session (repli prévu par la
+        # décision d'Alain : « ASTAP = référence indépendante/repli »).
+        if self._astro_wcs_secours is not None:
+            ok2, msg2 = self.suivi_astro.adopter(self._astro_wcs_secours,
+                                                 img.shape[:2])
+            if ok2:
+                self._astro_wcs_secours = None     # adopté : plus de secours
+                self._astro_source = "ASTAP (repli)"
+                self._maj_astro_etat()
+                return
+            msg = f"{msg} — repli ASTAP refusé ({msg2})"
         essais = self.suivi_astro.essais
         self.astro_couleur = ("#c98a00" if essais < astro_mod.ASTRO_MAX_ESSAIS
                               else "#d04040")
         self.astro_info = (f"Astrométrie : échec — {msg}"
                            f" ({essais}/{astro_mod.ASTRO_MAX_ESSAIS} essais)")
+
+    def _astro_aveugle(self, stacker):
+        """Jalon 56 — REPLI ASTAP : quand AUCUN indice n'est disponible (ni
+        saisie, ni en-tête de brute), ASTAP balaie le ciel seul (`fov` auto) et
+        son centre sert d'indice au solveur interne. Le WCS rendu est GARDÉ
+        (`_astro_wcs_secours`) : si le solveur interne refuse ensuite, il est
+        adopté tel quel (repli) au lieu de laisser la session sans astrométrie.
+
+        Appel LENT (balayage complet : plusieurs secondes à une minute) → au
+        plus `ASTRO_MAX_AVEUGLES` fois par session, espacées du même délai que
+        les essais internes, et jamais pendant qu'un empilement est trop court.
+        Sans astap_cli installé, l'échec est immédiat et parfaitement clair."""
+        if self._astro_aveugles >= astro_mod.ASTRO_MAX_AVEUGLES:
+            self._astro_msg_indices = (f"aucun indice (ASTAP aveugle : plafond "
+                                       f"de {astro_mod.ASTRO_MAX_AVEUGLES} "
+                                       f"tentatives atteint)")
+            return
+        # SONDE des bases ASTAP, UNE fois par session (listdir d'un dossier de
+        # plus de 1000 fichiers) : sans base de BALAYAGE (G18/H18…), ASTAP ne
+        # peut PAS chercher sans position — inutile de bloquer l'acquisition
+        # pour un échec certain (constat réel du 23/09/2026 : avec la seule
+        # base D80, tout balayage échoue en ~0,4 s). On le DIT à l'utilisateur.
+        if self._astro_balayage is None:
+            self._astro_balayage = astro_mod.balayage_possible()
+            self._astro_bases = (", ".join(sorted(astro_mod.bases_installees()))
+                                 or "aucune")
+        if not self._astro_balayage:
+            self._astro_msg_indices = (
+                f"aucun indice (ASTAP : bases installées = {self._astro_bases}; "
+                f"PAS de base de BALAYAGE — saisir AD/Dec approximatifs, ou "
+                f"installer une base G18/H18)")
+            return
+        if stacker.n < astro_mod.ASTRO_MIN_FRAMES:
+            return
+        # Un seul essai PAR VALEUR de champ : rebalayer à l'identique redonne
+        # exactement le même échec (« No solution found! », constat réel).
+        fov = float(self._astro_champ_seul or 0.0)
+        if fov in self._astro_fov_essayes:
+            self._astro_msg_indices = (
+                f"aucun indice (ASTAP déjà tenté avec un champ de "
+                f"{fov:.3f}° : balayage NON répété — saisir AD/Dec, ou "
+                f"corriger le champ)")
+            return
+        self._astro_fov_essayes.add(fov)
+        t = time.monotonic()
+        if (self._astro_aveugles
+                and t - self._astro_dernier_aveugle
+                < astro_mod.ASTRO_ESSAI_DELAI_S):
+            return
+        img = stacker.mean(recadre=False)
+        if img is None:
+            return
+        self._astro_aveugles += 1
+        self._astro_dernier_aveugle = t
+        self.astro_info = (
+            "Astrométrie : aucun indice — balayage ASTAP en cours"
+            + (f" (champ indicatif {fov:.3f}°)…" if fov
+               else " (sans champ indicatif : LENT)…"))
+        self.astro_couleur = "#c98a00"
+        try:
+            wcs, ra, dec, champ, msg = astro_mod.resoudre_aveugle_astap(
+                img, fov_deg=fov)
+        except Exception as exc:       # un outil externe ne tue jamais le worker
+            wcs, ra, dec, champ = None, None, None, None
+            msg = f"exception ASTAP ({exc})"
+        if wcs is None or ra is None:
+            self._astro_msg_indices = f"ASTAP aveugle : {msg}"
+            self.astro_info = f"Astrométrie : {self._astro_msg_indices}"
+            self.astro_couleur = "#c98a00"
+            return
+        self._astro_wcs_secours = wcs
+        self._astro_indices = (ra, dec, champ)
+        self._astro_msg_indices = ""
+        self._astro_source = "ASTAP (aveugle)"
+        self.suivi_astro.indice(ra, dec, champ)
+        self.astro_info = (f"Astrométrie : indices d'ASTAP — {msg}"
+                           f" → solve interne…")
+        self.astro_couleur = "#888888"
 
     def _maj_astro_etat(self):
         """Recopie l'état du suivi (étoiles, rms, ″/px, propagations) dans la
@@ -4602,6 +4725,12 @@ class App:
                 self.suivi_astro.reset()
                 self.astro_info = ""
                 self.astro_couleur = "#888888"
+                self._astro_wcs_secours = None
+                self._astro_aveugles = 0
+                self._astro_dernier_aveugle = 0.0
+                self._astro_fov_essayes = set()
+                self._astro_balayage = None
+                self._astro_source = ""
                 self.proc_show = self.proc_full = None
                 self.proc_new = False
                 self.save_asseen_request = None   # sauvegarde « tel que vu » annulée
