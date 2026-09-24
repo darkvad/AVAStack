@@ -117,6 +117,10 @@ def principal():
                     help="écarte les étoiles dont le fond local dépasse la "
                          "médiane du fond de +k×MAD (objet étendu sous "
                          "l'ouverture) ; 0 = ne rien écarter")
+    ap.add_argument("--max-etoiles", type=int, default=0,
+                    help="plafond de détection (0 = défaut du projet) — Siril "
+                         "en détecte des milliers : un plafond bas limite la "
+                         "comparaison croisée")
     ap.add_argument("--rayon", type=float, default=0.0,
                     help="rayon d'ouverture en px (0 = défaut du projet)")
     a = ap.parse_args()
@@ -135,7 +139,8 @@ def principal():
         return 1
 
     # --- étoiles de l'image et appariement --------------------------------
-    pos, _flux_img, msg = PH.etoiles_image(canaux["G"])
+    pos, _flux_img, msg = PH.etoiles_image(
+        canaux["G"], **( {"max_etoiles": a.max_etoiles} if a.max_etoiles else {} ))
     print(f"détection (canal G) : {len(pos)} étoiles — {msg or 'ok'}")
     if len(pos) == 0:
         return 1
@@ -218,10 +223,10 @@ def _suite(a, canaux, cat, ic, mes):
         print(f"référence de blanc introuvable : {a.blanc}")
         return 1
     wl_b, val_b = DB.courbe(c_blanc)
-    # NOTE : Siril n'applique PAS la conversion en photons au spectre de
-    # référence (init_xpsampled_from_library seul, cf. photometric_cc.c) —
-    # fidélité volontaire.
-    pred_blanc = SP.flux_par_canal(SP.sur_grille(wl_b, val_b)[None, :],
+    # Jalon 58 : Siril traite la référence de blanc COMME un spectre d'étoile
+    # (conversion en comptage de photons comprise) — validé au 1e-4 contre ses
+    # coefficients réels le 24/09/2026 (cf. spcc.spectre_reference).
+    pred_blanc = SP.flux_par_canal(SP.spectre_reference(wl_b, val_b)[None, :],
                                    reponses)[0]
     wrg, wbg = pred_blanc[0] / pred_blanc[1], pred_blanc[2] / pred_blanc[1]
     print(f"blanc « {c_blanc['nom']} » : R/G {wrg:.4f} / B/G {wbg:.4f}")

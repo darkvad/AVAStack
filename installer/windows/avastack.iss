@@ -120,6 +120,15 @@ Source: "{#RepoRoot}\_diag_couleur_gains.py"; DestDir: "{app}"; Flags: ignorever
 ; des COULEURS D'ETOILES en magnitudes.
 Source: "{#RepoRoot}\_diag_spcc.py"; DestDir: "{app}"; Flags: ignoreversion
 
+; Banc SPCC (v2.34.0, jalon 58) : verifie le MODELE contre une VERITE
+; ANALYTIQUE — image fabriquee a partir des spectres et de reponses connues
+; (attenuations instrumentales x0,7 / x1,3) : les pentes de regression doivent
+; valoir exactement ces gains, la reference de blanc doit devenir NEUTRE,
+; plus les refus propres, le piege des unites (angstroms), la robustesse de la
+; regression, la session et tout le branchement UI (case opt-in, selecteurs
+; alimentes par la base Siril, config round-trip, gains par role).
+Source: "{#RepoRoot}\_test_spcc_jalon58.py"; DestDir: "{app}"; Flags: ignoreversion
+
 ; veralux_core_headless.py : code tiers GPL-3.0-or-later (Riccardo Paterniti),
 ; copie tel quel (sa licence exige de transmettre le source a cote du binaire).
 Source: "{#RepoRoot}\veralux_core_headless.py"; DestDir: "{app}"; Flags: ignoreversion

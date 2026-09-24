@@ -14,9 +14,71 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.33.0"
+AVASTACK_VERSION = "2.34.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.34.0 : SPCC ABSOLUE BRANCHÉE + VALIDATION CROISÉE AVEC SIRIL RÉUSSIE
+#          (jalon 58, suite ; demande d'Alain : « une vraie correction de
+#          couleur comme Siril et son SPCC »).
+#          VALIDATION CROISÉE (la preuve qui manquait) : Alain a fourni le log
+#          de SA SPCC dans Siril sur les mêmes couches M31 — R/V = 0,086296 +
+#          0,645948·cat ; B/V = 0,194367 + 1,045936·cat ; K = 1,000 / 0,923 /
+#          0,866. De k_G = 1/max = 0,923 on déduit les ratios de blanc que
+#          Siril a utilisés (1,2953 / 0,8332). AVAStack obtient, avec les
+#          profils Sony IMX585 × QHYCCD MiniCam8M R/G/B de la MÊME base
+#          (copiée de cette machine) : 1,2954 / 0,8331 → ACCORD À 1e-4. Les
+#          réponses QE × transmission et le traitement de la référence de blanc
+#          sont donc validés au chiffre près.
+#          PIÈGE MAJEUR TROUVÉ EN CHEMIN (et corrigé dans le modèle) : la
+#          conversion des spectres en COMPTAGE DE PHOTONS (× λ, cf. Siril
+#          `flux_to_relcount`) n'est PAS neutre sur les ratios — λ est À
+#          L'INTÉRIEUR des intégrales, donc ∫S·λ·R/∫S·λ·G ≠ ∫S·R/∫S·G (17,2 %
+#          d'écart mesuré au banc). La référence de blanc DOIT donc passer par
+#          la même conversion que les étoiles : sans elle, les coefficients
+#          passaient à 0,983/0,974/1,000 (quasi neutres, correction fausse de
+#          ~20 %) au lieu de la vraie correction. Fonction dédiée
+#          `spcc.spectre_reference` + docstring du piège.
+#          ORCHESTRATION RÉUTILISABLE : `spcc.coefficients_spcc()` (détection,
+#          appariement mutuel Gaia, flux d'ouverture par canal, étoiles
+#          saturées et étoiles posées sur l'objet ÉTENDU écartées, réponses,
+#          référence de blanc, régressions robustes, coefficients) et
+#          `spcc.SessionSpcc` (état de session, gains par RÔLE, texte d'état).
+#          GARDE-FOU repris de Siril : pente de régression hors [0,5 ; 1,5] ou
+#          dispersion > 0,5 mag → « avertissement » affiché (Siril écrit
+#          « solution imprécise, pensez à corriger d'abord le gradient ») —
+#          jamais un chiffre présenté comme sûr quand la mesure ne l'est pas.
+#          INTERFACE (jalon 58) : case « SPCC (couleurs absolues) », DÉCOCHÉE
+#          PAR DÉFAUT (opt-in, même choix que les gains Gaia), sélecteurs
+#          CAPTEUR / FILTRE R / G / B / RÉFÉRENCE DE BLANC peuplés par la base
+#          Siril (15 capteurs, 50 filtres, 144 références mesurés ici ; profils
+#          d'Alain pré-sélectionnés), ligne d'état qui dit toujours ce qui est
+#          appliqué ou POURQUOI rien ne l'est (base absente, mode MONO, en
+#          attente), persistance en config.json, actif seulement en
+#          composition R/G/B avec WCS résolu. PRIORITÉ : quand la case SPCC est
+#          cochée, ses coefficients remplacent les gains Gaia RELATIFS du
+#          jalon 56 (mesurés, eux, contre une magnitude G trop large — c'est
+#          ce biais de bande qui refroidissait l'image).
+#          BANC `_test_spcc_jalon58.py` (11 sections) : ce banc FABRIQUE une
+#          image cohérente avec le modèle (spectres de Planck × réponses,
+#          atténuations instrumentales CONNUES ×0,7 / ×1,3) et vérifie la
+#          VÉRITÉ ANALYTIQUE — pentes retrouvées 0,7000 et 1,3000 (au 1e-3
+#          près), blanc rendu NEUTRE après correction, robustesse de la
+#          régression (1 aberration sur 40 sans effet), refus propres (capteur
+#          et filtre inconnus, catalogue vide, WCS absent, canaux incomplets),
+#          unités de longueur d'onde (le piège des références en ÅNGSTRÖMS),
+#          et tout le branchement UI (case, sélecteurs, config round-trip,
+#          gains écrits par rôle). PIÈGE DE BANC documenté : sans BRUIT de
+#          fond, le détecteur répond « image constante » (médiane-MAD) — même
+#          leçon que les jalons 19/21.
+#          RÉSERVES ASSUMÉES (mesurées, pas cachées) : sur les couches M31
+#          d'Alain, nos pentes valent 0,81 (R/G) et 0,78 (B/G) avec une
+#          dispersion de 0,04 mag, là où Siril trouve 0,65 / 1,05 avec 0,131 /
+#          0,151 mag — 3 à 6 fois plus dispersé, et Siril signale lui-même sa
+#          solution comme imprécise sur cette image (gradient d'abord). La
+#          validation croisée finale se fera sur une image SANS gradient, avec
+#          le log Siril en regard. Découverte au passage : les couches fournies
+#          ont un décalage R-G de 0,56 px (B-G : 0,07 px) — d'où les franges
+#          rouge/cyan : à ré-empiler avec l'alignement sous-pixel du jalon 57.
 # v2.33.0 : SPCC ABSOLUE « à la Siril » — FONDATIONS + BUG MAJEUR DU DÉCODAGE
 #          DES SPECTRES GAIA CORRIGÉ (jalon 58, demande d'Alain du 24/09/2026 :
 #          « je voulais une vraie correction de couleur comme Siril et son
@@ -80,6 +142,11 @@ AVASTACK_VERSION = "2.33.0"
 #          COULEUR DES ÉTOILES est faible sur ce champ, alors que les gains
 #          Gaia du jalon 56 demandaient ×0,945 / ×1,153 (rapport B/R ×1,22) :
 #          c'est le biais de bande de G, mesuré noir sur blanc.
+#          ATTENTION (corrigé en v2.34.0, cf. entrée suivante) : ces
+#          coefficients 0,983/0,974/1,000 étaient calculés avec la référence de
+#          blanc SANS la conversion en comptage de photons — donc ~20 % trop
+#          neutres. La conversion a été validée le lendemain contre les K réels
+#          de Siril (accord à 1e-4 sur les ratios de blanc).
 #          RÉSERVES À LEVER (prochaine étape) : pente de régression 0,57 au
 #          lieu de 1 (profils de filtres QHY de qualité 2/5 scannés d'un
 #          graphique, ou compression réelle des couleurs par les filtres

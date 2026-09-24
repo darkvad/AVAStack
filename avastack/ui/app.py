@@ -105,6 +105,7 @@ from ..processing import astrometrie as astro_mod
 # WCS (appariement mutuel des étoiles de l'empilement au catalogue Gaia). On
 # MESURE ici ; l'application aux gains du stacker est l'étape 5.
 from ..processing import photometrie as photo_mod
+from ..processing import spcc as spcc_mod
 from ..external.detection import (
     DEFAULT_CMD_GRAXPERT, DEFAULT_CMD_GRAXPERT_DN, DEFAULT_CMD_BXT,
     commande_avec_strength, commande_par_defaut_graxpert,
@@ -314,6 +315,18 @@ class App:
         self.photo_info = ""             # texte de la ligne dédiée ("" = rien)
         self.photo_couleur = "#888888"
         self._photo_actif = False        # case « Photométrie » (instantané Tk)
+        # Jalon 58 : SPCC ABSOLUE (calibration spectrophotométrique « à la
+        # Siril ») — mesure SÉPARÉE, qui a besoin des profils CAPTEUR/FILTRES de
+        # la base Siril et des spectres Gaia. Elle remplace les gains Gaia
+        # RELATIFS du jalon 56 quand sa case est cochée (elle est juste par
+        # construction : elle compare les RATIOS de couleur de l'image aux
+        # ratios PRÉDITS par les spectres, pas une magnitude G trop large).
+        self.spcc = spcc_mod.SessionSpcc()
+        self.spcc_info = ""
+        self.spcc_couleur = "#888888"
+        self._spcc_actif = False         # case « SPCC » (instantané Tk)
+        self._spcc_essais = 0            # tentatives de mesure (session)
+        self._spcc_dernier = 0.0         # instant de la dernière tentative
         # Jalon 56 (étape 5) : CASE À PART, DÉCOCHÉE PAR DÉFAUT (opt-in demandé
         # par Alain, 23/09/2026) — c'est elle, et elle seule, qui fait écrire
         # les gains photométriques dans le stacker (donc qui CHANGE l'image).
@@ -562,6 +575,27 @@ class App:
         if "photo_gains_actif" in c:
             self.var_photo_gains.set(bool(c.get("photo_gains_actif")))
         self._on_photo_gains()
+        # --- Jalon 58 : SPCC absolue — case OPT-IN (clé absente = décochée) et
+        # profils retenus (capteur, filtres R/G/B, référence de blanc). Un nom
+        # qui ne figure PLUS dans la base est IGNORÉ (on garde le défaut) :
+        # un profil disparu ne doit pas lancer une SPCC impossible.
+        categorie = {"spcc_capteur": "capteur", "spcc_fr": "filtres",
+                     "spcc_fg": "filtres", "spcc_fb": "filtres",
+                     "spcc_blanc": "blancs"}
+        for cle, var in (("spcc_capteur", self._spcc_vars.get("capteur")),
+                         ("spcc_fr", self._spcc_vars.get("fr")),
+                         ("spcc_fg", self._spcc_vars.get("fg")),
+                         ("spcc_fb", self._spcc_vars.get("fb")),
+                         ("spcc_blanc", self._spcc_vars.get("blanc"))):
+            v = c.get(cle)
+            if var is None or not isinstance(v, str) or not v.strip():
+                continue
+            liste = self._spcc_noms.get(categorie[cle], ())
+            if not liste or v.strip() in liste:
+                var.set(v.strip())
+        if "spcc_actif" in c:
+            self.var_spcc.set(bool(c.get("spcc_actif")))
+        self._on_spcc()
         # --- Jalon 6 : réglages VeraLux (moteur tiers opt-in)
         mode_res = c.get("vl_mode_res")
         if mode_res in ("fond cible (auto)", "logD forcé"):
@@ -726,6 +760,17 @@ class App:
         # Jalon 56 (étape 5) : OPT-IN — la case qui écrit les gains dans le
         # stacker. Persistée comme les autres (une case cochée le reste).
         c["photo_gains_actif"] = bool(self.var_photo_gains.get())
+        # Jalon 58 : SPCC absolue — case OPT-IN (décochée par défaut : une
+        # calibration écrite dans l'image ne doit jamais être activée par
+        # surprise) + profils choisis, persistés pour la prochaine session.
+        c["spcc_actif"] = bool(self.var_spcc.get())
+        for cle, var in (("spcc_capteur", self._spcc_vars.get("capteur")),
+                         ("spcc_fr", self._spcc_vars.get("fr")),
+                         ("spcc_fg", self._spcc_vars.get("fg")),
+                         ("spcc_fb", self._spcc_vars.get("fb")),
+                         ("spcc_blanc", self._spcc_vars.get("blanc"))):
+            if var is not None:
+                c[cle] = var.get()
         c["moteur"] = self.var_moteur.get()
         c["vl_mode_res"] = self.var_vl_mode_res.get()
         c["vl_target"] = self.var_vl_target.get()
@@ -1267,6 +1312,51 @@ class App:
                         command=self._on_photo_gains).pack(side="left")
         self.lbl_photo_gains = ttk.Label(box, text="", foreground="#888888")
         self.lbl_photo_gains.pack(anchor="w")
+        # Jalon 58 : SPCC ABSOLUE « à la Siril » — case SÉPARÉE, DÉCOCHÉE PAR
+        # DÉFAUT (opt-in, même choix qu'Alain pour les gains Gaia) : elle
+        # remplace les gains Gaia par des coefficients calculés à partir des
+        # SPECTRES Gaia et des PROFILS capteur/filtres de la base Siril. Sans
+        # cette base (non installée), la case est désactivée et le dit — jamais
+        # une valeur inventée.
+        row_sx = ttk.Frame(box)
+        row_sx.pack(fill="x", pady=(4, 0))
+        self._spcc_dispo = bool(spcc_mod.base_presente())
+        self.var_spcc = tk.BooleanVar(value=False)
+        self.chk_spcc = ttk.Checkbutton(
+            row_sx, text="SPCC (couleurs absolues)",
+            variable=self.var_spcc, command=self._on_spcc)
+        self.chk_spcc.pack(side="left")
+        if not self._spcc_dispo:
+            self.chk_spcc.state(["disabled"])
+        self._spcc_noms = {"capteur": [], "filtres": [], "blancs": []}
+        try:
+            self._spcc_noms = spcc_mod.noms_base()
+        except Exception:
+            pass
+        self._spcc_vars = {}
+        for cle, etiquette, defaut, largeur in (
+                ("capteur", "Capteur", "Sony IMX585", 26),
+                ("fr", "Filtre R", "QHYCCD MiniCam8M Red", 26),
+                ("fg", "Filtre G", "QHYCCD MiniCam8M Green", 26),
+                ("fb", "Filtre B", "QHYCCD MiniCam8M Blue", 26),
+                ("blanc", "Référence de blanc", "Average Spiral Galaxy", 30)):
+            ligne = ttk.Frame(box)
+            ligne.pack(fill="x")
+            ttk.Label(ligne, text=f"{etiquette} :", width=19).pack(side="left")
+            valeurs = self._spcc_noms.get(
+                {"capteur": "capteur", "fr": "filtres", "fg": "filtres",
+                 "fb": "filtres", "blanc": "blancs"}[cle], [])
+            v = tk.StringVar(value=defaut)
+            cb = ttk.Combobox(ligne, textvariable=v, state="readonly",
+                              width=largeur, values=valeurs or [defaut])
+            cb.pack(side="left", fill="x", expand=True)
+            cb.bind("<<ComboboxSelected>>", lambda e: self._on_spcc())
+            if not valeurs:
+                cb.state(["disabled"])
+            self._spcc_vars[cle] = v
+        self.lbl_spcc = ttk.Label(box, text="", foreground="#888888",
+                                  wraplength=330, justify="left")
+        self.lbl_spcc.pack(anchor="w")
         ttk.Label(box, text="Rejet kappa-sigma :").pack(anchor="w")
         self.var_kappa = tk.StringVar(value="3σ")
         cb = ttk.Combobox(box, textvariable=self.var_kappa, state="readonly", width=8,
@@ -1989,6 +2079,79 @@ class App:
             self.suivi_astro.reset()
         self._rafraichir_rendu = True     # la ligne d'état suit SANS brute
         self._maj_astro_vue()
+
+    def _on_spcc(self):
+        """Jalon 58 : case « SPCC (couleurs absolues) » — OPT-IN, décochée par
+        défaut comme celle des gains Gaia. Cochée, elle fait ÉCRIRE dans le
+        composite les coefficients spectrophotométriques (calculés par le
+        worker sur l'empilement courant) À LA PLACE des gains Gaia relatifs ;
+        décochée, elle remet tout à zéro et le dit. Changer un profil
+        (capteur/filtre/blanc) invalide la mesure : un coefficient calculé pour
+        d'autres bandes serait faux."""
+        self._spcc_actif = bool(self.var_spcc.get())
+        if not self._spcc_actif:
+            if self.spcc is not None:
+                self.spcc.reset()
+            self.spcc_info = "SPCC : désactivée"
+            self.spcc_couleur = "#888888"
+        else:
+            self.spcc_info = ""
+            self.spcc_couleur = "#888888"
+            self._spcc_essais = 0        # nouvelle mesure autorisée
+            self._spcc_dernier = 0.0
+            if self.spcc is not None and self.spcc.valide:
+                self._maj_spcc_etat()
+        self._rafraichir_rendu = True
+        self._maj_spcc_vue()
+
+    def _spcc_profils(self):
+        """Profils choisis dans l'UI → (capteur, {"R","G","B"}, blanc)."""
+        v = getattr(self, "_spcc_vars", {})
+        try:
+            return (v["capteur"].get(), {"R": v["fr"].get(), "G": v["fg"].get(),
+                                         "B": v["fb"].get()}, v["blanc"].get())
+        except Exception:
+            return "", {}, ""
+
+    def _maj_spcc_vue(self):
+        """Libellé sous la case SPCC : dit ce qui est appliqué, ou pourquoi
+        rien ne l'est — jamais muet quand la case est cochée."""
+        if getattr(self, "lbl_spcc", None) is None:
+            return
+        if not self._spcc_actif:
+            self.lbl_spcc.config(text="", foreground="#888888")
+            return
+        if not self._spcc_dispo:
+            self.lbl_spcc.config(
+                text=("SPCC : base de profils de Siril introuvable "
+                      "(%LOCALAPPDATA%\\siril-spcc-database) — installez Siril "
+                      "et lancez une calibration SPCC une fois"), foreground="#c98a00")
+            return
+        if not self._mode_compo:
+            self.lbl_spcc.config(
+                text="SPCC : sans effet en MONO (il faut un composite R/G/B)",
+                foreground="#c98a00")
+            return
+        if self.spcc is not None and self.spcc.valide:
+            txt = self.spcc.texte_resume()
+            self.spcc_info = txt
+            self.spcc_couleur = ("#c98a00" if self.spcc.diag.get("avertissement")
+                                 else "#1d7f1d")
+            self.lbl_spcc.config(text=txt, foreground=self.spcc_couleur)
+            return
+        self.lbl_spcc.config(text="SPCC : en attente de la mesure",
+                             foreground="#c98a00")
+
+    def _maj_spcc_etat(self):
+        """Recopie la mesure SPCC dans la ligne dédiée (si le texte change)."""
+        if self.spcc is None:
+            return
+        txt = self.spcc.texte_resume()
+        if txt and txt != self.spcc_info:
+            self.spcc_info = txt
+        if self.spcc.valide:
+            self.spcc_couleur = ("#c98a00" if self.spcc.diag.get("avertissement")
+                                 else "#1d7f1d")
 
     def _on_photo_gains(self):
         """Jalon 56 (étape 5) : case « Gains photométriques (Gaia) » — OPT-IN
@@ -3296,6 +3459,14 @@ class App:
         self.photo_info = ""
         self.photo_couleur = "#888888"
         self._photo_essais = 0
+        # Jalon 58 : même chose pour la SPCC absolue (coefficients d'une autre
+        # cible ou d'une autre session = faux par construction).
+        if getattr(self, "spcc", None) is not None:
+            self.spcc.reset()
+        self.spcc_info = ""
+        self.spcc_couleur = "#888888"
+        self._spcc_essais = 0
+        self._spcc_dernier = 0.0
         self._photo_dernier = 0.0
         self._photo_gains_pose = {}
         self._maj_photo_vue()
@@ -4393,6 +4564,56 @@ class App:
             if self._photo_gains_actif and self._mode_compo:
                 self._rafraichir_rendu = True
 
+    # -------------------------------- jalon 58 : SPCC absolue
+    def _spcc_tour(self, stacker):
+        """Calcule les coefficients SPCC de la session (une fois, réessais
+        espacés). Mêmes prérequis que la photométrie (WCS résolu, empilement
+        assez profond) PLUS les trois canaux R/G/B et la base de profils."""
+        if self.spcc is None or stacker is None or stacker.n <= 0:
+            return
+        if self.spcc.valide:
+            return                     # déjà calibré : rien à refaire
+        if not self._spcc_actif or not getattr(self, "_spcc_dispo", False):
+            return
+        if not self._mode_compo:
+            return                     # il faut un composite R/G/B
+        if self.suivi_astro is None or not self.suivi_astro.resolu:
+            return
+        if stacker.n < astro_mod.ASTRO_MIN_FRAMES:
+            return
+        if self._spcc_essais >= spcc_mod.MAX_ESSAIS:
+            self.spcc_info = (f"SPCC : {self.spcc.derniere_erreur}"
+                              f" — {self._spcc_essais} essais, plafond atteint")
+            self.spcc_couleur = "#d04040"
+            return
+        t = time.monotonic()
+        if (self._spcc_essais
+                and t - self._spcc_dernier < spcc_mod.DELAI_ESSAI_S):
+            return
+        canaux, wcs, forme = self._photo_canaux(stacker)
+        if not canaux or wcs is None:
+            return
+        capteur, filtres, blanc = self._spcc_profils()
+        self._spcc_essais += 1
+        self._spcc_dernier = t
+        self.spcc_info = ("SPCC : calibration en cours (spectres Gaia × profils "
+                          f"capteur/filtres, {stacker.n} frames)…")
+        self.spcc_couleur = "#888888"
+        try:
+            res, msg = self.spcc.mesurer(canaux, wcs, capteur, filtres, blanc,
+                                         forme=forme)
+        except Exception as exc:       # une mesure ne tue jamais le worker
+            res, msg = None, f"exception ({exc})"
+        if res is None:
+            self.spcc_info = f"SPCC : {msg}"
+            self.spcc_couleur = ("#c98a00"
+                                 if self._spcc_essais < spcc_mod.MAX_ESSAIS
+                                 else "#d04040")
+            self._maj_spcc_vue()
+            return
+        self._maj_spcc_etat()
+        self._maj_spcc_vue()
+
     def _astro_indices_entete(self):
         """Indices de la cible déduits de l'en-tête de la brute courante
         (source DOSSIER) quand la saisie est vide — lecture STRICTE
@@ -4980,6 +5201,13 @@ class App:
                 self._photo_essais = 0
                 self._photo_dernier = 0.0
                 self._photo_gains_pose = {}
+                # Jalon 58 : SPCC de session neuve (mêmes raisons).
+                if getattr(self, "spcc", None) is not None:
+                    self.spcc.reset()
+                self.spcc_info = ""
+                self.spcc_couleur = "#888888"
+                self._spcc_essais = 0
+                self._spcc_dernier = 0.0
                 self.proc_show = self.proc_full = None
                 self.proc_new = False
                 self.save_asseen_request = None   # sauvegarde « tel que vu » annulée
@@ -5117,10 +5345,19 @@ class App:
                 # changement force le rafraîchissement du rendu sans attendre
                 # une nouvelle brute (leçon du jalon 55).
                 if self._mode_compo and hasattr(self.stacker, "gains_roles"):
-                    nouveaux = (dict(self.photometrie.gains)
-                                if (self._photo_gains_actif
-                                    and self.photometrie is not None
-                                    and self.photometrie.valide) else {})
+                    # Jalon 58 : la SPCC ABSOLUE prime sur les gains Gaia
+                    # RELATIFS (elle compare des RATIOS de couleur prédits par
+                    # les spectres, au lieu d'une magnitude G trop large) —
+                    # chacune n'agit que si SA case est cochée.
+                    if (self._spcc_actif and self.spcc is not None
+                            and self.spcc.valide):
+                        nouveaux = dict(self.spcc.gains())
+                    elif (self._photo_gains_actif
+                            and self.photometrie is not None
+                            and self.photometrie.valide):
+                        nouveaux = dict(self.photometrie.gains)
+                    else:
+                        nouveaux = {}
                     if nouveaux != (self.stacker.gains_roles or {}):
                         self.stacker.gains_roles = nouveaux
                         self._photo_gains_pose = dict(nouveaux)
@@ -5370,6 +5607,10 @@ class App:
                 # Jalon 56 (étape 4) : photométrie — APRÈS l'astrométrie (elle
                 # a besoin du WCS résolu) ; mesure SANS effet sur l'image.
                 self._photo_tour(self.stacker)
+                # Jalon 58 : SPCC absolue — APRÈS la photométrie (mêmes
+                # prérequis) ; elle PRIORISE ses coefficients sur les gains
+                # Gaia relatifs quand sa case est cochée.
+                self._spcc_tour(self.stacker)
 
             show = stack if stack is not None else (last_good if last_good is not None else frame)
 
@@ -5461,7 +5702,8 @@ class App:
                              if self._mode_compo and self.stacker is not None
                              else None),
                       restack=self.restack_info, restack_n=self.restack_total,
-                      astro=self.astro_info, photo=self.photo_info)
+                      astro=self.astro_info, photo=self.photo_info,
+                      spcc=self.spcc_info)
             if self.stacker is not None and self.stacker.cadre is not None:
                 y0, x0, y1, x1 = self.stacker.cadre
                 st["crop_w"], st["crop_h"] = x1 - x0, y1 - y0
@@ -5937,6 +6179,14 @@ class App:
         else:
             self._maj_photo_vue()
         self._maj_photo_gains_vue()      # étape 5 : ce qui est appliqué
+        # Jalon 58 : ligne d'état de la SPCC absolue (même logique que la
+        # photométrie : le texte du worker prime, sinon l'état connu côté UI).
+        detail_sx = st.get("spcc", self.spcc_info) or ""
+        if detail_sx:
+            self.lbl_spcc.config(text=detail_sx,
+                                 foreground=self.spcc_couleur)
+        else:
+            self._maj_spcc_vue()
         # Jalon 10 : seeing live (mesuré par le thread d'acquisition) —
         # jamais de silence : soit la mesure, soit la RAISON de son absence.
         s = st.get("seeing") or {}
