@@ -111,6 +111,19 @@ def photons(spectres):
                         s[:, INDICE_NORM:INDICE_NORM + 1])
 
 
+def _trapeze(y, x, axis=-1):
+    """Intégration par trapèzes, COMPATIBLE numpy 1 ET 2.
+
+    PIÈGE RÉEL (constaté par Alain le 24/09/2026, Python 3.14 + numpy récent) :
+    `np.trapz` a été renommé `np.trapezoid` en numpy 2.0 puis SUPPRIMÉ des
+    versions suivantes — la SPCC s'arrêtait sur « module 'numpy' has no attribute
+    'trapz' » (erreur attrapée proprement, mais aucune calibration). On prend
+    donc `trapezoid` quand il existe, `trapz` sinon : les deux donnent le même
+    résultat au bit près (même algorithme)."""
+    f = getattr(np, "trapezoid", None) or getattr(np, "trapz", None)
+    return f(y, x, axis=axis)
+
+
 def flux_par_canal(spectres, reponses):
     """Intégrale (trapèzes) de réponse × spectre par canal.
     → (N, 3) float64 : [R, G, B] ; NaN si une intégrale est nulle ou non
@@ -120,7 +133,7 @@ def flux_par_canal(spectres, reponses):
         s = s[None, :]
     out = np.full((s.shape[0], 3), np.nan)
     for c in range(3):
-        out[:, c] = np.trapz(s * reponses[c][None, :], GRILLE_WL, axis=1)
+        out[:, c] = _trapeze(s * reponses[c][None, :], GRILLE_WL, axis=1)
     mauvais = ~np.isfinite(out) | (out <= 0.0)
     if mauvais.any(axis=1).any():
         out[np.any(mauvais, axis=1)] = np.nan
@@ -215,6 +228,26 @@ def erreur_ratios(crg, cbg, irg, ibg):
                     math.sqrt(float((d_b ** 2).mean()))])
     med = np.array([float(np.median(d_r)), float(np.median(d_b))])
     return rms, med, int(bon.sum())
+
+
+def coherence_bandes(noms_fil):
+    """Contrôle de COHÉRENCE des trois profils de filtres → liste d'avis.
+
+    Constat réel (24/09/2026, capture d'Alain) : l'UI affichait « Filtre R :
+    QHYCCD MiniCam8M Luminance » — un profil de LUMINANCE (bande large) ou deux
+    profils identiques donnent des coefficients FAUX ; mieux vaut le dire avant
+    de calculer que de rendre un chiffre trompeur. Message partagé par le module
+    (diagnostic) et par l'UI (affichage immédiat, sans attendre une mesure)."""
+    bas = [str(n).lower() for n in noms_fil if n]
+    avis = []
+    if len(set(bas)) < 3:
+        avis.append("profils de filtres répétés : les trois canaux doivent "
+                    "avoir des filtres distincts")
+    if any(("luminance" in n) or n.strip() == "l" or n.strip().endswith(" l")
+           or "-l" in n for n in bas):
+        avis.append("un profil de LUMINANCE est utilisé comme filtre de "
+                    "couleur : les coefficients seraient faux")
+    return avis
 
 
 def base_presente():
@@ -373,6 +406,12 @@ def coefficients_spcc(canaux, wcs, capteur, filtres, blanc, dossier=None,
                 return None, diag
             diag.update({"capteur": nom_cap, "filtres": noms_fil,
                          "blanc": nom_bl})
+            # --- cohérence des BANDES : trois profils identiques, ou un profil
+            # de LUMINANCE à la place d'une couleur, donnent des coefficients
+            # faux — on le dit AVANT de calculer (cf. `coherence_bandes`).
+            avis = coherence_bandes(noms_fil)
+            if avis:
+                diag["avertissement"] = " ; ".join(avis)
 
         # --- 2. catalogue SPECTRAL du champ -------------------------------
         from . import photometrie as _photo
@@ -451,14 +490,16 @@ def coefficients_spcc(canaux, wcs, capteur, filtres, blanc, dossier=None,
         sigmas = (d2.get("sigma_rg", np.nan), d2.get("sigma_bg", np.nan))
         if any(not np.isfinite(v) or v < PENTE_MINI or v > PENTE_MAXI
                for v in pentes):
-            diag["avertissement"] = (
+            diag["avertissement"] = " ; ".join(filter(None, [
+                diag.get("avertissement"),
                 "pente de régression hors de [0,5 ; 1,5] : les bandes "
                 "modélisées décrivent mal cette image (gradient, profils de "
-                "filtres) — correction à appliquer avec prudence")
+                "filtres) — correction à appliquer avec prudence"]))
         elif any(np.isfinite(v) and v > SIGMA_MAX for v in sigmas):
-            diag["avertissement"] = (
+            diag["avertissement"] = " ; ".join(filter(None, [
+                diag.get("avertissement"),
                 f"dispersion élevée ({max(sigmas):.2f} mag) : solution "
-                "imprécise (corrigez d'abord le gradient)")
+                "imprécise (corrigez d'abord le gradient)"]))
         return k, diag
     except Exception as exc:            # jamais de panne silencieuse
         diag["erreur"] = f"SPCC interrompue ({type(exc).__name__} : {exc})"

@@ -11,7 +11,7 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.34.1** (`avastack/__init__.py`),
+- **Version stable de référence : AVAStack v2.34.2** (`avastack/__init__.py`),
   branche `master` — **SPCC ABSOLUE BRANCHÉE ET VALIDÉE CONTRE SIRIL (jalon 58,
   24/09/2026)** :
   - **VALIDATION CROISÉE RÉUSSIE** : à partir du log SPCC réel de Siril fourni
@@ -44,8 +44,21 @@ dans le changelog du source et l'historique git.)
     1,3000**, blanc rendu NEUTRE, robustesse, refus propres, piège des unités
     (blanc en ÅNGSTRÖMS), tout le branchement UI. Piège de banc : sans BRUIT de
     fond, la détection répond « image constante ».
-  - **Tous les bancs au vert** (58 fichiers lancés : jalons 4-57, catalogues,
-    photométrie, solveur réel M31, compos, UI, config, sauvegardes, VeraLux…).
+  - **BUGS RÉELS CORRIGÉS le 24/09/2026 (v2.34.2, constatés sur la capture
+    d'Alain)** : (1) `np.trapz` SUPPRIMÉ de numpy 2.x récent → la SPCC
+    s'arrêtait sur « module 'numpy' has no attribute 'trapz' » (intégration via
+    `_trapeze`, compatible numpy 1 ET 2 ; angle mort de la machine de
+    développement, où numpy 2.3.3 garde encore `trapz`) ; (2) « Filtre R :
+    QHYCCD MiniCam8M Luminance » — un profil de LUMINANCE (bande large) à la
+    place d'une couleur, ou deux filtres identiques, donnent des coefficients
+    FAUX : alerte affichée DÈS LA SÉLECTION des profils
+    (`spcc.coherence_bandes`, partagé module/UI), et les avertissements de
+    bandes + pente se cumulent. **ACTION UTILISATEUR** : remettre « Filtre R »
+    sur `QHYCCD MiniCam8M Red`.
+  - **Bancs** : SPCC 11 sections (panne numpy reproduite en supprimant
+    `np.trapz`, banc rendu HERMÉTIQUE en vidant la config de la machine) ; tous
+    les autres bancs au vert.
+
   - **À FAIRE (prochaine étape)** : validation croisée FINALE avec Siril sur une
     image **SANS gradient** (Siril signale lui-même sa solution comme imprécise
     sur l'image actuelle : dispersion 0,131/0,151 mag contre 0,04 mag chez

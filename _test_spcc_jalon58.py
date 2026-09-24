@@ -230,6 +230,24 @@ verifie(np.allclose(f, attendu),
 verifie(np.all(np.isnan(SP.flux_par_canal(
             plat, [np.zeros(SP.XPSAMPLED_LEN)] * 3))),
         "réponse nulle → NaN (canal inexploitable, jamais une valeur inventée)")
+# PIÈGE RÉEL (constat Alain, 24/09/2026) : numpy 2.x a renommé np.trapz en
+# np.trapezoid puis SUPPRIMÉ trapz — la SPCC s'arrêtait sur
+# « module 'numpy' has no attribute 'trapz' ». On vérifie que le calcul
+# fonctionne SANS np.trapz (comme sur sa machine).
+_sauve_trapz = getattr(np, "trapz", None)
+if _sauve_trapz is not None:
+    try:
+        del np.trapz
+        f_sans_trapz = SP.flux_par_canal(plat, rep_plat)
+        verifie(np.allclose(f_sans_trapz, attendu),
+                "sans np.trapz (numpy 2.x récent) : intégrale IDENTIQUE "
+                f"({float(f_sans_trapz.ravel()[0]):.1f}) — bug réel corrigé")
+    finally:
+        np.trapz = _sauve_trapz
+else:
+    verifie(np.allclose(f, attendu),
+            "np.trapz absent de cette version de numpy : intégrale OK "
+            "(np.trapezoid utilisé)")
 
 # ============================== [7] régression robuste =======================
 print("[7] regression_mediane : exactitude et robustesse")
@@ -343,6 +361,33 @@ k12, d12 = SP.coefficients_spcc(canaux, None, "x", {}, "y",
 verifie(k12 is None and d12.get("erreur"),
         f"catalogue vide → refus expliqué ({d12.get('erreur')})")
 
+# Garde-fou des BANDES (constat réel d'Alain : « Filtre R = … Luminance »).
+if base_ok:
+    k13, d13 = SP.coefficients_spcc(
+        canaux, wcs, "Sony IMX585",
+        {"R": "QHYCCD MiniCam8M Luminance", "G": "QHYCCD MiniCam8M Green",
+         "B": "QHYCCD MiniCam8M Blue"}, "Average Spiral Galaxy")
+    verifie("LUMINANCE" in d13.get("avertissement", "")
+            and (k13 is not None or d13.get("erreur")),
+            f"un profil de LUMINANCE en filtre de couleur est signalé "
+            f"(« {d13.get('avertissement')} » ; coefficients : "
+            f"{'refusés' if k13 is None else 'calculés'})")
+    k14, d14 = SP.coefficients_spcc(
+        canaux, wcs, "Sony IMX585",
+        {"R": "QHYCCD MiniCam8M Red", "G": "QHYCCD MiniCam8M Red",
+         "B": "QHYCCD MiniCam8M Blue"}, "Average Spiral Galaxy")
+    verifie("répétés" in d14.get("avertissement", "")
+            and (k14 is not None or d14.get("erreur")),
+            f"profils de filtres RÉPÉTÉS signalés "
+            f"(« {d14.get('avertissement')} »)")
+    k15, d15 = SP.coefficients_spcc(
+        canaux, wcs, "Sony IMX585",
+        {"R": "QHYCCD MiniCam8M Red", "G": "QHYCCD MiniCam8M Green",
+         "B": "QHYCCD MiniCam8M Blue"}, "Average Spiral Galaxy")
+    verifie(not d15.get("avertissement"),
+            f"les trois filtres d'Alain ne déclenchent AUCUN avertissement "
+            f"(« {d15.get('avertissement')} »)")
+
 # ============================== [11] session et UI ===========================
 print("[11] SessionSpcc et branchement UI (case, profils, config)")
 ses = SP.SessionSpcc(catalogue=catalogue_factice)
@@ -374,6 +419,11 @@ try:
 
     import avastack.ui.app as ui
     from avastack.processing.composition import CompositeStacker
+    # Banc HERMÉTIQUE (même technique que les bancs des jalons 19/54/56) : on
+    # part d'une configuration VIDE, sinon la config.json de la machine (case
+    # SPCC déjà cochée, profils choisis) fausserait les valeurs par défaut.
+    _cfg_sauve = dict(ui.CONFIG)
+    ui.CONFIG.clear()
     root = tk.Tk()
     root.withdraw()
     app = ui.App(root)
@@ -408,6 +458,16 @@ try:
     verifie(app.spcc.gains() == {},
             "aucun gain écrit dans le stacker tant qu'aucune mesure n'existe")
     app._mode_compo = True
+    if base_ok:
+        # Le contrôle IMMÉDIAT des profils doit alerter sans attendre une
+        # mesure (constat réel : « Filtre R = … Luminance »).
+        app._spcc_vars["fr"].set("QHYCCD MiniCam8M Luminance")
+        app._maj_spcc_vue()
+        txt_l = app.lbl_spcc.cget("text")
+        verifie("LUMINANCE" in txt_l and "⚠" in txt_l,
+                f"profil de luminance signalé dès la sélection ({txt_l[:70]}…)")
+        app._spcc_vars["fr"].set("QHYCCD MiniCam8M Red")
+        app._maj_spcc_vue()
     app.spcc.coefficients = np.array([0.90, 1.0, 1.10])
     app.spcc.diag = {"capteur": "Sony IMX585", "b_rg": 1.0, "b_bg": 1.0,
                      "sigma_rg": 0.02, "sigma_bg": 0.02, "n_regression": 120}
@@ -438,6 +498,7 @@ try:
             f"({sauvegardes[-1].get('spcc_capteur')} / "
             f"{sauvegardes[-1].get('spcc_fr')})")
     root.destroy()
+    ui.CONFIG.update(_cfg_sauve)         # configuration d'origine restaurée
 except Exception as exc:            # Tk indisponible (session sans écran)
     print(f"  (UI non testée : {type(exc).__name__} : {exc})")
 

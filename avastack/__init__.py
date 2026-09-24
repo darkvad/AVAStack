@@ -14,9 +14,33 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.34.1"
+AVASTACK_VERSION = "2.34.2"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.34.2 : DEUX BUGS RÉELS CORRIGÉS (constatés par Alain sur la 2.34.0).
+#          • np.trapz SUPPRIMÉ de numpy 2.x (renommé np.trapezoid, puis retiré
+#            des versions suivantes : chez Alain, Python 3.14 + numpy récent) :
+#            la ligne d'état affichait « SPCC : interrompue (AttributeError:
+#            module 'numpy' has no attribute 'trapz') » et AUCUNE calibration
+#            n'était possible. L'intégration passe par un appel COMPATIBLE numpy
+#            1 ET 2 (`_trapeze` : trapezoid si présent, trapeze sinon — même
+#            algorithme, résultat identique au bit près). Angle mort expliqué :
+#            sur la machine de développement numpy 2.3.3 garde encore trapz
+#            (déprécié), donc les bancs passaient ; le banc SUPPRIME désormais
+#            np.trapz à la volée pour reproduire la panne et vérifier le calcul.
+#          • COHÉRENCE DES BANDES : « Filtre R : QHYCCD MiniCam8M Luminance »
+#            (vu sur la capture d'Alain) donnerait des coefficients FAUX (bande
+#            large à la place d'une couleur), tout comme deux profils
+#            identiques. Nouveau `spcc.coherence_bandes()`, partagé par le
+#            diagnostic du module ET par l'UI, qui affiche l'alerte DÈS LA
+#            SÉLECTION des profils (sans attendre une mesure) : le chiffre est
+#            refusé/expliqué plutôt que trompeur. Les avertissements de bandes
+#            et de pente/dispersion se CUMULENT désormais au lieu de s'écraser.
+#          Banc SPCC : tests ajoutés (numpy sans trapz, luminance, filtres
+#          répétés, filtres d'Alain sans avertissement, alerte immédiate dans
+#          l'UI) et banc rendu HERMÉTIQUE (config.json de la machine vidée : la
+#          case SPCC cochée et les profils choisis par l'utilisateur ne doivent
+#          pas fausser les valeurs par défaut testées). Tous les bancs au vert.
 # v2.34.1 : ENQUÊTE SIRIL CLOSE (2e log) — la divergence des pentes venait de
 #          L'IMAGE, pas du modèle ; protection UI SPCC / gains Gaia.
 #          • 2e log SPCC de Siril (après retrait de gradient) : ses pentes ne

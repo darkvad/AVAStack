@@ -2132,6 +2132,16 @@ class App:
                 text="SPCC : sans effet en MONO (il faut un composite R/G/B)",
                 foreground="#c98a00")
             return
+        # Contrôle IMMÉDIAT des profils choisis (constat réel : « Filtre R =
+        # … Luminance ») : un profil de luminance ou deux filtres identiques
+        # donneraient des coefficients faux — on le dit AVANT toute mesure.
+        _, filtres, _ = self._spcc_profils()
+        avis = spcc_mod.coherence_bandes([filtres.get("R"), filtres.get("G"),
+                                          filtres.get("B")])
+        if avis:
+            self.lbl_spcc.config(text="SPCC : ⚠ " + " ; ".join(avis),
+                                 foreground="#d04040")
+            return
         if self.spcc is not None and self.spcc.valide:
             txt = self.spcc.texte_resume()
             self.spcc_info = txt
