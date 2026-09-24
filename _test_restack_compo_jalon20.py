@@ -39,6 +39,8 @@ import avastack.images as images
 images.CFA_MODE = "Non"              # brutes mono dans ce test
 from avastack.cameras.multifolder import MultiFolderCamera
 import avastack.ui.app as ui
+ui.CONFIG = {}                    # config HERMETIQUE (regle du projet :
+ui.sauver_config = lambda *a, **k: None   # JAMAIS le vrai config.json)
 from avastack.processing.composition import (CompositeStacker,
                                              composition_pour_roles)
 from avastack.processing.framestore import ArchiveFrames

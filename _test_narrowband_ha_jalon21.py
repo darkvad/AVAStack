@@ -36,6 +36,8 @@ cv2.ocl.setUseOpenCL(False)          # crash OpenCV 5/OpenCL au teardown sinon
 import avastack.images as images
 images.CFA_MODE = "Non"              # brutes mono dans ce test
 import avastack.ui.app as ui
+ui.CONFIG = {}                    # config HERMETIQUE (regle du projet :
+ui.sauver_config = lambda *a, **k: None   # JAMAIS le vrai config.json)
 from avastack.processing.alignment import StarAligner
 
 if hasattr(sys.stdout, "reconfigure"):   # sortie pipée ≠ console (cp1252)

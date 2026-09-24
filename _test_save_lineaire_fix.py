@@ -24,6 +24,8 @@ import tkinter as tk
 import numpy as np
 
 import avastack.ui.app as ui
+ui.CONFIG = {}                    # config HERMETIQUE (regle du projet :
+ui.sauver_config = lambda *a, **k: None   # JAMAIS le vrai config.json)
 from avastack.processing.stacking import LiveStacker
 
 if hasattr(sys.stdout, "reconfigure"):   # sortie pipée ≠ console (cp1252)

@@ -63,8 +63,20 @@ except ImportError:                       # astropy absent : pas de FITS
 
 # --- Politique de résolution (le worker s'y réfère, les bancs la vérifient) --
 ASTRO_MIN_FRAMES = 3        # pas de tentative avant ce nombre de frames empilées
-ASTRO_ESSAI_DELAI_S = 20.0  # délai minimal entre deux tentatives (réessais)
-ASTRO_MAX_ESSAIS = 6        # plafond de tentatives par session (jamais de boucle)
+ASTRO_ESSAI_DELAI_S = 20.0      # délai minimal entre deux tentatives…
+ASTRO_ESSAI_DELAI_MAX_S = 300.0  # …CROISSANT avec le nombre d'essais (backoff),
+                                 # plafonné : 20 s, 40 s, 60 s… au lieu de
+                                 # brûler tout le quota en deux minutes
+ASTRO_MAX_ESSAIS = 20       # plafond LARGE : un empilement bien plus profond
+                            # n'a plus la même chance. Constat réel d'Alain
+                            # (23/09/2026) : avec un plafond de 6 et un délai
+                            # fixe, les essais étaient épuisés en ~2 min (sur un
+                            # empilement encore trop court) puis PLUS AUCUNE
+                            # tentative, même à 33 frames — session perdue.
+ASTRO_ESSAI_DOUBLEMENT = True   # un empilement qui a DOUBLÉ de profondeur
+                                # justifie un essai IMMÉDIAT : c'est une
+                                # information réellement nouvelle (32 frames
+                                # après 16, ce n'est plus la même mesure)
 ASTRO_CHAMP_MIN, ASTRO_CHAMP_MAX = 0.05, 30.0   # bornes du champ indicé (°)
 ASTRO_MAX_AVEUGLES = 2      # plafond des balayages ASTAP (session) — LENTS
 ASTRO_ASTAP_TIMEOUT_S = 90.0    # délai d'un balayage (borné pour le live)
@@ -378,6 +390,9 @@ class SuiviAstrometrie:
         self.propagations = 0             # propagations réussies
         self.derniere_erreur = ""
         self._dernier_essai = 0.0
+        self._n_dernier_essai = 0         # profondeur de l'empilement essayée
+                                          # (un doublement justifie un essai
+                                          # immédiat : information neuve)
 
     def indice(self, ra_deg, dec_deg, champ_deg):
         """Pose (ou remplace) les indices de la cible → True s'ils ont CHANGÉ.
@@ -416,18 +431,30 @@ class SuiviAstrometrie:
 
     def peut_essayer(self, n_frames, maintenant=None):
         """Une tentative de résolution a-t-elle un sens MAINTENANT ?
-        (indices posés, pas déjà résolu, assez de frames empilées, délai
-        écoulé, plafond d'essais non atteint — cf. constantes du module)."""
+
+        Politique (corrigée le 23/09/2026 après un constat réel d'Alain) :
+        indice posé, pas déjà résolu, empilement au moins ASTRO_MIN_FRAMES,
+        plafond ASTRO_MAX_ESSAIS non atteint — puis, s'il y a déjà eu des
+        essais : délai CROISSANT avec leur nombre (20 s, 40 s, 60 s… plafonné)
+        OU empilement qui a DOUBLÉ depuis le dernier essai (information neuve).
+        Le délai fixe de 20 s d'avant épuisait le quota en deux minutes, pendant
+        que l'empilement était encore trop court — et l'appli n'essayait plus
+        jamais, même à 33 frames."""
         if self.resolu or not self.pret:
             return False
-        if int(n_frames) < ASTRO_MIN_FRAMES:
+        n = int(n_frames)
+        if n < ASTRO_MIN_FRAMES:
             return False
         if self.essais >= ASTRO_MAX_ESSAIS:
             return False
+        if not self.essais:
+            return True
+        if ASTRO_ESSAI_DOUBLEMENT and self._n_dernier_essai > 0 \
+                and n >= 2 * self._n_dernier_essai:
+            return True
         t = time.monotonic() if maintenant is None else float(maintenant)
-        if self.essais and t - self._dernier_essai < ASTRO_ESSAI_DELAI_S:
-            return False
-        return True
+        delai = min(ASTRO_ESSAI_DELAI_S * self.essais, ASTRO_ESSAI_DELAI_MAX_S)
+        return (t - self._dernier_essai) >= delai
 
     def raison_attente(self):
         """Pourquoi aucune résolution n'est possible maintenant (texte court à
@@ -440,6 +467,12 @@ class SuiviAstrometrie:
             return (f"échec après {self.essais} tentatives"
                     + (f" — {self.derniere_erreur}"
                        if self.derniere_erreur else ""))
+        if self.essais:
+            # Ni échec définitif ni prêt à réessayer TOUT DE SUITE : dire où on
+            # en est (le worker affiche ce texte tel quel).
+            return (f"en attente d'un empilement plus profond "
+                    f"({self.essais}/{ASTRO_MAX_ESSAIS} essais, dernier sur "
+                    f"{self._n_dernier_essai} frames)")
         return ""
 
     # -- repli : adopter un WCS résolu ailleurs (ASTAP) ----------------------
@@ -483,7 +516,7 @@ class SuiviAstrometrie:
         return True, self.texte_resume()
 
     # -- résolution -----------------------------------------------------------
-    def resoudre_sur(self, img):
+    def resoudre_sur(self, img, n_frames=None):
         """Résout l'astrométrie de `img` — la GRILLE COMPLÈTE de l'empilement
         (`stacker.mean(recadre=False)`, le repère de l'aligneur). → (True/False,
         message) ; compte la tentative, ne lève JAMAIS.
@@ -503,6 +536,11 @@ class SuiviAstrometrie:
                               if self.derniere_erreur else ""))
         self.essais += 1
         self._dernier_essai = time.monotonic()
+        if n_frames is not None:
+            # Profondeur essayée : sert au déclencheur « empilement qui a
+            # doublé » (cf. peut_essayer) — un essai sur 16 frames et un sur 32
+            # ne mesurent pas la même chose.
+            self._n_dernier_essai = int(n_frames)
         try:
             wcs, info, msg = self._solveur(img, self.ra0, self.dec0,
                                            self.champ, dossier=self.dossier,

@@ -29,6 +29,8 @@ import numpy as np
 import cv2
 
 import avastack.ui.app as ui
+ui.CONFIG = {}                    # config HERMETIQUE (regle du projet :
+ui.sauver_config = lambda *a, **k: None   # JAMAIS le vrai config.json)
 from avastack.processing.stacking import LiveStacker
 from avastack.images import load_image
 

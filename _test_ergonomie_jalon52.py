@@ -24,6 +24,8 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 import avastack.ui.app as ui
+ui.CONFIG = {}                    # config HERMETIQUE (regle du projet :
+ui.sauver_config = lambda *a, **k: None   # JAMAIS le vrai config.json)
 
 ECHECS = []
 

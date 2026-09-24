@@ -28,6 +28,8 @@ import tkinter as tk
 sys.path.insert(0, r"c:\Astro\AstroLiveStack")
 import avastack.cameras.touptek as mtt
 import avastack.ui.app as ui
+ui.CONFIG = {}                    # config HERMETIQUE (regle du projet :
+ui.sauver_config = lambda *a, **k: None   # JAMAIS le vrai config.json)
 from avastack.cameras.capacites import Capacites
 
 if hasattr(sys.stdout, "reconfigure"):

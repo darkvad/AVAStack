@@ -17,6 +17,8 @@ import time
 import tkinter as tk
 
 import avastack.ui.app as ui
+ui.CONFIG = {}                    # config HERMETIQUE (regle du projet :
+ui.sauver_config = lambda *a, **k: None   # JAMAIS le vrai config.json)
 
 if hasattr(sys.stdout, "reconfigure"):   # sortie pipée ≠ console (cp1252)
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")

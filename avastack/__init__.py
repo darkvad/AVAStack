@@ -14,9 +14,36 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.31.0"
+AVASTACK_VERSION = "2.31.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.31.1 : RÉESSAIS DE RÉSOLUTION ASTROMÉTRIQUE — CORRIGÉS (constat réel
+#          d'Alain, 23/09/2026 : « l'astrométrie qui passait après quelques
+#          frames ne passe plus avec 33 frames empilées »). DÉFAUT trouvé au
+#          code, indépendamment du message affiché : le plafond était de
+#          6 essais avec un délai FIXE de 20 s → les 6 essais se consommaient
+#          en ~2 minutes, sur un empilement encore trop court (échec certain),
+#          puis PLUS AUCUNE tentative de la session, même à 33, 100 ou 300
+#          frames. Correctifs :
+#            • plafond porté à 20 essais ;
+#            • délai CROISSANT (backoff) : 20 s, 40 s, 60 s… plafonné à 5 min —
+#              au lieu de brûler le quota en deux minutes ;
+#            • essai IMMÉDIAT dès que l'empilement a DOUBLÉ depuis le dernier
+#              essai (34 frames après 17 n'est plus la même mesure) ;
+#            • messages d'état explicites : « en attente d'un empilement plus
+#              profond (n/N essais, dernier sur M frames) » et, en cas
+#              d'échec, « réessai automatique dès que l'empilement double ».
+#          Le compteur reste remis à zéro quand les INDICES changent (nouvelle
+#          cible = quota neuf). Banc étendu (backoff mesuré, doublement,
+#          plafond large) — TOUT AU VERT.
+#          BANCS HERMÉTISÉS (13 + jalon 19) : plusieurs bancs instanciaient
+#          `ui.App` SANS simuler la config et lisaient donc le vrai
+#          config.json — qui contient désormais la case « Astrométrie »
+#          cochée et ses indices → le worker lançait de VRAIES résolutions
+#          (lecture du catalogue Gaia) pendant que le banc mesurait sa
+#          cadence. Constaté sur _test_compo_worker_jalon19 (stat de la
+#          dernière frame plus jamais reçue). Règle du projet rappelée :
+#          tout banc qui touche l'UI simule sa config.
 # v2.31.0 : GAINS PHOTOMÉTRIQUES APPLIQUÉS AU COMPOSITE (jalon 56, étape 5,
 #          OPT-IN demandé par Alain le 23/09/2026) : les facteurs mesurés à
 #          l'étape 4 peuvent enfin CORRIGER l'image — case « Gains

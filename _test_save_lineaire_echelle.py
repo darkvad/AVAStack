@@ -34,6 +34,8 @@ import numpy as np
 from astropy.io import fits
 
 import avastack.ui.app as ui
+ui.CONFIG = {}                    # config HERMETIQUE (regle du projet :
+ui.sauver_config = lambda *a, **k: None   # JAMAIS le vrai config.json)
 from avastack.images import borner_lineaire, load_image, save_image
 from avastack.processing.composition import CompositeStacker
 from avastack.processing.stacking import LiveStacker

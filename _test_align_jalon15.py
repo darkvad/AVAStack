@@ -40,6 +40,8 @@ from avastack.processing import alignment as al_mod
 from avastack.processing.framestore import ArchiveFrames
 from avastack.images import load_image
 import avastack.ui.app as ui
+ui.CONFIG = {}                    # config HERMETIQUE (regle du projet :
+ui.sauver_config = lambda *a, **k: None   # JAMAIS le vrai config.json)
 
 if hasattr(sys.stdout, "reconfigure"):   # sortie pipée ≠ console (cp1252)
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")

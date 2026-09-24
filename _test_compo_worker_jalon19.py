@@ -149,6 +149,14 @@ class ArchiveRapide(ArchiveFrames):
 
 import avastack.ui.app as ui
 ui.ArchiveFrames = ArchiveRapide
+# Config HERMÉTIQUE (règle du projet, cf. AVANCEMENT) : jamais le vrai
+# config.json du poste. Depuis le jalon 56, celui d'Alain contient la case
+# « Astrométrie » cochée et ses indices : le worker lancerait alors une VRAIE
+# résolution astrométrique (lecture du catalogue Gaia, plusieurs centaines de
+# ms à quelques secondes) pendant que ce banc mesure sa cadence — la stat de la
+# dernière frame n'arriverait plus dans les temps.
+ui.CONFIG = {}
+ui.sauver_config = lambda *a, **k: None
 
 racine = tempfile.mkdtemp(prefix="avastack_jalon19_")
 d_ha = os.path.join(racine, "Ha")
@@ -237,7 +245,8 @@ if st is not None:
                              st["compo"]) is not None,
             f"stats : état par canal présent (« {st.get('compo')} »)")
     verifie(st.get("archive", 0) == 6,
-            "stats : archive = total des RÔLES (6)")
+            f"stats : archive = total des RÔLES (6) — reçu "
+            f"{st.get('archive')!r} : {st}")
 else:
     verifie(False, "stats : aucune stat reçue de la file")
 

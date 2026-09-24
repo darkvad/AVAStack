@@ -4183,7 +4183,7 @@ class App:
         self.astro_info = (f"Astrométrie : résolution en cours "
                            f"({stacker.n} frames)…")
         self.astro_couleur = "#888888"
-        okk, msg = self.suivi_astro.resoudre_sur(img)
+        okk, msg = self.suivi_astro.resoudre_sur(img, n_frames=stacker.n)
         if okk:
             self._maj_astro_etat()
             return
@@ -4202,8 +4202,11 @@ class App:
         essais = self.suivi_astro.essais
         self.astro_couleur = ("#c98a00" if essais < astro_mod.ASTRO_MAX_ESSAIS
                               else "#d04040")
-        self.astro_info = (f"Astrométrie : échec — {msg}"
-                           f" ({essais}/{astro_mod.ASTRO_MAX_ESSAIS} essais)")
+        suite = ("réessai automatique dès que l'empilement double"
+                 if essais < astro_mod.ASTRO_MAX_ESSAIS else "plafond atteint")
+        self.astro_info = (f"Astrométrie : échec — {msg} "
+                           f"({essais}/{astro_mod.ASTRO_MAX_ESSAIS} essais, "
+                           f"{suite})")
 
     def _astro_aveugle(self, stacker):
         """Jalon 56 — REPLI ASTAP : quand AUCUN indice n'est disponible (ni

@@ -236,6 +236,32 @@ verifie(s2.essais == astro.ASTRO_MAX_ESSAIS
 verifie("chec apr" in s2.raison_attente(),
         f"la raison d'arrêt est exposée (« {s2.raison_attente()} »)")
 
+# Politique de RÉESSAIS (corrigée le 23/09/2026, constat réel d'Alain) :
+# plafond LARGE, délai CROISSANT, essai immédiat si l'empilement a DOUBLÉ.
+s5 = astro.SuiviAstrometrie(
+    solveur=lambda *a, **k: (None, {}, "pas assez d'etoiles"))
+s5.indice(CRVAL[0], CRVAL[1], CHAMP)
+t0 = time.monotonic()
+s5.resoudre_sur(np.zeros(FORME, np.float32), n_frames=16)      # essai 1
+verifie(not s5.peut_essayer(17, maintenant=t0 + 19.0),
+        "1er essai : à 19 s (délai 20 s) et empilement quasi inchangé → non")
+verifie(s5.peut_essayer(17, maintenant=t0 + 21.0),
+        "1er essai : à 21 s le délai est écoulé → nouvel essai autorisé")
+s5.resoudre_sur(np.zeros(FORME, np.float32), n_frames=17)      # essai 2
+verifie(not s5.peut_essayer(17, maintenant=t0 + 35.0),
+        "BACKOFF : après 2 essais le délai passe à 40 s → 35 s ne suffisent "
+        "plus (l'ancien délai fixe de 20 s aurait redémarré un essai)")
+verifie(s5.peut_essayer(34, maintenant=t0 + 35.0),
+        "empilement DOUBLÉ (34 après 17) → essai immédiat, sans attendre")
+verifie(not s5.peut_essayer(33, maintenant=t0 + 35.0),
+        "doublement NON atteint (33 < 34) → le délai reste la règle")
+s5.indice(CRVAL[0] + 0.2, CRVAL[1], CHAMP)
+verifie(s5.essais == 0 and s5.peut_essayer(34),
+        "indices changés : compteur remis à zéro (nouvelle cible, quota neuf)")
+verifie(astro.ASTRO_MAX_ESSAIS >= 20,
+        f"plafond LARGE ({astro.ASTRO_MAX_ESSAIS}) : 6 essais épuisés en 2 min "
+        f"bloquaient toute la session (constat réel)")
+
 # ======== [4] propagation & recadrage : vérité analytique + astropy.wcs
 print("[4] propagation & recadrage : vérité analytique + référence astropy.wcs")
 rng = np.random.default_rng(11)
