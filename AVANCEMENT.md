@@ -34,6 +34,22 @@ dans le changelog du source et l'historique git.)
   Rappel v2.29.0 : repli ASTAP quand aucun indice — le poste d'Alain n'a que
   **D80** (pas de base de balayage) : l'appli le DIT au lieu d'attendre pour
   rien ; le solveur interne tolère des coordonnées approximatives (~1°).
+- **PIÈGE RÉSOLU (v2.31.1/2, constat réel d'Alain le 23/09/2026)** —
+  « l'astrométrie qui passait après quelques frames ne passe plus à 33
+  frames » : le message d'Alain (`échec après 6 tentatives — meilleur score :
+  5 étoiles ; RANSAC : 4 inliers, échelle 2.459″/px`) montrait une échelle
+  JUSTE mais trop peu d'appariements → l'empilement était encore **pauvre au
+  moment des essais**, et le quota (6 essais × délai FIXE de 20 s) était
+  épuisé en ~2 minutes → **plus aucune tentative de la session**. Correctifs :
+  plafond 20, délai CROISSANT (20/40/60… plafonné 5 min), essai IMMÉDIAT dès
+  que l'empilement DOUBLÉ (information neuve), messages d'état explicites
+  (compteurs + « réessai automatique »). **VÉRIFIÉ** par le nouvel outil
+  `_diag_solve_compo.py` sur les canaux M31 d'Alain : couches R/G/B ET
+  composite RGB résolvent tous (77-85 appariements, rms 0,60 px, 2,465″/px) →
+  le composite n'est pas en cause, la profondeur au moment de l'essai l'était.
+  Au passage : **13 bancs + le jalon 19 n'étaient pas hermétiques** (ils
+  lisaient le vrai config.json, qui contient désormais astrométrie cochée +
+  indices → de vraies résolutions pendant les bancs) — tous corrigés.
 - **Tâche en cours** : **étape 6 — validation Siril + test réel multibande**
   (vérifier que les en-têtes WCS écrits sont relus par Siril, et juger les
   gains photométriques sur une vraie série multi-filtres d'Alain).
