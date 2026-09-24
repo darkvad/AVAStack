@@ -52,11 +52,29 @@ AVASTACK_VERSION = "2.31.3"
 #          échouaient. Bancs : solveur synthétique, banc RÉEL M31
 #          (« TOUT AU VERT », 86 étoiles sur le composite 2,6°), branchement
 #          astro jalon 56, photométrie jalon 56 — tous au vert.
-#          Latence mesurée du solve interne : 6,6 s sur 3844×2171 (une seule
-#          fois par empilement, puis propagation).
+#          LATENCE : le solveur ainsi corrigé coûtait 18,6 s sur 3844×2171
+#          (profil : 6,4 s de np.histogram2d dont 4,9 s de searchsorted, plus
+#          une boucle de raffinement à ~1 700 couples). Optimisations, TOUTES
+#          mesurées sur 5 images réelles (3 canaux M31, composite, brute G
+#          N.I.N.A.) avec des rms STRICTEMENT identiques :
+#            • vote par COMPTAGE DIRECT de bins (np.bincount) au lieu de
+#              np.histogram2d, l'échelle (li/lc) calculée une seule fois par
+#              bloc et l'angle du cas « +π » obtenu par rotation CIRCULAIRE
+#              des bins ;
+#            • RANSAC_N_CAT ramené de 120 à 60 (le raffinement continue de
+#              travailler sur TOUT le catalogue, N_CAT_MAX) ;
+#            • couples candidats du raffinement triés par LONGUEUR DÉCROISSANTE
+#              et plafonnés (RANSAC_CAND_MAX = 400).
+#          → 18,6 s → 6,0 s (÷3,1), rms inchangés (0,593 / 0,626 / 0,601 /
+#          0,626 / 0,443 px).
+#          PIÈGE (mesuré puis ABANDONNÉ) : borner les paires catalogue au vote
+#          aux plus LONGUES (2 000 sur 7 136) casse le vote sur une brute
+#          unique peu profonde (brute G N.I.N.A. : pic erroné à 1,614″/px au
+#          lieu de 2,465, solve en échec) — le pic correct a besoin de TOUTES
+#          les paires. Ne pas refaire l'essai.
 #          Nouveaux outils de diagnostic embarqués : `_diag_vote.py`
-#          (instrumente le vote et l'étape 2, compare au WCS vrai d'ASTAP) et
-#          `_diag_appariement.py` (écart de chaque étoile détectée à Gaia).
+#          (instrumente le vote et le raffinement, compare au WCS vrai d'ASTAP)
+#          et `_diag_appariement.py` (écart de chaque étoile détectée à Gaia).
 # v2.31.2 : OUTIL `_diag_solve_compo.py` — diagnostic de la résolution d'une
 #          COMPOSITION : résout CHACUNE des couches séparées (canal_R/G/B.fit
 #          écrits par « Enregistrer les canaux ») ET le composite — exactement

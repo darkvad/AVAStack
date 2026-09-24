@@ -85,15 +85,30 @@ MUTUEL_RAYON = 2.0      # rayon des correspondances mutuelles finales (px)
 # imposé). Le vote ne retient donc qu'un pic PAR PARITÉ et le raffinement
 # essaie les DEUX appariements (cf. `_ransac_paires`).
 RANSAC_N_IMG = 60        # étoiles les plus brillantes côté image (vote)
-RANSAC_N_CAT = 120       # côté catalogue (vote)
+RANSAC_N_CAT = 60        # côté catalogue (vote) — ramené de 120 à 60 après
+                         # MESURE du 24/09/2026 sur 5 images réelles (canaux
+                         # M31, composite, brute G N.I.N.A.) : rms STRICTEMENT
+                         # identiques (0,593 / 0,626 / 0,601 / 0,626 / 0,443 px)
+                         # pour un solve ÷1,9 (11,5 s → 6,0 s). Le raffinement
+                         # continue de travailler sur TOUT le catalogue
+                         # (N_CAT_MAX) : seule la recherche du pic est allégée.
+                         # (⚠ NE PAS borner les paires catalogue par LONGUEUR :
+                         #  essayé aussi ce jour-là, pic erroné sur la brute G.)
 RANSAC_ECH_REL = 0.35    # fenêtre d'échelle ±35 % autour de l'indice
 RANSAC_PAS_ECH = 0.0025  # pas du vote (échelle relative)
 RANSAC_PAS_ANG = 0.004   # pas du vote (rad)
 RANSAC_TOL_E = 0.004     # demi-fenêtre de collecte autour du pic
 RANSAC_TOL_A = 0.008
 RANSAC_PAIRES_MIN = 30   # longueur minimale d'un vecteur votant (px)
+# (Ne PAS borner les paires catalogue au vote : essayé le 24/09/2026 et
+#  ABANDONNÉ — un plafond aux plus longues cassait la brute G N.I.N.A.)
 RANSAC_RAYONS = (3.0, 5.0, 8.0)   # stabilisation à rayon croissant
 RANSAC_INLIERS_MIN = 6
+RANSAC_CAND_MAX = 400    # plafond des couples (paire image × paire catalogue)
+                         # évalués par pic, les paires les plus LONGUES
+                         # d'abord (les plus discriminantes et les moins
+                         # fortuites) — mesuré au profil le 24/09/2026 :
+                         # ~1 700 candidats coûtaient ~2 s pour un gain nul
 
 N_CAT_MAX = 400         # étoiles de catalogue gardées (les plus brillantes)
 MARGE_INDICES = 0.5     # marge fixe du rayon d'extraction (deg) — couvre
@@ -394,6 +409,13 @@ def _ransac_paires(pos, cat_xy, ech_deg, forme):
     ac_f, ac_t = ac_f[garde_c], ac_t[garde_c]
     if not len(ii_p) or not len(kk_p):
         return None, None, None, None, None, "aucune paire votante assez longue"
+    # PIÈGE (mesuré le 24/09/2026) : BORNER les paires catalogue aux plus
+    # LONGUES (essai à 2 000 sur 7 136) casse le vote sur une brute unique peu
+    # profonde — brute G N.I.N.A. : pic erroné à 1,614″/px au lieu de 2,465,
+    # échec du solve alors qu'il réussit sans bornage. Le pic correct a besoin
+    # de TOUTES les paires : le vote reste donc complet, et le temps gagné
+    # vient du comptage de bins (ci-dessus) et du plafond des candidats du
+    # raffinement (RANSAC_CAND_MAX).
     e_lo = 1.0 - RANSAC_ECH_REL
     e_hi = 1.0 + RANSAC_ECH_REL
     n_e = int(round((e_hi - e_lo) / RANSAC_PAS_ECH))
@@ -402,20 +424,36 @@ def _ransac_paires(pos, cat_xy, ech_deg, forme):
     edges_a = np.linspace(-math.pi, math.pi, n_a + 1)
     cas = ((ac_f, 0, False), (ac_f + math.pi, 1, False),
            (ac_t, 0, True), (ac_t + math.pi, 1, True))
-    CH = 64
+    # Vote par COMPTAGE DIRECT de bins (np.bincount) plutôt que par
+    # np.histogram2d : mesuré au profil (24/09/2026) à 6,4 s dont 4,9 s de
+    # searchsorted sur des tableaux (bloc × toutes les paires catalogue), pour
+    # un résultat identique à un demi-bin près (la collecte du raffinement,
+    # RANSAC_TOL_E/A, est plus large que le pas du vote). En outre l'ÉCHELLE
+    # (li/lc) est la même pour les quatre cas et l'ANGLE du cas « anc=1 »
+    # n'est que celui du cas « anc=0 » décalé de π : d'où un seul calcul
+    # d'échelle par bloc et deux calculs d'angle (un par parité), le second
+    # cas de chaque parité étant obtenu par rotation CIRCULAIRE des bins.
+    d_pi = int(round(math.pi / RANSAC_PAS_ANG))     # π en nombre de bins
+    CH = 256
     votes = []
-    for ang_cat, _anc, _mir in cas:
-        v = np.zeros((n_e, n_a), np.int32)
+    for _anc_mir, ac_par in ((False, ac_f), (True, ac_t)):
+        v0 = np.zeros(n_e * n_a, np.int32)
+        v1 = np.zeros(n_e * n_a, np.int32)
         for a_ in range(0, len(ii_p), CH):
             b_ = min(a_ + CH, len(ii_p))
-            dang = (ai[a_:b_, None] - ang_cat[None, :] + math.pi) \
-                % (2.0 * math.pi) - math.pi
             ech = li[a_:b_, None] / lc[None, :]
-            ok = (ech >= e_lo) & (ech <= e_hi)
-            H, _, _ = np.histogram2d(ech[ok], dang[ok],
-                                     bins=(edges_e, edges_a))
-            v += H.astype(np.int32)
-        votes.append(v)
+            ie = np.floor((ech - e_lo) / RANSAC_PAS_ECH).astype(np.int32)
+            dang = (ai[a_:b_, None] - ac_par[None, :] + math.pi) \
+                % (2.0 * math.pi) - math.pi
+            ja = np.floor((dang + math.pi) / RANSAC_PAS_ANG).astype(np.int32)
+            sel = (ie >= 0) & (ie < n_e) & (ja >= 0) & (ja <= n_a)
+            idx = ie[sel] * n_a
+            v0 += np.bincount(idx + ja[sel],
+                              minlength=n_e * n_a).astype(np.int32)
+            v1 += np.bincount(idx + (ja[sel] - d_pi) % n_a,
+                              minlength=n_e * n_a).astype(np.int32)
+        votes.append(v0.reshape(n_e, n_a))
+        votes.append(v1.reshape(n_e, n_a))
     # PIÈGE MAJEUR (corrigé le 24/09/2026, M31 2,6° d'Alain) : le vote ne sait
     # PAS dire si l'appariement est DIRECT (i1↔k1) ou CROISÉ (i1↔k2) — les
     # deux ne diffèrent que de π sur l'angle de la paire, soit exactement le
@@ -444,14 +482,18 @@ def _ransac_paires(pos, cat_xy, ech_deg, forme):
 
     # --- 2) candidats du bin → similitude EXACTE 2 points --------------------
     # Les DEUX appariements de la paire (direct i1↔k1 et croisé i1↔k2) sont
-    # essayés : le vote ne les distingue pas (cf. 1). Coût maîtrisé : un pic
-    # par parité seulement.
+    # essayés : le vote ne les distingue pas (cf. 1). Les couples candidats
+    # sont parcourus par LONGUEUR DE PAIRE IMAGE DÉCROISSANTE et PLAFONNÉS
+    # (RANSAC_CAND_MAX) : les paires longues sont les plus discriminantes et
+    # les moins fortuites, et le profil du 24/09/2026 montrait ~1 700 couples
+    # pour une similitude utile — le reste était redondant (temps perdu).
     meilleur = None
     n_stop = min(len(pos), len(cat_xy))
     for _n_pic, ech_pic, ang_pic, mir, ang_cat in pics:
         if meilleur is not None and len(meilleur[0]) >= n_stop:
             break
         G = _grille_indice(cat_xy, ech_deg, forme, mir)
+        cand = []               # (longueur de la paire image, i1, i2, k1, k2)
         for a_ in range(0, len(ii_p), CH):
             b_ = min(a_ + CH, len(ii_p))
             dang = (ai[a_:b_, None] - ang_cat[None, :] + math.pi) \
@@ -459,30 +501,29 @@ def _ransac_paires(pos, cat_xy, ech_deg, forme):
             ech = li[a_:b_, None] / lc[None, :]
             ok = (np.abs(ech - ech_pic) < RANSAC_TOL_E) & \
                  (np.abs(dang - ang_pic) < RANSAC_TOL_A)
-            rws, cls = np.nonzero(ok)   # lignes = paires image, col = catalogue
-            if not len(rws):
-                continue
+            rws, cls = np.nonzero(ok)  # lignes = paires image, col = catalogue
             for r_, c_ in zip(rws, cls):
                 i1, i2 = ii_p[a_ + r_]
                 k1, k2 = kk_p[c_]
-                dst = np.array([P[i1], P[i2]])
-                for ka_, kb_ in ((k1, k2), (k2, k1)):   # direct, puis croisé
-                    src = np.array([G[ka_], G[kb_]])
-                    vs, vd = src[1] - src[0], dst[1] - dst[0]
-                    ls, ld = math.hypot(*vs), math.hypot(*vd)
-                    if ls < RANSAC_PAIRES_MIN or ld < RANSAC_PAIRES_MIN:
-                        continue
-                    cth = (vs @ vd) / (ls * ld)
-                    sth = (vs[0] * vd[1] - vs[1] * vd[0]) / (ls * ld)
-                    A = (ld / ls) * np.array([[cth, -sth], [sth, cth]])
-                    tt = dst[0] - A @ src[0]
-                    ia, ib = _appariements_mutuels(pos, G @ A.T + tt,
-                                                   MUTUEL_RAYON)[:2]
-                    if meilleur is None or len(ia) > len(meilleur[0]):
-                        meilleur = (ia.copy(), ib.copy(), A, tt, mir)
-                    if len(ia) >= n_stop:
-                        break
-                if meilleur is not None and len(meilleur[0]) >= n_stop:
+                cand.append((float(li[a_ + r_]), i1, i2, k1, k2))
+        cand.sort(reverse=True)
+        for _lg, i1, i2, k1, k2 in cand[:RANSAC_CAND_MAX]:
+            dst = np.array([P[i1], P[i2]])
+            for ka_, kb_ in ((k1, k2), (k2, k1)):   # direct, puis croisé
+                src = np.array([G[ka_], G[kb_]])
+                vs, vd = src[1] - src[0], dst[1] - dst[0]
+                ls, ld = math.hypot(*vs), math.hypot(*vd)
+                if ls < RANSAC_PAIRES_MIN or ld < RANSAC_PAIRES_MIN:
+                    continue
+                cth = (vs @ vd) / (ls * ld)
+                sth = (vs[0] * vd[1] - vs[1] * vd[0]) / (ls * ld)
+                A = (ld / ls) * np.array([[cth, -sth], [sth, cth]])
+                tt = dst[0] - A @ src[0]
+                ia, ib = _appariements_mutuels(pos, G @ A.T + tt,
+                                               MUTUEL_RAYON)[:2]
+                if meilleur is None or len(ia) > len(meilleur[0]):
+                    meilleur = (ia.copy(), ib.copy(), A, tt, mir)
+                if len(ia) >= n_stop:
                     break
             if meilleur is not None and len(meilleur[0]) >= n_stop:
                 break

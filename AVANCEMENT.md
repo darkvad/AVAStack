@@ -57,9 +57,17 @@ dans le changelog du source et l'historique git.)
   **VÉRIFIÉ EN RÉEL** : couche R 96 appariements, G 94, B 83, composite RGB
   94, fichier composite 94 — tous RÉSOLUS (rms 0,59-0,63 px) là où les 5
   échouaient. Bancs solveur + banc RÉEL M31 + astro jalon 56 + photométrie
-  jalon 56 : tous au vert. Latence mesurée du solve : **6,6 s** sur
-  3844×2171 (une seule fois par empilement, puis propagation — piste
-  d'optimisation : borner les candidats du bin si besoin).
+  jalon 56 : tous au vert. Latence réellement mesurée du solve : **6,0 s** sur
+  3844×2171 (une seule fois par empilement, puis propagation) — après
+  optimisation du vote (comptage direct de bins au lieu de `np.histogram2d`,
+  échelle calculée une fois par bloc, angle du cas « +π » dérivé par rotation
+  circulaire des bins), `RANSAC_N_CAT` 120 → 60 et plafond des couples
+  candidats à 400 (les plus longs d'abord) : **18,6 s → 6,0 s (÷3,1) à rms
+  STRICTEMENT identiques** (vérifié sur 5 images réelles).
+  **PIÈGE mesuré et ABANDONNÉ** : borner les paires catalogue au vote aux plus
+  LONGUES (2 000 sur 7 136) casse le vote sur une brute unique peu profonde
+  (brute G N.I.N.A. : pic erroné à 1,614″/px au lieu de 2,465) — le pic
+  correct a besoin de TOUTES les paires.
   Outils de diagnostic ajoutés : `_diag_vote.py` (vote et raffinement
   instrumentés, comparés au WCS vrai d'ASTAP), `_diag_appariement.py` (écart
   de chaque étoile détectée à Gaia). Au passage : **13 bancs + le jalon 19
