@@ -14,9 +14,16 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.28.1"
+AVASTACK_VERSION = "2.28.2"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.28.2 : CORRECTIF du bouton 📷 (v2.28.1) — `indices_entete_fits` vit dans
+#          `processing/astrometrie`, pas dans `images` : l'import local du
+#          bouton levait ImportError au premier clic (attrapé par le banc,
+#          section [7] nouvelle). L'origine des indices est désormais
+#          CONSERVÉE : le libellé annonce « indices posés (image <fichier>) »
+#          ou « (saisie) » — la provenance ne se perd plus derrière un
+#          « saisie » générique.
 # v2.28.1 : ERGONOMIE astrométrie — bouton 📷 « Lire depuis l'image
 #          courante » dans l'UI (case Astrométrie) : pré-remplit les trois
 #          champs AD/Dec/champ depuis le header FITS de la dernière brute

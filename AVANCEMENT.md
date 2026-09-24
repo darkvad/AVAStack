@@ -11,26 +11,33 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.28.0** (`avastack/__init__.py`),
+- **Version stable de référence : AVAStack v2.28.2** (`avastack/__init__.py`),
   branche `master` — **BRANCHEMENT DU SOLVEUR AU WORKER livré le 23/09/2026
-  (jalon 56, étape « branchement ») : le solveur interne résout l'astrométrie
-  UNE SEULE FOIS sur l'accumulation COMPLÈTE (grille de l'aligneur,
-  `mean(recadre=False)`), avec les INDICES de la cible (saisis OU lus dans
-  l'en-tête OBJCTRA/OBJCTDEC des brutes). À chaque RÉEMPILEMENT, le WCS est
-  PROPAGÉ par composition de transformations (`catalogues/propagation.py` —
-  étape 3 banc au vert), AUCUN re-solve, AUCUN accès au catalogue.
+  (v2.28.0, jalon 56, étape « branchement ») + ERGONOMIE v2.28.1/2 le 23/09** :
+  le solveur interne résout l'astrométrie UNE SEULE FOIS sur l'accumulation
+  COMPLÈTE (grille de l'aligneur, `mean(recadre=False)`), avec les INDICES de
+  la cible (saisis OU lus dans l'en-tête OBJCTRA/OBJCTDEC des brutes). À chaque
+  RÉEMPILEMENT, le WCS est PROPAGÉ par composition de transformations
+  (`catalogues/propagation.py` — étape 3 banc au vert), AUCUN re-solve,
+  AUCUN accès au catalogue.
   Module de GLUE `processing/astrometrie.py` (numpy pur, sans cycle d'import) :
   `SuiviAstrometrie` gère le cycle de vie (indices → résolution unique →
   propagation cumulative), réessais espacés et bornés, invalidation si indices
   changent, mots-clés FITS WCS (CTYPE/CRVAL/CRPIX/CD) écrits à CHAQUE
   sauvegarde linéaire sur la grille RÉELLEMENT écrite (recadrage d'intersection
-  inclus). UI : case « Astrométrie » + AD/Dec/champ (sexagésimal/heures/
-  décimal, interprétation explicite affichée), lecture d'en-tête STRICTE
+  inclus).
+  UI : case « Astrométrie » + AD/Dec/champ (sexagésimal/heures/décimal,
+  interprétation explicite affichée), lecture d'en-tête STRICTE
   (OBJCTRA/OBJCTDEC + FOCALLEN/XPIXSZ, jamais d'invention), ligne d'état
-  dédiée (mesure ou raison d'attente, jamais muette).
-  Banc : `_test_astro_branchement_jalon56.py` (6 sections : parseurs, en-tête
+  dédiée (mesure ou raison d'attente, jamais muette) + **bouton 📷 « Lire
+  depuis l'image courante »** : pré-remplit AD/Dec/champ depuis le header FITS
+  de la dernière brute reçue (`camera.last_file`) ou du dernier empilement
+  linéaire sauvegardé (`saved_path`) — format décimal degrés, validation par
+  Entrée/FocusOut ; le libellé annonce l'origine des indices (« image
+  <fichier> » ou « saisie »).
+  Banc : `_test_astro_branchement_jalon56.py` (7 sections : parseurs, en-tête
   FITS, SuiviAstrometrie, propagation/recadrage/astropy.wcs, worker réel FITS
-  WCS + ligne d'état, re-stack réel propagation) — TOUT AU VERT.
+  WCS + ligne d'état, re-stack réel propagation, bouton 📷) — TOUT AU VERT.
   Jalon 56 étape 3 (propagation WCS) : banc au vert ; étape 2 (solveur
   interne) : RÉSOLU EN RÉEL (repli RANSAC de paires). Jalon 55 (v2.23.3)
   validé par Alain en réel (M31 RGB), commité aca5ca5.

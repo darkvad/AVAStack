@@ -1921,7 +1921,8 @@ class App:
         elif self.astro_info:
             txt, col = self.astro_info, self.astro_couleur
         elif self._astro_indices:
-            txt = "Astrométrie : indices posés — résolution au 1er empilement"
+            txt = ("Astrométrie : indices posés (%s) — résolution au 1er "
+                   "empilement" % (self._astro_source or "saisie"))
             col = "#888888"
         else:
             txt, col = "Astrométrie : en attente d'indices", "#c98a00"
@@ -1937,7 +1938,6 @@ class App:
         La lecture est STRICTE (OBJCTRA/OBJCTDEC + FOCALLEN/XPIXSZ) — si le
         header n'a pas les mots-clés, rien n'est rempli et le libellé l'annonce.
         """
-        from ..images import indices_entete_fits
         chemin = None
         # 1) dernière brute lue par la caméra (mode live / dossier)
         chemin = getattr(self.camera, "last_file", "") or ""
@@ -1960,7 +1960,7 @@ class App:
             self._astro_msg_indices = "aucune image disponible (dernière brute ou empilement)"
             self._maj_astro_vue()
             return
-        ra, dec, champ, msg = indices_entete_fits(chemin)
+        ra, dec, champ, msg = astro_mod.indices_entete_fits(chemin)
         if ra is None or dec is None or champ is None:
             self._astro_msg_indices = f"lecture {os.path.basename(chemin)} : {msg}"
             self._maj_astro_vue()
@@ -1970,8 +1970,12 @@ class App:
         self.var_astro_dec.set(f"{dec:+.6f}")
         self.var_astro_champ.set(f"{champ:.5f}")
         self._astro_msg_indices = ""
-        self._astro_source = f"image {os.path.basename(chemin)}"
         self._on_astro()        # valide et transmet au worker
+        # …PUIS l'origine : _on_astro() vient de la marquer « saisie » (les
+        # valeurs sont désormais dans les champs) — la vraie provenance de
+        # ces indices est l'image, et c'est ce que l'utilisateur doit lire.
+        self._astro_source = f"image {os.path.basename(chemin)}"
+        self._maj_astro_vue()
 
     def _on_linear_fit(self):
         """Jalon 54 : case « Recalage colorimétrique (Linear Fit) » + menu

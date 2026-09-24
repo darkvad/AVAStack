@@ -434,6 +434,47 @@ e9 = ecart_wcs_deg(w_crop2, WcsAstropyAdapte(w_f2),
 verifie(e9 * 3600.0 < 1e-2,
         f"mots-clés FITS de la nouvelle grille ≡ WCS propagé : "
         f"{e9 * 3600.0:.2e}″")
+
+# ========= [7] ergonomie : bouton 📷 « Lire depuis l'image courante »
+print("[7] bouton 📷 : indices lus de l'image courante → champs pré-remplis")
+p_brute = os.path.join(tmpw, "brute_nina.fit")
+save_image(p_brute, brute, entete={"OBJCTRA": "00 42 44",
+                                   "OBJCTDEC": "+41 16 09",
+                                   "FOCALLEN": 243.0, "XPIXSZ": 2.9011})
+
+
+class CameraFichier(CameraMuette):
+    """Caméra factice façon « dossier surveillé » : annonce son dernier
+    fichier (`last_file`), comme FolderCamera au fil des brutes lues."""
+    last_file = p_brute
+
+
+app.camera = CameraFichier()
+app.var_astro_ra.set("")
+app.var_astro_dec.set("")
+app.var_astro_champ.set("")
+app._lire_indices_image()
+verifie(bool(app.var_astro_ra.get()) and bool(app.var_astro_dec.get())
+        and bool(app.var_astro_champ.get()),
+        "les 3 champs sont PRÉ-REMPLIS (« %s », « %s », « %s »)"
+        % (app.var_astro_ra.get(), app.var_astro_dec.get(),
+           app.var_astro_champ.get()))
+_ind2 = app._astro_indices
+verifie(_ind2 is not None and abs(_ind2[0] - 10.683333) < 1e-4
+        and abs(_ind2[1] - 41.269167) < 1e-4 and _ind2[2] is not None,
+        "indices issus du header FITS VALIDÉS (aucune saisie manuelle)")
+verifie(app._astro_source.startswith("image "),
+        f"l'origine est annoncée (« {app._astro_source} »)")
+app.camera = CameraMuette()        # plus aucun fichier disponible
+app.saved_path = None
+app.var_astro_ra.set("")
+app.var_astro_dec.set("")
+app.var_astro_champ.set("")
+app._lire_indices_image()
+verifie(app.var_astro_ra.get() == ""
+        and "aucune image" in app._astro_msg_indices,
+        f"sans image disponible : rien d'inventé (« {app._astro_msg_indices} »)")
+
 root.destroy()
 
 # ============================================================ récapitulatif
