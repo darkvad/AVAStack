@@ -14,9 +14,24 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.31.1"
+AVASTACK_VERSION = "2.31.2"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.31.2 : OUTIL `_diag_solve_compo.py` — diagnostic de la résolution d'une
+#          COMPOSITION : résout CHACUNE des couches séparées (canal_R/G/B.fit
+#          écrits par « Enregistrer les canaux ») ET le composite — exactement
+#          celui que l'appli analyse — sur les mêmes indices, et affiche les
+#          compteurs bruts (étoiles détectées, fond, bruit MAD, catalogue,
+#          appariements, rms, échelle, chemin retenu).
+#          VÉRIFIÉ EN RÉEL sur les canaux de M31 d'Alain (23/09/2026) :
+#          couche R 77 appariements (2,4664″/px), G 85 (2,4651), B 83 (2,4668),
+#          COMPOSITE RGB 85 (2,4651) à rms 0,60 px — le composite n'est donc
+#          PAS un handicap quand l'empilement est profond. Ce diagnostic
+#          confirme que l'échec observé venait de la PROFONDEUR de l'empilement
+#          au moment des essais (5 étoiles appariées) et du quota de 6 essais
+#          épuisé trop vite (corrigé en v2.31.1 : 20 essais, backoff, essai
+#          immédiat dès que l'empilement double).
+#          Outil embarqué dans l'installateur.
 # v2.31.1 : RÉESSAIS DE RÉSOLUTION ASTROMÉTRIQUE — CORRIGÉS (constat réel
 #          d'Alain, 23/09/2026 : « l'astrométrie qui passait après quelques
 #          frames ne passe plus avec 33 frames empilées »). DÉFAUT trouvé au
