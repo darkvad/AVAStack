@@ -201,7 +201,18 @@ class CatalogueSiril:
             out["teff"] = rec["teff"].astype(np.float64)   # 0 = indisponible
         else:
             expo = rec["fexpo"].astype(np.float64)
-            flux16 = rec["flux"].astype(np.float16).astype(np.float64)
-            out["flux"] = flux16 * np.power(10.0, expo)[:, None]
+            # PIÈGE MAJEUR (corrigé le 24/09/2026, jalons 58) : les 16 bits du
+            # champ `flux` SONT un demi-flottant (spécification Siril) — il faut
+            # RÉINTERPRÉTER les bits (`view`), surtout pas convertir la valeur
+            # (`astype`). Avec `astype(np.float16)` on lisait l'entier 0-65535
+            # comme un nombre : les spectres sortaient PLATS (rapport 400/700 nm
+            # à 1,02 au lieu de 0,3-3 selon l'étoile) et à une échelle absurde
+            # (1e20) — vérifié au banc _diag_spcc sur les couches d'Alain.
+            # La reconstruction est une DIVISION par 10^fexpo (exposant partagé
+            # du catalogue Siril : cf. io/local_catalogues.c, `d / powexp`),
+            # pas une multiplication.
+            bloc = np.ascontiguousarray(rec["flux"])
+            flux16 = bloc.view(np.float16).astype(np.float64)
+            out["flux"] = flux16 / np.power(10.0, expo)[:, None]
             out["fexpo"] = expo
         return out

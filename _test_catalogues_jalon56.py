@@ -188,9 +188,17 @@ if chunks:
             verifie(bool(((etoiles["g"] > 0) & (etoiles["g"] < 21)).all()),
                     f"magnitudes G plausibles "
                     f"({etoiles['g'].min():.2f} … {etoiles['g'].max():.2f})")
-            verifie(bool(np.isfinite(etoiles["flux"]).all()
-                         and (etoiles["flux"] > 0).all()),
-                    "flux xp_sampled finis et positifs (float16 × 10^fexpo)")
+            # Jalon 58 : les 16 bits du champ `flux` sont un DEMI-FLOTTANT
+            # (réinterprétés par `view`, cf. siril_cat.py) — le contrôle porte
+            # donc sur la FINITUDE et sur la positivité MAJORITAIRE : le format
+            # comprimé contient quelques rares valeurs négatives (artefacts du
+            # half-float, 8 points sur 200×343 mesurés le 24/09/2026), que
+            # Siril conserve aussi telles quelles.
+            flux = etoiles["flux"]
+            part_positive = float((flux > 0).mean())
+            verifie(bool(np.isfinite(flux).all() and part_positive > 0.99),
+                    f"flux xp_sampled finis et positifs à "
+                    f"{100 * part_positive:.3f} % (half-float ÷ 10^fexpo)")
 else:
     print("      ABSENT — téléchargez les chunks (voir telechargeur) ; "
           "sections [3]/[4] tronquées, sans échec.")

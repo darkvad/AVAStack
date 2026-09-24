@@ -14,9 +14,79 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.32.0"
+AVASTACK_VERSION = "2.33.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.33.0 : SPCC ABSOLUE « à la Siril » — FONDATIONS + BUG MAJEUR DU DÉCODAGE
+#          DES SPECTRES GAIA CORRIGÉ (jalon 58, demande d'Alain du 24/09/2026 :
+#          « je voulais une vraie correction de couleur comme Siril et son
+#          SPCC »).
+#          POURQUOI : la photométrie RELATIVE du jalon 56 (zéro-point par
+#          bande contre la magnitude Gaia G) ne PEUT PAS corriger la couleur —
+#          G est une bande très large et rien ne relie les flux des bandes
+#          instrumentales entre eux. Mesuré sur les couches M31 d'Alain :
+#          dispersion des ZP croissante vers le bleu (R 0,162 / G 0,233 /
+#          B 0,376 mag) et gains qui refroidissent l'image (R ×0,7665 /
+#          B ×1,0426).
+#          CE QUI EST LIVRÉ (fondations, sans branchement UI) :
+#            • `catalogues/spcc_db.py` — lecture de la base SPCC de Siril
+#              (`%LOCALAPPDATA%\siril-spcc-database`) : profils de CAPTEURS
+#              (mono/OSC), de FILTRES (par canal) et de RÉFÉRENCES DE BLANC.
+#              PIÈGE MESURÉ : le schéma Siril autorise QUATRE unités de
+#              longueur d'onde et les fichiers les utilisent vraiment (les
+#              références de blanc sont en ANGSTRÖMS : 1005…25050 Å) — sans
+#              conversion, la référence tombait hors de la grille spectrale
+#              (336-1020 nm) et toutes les intégrales étaient nulles ;
+#            • `processing/spcc.py` — le MODÈLE de Siril, repris de la source
+#              (src/algos/photometric_cc.c `get_spcc_white_balance_coeffs` +
+#              spcc.c, lu le 24/09/2026) : réponse du canal = QE × filtre sur
+#              la grille xp_sampled, spectre Gaia converti en comptage de
+#              photons (× λ, normalisation 500 nm — facteur par étoile, donc
+#              sans effet sur des ratios), flux attendus par intégrale, ratios
+#              catalogue vs mesurés, RÉGRESSION ROBUSTE PAR MÉDIANES RÉPÉTÉES
+#              (Siegel, celle de `repeated_median_fit`), coefficient
+#              k = 1/(a + b·w_ref) avec référence de blanc, normalisation par
+#              le plus grand. Échec → coefficients NaN (jamais un gain négatif
+#              appliqué) ;
+#            • `_diag_spcc.py` — banc de bout en bout sur des couches RÉELLES :
+#              spectres Gaia du champ (WCS), appariement, flux d'ouverture par
+#              canal, réponses, référence de blanc, coefficients, ET
+#              comparaison OBJECTIVE (erreur des couleurs d'étoiles en
+#              magnitudes) entre brut / équilibrage du fond / Linear Fit /
+#              gains Gaia relatifs / SPCC ;
+#            • `photometrie.etoiles_catalogue(..., spectres=True)` : interroge
+#              les 48 CHUNKS spectrophotométriques (clé « chunks » de
+#              `etat_local`) et joint les 343 flux par étoile.
+#          BUG MAJEUR CORRIGÉ (`catalogues/siril_cat.py`) : le décodage des
+#          spectres lisait l'ENTIER 0-65535 au lieu du DEMI-FLOTTANT
+#          (`astype(np.float16)` au lieu de `view(np.float16)`) et
+#          MULTIPLIAIT par 10^fexpo au lieu de DIVISER (cf.
+#          io/local_catalogues.c). Résultat : des spectres quasi PLATS
+#          (rapport 400/700 nm à 1,02 pour toutes les étoiles au lieu de
+#          0,85-3,6) et une échelle absurde (1e20) — la SPCC sortait des
+#          régressions sans signification (pente 5,5, coefficients négatifs).
+#          Le bug était LATENT : aucun module n'utilisait les spectres avant
+#          la SPCC (la photométrie du jalon 56 n'utilise que la magnitude G).
+#          Banc catalogues ajusté : les rares valeurs NÉGATIVES du half-float
+#          (8 points sur 200×343) sont un artefact du format, conservé comme
+#          par Siril → le contrôle vérifie la finitude et une positivité
+#          majoritaire (> 99 %), plus l'exhaustivité.
+#          VÉRIFIÉ EN RÉEL (canaux M31 d'Alain, 24/09/2026) : 5463 étoiles du
+#          catalogue spectral dans le champ, 296 appariements (médiane
+#          0,71 px), 269-240 étoiles exploitables selon le filtre de fond,
+#          réponses Sony IMX585 × QHYCCD MiniCam8M R/G/B, blanc
+#          « Average Spiral Galaxy ». Coefficients SPCC mesurés : K_R 0,983 /
+#          K_G 0,974 / K_B 1,000 (rapport B/R ×1,017) — la correction de
+#          COULEUR DES ÉTOILES est faible sur ce champ, alors que les gains
+#          Gaia du jalon 56 demandaient ×0,945 / ×1,153 (rapport B/R ×1,22) :
+#          c'est le biais de bande de G, mesuré noir sur blanc.
+#          RÉSERVES À LEVER (prochaine étape) : pente de régression 0,57 au
+#          lieu de 1 (profils de filtres QHY de qualité 2/5 scannés d'un
+#          graphique, ou compression réelle des couleurs par les filtres
+#          LRGB) → VALIDATION CROISÉE avec Siril à faire sur la MÊME image
+#          (Siril affiche ses K0/K1/K2 dans son log). Les bancs du jalon 56
+#          (catalogues, photométrie, solveur, propagation, branchement) sont
+#          tous AU VERT après la correction du décodage.
 # v2.32.0 : ALIGNEMENT SOUS-PIXEL ENTRE COUCHES (jalon 57 — constat réel
 #          d'Alain, 24/09/2026 : « l'astrométrie et Gaia sont bons, mais
 #          l'image n'est pas correcte » — franges rouge/cyan autour des

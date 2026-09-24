@@ -112,6 +112,14 @@ Source: "{#RepoRoot}\_diag_align_precision.py"; DestDir: "{app}"; Flags: ignorev
 ; fond, et decalage des etoiles ENTRE canaux (franges colorees).
 Source: "{#RepoRoot}\_diag_couleur_gains.py"; DestDir: "{app}"; Flags: ignoreversion
 
+; Banc SPCC (v2.33.0, jalon 58) : calibration spectrophotométrique ABSOLUE
+; « à la Siril » sur des couches REELLES — spectres Gaia du champ, profils
+; capteur/filtres de la base Siril, reference de blanc, coefficients par
+; regression robuste, et comparaison objective des methodes (brut,
+; equilibrage du fond, Linear Fit, gains Gaia relatifs, SPCC) par l'erreur
+; des COULEURS D'ETOILES en magnitudes.
+Source: "{#RepoRoot}\_diag_spcc.py"; DestDir: "{app}"; Flags: ignoreversion
+
 ; veralux_core_headless.py : code tiers GPL-3.0-or-later (Riccardo Paterniti),
 ; copie tel quel (sa licence exige de transmettre le source a cote du binaire).
 Source: "{#RepoRoot}\veralux_core_headless.py"; DestDir: "{app}"; Flags: ignoreversion

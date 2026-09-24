@@ -148,8 +148,14 @@ def etoiles_image(img, max_etoiles=MAX_ETOILES_PHOTO):
     return pos, flux, ""
 
 
-def etoiles_catalogue(wcs, forme, dossier=None, limmag=None):
+def etoiles_catalogue(wcs, forme, dossier=None, limmag=None, spectres=False):
     """Étoiles Gaia du CHAMP décrit par `wcs` → (dict {"ra","dec","g"}, message).
+
+    `spectres=True` (jalon 58, SPCC) : interroge le catalogue SPECTROPHOTO-
+    MÉTRIQUE (`xp_sampled`) au lieu de l'astrométrique et joint les 343 flux
+    spectraux par étoile sous la clé « flux » — c'est ce qui permet de
+    PRÉDIRE le flux attendu dans chaque bande (spectre × capteur × filtre)
+    au lieu de le supposer proportionnel à la seule magnitude G.
 
     Le rayon d'extraction est DÉDUIT du WCS (coins de l'image projetés au ciel) :
     aucune supposition sur l'orientation ni sur l'échelle — c'est le WCS qui
@@ -181,19 +187,36 @@ def etoiles_catalogue(wcs, forme, dossier=None, limmag=None):
     rayon = float(dist.max()) + 0.1          # marge : bords de détection
     d = dossier or dossier_catalogues()
     etat = etat_local(d)
-    if not etat.get("astro"):
-        return {}, (f"catalogue Gaia astrométrique de Siril introuvable dans "
+    if spectres:
+        # Les spectres viennent des 48 CHUNKS du catalogue spectrophotométrique
+        # (clé « chunks » de etat_local, {n°: chemin}) : `CatalogueSiril` sait
+        # ouvrir plusieurs fichiers d'un même catalogue et cherche dans chacun.
+        chemins = [etat["chunks"][n] for n in sorted(etat.get("chunks", ()))]
+        quoi = "spectrophotométrique xp_sampled (chunks)"
+    else:
+        chemins = [etat["astro"]] if etat.get("astro") else []
+        quoi = "astrométrique"
+    if not chemins:
+        return {}, (f"catalogue Gaia {quoi} de Siril introuvable dans "
                     f"{d} (téléchargeur, jalon 56 étape 1)")
     try:
-        cat = CatalogueSiril(etat["astro"])
+        cat = CatalogueSiril(chemins)
         et = cat.extraire(ra0, dec0, rayon, limmag=limmag)
     except Exception as exc:
         return {}, f"lecture du catalogue impossible ({exc})"
     if len(et.get("ra", ())) == 0:
         return {}, f"aucune étoile de catalogue dans le champ (r={rayon:.3f}°)"
-    return ({"ra": np.asarray(et["ra"]), "dec": np.asarray(et["dec"]),
-             "g": np.asarray(et["g"])},
-            f"{len(et['ra'])} étoiles de catalogue (r={rayon:.3f}°)")
+    out = {"ra": np.asarray(et["ra"]), "dec": np.asarray(et["dec"]),
+           "g": np.asarray(et["g"])}
+    if spectres:
+        # Jalon 58 (SPCC) : les 343 flux `xp_sampled` (336-1020 nm par pas de
+        # 2 nm) accompagnent chaque étoile — c'est ce qui permet de PRÉDIRE le
+        # flux attendu par bande au lieu de le supposer proportionnel à G.
+        flux = np.asarray(et.get("flux"))
+        if flux.ndim != 2 or flux.shape[1] != 343:
+            return {}, f"spectres inexploitables (forme {flux.shape})"
+        out["flux"] = flux
+    return out, f"{len(et['ra'])} étoiles de catalogue (r={rayon:.3f}°)"
 
 
 def apparier(pos_px, wcs, cat, rayon_px=RAYON_APPARIEMENT_PX):
