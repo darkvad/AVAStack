@@ -24,6 +24,9 @@ Exécution : python _test_photometrie_jalon56.py
 """
 import os
 import sys
+import threading
+import time
+import tkinter as tk
 
 import numpy as np
 
@@ -345,6 +348,99 @@ attendu_forme = (st3.cadre[2] - st3.cadre[0], st3.cadre[3] - st3.cadre[1])
 verifie(capture.get("forme") == attendu_forme and capture.get("wcs") is not None,
         f"canaux et WCS sur la MÊME grille — celle du cadre {capture.get('forme')}")
 root.destroy()
+
+# ============== [10] étape 5 : gains photométriques appliqués (OPT-IN)
+print("[10] étape 5 : gains par rôle → canaux du composite, défaut INTACT")
+from avastack.processing.composition import CompositeStacker   # noqa: E402
+
+rng2 = np.random.default_rng(31)
+ch_a = (0.05 + rng2.normal(0, 0.01, (60, 80))).astype(np.float32)
+ch_b = (0.05 + rng2.normal(0, 0.01, (60, 80))).astype(np.float32)
+sc = CompositeStacker("HOO", k=None)
+sc.add(ch_a, role="Ha")
+sc.add(ch_b, role="O3")
+sc.note_alignement(np.eye(2, 3))
+ref = sc.mean()
+verifie(sc.gains_effectifs() == {} and np.allclose(sc.mean(), ref, atol=0),
+        "case opt-in DÉCOCHÉE (gains_roles vide) : aucun gain, image identique")
+sc.gains_roles = {"Ha": 2.0, "O3": 0.5}
+ge = sc.gains_effectifs()
+verifie(abs(ge.get("R", 0) - 2.0) < 1e-9 and abs(ge.get("G", 0) - 0.5) < 1e-9
+        and abs(ge.get("B", 0) - 0.5) < 1e-9,
+        f"conversion RÔLE → CANAL : R ×{ge.get('R')}, G ×{ge.get('G')}, "
+        f"B ×{ge.get('B')} (HOO : Ha→R, O3→G ET B)")
+apres = sc.mean()
+r_ = float(np.median(apres[..., 0] / np.maximum(ref[..., 0], 1e-9)))
+g_ = float(np.median(apres[..., 1] / np.maximum(ref[..., 1], 1e-9)))
+b_ = float(np.median(apres[..., 2] / np.maximum(ref[..., 2], 1e-9)))
+verifie(abs(r_ - 2.0) < 0.02 and abs(g_ - 0.5) < 0.02 and abs(b_ - 0.5) < 0.02,
+        f"le COMPOSITE suit : R ×{r_:.3f}, G ×{g_:.3f}, B ×{b_:.3f} "
+        f"(attendu 2 / 0,5 / 0,5)")
+verifie(r_ != 1.0,
+        "l'effet est VISIBLE — un facteur appliqué AVANT la normalisation par "
+        "canal aurait été absorbé (le piège corrigé)")
+verifie(np.allclose(sc.moyennes(recadre=False)["Ha"], ch_a, rtol=0, atol=1e-6),
+        "les COUCHES restent BRUTES (contrat jalon 54 : le solveur les re-compose)")
+sc.gains_roles = {}
+verifie(np.allclose(sc.mean(), ref, rtol=0, atol=1e-7),
+        "gains_roles vidé → composite de nouveau identique au défaut")
+sc2 = CompositeStacker("Mono", k=None)
+sc2.add(ch_a, role="L")
+sc2.note_alignement(np.eye(2, 3))
+sc2.gains_roles = {"L": 1.5}
+verifie(sc2.gains_effectifs() == {},
+        "composition Mono : gains_roles sans effet (aucun canal R/G/B)")
+
+# Worker : c'est la CASE OPT-IN qui écrit les gains dans le stacker.
+root10 = tk.Tk()
+root10.withdraw()
+app10 = ui.App(root10)
+
+
+class CameraMuette10:
+    """Caméra factice : aucune frame — la boucle du worker fait tout de même sa
+    passe de resynchronisation des réglages (jalon 55), c'est ce qu'on teste."""
+    name = "muette"
+
+    def read(self):
+        return None
+
+
+app10.camera = CameraMuette10()
+app10._mode_compo = True
+sc3 = CompositeStacker("HOO", k=None)
+sc3.add(ch_a, role="Ha")
+sc3.add(ch_b, role="O3")
+sc3.note_alignement(np.eye(2, 3))
+app10.stacker = sc3
+app10.photometrie = ph.Photometrie()
+app10.photometrie.gains = {"Ha": 2.0, "O3": 0.5}
+app10.var_photo_gains.set(False)
+app10._on_photo_gains()
+app10.running = True
+th10 = threading.Thread(target=app10._worker, daemon=True)
+th10.start()
+time.sleep(0.4)
+app10.running = False
+th10.join(timeout=2.0)
+verifie(sc3.gains_roles == {},
+        "worker, case DÉCOCHÉE (défaut) : aucun gain écrit dans le stacker")
+app10.var_photo_gains.set(True)
+app10._on_photo_gains()
+verifie("appliqués" in app10.lbl_photo_gains.cget("text").lower()
+        or "en attente" in app10.lbl_photo_gains.cget("text"),
+        f"le libellé annonce l'état des gains "
+        f"(« {app10.lbl_photo_gains.cget('text')[:44]}… »)")
+app10.running = True
+th10 = threading.Thread(target=app10._worker, daemon=True)
+th10.start()
+time.sleep(0.4)
+app10.running = False
+th10.join(timeout=2.0)
+verifie(sc3.gains_roles == {"Ha": 2.0, "O3": 0.5},
+        f"worker, case COCHÉE : gains mesurés écrits dans le stacker "
+        f"({sc3.gains_roles})")
+root10.destroy()
 
 # ============================================================ récapitulatif
 print()

@@ -11,35 +11,36 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.30.0** (`avastack/__init__.py`),
-  branche `master` — **PHOTOMÉTRIE livrée le 23/09/2026 (v2.30.0, jalon 56,
-  étape 4 : MESURE)** : les étoiles de l'empilement sont appariées
-  MUTUELLEMENT au catalogue Gaia (positions + G) via le WCS résolu/propagé, et
-  un ZÉRO-POINT par bande est mesuré (`m_G + 2,5·log10(flux) = ZP(bande)`) ;
-  l'écart de ZP entre bandes EST le déséquilibre de sensibilité à corriger.
-  Module `processing/photometrie.py` (flux par ouverture − fond local médian,
-  appariement mutuel en PIXELS, médiane + rejet MAD avec plancher 0,05 mag,
-  gains bornés 0,25–4, catalogue INJECTABLE). Worker : mesure UNE fois quand
-  l'astrométrie est résolue, sur la grille RECADRÉE (canaux et WCS de la même
-  grille), ligne d'état dédiée, case persistée (cochée par défaut : aucun effet
-  sur l'image). **RÉSULTAT RÉEL** (brute G de M31) : 244 appariements Gaia,
-  médiane 0,46 px, dispersion des magnitudes résiduelles 0,156 mag (G 9,4→14,2)
-  — AUCUN spectre requis (SPCC relative). Banc `_test_photometrie_jalon56.py`
-  (9 sections) TOUT AU VERT ; synthétique 3 bandes dont B atténuée ×0,5 → gain
-  MESURÉ ×2,000.
-  Rappel v2.29.0 (même journée) : repli ASTAP quand aucun indice + sonde des
-  bases ASTAP — le poste d'Alain n'a que **D80** (pas de balayage possible) :
-  l'appli le DIT au lieu de faire attendre pour rien.
-  Jalon 56 étape 3 (propagation WCS) et étapes 1-2 : bancs au vert ; solveur
-  interne RÉSOLU EN RÉEL. Jalon 55 (v2.23.3) validé par Alain en réel (M31 RGB).
-- **Tâche en cours** : **étape 5 — application des gains par bande au stacker**
-  (les facteurs sont MESURÉS, pas encore appliqués) ; ensuite étape 6
-  (validation Siril + test réel multibande) et, si Alain le souhaite, la SPCC
-  ABSOLUE (spectres Gaia xp_sampled × transmissions filtre/capteur de la base
-  Siril) par-dessus cette calibration relative.
-- **Prochaine étape** : étape 5 — écrire les gains photométriques par bande
-  dans le stacker (mêmes bornes que l'équilibrage/Linear Fit), avec une case
-  dédiée et les garde-fous déjà en place.
+- **Version stable de référence : AVAStack v2.31.0** (`avastack/__init__.py`),
+  branche `master` — **ÉTAPES 4 ET 5 LIVRÉES les 23/09/2026 (jalon 56)** :
+  - **étape 4, MESURE** (v2.30.0) : étoiles de l'empilement appariées
+    MUTUELLEMENT au catalogue Gaia (positions + G) via le WCS résolu/propagé,
+    ZÉRO-POINT par bande (`m_G + 2,5·log10(flux) = ZP(bande)`) — module
+    `processing/photometrie.py`. **RÉSULTAT RÉEL** (brute G de M31) :
+    244 appariements, médiane 0,46 px, dispersion 0,156 mag (G 9,4→14,2),
+    sans aucun spectre (SPCC relative).
+  - **étape 5, APPLICATION** (v2.31.0, OPT-IN d'Alain) : case « Gains
+    photométriques (Gaia) », DÉCOCHÉE PAR DÉFAUT, qui écrit les facteurs dans
+    le composite. **PIÈGE CENTRAL** : `composer()` normalise chaque rôle par
+    ses percentiles AVANT les gains → un facteur par rôle était ABSORBÉ
+    (vérifié au banc) ; les facteurs sont donc convertis RÔLE → CANAL
+    (`canaux_rgb` : HOO Ha→R/O3→G,B ; SHO S2→R/Ha→G/O3→B) et appliqués APRÈS
+    la normalisation, multipliés aux gains manuels R/G/B
+    (`CompositeStacker.gains_effectifs()`). Les COUCHES restent BRUTES
+    (contrat jalon 54) et le solveur live reçoit les gains EFFECTIFS dans
+    `vl_compo` (vues « empilement » et « traitée » cohérentes). Composition
+    Mono : aucun gain appliqué (l'appli le dit). Banc : composite ×2,000 /
+    ×0,500 exactement là où attendu, défaut intact, worker opt-in vérifié.
+  Rappel v2.29.0 : repli ASTAP quand aucun indice — le poste d'Alain n'a que
+  **D80** (pas de base de balayage) : l'appli le DIT au lieu d'attendre pour
+  rien ; le solveur interne tolère des coordonnées approximatives (~1°).
+- **Tâche en cours** : **étape 6 — validation Siril + test réel multibande**
+  (vérifier que les en-têtes WCS écrits sont relus par Siril, et juger les
+  gains photométriques sur une vraie série multi-filtres d'Alain).
+- **Prochaine étape** : étape 6 (validation Siril/ASTAP sur les fichiers
+  écrits, puis test réel HOO/SHO ou LRGB avec la case des gains cochée).
+  Option ouverte : la SPCC ABSOLUE (spectres Gaia xp_sampled × transmissions
+  filtre/capteur de la base Siril) par-dessus cette calibration relative.
 
 ## Statuts CLAUDE.md
 

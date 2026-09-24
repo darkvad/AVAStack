@@ -14,9 +14,42 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.30.0"
+AVASTACK_VERSION = "2.31.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.31.0 : GAINS PHOTOMÉTRIQUES APPLIQUÉS AU COMPOSITE (jalon 56, étape 5,
+#          OPT-IN demandé par Alain le 23/09/2026) : les facteurs mesurés à
+#          l'étape 4 peuvent enfin CORRIGER l'image — case « Gains
+#          photométriques (Gaia) », DÉCOCHÉE PAR DÉFAUT (la mesure, elle, reste
+#          sans effet tant qu'elle n'est pas cochée).
+#          PIÈGE CENTRAL, découvert au banc : `composer()` normalise CHAQUE
+#          RÔLE par ses propres percentiles AVANT d'appliquer les gains — un
+#          facteur par rôle appliqué en amont était donc ABSORBÉ (le composite
+#          ne changeait pas : vérifié). Les facteurs mesurés sont convertis de
+#          RÔLE en CANAL via `canaux_rgb` de la composition (HOO : Ha→R,
+#          O3→G et B ; SHO : S2→R, Ha→G, O3→B ; RGB/LRGB : 1:1) et appliqués
+#          APRÈS la normalisation, exactement là où sont appliqués les gains
+#          manuels R/G/B — dont ils sont MULTIPLIÉS (`gains_effectifs()`).
+#          Un rôle alimentant plusieurs canaux applique le même facteur à tous ;
+#          un canal alimenté par plusieurs rôles prend la MOYENNE GÉOMÉTRIQUE
+#          (cas rare, documenté). Composition Mono : aucun canal R/G/B → aucun
+#          gain appliqué (un gain global ne se verrait pas et déréglerait
+#          VeraLux, qui travaille en valeurs absolues) — l'appli le DIT.
+#          Les COUCHES restent BRUTES (contrat jalon 54) : le solveur live
+#          re-compose depuis les couches brutes et reçoit désormais les gains
+#          EFFECTIFS dans `vl_compo` (les deux vues — « empilement » et
+#          « traitée » — restent donc cohérentes) ; le cache du recalage Linear
+#          Fit inclut ces gains (sinon un facteur qui apparaît ne recalculerait
+#          pas le fit).
+#          Worker : la case opt-in écrit `CompositeStacker.gains_roles` à
+#          chaque tour quand une mesure existe (comparaison avant/après →
+#          rafraîchissement du rendu sans attendre une nouvelle brute) ;
+#          libellé dédié sous la case (ce qui est appliqué, ou pourquoi rien).
+#          BANC `_test_photometrie_jalon56.py` section [10] TOUT AU VERT :
+#          défaut intact (image identique), conversion rôle→canal (R ×2,
+#          G/B ×0,5 en HOO), composite qui SUIT (×2,000/×0,500/×0,500), couches
+#          brutes préservées, Mono sans effet, worker : rien quand la case est
+#          décochée / facteurs écrits quand elle est cochée.
 # v2.30.0 : PHOTOMÉTRIE — ZÉRO-POINT INSTRUMENTAL PAR BANDE (jalon 56, étape 4,
 #          accord d'Alain du 23/09/2026) : les étoiles détectées dans
 #          l'empilement sont APPARIÉES MUTUELLEMENT aux étoiles du catalogue

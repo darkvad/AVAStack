@@ -314,6 +314,11 @@ class App:
         self.photo_info = ""             # texte de la ligne dédiée ("" = rien)
         self.photo_couleur = "#888888"
         self._photo_actif = False        # case « Photométrie » (instantané Tk)
+        # Jalon 56 (étape 5) : CASE À PART, DÉCOCHÉE PAR DÉFAUT (opt-in demandé
+        # par Alain, 23/09/2026) — c'est elle, et elle seule, qui fait écrire
+        # les gains photométriques dans le stacker (donc qui CHANGE l'image).
+        self._photo_gains_actif = False
+        self._photo_gains_pose = {}      # derniers gains posés (suivi de rendu)
         self._photo_essais = 0           # tentatives de mesure (session)
         self._photo_dernier = 0.0        # monotonic du dernier essai
         self._astro_msg_indices = ""     # raison d'un refus des indices saisis
@@ -552,6 +557,11 @@ class App:
         if "photo_actif" in c:
             self.var_photo.set(bool(c.get("photo_actif")))
         self._on_photo()
+        # --- Jalon 56 (étape 5) : application des gains photométriques — OPT-IN
+        # (case décochée par défaut : clé absente = décochée).
+        if "photo_gains_actif" in c:
+            self.var_photo_gains.set(bool(c.get("photo_gains_actif")))
+        self._on_photo_gains()
         # --- Jalon 6 : réglages VeraLux (moteur tiers opt-in)
         mode_res = c.get("vl_mode_res")
         if mode_res in ("fond cible (auto)", "logD forcé"):
@@ -713,6 +723,9 @@ class App:
         # explicite : la mesure n'a aucun effet sur l'image, mais son état doit
         # survivre à la session).
         c["photo_actif"] = bool(self.var_photo.get())
+        # Jalon 56 (étape 5) : OPT-IN — la case qui écrit les gains dans le
+        # stacker. Persistée comme les autres (une case cochée le reste).
+        c["photo_gains_actif"] = bool(self.var_photo_gains.get())
         c["moteur"] = self.var_moteur.get()
         c["vl_mode_res"] = self.var_vl_mode_res.get()
         c["vl_target"] = self.var_vl_target.get()
@@ -1241,6 +1254,19 @@ class App:
         self.lbl_photo = ttk.Label(box, text="Photométrie : —",
                                    foreground="#888888")
         self.lbl_photo.pack(anchor="w", pady=(2, 0))
+        # Jalon 56 (étape 5) : APPLICATION des gains photométriques au
+        # composite — case SÉPARÉE, DÉCOCHÉE PAR DÉFAUT (opt-in d'Alain) : la
+        # mesure ci-dessus n'a aucun effet tant que celle-ci n'est pas cochée.
+        # Elle n'agit qu'en COMPOSITION (un gain global en mono n'a pas de sens
+        # et déréglerait VeraLux, qui travaille en valeurs absolues).
+        row_pg = ttk.Frame(box)
+        row_pg.pack(fill="x", pady=(2, 0))
+        self.var_photo_gains = tk.BooleanVar(value=False)
+        ttk.Checkbutton(row_pg, text="Gains photométriques (Gaia)",
+                        variable=self.var_photo_gains,
+                        command=self._on_photo_gains).pack(side="left")
+        self.lbl_photo_gains = ttk.Label(box, text="", foreground="#888888")
+        self.lbl_photo_gains.pack(anchor="w")
         ttk.Label(box, text="Rejet kappa-sigma :").pack(anchor="w")
         self.var_kappa = tk.StringVar(value="3σ")
         cb = ttk.Combobox(box, textvariable=self.var_kappa, state="readonly", width=8,
@@ -1964,6 +1990,40 @@ class App:
         self._rafraichir_rendu = True     # la ligne d'état suit SANS brute
         self._maj_astro_vue()
 
+    def _on_photo_gains(self):
+        """Jalon 56 (étape 5) : case « Gains photométriques (Gaia) » — OPT-IN
+        (décochée par défaut, choix d'Alain du 23/09/2026). C'est le SEUL
+        réglage qui écrit les facteurs mesurés dans le stacker, donc qui change
+        l'image : cochée SANS mesure, elle n'applique rien et l'annonce."""
+        self._photo_gains_actif = bool(self.var_photo_gains.get())
+        self._rafraichir_rendu = True
+        self._maj_photo_vue()
+
+    def _maj_photo_gains_vue(self):
+        """Libellé SOUS la case des gains : dit ce qui est appliqué (ou
+        pourquoi rien ne l'est) — jamais muet quand la case est cochée."""
+        if getattr(self, "lbl_photo_gains", None) is None:
+            return
+        if not self._photo_gains_actif:
+            self.lbl_photo_gains.config(text="", foreground="#888888")
+            return
+        if not self._mode_compo:
+            self.lbl_photo_gains.config(
+                text=("Gains photométriques : sans effet en MONO (un gain "
+                      "global ne se voit pas et déréglerait VeraLux)"),
+                foreground="#c98a00")
+            return
+        if self.photometrie is None or not self.photometrie.valide:
+            self.lbl_photo_gains.config(
+                text="Gains photométriques : en attente de la mesure",
+                foreground="#c98a00")
+            return
+        gains = ", ".join(f"{b} ×{g:.4f}"
+                          for b, g in sorted(self.photometrie.gains.items()))
+        self.lbl_photo_gains.config(
+            text=f"Gains photométriques appliqués : {gains}",
+            foreground="#1d7f1d")
+
     def _on_photo(self):
         """Jalon 56 (étape 4) : case « Photométrie » — instantané pour le
         worker (jamais de lecture Tk hors du thread principal). Décocher remet
@@ -2000,6 +2060,7 @@ class App:
             txt, col = ("Photométrie : en attente d'un empilement "
                         "suffisant"), "#888888"
         self.lbl_photo.config(text=txt, foreground=col)
+        self._maj_photo_gains_vue()      # le libellé des gains suit l'état
 
     def _maj_astro_vue(self):
         """Affiche l'état de l'astrométrie CONNU CÔTÉ UI (avant toute
@@ -3236,6 +3297,7 @@ class App:
         self.photo_couleur = "#888888"
         self._photo_essais = 0
         self._photo_dernier = 0.0
+        self._photo_gains_pose = {}
         self._maj_photo_vue()
         self._maj_astro_vue()
         self.proc_show = self.proc_full = None
@@ -4322,6 +4384,11 @@ class App:
             self.photo_info = txt
         if self.photometrie.valide:
             self.photo_couleur = "#1d7f1d"
+            # Jalon 56 (étape 5) : si la case opt-in est cochée, les gains
+            # viennent d'apparaître → le rendu doit suivre SANS attendre une
+            # nouvelle brute (le stacker les recevra au prochain tour).
+            if self._photo_gains_actif and self._mode_compo:
+                self._rafraichir_rendu = True
 
     def _astro_indices_entete(self):
         """Indices de la cible déduits de l'en-tête de la brute courante
@@ -4909,6 +4976,7 @@ class App:
                 self.photo_couleur = "#888888"
                 self._photo_essais = 0
                 self._photo_dernier = 0.0
+                self._photo_gains_pose = {}
                 self.proc_show = self.proc_full = None
                 self.proc_new = False
                 self.save_asseen_request = None   # sauvegarde « tel que vu » annulée
@@ -5039,6 +5107,21 @@ class App:
                     self.stacker.mode_l = self._compo_mode_l
                 self.stacker.linear_fit = bool(self._fit_actif)
                 self.stacker.linear_fit_mode = self._fit_mode
+                # Jalon 56 (étape 5) : gains PHOTOMÉTRIQUES par rôle — écrits
+                # dans le stacker SEULEMENT si la case opt-in est cochée, qu'une
+                # mesure existe et qu'on est en COMPOSITION (un gain global en
+                # mono n'a pas de sens). Comparé à ce qui est déjà posé : tout
+                # changement force le rafraîchissement du rendu sans attendre
+                # une nouvelle brute (leçon du jalon 55).
+                if self._mode_compo and hasattr(self.stacker, "gains_roles"):
+                    nouveaux = (dict(self.photometrie.gains)
+                                if (self._photo_gains_actif
+                                    and self.photometrie is not None
+                                    and self.photometrie.valide) else {})
+                    if nouveaux != (self.stacker.gains_roles or {}):
+                        self.stacker.gains_roles = nouveaux
+                        self._photo_gains_pose = dict(nouveaux)
+                        self._rafraichir_rendu = True
                 # Aucune brute à lire (mode dossier consommé, pause…) : si
                 # un réglage vient de changer, le rendu est recalculé et
                 # repoussé UNE fois — sinon l'affichage reste figé sur les
@@ -5323,8 +5406,16 @@ class App:
             # Gains/mode_l recopiés des valeurs lues côté thread principal en
             # tête de _tick (le worker n'a jamais le droit de lire les Tk).
             if self._mode_compo and canaux:
+                # Jalon 56 (étape 5) : le solveur live re-compose depuis les
+                # couches BRUTES — il doit donc recevoir les gains EFFECTIFS
+                # (manuels × photométriques), exactement ceux que composer()
+                # applique à la vue « empilement » ; sinon les deux vues
+                # divergeraient dès que la case opt-in est cochée.
+                gains_eff = (self.stacker.gains_effectifs()
+                             if hasattr(self.stacker, "gains_effectifs")
+                             else self._compo_gains)
                 self.disp.vl_compo = (dict(canaux), self.stacker.composition,
-                                      self._compo_gains, self._compo_mode_l,
+                                      gains_eff, self._compo_mode_l,
                                       # Jalon 54 : recalage « Linear Fit »
                                       # transporté au solveur (5e élément,
                                       # déballage tolérant côté display) pour
@@ -5405,8 +5496,11 @@ class App:
                            interpolation=cv2.INTER_AREA) if scale < 1.0
                 else stack)
         if self._mode_compo and canaux:
+            gains_eff2 = (self.stacker.gains_effectifs()
+                          if hasattr(self.stacker, "gains_effectifs")
+                          else self._compo_gains)
             self.disp.vl_compo = (dict(canaux), self.stacker.composition,
-                                  self._compo_gains, self._compo_mode_l,
+                                  gains_eff2, self._compo_mode_l,
                                   (bool(self.stacker.linear_fit),
                                    self.stacker.linear_fit_mode))
         else:
@@ -5839,6 +5933,7 @@ class App:
                                   foreground=self.photo_couleur)
         else:
             self._maj_photo_vue()
+        self._maj_photo_gains_vue()      # étape 5 : ce qui est appliqué
         # Jalon 10 : seeing live (mesuré par le thread d'acquisition) —
         # jamais de silence : soit la mesure, soit la RAISON de son absence.
         s = st.get("seeing") or {}

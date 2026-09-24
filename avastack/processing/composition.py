@@ -308,6 +308,13 @@ class CompositeStacker:
         self._wb_auto = False
         self._wb_force = 1.0
         self.gains = None                 # gains R/G/B (UI, phase 3)
+        # Jalon 56 (étape 5) : gains PHOTOMÉTRIQUES par rôle (zéro-point Gaia,
+        # mesuré par processing/photometrie). Posés par le worker depuis la
+        # mesure de la SESSION ; vide = AUCUNE correction (défaut : la mesure
+        # seule n'a jamais touché l'image). Appliqués aux CARTES DE RÔLE dans
+        # `moyennes()` — donc au composite ET aux couches transmises au solveur
+        # live, en un seul point : les deux vues restent cohérentes.
+        self.gains_roles = {}
         self.mode_l = "synthetise"        # radio « Canal L » (UI, phase 3)
         # Recalage colorimétrique « Linear Fit » (jalon 54) : appliqué au
         # COMPOSITE SEUL — JAMAIS aux couches (le solveur live re-fait la
@@ -446,7 +453,15 @@ class CompositeStacker:
     def moyennes(self, recadre=True):
         """{rôle: carte 2D float32 de l'empilement du rôle} — recadrées au
         cadre COMMUN si `recadre` (formes identiques, exigence de composer()).
-        Matière de l'état par canal et des futures sauvegardes par canal."""
+        Matière de l'état par canal et des futures sauvegardes par canal.
+
+        Jalon 56 (étape 5) : les gains photométriques par rôle ne sont PAS
+        appliqués ici — `composer()` normalise chaque rôle par ses propres
+        percentiles, ce qui ABSORBERAIT un facteur global (vérifié : le
+        composite ne changeait pas). Ils passent par `gains_effectifs()`, donc
+        par les gains de CANAL appliqués APRÈS la normalisation ; les couches
+        restent BRUTES (contrat jalon 54 : le solveur live re-compose depuis
+        les couches brutes et ré-applique les gains lui-même)."""
         out = {}
         for role, s in self.stackers.items():
             if s.n == 0:
@@ -454,6 +469,36 @@ class CompositeStacker:
             m = s.mean(recadre=False)     # accumulation complète, même repère
             out[role] = self._recadrer(m) if recadre else m
         return out
+
+    def gains_effectifs(self):
+        """Gains R/G/B du composite : gains MANUELS (UI) × gains
+        PHOTOMÉTRIQUES convertis de RÔLE en CANAL (jalon 56, étape 5).
+
+        Pourquoi par canal : `composer()` normalise chaque rôle par ses propres
+        percentiles AVANT d'appliquer les gains → un facteur par rôle appliqué
+        en amont serait absorbé (piège vérifié au banc : le composite ne
+        changeait pas). Les facteurs mesurés sont donc convertis via
+        `canaux_rgb` de la composition, puis appliqués APRÈS la normalisation.
+
+        Rôle alimentant PLUSIEURS canaux (O3 → G et B en HOO) : même facteur
+        partout. Canal alimenté par plusieurs rôles (cas rare) : MOYENNE
+        GÉOMÉTRIQUE de leurs facteurs. → dict 'R'/'G'/'B' → facteur."""
+        gains = dict(self.gains or {})
+        if not self.gains_roles:
+            return gains
+        spec = COMPOSITIONS.get(self.composition) or {}
+        mapping = spec.get("canaux_rgb")
+        if not mapping:
+            return gains                       # Mono : aucun canal RGB
+        for canal, roles in mapping.items():
+            facteurs = [float(self.gains_roles[r]) for r in roles
+                        if r in self.gains_roles
+                        and float(self.gains_roles[r]) > 0.0]
+            if not facteurs:
+                continue
+            g = float(np.exp(np.mean(np.log(facteurs))))
+            gains[canal] = float(gains.get(canal, 1.0)) * g
+        return gains
 
     def mean_avec_canaux(self, recadre=True):
         """(composite, {rôle: carte 2D}) en UNE passe de moyennes (jalon 24) :
@@ -468,7 +513,11 @@ class CompositeStacker:
         if not canaux:
             return None, None
         try:
-            comp = composer(canaux, self.composition, gains=self.gains,
+            # Jalon 56 (étape 5) : gains EFFECTIFS (manuels × photométriques
+            # convertis en canaux) — appliqués par composer() APRÈS la
+            # normalisation, sinon ils seraient absorbés par elle.
+            comp = composer(canaux, self.composition,
+                            gains=self.gains_effectifs(),
                             mode_l=self.mode_l)
         except ValueError:
             comp = None                   # formes hétérogènes (ne doit pas
@@ -483,16 +532,18 @@ class CompositeStacker:
 
     def _recaler_fit(self, comp):
         """Recalage « Linear Fit » du composite (jalon 54) : cf.
-        CompositeStacker.linear_fit. Cache par (frames totales, gains, mode L,
-        mode) : les stats du composite dépendent de l'accumulation ET des
-        réglages qui la composent → recalcul seulement quand l'un change
-        (aucun pompage entre deux ticks). Dégénéré (canal plat, cf.
-        aligner_canaux) → composite inchangé + diag None."""
+        CompositeStacker.linear_fit. Cache par (frames totales, GAINS EFFECTIFS,
+        mode L, mode) : les stats du composite dépendent de l'accumulation ET
+        des réglages qui la composent → recalcul seulement quand l'un change
+        (aucun pompage entre deux ticks). Les gains EFFECTIFS (manuels ×
+        photométriques) entrent dans la clé : un facteur photométrique qui
+        apparaît doit recalculer le fit, sinon la vue serait incohérente."""
         if comp.ndim != 3 or comp.shape[-1] != 3:
             return comp
-        gains_sig = (tuple(round(float(self.gains.get(c, 1.0)), 4)
+        ge = self.gains_effectifs()
+        gains_sig = (tuple(round(float(ge.get(c, 1.0)), 4)
                            for c in ("R", "G", "B"))
-                     if self.gains else None)
+                     if ge else None)
         cle = (sum(s.n for s in self.stackers.values()),
                self.linear_fit_mode, gains_sig, self.mode_l)
         if self._fit_cache is not None and self._fit_cache[0] == cle:
