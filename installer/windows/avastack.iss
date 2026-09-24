@@ -84,6 +84,9 @@ Source: "{#RepoRoot}\_test_save_lineaire_echelle.py"; DestDir: "{app}"; Flags: i
 ; Banc de branchement du solveur au worker (v2.28.0) : astrometrie de l'empilement
 ; (indices -> resolution unique -> propagation mots-cles WCS).
 Source: "{#RepoRoot}\_test_astro_branchement_jalon56.py"; DestDir: "{app}"; Flags: ignoreversion
+; Banc de photometrie (v2.30.0, jalon 56 etape 4) : zero-point par bande
+; (appariements Gaia via le WCS, gains relatifs, worker reel).
+Source: "{#RepoRoot}\_test_photometrie_jalon56.py"; DestDir: "{app}"; Flags: ignoreversion
 ; Diagnostic ASTAP en balayage (v2.29.0) : essaie plusieurs -fov, affiche
 ; le verdict brut et liste les bases installees (D80 seule = balayage
 ; impossible) ; confronte au resultat du solveur interne indice.

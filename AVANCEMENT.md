@@ -11,33 +11,35 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.29.0** (`avastack/__init__.py`),
-  branche `master` — **REPLI ASTAP livré le 23/09/2026 (v2.29.0)** : quand
-  AUCUN indice n'est disponible (caméra live sans en-tête FITS, ni saisie, ni
-  OBJCTRA/OBJCTDEC), ASTAP tente de localiser l'empilement lui-même et son
-  centre sert d'indice au solveur interne ; son WCS est le REPLI si l'interne
-  refuse (`SuiviAstrometrie.adopter`, méthode « astap »). Le champ de saisie
-  peut rester SEUL (focale connue, cible inconnue) : il guide le balayage.
-  **CONSTAT RÉEL DÉCISIF (23/09/2026, banc + `_diag_astap_aveugle.py`)** :
-  ASTAP ne balaie le ciel SANS position de départ qu'avec une base de BALAYAGE
-  (G18/H18/W08/V05) ; le poste d'Alain n'a que **D80** (base « solution
-  voisine ») → tout balayage échoue en ~0,4 s, quel que soit `-fov` (le même
-  fichier est résolu en 0,2 s AVEC indices). L'appli SONDE donc les bases
-  (`astap.bases_installees` / `balayage_possible`) et n'engage pas d'attente
-  inutile : elle dit la cause et conseille AD/Dec approximatifs (le solveur
-  interne tolère ~1°). Garde-fous : 1 balayage par valeur de champ, plafond 2
-  par session, timeout 90 s, image temporaire bornée [0,1]. PIÈGE tranché en
-  réel : `-fov` d'ASTAP = HAUTEUR du champ (l'appli raisonne en LARGEUR).
-  Outil `_diag_astap_aveugle.py` embarqué dans l'installateur.
-  Banc `_test_astro_branchement_jalon56.py` section [8] TOUT AU VERT
-  (indices d'ASTAP → solve interne ; interne en échec → WCS ASTAP adopté ;
-  échec ASTAP → état clair ; sans base de balayage → aucun essai).
-- **Tâche en cours** : **étape 4 — photométrie + facteurs par bande**
-  (appariement catalogue Gaia ↔ étoiles de l'accumulation via le WCS), suivie
-  de l'étape 5 (application aux gains du stacker), étape 6 (validation Siril +
-  test réel multibande).
-- **Prochaine étape** : étape 4 (photométrie) — appariement Gaia ↔ étoiles de
-  l'accumulation avec le WCS propagé, puis facteurs par bande.
+- **Version stable de référence : AVAStack v2.30.0** (`avastack/__init__.py`),
+  branche `master` — **PHOTOMÉTRIE livrée le 23/09/2026 (v2.30.0, jalon 56,
+  étape 4 : MESURE)** : les étoiles de l'empilement sont appariées
+  MUTUELLEMENT au catalogue Gaia (positions + G) via le WCS résolu/propagé, et
+  un ZÉRO-POINT par bande est mesuré (`m_G + 2,5·log10(flux) = ZP(bande)`) ;
+  l'écart de ZP entre bandes EST le déséquilibre de sensibilité à corriger.
+  Module `processing/photometrie.py` (flux par ouverture − fond local médian,
+  appariement mutuel en PIXELS, médiane + rejet MAD avec plancher 0,05 mag,
+  gains bornés 0,25–4, catalogue INJECTABLE). Worker : mesure UNE fois quand
+  l'astrométrie est résolue, sur la grille RECADRÉE (canaux et WCS de la même
+  grille), ligne d'état dédiée, case persistée (cochée par défaut : aucun effet
+  sur l'image). **RÉSULTAT RÉEL** (brute G de M31) : 244 appariements Gaia,
+  médiane 0,46 px, dispersion des magnitudes résiduelles 0,156 mag (G 9,4→14,2)
+  — AUCUN spectre requis (SPCC relative). Banc `_test_photometrie_jalon56.py`
+  (9 sections) TOUT AU VERT ; synthétique 3 bandes dont B atténuée ×0,5 → gain
+  MESURÉ ×2,000.
+  Rappel v2.29.0 (même journée) : repli ASTAP quand aucun indice + sonde des
+  bases ASTAP — le poste d'Alain n'a que **D80** (pas de balayage possible) :
+  l'appli le DIT au lieu de faire attendre pour rien.
+  Jalon 56 étape 3 (propagation WCS) et étapes 1-2 : bancs au vert ; solveur
+  interne RÉSOLU EN RÉEL. Jalon 55 (v2.23.3) validé par Alain en réel (M31 RGB).
+- **Tâche en cours** : **étape 5 — application des gains par bande au stacker**
+  (les facteurs sont MESURÉS, pas encore appliqués) ; ensuite étape 6
+  (validation Siril + test réel multibande) et, si Alain le souhaite, la SPCC
+  ABSOLUE (spectres Gaia xp_sampled × transmissions filtre/capteur de la base
+  Siril) par-dessus cette calibration relative.
+- **Prochaine étape** : étape 5 — écrire les gains photométriques par bande
+  dans le stacker (mêmes bornes que l'équilibrage/Linear Fit), avec une case
+  dédiée et les garde-fous déjà en place.
 
 ## Statuts CLAUDE.md
 

@@ -101,6 +101,10 @@ from ..processing import veralux as veralux_moteur
 # chaque réempilement). Le worker ne touche jamais au catalogue lui-même
 # (processing → catalogues, jamais l'inverse : pas de cycle d'import).
 from ..processing import astrometrie as astro_mod
+# Jalon 56 (étape 4) : photométrie — zéro-point instrumental PAR BANDE via le
+# WCS (appariement mutuel des étoiles de l'empilement au catalogue Gaia). On
+# MESURE ici ; l'application aux gains du stacker est l'étape 5.
+from ..processing import photometrie as photo_mod
 from ..external.detection import (
     DEFAULT_CMD_GRAXPERT, DEFAULT_CMD_GRAXPERT_DN, DEFAULT_CMD_BXT,
     commande_avec_strength, commande_par_defaut_graxpert,
@@ -302,6 +306,16 @@ class App:
         self._astro_balayage = None      # base de balayage ASTAP ? (sonde UNE
                                          # fois par session — listdir coûteux)
         self._astro_bases = ""           # familles de bases installées (état)
+        # Jalon 56 (étape 4) : photométrie — zéro-point PAR BANDE mesuré sur
+        # l'empilement via le WCS résolu (appariement mutuel au catalogue Gaia).
+        # Mesure SEULE (aucun effet sur l'image) : l'application aux gains du
+        # stacker est l'étape 5. Le catalogue est lu UNE fois par mesure.
+        self.photometrie = photo_mod.Photometrie()
+        self.photo_info = ""             # texte de la ligne dédiée ("" = rien)
+        self.photo_couleur = "#888888"
+        self._photo_actif = False        # case « Photométrie » (instantané Tk)
+        self._photo_essais = 0           # tentatives de mesure (session)
+        self._photo_dernier = 0.0        # monotonic du dernier essai
         self._astro_msg_indices = ""     # raison d'un refus des indices saisis
         self._astro_source = ""          # « saisie », « image <fichier> », « ASTAP »…
         # Repli ASTAP « aveugle » (décision d'Alain, 23/09/2026) : tenté quand
@@ -533,6 +547,11 @@ class App:
         if "astro_actif" in c:
             self.var_astro.set(bool(c.get("astro_actif")))
         self._on_astro()
+        # --- Jalon 56 (étape 4) : photométrie (zéro-point Gaia) — booléen
+        # EXPLICITE, comme les autres cases.
+        if "photo_actif" in c:
+            self.var_photo.set(bool(c.get("photo_actif")))
+        self._on_photo()
         # --- Jalon 6 : réglages VeraLux (moteur tiers opt-in)
         mode_res = c.get("vl_mode_res")
         if mode_res in ("fond cible (auto)", "logD forcé"):
@@ -690,6 +709,10 @@ class App:
         c["astro_ra"] = self.var_astro_ra.get().strip()
         c["astro_dec"] = self.var_astro_dec.get().strip()
         c["astro_champ"] = self.var_astro_champ.get().strip()
+        # Jalon 56 (étape 4) : photométrie — case d'activation (booléen
+        # explicite : la mesure n'a aucun effet sur l'image, mais son état doit
+        # survivre à la session).
+        c["photo_actif"] = bool(self.var_photo.get())
         c["moteur"] = self.var_moteur.get()
         c["vl_mode_res"] = self.var_vl_mode_res.get()
         c["vl_target"] = self.var_vl_target.get()
@@ -1204,6 +1227,20 @@ class App:
         self.lbl_astro = ttk.Label(box, text="Astrométrie : —",
                                    foreground="#888888")
         self.lbl_astro.pack(anchor="w", pady=(2, 0))
+        # Jalon 56 (étape 4) : PHOTOMÉTRIE — zéro-point instrumental par BANDE,
+        # mesuré sur l'empilement via le WCS (appariement mutuel des étoiles au
+        # catalogue Gaia de Siril). Case SÉPARÉE et cochée par défaut : la
+        # mesure n'a AUCUN effet sur l'image (l'application aux gains est
+        # l'étape 5) — la décocher arrête simplement la mesure et son état.
+        row_p = ttk.Frame(box)
+        row_p.pack(fill="x", pady=(2, 0))
+        self.var_photo = tk.BooleanVar(value=True)
+        ttk.Checkbutton(row_p, text="Photométrie (zéro-point Gaia)",
+                        variable=self.var_photo,
+                        command=self._on_photo).pack(side="left")
+        self.lbl_photo = ttk.Label(box, text="Photométrie : —",
+                                   foreground="#888888")
+        self.lbl_photo.pack(anchor="w", pady=(2, 0))
         ttk.Label(box, text="Rejet kappa-sigma :").pack(anchor="w")
         self.var_kappa = tk.StringVar(value="3σ")
         cb = ttk.Combobox(box, textvariable=self.var_kappa, state="readonly", width=8,
@@ -1926,6 +1963,43 @@ class App:
             self.suivi_astro.reset()
         self._rafraichir_rendu = True     # la ligne d'état suit SANS brute
         self._maj_astro_vue()
+
+    def _on_photo(self):
+        """Jalon 56 (étape 4) : case « Photométrie » — instantané pour le
+        worker (jamais de lecture Tk hors du thread principal). Décocher remet
+        la mesure à zéro et l'ANNONCE ; recocher relance une mesure (le worker
+        la tentera au prochain tour, sur l'empilement courant)."""
+        self._photo_actif = bool(self.var_photo.get())
+        if not self._photo_actif:
+            if self.photometrie is not None:
+                self.photometrie.reset()
+            self.photo_info = "Photométrie : désactivée"
+            self.photo_couleur = "#888888"
+        else:
+            # Recochée : la mesure repart de zéro (le worker la retentera au
+            # prochain tour — aucun zéro-point d'une session révolue ne doit
+            # rester affiché).
+            self.photo_info = ""
+            self.photo_couleur = "#888888"
+        self._rafraichir_rendu = True
+        self._maj_photo_vue()
+
+    def _maj_photo_vue(self):
+        """Affiche l'état de la photométrie CONNU CÔTÉ UI : soit la mesure
+        (zéro-points par bande), soit la RAISON de son absence — jamais muet."""
+        if getattr(self, "lbl_photo", None) is None:
+            return
+        if not self._photo_actif:
+            txt, col = "Photométrie : désactivée", "#888888"
+        elif self.photo_info:
+            txt, col = self.photo_info, self.photo_couleur
+        elif self.suivi_astro is None or not self.suivi_astro.resolu:
+            txt = "Photométrie : en attente de l'astrométrie (WCS)"
+            col = "#c98a00"
+        else:
+            txt, col = ("Photométrie : en attente d'un empilement "
+                        "suffisant"), "#888888"
+        self.lbl_photo.config(text=txt, foreground=col)
 
     def _maj_astro_vue(self):
         """Affiche l'état de l'astrométrie CONNU CÔTÉ UI (avant toute
@@ -3155,6 +3229,14 @@ class App:
         self._astro_dernier_aveugle = 0.0
         self._astro_fov_essayes = set()
         self._astro_balayage = None          # sonde des bases ASTAP refaite
+        # Jalon 56 (étape 4) : photométrie de session neuve (les zéro-points
+        # d'une autre cible/session n'ont aucun sens).
+        self.photometrie.reset()
+        self.photo_info = ""
+        self.photo_couleur = "#888888"
+        self._photo_essais = 0
+        self._photo_dernier = 0.0
+        self._maj_photo_vue()
         self._maj_astro_vue()
         self.proc_show = self.proc_full = None
         self.proc_new = False
@@ -4151,6 +4233,96 @@ class App:
         if self.suivi_astro.resolu:
             self.astro_couleur = "#1d7f1d"
 
+    # -------------------------------- jalon 56 (étape 4) : photométrie
+    def _photo_tour(self, stacker):
+        """Mesure le zéro-point PAR BANDE quand l'astrométrie est RÉSOLUE (le
+        WCS est indispensable : c'est lui qui relie les étoiles de l'image au
+        catalogue Gaia), l'empilement assez profond et la case cochée.
+
+        Mesure UNE fois par session (réessais espacés, plafonnés) et SANS AUCUN
+        effet sur l'image : l'application de ces gains au stacker est l'étape 5.
+        Le catalogue (1,1 Go) n'est lu QUE par une mesure — d'où le plafond."""
+        if self.photometrie is None or stacker is None or stacker.n <= 0:
+            return
+        if self.photometrie.valide:
+            return                     # déjà mesuré : rien à refaire
+        if not self._photo_actif:
+            return
+        if self.suivi_astro is None or not self.suivi_astro.resolu:
+            return                     # sans WCS : aucune photométrie possible
+        if stacker.n < astro_mod.ASTRO_MIN_FRAMES:
+            return
+        if self._photo_essais >= photo_mod.MAX_ESSAIS:
+            self.photo_info = (f"Photométrie : {self.photometrie.derniere_erreur}"
+                               f" — {self._photo_essais} essais, plafond atteint")
+            self.photo_couleur = "#d04040"
+            return
+        t = time.monotonic()
+        if (self._photo_essais
+                and t - self._photo_dernier < photo_mod.DELAI_ESSAI_S):
+            return
+        canaux, wcs, forme = self._photo_canaux(stacker)
+        if not canaux or wcs is None:
+            return
+        self._photo_essais += 1
+        self._photo_dernier = t
+        self.photo_info = ("Photométrie : mesure du zéro-point en cours "
+                           f"({stacker.n} frames, "
+                           f"{len(canaux)} bande(s))…")
+        self.photo_couleur = "#888888"
+        try:
+            res, msg = self.photometrie.mesurer(canaux, wcs, forme=forme)
+        except Exception as exc:       # une mesure ne tue jamais le worker
+            res, msg = None, f"exception ({exc})"
+        if res is None:
+            self.photo_info = f"Photométrie : {msg}"
+            self.photo_couleur = ("#c98a00"
+                                  if self._photo_essais < photo_mod.MAX_ESSAIS
+                                  else "#d04040")
+            return
+        self._maj_photo_etat()
+
+    def _photo_canaux(self, stacker):
+        """Canaux (bandes) + WCS de la MÊME grille pour la photométrie.
+
+        Grille RECADRÉE (celle de la vue et des sauvegardes) — en composition,
+        les cartes PAR RÔLE (`moyennes`) sont les bandes ; en mono, il n'y a
+        qu'une bande « L ». Le WCS est celui de cette grille exacte (recadrage
+        d'intersection inclus) : les deux DOIVENT décrire la même grille, sinon
+        l'appariement au catalogue serait faux. → (canaux, WCS, forme)."""
+        cadre = getattr(stacker, "cadre", None)
+        try:
+            if hasattr(stacker, "moyennes"):
+                canaux = stacker.moyennes(recadre=True) or {}
+            else:
+                img = stacker.mean()
+                canaux = {"L": img} if img is not None else {}
+        except Exception as exc:
+            self.photo_info = f"Photométrie : canaux indisponibles ({exc})"
+            self.photo_couleur = "#c98a00"
+            return {}, None, None
+        canaux = {b: v for b, v in canaux.items() if v is not None}
+        if not canaux:
+            return {}, None, None
+        forme = tuple(np.asarray(next(iter(canaux.values()))).shape[:2])
+        wcs, msg = self.suivi_astro.wcs_grille(cadre, forme=forme)
+        if wcs is None:
+            self.photo_info = f"Photométrie : WCS indisponible ({msg})"
+            self.photo_couleur = "#c98a00"
+            return {}, None, None
+        return canaux, wcs, forme
+
+    def _maj_photo_etat(self):
+        """Recopie la mesure (zéro-points par bande) dans la ligne dédiée —
+        seulement si le texte change."""
+        if self.photometrie is None:
+            return
+        txt = self.photometrie.texte_resume()
+        if txt and txt != self.photo_info:
+            self.photo_info = txt
+        if self.photometrie.valide:
+            self.photo_couleur = "#1d7f1d"
+
     def _astro_indices_entete(self):
         """Indices de la cible déduits de l'en-tête de la brute courante
         (source DOSSIER) quand la saisie est vide — lecture STRICTE
@@ -4731,6 +4903,12 @@ class App:
                 self._astro_fov_essayes = set()
                 self._astro_balayage = None
                 self._astro_source = ""
+                # Jalon 56 (étape 4) : photométrie de session neuve.
+                self.photometrie.reset()
+                self.photo_info = ""
+                self.photo_couleur = "#888888"
+                self._photo_essais = 0
+                self._photo_dernier = 0.0
                 self.proc_show = self.proc_full = None
                 self.proc_new = False
                 self.save_asseen_request = None   # sauvegarde « tel que vu » annulée
@@ -5103,6 +5281,9 @@ class App:
             # ligne d'état part alors avec le bon texte).
             if self.stacker is not None and self.stacker.n > 0:
                 self._astro_tour(self.stacker)
+                # Jalon 56 (étape 4) : photométrie — APRÈS l'astrométrie (elle
+                # a besoin du WCS résolu) ; mesure SANS effet sur l'image.
+                self._photo_tour(self.stacker)
 
             show = stack if stack is not None else (last_good if last_good is not None else frame)
 
@@ -5186,7 +5367,7 @@ class App:
                              if self._mode_compo and self.stacker is not None
                              else None),
                       restack=self.restack_info, restack_n=self.restack_total,
-                      astro=self.astro_info)
+                      astro=self.astro_info, photo=self.photo_info)
             if self.stacker is not None and self.stacker.cadre is not None:
                 y0, x0, y1, x1 = self.stacker.cadre
                 st["crop_w"], st["crop_h"] = x1 - x0, y1 - y0
@@ -5651,6 +5832,13 @@ class App:
                                   foreground=self.astro_couleur)
         else:
             self._maj_astro_vue()
+        # Jalon 56 (étape 4) : ligne d'état de la PHOTOMÉTRIE (même logique).
+        detail_ph = st.get("photo", self.photo_info) or ""
+        if detail_ph:
+            self.lbl_photo.config(text=detail_ph,
+                                  foreground=self.photo_couleur)
+        else:
+            self._maj_photo_vue()
         # Jalon 10 : seeing live (mesuré par le thread d'acquisition) —
         # jamais de silence : soit la mesure, soit la RAISON de son absence.
         s = st.get("seeing") or {}

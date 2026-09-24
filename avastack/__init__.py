@@ -14,9 +14,49 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.29.0"
+AVASTACK_VERSION = "2.30.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.30.0 : PHOTOMÉTRIE — ZÉRO-POINT INSTRUMENTAL PAR BANDE (jalon 56, étape 4,
+#          accord d'Alain du 23/09/2026) : les étoiles détectées dans
+#          l'empilement sont APPARIÉES MUTUELLEMENT aux étoiles du catalogue
+#          Gaia de Siril (positions + magnitude G) grâce au WCS résolu puis
+#          propagé (étapes 2-3), et un zéro-point par bande est mesuré :
+#              m_G + 2,5·log10(flux) = ZP(bande)
+#          L'écart de zéro-point ENTRE BANDES est le déséquilibre de
+#          sensibilité à corriger — c'est la version RELATIVE et VÉRIFIABLE de
+#          la SPCC (aucun spectre requis ; la SPCC absolue, spectres Gaia
+#          xp_sampled × transmissions filtre/capteur de la base Siril, viendra
+#          ensuite). L'écriture des gains sur le stacker est l'ÉTAPE 5 : ici on
+#          MESURE, on ne touche pas à l'image.
+#          Module `processing/photometrie.py` (glue, numpy seul) :
+#          `flux_ouverture` (somme disque MOINS fond local médian de l'anneau —
+#          insensible à un gradient et aux voisines), `etoiles_image`
+#          (réutilise le détecteur du projet), `etoiles_catalogue` (rayon
+#          déduit du WCS : coins projetés), `apparier` (MUTUEL, tolérance en
+#          PIXELS), `zero_point` (médiane + rejet MAD avec PLANCHER 0,05 mag —
+#          sur des mesures parfaites le MAD vaut 0 et rien ne serait rejeté),
+#          `gains_depuis_zp` (référence = ZP MÉDIAN, gains bornés 0,25–4 comme
+#          l'équilibrage/Linear Fit), classe `Photometrie` (catalogue
+#          INJECTABLE, réessais espacés plafonnés, canaux = bandes).
+#          Worker : mesure UNE fois quand l'astrométrie est résolue, sur la
+#          grille RECADRÉE (canaux et WCS de la même grille — piège évité),
+#          ligne d'état dédiée « Photométrie (Gaia G) : ZP par bande » ;
+#          case « Photométrie (zéro-point Gaia) » persistée (cochée par défaut :
+#          la mesure n'a AUCUN effet sur l'image).
+#          PIÈGES tranchés par le banc : (1) `float(tableau)` et `math.hypot`
+#          sur les CINQ positions rendues par le WCS de référence (les coins +
+#          le centre) → TypeError au premier appel réel, corrigé en
+#          `np.asarray(...).ravel()` / `np.hypot` ; (2) sur des mesures
+#          parfaites le MAD vaut 0 et plus aucune aberration n'était rejetée →
+#          PLANCHER de rejet à 0,05 mag (PLANCHER_SIGMA_MAG).
+#          BANC `_test_photometrie_jalon56.py` TOUT AU VERT (9 sections) :
+#          flux par ouverture (gradient, bord), détection, appariement mutuel
+#          (leurres rejetés), zéro-point (exactitude ×2 → +0,7526 mag, rejet
+#          d'aberration), gains (référence médiane, bornes), mesure bout en bout
+#          3 bandes dont B atténuée ×0,5 → gain MESURÉ ×2,000, échecs propres,
+#          worker réel, et GAIA RÉEL : 244 appariements sur la brute G de M31
+#          (médiane 0,46 px) avec 0,156 mag de dispersion (G 9,4 → 14,2).
 # v2.29.0 : REPLI ASTAP quand AUCUN INDICE n'est disponible (accord d'Alain,
 #          23/09/2026) : caméra live sans en-tête FITS, ni saisie, ni
 #          OBJCTRA/OBJCTDEC → ASTAP tente de localiser l'empilement LUI-MÊME
