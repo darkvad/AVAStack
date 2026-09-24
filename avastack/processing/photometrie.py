@@ -96,6 +96,19 @@ def flux_ouverture(mono, positions, rayon=RAYON_FLUX_PX,
             continue                              # bord : flux tronqué
         x0, x1 = int(math.floor(x - r_out)), int(math.ceil(x + r_out)) + 1
         y0, y1 = int(math.floor(y - r_out)), int(math.ceil(y + r_out)) + 1
+        # PIÈGE (vérifié en réel le 24/09/2026 sur un crop 1024×1024 d'une
+        # couche M31) : à cause de l'arrondi du centre (± 0,5 px), ces bornes
+        # peuvent SORTIR de l'image alors que le contrôle ci-dessus est passé
+        # (x = 24,49 avec r_out = 23,5 → x0 = 0 mais y = 23,49 → y0 = -1).
+        # numpy TRONQUE alors silencieusement la zone (`img[-1:y1]`,
+        # `img[:h+1]`) pendant que `np.mgrid` garde la taille THÉORIQUE : le
+        # masque du disque ne correspond plus à la zone (IndexError). On
+        # ramène donc les bornes DANS l'image — le disque reste entier, la
+        # marge d'anneau (r_out - r_in) couvrant l'arrondi du centre.
+        x0, x1 = max(0, x0), min(w, x1)
+        y0, y1 = max(0, y0), min(h, y1)
+        if x1 - x0 < 1 or y1 - y0 < 1:
+            continue
         zone = img[y0:y1, x0:x1]
         yy, xx = np.mgrid[y0:y1, x0:x1]
         d = np.hypot(xx - x, yy - y)

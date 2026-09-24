@@ -14,9 +14,63 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.31.3"
+AVASTACK_VERSION = "2.32.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.32.0 : ALIGNEMENT SOUS-PIXEL ENTRE COUCHES (jalon 57 — constat réel
+#          d'Alain, 24/09/2026 : « l'astrométrie et Gaia sont bons, mais
+#          l'image n'est pas correcte » — franges rouge/cyan autour des
+#          étoiles sur un empilement M31 R+G+B de 31 frames).
+#          MESURES sur les fichiers réels (m31_stacl_lineaire.fits et
+#          canal_R/G/B.fit, écrits à la même minute depuis la MÊME session et
+#          la MÊME grille : le défaut est donc DANS l'empilement, pas dans la
+#          sauvegarde ni dans le recadrage) :
+#            • la couche ROUGE sort décalée de 0,573 px (dX −0,207 ± 0,231 ;
+#              dY −0,534 ± 0,116 px ; 271 appariements d'étoiles mutuels,
+#              mesure indépendante du WCS) alors que B/G sont alignés à
+#              0,049 px → décalage SYSTÉMATIQUE (σ 0,12 px) ;
+#            • la transformation R→G n'est PAS une translation pure :
+#              échelle 0,9998 (dX varie de −0,51 à −0,12 px selon la zone) —
+#              les chemins qui estiment rotation et échelle sont justes, un
+#              « décalage moyen » ne l'est pas (piège d'analyse vérifié) ;
+#            • CAUSE RACINE : le chemin ORB, retenu en production sur les
+#              compositions large bande, ne PEUT PAS corriger le sous-pixel.
+#              Ses points clés sont localisés à ~0,5-1 px et le consensus
+#              RANSAC (seuil 2 px) est gagné par l'IDENTITÉ : mesuré, ORB
+#              renvoyait Δ=(0,000, 0,000) pour la paire R/G réelle, et
+#              laissait 0,17 à 0,40 px d'erreur résiduelle pour des décalages
+#              imposés de 0,15 à 1,5 px (seuil RANSAC resserré à 1,0 px,
+#              LMEDS sur inliers ou RANSAC 0,5 px : PAS mieux — l'identité
+#              reste le consensus). Les chemins par CENTROÏDES d'étoiles
+#              (« étoiles », « triangles ») laissent 0,02-0,04 px sur les
+#              mêmes images.
+#          CORRECTIF (portée voulue : LA MATRICE, pas la cascade) : nouveau
+#          `StarAligner._raffiner_centroides(frame, M)`, appelé après un
+#          succès d'ORB — détection des centroïdes de la frame (~100 ms,
+#          MOINS que les 213 ms d'ORB), appariement MUTUEL serré (≤ 1,5 px)
+#          dans le repère de la référence, ré-estimation d'une similitude
+#          (RANSAC 0,75 px) sur ces seuls appariements, contre-test mutuel
+#          final (2,5 px). Échec ou trop peu d'appariements → matrice d'ORB
+#          INCHANGÉE (aucune régression possible) ; ligne d'état : méthode
+#          « ORB+étoiles(N) ». Le reste de la cascade est intact (les bancs
+#          qui forcent triangles/phase voient le même comportement).
+#          VÉRIFIÉ EN RÉEL (canal_R vs canal_G de M31) : méthode retenue
+#          ORB+étoiles(46), reste après correction (−0,019, −0,020) px sur
+#          274 étoiles — contre (−0,207, −0,534) px avant. Latence d'une
+#          frame : 213 → 309 ms. Bancs AU VERT : align jalon 13 et 15,
+#          compo worker/multifolder/composition jalon 19, narrowband jalon 21,
+#          restack compo jalon 20, gradient couche jalon 24, calib compo
+#          jalon 53, crop intersection, photométrie jalon 56.
+#          Outil embarqué `_diag_align_precision.py` : vérité terrain
+#          (appariement mutuel), répartition SPATIALE du décalage, second
+#          avis par corrélation de phase, ce que chaque chemin retourne
+#          (reste mesuré APRÈS application) et précision sur décalages connus.
+#          AU PASSAGE, bug réel corrigé dans `photometrie.flux_ouverture` :
+#          les bornes de la zone de flux peuvent sortir de l'image d'un
+#          demi-pixel (arrondi du centroïde) — numpy TRONQUE alors la zone
+#          pendant que `np.mgrid` garde la taille théorique → IndexError
+#          (constaté le 24/09/2026 sur un crop 1024×1024). Bornes ramenées
+#          dans l'image ; le disque reste entier (marge d'anneau).
 # v2.31.3 : BUG DU SOLVEUR INTERNE — APPARIEMENT DIRECT/CROISÉ (jalon 56,
 #          retour réel d'Alain, 24/09/2026 : « l'astrométrie reste en attente
 #          sur un empilement M31 de 12 frames alors que les étoiles ne

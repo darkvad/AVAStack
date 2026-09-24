@@ -101,6 +101,17 @@ Source: "{#RepoRoot}\_diag_vote.py"; DestDir: "{app}"; Flags: ignoreversion
 ; Diagnostic d'appariement (v2.31.3) : ecart de CHAQUE etoile detectee a
 ; l'etoile de catalogue Gaia la plus proche, via le WCS vrai d'ASTAP.
 Source: "{#RepoRoot}\_diag_appariement.py"; DestDir: "{app}"; Flags: ignoreversion
+; Diagnostic d'ALIGNEMENT SOUS-PIXEL (v2.32.0) : verite terrain par appariement
+; mutuel d'etoiles (sans WCS), repartition SPATIALE du decalage, correlation de
+; phase comme second avis, ce que CHAQUE chemin de l'aligneur retourne (reste
+; mesure APRES application) et precision sur des decalages connus. C'est cet
+; outil qui a identifie le defaut ORB : le sous-pixel n'etait jamais corrige.
+Source: "{#RepoRoot}\_diag_align_precision.py"; DestDir: "{app}"; Flags: ignoreversion
+; Diagnostic des GAINS PHOTOMETRIQUES (v2.32.0) : etat des canaux, zero-points
+; Gaia et leur dispersion (fiabilite), effet REEL des gains sur la couleur du
+; fond, et decalage des etoiles ENTRE canaux (franges colorees).
+Source: "{#RepoRoot}\_diag_couleur_gains.py"; DestDir: "{app}"; Flags: ignoreversion
+
 ; veralux_core_headless.py : code tiers GPL-3.0-or-later (Riccardo Paterniti),
 ; copie tel quel (sa licence exige de transmettre le source a cote du binaire).
 Source: "{#RepoRoot}\veralux_core_headless.py"; DestDir: "{app}"; Flags: ignoreversion

@@ -195,6 +195,68 @@ class StarAligner:
             hi = lo + 1e-6
         return (np.clip((f - lo) / (hi - lo), 0, 1) * 255).astype(np.uint8)
 
+    def _raffiner_centroides(self, frame, M):
+        """RAFFINEMENT SOUS-PIXEL par centroïdes d'étoiles (jalon 57).
+
+        POURQUOI : ORB ne localise ses points qu'à ~0,5-1 px et le consensus
+        RANSAC (seuil 2 px) est alors gagné par l'IDENTITÉ dès que le décalage
+        est SOUS-PIXEL — le chemin ORB ne corrige donc PAS les petits décalages.
+        MESURÉ sur les couches réelles d'Alain (banc _diag_align_precision,
+        24/09/2026, M31 31 frames R+G+B) : pour un décalage R↔G de 0,573 px
+        (avec une échelle de 0,9998), ORB renvoyait Δ=(0,000, 0,000) —
+        laissant 0,17 à 0,40 px d'erreur résiduelle, soit des FRANGES colorées
+        rouge/cyan autour des étoiles (constat visuel d'Alain). Les mêmes
+        images estimées par CENTROÏDES d'étoiles laissent 0,02-0,04 px.
+
+        COMMENT : les centroïdes de la frame sont ramenés par `M` dans le
+        repère de la référence, appariés MUTUELLEMENT et serré (≤ 1,5 px),
+        puis une similitude (rotation + échelle + translation) est ré-estimée
+        sur ces seuls appariements incontestables. Échec ou trop peu
+        d'appariements → la matrice d'entrée est rendue INCHANGÉE (jamais de
+        régression). → (M, n_appariements) avec n = 0 si non raffiné.
+        """
+        if self.ref_pos is None or len(self.ref_pos) < INLIERS_ETOILES:
+            return M, 0
+        pos, _msg = _stars.detecter_positions(
+            canal_alignement(frame), max_etoiles=MAX_ALIGN_ETOILES)
+        if pos is None or len(pos) < INLIERS_ETOILES:
+            return M, 0
+        pos = np.asarray(pos, np.float32)
+        # Positions de la frame DANS le repère de la référence (par M) : les
+        # appariements « mutuels serrés » n'y sont cherchés que pour les
+        # correspondances sans ambiguïté (une étoile de chaque côté).
+        pc = cv2.transform(pos.reshape(-1, 1, 2), M)[:, 0, :]
+        d2 = np.hypot(pc[:, None, 0] - self.ref_pos[None, :, 0],
+                      pc[:, None, 1] - self.ref_pos[None, :, 1])
+        proche = d2.argmin(1)
+        dist = d2[np.arange(len(pc)), proche]
+        inverse = d2.T.argmin(1)
+        sel = (dist <= 1.5) & (inverse[proche] == np.arange(len(pc)))
+        if int(sel.sum()) < INLIERS_ETOILES:
+            return M, 0
+        src = pos[sel]
+        dst = np.asarray(self.ref_pos, np.float64)[proche[sel]].astype(np.float32)
+        M2, inl = cv2.estimateAffinePartial2D(src, dst, method=cv2.RANSAC,
+                                              ransacReprojThreshold=0.75,
+                                              maxIters=5000)
+        if M2 is None or inl is None or not _M_valide(M2):
+            return M, 0
+        m_inl = inl[:, 0].astype(bool)
+        if int(m_inl.sum()) < INLIERS_ETOILES:
+            return M, 0
+        # Contre-test GLOBAL (mêmes règles que les autres chemins) : le
+        # raffinement doit réunir des appariements mutuels à 2,5 px.
+        pc2 = cv2.transform(pos.reshape(-1, 1, 2), M2)[:, 0, :]
+        e2 = np.hypot(pc2[:, None, 0] - self.ref_pos[None, :, 0],
+                      pc2[:, None, 1] - self.ref_pos[None, :, 1])
+        pi = e2.argmin(1)
+        di = e2[np.arange(len(pc2)), pi]
+        inv2 = e2.T.argmin(1)
+        mutuel = (di <= 2.5) & (inv2[pi] == np.arange(len(pc2)))
+        if int(mutuel.sum()) < INLIERS_ETOILES:
+            return M, 0
+        return M2, int(mutuel.sum())
+
     def compute(self, frame):
         """→ (M 2x3, confiant)  M transforme la frame courante vers la référence."""
         # Jalon 21 (HOO/SHO) : TRIANGLES d'abord, ORB ÉCARTÉ (descripteurs de
@@ -231,6 +293,15 @@ class StarAligner:
             return self._sans_orb(frame, g)
         if int(inl.sum()) < self.min_inliers or not _M_valide(M):
             return self._sans_orb(frame, g)
+        # Jalon 57 : RAFFINEMENT SOUS-PIXEL par centroïdes d'étoiles — sans
+        # lui, ORB laisse 0,17-0,40 px d'erreur résiduelle et ne corrige RIEN
+        # sous le pixel (franges colorées entre couches, mesuré en réel le
+        # 24/09/2026). Le résultat n'est gardé que s'il est vérifié.
+        Mr, n_raff = self._raffiner_centroides(frame, M)
+        if n_raff:
+            self._last_t = (float(Mr[0, 2]), float(Mr[1, 2]))
+            self._noter(Mr, f"ORB+étoiles({n_raff})")
+            return Mr, True
         self._last_t = (float(M[0, 2]), float(M[1, 2]))
         self._noter(M, "ORB")
         return M, True

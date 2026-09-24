@@ -11,8 +11,28 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.31.3** (`avastack/__init__.py`),
-  branche `master` — **ÉTAPES 4 ET 5 LIVRÉES les 23/09/2026 (jalon 56)** :
+- **Version stable de référence : AVAStack v2.32.0** (`avastack/__init__.py`),
+  branche `master` — **ALIGNEMENT SOUS-PIXEL ENTRE COUCHES livré le
+  24/09/2026 (jalon 57)** : constat réel d'Alain (« astrométrie et Gaia
+  bons, mais image pas correcte » — franges rouge/cyan autour des étoiles,
+  empilement M31 R+G+B de 31 frames). Mesure sur les fichiers réels :
+  la couche ROUGE sort décalée de 0,573 px (dX −0,207±0,231 ; dY
+  −0,534±0,116 ; 271 appariements mutuels d'étoiles) quand B/G sont alignés
+  à 0,049 px, et la transformation R→G porte une ÉCHELLE de 0,9998 (pas une
+  simple translation). Les canaux et le composite étant écrits depuis la
+  MÊME grille, la cause est dans l'empilement : **le chemin ORB ne PEUT PAS
+  corriger le sous-pixel** (points clés localisés à ~0,5-1 px → l'IDENTITÉ
+  gagne le consensus RANSAC à 2 px : mesuré Δ=(0,000, 0,000) pour un
+  décalage réel de 0,573 px, 0,17-0,40 px d'erreur résiduelle sur des
+  décalages imposés de 0,15 à 1,5 px). **Correctif** : raffinement par
+  CENTROÏDES d'étoiles après ORB (`_raffiner_centroides`, appariement
+  mutuel ≤ 1,5 px + similitude RANSAC 0,75 px + contre-test 2,5 px ;
+  échec → matrice d'ORB inchangée), vérifié en réel : reste
+  (−0,019, −0,020) px, méthode affichée « ORB+étoiles(46) », latence
+  213 → 309 ms par frame. Bug réel corrigé au passage :
+  `photometrie.flux_ouverture` plantait (IndexError) sur une étoile proche
+  d'un bord. Outil embarqué `_diag_align_precision.py`.
+- **ÉTAPES 4 ET 5 LIVRÉES les 23/09/2026 (jalon 56)** :
   - **étape 4, MESURE** (v2.30.0) : étoiles de l'empilement appariées
     MUTUELLEMENT au catalogue Gaia (positions + G) via le WCS résolu/propagé,
     ZÉRO-POINT par bande (`m_G + 2,5·log10(flux) = ZP(bande)`) — module
@@ -74,13 +94,30 @@ dans le changelog du source et l'historique git.)
   n'étaient pas hermétiques** (ils lisaient le vrai config.json, qui contient
   astrométrie cochée + indices → de vraies résolutions pendant les bancs) —
   tous corrigés.
-- **Tâche en cours** : **étape 6 — validation Siril + test réel multibande**
-  (vérifier que les en-têtes WCS écrits sont relus par Siril, et juger les
-  gains photométriques sur une vraie série multi-filtres d'Alain).
+- **Tâche en cours** : **jalon 57 — vérification en réel du correctif
+  d'alignement** (l'utilisateur doit RE-EMPILER ses couches M31 avec la
+  v2.32.0 : la ligne d'état doit afficher « ORB+étoiles(N) » et les franges
+  rouge/cyan autour des étoiles doivent disparaître ; si les brutes R/G/B de
+  la session sont retrouvées, on mesurera le décalage résiduel entre canaux
+  directement sur les empilements rejoués). Reste ouvert : décider si les
+  couches DÉJÀ empilées (avec franges) méritent une correction a posteriori
+  (translation mesurée par appariement d'étoiles à la composition) — utile
+  seulement si l'utilisateur ne peut pas ré-empiler.
+- **Tâche en cours (jalon 56)** : **étape 6 — validation Siril + test réel
+  multibande** (vérifier que les en-têtes WCS écrits sont relus par Siril, et
+  juger les gains photométriques sur une vraie série multi-filtres d'Alain).
+  POINT CLARIFIÉ le 24/09/2026 : la SPCC de Siril exige, elle, les COURBES DE
+  TRANSMISSION des filtres ET la RÉPONSE DU CAPTEUR (profils fournis par
+  Siril) pour prédire le flux attendu par bande ; AVAStack ne mesure qu'une
+  photométrie RELATIVE contre Gaia G (aucun spectre, aucune transmission) —
+  c'est pourquoi les gains Gaia refroidissent l'image (dispersion des
+  zéro-points croissante vers le bleu : R 0,162 / G 0,233 / B 0,376 mag).
 - **Prochaine étape** : étape 6 (validation Siril/ASTAP sur les fichiers
   écrits, puis test réel HOO/SHO ou LRGB avec la case des gains cochée).
   Option ouverte : la SPCC ABSOLUE (spectres Gaia xp_sampled × transmissions
-  filtre/capteur de la base Siril) par-dessus cette calibration relative.
+  filtre/capteur de la base Siril) par-dessus cette calibration relative —
+  à décider : embarquer la base Siril de transmission, ou s'en tenir à la
+  mesure relative avec un garde-fou de fiabilité (dispersion des ZP).
 
 ## Statuts CLAUDE.md
 
