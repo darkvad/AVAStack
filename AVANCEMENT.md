@@ -11,7 +11,7 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.34.0** (`avastack/__init__.py`),
+- **Version stable de référence : AVAStack v2.34.1** (`avastack/__init__.py`),
   branche `master` — **SPCC ABSOLUE BRANCHÉE ET VALIDÉE CONTRE SIRIL (jalon 58,
   24/09/2026)** :
   - **VALIDATION CROISÉE RÉUSSIE** : à partir du log SPCC réel de Siril fourni
@@ -53,6 +53,24 @@ dans le changelog du source et l'historique git.)
     creuser** : les couches fournies ont un **décalage R-G de 0,56 px** (B-G :
     0,07 px) — ré-empiler avec l'alignement sous-pixel du jalon 57 avant toute
     nouvelle mesure.
+  - **PIÈGE MAJEUR DÉCOUVERT (24/09/2026, 2e log Siril)** : le retrait de
+    gradient ne change RIEN aux pentes de Siril (0,6459 → 0,6456 ; 1,0459 →
+    1,0449) → la divergence des pentes n'était pas le gradient. En revanche,
+    `m31_stacl_lineaire.fits` (l'image que Siril a réellement analysée) **n'est
+    PAS** la somme de `canal_R/G/B.fit` : ses canaux portent des gains
+    implicites R/G 0,9651 et B/G 1,2022 — soit exactement les **gains Gaia
+    relatifs du jalon 56** (×0,9451 / ×1,1530) : la sauvegarde linéaire avait
+    été faite **case « Gains photométriques (Gaia) » cochée**. Siril a donc
+    calibré une image DÉJÀ refroidie par nos gains, et ses K « réchauffent »
+    simplement pour annuler ces gains. Leçon pour toute comparaison future :
+    **sauvegarder le linéaire avec les gains Gaia DÉCOCHÉS**. Sur l'image
+    équilibrée + le protocole exact de Siril (disque 10,6 / anneau
+    10,6→20,6) nos pentes remontent à 0,76 / 0,90 (contre 0,65 / 1,05) : la
+    convergence est partielle, le résidu venant de la méthode de photométrie
+    (Siril : centroïdes PSF, exclusion fine des étoiles, fond par canal) et
+    peut-être des profils de filtres de la base (qualité 2/5) face aux filtres
+    réels d'Alain. **Protection ajoutée dans l'UI** : quand la SPCC est active,
+    les gains Gaia sont ignorés et la ligne des gains le DIT.
 
 - **Historique immédiat** : v2.33.0 (veille, même jalon 58) apportait les
   FONDATIONS — `catalogues/spcc_db.py` (lecture de la base SPCC de Siril :

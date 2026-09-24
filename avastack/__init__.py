@@ -14,9 +14,34 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.34.0"
+AVASTACK_VERSION = "2.34.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.34.1 : ENQUÊTE SIRIL CLOSE (2e log) — la divergence des pentes venait de
+#          L'IMAGE, pas du modèle ; protection UI SPCC / gains Gaia.
+#          • 2e log SPCC de Siril (après retrait de gradient) : ses pentes ne
+#            bougent PAS (0,6459 → 0,6456 ; 1,0459 → 1,0449) → la divergence
+#            n'était pas le gradient ;
+#          • l'image qu'il analyse (`m31_stacl_lineaire.fits`) N'EST PAS la
+#            somme de `canal_R/G/B.fit` : elle porte les GAINS GAIA de la
+#            session (rapports mesurés R/G 0,9651 et B/G 1,2022 ≈ ×0,9451 /
+#            ×1,1530 du jalon 56) — la sauvegarde avait été faite case « Gains
+#            photométriques (Gaia) » COCHÉE. Siril calibrait une image DÉJÀ
+#            refroidie par nos gains et ses K la réchauffent pour annuler ces
+#            gains : les deux jeux n'étaient pas comparables. Règle pour toute
+#            comparaison à venir : sauvegarder le linéaire avec les gains Gaia
+#            DÉCOCHÉS ;
+#          • protocole EXACT de Siril rejoué (disque 10,6 / anneau 10,6→20,6)
+#            sur l'image équilibrée : nos pentes 0,756 / 0,899 contre 0,646 /
+#            1,046 → écart ~15 %, du même ordre que SA dispersion (0,131 /
+#            0,151 mag) : les deux mesures sont compatibles à ses barres
+#            d'erreur, le résidu venant de la méthode (centroïdes PSF,
+#            exclusion de 2081 étoiles, fond par canal), pas du modèle ;
+#          • TEST DE SENSIBILITÉ aux bandes (7 jeux de filtres, jusqu'aux
+#            Johnson-Cousins) : K_R ne varie que de 0,748 à 0,775 → les profils
+#            de la base (qualité 2/5) ne sont PAS le maillon faible ;
+#          • UI : quand la SPCC est active, la ligne des gains annonce
+#            « REMPLACÉS par la SPCC » (aucune double correction silencieuse).
 # v2.34.0 : SPCC ABSOLUE BRANCHÉE + VALIDATION CROISÉE AVEC SIRIL RÉUSSIE
 #          (jalon 58, suite ; demande d'Alain : « une vraie correction de
 #          couleur comme Siril et son SPCC »).
@@ -79,6 +104,30 @@ AVASTACK_VERSION = "2.34.0"
 #          le log Siril en regard. Découverte au passage : les couches fournies
 #          ont un décalage R-G de 0,56 px (B-G : 0,07 px) — d'où les franges
 #          rouge/cyan : à ré-empiler avec l'alignement sous-pixel du jalon 57.
+#          SUITE DE L'ENQUÊTE (2e log Siril, 24/09/2026) :
+#          • le retrait de gradient ne change RIEN à ses pentes (0,6459 →
+#            0,6456 ; 1,0459 → 1,0449) : la divergence n'était pas le gradient ;
+#          • l'image qu'il analyse (`m31_stacl_lineaire.fits`) N'EST PAS la
+#            somme de `canal_R/G/B.fit` : elle porte les GAINS GAIA de la
+#            session (rapport mesuré R/G 0,9651 et B/G 1,2022 ≈ ×0,9451 /
+#            ×1,1530 du jalon 56) — la sauvegarde avait été faite case
+#            « Gains photométriques (Gaia) » COCHÉE. Siril calibrait donc une
+#            image DÉJÀ refroidie par nos gains, et ses K la « réchauffent »
+#            pour annuler ces gains : les deux jeux de coefficients ne sont pas
+#            comparables. PROTECTION UI : quand la SPCC est active, les gains
+#            Gaia sont ignorés et la ligne des gains le dit explicitement ;
+#          • en recréant l'image équilibrée et en appliquant le protocole exact
+#            de Siril (disque 10,6 / anneau 10,6→20,6), nos pentes remontent à
+#            0,756 / 0,899 contre 0,646 / 1,046 : écart ~15 %, du même ordre
+#            que SA dispersion (0,131 / 0,151 mag) — les deux mesures sont donc
+#            compatibles à ses propres barres d'erreur, le résidu venant de la
+#            méthode (centroïdes PSF, exclusion de 2081 étoiles, fond par
+#            canal) et non du modèle ;
+#          • TEST DE SENSIBILITÉ (mêmes données, 7 jeux de filtres différents,
+#            jusqu'aux Johnson-Cousins) : K_R ne varie que de 0,748 à 0,775
+#            (B/R ×1,290 à ×1,337) → les profils de la base (qualité 2/5) ne
+#            sont PAS le maillon faible : la correction est robuste au choix
+#            des bandes, elle est fixée par la référence de blanc.
 # v2.33.0 : SPCC ABSOLUE « à la Siril » — FONDATIONS + BUG MAJEUR DU DÉCODAGE
 #          DES SPECTRES GAIA CORRIGÉ (jalon 58, demande d'Alain du 24/09/2026 :
 #          « je voulais une vraie correction de couleur comme Siril et son

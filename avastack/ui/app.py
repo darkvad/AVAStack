@@ -2138,6 +2138,7 @@ class App:
             self.spcc_couleur = ("#c98a00" if self.spcc.diag.get("avertissement")
                                  else "#1d7f1d")
             self.lbl_spcc.config(text=txt, foreground=self.spcc_couleur)
+            self._maj_photo_gains_vue()    # dit que les gains Gaia sont remplacés
             return
         self.lbl_spcc.config(text="SPCC : en attente de la mesure",
                              foreground="#c98a00")
@@ -2183,6 +2184,14 @@ class App:
             return
         gains = ", ".join(f"{b} ×{g:.4f}"
                           for b, g in sorted(self.photometrie.gains.items()))
+        # Jalon 58 : si la SPCC est active, ce sont SES coefficients qui sont
+        # écrits (elle prime) — le dire évite de croire à une double correction.
+        if self._spcc_actif and self.spcc is not None and self.spcc.valide:
+            self.lbl_photo_gains.config(
+                text=(f"Gains photométriques (Gaia) mesurés : {gains} — "
+                      "REMPLACÉS par la SPCC (couleurs absolues)"),
+                foreground="#c98a00")
+            return
         self.lbl_photo_gains.config(
             text=f"Gains photométriques appliqués : {gains}",
             foreground="#1d7f1d")
