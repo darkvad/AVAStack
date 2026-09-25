@@ -14,9 +14,45 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.37.1"
+AVASTACK_VERSION = "2.37.2"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.37.2 : LE CŒUR « CRAMÉ » EST UNE COUPE, PAS UN PARAMÈTRE. Constat d'Alain
+#   (25/09/2026) : « le cœur de M31 est vraiment cramé », DANS l'appli et pas
+#   seulement sur le PNG — et il étire en VeraLux, donc ce n'était pas un
+#   réglage d'étirement.
+#   MESURE QUI L'ÉTABLIT, sur ses propres empilements : la VUE n'est pas le
+#   fichier. Le fichier linéaire est ramené dans [0,1] par UN facteur global
+#   (`images.borner_lineaire` : AVASCALE = 13,12 sur sa M31 2.37.1, 15,27 sur sa
+#   115 frames), alors que le chemin d'étirement recevait l'image à l'échelle
+#   MÉMOIRE et la COUPAIT à 1,0 avant d'étirer. Profil du cœur par anneaux
+#   (0-10, 10-20, 20-30, 30-45, 45-60 px ; % du canal vert ; même fichier) :
+#       image mémoire (coupe à 1,0)   : 86,00 | 86,00 | 86,00 | 86,00 | 86,00
+#       fichier borné (facteur global): 85,83 | 78,67 | 73,12 | 67,37 | 62,61
+#   Tout ce qui dépasse 1,0 — le cœur ENTIER, 0,43 à 0,79 % de l'image — devenait
+#   UNE SEULE VALEUR : un disque blanc PLAT, sans le moindre dégradé, donc
+#   « cramé », alors que le fichier sauvegardé, lui, gardait son dégradé. D'où
+#   l'écart constaté entre ce qu'on voit dans l'appli et ce que contient le
+#   fichier.
+#   AUCUN paramètre VeraLux n'est en cause (mesuré sur son empilement : b de 2 à
+#   25, target_bg de 0,10 à 0,35, color_grip, shadow_convergence,
+#   convergence_power, logD forcé 2,0/4,0 → 0 pixel cramé dans TOUS les cas) :
+#   c'est bien la coupe, en amont du moteur, qui écrasait le cœur.
+#   CORRECTIF : `veralux.normaliser_lin()` — UN SEUL facteur GLOBAL (exactement
+#   la règle des sauvegardes linéaires, jamais par canal : linéarité, équilibre
+#   des couleurs et dégradé du cœur préservés), appliqué dans `etirer()` ET dans
+#   `DisplayProcessor.rendu_pleine_resolution` (vue « tel que vu », donc le
+#   PNG/TIFF aussi). Effets vérifiés : le rendu ne dépend PLUS de l'échelle
+#   arbitraire de l'empilement (etirer(x) == etirer(3·x) à 1,2e-06), le cœur
+#   retrouve son dégradé (0,00 point de % d'étendue avant → 18,8 à 23,2 points
+#   après sur ses deux fichiers) ; une image déjà dans [0,1] n'est PAS modifiée
+#   (aucun facteur retiré → rendu identique à un appel direct du moteur).
+#   Au passage, l'ancien `np.clip(..., out=img)` écrasait le tableau de
+#   l'APPELANT : `normaliser_lin` copie réellement, l'image reçue est intacte.
+#   BANC : `_test_coeur_crame_jalon64.py` (échelle, dégradé du cœur avant/après,
+#   non-régression sur image ≤ 1, entrée non modifiée, et ses deux empilements
+#   M31 réels à l'échelle mémoire).
+
 # v2.37.1 : LES AJOUTS RÉCENTS ENTRENT DANS LA CHAÎNE DE TRAITEMENT EXTERNE —
 #   demande d'Alain (25/09/2026) : « intégrer les derniers ajouts (SPCC,
 #   neutralisation, bruit chroma) dans la chaîne de traitement externe pour que

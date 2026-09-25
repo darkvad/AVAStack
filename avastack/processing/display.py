@@ -838,7 +838,11 @@ class DisplayProcessor:
         r = (reglages or {}).get
         stretch = r("stretch", self.stretch)
         if stretch == "veralux" and _veralux.moteur_disponible():
-            img = np.clip(img.astype(np.float32), 0.0, 1.0)
+            # v2.37.2 : mise à l'échelle GLOBALE (jamais une coupe à 1,0 : elle
+            # écrasait tout ce qui dépasse — le CŒUR de M31 entier — sur une
+            # seule valeur, donc un rendu PLAT, alors que le même étirement
+            # appliqué au fichier sauvegardé garde son dégradé).
+            img = _veralux.normaliser_lin(img)
             if r("vl_mode_res", self.vl_mode_res) == _veralux.MODE_LOG_D:
                 log_d = r("vl_log_d", self.vl_log_d)
             elif r("vl_log_d_resolu", self.vl_log_d_resolu) is not None:
