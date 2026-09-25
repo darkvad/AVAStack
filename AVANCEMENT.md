@@ -10,10 +10,39 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **Version stable de référence : AVAStack v2.36.1** (`avastack/__init__.py`),
-  branche `master` — **CORRECTIFS « FOND BLEU » (constats d'Alain, 25/09/2026 :
-  « le fichier tel que vu en png : PROBLEME, vachement bleu et ca me fait ca
-  depuis le début » + « il reste quand même pas mal de bruit bleu »)** :
+- **Version stable de référence : AVAStack v2.36.2** (`avastack/__init__.py`),
+  branche `master` — **CORRECTIF D'UI (constat d'Alain, 25/09/2026)** : « la case
+  Neutraliser la couleur du fond ne provoque pas une visualisation immédiate
+  quand on la coche et la décoche… ça semble attendre une nouvelle frame ». Même
+  bug que le jalon 39 (SCNR/SCNR doux/démagenta) : le callback posait l'état sans
+  appeler `_refresh_preview()`. Corrigé, et le banc
+  `_test_couleurs_immediat_jalon39.py` teste désormais les QUATRE cases couleur.
+- **MESURES SUR SES DEUX NOUVEAUX FICHIERS (v2.36.1, normalisation commune,
+  41 et 115 frames demandés / 51 et 123 empilées)** — `_diag_empilement_couleur.py` :
+  - grain (planchèr de bruit) : σ 0,000519 / 0,000579 / 0,000673 à 41 frames →
+    **0,000338 / 0,000375 / 0,000440** à 115 frames, soit **÷1,53** pour ×2,8 de
+    frames (théorie 1/√n = 1,67 ; l'écart vient du ciel lui-même 6 % plus sombre).
+    **LE GRAIN DU FOND S'AMÉLIORE ENFIN AVEC L'INTÉGRATION** : le rapport
+    fond/σ passe de ~63/57/49 (R/G/B) à ~91/82/70, soit **×1,44** — c'est
+    exactement ce que la normalisation commune devait apporter (avant, il restait
+    CONSTANT : 2,88 → 2,50 sur 28→111 frames) ;
+  - fond toujours **neutre** (R/G 0,9998 · B/G 0,9999) ✔ ;
+  - **grain résiduel COLORÉ et STABLE** : R/G 0,898→0,902 (équilibré) mais
+    **B/G 1,163→1,174** : le bleu reste ~17 % plus bruité que le vert. Cause
+    MESURÉE (comptes exacts) : une correction MULTIPLICATIVE amplifie le bruit du
+    canal qu'elle monte. Les gains appliqués (SPCC K=0,6223/0,7587/1,0000 +
+    équilibrage force 0,43 + offsets) donnent
+    (σ_R·K_R)/(σ_G·K_G) = 1,099 × 0,820 = 0,902 ✔ (mesuré 0,902) et
+    (σ_B·K_B)/(σ_G·K_G) = 0,891 × 1,318 = 1,174 ✔ (mesuré 1,174) : **c'est la SPCC
+    elle-même qui monte le grain bleu** (K_B/K_G = 1,32), pas la normalisation.
+    Sans correction, l'équilibre serait R/G 1,10 · B/G 0,89.
+  - **PISTE PROPOSÉE (non implémentée, à trancher par Alain)** : réduction du
+    BRUIT CHROMATIQUE (une case opt-in, juste avant l'étirement) — lisser les
+    composantes de CHROMA (espace YCrCb, cv2, déjà utilisé) sans toucher à la
+    luminance : le grésillement coloré du fond tombe, la couleur des objets
+    (étendue, donc basse fréquence) est préservée. Équivalent de ce que font
+    SCNR/chroma-NR de PixInsight, mais CIBLÉ sur le bruit au lieu d'un canal.
+- **Version stable précédente : AVAStack v2.36.1** — **CORRECTIFS « FOND BLEU »**
   - ① **LE PNG/TIFF EXPORTÉ AVAIT R ET B PERMUTÉS** (bug VIEUX, silencieux) :
     `save_image` donnait l'image RGB de l'appli à `cv2.imencode`, qui attend du
     BGR (`load_image` convertit à la lecture) → l'aller-retour interne restait

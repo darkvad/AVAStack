@@ -106,20 +106,20 @@ def case_immediat(var, attr, nom):
     """Coche la case, appelle SEULEMENT son callback : la résolution doit
     se faire sans frame ni autre réglage (c'était le bug du jalon 39),
     puis décoche et vérifie le retour immédiat."""
+    rappel = {"vl_scnr": app._on_vl_scnr,
+              "vl_scnr_doux": app._on_vl_scnr_doux,
+              "vl_demagenta": app._on_vl_demagenta,
+              "vl_neutre": app._on_vl_neutre}[attr]
     var.set(True)
     t0 = time.time()
-    app._on_vl_scnr() if attr == "vl_scnr" else (
-        app._on_vl_scnr_doux() if attr == "vl_scnr_doux"
-        else app._on_vl_demagenta())
+    rappel()
     instant = time.time() - t0
     obtenu = attendre_resultat(d, img)
     verifie(obtenu and instant < 2.0,
             f"{nom} cochée : chaîne soumise immédiatement et résultat "
             f"affiché ({instant * 1000:.0f} ms au callback)")
     var.set(False)
-    app._on_vl_scnr() if attr == "vl_scnr" else (
-        app._on_vl_scnr_doux() if attr == "vl_scnr_doux"
-        else app._on_vl_demagenta())
+    rappel()
     verifie(attendre_resultat(d, img),
             f"{nom} décochée : retour immédiat (sans frame ni réglage)")
 
@@ -131,6 +131,13 @@ print("[2] SCNR doux → idem")
 case_immediat(app.var_vl_scnr_doux, "vl_scnr_doux", "SCNR doux")
 print("[3] démagenta → idem")
 case_immediat(app.var_vl_demagenta, "vl_demagenta", "Démagenta")
+print("[3bis] neutralisation du fond (v2.36.1) → idem")
+# Constat d'Alain (25/09/2026) : « la case Neutraliser la couleur du fond ne
+# provoque pas une visualisation immédiate quand on la coche et la décoche,
+# contrairement aux autres corrections de couleur. Ça semble attendre une
+# nouvelle frame. » — même bug que le jalon 39 (le callback n'appelait pas
+# _refresh_preview), même correction, et ce banc le verrouille désormais.
+case_immediat(app.var_vl_neutre, "vl_neutre", "Neutralisation du fond")
 
 # ==================================== [4] _sync_vl_couleur_vue : état SEUL
 print("[4] _sync_vl_couleur_vue : aucune soumission en boucle, suit la vue")

@@ -14,9 +14,25 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.36.1"
+AVASTACK_VERSION = "2.36.2"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.36.2 : LA CASE « NEUTRALISER LA COULEUR DU FOND » AGIT IMMÉDIATEMENT
+#          (constat d'Alain, 25/09/2026 : « la case Neutraliser la couleur du fond
+#          ne provoque pas une visualisation immédiate quand on la coche et la
+#          décoche, contrairement aux autres corrections de couleur. Ca semble
+#          attendre une nouvelle frame »). C'est EXACTEMENT le bug corrigé au
+#          jalon 39 pour SCNR / SCNR doux / démagenta : le callback de la case ne
+#          faisait que POSER l'état (`_sync_vl_neutre_vue`, qui change la clé des
+#          réglages du solveur) sans appeler `_refresh_preview()` — la nouvelle
+#          chaîne n'était donc soumise au solveur qu'à la frame suivante ou au
+#          prochain réglage déclenchant un rendu. `_on_vl_neutre` appelle
+#          désormais `_refresh_preview()`, comme les autres cases couleur, et le
+#          banc `_test_couleurs_immediat_jalon39.py` (qui verrouillait déjà les
+#          trois autres cases) teste maintenant la quatrième : cochée → chaîne
+#          soumise immédiatement et résultat affiché, décochée → retour immédiat,
+#          sans nouvelle frame.
+#          Aucun autre changement : le reste de la v2.36.1 est inchangé.
 # v2.36.1 : LE FOND BLEU — DEUX CAUSES, DEUX CORRECTIFS (constats d'Alain,
 #          25/09/2026 : « le fichier tel que vu en png : PROBLEME, vachement bleu
 #          et ca me fait ca depuis le début je pense, donc problème vieux », puis

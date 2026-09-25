@@ -2607,8 +2607,14 @@ class App:
     def _on_vl_neutre(self):
         """Case « Neutraliser la couleur du fond » (v2.36.1) : le solveur
         VeraLux applique les gains AVANT l'étirement (le direct aussi :
-        `disp.vl_neutre_fond` entre dans la clé des réglages → re-résolution)."""
+        `disp.vl_neutre_fond` entre dans la clé des réglages → re-résolution).
+        Rend le rendu IMMÉDIATEMENT, comme les autres cases couleur : sans ce
+        `_refresh_preview()`, cocher/décocher la case n'avait AUCUN effet visible
+        avant la frame suivante — c'est exactement le bug du jalon 39, constaté de
+        nouveau par Alain le 25/09/2026 (« ne provoque pas une visualisation
+        immédiate… ça semble attendre une nouvelle frame »)."""
         self._sync_vl_neutre_vue()
+        self._refresh_preview()
 
     def _sync_vl_neutre_vue(self):
         """Vue « empilement » uniquement (même règle que SCNR/débruitage : en vue
