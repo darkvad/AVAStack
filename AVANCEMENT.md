@@ -10,48 +10,50 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **Version stable de référence : AVAStack v2.37.1** (`avastack/__init__.py`),
-  branche `master` — **LES AJOUTS RÉCENTS ENTRENT DANS LA CHAÎNE EXTERNE**
-  (demande d'Alain, 25/09/2026 : « intégrer les derniers ajouts (SPCC,
-  neutralisation, bruit chroma) dans la chaîne de traitement externe pour que je
-  puisse sortir une belle image à la fin du stack ») :
-  - la **SPCC y était déjà** (vérifié dans le code) : les corrections de couleur
-    du composite — gains EFFECTIFS SPCC/Gaia/manuels, équilibrage, recalage
-    « Linear Fit » — s'appliquent en mono (`mean()` corrigé, défaut) et en
-    composition (`corrections_couleur` après recomposition, `_run_external_compo`)
-    ; le traitement par couche (GraXpert gradient/débruitage) reste sur les
-    couches BRUTES (contrat jalon 54) → rien n'est appliqué deux fois ;
-  - **« 7. Neutraliser la couleur du fond »** (Cochée par défaut, comme la case
-    live) et **« 8. Réduire le bruit chromatique »** (opt-in, force = curseur
-    « Couleur live ») dans le cadre « Traitement externe », appliquées au même
-    rang que dans le live (… → SCNR → SCNR doux → démagenta → fond → chromatique) ;
-    gains de neutralisation annoncés dans le message final ; transport 12e/13e/
-    14e éléments du job (déballage tolérant : les jobs 11-tuple restent valides) ;
-    cases persistées (`ext_neutre_fond`, `ext_chroma`). Banc
-    `_test_couleurs_jalon22.py` [3bis]/[4] ; banc jalon 7 mis à jour (14-tuple).
-  - libellé corrigé au passage : sans source choisie, la case SPCC annonçait
-    « sans effet en MONO » alors que l'appli ne sait pas encore ce que sera la
-    source (constat d'Alain en rouvrant l'appli).
-- **Version stable précédente : AVAStack v2.37.0** — **RÉDUCTION DU BRUIT
-  CHROMATIQUE + MESURES RELANCÉES EN FIN DE STACK** :
-  - **(a) Réduction du bruit chromatique** (« un équivalent de SCNR pour le bleu »
-    — son mot ; sa réponse : « oui […] et case DÉCOCHÉE par défaut »). Nouvelle
-    primitive `couleurs.reduire_bruit_chroma(img, force)` : lissage de la CHROMA
-    en espace YCrCb (seuls Cr/Cb réécrits → luminance intacte, écart < 2e-06 sur
-    le fond), appliquée APRÈS la neutralisation et AVANT l'étirement, dans le
-    solveur VeraLux (10e/11e éléments du job) et dans le chemin « tel que vu » —
-    jamais dans la sortie 3 (linéaire). Case + curseur de force dans « Couleur
-    live », rendu immédiat. Banc `_test_chroma_nr_jalon63.py` (le grain coloré
-    tombe exactement de la part demandée : ×0,751/×0,502/×0,024 pour 0,25/0,5/1,0
-    ; couleur de l'objet préservée à 0,86 % ; le grain de LUMINANCE n'est pas
-    touché → le grain restant est GRIS, c'est le débruitage qui réduit son
-    amplitude).
-  - **(b) Refaire une mesure en fin de stack** (« en fin de stack, ça ne met rien
-    à jour : le libellé reste gris avec les anciennes valeurs ») : le worker
-    sortait par « lu is None » / « not empilement_on » AVANT `_astro_tour` /
-    `_photo_tour` / `_spcc_tour`. Désormais une case décochée/recochée pose une
-    DEMANDE servie sans frame (`_servir_demandes_sans_frame`) et le texte de la
-    mesure est poussé (`_pousser_rendu` rafraîchit les lignes de mesure).
+- **Version stable de référence : AVAStack v2.37.2** (`avastack/__init__.py`),
+  branche `master` — **LE CŒUR « CRAMÉ » ÉTAIT UNE COUPE À 1,0, PAS UN
+  PARAMÈTRE** (constat d'Alain, 25/09/2026 : « le cœur de M31 est vraiment
+  cramé », DANS l'appli et pas seulement sur le PNG — et il étire en VeraLux,
+  donc ce n'était aucun réglage / aucune technique à chercher) :
+  - **Mesure** : la VUE n'est pas le fichier. Le fichier linéaire est ramené dans
+    [0,1] par un facteur global (`borner_lineaire` : AVASCALE = 13,12 sur sa M31
+    2.37.1, 15,27 sur sa 115 frames) ; la chaîne d'étirement recevait, elle,
+    l'image à l'échelle MÉMOIRE et la **coupait à 1,0 avant d'étirer**. Profil du
+    cœur par anneaux (0-10 … 45-60 px, canal vert) : mémoire = **86,00 | 86,00 |
+    86,00 | 86,00 | 86,00** (PLAT = le « cramé ») contre fichier borné = **85,83 |
+    78,67 | 73,12 | 67,37 | 62,61** (dégradé conservé). Le cœur ENTIER (0,43 à
+    0,79 % de l'image) était écrasé sur une seule valeur.
+  - **Aucun paramètre VeraLux en cause** — mesuré sur son empilement : b 2→25,
+    target_bg 0,10→0,35, color_grip, shadow_convergence, convergence_power, logD
+    forcé 2,0/4,0 → **0 pixel cramé dans TOUS les cas** ; et son PNG de 23:12 est
+    à 0,9975 de corrélation avec son rendu de 17:49 (même image, étirement plus
+    dur) : c'est bien la coupe, en amont du moteur, qui écrasait le cœur.
+  - **Correctif** : `veralux.normaliser_lin()` (UN SEUL facteur GLOBAL, la règle
+    exacte des sauvegardes linéaires), utilisé par `etirer()` ET par
+    `rendu_pleine_resolution` (vue « tel que vu », donc PNG/TIFF). Le rendu ne
+    dépend plus de l'échelle arbitraire (`etirer(x) == etirer(3·x)` à 1,2e-06) ;
+    le dégradé du cœur revient (0,00 → 18,8 / 23,2 points d'étendue sur ses deux
+    fichiers) ; une image déjà ≤ 1 n'est pas modifiée (vérifié contre un appel
+    direct du moteur). Au passage, l'ancien `np.clip(..., out=img)` écrasait le
+    tableau de l'APPELANT — `normaliser_lin` copie réellement.
+  - **Preuve visuelle** (son fichier, échelle mémoire, planche avant/après) :
+    `C:\Astro\test\_diag_coeur_AVANT_APRES.jpg` — en haut un disque plat, en bas
+    le noyau, le dégradé et les bandes de poussière. Banc
+    `_test_coeur_crame_jalon64.py` (RÉUSSI).
+  - **VALIDÉ PAR ALAIN (25/09/2026, appli relancée)** : « Le cœur n'est
+    effectivement plus cramé ni plat ». Verdict annexe : cocher le débruitage
+    **NLM ne dégrade PAS** le cœur en vrai — contrairement à la mesure du banc
+    (écrasement à l'échelle mémoire, mesuré sur une image synthétique) : le
+    débruitage est donc LAISSÉ TEL QUEL (code gelé du 16/09/2026).
+
+- **Version stable précédente : AVAStack v2.37.1** — les ajouts récents (SPCC,
+  déjà présente dans la chaîne externe, plus les cases **« 7. Neutraliser la
+  couleur du fond »** — cochée par défaut — et **« 8. Réduire le bruit
+  chromatique »**) intégrés à la chaîne de traitement EXTERNE au même rang que
+  dans le live ; libellé SPCC corrigé. (Détails : changelog du source.)
+- **Avant cela : v2.37.0** — réduction du bruit chromatique (opt-in, force =
+  curseur « Couleur live ») et mesures (astrométrie/photométrie/SPCC) relançables
+  en fin de stack (case décochée/recochée = demande servie sans frame).
 - **MESURES SUR SES DEUX FICHIERS v2.36.1 (41 et 115 frames, 51/123 empilées)** —
   `_diag_empilement_couleur.py` :
   - grain (plancher de bruit) : σ 0,000519 / 0,000579 / 0,000673 à 41 frames →
@@ -131,10 +133,13 @@ dans le changelog du source et l'historique git.)
   grain de luminance (mesuré ×1,00) — seul le débruitage live (NLM, force 0,5)
   ou plus d'intégration le réduit. Sujet OUVERT si Alain veut aller plus loin
   (piste : débruiteur épargnant les étoiles, cf. CLAUDE.md).
-- **CLOS par cette session** : profils SPCC re-sélectionnés par Alain (« les
-  filtres sont bons » : R/G/B MiniCam8M + « Average Spiral Galaxy ») ✔ ; option
-  « normalisation commune des canaux » UTILISÉE et mesurée sur ses deux
-  empilements M31 (AVACOMPO dans les fichiers) ✔ ; fond bleu des PNG/FITS clos ✔ ;
+- **CLOS par cette session** : cœur de M31 VALIDÉ par Alain sur l'appli v2.37.2
+  (« Le cœur n'est effectivement plus cramé ni plat ») ✔ ; débruitage NLM essayé
+  par lui sans dégradation du cœur → laissé tel quel ✔ ; profils SPCC
+  re-sélectionnés par Alain (« les filtres sont bons » : R/G/B MiniCam8M +
+  « Average Spiral Galaxy ») ✔ ; option « normalisation commune des canaux »
+  UTILISÉE et mesurée sur ses deux empilements M31 (AVACOMPO dans les fichiers) ✔ ;
+  fond bleu des PNG/FITS clos ✔ ;
   PNG ↔ FITS concordants (à revérifier à la prochaine exportation « tel que vu »).
 
 ## Statuts CLAUDE.md
@@ -199,6 +204,21 @@ dans le changelog du source et l'historique git.)
   à la charge de l'agent, sans qu'Alain ait à le demander.
 
 ## Clôtures précédentes
+
+- 25/09/2026 (v2.37.2, 5545a9c) : SESSION « LE CŒUR CRAMÉ ÉTAIT UNE COUPE »,
+  VALIDÉE PAR ALAIN (« Le cœur n'est effectivement plus cramé ni plat »). Livré :
+  la CAUSE (le chemin d'étirement COUPAIT l'image vivante à 1,0 alors que
+  l'empilement vit à l'échelle mémoire 13-18 → le cœur entier sur une valeur
+  unique, disque plat, pendant que le fichier borné gardait son dégradé) et le
+  correctif `veralux.normaliser_lin()` (facteur GLOBAL, règle des sauvegardes
+  linéaires, appliqué à `etirer()` et à la vue « tel que vu ») ; au passage,
+  l'ancien `np.clip(out=img)` écrasait le tableau de l'appelant. Bancs : 64 dont
+  `_test_coeur_crame_jalon64.py` (nouveau) ; non-régression rejouée (jalon1/2/3/5,
+  jalon40, jalon63). Verdict annexe : cocher NLM ne dégrade PAS le cœur en vrai
+  (contrairement à la mesure du banc sur image synthétique) → débruitage laissé
+  tel quel. Installateur 2.37.2 reconstruit ; preuve visuelle conservée dans
+  `C:\Astro\test\_diag_coeur_AVANT_APRES.jpg`. Repli si régression : v2.37.1
+  (db0e870).
 
 - 25/09/2026 (v2.37.1, db0e870) : SESSION « FOND BLEU → GRAIN BLEU → CHAÎNE
   EXTERNE », VALIDÉE PAR ALAIN (« Ça me parait OK »). Livré : PNG/TIFF sans
