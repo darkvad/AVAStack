@@ -262,6 +262,71 @@ verifie(app2.ext_state == "ok"
         and np.allclose(app2.proc_full, src, atol=1e-6),
         "job 8-tuple (ancien format) : déballage tolérant, aucun retrait")
 
+# v2.37.1 : corrections PRÉ-ÉTIREMENT de la chaîne live dans la chaîne EXTERNE
+# (demande d'Alain, 25/09/2026 : « intégrer les derniers ajouts (SPCC,
+# neutralisation, bruit chroma) dans la chaîne de traitement externe ») — job
+# 14-tuple : 12e = neutralisation du fond, 13e = bruit chromatique, 14e = force.
+print("[3bis] chaîne externe : neutralisation du fond + bruit chromatique "
+      "(v2.37.1)")
+src_sp = image_test()
+app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5,
+                False, False, False, True, False, 0.5)
+app2._run_external(src_sp, 4, 0)
+verifie(app2.ext_state == "ok"
+        and np.allclose(app2.proc_full, coul.neutraliser_fond(src_sp),
+                        atol=1e-6),
+        "12e élément : neutralisation du fond seule → fond égalisé")
+app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5,
+                False, False, False, False, True, 0.75)
+app2._run_external(src_sp, 4, 0)
+verifie(app2.ext_state == "ok"
+        and np.allclose(app2.proc_full,
+                        coul.reduire_bruit_chroma(src_sp, force=0.75),
+                        atol=1e-6),
+        "13e/14e éléments : bruit chromatique à la FORCE transportée (0,75)")
+# Ordre de la chaîne complete, identique au live :
+# … → SCNR → démagenta → neutralisation → bruit chromatique.
+app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5,
+                True, True, True, True, True, 0.5)
+app2._run_external(src_sp, 5, 0)
+attendu = coul.reduire_bruit_chroma(
+    coul.neutraliser_fond(coul.demagenta(coul.scnr_doux(coul.scnr(src_sp)))),
+    force=0.5)
+verifie(app2.ext_state == "ok"
+        and np.allclose(app2.proc_full, attendu, atol=1e-6),
+        "chaîne complète : SCNR → SCNR doux → démagenta → fond → chromatique")
+verifie("fond neutralisé" not in (app2.ext_msg or ""),
+        "les gains de neutralisation ne sont PAS annoncés quand il n'y a rien à "
+        "corriger (fond déjà neutre après SCNR)")
+# …et ils le SONT sur un ciel réellement coloré (bleu de 3 %, comme sur ses
+# empilements M31) — même exigence d'honnêteté que « État des calculs » du live.
+ciel_bleu = np.empty((60, 80, 3), np.float32)
+ciel_bleu[..., 0] = 0.0310
+ciel_bleu[..., 1] = 0.0320
+ciel_bleu[..., 2] = 0.0330
+ciel_bleu += rng.normal(0, 0.0005, ciel_bleu.shape).astype(np.float32)
+app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5,
+                False, False, False, True, False, 0.5)
+app2._run_external(ciel_bleu, 3, 0)
+verifie("fond neutralisé" in (app2.ext_msg or ""),
+        f"ciel bleui : les gains appliqués sont ANNONCÉS dans le message "
+        f"(« {str(app2.ext_msg)[:70]}… »)")
+# Mono : les deux nouvelles étapes sont des no-op.
+app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5,
+                False, False, False, True, True, 1.0)
+app2._run_external(mono, 2, 0)
+verifie(app2.proc_full is not None
+        and np.allclose(app2.proc_full, mono, atol=1e-6),
+        "mono : neutralisation et bruit chromatique sont des no-op")
+# Job 11-tuple (format v2.36) : déballage tolérant → les deux étapes inactives.
+app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5,
+                True, False, True)
+app2._run_external(src_sp, 3, 0)
+verifie(app2.ext_state == "ok"
+        and np.allclose(app2.proc_full, coul.demagenta(coul.scnr(src_sp)),
+                        atol=1e-6),
+        "job 11-tuple (v2.36) : déballage tolérant, correctifs v2.37.1 inactifs")
+
 # ==================================== [4] persistance
 print("[4] persistance : clés explicites, restauration")
 app3 = ui.App(root)
@@ -269,6 +334,7 @@ app3.var_vl_scnr.set(True)
 app3.var_vl_scnr_doux.set(True)
 app3.var_vl_demagenta.set(True)
 app3.var_ext_scnr.set(True)
+app3.var_ext_chroma.set(True)          # v2.37.1 : opt-in
 sauvegardes = []
 ui.sauver_config = lambda d: sauvegardes.append(dict(d))
 app3._sauver_config_app()
@@ -280,6 +346,9 @@ verifie(c_cfg.get("vl_scnr") is True and c_cfg.get("vl_scnr_doux") is True
         and c_cfg.get("ext_demagenta") is False,
         "config : vl_scnr / vl_scnr_doux / vl_demagenta / ext_scnr / "
         "ext_scnr_doux / ext_demagenta écrits")
+verifie(c_cfg.get("ext_chroma") is True
+        and c_cfg.get("ext_neutre_fond") is True,
+        "config : ext_chroma (coché) et ext_neutre_fond (défaut) écrits")
 ui.CONFIG = dict(c_cfg)
 app4 = ui.App(root)
 verifie(app4.var_vl_scnr.get() is True
@@ -290,6 +359,13 @@ verifie(app4.var_vl_scnr.get() is True
         and app4.var_ext_demagenta.get() is False
         and app4.disp.vl_scnr is True,
         "config : cases restaurées (disp.vl_scnr actif)")
+verifie(app4.var_ext_chroma.get() is True
+        and bool(app4.var_ext_neutre.get()) is True,
+        "config : ext_chroma restauré, ext_neutre_fond reste coché")
+ui.CONFIG = {"ext_neutre_fond": False}       # décision d'Alain persistée
+app5 = ui.App(root)
+verifie(bool(app5.var_ext_neutre.get()) is False,
+        "config : ext_neutre_fond DÉCOCHÉ par l'utilisateur est respecté")
 
 # ==================================== [5] GraXpert : garde-fous (jalon 23b)
 print("[5] GraXpert live : canal mort refusé, sortie dégénérée rejetée")

@@ -109,7 +109,7 @@ verifie(len(app.cb_dn_methode["values"]) == 3,
 verifie(abs(app.var_dn_force.get() - 0.5) < 1e-9,
         "force externe par défaut 0.5")
 
-print("[4] _request_ext : ext_job 8-tuple, force injectée")
+print("[4] _request_ext : ext_job 14-tuple, force injectée")
 app.running = True                     # worker non lancé : aucun thread
 app.stacker = types.SimpleNamespace(n=5)
 app.var_dn_methode.set("Non-local means")
@@ -117,10 +117,14 @@ app.var_dn_force.set(0.4)
 app.var_ext_dn.set(True)
 app._request_ext()
 j = app.ext_job
-verifie(app.ext_request is True and isinstance(j, tuple) and len(j) == 11
-        and j[8] is False and j[9] is False and j[10] is False,
-        "ext_job est un 11-tuple (gx, cmd, dn, cmd_dn, bxt, cmd_bxt, "
-        "mode, force, scnr, scnr_doux, demagenta) — jalons 22/23")
+# v2.37.1 : 14-tuple — les 11 premiers éléments sont les jalons 22/23, puis la
+# neutralisation du fond, le bruit chromatique et la force de ce dernier.
+verifie(app.ext_request is True and isinstance(j, tuple) and len(j) == 14
+        and j[8] is False and j[9] is False and j[10] is False
+        and j[11] is True and j[12] is False and 0.0 <= j[13] <= 1.0,
+        "ext_job est un 14-tuple (gx, cmd, dn, cmd_dn, bxt, cmd_bxt, mode, "
+        "force, scnr, scnr_doux, demagenta, neutre_fond, chroma, force_chroma) "
+        "— jalons 22/23 + v2.37.1")
 verifie(j[2] is True and j[6] == "nlm" and abs(j[7] - 0.4) < 1e-9
         and j[3] == "",
         "mode local (nlm) + force transportés, commande vide (étape en mémoire)")

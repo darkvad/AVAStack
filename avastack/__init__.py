@@ -14,9 +14,44 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.37.0"
+AVASTACK_VERSION = "2.37.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.37.1 : LES AJOUTS RÉCENTS ENTRENT DANS LA CHAÎNE DE TRAITEMENT EXTERNE —
+#   demande d'Alain (25/09/2026) : « intégrer les derniers ajouts (SPCC,
+#   neutralisation, bruit chroma) dans la chaîne de traitement externe pour que
+#   je puisse sortir une belle image à la fin du stack ».
+#   - La SPCC y était DÉJÀ, et c'est vérifié dans le code : les corrections de
+#     couleur du composite (gains EFFECTIFS — SPCC/Gaia/manuels —, équilibrage
+#     des canaux, recalage « Linear Fit ») s'appliquent dans les DEUX chemins
+#     externes : en mono l'instantané est `stacker.mean()` (corrections=True,
+#     défaut) ; en composition, `_run_external_compo` applique
+#     `composition.corrections_couleur(..., gains=gains_effectifs(), ...)` au
+#     composite re-fait depuis les couches traitées (chantier 24/09/2026).
+#     Le traitement PAR COUCHE (GraXpert gradient/débruitage) reste, lui, sur les
+#     couches BRUTES (contrat du jalon 54) : rien n'est appliqué deux fois.
+#   - Les DEUX corrections pré-étirement de la chaîne live rejoignent la chaîne
+#     externe, au même rang qu'elle : « 7. Neutraliser la couleur du fond »
+#     (COCHÉE par défaut, comme la case live : c'est un défaut de rendu — l'ancre
+#     de VeraLux transforme 2 % d'écart de ciel en fond franc bleu) et
+#     « 8. Réduire le bruit chromatique » (OPT-IN, force = curseur « Couleur
+#     live »). Ordre : … → SCNR → SCNR doux → démagenta → neutralisation →
+#     bruit chromatique, juste avant l'étirement d'affichage ; les gains de
+#     neutralisation sont ANNONCÉS dans le message final, comme dans « État des
+#     calculs » du live.
+#     Transport : 12e, 13e et 14e éléments du job externe (déballage tolérant —
+#     les jobs 11-tuple des bancs antérieurs restent valides, correctifs
+#     inactifs) ; force CAPTURÉE au clic (le thread externe ne lit jamais une
+#     variable Tk) ; cases persistées (`ext_neutre_fond`, `ext_chroma`).
+#   - Vérifié par le banc `_test_couleurs_jalon22.py` [3bis] (les deux étapes
+#     seules, la force transportée, la chaîne complète dans l'ordre, l'annonce
+#     des gains sur un ciel bleui, les no-op mono, le job 11-tuple tolérant) et
+#     [4] (persistance) ; banc jalon 7 mis à jour (14-tuple).
+#   - Au passage, un libellé FAUX au lancement est corrigé (constat d'Alain :
+#     « je viens de rouvrir […] les filtres sont bons ») : sans source choisie,
+#     la case SPCC annonçait « sans effet en MONO » alors que l'application ne
+#     sait pas encore ce que sera la source — elle dit maintenant qu'elle attend
+#     la source, et ne parle de « sans effet » qu'une fois la source connue.
 # v2.37.0 : DEUX DEMANDES D'ALAIN (25/09/2026), sur ses empilements M31 v2.36.1.
 #   (a) RÉDUCTION DU BRUIT CHROMATIQUE — « un équivalent de SCNR pour le bleu »,
 #       son mot, et sa réponse à la proposition : « oui […] et case décochée par

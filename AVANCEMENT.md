@@ -10,8 +10,30 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **Version stable de référence : AVAStack v2.37.0** (`avastack/__init__.py`),
-  branche `master` — **DEUX DEMANDES D'ALAIN (25/09/2026)** :
+- **Version stable de référence : AVAStack v2.37.1** (`avastack/__init__.py`),
+  branche `master` — **LES AJOUTS RÉCENTS ENTRENT DANS LA CHAÎNE EXTERNE**
+  (demande d'Alain, 25/09/2026 : « intégrer les derniers ajouts (SPCC,
+  neutralisation, bruit chroma) dans la chaîne de traitement externe pour que je
+  puisse sortir une belle image à la fin du stack ») :
+  - la **SPCC y était déjà** (vérifié dans le code) : les corrections de couleur
+    du composite — gains EFFECTIFS SPCC/Gaia/manuels, équilibrage, recalage
+    « Linear Fit » — s'appliquent en mono (`mean()` corrigé, défaut) et en
+    composition (`corrections_couleur` après recomposition, `_run_external_compo`)
+    ; le traitement par couche (GraXpert gradient/débruitage) reste sur les
+    couches BRUTES (contrat jalon 54) → rien n'est appliqué deux fois ;
+  - **« 7. Neutraliser la couleur du fond »** (Cochée par défaut, comme la case
+    live) et **« 8. Réduire le bruit chromatique »** (opt-in, force = curseur
+    « Couleur live ») dans le cadre « Traitement externe », appliquées au même
+    rang que dans le live (… → SCNR → SCNR doux → démagenta → fond → chromatique) ;
+    gains de neutralisation annoncés dans le message final ; transport 12e/13e/
+    14e éléments du job (déballage tolérant : les jobs 11-tuple restent valides) ;
+    cases persistées (`ext_neutre_fond`, `ext_chroma`). Banc
+    `_test_couleurs_jalon22.py` [3bis]/[4] ; banc jalon 7 mis à jour (14-tuple).
+  - libellé corrigé au passage : sans source choisie, la case SPCC annonçait
+    « sans effet en MONO » alors que l'appli ne sait pas encore ce que sera la
+    source (constat d'Alain en rouvrant l'appli).
+- **Version stable précédente : AVAStack v2.37.0** — **RÉDUCTION DU BRUIT
+  CHROMATIQUE + MESURES RELANCÉES EN FIN DE STACK** :
   - **(a) Réduction du bruit chromatique** (« un équivalent de SCNR pour le bleu »
     — son mot ; sa réponse : « oui […] et case DÉCOCHÉE par défaut »). Nouvelle
     primitive `couleurs.reduire_bruit_chroma(img, force)` : lissage de la CHROMA

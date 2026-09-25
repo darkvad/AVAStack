@@ -508,6 +508,14 @@ class App:
             self.var_ext_scnr_doux.set(True)
         if c.get("ext_demagenta"):
             self.var_ext_demagenta.set(True)
+        # v2.37.1 : corrections pré-étirement de la chaîne externe. La
+        # neutralisation est COCHÉE par défaut → on ne la modifie que si la
+        # config porte la clé ET une valeur (même règle que vl_neutre_fond) ;
+        # le bruit chromatique, OPT-IN, n'est activé que s'il est demandé.
+        if "ext_neutre_fond" in c:
+            self.var_ext_neutre.set(bool(c.get("ext_neutre_fond")))
+        if c.get("ext_chroma"):
+            self.var_ext_chroma.set(True)
         for cle, var, mini, maxi in (
                 ("sigk", self.var_sigk, 0.5, 5.0),
                 ("target", self.var_target, 0.10, 0.45),
@@ -765,6 +773,10 @@ class App:
         c["ext_scnr"] = bool(self.var_ext_scnr.get())
         c["ext_scnr_doux"] = bool(self.var_ext_scnr_doux.get())
         c["ext_demagenta"] = bool(self.var_ext_demagenta.get())
+        # v2.37.1 : corrections pré-étirement de la chaîne externe (booléens
+        # EXPLICITES, comme toutes les autres cases).
+        c["ext_neutre_fond"] = bool(self.var_ext_neutre.get())
+        c["ext_chroma"] = bool(self.var_ext_chroma.get())
         c["sigk"] = self.var_sigk.get()
         # Jalon 42 : cadence d'empilement (mode dossier), en secondes.
         c["cadence_lecture"] = int(self.cadence_lecture)
@@ -1843,6 +1855,29 @@ class App:
         self.var_ext_demagenta = tk.BooleanVar(value=False)
         ttk.Checkbutton(box, text="6. Démagenta (négatif + SCNR)",
                         variable=self.var_ext_demagenta).pack(anchor="w")
+        # v2.37.1 — DEMANDE D'ALAIN (25/09/2026) : « intégrer les derniers ajouts
+        # (SPCC, neutralisation, bruit chroma) dans la chaîne de traitement
+        # externe pour que je puisse sortir une belle image à la fin du stack ».
+        # La SPCC y était DÉJÀ (les corrections de couleur — gains effectifs
+        # SPCC/Gaia/manuels, équilibrage, recalage « Linear Fit » — s'appliquent
+        # au composite dans les deux chemins : `mean()` corrigé en mono,
+        # `corrections_couleur` après recomposition en composition, cf.
+        # _run_external_compo). Les DEUX corrections pré-étirement de la chaîne
+        # live rejoignent donc la chaîne externe, au même rang qu'elle (… →
+        # démagenta → neutralisation du fond → réduction du bruit chromatique,
+        # juste avant l'étirement d'affichage) : c'est l'image que l'œil voit
+        # sous l'ancre de VeraLux, et c'est elle que l'utilisateur exporte.
+        self.var_ext_neutre = tk.BooleanVar(value=True)   # défaut COCHÉE, comme
+                                                          # la case live (défaut
+                                                          # de rendu, pas un
+                                                          # choix esthétique)
+        ttk.Checkbutton(box, text="7. Neutraliser la couleur du fond",
+                        variable=self.var_ext_neutre).pack(anchor="w")
+        self.var_ext_chroma = tk.BooleanVar(value=False)  # OPT-IN (choix d'Alain)
+        ttk.Checkbutton(box,
+                        text="8. Réduire le bruit chromatique (force = curseur "
+                             "« Couleur live »)",
+                        variable=self.var_ext_chroma).pack(anchor="w")
         ttk.Label(box, text="Placeholders : {input} · {output} (.fits complet) · "
                            "{outbase} (sans extension, GraXpert). « … » : choisir "
                            "l'exécutable, options conservées. Le débruitage "
@@ -2264,8 +2299,20 @@ class App:
                       "et lancez une calibration SPCC une fois"), foreground="#c98a00")
             return
         if not self._mode_compo:
+            # v2.37.1 : au LANCEMENT, aucune source n'est encore choisie —
+            # annoncer « sans effet en MONO » était FAUX (constat d'Alain du
+            # 25/09/2026 : il rouvre l'appli, ses profils sont bons, la case est
+            # cochée, et le libellé lui dit que ça ne sert à rien alors que
+            # l'appli ne SAIT PAS encore ce que sera la source).
+            if self.camera is None:
+                self.lbl_spcc.config(
+                    text=("SPCC : en attente de la source (il faut une source "
+                          "« composition » multi-dossiers R/G/B)"),
+                    foreground="#c98a00")
+                return
             self.lbl_spcc.config(
-                text="SPCC : sans effet en MONO (il faut un composite R/G/B)",
+                text=("SPCC : sans effet sur cette source (il faut une source "
+                      "« composition » multi-dossiers R/G/B)"),
                 foreground="#c98a00")
             return
         # Contrôle IMMÉDIAT des profils choisis (constat réel : « Filtre R =
@@ -4221,7 +4268,9 @@ class App:
         if not (self.var_ext_graxpert.get() or self.var_ext_dn.get()
                 or self.var_ext_bxt.get() or self.var_ext_scnr.get()
                 or self.var_ext_scnr_doux.get()
-                or self.var_ext_demagenta.get()):
+                or self.var_ext_demagenta.get()
+                or self.var_ext_neutre.get()            # v2.37.1
+                or self.var_ext_chroma.get()):          # v2.37.1
             messagebox.showinfo("Traitement externe",
                                 "Cochez au moins un traitement.")
             return
@@ -4247,7 +4296,15 @@ class App:
                         # SCNR doux (bruit seul), démagenta.
                         self.var_ext_scnr.get(),
                         self.var_ext_scnr_doux.get(),
-                        self.var_ext_demagenta.get())
+                        self.var_ext_demagenta.get(),
+                        # v2.37.1 : corrections PRÉ-ÉTIREMENT de la chaîne live
+                        # (12e/13e éléments + la force en 14e) — déballage
+                        # tolérant côté thread de traitement. La force est
+                        # CAPTURÉE ici (curseur « Couleur live ») : le thread
+                        # externe ne lit jamais une variable Tk.
+                        self.var_ext_neutre.get(),
+                        self.var_ext_chroma.get(),
+                        float(self.disp.vl_chroma_force))
         self.ext_request = True
         self._set_ext_msg("Traitement demandé…", state="busy")
         self.btn_ext.config(state="disabled")
@@ -4328,6 +4385,16 @@ class App:
                 else False
             dm_actif = bool(self.ext_job[10]) if len(self.ext_job) > 10 \
                 else False
+            # v2.37.1 : corrections pré-étirement de la chaîne LIVE (12e, 13e et
+            # 14e éléments du job — déballage tolérant : les jobs antérieurs n'en
+            # ont pas → inactives). Ordre d'application identique au live :
+            # … → démagenta → neutralisation du fond → réduction du bruit
+            # chromatique, juste avant l'étirement d'affichage.
+            nf_ext = bool(self.ext_job[11]) if len(self.ext_job) > 11 else False
+            chroma_ext = bool(self.ext_job[12]) if len(self.ext_job) > 12 \
+                else False
+            force_chroma_ext = (float(self.ext_job[13])
+                                if len(self.ext_job) > 13 else 0.5)
             steps = []
             if use_gx:
                 steps.append(("GraXpert gradient", "cmd", cmd_gx))
@@ -4453,6 +4520,22 @@ class App:
                 img = couleurs_mod.scnr_doux(img)
             if dm_actif:
                 img = couleurs_mod.demagenta(img)
+            # v2.37.1 : NEUTRALISATION DU FOND puis RÉDUCTION DU BRUIT
+            # CHROMATIQUE — les deux corrections pré-étirement de la chaîne live,
+            # au même rang qu'elle (elles corrigent ce que l'ANCRE de VeraLux
+            # amplifie ensuite : sa soustraction transforme 2 % d'écart de ciel
+            # en un fond franc bleu, et les gains multiplicatifs — SPCC en tête —
+            # amplifient le grain du canal qu'ils montent). Gains ANNONCÉS dans
+            # le message final, comme dans « État des calculs » du live.
+            gains_fond_ext = None
+            if nf_ext:
+                gains_fond_ext = couleurs_mod.gains_fond(img)
+                if gains_fond_ext is not None \
+                        and not np.allclose(gains_fond_ext, 1.0, atol=1e-4):
+                    img = couleurs_mod.neutraliser_fond(img)
+            if chroma_ext:
+                img = couleurs_mod.reduire_bruit_chroma(
+                    img, force=force_chroma_ext)
             if session != self._session:             # session relancée entre-temps
                 return
             self.proc_full = img                     # pleine résolution (sauvegarde)
@@ -4463,8 +4546,13 @@ class App:
                                  interpolation=cv2.INTER_AREA)
             self.proc_show = img                     # version allégée (affichage)
             self.proc_new = True
+            detail_fond = ""
+            if gains_fond_ext is not None \
+                    and not np.allclose(gains_fond_ext, 1.0, atol=1e-4):
+                detail_fond = (" · fond neutralisé (R %.4f / G %.4f / B %.4f)"
+                               % gains_fond_ext)
             self._set_ext_msg(f"Traité à {time.strftime('%H:%M:%S')} "
-                              f"({n_frames} frames)", state="ok")
+                              f"({n_frames} frames){detail_fond}", state="ok")
         except Exception as e:
             self._set_ext_msg(f"Erreur : {e}", state="error")
         finally:
@@ -4492,6 +4580,13 @@ class App:
                 else False
             dm_actif = bool(self.ext_job[10]) if len(self.ext_job) > 10 \
                 else False
+            # v2.37.1 : corrections pré-étirement de la chaîne live (12e/13e/14e
+            # éléments — voir _run_external ; déballage tolérant).
+            nf_ext = bool(self.ext_job[11]) if len(self.ext_job) > 11 else False
+            chroma_ext = bool(self.ext_job[12]) if len(self.ext_job) > 12 \
+                else False
+            force_chroma_ext = (float(self.ext_job[13])
+                                if len(self.ext_job) > 13 else 0.5)
             tmp = tempfile.mkdtemp(prefix="avastack_compo_")
             journal = os.path.join(tmp, "outils_sortie.txt")
             n_etapes = ((len(canaux) if use_gx else 0)
@@ -4556,6 +4651,18 @@ class App:
                 img = couleurs_mod.scnr_doux(img)
             if dm_actif:
                 img = couleurs_mod.demagenta(img)
+            # v2.37.1 : neutralisation du fond puis réduction du bruit
+            # chromatique (chaîne live) — sur le COMPOSITE re-fait, comme les
+            # SCNR ; les couches restent brutes (contrat jalon 54).
+            gains_fond_ext = None
+            if nf_ext:
+                gains_fond_ext = couleurs_mod.gains_fond(img)
+                if gains_fond_ext is not None \
+                        and not np.allclose(gains_fond_ext, 1.0, atol=1e-4):
+                    img = couleurs_mod.neutraliser_fond(img)
+            if chroma_ext:
+                img = couleurs_mod.reduire_bruit_chroma(
+                    img, force=force_chroma_ext)
             if session != self._session:      # session relancée entre-temps
                 return
             self.proc_full = img
@@ -4566,6 +4673,10 @@ class App:
                                  interpolation=cv2.INTER_AREA)
             self.proc_show = img
             self.proc_new = True
+            if gains_fond_ext is not None \
+                    and not np.allclose(gains_fond_ext, 1.0, atol=1e-4):
+                msgs.append("fond neutralisé (R %.4f / G %.4f / B %.4f)"
+                            % gains_fond_ext)
             detail = (" ; ".join(msgs) + " — ") if msgs else ""
             self._set_ext_msg(f"{detail}Traité par couche à "
                               f"{time.strftime('%H:%M:%S')} ({n_frames} "
