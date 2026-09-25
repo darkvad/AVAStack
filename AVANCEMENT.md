@@ -45,6 +45,12 @@ dans le changelog du source et l'historique git.)
     **NLM ne dégrade PAS** le cœur en vrai — contrairement à la mesure du banc
     (écrasement à l'échelle mémoire, mesuré sur une image synthétique) : le
     débruitage est donc LAISSÉ TEL QUEL (code gelé du 16/09/2026).
+  - **VALIDÉE AUSSI, dans la foulée, par Alain** : la **chaîne EXTERNE
+    complète** sur sa M31 (GraXpert gradient + débruitage par couche, BXT, puis
+    cases 7 « neutraliser la couleur du fond » et 8 « réduire le bruit
+    chromatique ») — son mot : « validée (pour le moment) » (il la retestera sur
+    d'autres cibles). Fichiers produits : `m31_traite_externe_lineaire.fits` et
+    `m31_traite_externe_etire.fits/png/tif` dans `C:\Astro\test`.
 
 - **Version stable précédente : AVAStack v2.37.1** — les ajouts récents (SPCC,
   déjà présente dans la chaîne externe, plus les cases **« 7. Neutraliser la
@@ -123,20 +129,16 @@ dans le changelog du source et l'historique git.)
 
 ## En attente / prochaine session
 
-- **Alain teste la chaîne EXTERNE complète** sur sa M31 (GraXpert gradient +
-  débruitage PAR COUCHE, BXT, puis cases **7** « Neutraliser la couleur du fond »
-  — cochée par défaut — et **8** « Réduire le bruit chromatique ») et juge : la
-  neutralisation par défaut est-elle utile/suffisante sur la version traitée ?
-  la force 0,5 du bruit chromatique est-elle trop douce (curseur « Couleur
-  live ») ?
 - **Grain GRIS résiduel** : la réduction du bruit chromatique ne touche PAS le
   grain de luminance (mesuré ×1,00) — seul le débruitage live (NLM, force 0,5)
   ou plus d'intégration le réduit. Sujet OUVERT si Alain veut aller plus loin
   (piste : débruiteur épargnant les étoiles, cf. CLAUDE.md).
 - **CLOS par cette session** : cœur de M31 VALIDÉ par Alain sur l'appli v2.37.2
-  (« Le cœur n'est effectivement plus cramé ni plat ») ✔ ; débruitage NLM essayé
-  par lui sans dégradation du cœur → laissé tel quel ✔ ; profils SPCC
-  re-sélectionnés par Alain (« les filtres sont bons » : R/G/B MiniCam8M +
+  (« Le cœur n'est effectivement plus cramé ni plat ») ✔ ; **chaîne EXTERNE
+  complète VALIDÉE** par lui dans la foulée (« validée pour le moment ») ✔ ;
+  débruitage NLM essayé par lui sans dégradation du cœur → laissé tel quel ✔ ;
+  profils SPCC re-sélectionnés par Alain
+  (« les filtres sont bons » : R/G/B MiniCam8M +
   « Average Spiral Galaxy ») ✔ ; option « normalisation commune des canaux »
   UTILISÉE et mesurée sur ses deux empilements M31 (AVACOMPO dans les fichiers) ✔ ;
   fond bleu des PNG/FITS clos ✔ ;
@@ -216,9 +218,11 @@ dans le changelog du source et l'historique git.)
   `_test_coeur_crame_jalon64.py` (nouveau) ; non-régression rejouée (jalon1/2/3/5,
   jalon40, jalon63). Verdict annexe : cocher NLM ne dégrade PAS le cœur en vrai
   (contrairement à la mesure du banc sur image synthétique) → débruitage laissé
-  tel quel. Installateur 2.37.2 reconstruit ; preuve visuelle conservée dans
-  `C:\Astro\test\_diag_coeur_AVANT_APRES.jpg`. Repli si régression : v2.37.1
-  (db0e870).
+  tel quel. Sa **chaîne EXTERNE complète** (GraXpert + BXT + cases 7/8) VALIDÉE
+  dans la foulée (« pour le moment »). Installateur 2.37.2 reconstruit ; les
+  fichiers de diagnostic de la séance (dont la planche avant/après) ont été
+  supprimés à sa demande — la preuve reste reproductible par le banc. Repli si
+  régression : v2.37.1 (db0e870).
 
 - 25/09/2026 (v2.37.1, db0e870) : SESSION « FOND BLEU → GRAIN BLEU → CHAÎNE
   EXTERNE », VALIDÉE PAR ALAIN (« Ça me parait OK »). Livré : PNG/TIFF sans
