@@ -10,8 +10,31 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **Version stable de référence : AVAStack v2.35.2** (`avastack/__init__.py`),
-  branche `master` — **CORRECTIFS v2.35.2 (constats d'Alain, 25/09/2026)** :
+- **Version stable de référence : AVAStack v2.36.0** (`avastack/__init__.py`),
+  branche `master` — **OPTION « NORMALISATION COMMUNE DES CANAUX » (demande
+  d'Alain, 25/09/2026)** : « ce bruit, qu'on utilise SPCC ou pas, est présent ;
+  plus on empile, plus VeraLux tire sur l'étirement ». Mesure sur son empilement
+  M31 : l'empilement est CORRECT (grain ÷2,2 pour ×4 de frames) mais le **fond du
+  composite ne s'améliore pas** (fond/σ 2,88 à 28 frames → 2,50 à 111) et son
+  grain est **coloré** (R/G 0,66 · B/G 1,45). CAUSE : `composer()` calait CHAQUE
+  rôle sur SES percentiles, et le percentile bas est toujours ~2,8 σ sous le ciel
+  → le niveau du fond du composite était proportionnel au bruit du canal (donc
+  l'étirement compensait, et le grain du fond restait identique à toute
+  profondeur). **Case « Normalisation commune des canaux » (DÉCOCHÉE par
+  défaut** — cadre « Composition multi-filtres ») : cochée, les trois rôles
+  partagent l'ÉCHELLE du rôle du VERT et aucun point noir n'est soustrait → le
+  fond garde son niveau ET sa couleur physiques, son grain s'améliore enfin en
+  1/√n et redevient gris ; les coefficients SPCC (des ratios mesurés sur les
+  COUCHES) s'appliquent alors sur la base où ils ont été mesurés. **À TESTER PAR
+  ALAIN** (il l'a demandé : « on testera après ») — en RGB d'abord, sur le même
+  jeu que le diagnostic, en comparant case cochée/décochée sur les mêmes frames.
+  Repères attendus : grain du fond PLUS FIN quand on empile (la différence se voit
+  sur ~60-120 frames), grain GRIS ; le fond pouvant rester coloré (c'est
+  physique) → le neutraliser avec l'équilibrage des canaux ou le recalage
+  colorimétrique. Banc : `_test_norm_commune_jalon61.py` (grain/fond ×0,94
+  constant par rôle contre ×1,81 en échelle commune entre 30 et 120 frames ;
+  grain B/G 2,10 coloré par rôle contre 0,79 = celui des couches).
+- **Version stable précédente : AVAStack v2.35.2** — **CORRECTIFS v2.35.2 (constats d'Alain, 25/09/2026)** :
   - **LA MOLETTE CHANGEait LA VALEUR DES LISTES DÉROULANTES** (Tk associe la
     molette aux `ttk.Combobox` par une liaison de CLASSE
     `ttk::combobox::Scroll` — vérifié : un cran fait passer « a » → « b »). En

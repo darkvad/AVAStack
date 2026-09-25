@@ -144,6 +144,13 @@ Source: "{#RepoRoot}\_test_spcc_jalon58.py"; DestDir: "{app}"; Flags: ignorevers
 ; traite (lineaire) » (bouton dedie, sans etirement, en-tete descriptif).
 Source: "{#RepoRoot}\_test_save_brute_jalon59.py"; DestDir: "{app}"; Flags: ignoreversion
 
+; Banc de l'OPTION v2.36.0 : NORMALISATION COMMUNE DES CANAUX (case decochee
+; par defaut). Montre, sur une scene synthetique, pourquoi le fond s'ameliore
+; enfin avec l'integration quand les trois roles partagent l'echelle du vert
+; (grain/fond x1,8 de 30 a 120 frames) alors qu'avec la normalisation par role
+; il reste inchange (x0,9) et COLORE -> c'est la cause du grain que voit Alain.
+Source: "{#RepoRoot}\_test_norm_commune_jalon61.py"; DestDir: "{app}"; Flags: ignoreversion
+
 ; veralux_core_headless.py : code tiers GPL-3.0-or-later (Riccardo Paterniti),
 ; copie tel quel (sa licence exige de transmettre le source a cote du binaire).
 Source: "{#RepoRoot}\veralux_core_headless.py"; DestDir: "{app}"; Flags: ignoreversion

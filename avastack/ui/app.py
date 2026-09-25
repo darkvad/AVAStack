@@ -251,6 +251,7 @@ class App:
         # Jalon 19 phase 3 : instantanés pour le thread worker (jamais de
         # lecture de variables Tk hors du thread principal — cf. pièges).
         self._compo_gains = None         # dict R/G/B → facteur
+        self._norm_commune = False       # v2.36.0 : normalisation commune (opt-in)
         self._compo_mode_l = "synthetise"
         # Jalon 55 : un réglage compo/fit changé SANS nouvelle brute (mode
         # dossier consommé) doit quand même rafraîchir le rendu — le worker
@@ -442,6 +443,11 @@ class App:
                     self.var_compo_gains[canal].set(str(float(v)))
         if c.get("compo_mode_l") in MODES_L:
             self.var_compo_mode_l.set(c["compo_mode_l"])
+        # v2.36.0 : normalisation commune des canaux (option). L'instantané est
+        # posé ici aussi : le stacker le recevra à sa création.
+        if "norm_commune" in c:
+            self.var_norm_commune.set(bool(c.get("norm_commune")))
+            self._norm_commune = bool(self.var_norm_commune.get())
         self._on_compo_roles()   # composition recollée aux rôles restaurés
         if c.get("process_existing") is False:
             self.var_process_existing.set(False)
@@ -695,6 +701,9 @@ class App:
         c["compo_gains"] = {canal: self._lire_gains()[canal]
                             for canal in ("R", "G", "B")}
         c["compo_mode_l"] = self.var_compo_mode_l.get()
+        # v2.36.0 : normalisation commune des canaux (option, booléen explicite
+        # comme les autres cases : une case décochée ne doit pas hériter d'un True).
+        c["norm_commune"] = bool(self.var_norm_commune.get())
         c["process_existing"] = self.var_process_existing.get()
         # Les commandes ne sont persistées que si utilisées au moins une fois
         # ou modifiées par l'utilisateur — sinon on laisse la détection se
@@ -1189,6 +1198,25 @@ class App:
                       width=5).pack(side="left", padx=(4, 0))
         ttk.Button(box, text="🔎 Détecter les filtres (FITS FILTER)",
                    command=self._detecter_filtres).pack(fill="x", pady=(6, 0))
+        # --- v2.36.0 : NORMALISATION COMMUNE DES CANAUX (option, décision
+        # d'Alain du 25/09/2026). Décrivée en clair : c'est un changement de
+        # comportement visible (fond et grain), pas un réglage cosmétique.
+        self.var_norm_commune = tk.BooleanVar(value=False)
+        ttk.Checkbutton(box, text="Normalisation commune des canaux",
+                        variable=self.var_norm_commune,
+                        command=self._on_norm_commune).pack(anchor="w",
+                                                            pady=(6, 0))
+        ttk.Label(box, text=(
+            "Décoché : chaque canal est calé sur SES percentiles, avec SON point "
+            "noir — le fond du composite suit alors son propre bruit : empiler "
+            "plus ne réduit plus le grain du fond, et il reste coloré. "
+            "Coché : les trois canaux partagent la MÊME ÉCHELLE (celle du vert) "
+            "et aucun point noir n'est soustrait → le fond garde son niveau "
+            "physique (son grain diminue enfin en 1/√n) et les coefficients SPCC "
+            "s'appliquent sur la base où ils ont été mesurés. Le fond garde sa "
+            "couleur physique (bleu-rouge) : la neutraliser avec l'équilibrage "
+            "des canaux ou le recalage colorimétrique."),
+            foreground="#888888", wraplength=310).pack(anchor="w")
         # Jalon 45/47 : le choix de cadence est COMMUN aux deux modes —
         # voir le cadre unique `frm_rafale` (plus de combobox ici).
         self._on_compo()    # pré-remplit les lignes de rôle de la compo par défaut
@@ -3380,6 +3408,19 @@ class App:
                                "(rôle + dossier)")
         return pairs
 
+    def _on_norm_commune(self):
+        """v2.36.0 — case « Normalisation commune des canaux » (option, décision
+        d'Alain du 25/09/2026). Posée sur l'empilement courant et appliquée dès
+        le prochain rendu ; l'instantané `_norm_commune` est celui que lit le
+        worker (jamais de variable Tk hors du thread principal)."""
+        self._norm_commune = bool(self.var_norm_commune.get())
+        if self.stacker is not None and hasattr(self.stacker,
+                                                "normalisation_commune"):
+            self.stacker.normalisation_commune = self._norm_commune
+        self._rafraichir_rendu = True
+        self._refresh_preview()
+        self.disp.notify_new_stack()
+
     def _lire_gains(self):
         """Gains R/G/B saisis (texte → float, virgule acceptée, défaut 1.0,
         borné 0..10). Appelé côté THREAD PRINCIPAL seulement (variables Tk) ;
@@ -3442,6 +3483,7 @@ class App:
         # THREAD (le worker n'a jamais le droit de lire les variables Tk).
         self._compo_gains = self._lire_gains()
         self._compo_mode_l = self.var_compo_mode_l.get()
+        self._norm_commune = bool(self.var_norm_commune.get())   # v2.36.0
         # Jalon 54 : instantané du recalage Linear Fit pour le thread.
         self._fit_actif = bool(self.var_fit.get())
         self._fit_mode = self._code_fit_methode()
@@ -3463,6 +3505,7 @@ class App:
         # THREAD (le worker n'a jamais le droit de lire les variables Tk).
         self._compo_gains = self._lire_gains()
         self._compo_mode_l = self.var_compo_mode_l.get()
+        self._norm_commune = bool(self.var_norm_commune.get())   # v2.36.0
         self._fit_actif = bool(self.var_fit.get())   # jalon 54 (thread)
         self._fit_mode = self._code_fit_methode()    # jalon 54b (méthode)
         self.aligner = StarAligner()
@@ -3805,7 +3848,9 @@ class App:
         try:
             comp = composition_mod.composer(
                 traites, self.stacker.composition,
-                mode_l=self.stacker.mode_l)
+                mode_l=self.stacker.mode_l,
+                normalisation_commune=bool(getattr(
+                    self.stacker, "normalisation_commune", False)))
         except Exception as exc:
             return None, f"Recomposition impossible : {exc}"
         if comp is None:
@@ -4300,7 +4345,11 @@ class App:
                 return                      # erreur déjà posée par _ext_run_cmd
             comp_traite = composition_mod.composer(
                 traites, self.stacker.composition,
-                mode_l=self.stacker.mode_l)
+                mode_l=self.stacker.mode_l,
+                # v2.36.0 : même normalisation que la vue live — sinon la sortie
+                # traitée ne serait pas au même niveau que l'écran.
+                normalisation_commune=bool(getattr(
+                    self.stacker, "normalisation_commune", False)))
             if comp_traite is None:
                 self._set_ext_msg("Erreur : recomposition impossible après "
                                   "traitement par couche", state="error")
@@ -4973,8 +5022,12 @@ class App:
         gaia_ok = (self._photo_gains_actif and self.photometrie is not None
                    and self.photometrie.valide)
         if self._mode_compo:
-            ent["AVACOMPO"] = (f"{getattr(st, 'composition', '?')}, normalisation "
-                               "par role (percentiles)")
+            # v2.36.0 : le fichier DIT quelle normalisation a servi (c'est un
+            # choix visible : le fond et le grain en dépendent).
+            norm = ("normalisation COMMUNE des canaux (amplitude du vert)"
+                    if bool(getattr(st, "normalisation_commune", False))
+                    else "normalisation par role (percentiles)")
+            ent["AVACOMPO"] = f"{getattr(st, 'composition', '?')}, {norm}"
         # MESURES de la session (indépendantes de ce qui est appliqué).
         if spcc_ok:
             k = self.spcc.coefficients
@@ -5258,6 +5311,9 @@ class App:
         # Jalon 54 : le recalage « Linear Fit » survit au re-stack compo.
         st.linear_fit = ancien.linear_fit
         st.linear_fit_mode = ancien.linear_fit_mode
+        # v2.36.0 : la normalisation commune (option) aussi.
+        st.normalisation_commune = bool(getattr(ancien, "normalisation_commune",
+                                                False))
         self.stacker = st
         # Rejouer les archives : rôles dans l'ordre de la composition, puis
         # les éventuels rôles supplémentaires (même ordre que etat()).
@@ -5706,6 +5762,11 @@ class App:
                 if self._mode_compo:
                     self.stacker.gains = dict(self._compo_gains or {})
                     self.stacker.mode_l = self._compo_mode_l
+                    # v2.36.0 : normalisation commune (option) — resynchronisée
+                    # à chaque tour, comme les gains et le canal L.
+                    if hasattr(self.stacker, "normalisation_commune"):
+                        self.stacker.normalisation_commune = bool(
+                            self._norm_commune)
                 self.stacker.linear_fit = bool(self._fit_actif)
                 self.stacker.linear_fit_mode = self._fit_mode
                 # Jalon 56 (étape 5) : gains PHOTOMÉTRIQUES par rôle — écrits
@@ -5853,6 +5914,8 @@ class App:
                     # création (instantanés tenus à jour par _tick).
                     self.stacker.gains = dict(self._compo_gains or {})
                     self.stacker.mode_l = self._compo_mode_l
+                    self.stacker.normalisation_commune = bool(
+                        self._norm_commune)          # v2.36.0 (option)
                 else:
                     self.stacker = LiveStacker(img_travail.shape, k=self.kappa,
                                                method=self.rejet_methode,
@@ -6043,7 +6106,14 @@ class App:
                                       # display.
                                       (bool(self.stacker.wb_auto),
                                        float(self.stacker.wb_force),
-                                       self.stacker.cadre))
+                                       self.stacker.cadre),
+                                      # 7e élément (v2.36.0) : normalisation
+                                      # COMMUNE des canaux (option d'Alain) —
+                                      # la vue « traitée » doit recomposer
+                                      # comme la vue « empilement ».
+                                      bool(getattr(self.stacker,
+                                                   "normalisation_commune",
+                                                   False)))
             else:
                 self.disp.vl_compo = None
 
@@ -6125,7 +6195,9 @@ class App:
                                    self.stacker.linear_fit_mode),
                                   (bool(self.stacker.wb_auto),
                                    float(self.stacker.wb_force),
-                                   self.stacker.cadre))
+                                   self.stacker.cadre),
+                                  bool(getattr(self.stacker,
+                                               "normalisation_commune", False)))
         else:
             self.disp.vl_compo = None
         try:

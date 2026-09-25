@@ -179,9 +179,52 @@ def _luma(rgb):
             + _POIDS_LUMA[2] * rgb[..., 2]).astype(np.float32)
 
 
+def _echelle_commune(canaux, spec, lo_pct, hi_pct):
+    """ÉCHELLE partagée par les trois rôles du composite : l'amplitude
+    (p99,7 − p0,25) du rôle qui alimente le canal VERT — référence habituelle
+    des travaux couleur, comme le recalage « Linear Fit » qui cale R et B sur G
+    — sinon du premier rôle non vide. → float > 0, ou None si aucun rôle.
+
+    POURQUOI (option, décision d'Alain du 25/09/2026) : par défaut `composer()`
+    cale CHAQUE rôle sur SES percentiles, avec SON point noir. Or un percentile
+    bas est toujours à ~2,8 σ sous le ciel : le NIVEAU du fond du composite
+    devient donc PROPORTIONNEL AU BRUIT du canal. Deux conséquences mesurées
+    sur l'empilement M31 d'Alain :
+      • empiler plus fait baisser le fond ET le grain dans la même proportion,
+        l'étirement compense, et le grain du fond ne s'améliore JAMAIS
+        (fond/σ = 2,88 à 28 frames, 2,50 à 111 frames, alors que le grain
+        diminuait bien en ÷2,2, soit 1/√n) ;
+      • le grain est COLORÉ (R/G 0,66 · B/G 1,45) puisque chaque canal est
+        divisé par SA dynamique (celle du bleu est 2,1× plus étroite).
+    En partageant l'ÉCHELLE du vert et en ne soustrayant AUCUN point noir par
+    canal, le fond garde son niveau et sa couleur PHYSIQUES : seul le bruit
+    baisse (1/√n) → le grain du fond s'améliore enfin avec l'intégration, et il
+    redevient gris. Les coefficients SPCC, eux, sont des RATIOS mesurés sur les
+    COUCHES : avec une échelle commune ils s'appliquent enfin sur la base où ils
+    ont été mesurés.
+
+    NB (pourquoi PAS un point noir commun) : les ciels des trois canaux n'ont
+    pas le même niveau ; retrancher le point noir du vert rendrait le fond de R
+    et B NÉGATIF (constaté : −4 % et −2 % de l'amplitude sur l'empilement M31),
+    ce qui écrête leur bruit au premier étirement et teinte le fond en vert. Une
+    échelle pure ne pose pas ce problème — c'est le comportement du mode MONO,
+    où aucun point noir n'est soustrait."""
+    roles = []
+    g = (spec.get("canaux_rgb") or {}).get("G") or ()
+    roles.extend(r for r in g if canaux.get(r) is not None)
+    roles.extend(r for r in spec["roles"]
+                 if r not in roles and canaux.get(r) is not None)
+    for role in roles:
+        a = np.asarray(canaux[role], dtype=np.float32)
+        if a.size:
+            lo, hi = bornes_normalisation(a, lo_pct, hi_pct)
+            return max(hi - lo, 1e-9)
+    return None
+
+
 def composer(canaux, composition, bornes=None,
              normaliser_canal=True, mode_l="synthetise",
-             lo_pct=0.25, hi_pct=99.7):
+             lo_pct=0.25, hi_pct=99.7, normalisation_commune=False):
     """Composite linéaire d'une composition.
 
     canaux   : dict rôle → carte 2D float32 (empilement du rôle), ou None
@@ -191,6 +234,12 @@ def composer(canaux, composition, bornes=None,
                bouge légèrement à chaque nouvelle frame).
     normaliser_canal : False → les canaux sont déjà normalisés (le combine
                L reste appliqué).
+    normalisation_commune : True → les trois rôles partagent la MÊME ÉCHELLE
+               (l'amplitude du rôle qui alimente le canal VERT) et AUCUN point
+               noir n'est soustrait : les niveaux et les couleurs du fond
+               restent PHYSIQUES, seul le bruit baisse avec l'intégration (1/√n)
+               et le grain cesse d'être coloré. Option (décision d'Alain du
+               25/09/2026) — cf. `_echelle_commune`.
     mode_l   : "synthetise" | "degrade" — sortie de la radio « Canal L »,
                utilisée SEULEMENT si le rôle L est vide.
 
@@ -213,6 +262,8 @@ def composer(canaux, composition, bornes=None,
 
     # 1) normalisation par rôle (rôle vide → ignoré, jamais bloquant)
     norm = {}
+    echelle = (_echelle_commune(canaux, spec, lo_pct, hi_pct)
+               if (normaliser_canal and normalisation_commune) else None)
     for role in spec["roles"]:
         img = canaux.get(role)
         if img is None:
@@ -221,8 +272,14 @@ def composer(canaux, composition, bornes=None,
         if a.size == 0:
             continue
         if normaliser_canal:
-            lo, hi = bornes.get(role) or (None, None)
-            a = normaliser(a, lo, hi, lo_pct, hi_pct)
+            if echelle is not None:
+                # ÉCHELLE PARTAGÉE (option) : aucune soustraction par canal —
+                # le fond garde son niveau et sa couleur physiques (cf.
+                # `_echelle_commune`).
+                a = normaliser(a, 0.0, echelle)
+            else:
+                lo, hi = bornes.get(role) or (None, None)
+                a = normaliser(a, lo, hi, lo_pct, hi_pct)
         norm[role] = a
 
     if not norm:
@@ -407,6 +464,15 @@ class CompositeStacker:
         # `moyennes()` — donc au composite ET aux couches transmises au solveur
         # live, en un seul point : les deux vues restent cohérentes.
         self.gains_roles = {}
+        # v2.36.0 — OPTION (décision d'Alain, 25/09/2026) : normalisation
+        # COMMUNE des canaux. Défaut False = comportement historique (chaque
+        # rôle calé sur SES percentiles). True : les trois rôles partagent les
+        # bornes du rôle qui alimente le canal VERT → le fond du composite garde
+        # son niveau physique (donc son grain s'améliore en 1/√n avec
+        # l'intégration) et le grain cesse d'être coloré. Le fond gardant sa
+        # couleur, sa neutralisation relève des offsets du recalage colorimétrique
+        # (ou de GraXpert live, par couche) — comme les B0/B1/B2 de Siril.
+        self.normalisation_commune = False
         self.mode_l = "synthetise"        # radio « Canal L » (UI, phase 3)
         # Recalage colorimétrique « Linear Fit » (jalon 54) : appliqué au
         # COMPOSITE SEUL — JAMAIS aux couches (le solveur live re-fait la
@@ -627,7 +693,8 @@ class CompositeStacker:
         if not canaux:
             return None, None
         try:
-            comp = composer(canaux, self.composition, mode_l=self.mode_l)
+            comp = composer(canaux, self.composition, mode_l=self.mode_l,
+                            normalisation_commune=self.normalisation_commune)
         except ValueError:
             comp = None                   # formes hétérogènes (ne doit pas
         # Jalon 58b/chantier 24-09 : ÉQUILIBRAGE DES CANAUX (auto, jalon 13)

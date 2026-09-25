@@ -14,9 +14,48 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.35.2"
+AVASTACK_VERSION = "2.36.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.36.0 : NORMALISATION COMMUNE DES CANAUX EN COMPOSITION — **OPTION** (demande
+#          d'Alain, 25/09/2026 : « ce bruit, qu'on utilise SPCC ou pas, est
+#          présent ; plus on empile, plus VeraLux tire sur l'étirement »).
+#          CONSTAT MESURÉ sur son empilement M31 RGB (`_diag_empilement_couleur`) :
+#          l'empilement est CORRECT (grain ÷2,2 pour ×4 de frames, soit 1/√n) mais
+#          le FOND du composite ne s'améliore pas : fond/σ = 2,88 à 28 frames
+#          contre 2,50 à 111 frames. CAUSE : `composer()` normalise CHAQUE rôle par
+#          SES percentiles, or le percentile bas (p0,25) est toujours ~2,8 σ sous
+#          le ciel → le NIVEAU du fond du composite est proportionnel au BRUIT du
+#          canal. Empiler plus fait donc baisser le fond ET le grain dans la même
+#          proportion : l'étirement compense, et le grain du fond reste identique à
+#          toute profondeur (VeraLux « tire » de plus en plus pour atteindre le
+#          fond demandé). Effet secondaire : le grain est COLORÉ (R/G 0,66 ·
+#          B/G 1,45) puisque chaque canal est divisé par SA dynamique.
+#          CORRECTIF — case « Normalisation commune des canaux » (cadre
+#          « Composition multi-filtres »), DÉCOCHÉE par défaut (le défaut existant
+#          n'est pas cassé sans y être invité). Cochée, les trois rôles partagent
+#          l'ÉCHELLE du rôle qui alimente le canal VERT (comme le recalage
+#          « Linear Fit » cale R et B sur G) et AUCUN point noir n'est soustrait :
+#          le fond garde son niveau et sa couleur PHYSIQUES, seul le bruit baisse
+#          → le grain du fond s'améliore enfin en 1/√n et redevient gris (il garde
+#          l'équilibre des couches). Un point noir COMMUN a été essayé puis écarté
+#          (mesuré) : les ciels des trois canaux n'ont pas le même niveau, retrancher
+#          celui du vert rendait le fond de R et B NÉGATIF (−4 % et −2 % de
+#          l'amplitude → écrêtage du bruit et fond teinté en vert).
+#          Bénéfice collatéral : les coefficients SPCC sont des RATIOS mesurés sur
+#          les COUCHES — avec une échelle commune ils s'appliquent enfin sur la base
+#          où ils ont été mesurés. Le fond gardant sa couleur physique, sa
+#          neutralisation reste le rôle des offsets du recalage colorimétrique (ou
+#          de GraXpert live, par couche) — comme les B0/B1/B2 de Siril.
+#          Transport : l'option suit la voie des gains (instantané `_norm_commune`
+#          → stacker → 7e élément du job du solveur → recomposition de la vue
+#          « traitée », des couches pleine résolution ET de la chaîne externe) ;
+#          elle survit au re-stack, est persistée (`norm_commune` en config) et
+#          ANNONCÉE dans l'en-tête (AVACOMPO = « …, normalisation COMMUNE des canaux
+#          (amplitude du vert) »). Banc : `_test_norm_commune_jalon61.py` — grain
+#          du fond ×0,94 (constant) par rôle contre ×1,81 en échelle commune entre
+#          30 et 120 frames, grain coloré B/G 2,10 par rôle contre 0,79 = celui des
+#          couches.
 # v2.35.2 : TROIS CORRECTIFS D'ERGONOMIE ET D'HONNÊTETÉ (constats d'Alain,
 #          25/09/2026).
 #          ① LA MOLETTE CHANGEait LA VALEUR DES LISTES DÉROULANTES. Tk associe

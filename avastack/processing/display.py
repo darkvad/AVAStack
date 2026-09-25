@@ -339,6 +339,10 @@ class DisplayProcessor:
             # 5 éléments → pas d'équilibrage côté solveur).
             wb = (compo[5] if compo is not None and len(compo) > 5
                   else None)
+            # v2.36.0 : normalisation COMMUNE des canaux (option) — 7e élément,
+            # déballage tolérant (les jobs antérieurs n'en ont pas).
+            norm_commune = (bool(compo[6]) if compo is not None
+                            and len(compo) > 6 else False)
             # --- Jalon 24 : mode COMPOSITION — gradient ET débruitage PAR
             # COUCHE, AVANT recomposition (décision d'Alain du 19/09/2026 :
             # la pollution lumineuse et la clarté de la lune ne frappent pas
@@ -404,7 +408,9 @@ class DisplayProcessor:
                     # les corrections s'appliquent juste après, dans l'ordre
                     # validé (débruitage → CORRECTIONS → netteté/étirement).
                     comp = _composition.composer(traites, nom_compo,
-                                                 mode_l=mode_l)
+                                                 mode_l=mode_l,
+                                                 normalisation_commune=
+                                                 norm_commune)
                 except Exception as exc:    # formes hétérogènes (ne doit pas
                     comp = None             # arriver : cadre commun) → repli
                     msgs.append(f"Recomposition : {exc}")
