@@ -131,27 +131,30 @@ dans le changelog du source et l'historique git.)
   - `_diag_empilement_couleur.py` répond en une commande à « pourquoi mon
     image est-elle colorée / bruitée ? » : fond et σ par canal (le BRUIT),
     contraste de fond R/G et B/G, rapport brut/traité, clés AVA*.
-- **EN ATTENTE DE DÉCISION D'ALAIN (piste ouverte, 25/09/2026) — LE GRAIN
+- **DÉCISION D'ALAIN (25/09/2026) → IMPLÉMENTÉE EN OPTION (v2.36.0) — LE GRAIN
   BLEU-VERT NAÎT DANS LA COMPOSITION** (mesuré au plancher de bruit, zones les
-  plus lisses, sur son M31 RGB de 165 frames) :
+  plus lisses, sur son M31 RGB) :
   - COUCHES brutes `canal_*.fit` : σ 0,000498 / 0,000557 / 0,000526 →
     **grain équilibré** (R/G 0,89 · B/G 0,94) ;
   - composite BRUT v2.35.0 : σ 0,00517 / 0,00781 / 0,01133 →
     **grain COLORÉ** (R/G 0,66 · B/G 1,45).
-  Cause : `composer()` normalise CHAQUE rôle par ses propres percentiles
-  (p0,25/p99,7) ; la dynamique du bleu est 2,1× plus étroite que celle du rouge
-  (M31 est jaune : peu de signal bleu) → le grain bleu est amplifié 2,2× de plus
-  que le rouge. Le grain est donc déjà coloré AVANT l'étirement et AVANT les
-  corrections ; les corrections de couleur (SPCC R ×0,53 + Linear Fit R ×0,76 /
-  B ×1,21) ne font que le modifier un peu. **Le mode STF ne le montre pas parce
-  que son étirement auto est bien plus doux que VeraLux (logD 2,0 / fond visé
-  0,12) sur une image bruitée.**
-  Pistes : (a) **normalisation COMMUNE aux 3 rôles** quand des corrections sont
-  actives — la piste rejetée en v2.34.6 le sera moins maintenant que GraXpert
-  live retire le fond PAR COUCHE, et le recalage « Linear Fit » (offsets) sert
-  de référence de fond à la Siril ; (b) gains appliqués AUX COUCHES avec bornes
-  FIGÉES (argument `bornes=` déjà là) ; (c) ne pas empiler le GAIN du Linear Fit
-  sur la SPCC (Siril n'ajoute qu'une référence de FOND) ; (d) accepter.
+  Cause : `composer()` calait CHAQUE rôle sur ses propres percentiles
+  (p0,25/p99,7), et le percentile BAS est toujours ~2,8 σ sous le ciel → le
+  niveau du fond du composite était proportionnel au BRUIT du canal : empiler
+  plus faisait baisser le fond ET le grain dans la même proportion, l'étirement
+  (VeraLux) compensait, donc **le grain du fond ne s'améliorait jamais**
+  (fond/σ 2,88 à 28 frames → 2,50 à 111, alors que le grain diminuait bien en
+  1/√n). Le grain était en plus coloré car chaque canal était divisé par SA
+  dynamique (celle du bleu 2,1× plus étroite : M31 est jaune).
+  **Couvert par la case « Normalisation commune des canaux » (v2.36.0, DÉCOCHÉE
+  par défaut)** : échelle du vert partagée par les trois rôles, AUCUN point noir
+  soustrait → le fond garde son niveau et sa couleur physiques, son grain
+  s'améliore enfin en 1/√n et redevient gris ; les coefficients SPCC, qui sont
+  des ratios mesurés sur les COUCHES, s'appliquent alors sur la base où ils ont
+  été mesurés. Pistes qui restent en réserve si le test réel ne suffit pas :
+  (b) gains appliqués AUX COUCHES avec bornes FIGÉES (argument `bornes=` déjà
+  là) ; (c) ne pas empiler le GAIN du Linear Fit sur la SPCC (Siril n'ajoute
+  qu'une référence de FOND) ; (d) accepter.
 - **POURQUOI STF ET VERALUX NE MONTRE PAS LA MÊME IMAGE (constaté, documenté)** :
   tout le cadre VeraLux (GraXpert live, débruitage live, SCNR live) est MASQUÉ
   en mode STF (`_on_moteur` : `frm_veralux.pack_forget()`) et le thread solveur
@@ -160,6 +163,15 @@ dans le changelog du source et l'historique git.)
   Seule la netteté est commune aux deux moteurs. C'est une décision de
   conception ; à rouvrir si Alain veut un rendu identique entre les moteurs.
 - **À FAIRE / À VALIDER PAR ALAIN** :
+  - **test RÉEL de l'option v2.36.0** (« Normalisation commune des canaux ») sur
+    le même jeu M31 RGB : cocher, empiler, comparer au décoché. Repères : grain du
+    fond PLUS FIN à mesure que l'on empile (l'écart se voit vers 60-120 frames),
+    grain GRIS au lieu de bleu-vert ; le fond peut rester coloré (c'est physique)
+    → le neutraliser avec l'équilibrage des canaux ou le recalage colorimétrique.
+    **Installer l'installateur 2.36.0 AVANT** ;
+  - **re-vérifier les 4 profils SPCC** (le bug de molette v2.35.2 a pu en changer
+    un : « Filtre B » était QCMiniCam8M Green sur sa capture du 25/09) puis
+    décocher/recocher la case pour relancer la mesure ;
   - test RÉEL du correctif 2.35.1 : réécrire « empilement traité (linéaire) »
     avec GraXpert + débruitage live actifs et vérifier AVASCALE (~18, plus
     1,2) et des cœurs d'étoiles non écrêtés. **Installer l'installateur
