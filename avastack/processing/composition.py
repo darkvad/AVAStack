@@ -522,6 +522,16 @@ class CompositeStacker:
             # Jalon 56 (étape 5) : gains EFFECTIFS (manuels × photométriques
             # convertis en canaux) — appliqués par composer() APRÈS la
             # normalisation, sinon ils seraient absorbés par elle.
+            # NOTE MESURÉE (24/09/2026) : `composer()` normalise chaque rôle par
+            # SES percentiles, ce qui ré-égalise les canaux et ÉCRASE une part
+            # du contraste de couleur. Une normalisation COMMUNE aux trois
+            # canaux (testée) NE suffit PAS : sans soustraction du fond, le fond
+            # pollué déséquilibré devient visible et l'étirement l'amplifie
+            # (mesuré : R/G affiché 0,079 — image inutilisable). La neutralisation
+            # du fond relève du RECALAGE COLORIMÉTRIQUE (Linear Fit, mode
+            # « Gain + offset ») : mesuré sur les couches réelles, SPCC seule
+            # laisse un fond linéaire 0,0130/0,0219/0,0385 (très bleu) alors que
+            # SPCC + Linear Fit donne 0,0213/0,0219/0,0220 — fond NEUTRE.
             comp = composer(canaux, self.composition,
                             gains=self.gains_effectifs(),
                             mode_l=self.mode_l)

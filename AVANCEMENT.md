@@ -11,7 +11,37 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.34.5** (`avastack/__init__.py`),
+- **Version stable de référence : AVAStack v2.34.6** (`avastack/__init__.py`),
+  branche `master` — **SPCC ABSOLUE VALIDÉE CONTRE SIRIL + recette couleur
+  complète identifiée** :
+  - **VALIDATION (24/09/2026, mêmes pixels)** : Siril sur `spcc_brut_RGB.fit` →
+    R/V = 0,087250 + **0,872563**·cat (σ 0,1226), B/V = 0,114178 +
+    **0,792972**·cat (σ 0,1184), **K = 0,636 / 0,775 / 1,000**. AVAStack :
+    **0,888** (σ 0,020) / **0,782** (σ 0,019), **K = 0,6232 / 0,7574 / 1,0000**
+    → **écart 1,4 à 1,8 %**, dispersion **6× meilleure**. Les chaînes
+    concordent ; les divergences passées venaient des images analysées.
+  - **POURQUOI la sauvegarde n'est pas la base de la mesure** : la SPCC mesure
+    les couches BRUTES (`moyennes()`), alors que la sauvegarde passe par
+    `composer()` qui **normalise chaque rôle par ses propres percentiles**
+    (0,25 % / 99,7 %) AVANT d'appliquer les gains → les ratios de couleur sont
+    modifiés (banc : contraste R/G 1,60 → 1,000). Pour toute comparaison
+    externe : `_diag_spcc.py --export-rgb` (couches brutes concaténées).
+  - **PISTE TESTÉE PUIS REJETÉE** : normalisation commune aux 3 canaux quand des
+    gains de couleur sont actifs → **casse le rendu** sans soustraction de fond
+    (fond pollué amplifié par l'étirement : R/G affiché 0,079). Code retiré,
+    mesure conservée en commentaire et au banc.
+  - **LA RECETTE COULEUR COMPLÈTE (mesurée, étirement réel)** : **SPCC +
+    « Recalage colorimétrique (Linear Fit) » en mode « Gain + offset »** →
+    fond linéaire 0,0213 / 0,0219 / 0,0220 (**neutre**, contre
+    0,0130/0,0219/0,0385 avec la SPCC seule), image à l'écran quasi neutre
+    (R/G 1,011 ; B/G 0,977). C'est l'équivalent du couple de Siril
+    (coefficients + « référence de fond du ciel » B0/B1/B2) : dans AVAStack, ce
+    sont DEUX réglages à cocher ensemble.
+  - **Bugs réels corrigés grâce aux essais d'Alain** : `np.trapz` supprimé de
+    numpy 2.x (SPCC inopérante), sélection des étoiles biaisée par la saturation
+    (300 → 1200 étoiles, marge 1,5 mag), « Équilibrage des canaux (auto) »
+    inopérant en composition (corrigé), garde-fous de cohérence des bandes.
+
   branche `master` — **SPCC ABSOLUE : VALIDATION CROISÉE AVEC SIRIL RÉUSSIE**
   (jalon 58) + **BUG de l'ÉQUILIBRAGE DES CANAUX en composition corrigé** :
   - **VALIDATION (24/09/2026, mêmes pixels)** : sur les couches BRUTES

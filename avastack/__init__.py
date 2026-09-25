@@ -14,9 +14,47 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.34.5"
+AVASTACK_VERSION = "2.34.6"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.34.6 : RÉPONSE COMPLÈTE À LA QUESTION D'ALAIN SUR LA SAUVEGARDE LINÉAIRE,
+#          ET PIÈGE ÉVITÉ (une « correction » testée puis REJETÉE).
+#          • SA QUESTION : « pourquoi dis-tu que la sauvegarde linéaire n'est pas
+#            la même base que celle sur laquelle tu appliques la SPCC ? »
+#            RÉPONSE, code en main : la mesure SPCC passe par
+#            `CompositeStacker.moyennes()` → `LiveStacker.mean()` par rôle =
+#            les couches BRUTES ; la SAUVEGARDE passe par `mean()` →
+#            `composer()`, qui applique à CHAQUE RÔLE `normaliser(a, lo, hi)`
+#            avec lo/hi = ses PROPRES percentiles (0,25 % / 99,7 %), soit
+#            `(a − lo)/(hi − lo)`, PUIS les gains. Chaque canal est donc recalé
+#            sur sa propre échelle avant que les coefficients s'appliquent : les
+#            ratios de couleur de l'image enregistrée ne sont plus ceux des
+#            couches. Vérifié au banc : un contraste R/G de 1,60 dans les
+#            couches devient 1,000 dans le composite (écrasé par la
+#            normalisation par rôle).
+#          • PIÈGE TESTÉ PUIS REJETÉ : appliquer une normalisation COMMUNE aux
+#            trois canaux quand des gains de couleur sont actifs (pour que la
+#            mesure et l'image produite parlent de la même base) CASSE le
+#            rendu : sans soustraction du fond, le fond pollué déséquilibré
+#            devient visible et l'étirement l'amplifie (mesuré sur les couches
+#            réelles d'Alain : R/G affiché 0,079 — image inutilisable). Le code
+#            a été RETIRÉ (le commentaire de `mean_avec_canaux` garde la mesure
+#            et la raison), et le banc de composition [10] documente désormais
+#            le comportement RÉEL.
+#          • LA BONNE RECETTE (mesurée sur ses couches, étirement réel) :
+#            SPCC seule → fond linéaire 0,0130 / 0,0219 / 0,0385 (très bleu) ;
+#            SPCC + RECALAGE COLORIMÉTRIQUE (Linear Fit, « Gain + offset ») →
+#            0,0213 / 0,0219 / 0,0220 (fond NEUTRE), image à l'écran quasi
+#            neutre (R/G 1,011 ; B/G 0,977). C'est exactement ce que Siril fait
+#            en un clic (coefficients + « référence de fond du ciel » B0/B1/B2) :
+#            dans AVAStack, les deux réglages existent séparément — à cocher
+#            ENSEMBLE. Le banc [10] vérifie que le recalage neutralise des fonds
+#            inégaux (0,200/0,050/0,020 → 0,053/0,050/0,052).
+#          • Rappel : un enregistrement d'empilement n'est PAS comparable aux
+#            couches pour valider une SPCC (utiliser `_diag_spcc.py
+#            --export-rgb`), et la case « Équilibrage des canaux (auto) » est
+#            indépendante de la SPCC (elle n'agit que si on la coche ; elle est
+#            désormais fonctionnelle en composition, cf. v2.34.5).
 # v2.34.5 : VALIDATION CROISÉE AVEC SIRIL RÉUSSIE (mêmes pixels) + BUG de
 #          l'ÉQUILIBRAGE DES CANAUX en composition.
 #          • VALIDATION (2e essai d'Alain, 24/09/2026) : `_diag_spcc.py

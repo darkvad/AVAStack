@@ -200,6 +200,59 @@ verifie(np.allclose(st._equilibrer_composite(eq), eq, rtol=1e-3, atol=1e-4),
 verifie(st.wb_auto is True and CompositeStacker("RGB", k=None).wb_auto is False,
         "wb_auto reste DÉSACTIVÉ par défaut sur un stacker neuf (opt-in)")
 
+print("[10] Couleur : ce que fait la normalisation par rôle, et comment le "
+      "RECALAGE COLORIMÉTRIQUE neutralise le fond (v2.34.6)")
+# FAIT MESURÉ (24/09/2026) : `composer()` normalise chaque rôle par SES
+# percentiles → les canaux sont ré-égalisés et une part du contraste de couleur
+# est écrasée. C'est aussi ce qui masque partiellement les coefficients de
+# couleur (SPCC/Gaia) à l'écran. La neutralisation du FOND, elle, relève du
+# RECALAGE COLORIMÉTRIQUE (Linear Fit, mode « Gain + offset ») : c'est la
+# recette complète, celle qui donne le même résultat que Siril.
+from avastack.processing.composition import CompositeStacker   # noqa: E402
+from avastack.processing.stacking import aligner_canaux        # noqa: E402
+
+st2 = CompositeStacker("RGB", k=None)
+for role, fond, etoile in (("R", 0.20, 0.60), ("G", 0.05, 0.30), ("B", 0.02, 0.15)):
+    carte = np.full((32, 32), fond, np.float32)
+    carte[10:20, 10:20] = etoile
+    st2.add(carte, role=role)
+ratio_brut = (0.60 - 0.20) / (0.30 - 0.05)      # 1,6 : R 1,6× le G
+
+
+def ratio_mesure(comp):
+    """(signal R au-dessus du fond) / (signal G au-dessus du fond)."""
+    sig = comp[15, 15] - comp[2, 2]
+    return float(sig[0] / sig[1]) if sig[1] > 0 else float("nan")
+
+
+sans = ratio_mesure(st2.mean())
+verifie(abs(sans - 1.0) < 0.05,
+        f"normalisation par rôle : le contraste de couleur des couches est "
+        f"ÉCRASÉ (ratio R/G {sans:.3f} au lieu de {ratio_brut:.2f}) — c'est le "
+        f"comportement ASSUMÉ de la composition (les canaux sont ré-égalisés)")
+# Le RECALAGE COLORIMÉTRIQUE (gain+offset R/B sur le vert) ramène les FONDS au
+# même niveau : c'est lui qui « enlève le bleu » du fond, comme Siril. On le
+# vérifie sur un composite dont les fonds diffèrent VRAIMENT (fonds + bruit
+# propres à chaque canal, comme sur une image réelle ; après la normalisation
+# par rôle, les fonds ne sont PAS exactement égaux — mesuré sur les couches
+# réelles d'Alain : 0,0130 / 0,0219 / 0,0385 avec la SPCC seule).
+rng = np.random.default_rng(58)
+comp = np.stack([
+    (0.20 + rng.normal(0, 0.020, (32, 32))).astype(np.float32),
+    (0.05 + rng.normal(0, 0.010, (32, 32))).astype(np.float32),
+    (0.02 + rng.normal(0, 0.005, (32, 32))).astype(np.float32)], axis=-1)
+avant = [float(np.median(comp[:, :, c])) for c in range(3)]
+recale, diag = aligner_canaux(comp, mode="gain_offset")
+apres = [float(np.median(recale[:, :, c])) for c in range(3)]
+verifie(max(avant) / min(avant) > 2.0,
+        f"avant recalage : fonds nettement inégaux (R {avant[0]:.4f} / "
+        f"G {avant[1]:.4f} / B {avant[2]:.4f})")
+verifie(diag is not None and max(apres) - min(apres) < 0.01,
+        f"APRÈS recalage (gain+offset) : fonds NEUTRES "
+        f"({apres[0]:.4f} / {apres[1]:.4f} / {apres[2]:.4f}) — c'est lui qui "
+        f"fait disparaître le fond bleu, comme la « référence de fond » de Siril")
+
+
 print()
 print("RÉSULTAT : " + ("TOUS LES TESTS PASSENT" if ok else "ÉCHECS À CORRIGER"))
 import sys
