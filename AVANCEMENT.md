@@ -71,211 +71,71 @@ dans le changelog du source et l'historique git.)
     (σ_B·K_B)/(σ_G·K_G) = 0,891 × 1,318 = 1,174 ✔ (mesuré 1,174) : **c'est la SPCC
     elle-même qui monte le grain bleu** (K_B/K_G = 1,32), pas la normalisation.
     Sans correction, l'équilibre serait R/G 1,10 · B/G 0,89.
-- **Version stable précédente : AVAStack v2.36.1** — **CORRECTIFS « FOND BLEU »**
-  - ① **LE PNG/TIFF EXPORTÉ AVAIT R ET B PERMUTÉS** (bug VIEUX, silencieux) :
-    `save_image` donnait l'image RGB de l'appli à `cv2.imencode`, qui attend du
-    BGR (`load_image` convertit à la lecture) → l'aller-retour interne restait
-    cohérent, donc invisible, mais TOUS les fichiers exportés (visionneuses,
-    Siril, GraXpert) montraient les canaux échangés. Mesuré sur son PNG :
-    PNG_R ≈ FITS_B, corrélation 1,0000. → conversion RGB→BGR avant `imencode` ;
-    les bancs relisent désormais les fichiers écrits avec un lecteur INDÉPENDANT.
-  - ② **L'ÉTIREMENT VERALUX BLEUISSAIT LE FOND** : le fichier LINÉAIRE a un fond
-    neutre (R/G 0,9991 · B/G 0,9991), mais VeraLux soustrait une **ancre**
-    (0,0313) puis étire en log → pour le fond ne compte que le **résidu** (canal
-    − ancre) : ciels 0,0321/0,0326/0,0332 (3,6 % de bleu) → résidus 1 : 1,70 :
-    2,44 → **fond étiré R/G 0,363 · B/G 1,611**. → nouvelle case **« Neutraliser
-    la couleur du fond (live) »** (COCHÉE par défaut, cadre « Couleur live ») :
-    gains ~2 % mesurés sur la médiane de la moitié sombre, appliqués juste avant
-    l'étirement → fond étiré **1,020 · 0,996**. Les gains appliqués sont ANNONCÉS
-    dans « État des calculs » ; garde-fou ±10 % (sur un cadrage dominé par un
-    objet étendu la moitié sombre n'est plus du ciel). ⚠️ L'équilibrage des
-    canaux ne corrige PAS ça : il estime le fond sur un percentile bas (les
-    coins, déjà neutres) alors que l'ancre vit dans l'histogramme global.
-  - **À TESTER PAR ALAIN** : réécrire « tel que vu » (FITS **et PNG** — le PNG
-    doit maintenant être d'accord avec le FITS) sur le même empilement ;
-    vérifier de visu que le fond bleu a disparu à l'écran (case cochée) et, si
-    un fond coloré reste voulu, décocher la case. Le banc `_test_fond_bleu_jalon62.py`
-    accepte un fichier RÉEL en argument : `python _test_fond_bleu_jalon62.py
-    <fits>` affiche fond linéaire, gains, fond étiré avant/après.
-- **Version stable précédente : AVAStack v2.36.0** — **OPTION « NORMALISATION
-  COMMUNE DES CANAUX » (demande d'Alain, 25/09/2026)** : « ce bruit, qu'on utilise
-  SPCC ou pas, est présent ; plus on empile, plus VeraLux tire sur l'étirement ». Mesure sur son empilement
-  M31 : l'empilement est CORRECT (grain ÷2,2 pour ×4 de frames) mais le **fond du
-  composite ne s'améliore pas** (fond/σ 2,88 à 28 frames → 2,50 à 111) et son
-  grain est **coloré** (R/G 0,66 · B/G 1,45). CAUSE : `composer()` calait CHAQUE
-  rôle sur SES percentiles, et le percentile bas est toujours ~2,8 σ sous le ciel
-  → le niveau du fond du composite était proportionnel au bruit du canal (donc
-  l'étirement compensait, et le grain du fond restait identique à toute
-  profondeur). **Case « Normalisation commune des canaux » (DÉCOCHÉE par
-  défaut** — cadre « Composition multi-filtres ») : cochée, les trois rôles
-  partagent l'ÉCHELLE du rôle du VERT et aucun point noir n'est soustrait → le
-  fond garde son niveau ET sa couleur physiques, son grain s'améliore enfin en
-  1/√n et redevient gris ; les coefficients SPCC (des ratios mesurés sur les
-  COUCHES) s'appliquent alors sur la base où ils ont été mesurés. **À TESTER PAR
-  ALAIN** (il l'a demandé : « on testera après ») — en RGB d'abord, sur le même
-  jeu que le diagnostic, en comparant case cochée/décochée sur les mêmes frames.
-  Repères attendus : grain du fond PLUS FIN quand on empile (la différence se voit
-  sur ~60-120 frames), grain GRIS ; le fond pouvant rester coloré (c'est
-  physique) → le neutraliser avec l'équilibrage des canaux ou le recalage
-  colorimétrique. Banc : `_test_norm_commune_jalon61.py` (grain/fond ×0,94
-  constant par rôle contre ×1,81 en échelle commune entre 30 et 120 frames ;
-  grain B/G 2,10 coloré par rôle contre 0,79 = celui des couches).
-- **Version stable précédente : AVAStack v2.35.2** — **CORRECTIFS v2.35.2 (constats d'Alain, 25/09/2026)** :
-  - **LA MOLETTE CHANGEait LA VALEUR DES LISTES DÉROULANTES** (Tk associe la
-    molette aux `ttk.Combobox` par une liaison de CLASSE
-    `ttk::combobox::Scroll` — vérifié : un cran fait passer « a » → « b »). En
-    défilant les réglages, si le curseur passait sur une liste, elle changeait
-    TOUTE SEULE → **des réglages ont pu changer sans intention et FAUSSER DES
-    TESTS** (profil de filtre de la SPCC, méthode du recalage…). Les liaisons de
-    classe sont supprimées au démarrage : la molette ne modifie plus aucune
-    liste et fait défiler le panneau. ⚠️ **PENSER À RE-VÉRIFIER les profils
-    SPCC** : sur sa capture du 25/09 le profil « Filtre B » était
-    **QHYCCD MiniCam8M Green** (vraisemblablement modifié par cette molette) —
-    d'où une mesure SPCC aberrante (pente B/G NÉGATIVE, avertissement « hors de
-    [0,5 ; 1,5] ») appliquée quand même.
-  - les en-têtes disent quand RIEN n'est appliqué : `AVASPCC` / `AVAGAIA` =
-    « non appliquee (case cochee, mesure indisponible) » si la case est cochée
-    sans mesure exploitable (avant, l'en-tête restait muet et laissait croire
-    que la SPCC était dans le fichier).
-  - la mesure SPCC est faite **UNE fois par session** (décocher/recocher la
-    refait) : le libellé l'annonce désormais — « mesure faite sur N frames
-    (décocher/recocher la case pour refaire) ».
-- **Version stable précédente : AVAStack v2.35.1** — **CORRECTIF du 25/09/2026** :
-  en COMPOSITION, la sauvegarde pleine résolution traitait GraXpert/débruitage
-  live sur le COMPOSITE (> 1 : un cœur d'étoile monte à ~18 après la
-  normalisation par rôle) alors que ces outils sont CONTRACTÉS POUR [0..1] —
-  GraXpert rescalait sa sortie et le NLM la `clip(0,1)` (mesuré sur son
-  empilement M31 : 96 % des pixels > 1 perdus, AVASCALE 1,21 au lieu de 17,94).
-  La sauvegarde pleine résolution exécute désormais la chaîne **PAR COUCHE**
-  (comme le solveur live) : GX + débruitage sur chaque couche 2D, recomposition,
-  CORRECTIONS, puis netteté/SCNR → le fichier garde son échelle linéaire
-  (banc `_test_save_brute_jalon59.py` [7]). Outil de diagnostic ajouté :
-  `_diag_empilement_couleur.py`.
-- **CHANTIER v2.35.0** (24/09/2026, décisions d'Alain) — tous les bancs
-  logiciels au vert (sweep du 25/09/2026 : 50 bancs, code de sortie 0 ; les
-  bancs matériels sont hors sweep) :
-  **SAUVEGARDE LINÉAIRE BRUTE + CORRECTIONS DE COULEUR DANS LA CHAÎNE DE
-  SORTIE** (étapes ①→⑦ du plan), en détail :
-  - `composer()` ne porte PLUS aucun gain : il produit l'EMPILEMENT BRUT
-    (normalisation par rôle + combine L). `composer(gains=…)` N'EXISTE PLUS.
-  - Toutes les corrections de couleur vivent en AVAL, dans
-    `composition.corrections_couleur()` = gains R/G/B (manuels × SPCC/Gaia) →
-    équilibrage des canaux auto → recalage « Linear Fit ». Primitives :
-    `appliquer_gains`, `appliquer_gains_canaux`, `appliquer_equilibrage`.
-  - `CompositeStacker.mean()` / `mean_avec_canaux()` : nouveau paramètre
-    `corrections=True` (DÉFAUT = comportement d'affichage inchangé) ;
-    `corrections=False` = EMPILEMENT BRUT (ce que la sauvegarde linéaire
-    enregistre). `LiveStacker.mean()` accepte le même paramètre (équilibrage et
-    recalage sautés : c'est la voie du fichier brut, y compris en mono/OSC ;
-    l'interface des deux classes reste identique).
-  - Sauvegardes « empilement (linéaire) » et « canaux (par filtre) » : chemin
-    BRUT. **Preuve au banc** (`_test_save_brute_jalon59.py` [4]) : le fichier
-    est IDENTIQUE AU PIXEL PRÈS avec et sans SPCC/gains Gaia/équilibrage/
-    Linear Fit cochés, alors que l'affichage, lui, change.
-  - Solveur live : l'équilibrage est transporté (6e élément de `vl_compo` =
-    actif/force/cadre, déballage tolérant) et appliqué APRÈS la recomposition
-    des couches traitées, AVANT la netteté — ordre validé (c). Le traitement
-    EXTERNE par couche (`_run_external_compo`) suit la même chaîne.
-  - **NOUVEAU bouton** (décision (a)) : « 💾 Enregistrer l'empilement traité
-    (linéaire)… » = 3e sortie linéaire — empilement brut → gradient live →
-    débruitage live → CORRECTIONS → netteté → SCNR, SANS étirement ni
-    gamma/saturation. Il emprunte le thread de « tel que vu »
-    (`_save_asseen_thread(..., lineaire=True)`, 4e élément de la demande) et
-    écrit un en-tête auto-descriptif. Le bouton « résultat traité (linéaire) »
-    du cadre Traitement externe reste lié au ⚡ manuel (instantané).
-  - En-têtes (étape ⑥) : `AVASPCC` / `AVAGAIA` sont désormais les MESURES de la
-    session (mêmes formats `K=…` / `B=…`) ; la NOUVELLE clé `AVAAPPLI` dit ce
-    qui est RÉELLEMENT appliqué à l'image écrite (« aucune (empilement BRUT) »
-    pour le brut, liste des corrections pour le traité) ; `AVAWB` / `AVAFIT` ne
-    sont écrits que s'ils sont appliqués ; `AVAVUE` décrit la vue enregistrée
-    (« empilement BRUT … » / « empilement TRAITE … sans etirement »).
-  - Bancs : `_test_save_brute_jalon59.py` (NOUVEAU, 6 sections : composer sans
-    gain, façade deux chemins, ordre des corrections, **fichier identique
-    cases cochées/décochées**, solveur live à 6 éléments, 3e sortie linéaire
-    réelle) ; adaptés : `_test_composition_jalon19` [4] (gains via
-    `appliquer_gains`), `_test_save_lineaire_echelle` [4] (référence =
-    `mean(corrections=False)`), docstring de `_test_compo_worker_jalon19`.
-- **PIÈGES DU CHANTIER (à retenir)** :
-  - `composer()` est appelé par QUATRE chemins (façade, solveur, externe par
-    couche, bancs) : retirer un paramètre ne casse RIEN à la compilation — le
-    banc jalon 19 [4] est ce qui l'attrape ;
-  - une correction appliquée APRÈS `composer()` n'est plus absorbée par la
-    normalisation par rôle (c'est le but) : TOUTE vue qui doit ressembler à
-    l'affichage doit passer par `corrections_couleur` (façade, solveur,
-    sortie traitée) — sinon les vues divergent ;
-  - `wb_auto` est posé sur le stacker à la CRÉATION seulement (le worker ne le
-    resynchronise pas à chaque tour), alors que gains / mode L / recalage le
-    sont ;
-  - pour toute comparaison EXTERNE avec Siril, sauvegarder le linéaire
-    (maintenant BRUT par construction : c'est la référence reproductible).
-  - **LES OUTILS LIVE SONT CONTRACTÉS POUR [0..1]** (v2.35.1) : GraXpert live
-    rescalait et le NLM (`denoise._nlm`) ÉCRÊTE à [0,1] + quantifie 16 bits.
-    Une image qui dépasse 1 doit donc y entrer **PAR COUCHE** (les couches
-    sont ≤ 1, le composite NON : ~18 après la normalisation par rôle).
-    Vérifier AVASCALE dans l'en-tête d'un fichier écrit : s'il vaut ≈ 1 alors
-    que le brut vaut ~18, l'écrêtage a eu lieu.
-  - `_diag_empilement_couleur.py` répond en une commande à « pourquoi mon
-    image est-elle colorée / bruitée ? » : fond et σ par canal (le BRUIT),
-    contraste de fond R/G et B/G, rapport brut/traité, clés AVA*.
-- **DÉCISION D'ALAIN (25/09/2026) → IMPLÉMENTÉE EN OPTION (v2.36.0) — LE GRAIN
-  BLEU-VERT NAÎT DANS LA COMPOSITION** (mesuré au plancher de bruit, zones les
-  plus lisses, sur son M31 RGB) :
-  - COUCHES brutes `canal_*.fit` : σ 0,000498 / 0,000557 / 0,000526 →
-    **grain équilibré** (R/G 0,89 · B/G 0,94) ;
-  - composite BRUT v2.35.0 : σ 0,00517 / 0,00781 / 0,01133 →
-    **grain COLORÉ** (R/G 0,66 · B/G 1,45).
-  Cause : `composer()` calait CHAQUE rôle sur ses propres percentiles
-  (p0,25/p99,7), et le percentile BAS est toujours ~2,8 σ sous le ciel → le
-  niveau du fond du composite était proportionnel au BRUIT du canal : empiler
-  plus faisait baisser le fond ET le grain dans la même proportion, l'étirement
-  (VeraLux) compensait, donc **le grain du fond ne s'améliorait jamais**
-  (fond/σ 2,88 à 28 frames → 2,50 à 111, alors que le grain diminuait bien en
-  1/√n). Le grain était en plus coloré car chaque canal était divisé par SA
-  dynamique (celle du bleu 2,1× plus étroite : M31 est jaune).
-  **Couvert par la case « Normalisation commune des canaux » (v2.36.0, DÉCOCHÉE
-  par défaut)** : échelle du vert partagée par les trois rôles, AUCUN point noir
-  soustrait → le fond garde son niveau et sa couleur physiques, son grain
-  s'améliore enfin en 1/√n et redevient gris ; les coefficients SPCC, qui sont
-  des ratios mesurés sur les COUCHES, s'appliquent alors sur la base où ils ont
-  été mesurés. Pistes qui restent en réserve si le test réel ne suffit pas :
-  (b) gains appliqués AUX COUCHES avec bornes FIGÉES (argument `bornes=` déjà
-  là) ; (c) ne pas empiler le GAIN du Linear Fit sur la SPCC (Siril n'ajoute
-  qu'une référence de FOND) ; (d) accepter.
-- **POURQUOI STF ET VERALUX NE MONTRE PAS LA MÊME IMAGE (constaté, documenté)** :
-  tout le cadre VeraLux (GraXpert live, débruitage live, SCNR live) est MASQUÉ
-  en mode STF (`_on_moteur` : `frm_veralux.pack_forget()`) et le thread solveur
-  — seul chemin du GX live — ne tourne qu'en mode VeraLux. En STF, l'image est
-  donc le composite corrigé + netteté, SANS retrait de gradient ni débruitage.
-  Seule la netteté est commune aux deux moteurs. C'est une décision de
-  conception ; à rouvrir si Alain veut un rendu identique entre les moteurs.
-- **À FAIRE / À VALIDER PAR ALAIN** :
-  - **test RÉEL de l'option v2.36.0** (« Normalisation commune des canaux ») sur
-    le même jeu M31 RGB : cocher, empiler, comparer au décoché. Repères : grain du
-    fond PLUS FIN à mesure que l'on empile (l'écart se voit vers 60-120 frames),
-    grain GRIS au lieu de bleu-vert ; le fond peut rester coloré (c'est physique)
-    → le neutraliser avec l'équilibrage des canaux ou le recalage colorimétrique.
-    **Installer l'installateur 2.36.0 AVANT** ;
-  - **re-vérifier les 4 profils SPCC** (le bug de molette v2.35.2 a pu en changer
-    un : « Filtre B » était QCMiniCam8M Green sur sa capture du 25/09) puis
-    décocher/recocher la case pour relancer la mesure ;
-  - test RÉEL du correctif 2.35.1 : réécrire « empilement traité (linéaire) »
-    avec GraXpert + débruitage live actifs et vérifier AVASCALE (~18, plus
-    1,2) et des cœurs d'étoiles non écrêtés. **Installer l'installateur
-    2.35.1 AVANT** ;
-  - test RÉEL du chantier v2.35.0 : « empilement (linéaire) » neutre/brut
-    (Siril : plus de gain implicite à annuler) ;
-  - étape 6 du jalon 56 : validation Siril/ASTAP des fichiers écrits, puis test
-    réel multi-filtres avec les gains photométriques cochés.
-- **POINT CLARIFIÉ (24/09/2026)** : la SPCC de Siril exige les COURBES DE
-  TRANSMISSION des filtres ET la réponse du capteur (profils Siril) pour
-  prédire le flux attendu par bande ; la photométrie d'AVAStack est RELATIVE
-  contre Gaia G (aucun spectre, aucune transmission) — d'où des gains Gaia qui
-  refroidissent l'image (dispersion des zéro-points croissante vers le bleu :
-  R 0,162 / G 0,233 / B 0,376 mag). La SPCC ABSOLUE (v2.33-2.34) est, elle,
-  branchée et validée à 1,4-1,8 % contre Siril sur les MÊMES pixels
-  (`_diag_spcc.py --export-rgb`).
+- **HISTORIQUE CONDENSÉ (v2.35.0 → v2.36.1)** — traces complètes dans le
+  changelog de `avastack/__init__.py` et l'historique git ; les leçons durables
+  sont dans les « Pièges » de CLAUDE.md :
+  - **v2.36.1 — FOND BLEU, deux causes** : ① `save_image` donnait une image RGB à
+    `cv2.imencode` (qui attend du BGR) → TOUT PNG/TIFF exporté avait R et B
+    permutés, depuis des mois et invisiblement (l'aller-retour interne restait
+    cohérent) ; ② l'étirement VeraLux soustrait une ANCRE puis étire en log : 3,6 %
+    d'écart de ciel → fond étiré R/G 0,363 · B/G 1,611. Correctif ② : case
+    « Neutraliser la couleur du fond » (défaut coché ; gains ~2 % sur la médiane de
+    la moitié sombre, garde-fou ±10 %, gains ANNONCÉS) — l'équilibrage des canaux
+    ne le remplace pas (il lit un percentile bas — les coins, déjà neutres —
+    alors que l'ancre vit dans l'histogramme global).
+  - **Références de mesure sur ses empilements M31 v2.36.1** (41/51 et 115/123
+    frames, `_diag_empilement_couleur.py`) : grain σ 0,000519/0,000579/0,000673 →
+    0,000338/0,000375/0,000440 (÷1,53 pour ×2,8 de frames, théorie 1,67) ;
+    fond/σ ×1,44 ; fond NEUTRE (R/G 0,9998 · B/G 0,9999) ; grain résiduel
+    B/G 1,163 → 1,174 avec R/G 0,90 — le point de départ du grain bleu réglé en
+    v2.37.0 (gains multiplicatifs : 0,891 × 1,318 = 1,174).
+  - **v2.36.0 — normalisation COMMUNE des canaux (option, décochée)** : par défaut
+    `composer()` calait chaque rôle sur SES percentiles, donc le niveau du fond du
+    composite était proportionnel au bruit du canal (fond/σ 2,88 à 28 frames →
+    2,50 à 111 : il ne s'améliorait PAS en empilant) et le grain était coloré
+    (R/G 0,66 · B/G 1,45). En échelle commune (celle du rôle vert), le fond garde
+    son niveau physique : fond/σ ×1,81 entre 30 et 120 frames, grain B/G 0,79 =
+    celui des couches. Ses deux empilements v2.36.1 l'ont UTILISÉE (AVACOMPO dans
+    les fichiers) ✔. Banc `_test_norm_commune_jalon61.py`.
+  - **v2.35.2 — la MOLETTE changeait les listes déroulantes** (liaison de CLASSE Tk
+    `ttk::combobox::Scroll`) : des profils SPCC pouvaient changer sans intention
+    (son « Filtre B » était sur MiniCam8M Green) — re-vérifiés par Alain le
+    25/09/2026 ✔. En-têtes muets levés (`AVASPCC`/`AVAGAIA` disent quand rien n'est
+    appliqué) ; la mesure SPCC est faite UNE fois par session.
+  - **v2.35.1 — sauvegarde pleine résolution PAR COUCHE** en composition :
+    GraXpert/débruitage voyaient un composite > 1 (outils contractés pour [0..1])
+    → 96 % des pixels perdus, AVASCALE 1,21 au lieu de 17,94. Contrat de sortie :
+    le fichier linéaire reste « empilement + corrections », l'étirement n'y entre
+    JAMAIS (vérifié par `_test_save_brute_jalon59.py` [6]).
+  - **Repères durables de la chaîne de sortie (chantier v2.35.0)** :
+    `composer()` ne porte AUCUN gain (empilement BRUT) ; toutes les corrections
+    vivent dans `composition.corrections_couleur()` = gains (manuels × SPCC/Gaia) →
+    équilibrage des canaux → recalage « Linear Fit », appliquées au COMPOSITE en
+    aval (jamais aux couches : le solveur live re-compose et ré-applique lui-même,
+    et le traitement par couche reste sur des couches BRUTES) ;
+    `mean(corrections=False)` = fichier linéaire brut ; STF et VeraLux ne montrent
+    pas la même image (une seule transformation sur la luminance, contre ancre +
+    log) ; la SPCC ABSOLUE exige les COURBES DE TRANSMISSION et la réponse du
+    capteur (base Siril) alors que la photométrie Gaia est RELATIVE (gains qui
+    refroidissent l'image) — validée à 1,4-1,8 % contre Siril sur les mêmes pixels.
 
+## En attente / prochaine session
 
+- **Alain teste la chaîne EXTERNE complète** sur sa M31 (GraXpert gradient +
+  débruitage PAR COUCHE, BXT, puis cases **7** « Neutraliser la couleur du fond »
+  — cochée par défaut — et **8** « Réduire le bruit chromatique ») et juge : la
+  neutralisation par défaut est-elle utile/suffisante sur la version traitée ?
+  la force 0,5 du bruit chromatique est-elle trop douce (curseur « Couleur
+  live ») ?
+- **Grain GRIS résiduel** : la réduction du bruit chromatique ne touche PAS le
+  grain de luminance (mesuré ×1,00) — seul le débruitage live (NLM, force 0,5)
+  ou plus d'intégration le réduit. Sujet OUVERT si Alain veut aller plus loin
+  (piste : débruiteur épargnant les étoiles, cf. CLAUDE.md).
+- **CLOS par cette session** : profils SPCC re-sélectionnés par Alain (« les
+  filtres sont bons » : R/G/B MiniCam8M + « Average Spiral Galaxy ») ✔ ; option
+  « normalisation commune des canaux » UTILISÉE et mesurée sur ses deux
+  empilements M31 (AVACOMPO dans les fichiers) ✔ ; fond bleu des PNG/FITS clos ✔ ;
+  PNG ↔ FITS concordants (à revérifier à la prochaine exportation « tel que vu »).
 
 ## Statuts CLAUDE.md
 
@@ -290,6 +150,18 @@ dans le changelog du source et l'historique git.)
   d'ANCRE ; deux normalisations distinctes rendent une SSD aveugle —
   partager les bornes) ; jalon 24 (valider les placeholders d'un gabarit
   AVANT la substitution). Plus AUCUNE leçon en attente.
+- Leçons ÉCRITES le 25/09/2026 (au fil de la session, constats d'Alain) : un
+  `imencode` attend du BGR (PNG/TIFF R-B permutés pendant des mois) ; un étirement
+  log AMPLIFIE la couleur du fond (l'ancre de VeraLux) ; un gain MULTIPLICATIF
+  amplifie le bruit du canal qu'il monte (le grain bleu vient de la SPCC) ; les
+  mesures astro/photométrie/SPCC sont relancées par le WORKER (une case qui
+  déco/recoche pose une DEMANDE servie même sans frame).
+- Leçon EN ATTENTE d'accord d'Alain (25/09/2026, une ligne, proposition) : toute
+  correction PRÉ-ÉTIREMENT ajoutée à la chaîne LIVE doit être vérifiée/mirrorée
+  dans la chaîne de TRAITEMENT EXTERNE (et réciproquement) — les deux chaînes
+  doivent produire le même rendu (constat : la SPCC y était déjà via les
+  corrections de couleur, mais la neutralisation du fond et le bruit chromatique
+  manquaient → v2.37.1).
 
 ## Setup d'Alain
 
@@ -328,6 +200,16 @@ dans le changelog du source et l'historique git.)
 
 ## Clôtures précédentes
 
+- 25/09/2026 (v2.37.1, db0e870) : SESSION « FOND BLEU → GRAIN BLEU → CHAÎNE
+  EXTERNE », VALIDÉE PAR ALAIN (« Ça me parait OK »). Livré : PNG/TIFF sans
+  permutation R-B (v2.36.1) ; neutralisation de la couleur du fond avant étirement
+  (défaut COCHÉ) ; réduction du BRUIT CHROMATIQUE (opt-in, force = curseur
+  « Couleur live ») ; mesures SPCC/photométrie relançables EN FIN DE STACK ; cases
+  couleur à rendu IMMÉDIAT ; et les deux corrections pré-étirement intégrées à la
+  chaîne de traitement EXTERNE (la SPCC y était déjà, vérifié). Bancs : 63 dont
+  `_test_chroma_nr_jalon63.py` (nouveau) et `_test_couleurs_immediat_jalon39.py`
+  étendu aux quatre cases. Installateur 2.37.1 reconstruit. Repli si régression :
+  v2.36.0 (5f91ae0) = comportement d'avant ces correctifs.
 - 21/09/2026 (v2.23.3, aca5ca5) : jalon 55 VALIDÉ PAR ALAIN en réel
   (M31 RGB, mode dossier) — gains R/G/B temps réel, image équilibrée.
   Rappel opérationnel : équilibrage auto OU Linear Fit re-normalisent les
