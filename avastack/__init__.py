@@ -14,9 +14,35 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.34.6"
+AVASTACK_VERSION = "2.34.7"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.34.7 : LES FICHIERS ENREGISTRÉS DEVIENNENT AUTO-DESCRIPTIFS (question
+#          d'Alain, 24/09/2026 : « et la sauvegarde, empilement linéaire, elle
+#          sauvegarde quoi au juste ? »).
+#          Nouveaux mots-clés d'en-tête FITS, écrits à la sauvegarde LINÉAIRE de
+#          l'empilement ET à celle des couches :
+#            AVACOMPO — composition et normalisation appliquée
+#                       (« HOO, normalisation par role (percentiles) ») ;
+#            AVASPCC  — coefficients SPCC appliqués (« K=0.6232/0.7574/1.0000 »)
+#                       ABSENT si la SPCC n'était pas active ;
+#            AVAGAIA  — gains Gaia relatifs appliqués (« B=1.0459 G=1.3368 »),
+#                       ABSENT si la case était décochée ;
+#            AVAWB    — équilibrage des canaux auto et sa force (si coché) ;
+#            AVAFIT   — recalage colorimétrique et son mode (si coché) ;
+#            AVAFRAME — nombre de frames empilées ;
+#            AVALAYER — « couche BRUTE (ni normalisation, ni gain) » sur les
+#                       fichiers canal_<rôle>.fit.
+#          POURQUOI : la sauvegarde linéaire n'est PAS l'image brute — elle
+#          contient la moyenne temporelle par rôle, la normalisation par canal
+#          de `composer()`, les gains (manuels × [SPCC OU Gaia]), l'équilibrage
+#          des canaux et le recalage colorimétrique s'ils sont cochés, puis un
+#          bornage global [0,1] (AVASCALE) — et AUCUN étirement. Il fallait
+#          deviner tout cela à l'ouverture du fichier : c'est désormais écrit
+#          dedans (ASCII, FITS standard, lisible par Siril/astropy).
+#          Vérifié au banc : AVALAYER/AVAFRAME/FILTER sur les couches,
+#          AVACOMPO sur l'empilement, AVASPCC présent quand la SPCC est active
+#          et ABSENT sinon (le fichier ne ment pas sur ce qu'il contient).
 # v2.34.6 : RÉPONSE COMPLÈTE À LA QUESTION D'ALAIN SUR LA SAUVEGARDE LINÉAIRE,
 #          ET PIÈGE ÉVITÉ (une « correction » testée puis REJETÉE).
 #          • SA QUESTION : « pourquoi dis-tu que la sauvegarde linéaire n'est pas

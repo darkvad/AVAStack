@@ -4704,6 +4704,44 @@ class App:
             self.astro_couleur = "#c98a00"
             self.astro_info = f"Astrométrie : propagation refusée — {msg}"
 
+    def _entete_reglages(self):
+        """Mots-clés FITS décrivant CE QUI EST APPLIQUÉ dans une sauvegarde
+        linéaire — question d'Alain (24/09/2026) : « la sauvegarde empilement
+        linéaire, elle sauvegarde quoi au juste ? ». Le fichier devient
+        AUTO-DESCRIPTIF : en l'ouvrant, on sait si les coefficients SPCC, les
+        gains Gaia, l'équilibrage des canaux et le recalage colorimétrique y
+        sont ou non — plus besoin de deviner ni de refaire l'essai.
+
+        ASCII uniquement (convention FITS) et clés courtes (≤ 8 caractères) :
+        AVACOMPO (composition), AVAWB (équilibrage auto et sa force), AVAFIT
+        (recalage colorimétrique), AVASPCC (coefficients SPCC appliqués),
+        AVAGAIA (gains Gaia relatifs appliqués), AVALAYER (sauvegarde d'une
+        COUCHE brute), AVAFRAME (frames empilées)."""
+        st = self.stacker
+        ent = {}
+        n = int(getattr(st, "n", 0) or 0)
+        if n:
+            ent["AVAFRAME"] = n
+        # NB : ces mots-clés ne dépendent PAS de l'existence du stacker (les
+        # réglages sont connus même sans empilement) — seule la description de
+        # l'empilement lui-même en dépend (getattr défensifs).
+        if self._mode_compo:
+            ent["AVACOMPO"] = (f"{getattr(st, 'composition', '?')}, normalisation "
+                               "par role (percentiles)")
+            if self._spcc_actif and self.spcc is not None and self.spcc.valide:
+                k = self.spcc.coefficients
+                ent["AVASPCC"] = f"K={k[0]:.4f}/{k[1]:.4f}/{k[2]:.4f}"
+            if (self._photo_gains_actif and self.photometrie is not None
+                    and self.photometrie.valide):
+                ent["AVAGAIA"] = " ".join(
+                    f"{b}={g:.4f}" for b, g in sorted(self.photometrie.gains.items()))
+        if bool(getattr(st, "wb_auto", False)):
+            ent["AVAWB"] = (f"equilibrage canaux auto, force "
+                            f"{getattr(st, 'wb_force', 1.0):.2f}")
+        if bool(getattr(st, "linear_fit", False)):
+            ent["AVAFIT"] = f"recalage colorimetrique {getattr(st, 'linear_fit_mode', 'offset')}"
+        return ent
+
     def _astro_entete_sauvegarde(self, entete=None, forme=None):
         """Jalon 56 : complète un en-tête de sauvegarde avec les mots-clés WCS
         de la grille ACTUELLE (recadrage d'intersection inclus) — le FITS écrit
@@ -5313,6 +5351,10 @@ class App:
                         {"FILTER": self.filtre_courant}
                         if self.filtre_courant else None,
                         img.shape[:2] if img is not None else None)
+                    # Question d'Alain (« la sauvegarde linéaire, elle sauvegarde
+                    # quoi au juste ? ») : le fichier DÉCRIT ce qu'il contient
+                    # (gains SPCC/Gaia appliqués ou non, équilibrage, recalage).
+                    entete.update(self._entete_reglages())
                     img, entete = borner_lineaire(img, entete)
                     save_image(path, img, entete=entete)
                     self.saved_path = path
@@ -5338,6 +5380,12 @@ class App:
                             carte,
                             self._astro_entete_sauvegarde(
                                 {"FILTER": role}, carte.shape[:2]))
+                        # Ces fichiers sont les COUCHES BRUTES (moyenne par rôle,
+                        # sans normalisation par canal ni gain) : la SPCC et la
+                        # photométrie MESURENT sur ces mêmes valeurs — le dire
+                        # dans l'en-tête évite toute confusion.
+                        entete["AVALAYER"] = "couche BRUTE (ni normalisation, ni gain)"
+                        entete.update(self._entete_reglages())
                         save_image(os.path.join(
                             d_canaux, f"canal_{role}.fit"), bordee,
                             entete=entete)

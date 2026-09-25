@@ -11,9 +11,19 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.34.6** (`avastack/__init__.py`),
-  branche `master` — **SPCC ABSOLUE VALIDÉE CONTRE SIRIL + recette couleur
-  complète identifiée** :
+- **Version stable de référence : AVAStack v2.34.7** (`avastack/__init__.py`),
+  branche `master` — **SPCC ABSOLUE VALIDÉE CONTRE SIRIL + fichiers
+  enregistrés AUTO-DESCRIPTIFS** :
+  - **CE QUE CONTIENT LA SAUVEGARDE LINÉAIRE** (question d'Alain) : moyenne
+    temporelle par rôle → **normalisation par canal** (`composer()`, percentiles
+    0,25 %/99,7 %) → **gains** (manuels × [SPCC **ou** gains Gaia]) → équilibrage
+    des canaux et recalage colorimétrique s'ils sont cochés → bornage global
+    [0,1] (AVASCALE, nan/inf comptés AVANAN) → FITS 32 bits, canaux sur NAXIS3,
+    + WCS/FILTER. **Aucun étirement, aucun gamma** (côté affichage). Les COUCHES
+    `canal_*.fit` (autre bouton) sont, elles, **brutes** (ni normalisation ni
+    gain) : c'est la base de la mesure SPCC. Désormais **écrit dans l'en-tête**
+    (AVACOMPO, AVASPCC, AVAGAIA, AVAWB, AVAFIT, AVAFRAME, AVALAYER).
+
   - **VALIDATION (24/09/2026, mêmes pixels)** : Siril sur `spcc_brut_RGB.fit` →
     R/V = 0,087250 + **0,872563**·cat (σ 0,1226), B/V = 0,114178 +
     **0,792972**·cat (σ 0,1184), **K = 0,636 / 0,775 / 1,000**. AVAStack :

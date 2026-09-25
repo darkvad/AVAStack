@@ -317,6 +317,37 @@ for role in ("Ha", "O3"):
             and lu.shape == moy[role].shape
             and np.allclose(lu, moy[role], rtol=1e-5, atol=1e-6),
             f"canal_{role}.fit écrit = moyenne du rôle (recadrée)")
+# v2.34.6 : le fichier DIT ce qu'il contient (question d'Alain du 24/09/2026 :
+# « la sauvegarde linéaire, elle sauvegarde quoi au juste ? »).
+from astropy.io import fits      # noqa: E402
+h_can = fits.open(os.path.join(d_can, "canal_Ha.fit"))[0].header
+verifie("BRUTE" in str(h_can.get("AVALAYER", "")),
+        f"canal_*.fit : en-tête AVALAYER = « {h_can.get('AVALAYER')} » "
+        f"(couche brute : ni normalisation, ni gain)")
+verifie(int(h_can.get("AVAFRAME", 0)) > 0,
+        f"canal_*.fit : AVAFRAME = {h_can.get('AVAFRAME')} (frames empilées)")
+h_compo = fits.open(os.path.join(d_can, "canal_O3.fit"))[0].header
+verifie(str(h_compo.get("FILTER", "")) == "O3",
+        "canal_*.fit : FILTER = rôle du canal (déjà en place)")
+
+# sauvegarde de l'EMPILEMENT (composite) : mêmes renseignements + composition
+d_stack = os.path.join(racine, "empilement.fits")
+app.save_request = d_stack
+t0 = time.time()
+while app.saved_path != d_stack and time.time() - t0 < 10:
+    time.sleep(0.05)
+ok_stack = os.path.exists(d_stack)
+verifie(ok_stack and app.saved_path == d_stack,
+        "sauvegarde de l'empilement (linéaire) consommée par le worker")
+if ok_stack:
+    h_s = fits.open(d_stack)[0].header
+    verifie(str(h_s.get("AVACOMPO", "")).startswith("HOO")
+            and "normalisation" in str(h_s.get("AVACOMPO", "")),
+            f"empilement : AVACOMPO = « {h_s.get('AVACOMPO')} » (ce qui est "
+            f"appliqué est écrit dans le fichier)")
+    verifie("AVASPCC" not in h_s and "AVAGAIA" not in h_s,
+            "empilement : aucun gain de couleur signalé quand aucune case "
+            "n'est cochée (le fichier ne ment pas)")
 
 app.running = False
 th.join(timeout=5)

@@ -482,6 +482,12 @@ try:
     texte = app.lbl_spcc.cget("text")
     verifie("0.90" in texte and "1.10" in texte,
             f"ligne d'état affiche les coefficients ({texte[:70]}…)")
+    # v2.34.6 : la sauvegarde DIT ce qu'elle contient (gains SPCC appliqués).
+    ent = app._entete_reglages()
+    verifie(str(ent.get("AVASPCC", "")).startswith("K=")
+            and "AVAGAIA" not in ent,
+            f"en-tête de sauvegarde : coefficients SPCC signalés "
+            f"(« {ent.get('AVASPCC')} »), gains Gaia non appliqués")
     st_lrgb = CompositeStacker("RGB", k=None)
     st_lrgb.gains_roles = app.spcc.gains()
     verifie(set(st_lrgb.gains_roles) == {"R", "G", "B"},
