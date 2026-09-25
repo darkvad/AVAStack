@@ -47,6 +47,22 @@ AVASTACK_VERSION = "2.35.1"
 #          BANC : `_test_save_brute_jalon59.py` [7] vérifie que GraXpert live
 #          voit bien 2 COUCHES 2D (jamais le composite) et que l'échelle
 #          linéaire est PRÉSERVÉE (AVASCALE ≈ celle du brut, contre 1,21 avant).
+#          Aussi (même journée) : les dialogues d'enregistrement affichent la clé
+#          AVAAPPLI du fichier écrit (« aucune (empilement BRUT) », « SPCC +
+#          equilibrage canaux + recalage colorimetrique »…) — on n'avait AUCUN
+#          moyen de savoir, au moment du clic, si la SPCC était entrée dans le
+#          fichier ; et `_diag_empilement_couleur.py` mesure désormais le
+#          PLANCHER DE BRUIT par canal (le GRAIN) et son équilibre R/G, B/G.
+#          MESURE DURABLE (25/09/2026, M31 RGB 165 frames d'Alain) : le grain des
+#          COUCHES brutes est équilibré (σ 0,000498 / 0,000557 / 0,000526 →
+#          R/G 0,89 · B/G 0,94) mais il devient COLORÉ dans le composite
+#          (0,00517 / 0,00781 / 0,01133 → R/G 0,66 · B/G 1,45) : la
+#          normalisation par rôle de `composer()` divise chaque canal par SA
+#          propre dynamique (p99,7−p0,25), celle du bleu étant 2,1× plus étroite
+#          que celle du rouge → le grain bleu est amplifié 2,2× de plus que le
+#          rouge. Le « grain bleu-vert » NAÎT donc dans la composition, avant
+#          tout étirement et avant les corrections (voir AVANCEMENT.md, piste
+#          ouverte : normalisation COMMUNE aux trois rôles).
 # v2.35.0 : LA SAUVEGARDE LINÉAIRE DEVIENT BRUTE + LES CORRECTIONS DE COULEUR
 #          PASSENT DANS LA CHAÎNE DE SORTIE (chantier du 24/09/2026, décisions
 #          d'Alain ; étapes ①→⑦ du plan).

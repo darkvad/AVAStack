@@ -378,6 +378,7 @@ class App:
         self.asseen_result = None       # chemin ou "ERREUR: …" — écrit par le thread, lu par _tick
         self.asseen_titre = None        # titre du dialogue (les 2 boutons partagent le thread)
         self.msg_outils = None          # erreurs d'outil non bloquantes (chaîne par couche)
+        self.dernier_applicatif = None  # AVAAPPLI du dernier fichier écrit (dialogue)
         self.ext_msg = "—"              # message d'état (écrit par le thread, lu par _tick)
         self._ext_shown = None
         self._vl_lbl_txt = "—"          # mémo du texte affiché dans lbl_vl
@@ -3904,6 +3905,7 @@ class App:
                                     "etirement)")
                 img, entete = borner_lineaire(source, entete)
                 save_image(path, img, entete=entete)
+                self.dernier_applicatif = entete.get("AVAAPPLI")
                 self.asseen_result = path
                 return
             rendu = self.disp.rendu_pleine_resolution(source, reglages)
@@ -5620,6 +5622,10 @@ class App:
                     img, entete = borner_lineaire(img, entete)
                     save_image(path, img, entete=entete)
                     self.saved_path = path
+                    # Ce qui est ÉCRIT dans le fichier, montré à l'utilisateur
+                    # (constat du 25/09/2026 : on ne savait pas, à la lecture du
+                    # dialogue, si la SPCC était entrée dans le fichier ou non).
+                    self.dernier_applicatif = entete.get("AVAAPPLI")
                 except Exception as e:
                     self.saved_path = f"ERREUR: {e}"
 
@@ -6336,7 +6342,12 @@ class App:
                 messagebox.showinfo("Enregistrer",
                                     f"Canaux sauvegardés dans :\n{p}")
             else:
-                messagebox.showinfo("Enregistrer", f"Empilement sauvegardé :\n{p}")
+                corr = self.dernier_applicatif
+                self.dernier_applicatif = None
+                messagebox.showinfo(
+                    "Enregistrer", f"Empilement sauvegardé :\n{p}"
+                    + (f"\n\nCorrections écrites dans le fichier (AVAAPPLI) :"
+                       f"\n{corr}" if corr else ""))
         # Jalon 5 : état de la sauvegarde « tel que vu » (thread dédié)
         self.btn_save_asseen.config(
             state="disabled"
@@ -6348,11 +6359,15 @@ class App:
             self.asseen_titre = None
             outils = self.msg_outils        # erreurs d'outil (couche par couche)
             self.msg_outils = None
+            corr = self.dernier_applicatif
+            self.dernier_applicatif = None
             if p.startswith("ERREUR"):
                 messagebox.showerror(titre, p)
             else:
                 messagebox.showinfo(
                     titre, f"Image sauvegardée :\n{p}"
+                    + (f"\n\nCorrections écrites dans le fichier (AVAAPPLI) :"
+                       f"\n{corr}" if corr else "")
                     + (f"\n\nOutils : {outils}" if outils else ""))
         self.root.after(30, self._tick)
 

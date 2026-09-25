@@ -59,6 +59,32 @@ def mesure(img):
     return fond, bruit, p999, mx
 
 
+def plancher_bruit(img, bloc=96):
+    """σ robuste des zones `bloc`×`bloc` les PLUS LISSES, par canal — le
+    PLANCHER de bruit, donc le GRAIN réel de l'image. C'est la mesure qui dit
+    si le grain est gris ou coloré : peu importe le fond (M31 remplit le champ,
+    ni le centre ni les coins ne sont du ciel pur), ce qui compte est que les
+    trois canaux aient le MÊME plancher — sinon le grain paraît bleu/vert.
+    → (sigmas (3,), niveaux (3,)) ; (None, None) si l'image n'est pas couleur."""
+    a = np.asarray(img, np.float32)
+    if a.ndim != 3 or a.shape[-1] != 3:
+        return None, None
+    h, w = a.shape[:2]
+    sig, nivo = [], []
+    for c in range(3):
+        best = (float("inf"), 0.0)
+        for y in range(0, h - bloc, bloc):
+            for x in range(0, w - bloc, bloc):
+                v = a[y:y + bloc, x:x + bloc, c].ravel()
+                m = float(np.median(v))
+                s = 1.4826 * float(np.median(np.abs(v - m)))
+                if s < best[0]:
+                    best = (s, m)
+        sig.append(best[0])
+        nivo.append(best[1])
+    return sig, nivo
+
+
 def rapport(a, b):
     """Rapport pixel à pixel a/b (médiane des ratios par canal)."""
     a, b = np.asarray(a, np.float32), np.asarray(b, np.float32)
@@ -115,6 +141,15 @@ def main(argv):
         print(f"  BRUIT relatif      R/G = {bruit[0] / bruit[1]:.4f}   "
               f"B/G = {bruit[2] / bruit[1]:.4f}   "
               f"(un canal qui monte en bruit = grains colorés visibles)")
+        sig, nivo = plancher_bruit(img)
+        if sig is not None:
+            print("  PLANCHER DE BRUIT (zones les plus lisses = le GRAIN) :")
+            print("    " + " | ".join(f"{n} σ {s:.6f} (niveau {v:.5f})"
+                                      for n, s, v in zip(noms, sig, nivo)))
+            print(f"    ÉQUILIBRE DU GRAIN  R/G = {sig[0]/sig[1]:.3f}   "
+                  f"B/G = {sig[2]/sig[1]:.3f}   ← si ça s'écarte de 1, le grain "
+                  "est COLORÉ (c'est cette mesure qui a montré que le grain "
+                  "bleu-vert naît dans la normalisation par rôle de composer())")
     # --- rapports entre fichiers, dans l'ordre de la ligne de commande --------
     cles = [p for p in fichiers if p in images]
     for i in range(1, len(cles)):

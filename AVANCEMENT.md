@@ -88,22 +88,34 @@ dans le changelog du source et l'historique git.)
   - `_diag_empilement_couleur.py` répond en une commande à « pourquoi mon
     image est-elle colorée / bruitée ? » : fond et σ par canal (le BRUIT),
     contraste de fond R/G et B/G, rapport brut/traité, clés AVA*.
-- **EN ATTENTE DE DÉCISION D'ALAIN (piste ouverte, 25/09/2026)** : le bruit
-  coloré vu en zoom (bleu/vert) après application des corrections. Mesuré sur
-  son M31 RGB : le composite BRUT a un fond R/G 0,859 · B/G 1,233 avec un bruit
-  ÉGAL dans les 3 canaux — parce que `composer()` normalise CHAQUE rôle par ses
-  propres percentiles, ce qui égalise aussi les bruits (les couches brutes
-  mesurées sont, elles, très inégales : σ R 0,0033 / G 0,0025 / B 0,0017).
-  Les corrections s'appliquant MAINTENANT EN PLEIN (elles n'étaient plus
-  absorbées par cette normalisation), le déséquilibre de bruit réapparaît :
-  SPCC (R ×0,53 / G ×0,67 / B ×1,0) × Linear Fit (R ×0,76 / B ×1,21) →
-  R fortement atténué, B/G conservés → le bruit restant est BLEU-VERT.
-  Pistes : (a) normalisation COMMUNE aux 3 rôles quand des corrections sont
-  actives (la piste rejetée en v2.34.6 le sera moins maintenant que GraXpert
-  live retire le fond PAR COUCHE) ; (b) appliquer les gains AUX COUCHES avec
-  des bornes de normalisation FIGÉES (l'argument `bornes=` de `composer()`
-  existe déjà) ; (c) ne pas empiler le GAIN du Linear Fit sur la SPCC (Siril
-  n'ajoute à la SPCC qu'une référence de FOND — l'offset) ; (d) accepter.
+- **EN ATTENTE DE DÉCISION D'ALAIN (piste ouverte, 25/09/2026) — LE GRAIN
+  BLEU-VERT NAÎT DANS LA COMPOSITION** (mesuré au plancher de bruit, zones les
+  plus lisses, sur son M31 RGB de 165 frames) :
+  - COUCHES brutes `canal_*.fit` : σ 0,000498 / 0,000557 / 0,000526 →
+    **grain équilibré** (R/G 0,89 · B/G 0,94) ;
+  - composite BRUT v2.35.0 : σ 0,00517 / 0,00781 / 0,01133 →
+    **grain COLORÉ** (R/G 0,66 · B/G 1,45).
+  Cause : `composer()` normalise CHAQUE rôle par ses propres percentiles
+  (p0,25/p99,7) ; la dynamique du bleu est 2,1× plus étroite que celle du rouge
+  (M31 est jaune : peu de signal bleu) → le grain bleu est amplifié 2,2× de plus
+  que le rouge. Le grain est donc déjà coloré AVANT l'étirement et AVANT les
+  corrections ; les corrections de couleur (SPCC R ×0,53 + Linear Fit R ×0,76 /
+  B ×1,21) ne font que le modifier un peu. **Le mode STF ne le montre pas parce
+  que son étirement auto est bien plus doux que VeraLux (logD 2,0 / fond visé
+  0,12) sur une image bruitée.**
+  Pistes : (a) **normalisation COMMUNE aux 3 rôles** quand des corrections sont
+  actives — la piste rejetée en v2.34.6 le sera moins maintenant que GraXpert
+  live retire le fond PAR COUCHE, et le recalage « Linear Fit » (offsets) sert
+  de référence de fond à la Siril ; (b) gains appliqués AUX COUCHES avec bornes
+  FIGÉES (argument `bornes=` déjà là) ; (c) ne pas empiler le GAIN du Linear Fit
+  sur la SPCC (Siril n'ajoute qu'une référence de FOND) ; (d) accepter.
+- **POURQUOI STF ET VERALUX NE MONTRE PAS LA MÊME IMAGE (constaté, documenté)** :
+  tout le cadre VeraLux (GraXpert live, débruitage live, SCNR live) est MASQUÉ
+  en mode STF (`_on_moteur` : `frm_veralux.pack_forget()`) et le thread solveur
+  — seul chemin du GX live — ne tourne qu'en mode VeraLux. En STF, l'image est
+  donc le composite corrigé + netteté, SANS retrait de gradient ni débruitage.
+  Seule la netteté est commune aux deux moteurs. C'est une décision de
+  conception ; à rouvrir si Alain veut un rendu identique entre les moteurs.
 - **À FAIRE / À VALIDER PAR ALAIN** :
   - test RÉEL du correctif 2.35.1 : réécrire « empilement traité (linéaire) »
     avec GraXpert + débruitage live actifs et vérifier AVASCALE (~18, plus
