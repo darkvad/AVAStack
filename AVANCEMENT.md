@@ -10,8 +10,28 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **Version stable de référence : AVAStack v2.35.1** (`avastack/__init__.py`),
-  branche `master` — **CORRECTIF v2.35.1 (constat RÉEL d'Alain, 25/09/2026)** :
+- **Version stable de référence : AVAStack v2.35.2** (`avastack/__init__.py`),
+  branche `master` — **CORRECTIFS v2.35.2 (constats d'Alain, 25/09/2026)** :
+  - **LA MOLETTE CHANGEait LA VALEUR DES LISTES DÉROULANTES** (Tk associe la
+    molette aux `ttk.Combobox` par une liaison de CLASSE
+    `ttk::combobox::Scroll` — vérifié : un cran fait passer « a » → « b »). En
+    défilant les réglages, si le curseur passait sur une liste, elle changeait
+    TOUTE SEULE → **des réglages ont pu changer sans intention et FAUSSER DES
+    TESTS** (profil de filtre de la SPCC, méthode du recalage…). Les liaisons de
+    classe sont supprimées au démarrage : la molette ne modifie plus aucune
+    liste et fait défiler le panneau. ⚠️ **PENSER À RE-VÉRIFIER les profils
+    SPCC** : sur sa capture du 25/09 le profil « Filtre B » était
+    **QHYCCD MiniCam8M Green** (vraisemblablement modifié par cette molette) —
+    d'où une mesure SPCC aberrante (pente B/G NÉGATIVE, avertissement « hors de
+    [0,5 ; 1,5] ») appliquée quand même.
+  - les en-têtes disent quand RIEN n'est appliqué : `AVASPCC` / `AVAGAIA` =
+    « non appliquee (case cochee, mesure indisponible) » si la case est cochée
+    sans mesure exploitable (avant, l'en-tête restait muet et laissait croire
+    que la SPCC était dans le fichier).
+  - la mesure SPCC est faite **UNE fois par session** (décocher/recocher la
+    refait) : le libellé l'annonce désormais — « mesure faite sur N frames
+    (décocher/recocher la case pour refaire) ».
+- **Version stable précédente : AVAStack v2.35.1** — **CORRECTIF du 25/09/2026** :
   en COMPOSITION, la sauvegarde pleine résolution traitait GraXpert/débruitage
   live sur le COMPOSITE (> 1 : un cœur d'étoile monte à ~18 après la
   normalisation par rôle) alors que ces outils sont CONTRACTÉS POUR [0..1] —
