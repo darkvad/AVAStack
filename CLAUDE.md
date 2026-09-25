@@ -149,12 +149,24 @@ un fichier séparé du projet, jamais par édition du fichier tiers.
 
 ## Sauvegardes : linéaire vs « tel que vu » (v2.2.7)
 
-Trois boutons d enregistrement aux rôles DISTINCTS — ne jamais fusionner :
+Quatre boutons d enregistrement aux rôles DISTINCTS — ne jamais fusionner
+(le 2e a été ajouté en v2.35.0, cf. la règle ci-dessous) :
 
-- **« 💾 Enregistrer l'empilement (linéaire)… »** et **« 💾 Enregistrer le
-  résultat traité (linéaire)… »** : sauvegardent l image LINÉAIRE (pile
-  brute, ou résultat GraXpert/BXT sans étirement) — voulu, pour retraitement
-  ultérieur dans un logiciel dédié. Comportement historique, inchangé.
+- **« 💾 Enregistrer l'empilement (linéaire)… »** : l EMPILEMENT BRUT (moyenne
+  temporelle + normalisation par rôle de `composer()`), sans gradient, sans
+  correction de couleur, sans étirement — la référence reproductible
+  (cf. la règle ci-dessous). Depuis la v2.35.0, AUCUNE case de couleur ne
+  change ce fichier (banc `_test_save_brute_jalon59.py`).
+- **« 💾 Enregistrer l'empilement traité (linéaire)… »** (cadre Sortie, ajouté
+  en v2.35.0) : la CHAÎNE DE SORTIE sans étirement — gradient live, débruitage
+  live, corrections de couleur, netteté, SCNR — donc le fichier « prêt à
+  traiter » dans un logiciel externe. En-tête auto-descriptif (`AVAAPPLI`,
+  `AVAVUE`).
+- **« 💾 Enregistrer le résultat traité (linéaire)… »** (cadre « Traitement
+  externe ») : le résultat du ⚡ manuel (GraXpert/BXT à la demande, sur un
+  INSTANTANÉ), sans étirement — voulu, pour retraitement ultérieur dans un
+  logiciel dédié. Comportement historique, inchangé ; ne pas le confondre avec
+  le bouton « empilement traité (linéaire) » du cadre Sortie (chaîne LIVE).
 - **« 💾 Enregistrer tel que vu (étiré)… »** : SEUL bouton qui applique la
   chaîne d étirement complète en PLEINE résolution (jamais l aperçu
   1600 px) : `DisplayProcessor.rendu_pleine_resolution()` — fonction PURE
@@ -178,18 +190,27 @@ couleur. Les corrections de couleur — SPCC, gains photométriques (Gaia),
 la CHAÎNE DE SORTIE (affichage et sortie « traitée »), JAMAIS au fichier
 linéaire : sinon celui-ci n'est ni brut ni fini. Justification : une correction
 appliquée en amont est absorbée en partie par la normalisation par canal de
-`composer()`, et le retrait de gradient vit déjà sur une COPIE (GraXpert live ne
-modifie jamais l'empilement) ; garder le fichier brut est donc le seul moyen
-d'avoir une référence reproductible et un traitement ultérieur propre.
+`composer()` — c'est pour cela que les corrections sont appliquées APRÈS
+`composer()` depuis la v2.35.0 —, et le retrait de gradient vit déjà sur une
+COPIE (GraXpert live ne modifie jamais l'empilement) ; garder le fichier brut est
+donc le seul moyen d'avoir une référence reproductible et un traitement ultérieur
+propre.
 Sorties attendues : ① **empilement linéaire BRUT** (référence) ; ② **empilement
 traité linéaire** (gradient retiré + corrections, sans étirement) par un **bouton
 DÉDIÉ** — distinct de « Enregistrer le résultat traité (linéaire) » qui reste
 lié au traitement EXTERNE manuel (⚡, GraXpert/BXT à la demande sur un
-instantané) ; ③ **tel que vu** (étiré). ÉTAT DU CODE au 24/09/2026 : divergence connue à corriger — les
-gains SPCC/Gaia, l'équilibrage et le Linear Fit sont appliqués dans
-`composer()`, donc présents dans `CompositeStacker.mean()`, qui sert à la fois à
-l'affichage ET à la sauvegarde linéaire ; le chantier de mise en conformité est
-spécifié dans AVANCEMENT.md (constats de code, ordre d'implémentation, bancs).
+instantané) ; ③ **tel que vu** (étiré). ÉTAT DU CODE depuis la **v2.35.0**
+(25/09/2026) : CONFORME, codé et au banc. `composer()` ne porte plus AUCUNE
+correction de couleur (il rend l'empilement BRUT) ; les gains (manuels ×
+SPCC/Gaia), l'équilibrage des canaux et le recalage « Linear Fit » vivent dans
+`composition.corrections_couleur()`, appliquée par
+`CompositeStacker.mean(corrections=True)` (DÉFAUT = affichage), par le solveur
+live APRÈS la recomposition des couches traitées, et par le 3e bouton « empilement
+traité (linéaire) » ; `mean(corrections=False)` est l'empilement BRUT que la
+sauvegarde linéaire enregistre (banc `_test_save_brute_jalon59.py` : fichier
+IDENTIQUE au pixel près avec et sans les cases de couleur cochées). Ordre de la
+chaîne de sortie : GraXpert (par couche en composition) → débruitage →
+CORRECTIONS (gains + équilibrage + recalage) → netteté/SCNR → étirement.
 
 ## Doc outils externes (CLI)
 
