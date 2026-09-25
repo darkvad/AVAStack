@@ -11,7 +11,38 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.34.4** (`avastack/__init__.py`),
+- **Version stable de référence : AVAStack v2.34.5** (`avastack/__init__.py`),
+  branche `master` — **SPCC ABSOLUE : VALIDATION CROISÉE AVEC SIRIL RÉUSSIE**
+  (jalon 58) + **BUG de l'ÉQUILIBRAGE DES CANAUX en composition corrigé** :
+  - **VALIDATION (24/09/2026, mêmes pixels)** : sur les couches BRUTES
+    concaténées fournies à Siril (`spcc_brut_RGB.fit`, via
+    `_diag_spcc.py --export-rgb`), Siril mesure R/V = 0,087250 + **0,872563**·cat
+    (σ 0,1226) et B/V = 0,114178 + **0,792972**·cat (σ 0,1184), **K = 0,636 /
+    0,775 / 1,000** ; AVAStack, mêmes pixels : **0,888** (σ 0,020) et **0,782**
+    (σ 0,019), **K = 0,6232 / 0,7574 / 1,0000** → **écart 1,4 à 1,8 %** sur les
+    pentes et ~2 % sur les coefficients, avec une **dispersion 6× meilleure**.
+    Les chaînes CONCORDENT : les divergences des essais précédents venaient des
+    IMAGES analysées (fichiers normalisés par rôle, gains Gaia appliqués), pas du
+    modèle.
+  - **BUG CORRIGÉ** : la case « Équilibrage des canaux (auto) », cochée, n'avait
+    **aucun effet en composition** (`LiveStacker._equilibrer` est no-op sur une
+    carte 2D, et chaque rôle EST une carte 2D). Elle s'applique maintenant au
+    **COMPOSITE**, après la normalisation par rôle, avec cache (frames, force,
+    cadre) et force partielle. Banc : fonds 0,30/0,15/0,10 → 0,16510 partout.
+  - **MESURE DE FOND (piste ouverte)** : `composer()` **normalise déjà chaque
+    rôle** par ses percentiles (0,25 %/99,7 %) → les fonds sont écrasés canal
+    par canal et une PART des corrections de couleur est absorbée ; c'est
+    pourquoi la SPCC a un effet **visible mais modéré** sur l'affichage
+    (mesuré : R/G 0,877 → 0,793 ; B/G 1,136 → 1,325 après étirement), alors que
+    Siril — qui ne normalise PAS par canal et applique en plus une **référence
+    de fond par canal** (B0/B1/B2) — obtient un fond non bleu et un effet plein.
+    Piste : option de normalisation COMMUNE aux trois canaux quand des gains de
+    couleur sont actifs.
+  - **Sauvegarde vs couches** : un enregistrement d'empilement n'est PAS
+    comparable aux couches (normalisation par rôle + gains : gains implicites
+    mesurés R/G 0,944 et B/G 1,242 sur le fichier d'Alain) → utiliser
+    `--export-rgb` pour toute comparaison externe.
+
   branche `master` — **SPCC ABSOLUE BRANCHÉE ET VALIDÉE CONTRE SIRIL (jalon 58,
   24/09/2026)** :
   - **VALIDATION CROISÉE RÉUSSIE** : à partir du log SPCC réel de Siril fourni

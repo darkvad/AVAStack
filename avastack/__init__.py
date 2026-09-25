@@ -14,9 +14,49 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.34.4"
+AVASTACK_VERSION = "2.34.5"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.34.5 : VALIDATION CROISÉE AVEC SIRIL RÉUSSIE (mêmes pixels) + BUG de
+#          l'ÉQUILIBRAGE DES CANAUX en composition.
+#          • VALIDATION (2e essai d'Alain, 24/09/2026) : `_diag_spcc.py
+#            --export-rgb` a fourni à Siril les couches BRUTES concaténées
+#            (spcc_brut_RGB.fit). Siril donne R/V = 0,087250 + 0,872563·cat
+#            (σ 0,1226) et B/V = 0,114178 + 0,792972·cat (σ 0,1184), K = 0,636 /
+#            0,775 / 1,000. AVAStack, sur les MÊMES pixels : pentes 0,888
+#            (σ 0,020) et 0,782 (σ 0,019), K = 0,6232 / 0,7574 / 1,0000 →
+#            ÉCART DE 1,4 À 1,8 % sur les pentes, ~2 % sur les coefficients, et
+#            une dispersion 6 FOIS MEILLEURE. Les deux chaînes concordent : la
+#            divergence des essais précédents venait bien des IMAGES analysées
+#            (fichiers normalisés par rôle / gains Gaia appliqués), pas du
+#            modèle — l'intuition d'Alain était juste.
+#          • BUG CORRIGÉ : la case « Équilibrage des canaux (auto) », cochée,
+#            n'avait AUCUN effet en mode composition — `LiveStacker._equilibrer`
+#            est no-op sur une carte 2D, or chaque RÔLE d'une composition EST
+#            une carte 2D (l'équilibrage attend une image couleur). Elle
+#            s'applique désormais au COMPOSITE (H, W, 3), après la
+#            normalisation par rôle, avec cache par (frames, force, cadre) et
+#            force partielle comme en mono. Vérifié au banc : fonds R/G/B
+#            0,30/0,15/0,10 → 0,16510 partout ; force 0,5 → partiel.
+#          • MESURE DE FOND (documentée, non corrigée) : `composer()` normalise
+#            DÉJÀ chaque rôle par ses percentiles (0,25 % / 99,7 %) — les fonds
+#            sont donc écrasés canal par canal et une PART des corrections de
+#            couleur est absorbée. C'est pourquoi la SPCC (comme les gains Gaia)
+#            a un effet VISIBLE mais modéré sur l'image affichée (mesuré : R/G
+#            0,877 → 0,793 et B/G 1,136 → 1,325 après étirement) — alors que
+#            Siril, qui ne normalise PAS par canal, voit ses coefficients
+#            s'appliquer pleinement (+ sa référence de fond par canal B0/B1/B2,
+#            d'où son fond non bleu). PISTE NOTÉE : option de normalisation
+#            COMMUNE aux trois canaux quand des gains de couleur sont actifs.
+#          • RÉPONSES AUX QUESTIONS D'ALAIN : (1) la correction EST appliquée au
+#            rendu et aux sauvegardes (le bloc qui pose les gains tourne à
+#            chaque tour de worker, même sans nouvelle brute) ; (2) un
+#            enregistrement d'empilement n'est PAS comparable aux couches
+#            (normalisation par rôle + gains : gains implicites mesurés R/G
+#            0,944 et B/G 1,242 sur le sien) — d'où l'export RGB brut ; (3) le
+#            FOND coloré relève du retrait de gradient / du recalage
+#            colorimétrique (offset), pas de la SPCC, qui s'adresse aux
+#            ÉTOILES.
 # v2.34.4 : OUTIL DE COMPARAISON STRICTE AVEC SIRIL + éclaircissement de trois
 #          points soulevés par Alain après son 2e essai réel (153 frames).
 #          • NOUVEAU `_diag_spcc.py --export-rgb FICHIER` : écrit un FITS RGB des

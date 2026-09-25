@@ -38,7 +38,7 @@ import numpy as np
 # privés _aire_signee/_clip_poly restent dans stacking.py, source unique).
 from .stacking import (LiveStacker, _aire_signee, _clip_poly,
                        cadre_intersection, quad_alignement,
-                       aligner_canaux)
+                       aligner_canaux, gains_equilibre)
 
 # Rôles possibles d'un dossier (un rôle = un filtre).
 ROLES = ("L", "R", "G", "B", "Ha", "O3", "S2")
@@ -326,6 +326,9 @@ class CompositeStacker:
         self.linear_fit_mode = "offset"
         self.fit_diag = None              # gains/offsets mesurés (UI)
         self._fit_cache = None
+        # v2.34.5 : cache de l'équilibrage des canaux appliqué au COMPOSITE
+        # (la case n'agissait qu'en mono : no-op sur une carte 2D de rôle).
+        self._wb_cache_comp = None
         self.role_courant = None          # rôle de la frame en cours d'ajout
         self.stackers = {}                # rôle → LiveStacker (canaux 2D)
         self._shape = None                # forme des canaux (posée au 1er add)
@@ -442,6 +445,9 @@ class CompositeStacker:
         self._shape = None
         self._fit_cache = None            # recalage Linear Fit (jalon 54)
         self.fit_diag = None
+        self._wb_cache_comp = None        # équilibrage des canaux du composite
+                                          # (v2.34.5 : la case n'agissait qu'en
+                                          # mono — no-op sur un rôle 2D)
 
     # -- lecture du composite -------------------------------------------------
     def _recadrer(self, img):
@@ -521,6 +527,15 @@ class CompositeStacker:
                             mode_l=self.mode_l)
         except ValueError:
             comp = None                   # formes hétérogènes (ne doit pas
+        # Jalon 58b : ÉQUILIBRAGE DES CANAUX (auto, jalon 13) sur le COMPOSITE.
+        # BUG CORRIGÉ (constat Alain, 24/09/2026) : il n'avait AUCUN effet en
+        # mode composition — `LiveStacker._equilibrer` est no-op sur une carte
+        # 2D, or chaque rôle de la composition EST une carte 2D (l'équilibrage
+        # attend une image couleur). La case cochée ne changeait donc rien à
+        # l'affichage. Ici on l'applique au composite (H, W, 3), là où les trois
+        # canaux existent enfin — même fonction `gains_equilibre`, même force.
+        if comp is not None and self._wb_auto and recadre:
+            comp = self._equilibrer_composite(comp)
         # Jalon 54d : le recalage ne s'applique QUE au chemin recadré
         # (visu + sauvegardes). mean(recadre=False) est la RÉFÉRENCE
         # d'alignement (jalon 13) : elle reste BRUTE — exactement comme
@@ -529,6 +544,27 @@ class CompositeStacker:
         if comp is not None and self.linear_fit and recadre:
             comp = self._recaler_fit(comp)         # → case DÉCOCHÉE = brut
         return comp, canaux
+
+    def _equilibrer_composite(self, comp):
+        """Équilibrage des canaux du COMPOSITE (jalon 13 appliqué au composite,
+        v2.34.5) : gains par canal dérivés du FOND (percentile bas), mis en
+        cache par (frames totales, force, cadre) — `mean()` est appelée ~20×/s
+        mais rien ne change entre deux frames. Force < 1 → gains partiels
+        (`gains ** force`), comme dans `LiveStacker._equilibrer`."""
+        if comp.ndim != 3 or comp.shape[-1] != 3:
+            return comp
+        cle = (sum(s.n for s in self.stackers.values()),
+               round(float(self.wb_force), 4), self.cadre)
+        if self._wb_cache_comp is not None and self._wb_cache_comp[0] == cle:
+            gains = self._wb_cache_comp[1]
+        else:
+            gains = gains_equilibre(comp, self.cadre)
+            self._wb_cache_comp = (cle, gains)
+        if gains is None:
+            return comp
+        if self.wb_force < 1.0:
+            gains = gains ** float(self.wb_force)
+        return (comp * gains.reshape(1, 1, 3)).astype(np.float32)
 
     def _recaler_fit(self, comp):
         """Recalage « Linear Fit » du composite (jalon 54) : cf.

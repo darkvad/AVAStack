@@ -161,6 +161,45 @@ try:
 except ValueError as e:
     verifie("recadrer" in str(e), f"formes hétérogènes → ValueError ({e})")
 
+print("[9] Équilibrage des canaux (auto) sur le COMPOSITE (v2.34.5)")
+# BUG CORRIGÉ (constat Alain, 24/09/2026) : `LiveStacker._equilibrer` est no-op
+# sur une carte 2D, or chaque rôle d'une composition EST une carte 2D → la case
+# « Équilibrage des canaux (auto) », cochée, ne changeait RIEN à l'affichage en
+# mode composition. Elle s'applique désormais au composite (H, W, 3), APRÈS la
+# normalisation par rôle (qui écrase déjà les fonds : c'est mesuré ici).
+from avastack.processing.composition import CompositeStacker   # noqa: E402
+
+st = CompositeStacker("RGB", k=None)
+for role in ("R", "G", "B"):
+    st.add(np.full((16, 16), 0.1, np.float32), role=role)
+# Composite à fonds INÉGAUX mais dans les BORNES des gains d'équilibrage
+# (WB_GAIN_MIN/MAX = 0,25/4 : au-delà, l'équilibrage est volontairement
+# plafonné — un fond 15× plus fort ne serait pas « corrigé » à 100 %).
+comp = np.zeros((16, 16, 3), np.float32)
+comp[..., 0], comp[..., 1], comp[..., 2] = 0.30, 0.15, 0.10
+f0 = [float(np.median(comp[..., c])) for c in range(3)]
+st.wb_auto = True
+eq = st._equilibrer_composite(comp)
+f1 = [float(np.median(eq[..., c])) for c in range(3)]
+verifie(abs(f0[0] / f0[2] - 3.0) < 0.1,
+        f"fonds d'entrée inégaux (R/B {f0[0] / f0[2]:.1f})")
+verifie(max(f1) / min(f1) < 1.02,
+        f"équilibrage du composite : fonds ÉGALISÉS (rapport max/min "
+        f"{max(f1) / min(f1):.4f} ; R {f1[0]:.5f} / G {f1[1]:.5f} / "
+        f"B {f1[2]:.5f})")
+verifie(abs(sum(f1) / 3 - sum(f0) / 3) < 0.02,
+        "équilibrage par GAIN : le niveau moyen est conservé (pas un étirement)")
+st.wb_force = 0.5
+part = st._equilibrer_composite(comp)
+f2 = [float(np.median(part[..., c])) for c in range(3)]
+verifie(1.02 < max(f2) / min(f2) < 3.0,
+        f"force 0,5 : équilibrage PARTIEL (rapport {max(f2) / min(f2):.2f})")
+st.wb_force = 1.0
+verifie(np.allclose(st._equilibrer_composite(eq), eq, rtol=1e-3, atol=1e-4),
+        "composite déjà équilibré : gains ≈ 1 (aucune dérive)")
+verifie(st.wb_auto is True and CompositeStacker("RGB", k=None).wb_auto is False,
+        "wb_auto reste DÉSACTIVÉ par défaut sur un stacker neuf (opt-in)")
+
 print()
 print("RÉSULTAT : " + ("TOUS LES TESTS PASSENT" if ok else "ÉCHECS À CORRIGER"))
 import sys
