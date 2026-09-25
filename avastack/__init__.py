@@ -14,9 +14,49 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.34.3"
+AVASTACK_VERSION = "2.34.4"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.34.4 : OUTIL DE COMPARAISON STRICTE AVEC SIRIL + éclaircissement de trois
+#          points soulevés par Alain après son 2e essai réel (153 frames).
+#          • NOUVEAU `_diag_spcc.py --export-rgb FICHIER` : écrit un FITS RGB des
+#            couches BRUTES (concaténation simple, AUCUNE normalisation ni gain)
+#            avec les mots-clés WCS, à faire analyser par Siril. POURQUOI c'était
+#            nécessaire : une sauvegarde d'empilement d'AVAStack passe par
+#            `composer()`, qui NORMALISE chaque rôle par ses percentiles (et y
+#            applique les gains) — ses ratios de couleur ne sont donc ceux
+#            d'AUCUNE couche : les pentes de Siril sur un tel fichier ne sont pas
+#            comparables aux nôtres (mesuré : gains implicites R/G 0,944 et
+#            B/G 1,242 sur le fichier enregistré, ni les K SPCC 0,823/1,320 ni
+#            les gains Gaia 0,945/1,153 — c'est bien la normalisation par rôle).
+#            Vérifié : l'export contient EXACTEMENT les couches (canal par canal
+#            identiques au bit près), dans l'ordre R/G/B standard, BITPIX -32.
+#          • PIÈGE DE WCS dans le banc : il utilisait le fichier `.wcs` séparé,
+#            qui décrit une AUTRE grille dès que la session a été ré-empilée
+#            (couches recadrées de 6 px → 16 appariements au lieu de ~2000).
+#            Le WCS est désormais lu DANS L'EN-TÊTE DE LA COUCHE (elle porte les
+#            mots-clés de sa propre grille, jalon 56), le `.wcs` ne servant que
+#            de secours.
+#          • « JE NE VOIS PAS LA DIFFÉRENCE SPCC COCHÉE / DÉCOCHÉE » : vérifié
+#            de bout en bout (canaux → composer() → DisplayProcessor, STF ET
+#            VeraLux) — la correction EST appliquée et VISIBLE : avec les
+#            coefficients d'Alain, le rapport R/G de l'image affichée passe de
+#            0,877 à 0,793 et B/G de 1,136 à 1,325 (l'étirement atténue les
+#            gains de moitié environ, mais ne les annule pas ; `_auto_params`
+#            calcule ses statistiques sur la LUMINANCE, jamais par canal).
+#            EXPLICATION DE FOND (et réponse à sa question sur le gradient) :
+#            la SPCC corrige la couleur des ÉTOILES contre une référence
+#            (galaxie spirale moyenne) et applique les MÊMES gains au FOND de
+#            ciel — un fond pollué (bleu-vert) reste donc bleu-vert, voire le
+#            devient davantage puisque la référence de blanc est plus rouge que
+#            verte (K_G < K_R dans le repère instrument). C'est exactement
+#            pourquoi Siril exige un retrait de gradient AVANT : la couleur du
+#            FOND relève du retrait de gradient, celle des ÉTOILES de la SPCC —
+#            deux traitements distincts, à ne pas confondre.
+#          • Rafraîchissement du rendu en fin d'empilement : VÉRIFIÉ sain — le
+#            bloc qui pose `gains_roles` et demande le rendu est AVANT la lecture
+#            d'une frame (il tourne donc même quand plus aucune brute n'arrive,
+#            leçon du jalon 55 appliquée).
 # v2.34.3 : SÉLECTION DES ÉTOILES CORRIGÉE — un BIAIS RÉEL de mesure, révélé par
 #          l'écart entre l'appli et les bancs (constat Alain, 24/09/2026).
 #          L'appli mesurait sur les 300 étoiles les PLUS BRILLANTES seulement, et

@@ -112,6 +112,12 @@ def principal():
     ap.add_argument("--filtre-r", default="QHYCCD MiniCam8M Red")
     ap.add_argument("--filtre-g", default="QHYCCD MiniCam8M Green")
     ap.add_argument("--filtre-b", default="QHYCCD MiniCam8M Blue")
+    ap.add_argument("--export-rgb", default="",
+                    help="écrit un FITS RGB des canaux BRUTS (concaténation "
+                         "simple, AUCUNE normalisation ni gain) avec l'en-tête "
+                         "WCS : c'est l'objet à analyser par Siril pour une "
+                         "comparaison STRICTE de nos deux SPCC (une sauvegarde "
+                         "d'empilement normalisée par rôle ne l'est pas)")
     ap.add_argument("--blanc", default="Average Spiral Galaxy")
     ap.add_argument("--ciel-pur", type=float, default=3.0,
                     help="écarte les étoiles dont le fond local dépasse la "
@@ -131,8 +137,56 @@ def principal():
     forme = canaux["G"].shape
     print(f"couches : {forme[1]}×{forme[0]} px")
 
+    # --- export d'un RGB BRUT (objet d'une comparaison STRICTE avec Siril) --
+    # POURQUOI : une sauvegarde d'empilement d'AVAStack passe par `composer()`,
+    # qui NORMALISE chaque rôle par ses percentiles (et y applique les gains) :
+    # ses ratios de couleur ne sont donc pas ceux des couches. Pour comparer nos
+    # deux SPCC, il faut donner à Siril EXACTEMENT ces couches, concaténées.
+    if a.export_rgb:
+        from avastack.images import save_image
+        # Le WCS est lu dans l'EN-TÊTE DE LA COUCHE (jalon 56 : chaque couche
+        # porte les mots-clés de SA grille, recadrage d'intersection inclus) —
+        # bien plus sûr qu'un fichier .wcs séparé, qui décrit une AUTRE grille
+        # dès que la session a été ré-empilée (piège vécu : 16 appariements au
+        # lieu de 2000 parce que les couches avaient été recadrées de 6 px).
+        src = None
+        for essai in (a.G, a.wcs):
+            try:
+                hh = fits.open(essai)[0].header
+            except Exception:
+                continue
+            if "CRVAL1" in hh and "CRPIX1" in hh:
+                src = hh
+                print(f"WCS de l'export : en-tête de {essai}")
+                break
+        entete = {k: src[k] for k in ("CRVAL1", "CRVAL2", "CRPIX1", "CRPIX2",
+                                      "CD1_1", "CD1_2", "CD2_1", "CD2_2",
+                                      "CTYPE1", "CTYPE2")
+                  if src is not None and k in src}
+        rgb = np.dstack([canaux["R"], canaux["G"], canaux["B"]])
+        rgb = np.asarray(rgb, dtype=np.float32)
+        save_image(a.export_rgb, rgb, entete=entete)
+        print(f"RGB BRUT exporté : {a.export_rgb} ({rgb.shape[1]}×"
+              f"{rgb.shape[0]}×3, sans normalisation ni gain) — "
+              f"{len(entete)} mots-clés WCS inclus")
+
     # --- WCS et catalogue SPECTRAL (spectres Gaia) ------------------------
-    wcs = wcs_du_fichier(a.wcs, forme)
+    # Priorité à l'EN-TÊTE DE LA COUCHE (il décrit exactement la grille écrite),
+    # le fichier `.wcs` séparé ne servant que de secours : dès que la session a
+    # été ré-empilée, il décrit une AUTRE grille (piège vécu : 16 appariements
+    # au lieu de 2000).
+    wcs, source_wcs = None, ""
+    for src in (a.G, a.wcs):
+        try:
+            wcs, source_wcs = wcs_du_fichier(src, forme), src
+            break
+        except Exception:
+            continue
+    if wcs is None:
+        print("WCS introuvable (ni dans l'en-tête de la couche, ni dans le "
+              "fichier .wcs)")
+        return 1
+    print(f"WCS : {source_wcs}")
     cat, msg = PH.etoiles_catalogue(wcs, forme, spectres=True)
     print(f"catalogue spectral : {msg}")
     if not cat:

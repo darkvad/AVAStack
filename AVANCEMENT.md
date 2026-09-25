@@ -11,7 +11,7 @@ dans le changelog du source et l'historique git.)
 
 ## État actuel
 
-- **Version stable de référence : AVAStack v2.34.3** (`avastack/__init__.py`),
+- **Version stable de référence : AVAStack v2.34.4** (`avastack/__init__.py`),
   branche `master` — **SPCC ABSOLUE BRANCHÉE ET VALIDÉE CONTRE SIRIL (jalon 58,
   24/09/2026)** :
   - **VALIDATION CROISÉE RÉUSSIE** : à partir du log SPCC réel de Siril fourni
@@ -76,10 +76,34 @@ dans le changelog du source et l'historique git.)
     de plage de luminosité (spectres normalisés à 500 nm) → toutes les
     magnitudes voisines, et le nouveau seuil de saturation les écartait toutes.
     Le banc tire désormais une magnitude (0-5 mag) indépendante de la couleur.
-  - **RESTE À FAIRE** : la photométrie Gaia du jalon 56 garde ses réglages
-    (300 étoiles, marge 0,5 mag) — même famille de biais possible sur ses
-    ZÉRO-POINTS, à mesurer avant de modifier un module validé ; et la
-    validation croisée finale avec Siril (image brute + log, cf. plus haut).
+  - **COMPARAISON STRICTE AVEC SIRIL (v2.34.4)** : `_diag_spcc.py --export-rgb
+    FICHIER` écrit un **FITS RGB des couches BRUTES** (concaténation, sans
+    normalisation ni gain) avec les mots-clés WCS — **c'est l'objet à analyser
+    par Siril** : une sauvegarde d'empilement d'AVAStack n'est PAS comparable
+    (elle passe par `composer()`, qui normalise chaque rôle par ses
+    percentiles et y applique les gains : gains implicites mesurés R/G 0,944 et
+    B/G 1,242 sur le fichier d'Alain). Fichier produit pour son cas :
+    `C:\Astro\test\spcc_brut_RGB.fit` (3838×2168×3, 32 bits, ordre R/G/B
+    standard). PIÈGE corrigé au passage : le WCS du banc est lu **dans
+    l'en-tête de la couche** (le `.wcs` séparé décrit une AUTRE grille dès que
+    la session a été ré-empilée — 16 appariements au lieu de ~2000 sur des
+    couches recadrées de 6 px).
+  - **« PAS DE DIFFÉRENCE VISIBLE SPCC COCHÉE / DÉCOCHÉE » (v2.34.4)** :
+    vérifié de bout en bout sur ses couches (canaux → `composer()` →
+    `DisplayProcessor`, en STF **et** VeraLux) : la correction EST appliquée et
+    visible — R/G affiché 0,877 → 0,793 et B/G 1,136 → 1,325 avec ses
+    coefficients (l'étirement atténue les gains de moitié, sans les annuler ;
+    les stats d'étirement sont prises sur la LUMINANCE, jamais par canal).
+    **Explication de fond** : la SPCC corrige la couleur des **ÉTOILES**
+    (référence : galaxie spirale moyenne) et applique les **mêmes gains au
+    FOND** — un fond pollué reste donc bleu-vert, voire davantage (le blanc de
+    référence est plus rouge que vert). La couleur du **FOND** relève du
+    **retrait de gradient**, celle des **ÉTOILES** de la SPCC : deux
+    traitements distincts (c'est la raison de l'avertissement de Siril).
+  - **Rafraîchissement du rendu en fin d'empilement : vérifié sain** — le bloc
+    qui pose `gains_roles` et demande le rendu est AVANT la lecture d'une frame
+    (il tourne même quand aucune brute n'arrive : leçon du jalon 55).
+
 
 
   - **À FAIRE (prochaine étape)** : validation croisée FINALE avec Siril sur une
