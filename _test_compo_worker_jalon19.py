@@ -9,7 +9,8 @@ Vérifie :
       deux dossiers temporaires de FITS mono : façade posée, stackers par
       rôle, état par canal dans les stats, composite (H, W, 3), archive
       PAR RÔLE (l'archive mono reste vide), scores PAR RÔLE (jalon 20) ;
-  [3] sauvegarde LINÉAIRE : le fichier écrit = le composite (façade).
+  [3] sauvegarde LINÉAIRE : le fichier écrit = le composite BRUT de la façade
+      (v2.35.0 : `mean(corrections=False)` — aucune correction de couleur).
 
 Le chemin mono-flux ne doit PAS changer : les 25 autres _test_*.py restent
 verts (régression vérifiée à part).

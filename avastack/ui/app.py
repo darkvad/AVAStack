@@ -1745,6 +1745,16 @@ class App:
         box.pack(fill="x", pady=3)
         ttk.Button(box, text="💾 Enregistrer l'empilement (linéaire)…",
                    command=self._save).pack(fill="x")
+        # Chantier 24/09/2026 (décision (a) d'Alain) : 3e sortie LINÉAIRE —
+        # « empilement TRAITÉ » = gradient retiré + débruitage + corrections de
+        # couleur, SANS étirement (intermédiaire entre « brut » et « tel que
+        # vu »). Bouton DÉDIÉ, distinct de « Enregistrer le résultat traité
+        # (linéaire)… » du cadre « Traitement externe », qui reste lié au ⚡
+        # manuel (GraXpert/BXT à la demande, sur un instantané).
+        self.btn_save_traite_lin = ttk.Button(
+            box, text="💾 Enregistrer l'empilement traité (linéaire)…",
+            command=self._save_traite_lineaire)
+        self.btn_save_traite_lin.pack(fill="x")
         # Jalon 5 : sauvegarde « tel que vu » — la vue courante rendue comme
         # à l'écran (étirement + gamma/saturation), en PLEINE résolution.
         # Les autres boutons d'enregistrement restent LINÉAIRES (inchangés).
@@ -3603,6 +3613,56 @@ class App:
         if path:
             self.save_request = path  # la sauvegarde est faite par le thread d'acquisition
 
+    def _gx_live_prete(self, titre):
+        """Contrôle AVANT toute sauvegarde pleine résolution : si le retrait de
+        gradient live est actif et que sa commande est incomplète, la chaîne ne
+        peut pas être reproduite — message clair et abandon (jamais de fichier
+        « presque comme vu »). → True si l'on peut continuer."""
+        if (self.disp.stretch == "veralux" and self.disp.vl_graxpert
+                and not gx_live.commande_valide(self.disp.vl_graxpert_cmd)):
+            messagebox.showwarning(
+                "GraXpert live",
+                "Commande GraXpert absente ou incomplète — impossible de "
+                "reproduire la chaîne live.\nVérifiez la commande dans "
+                "« Traitement externe ».")
+            return False
+        return True
+
+    def _reglages_rendu(self):
+        """Capture des réglages de la chaîne de sortie DANS le thread principal
+        (jalon 5) : le thread de sauvegarde ne lira JAMAIS les variables
+        Tkinter, et l'état de `disp` (curseurs, solveur) continue de vivre
+        pendant le rendu. Inclut, depuis le chantier du 24/09/2026, les
+        CORRECTIONS DE COULEUR (`corr_*`) appliquées en pleine résolution."""
+        d = self.disp
+        reglages = dict(
+            stretch=d.stretch, auto=d.auto, sigma_k=d.sigma_k, target=d.target,
+            black=d.black, white=d.white, gamma=d.gamma, saturation=d.saturation,
+            vl_mode_res=d.vl_mode_res, vl_target_bg=d.vl_target_bg,
+            vl_log_d=d.vl_log_d, vl_profil=d.vl_profil,
+            vl_log_d_resolu=d.vl_log_d_resolu,
+            vl_graxpert=d.vl_graxpert, vl_graxpert_cmd=d.vl_graxpert_cmd,
+            vl_denoise=d.vl_denoise, vl_denoise_methode=d.vl_denoise_methode,
+            vl_denoise_force=d.vl_denoise_force,
+            vl_scnr=d.vl_scnr, vl_demagenta=d.vl_demagenta,
+            vl_scnr_doux=d.vl_scnr_doux,
+            vl_sharp=d.vl_sharp, vl_sharp_iterations=d.vl_sharp_iterations)
+        st = self.stacker
+        if st is not None:
+            # NB : en MONO, l'empilement porte AUSSI des corrections (équilibrage
+            # et recalage s'appliquent à une image couleur d'un dossier OSC) —
+            # on les transporte donc quelle que soit la classe de stacker, pour
+            # que « empilement traité (linéaire) » corresponde à l'affichage.
+            reglages.update(
+                corr_gains=(dict(st.gains_effectifs())
+                            if hasattr(st, "gains_effectifs") else None),
+                corr_wb=bool(getattr(st, "wb_auto", False)),
+                corr_wb_force=float(getattr(st, "wb_force", 1.0)),
+                corr_cadre=getattr(st, "cadre", None),
+                corr_fit=bool(getattr(st, "linear_fit", False)),
+                corr_fit_mode=getattr(st, "linear_fit_mode", "offset"))
+        return reglages
+
     def _save_asseen(self):
         """Jalon 5 — « 💾 Enregistrer tel que vu (étiré) » : sauvegarde la vue
         courante (empilement ou traitée) RENDUE comme à l'écran, en PLEINE
@@ -3628,13 +3688,7 @@ class App:
                 "Aucun résultat traité — cliquez d'abord « ⚡ Traiter "
                 "l'empilement courant ».")
             return
-        if (self.disp.stretch == "veralux" and self.disp.vl_graxpert
-                and not gx_live.commande_valide(self.disp.vl_graxpert_cmd)):
-            messagebox.showwarning(
-                "GraXpert live",
-                "Commande GraXpert absente ou incomplète — impossible de "
-                "reproduire la chaîne live.\nVérifiez la commande dans "
-                "« Traitement externe ».")
+        if not self._gx_live_prete("tel que vu"):
             return
         path = filedialog.asksaveasfilename(
             defaultextension=".fits",
@@ -3642,30 +3696,51 @@ class App:
                        ("PNG 16 bits", "*.png")])
         if not path:
             return
-        # Capture des réglages ICI (thread principal) : le thread de
-        # sauvegarde ne lira jamais les variables Tkinter, et l'état de disp
-        # (curseurs, solveur) continue de vivre pendant le rendu.
-        d = self.disp
-        reglages = dict(
-            stretch=d.stretch, auto=d.auto, sigma_k=d.sigma_k, target=d.target,
-            black=d.black, white=d.white, gamma=d.gamma, saturation=d.saturation,
-            vl_mode_res=d.vl_mode_res, vl_target_bg=d.vl_target_bg,
-            vl_log_d=d.vl_log_d, vl_profil=d.vl_profil,
-            vl_log_d_resolu=d.vl_log_d_resolu,
-            vl_graxpert=d.vl_graxpert, vl_graxpert_cmd=d.vl_graxpert_cmd,
-            vl_denoise=d.vl_denoise, vl_denoise_methode=d.vl_denoise_methode,
-            vl_denoise_force=d.vl_denoise_force,
-            vl_scnr=d.vl_scnr, vl_demagenta=d.vl_demagenta,
-            vl_scnr_doux=d.vl_scnr_doux,
-            vl_sharp=d.vl_sharp, vl_sharp_iterations=d.vl_sharp_iterations)
-        self.save_asseen_request = (path, vue, reglages)
+        self.save_asseen_request = (path, vue, self._reglages_rendu(), False)
 
-    def _save_asseen_thread(self, path, vue, source, reglages, session):
+    def _save_traite_lineaire(self):
+        """Chantier 24/09/2026 (décision (a) d'Alain) — « 💾 Enregistrer
+        l'empilement traité (linéaire)… » : 3e sortie LINÉAIRE. Elle contient ce
+        que la vue « empilement » a subi AVANT l'étirement : empilement BRUT →
+        GraXpert live (gradient) si activé → débruitage live si activé →
+        CORRECTIONS DE COULEUR (gains SPCC/Gaia/manuels, équilibrage des
+        canaux, recalage Linear Fit) → netteté live si activée → chaîne couleur
+        (SCNR…). C'est le fichier « prêt à traiter » dans un logiciel externe,
+        intermédiaire entre l'empilement brut et l'image « tel que vu » (aucun
+        étirement, aucun gamma/saturation). Réglages capturés dans le thread
+        principal ; le rendu part dans le thread de sauvegarde, comme « tel que
+        vu » (l'acquisition continue)."""
+        titre = "Enregistrer l'empilement traité (linéaire)"
+        if self.asseen_busy or self.save_asseen_request is not None:
+            messagebox.showinfo(titre, "Un enregistrement est déjà en cours — "
+                                       "patientez.")
+            return
+        if not self.running or self.stacker is None or self.stacker.n == 0:
+            messagebox.showinfo(titre, "Aucun empilement à enregistrer.")
+            return
+        if not self._gx_live_prete(titre):
+            return
+        path = filedialog.asksaveasfilename(
+            defaultextension=".fits",
+            filetypes=[("FITS", "*.fits"), ("TIFF 16 bits", "*.tif"),
+                       ("PNG 16 bits", "*.png")])
+        if not path:
+            return
+        self.save_asseen_request = (path, "pile", self._reglages_rendu(), True)
+
+    def _save_asseen_thread(self, path, vue, source, reglages, session,
+                            lineaire=False):
         """Thread de sauvegarde « tel que vu » (jalon 5) : GraXpert live si
         activé (vue « empilement » uniquement), puis débruitage/netteté live,
         puis rendu pleine résolution identique à l'affichage, puis écriture du
         fichier. AUCUN appel Tk ici : le résultat est consommé par _tick
-        (messagebox thread-safe)."""
+        (messagebox thread-safe).
+
+        `lineaire=True` (chantier 24/09/2026) : MÊME chaîne, mais elle s'arrête
+        AVANT l'étirement et écrit l'image LINÉAIRE (bornée [0,1], en-tête FITS
+        AUTO-DESCRIPTIF) — c'est la 3e sortie « empilement traité (linéaire) ».
+        `source` est alors l'empilement BRUT et les corrections de couleur sont
+        appliquées ICI, après le débruitage — ordre validé par Alain (c)."""
         try:
             if vue == "pile" and reglages.get("vl_graxpert"):
                 gx, err = gx_live.appliquer(source, reglages["vl_graxpert_cmd"])
@@ -3686,6 +3761,20 @@ class App:
                     self.asseen_result = f"ERREUR: Débruitage live : {err}"
                     return
                 source = img_dn
+            # --- CHANTIER 24/09/2026 (décision (c) d'Alain) : les CORRECTIONS
+            # DE COULEUR s'appliquent ICI, après le débruitage et AVANT la
+            # netteté — c'est l'ordre de la chaîne de sortie. Seule la 3e sortie
+            # LINÉAIRE en a besoin (la vue « tel que vu » reproduit la chaîne
+            # affichée, dont le composite est déjà corrigé en amont).
+            if lineaire:
+                source, _diag = composition_mod.corrections_couleur(
+                    source,
+                    gains=reglages.get("corr_gains"),
+                    wb_auto=bool(reglages.get("corr_wb", False)),
+                    wb_force=float(reglages.get("corr_wb_force", 1.0)),
+                    cadre=reglages.get("corr_cadre"),
+                    linear_fit=bool(reglages.get("corr_fit", False)),
+                    linear_fit_mode=reglages.get("corr_fit_mode", "offset"))
             # Jalon 12 : la netteté live fait aussi partie de la chaîne
             # affichée (stack → GX → débruitage → netteté → étirement).
             # ⚠️ La PSF est MESURÉE ici, en pleine résolution (aucun `mesure=`
@@ -3710,6 +3799,23 @@ class App:
                 source = couleurs_mod.scnr_doux(source)
             if vue == "pile" and reglages.get("vl_demagenta"):
                 source = couleurs_mod.demagenta(source)
+            if lineaire:
+                # 3e sortie LINÉAIRE (« empilement traité ») : on écrit l'image
+                # telle quelle, bornée [0,1] comme la sauvegarde brute, AVEC
+                # l'en-tête auto-descriptif de la chaîne de sortie — aucun
+                # étirement, aucun gamma/saturation.
+                if session != self._session:   # session relancée entre-temps
+                    return
+                entete = self._astro_entete_sauvegarde(
+                    {"FILTER": self.filtre_courant} if self.filtre_courant
+                    else None, source.shape[:2] if source is not None else None)
+                entete.update(self._entete_reglages(applique=True))
+                entete["AVAVUE"] = ("empilement TRAITE (lineaire, sans "
+                                    "etirement)")
+                img, entete = borner_lineaire(source, entete)
+                save_image(path, img, entete=entete)
+                self.asseen_result = path
+                return
             rendu = self.disp.rendu_pleine_resolution(source, reglages)
             if session != self._session:    # session relancée entre-temps
                 return
@@ -4084,13 +4190,29 @@ class App:
             if traites is None:
                 return                      # erreur déjà posée par _ext_run_cmd
             comp_traite = composition_mod.composer(
-                traites, self.stacker.composition, gains=self.stacker.gains,
+                traites, self.stacker.composition,
                 mode_l=self.stacker.mode_l)
             if comp_traite is None:
                 self._set_ext_msg("Erreur : recomposition impossible après "
                                   "traitement par couche", state="error")
                 return
             comp_traite = np.asarray(comp_traite, dtype=np.float32)
+            # Chantier 24/09/2026 (décision (b)) : les CORRECTIONS DE COULEUR de
+            # la chaîne de sortie s'appliquent ICI, sur le composite re-fait
+            # depuis les couches traitées — exactement comme le solveur live.
+            # Les couches, elles, restent BRUTES (contrat jalon 54).
+            gains_ext = (self.stacker.gains_effectifs()
+                         if hasattr(self.stacker, "gains_effectifs")
+                         else self.stacker.gains)
+            comp_traite, _d = composition_mod.corrections_couleur(
+                comp_traite,
+                gains=gains_ext,
+                wb_auto=bool(getattr(self.stacker, "wb_auto", False)),
+                wb_force=float(getattr(self.stacker, "wb_force", 1.0)),
+                cadre=getattr(self.stacker, "cadre", None),
+                linear_fit=bool(getattr(self.stacker, "linear_fit", False)),
+                linear_fit_mode=getattr(self.stacker, "linear_fit_mode",
+                                        "offset"))
             # --- Suite de la chaîne SUR LE COMPOSITE : BXT et chaîne couleur
             # — identique à la fin de la chaîne mono.
             cur = os.path.join(tmp, "comp_traite.fits")
@@ -4704,19 +4826,26 @@ class App:
             self.astro_couleur = "#c98a00"
             self.astro_info = f"Astrométrie : propagation refusée — {msg}"
 
-    def _entete_reglages(self):
-        """Mots-clés FITS décrivant CE QUI EST APPLIQUÉ dans une sauvegarde
-        linéaire — question d'Alain (24/09/2026) : « la sauvegarde empilement
-        linéaire, elle sauvegarde quoi au juste ? ». Le fichier devient
-        AUTO-DESCRIPTIF : en l'ouvrant, on sait si les coefficients SPCC, les
-        gains Gaia, l'équilibrage des canaux et le recalage colorimétrique y
-        sont ou non — plus besoin de deviner ni de refaire l'essai.
+    def _entete_reglages(self, applique=True):
+        """Mots-clés FITS décrivant une sauvegarde LINÉAIRE — question d'Alain
+        (24/09/2026) : « la sauvegarde empilement linéaire, elle sauvegarde quoi
+        au juste ? ». Le fichier devient AUTO-DESCRIPTIF.
+
+        Chantier du 24/09/2026 — MESURE vs APPLICATION (étape ⑥ du plan) :
+        depuis que la sauvegarde linéaire est BRUTE, AVASPCC et AVAGAIA
+        décrivent une MESURE (ce que la session a mesuré), pas ce que le
+        fichier contient. La clé AVAAPPLI dit, elle, ce qui est RÉELLEMENT
+        appliqué à l'image écrite : « aucune (empilement BRUT) » pour le
+        fichier brut, la liste des corrections pour la sortie traitée. Sans
+        cette distinction, un fichier brut portant AVASPCC=K=… laisserait
+        croire que la SPCC y est appliquée : il mentirait.
 
         ASCII uniquement (convention FITS) et clés courtes (≤ 8 caractères) :
-        AVACOMPO (composition), AVAWB (équilibrage auto et sa force), AVAFIT
-        (recalage colorimétrique), AVASPCC (coefficients SPCC appliqués),
-        AVAGAIA (gains Gaia relatifs appliqués), AVALAYER (sauvegarde d'une
-        COUCHE brute), AVAFRAME (frames empilées)."""
+        AVACOMPO (composition), AVAAPPLI (corrections appliquées au fichier),
+        AVAWB (équilibrage auto et sa force — si appliqué), AVAFIT (recalage
+        colorimétrique — si appliqué), AVASPCC (coefficients SPCC MESURÉS),
+        AVAGAIA (gains Gaia MESURÉS), AVAFRAME (frames empilées), AVALAYER
+        (sauvegarde d'une COUCHE brute, posée par l'appelant)."""
         st = self.stacker
         ent = {}
         n = int(getattr(st, "n", 0) or 0)
@@ -4725,21 +4854,42 @@ class App:
         # NB : ces mots-clés ne dépendent PAS de l'existence du stacker (les
         # réglages sont connus même sans empilement) — seule la description de
         # l'empilement lui-même en dépend (getattr défensifs).
+        spcc_ok = (self._spcc_actif and self.spcc is not None
+                   and self.spcc.valide)
+        gaia_ok = (self._photo_gains_actif and self.photometrie is not None
+                   and self.photometrie.valide)
         if self._mode_compo:
             ent["AVACOMPO"] = (f"{getattr(st, 'composition', '?')}, normalisation "
                                "par role (percentiles)")
-            if self._spcc_actif and self.spcc is not None and self.spcc.valide:
-                k = self.spcc.coefficients
-                ent["AVASPCC"] = f"K={k[0]:.4f}/{k[1]:.4f}/{k[2]:.4f}"
-            if (self._photo_gains_actif and self.photometrie is not None
-                    and self.photometrie.valide):
-                ent["AVAGAIA"] = " ".join(
-                    f"{b}={g:.4f}" for b, g in sorted(self.photometrie.gains.items()))
+        # MESURES de la session (indépendantes de ce qui est appliqué).
+        if spcc_ok:
+            k = self.spcc.coefficients
+            ent["AVASPCC"] = f"K={k[0]:.4f}/{k[1]:.4f}/{k[2]:.4f}"
+        if gaia_ok:
+            ent["AVAGAIA"] = " ".join(
+                f"{b}={g:.4f}" for b, g in sorted(self.photometrie.gains.items()))
+        # CE QUI EST APPLIQUÉ à l'image écrite (étape ⑥).
+        if not applique:
+            ent["AVAAPPLI"] = "aucune (empilement BRUT)"
+            return ent
+        parts = []
+        if spcc_ok:
+            parts.append("SPCC")
+        elif gaia_ok:
+            parts.append("gains Gaia")
+        gains_ui = {c: float(g) for c, g in (self._compo_gains or {}).items()
+                    if abs(float(g) - 1.0) > 1e-9}
+        if gains_ui:
+            parts.append("gains manuels")
         if bool(getattr(st, "wb_auto", False)):
+            parts.append("equilibrage canaux")
             ent["AVAWB"] = (f"equilibrage canaux auto, force "
                             f"{getattr(st, 'wb_force', 1.0):.2f}")
         if bool(getattr(st, "linear_fit", False)):
-            ent["AVAFIT"] = f"recalage colorimetrique {getattr(st, 'linear_fit_mode', 'offset')}"
+            parts.append("recalage colorimetrique")
+            ent["AVAFIT"] = (f"recalage colorimetrique "
+                             f"{getattr(st, 'linear_fit_mode', 'offset')}")
+        ent["AVAAPPLI"] = " + ".join(parts) if parts else "aucune"
         return ent
 
     def _astro_entete_sauvegarde(self, entete=None, forme=None):
@@ -5302,10 +5452,16 @@ class App:
             # Sauvegarde « tel que vu » (jalon 5) → thread dédié, l'acquisition
             # continue : le rendu pleine résolution (GraXpert live + étirement)
             # peut prendre plusieurs secondes.
+            # Chantier 24/09/2026 : 4e élément `lineaire` — la 3e sortie
+            # « empilement traité (linéaire) » emprunte la MÊME chaîne mais
+            # part de l'empilement BRUT (mean(corrections=False)) et s'arrête
+            # avant l'étirement.
             if (self.save_asseen_request is not None and self.stacker is not None
                     and self.stacker.n > 0 and not self.asseen_busy):
-                path, vue, reglages = self.save_asseen_request
+                req = self.save_asseen_request
                 self.save_asseen_request = None
+                path, vue, reglages = req[:3]
+                lineaire = bool(req[3]) if len(req) > 3 else False
                 if vue == "traitée" and self.proc_full is None:
                     self.asseen_result = ("ERREUR: aucun résultat traité à "
                                           "enregistrer")
@@ -5314,11 +5470,16 @@ class App:
                         # copie défensive : proc_full peut être remplacé
                         source = self.proc_full.astype(np.float32).copy()
                     else:
-                        source = self.stacker.mean()  # pleine résolution, linéaire
+                        # Pleine résolution. « tel que vu » : le composite de la
+                        # chaîne affichée (corrections comprises) ; 3e sortie
+                        # linéaire : l'empilement BRUT — les corrections sont
+                        # appliquées plus loin, après le débruitage (décision (c)).
+                        source = self.stacker.mean(corrections=not lineaire)
                     self.asseen_busy = True
                     threading.Thread(
                         target=self._save_asseen_thread,
-                        args=(path, vue, source, reglages, self._session),
+                        args=(path, vue, source, reglages, self._session,
+                              lineaire),
                         daemon=True).start()
 
             # Sauvegarde LINÉAIRE de l'empilement : consommation de la demande
@@ -5341,7 +5502,7 @@ class App:
                     # in image ») et paraissait saturé partout ailleurs
                     # (retour réel d'Alain, 22/09/2026, M31 RGB en mode
                     # dossiers). Mono : no-op (l'empilement est déjà ≤ 1).
-                    img = self.stacker.mean()
+                    img = self.stacker.mean(corrections=False)
                     # Jalon 56 : mots-clés WCS de la grille RÉELLEMENT écrite
                     # (recadrage d'intersection inclus) — le FITS devient
                     # localisable par Siril/astropy/PixInsight. Sans
@@ -5352,9 +5513,14 @@ class App:
                         if self.filtre_courant else None,
                         img.shape[:2] if img is not None else None)
                     # Question d'Alain (« la sauvegarde linéaire, elle sauvegarde
-                    # quoi au juste ? ») : le fichier DÉCRIT ce qu'il contient
-                    # (gains SPCC/Gaia appliqués ou non, équilibrage, recalage).
-                    entete.update(self._entete_reglages())
+                    # quoi au juste ? ») : le fichier DÉCRIT ce qu'il contient.
+                    # Chantier 24/09/2026 : plus AUCUNE correction de couleur
+                    # ici (`applique=False`) — AVASPCC/AVAGAIA restent la MESURE
+                    # (ce qui a été mesuré), AVAAPPLI dit ce qui est APPLIQUÉ au
+                    # fichier (« aucune (empilement BRUT) »).
+                    entete.update(self._entete_reglages(applique=False))
+                    entete["AVAVUE"] = ("empilement BRUT (lineaire, sans "
+                                        "etirement)")
                     img, entete = borner_lineaire(img, entete)
                     save_image(path, img, entete=entete)
                     self.saved_path = path
@@ -5385,7 +5551,10 @@ class App:
                         # photométrie MESURENT sur ces mêmes valeurs — le dire
                         # dans l'en-tête évite toute confusion.
                         entete["AVALAYER"] = "couche BRUTE (ni normalisation, ni gain)"
-                        entete.update(self._entete_reglages())
+                        # Aucune correction de couleur n'est appliquée à une
+                        # couche (elle est BRUTE par construction) : le dire
+                        # explicitement (étape ⑥).
+                        entete.update(self._entete_reglages(applique=False))
                         save_image(os.path.join(
                             d_canaux, f"canal_{role}.fit"), bordee,
                             entete=entete)
@@ -5717,25 +5886,30 @@ class App:
             # Gains/mode_l recopiés des valeurs lues côté thread principal en
             # tête de _tick (le worker n'a jamais le droit de lire les Tk).
             if self._mode_compo and canaux:
-                # Jalon 56 (étape 5) : le solveur live re-compose depuis les
-                # couches BRUTES — il doit donc recevoir les gains EFFECTIFS
-                # (manuels × photométriques), exactement ceux que composer()
-                # applique à la vue « empilement » ; sinon les deux vues
-                # divergeraient dès que la case opt-in est cochée.
+                # Jalon 56 (étape 5) puis chantier 24/09/2026 : le solveur live
+                # re-compose depuis les couches BRUTES — il doit donc recevoir
+                # TOUTES les corrections de couleur, exactement celles que la
+                # façade applique à la vue « empilement » (sinon les deux vues
+                # divergeraient dès qu'une case est cochée) : gains EFFECTIFS
+                # (manuels × SPCC/Gaia), recalage « Linear Fit » et équilibrage
+                # des canaux (avec son cadre, pour le fond mesuré).
                 gains_eff = (self.stacker.gains_effectifs()
                              if hasattr(self.stacker, "gains_effectifs")
                              else self._compo_gains)
                 self.disp.vl_compo = (dict(canaux), self.stacker.composition,
                                       gains_eff, self._compo_mode_l,
-                                      # Jalon 54 : recalage « Linear Fit »
-                                      # transporté au solveur (5e élément,
-                                      # déballage tolérant côté display) pour
-                                      # être ré-appliqué à la recomposition
-                                      # des couches traitées — la vue
-                                      # « traitée » reste calée comme la
-                                      # vue « empilement ».
+                                      # 5e élément (jalon 54) : recalage
+                                      # « Linear Fit » — ré-appliqué à la
+                                      # recomposition des couches traitées.
                                       (bool(self.stacker.linear_fit),
-                                       self.stacker.linear_fit_mode))
+                                       self.stacker.linear_fit_mode),
+                                      # 6e élément (chantier 24/09/2026) :
+                                      # équilibrage des canaux (actif, force,
+                                      # cadre) — déballage tolérant côté
+                                      # display.
+                                      (bool(self.stacker.wb_auto),
+                                       float(self.stacker.wb_force),
+                                       self.stacker.cadre))
             else:
                 self.disp.vl_compo = None
 
@@ -5814,7 +5988,10 @@ class App:
             self.disp.vl_compo = (dict(canaux), self.stacker.composition,
                                   gains_eff2, self._compo_mode_l,
                                   (bool(self.stacker.linear_fit),
-                                   self.stacker.linear_fit_mode))
+                                   self.stacker.linear_fit_mode),
+                                  (bool(self.stacker.wb_auto),
+                                   float(self.stacker.wb_force),
+                                   self.stacker.cadre))
         else:
             self.disp.vl_compo = None
         try:

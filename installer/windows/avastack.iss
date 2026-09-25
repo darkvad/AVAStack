@@ -129,6 +129,15 @@ Source: "{#RepoRoot}\_diag_spcc.py"; DestDir: "{app}"; Flags: ignoreversion
 ; alimentes par la base Siril, config round-trip, gains par role).
 Source: "{#RepoRoot}\_test_spcc_jalon58.py"; DestDir: "{app}"; Flags: ignoreversion
 
+; Banc du CHANTIER v2.35.0 : LA SAUVEGARDE LINEAIRE EST BRUTE + LES
+; CORRECTIONS DE COULEUR SONT DANS LA CHAINE DE SORTIE. Preuve, au banc, que
+; le fichier enregistre est IDENTIQUE AU PIXEL PRES avec et sans SPCC / gains
+; Gaia / equilibrage / Linear Fit coches (alors que l'affichage change) ;
+; verifie aussi l'ordre des corrections (gains -> equilibrage -> recalage), le
+; transport de l'equilibrage au solveur live et la 3e sortie « empilement
+; traite (lineaire) » (bouton dedie, sans etirement, en-tete descriptif).
+Source: "{#RepoRoot}\_test_save_brute_jalon59.py"; DestDir: "{app}"; Flags: ignoreversion
+
 ; veralux_core_headless.py : code tiers GPL-3.0-or-later (Riccardo Paterniti),
 ; copie tel quel (sa licence exige de transmettre le source a cote du binaire).
 Source: "{#RepoRoot}\veralux_core_headless.py"; DestDir: "{app}"; Flags: ignoreversion

@@ -137,7 +137,10 @@ app._mode_compo = False                # pas de synchro de gains du worker
 app.filtre_courant = "Ha"
 st_compo = composite_factice()
 app.stacker = st_compo
-attendu = st_compo.mean()
+# v2.35.0 : la sauvegarde linéaire est BRUTE — la référence à comparer est
+# donc mean(corrections=False) (les corrections de couleur vivent dans la
+# chaîne de sortie ; ce banc-ci n'en active d'ailleurs aucune).
+attendu = st_compo.mean(corrections=False)
 p_compo = os.path.join(tmp, "empilement_compo.fits")
 app.save_request = p_compo
 th = threading.Thread(target=app._worker, daemon=True)

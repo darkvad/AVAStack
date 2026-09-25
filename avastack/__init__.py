@@ -14,9 +14,66 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.34.7"
+AVASTACK_VERSION = "2.35.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.35.0 : LA SAUVEGARDE LINÉAIRE DEVIENT BRUTE + LES CORRECTIONS DE COULEUR
+#          PASSENT DANS LA CHAÎNE DE SORTIE (chantier du 24/09/2026, décisions
+#          d'Alain ; étapes ①→⑦ du plan).
+#          Règle appliquée : « la sauvegarde linéaire est BRUTE — elle ne
+#          contient QUE l'empilement : ni retrait de gradient, ni correction de
+#          couleur ». Avant cette version, les gains SPCC/Gaia, l'équilibrage
+#          des canaux et le recalage « Linear Fit » entraient dans le fichier
+#          (via composer()), donc l'état du fichier dépendait des cases cochées
+#          — et une part des corrections y était absorbée par la normalisation
+#          par rôle. C'est terminé.
+#          • composer() n'applique PLUS de gains : il produit l'EMPILEMENT
+#            BRUT (normalisation par rôle + combine L). Toutes les corrections
+#            de couleur vivent désormais en AVAL, dans `corrections_couleur()`
+#            (composition.py : gains R/G/B → équilibrage des canaux → recalage
+#            Linear Fit) ; `composer(gains=…)` n'existe plus (un appelant qui
+#            l'utilisait encore doit appeler `appliquer_gains()`).
+#          • `CompositeStacker.mean()` / `mean_avec_canaux()` reçoivent
+#            `corrections=True` (DÉFAUT = comportement d'affichage inchangé) ;
+#            `corrections=False` rend l'EMPILEMENT BRUT. `LiveStacker.mean()`
+#            accepte le même paramètre (il n'y a pas de correction de couleur
+#            en mono, mais l'interface des deux est identique).
+#          • SAUVEGARDE « 💾 Enregistrer l'empilement (linéaire)… » et
+#            « 💾 Enregistrer les canaux (par filtre)… » : chemin BRUT. Le
+#            fichier est IDENTIQUE avec ou sans SPCC / gains Gaia / équilibrage
+#            / Linear Fit cochés (banc _test_save_brute_jalon59.py) — l'affichage,
+#            lui, change bien.
+#          • SOLVEUR LIVE (display._vl_worker) : les trois réglages de couleur
+#            sont transportés dans le job (6e élément = équilibrage actif/force/
+#            cadre, déballage tolérant) et appliqués APRÈS la recomposition des
+#            couches traitées, AVANT la netteté — ordre validé par Alain :
+#            GraXpert par couche → débruitage → CORRECTIONS → netteté/SCNR →
+#            étirement. Le traitement EXTERNE par couche fait de même.
+#          • NOUVELLE 3e SORTIE LINÉAIRE — « 💾 Enregistrer l'empilement traité
+#            (linéaire)… », bouton DÉDIÉ dans le cadre « Sortie » (décision (a)) :
+#            empilement brut → gradient live → débruitage live → CORRECTIONS →
+#            netteté → SCNR, SANS étirement ni gamma/saturation ; en-tête
+#            auto-descriptif (AVAAPPLI/AVAVUE). Le bouton « 💾 Enregistrer le
+#            résultat traité (linéaire)… » du cadre « Traitement externe »
+#            reste, lui, lié au ⚡ manuel (instantané GraXpert/BXT).
+#          • EN-TÊTES (mesure vs appliqué) : AVASPCC/AVAGAIA étaient écrits
+#            comme des APPLICATIONS — ils sont désormais les MESURES de la
+#            session (même format, K=… / B=…), et la nouvelle clé AVAAPPLI dit
+#            ce qui est RÉELLEMENT appliqué à l'image écrite (« aucune
+#            (empilement BRUT) » pour le fichier brut, liste des corrections
+#            pour la sortie traitée) ; AVAWB/AVAFIT ne sont écrits que s'ils
+#            sont appliqués ; AVAVUE décrit la vue enregistrée. Sans cette
+#            distinction, un fichier brut portant AVASPCC aurait MENTI.
+#            _entete_reglages(applique=False) pour le brut ; les fichiers
+#            canal_*.fit restent des couches brutes (AVALAYER).
+#          • BANC NOUVEAU `_test_save_brute_jalon59.py` : [1] composer() ne
+#            porte plus de gain (appliquer_gains le fait) ; [2] mean()
+#            corrections=True/False : écarts exacts attendus, entrée jamais
+#            modifiée ; [3] FICHIER LINÉAIRE IDENTIQUE cases cochées/décochées
+#            (preuve de « brut ») + en-têtes mesure/appliqué ; [4] solveur live :
+#            équilibrage transporté et appliqué après recomposition ;
+#            [5] réel : worker → bouton « empilement traité (linéaire) » écrit un
+#            fichier AUTO-DESCRIPTIF sans étirement.
 # v2.34.7 : LES FICHIERS ENREGISTRÉS DEVIENNENT AUTO-DESCRIPTIFS (question
 #          d'Alain, 24/09/2026 : « et la sauvegarde, empilement linéaire, elle
 #          sauvegarde quoi au juste ? »).

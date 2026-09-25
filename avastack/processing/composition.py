@@ -13,11 +13,15 @@ comment ils alimentent les canaux R/G/B du composite :
   RGB   (3 dossiers) → R=R, G=G, B=B
   LRGB  (4 dossiers) → R=R, G=G, B=B + luminance L (rôle OPTIONNEL)
 
-Chaîne de traitement (décisions du 18/09/2026, cf. AVANCEMENT.md) :
-  normalisation LINÉAIRE par canal (ici, percentiles + gains manuels)
-  → composite LINÉAIRE → étirement global existant (STF ou VeraLux),
-  qui ne change PAS : le composite a la même forme (H, W, 3) float32
-  linéaire que l'empilement couleur actuel.
+Chaîne de traitement (décisions des 18 et 24/09/2026, cf. AVANCEMENT.md) :
+  normalisation LINÉAIRE par canal (percentiles) → composite LINÉAIRE BRUT
+  (c'est l'empilement enregistré par la sauvegarde linéaire) → CORRECTIONS
+  DE COULEUR de la chaîne de sortie (gains SPCC/Gaia/manuels, équilibrage,
+  recalage colorimétrique) → étirement global existant (STF ou VeraLux), qui
+  ne change PAS : le composite a la même forme (H, W, 3) float32 linéaire que
+  l'empilement couleur actuel. AUCUNE correction de couleur dans `composer()`
+  (règle d'Alain, 24/09/2026) : sinon le fichier linéaire ne serait ni brut
+  ni fini.
 
 Extraction depuis une brute COULEUR (CFA débayerisée) : le signal d'un
 filtre étroit se concentre dans des canaux précis (Ha→R, OIII→G+B,
@@ -175,25 +179,31 @@ def _luma(rgb):
             + _POIDS_LUMA[2] * rgb[..., 2]).astype(np.float32)
 
 
-def composer(canaux, composition, gains=None, bornes=None,
+def composer(canaux, composition, bornes=None,
              normaliser_canal=True, mode_l="synthetise",
              lo_pct=0.25, hi_pct=99.7):
     """Composite linéaire d'une composition.
 
     canaux   : dict rôle → carte 2D float32 (empilement du rôle), ou None
                pour un rôle sans aucune frame.
-    gains    : dict 'R'/'G'/'B' → facteur multiplicatif (défaut 1.0).
     bornes   : dict rôle → (lo, hi) pour FIGER la normalisation par rôle
                (sinon recalculée à chaque appel — attention, la borne
                bouge légèrement à chaque nouvelle frame).
-    normaliser_canal : False → les canaux sont déjà normalisés (les gains
-               et le combine L restent appliqués).
+    normaliser_canal : False → les canaux sont déjà normalisés (le combine
+               L reste appliqué).
     mode_l   : "synthetise" | "degrade" — sortie de la radio « Canal L »,
                utilisée SEULEMENT si le rôle L est vide.
 
     → (H, W, 3) float32 linéaire, (H, W) pour Mono, ou None si AUCUN rôle
     n'a de données. ValueError si les formes des rôles diffèrent (l'app
-    doit recadrer sur le cadre commun AVANT d'appeler)."""
+    doit recadrer sur le cadre commun AVANT d'appeler).
+
+    AUCUNE correction de couleur n'est appliquée ici (décision d'Alain,
+    24/09/2026) : les gains SPCC/Gaia/manuels, l'équilibrage des canaux et
+    le recalage colorimétrique appartiennent à la CHAÎNE DE SORTIE, en aval
+    (`corrections_couleur` / `CompositeStacker.mean(corrections=True)`).
+    Conséquence directe : `composer()` seul produit l'EMPILEMENT BRUT — la
+    référence linéaire sauvegardée."""
     if composition not in COMPOSITIONS:
         raise ValueError(f"Composition inconnue : {composition!r}")
     if mode_l not in MODES_L:
@@ -229,13 +239,10 @@ def composer(canaux, composition, gains=None, bornes=None,
                 f"Formes hétérogènes entre les rôles ({r} : {a.shape} vs "
                 f"{forme}) — recadrer sur le cadre commun avant composer()")
 
-    # 3) canaux R/G/B du composite (gains APRÈS normalisation)
-    gains = gains or {}
-    rgb = []
-    for canal in ("R", "G", "B"):
-        c = _channel_de(norm, spec["canaux_rgb"][canal], forme)
-        g = float(gains.get(canal, 1.0))
-        rgb.append(c if g == 1.0 else (c * g).astype(np.float32))
+    # 3) canaux R/G/B du composite (SANS gain : les corrections de couleur
+    #    sont appliquées APRÈS la composition, dans la chaîne de sortie)
+    rgb = [_channel_de(norm, spec["canaux_rgb"][canal], forme)
+           for canal in ("R", "G", "B")]
     rgb = np.stack(rgb, axis=-1)
 
     # 4) LRGB : combine luminance — L du dossier s'il a des frames, sinon
@@ -253,6 +260,90 @@ def composer(canaux, composition, gains=None, bornes=None,
             rgb = (rgb * ratio[..., None]).astype(np.float32)
 
     return rgb
+
+
+# ------------------------------------------- corrections de couleur (sortie) ---
+# DÉCISION D'ALAIN (24/09/2026, cf. CLAUDE.md § Sauvegardes) : la sauvegarde
+# linéaire est BRUTE — ni gradient retiré, ni correction de couleur. Les
+# corrections de couleur (SPCC, gains photométriques Gaia, gains manuels de
+# l'UI, équilibrage des canaux, recalage colorimétrique « Linear Fit ») vivent
+# dans la CHAÎNE DE SORTIE : affichage, solveur live, sortie « traitée ». Elles
+# sont donc appliquées APRÈS `composer()` (donc après la normalisation par
+# rôle, qui n'absorbe plus rien) et JAMAIS dans le fichier brut.
+#
+# Ordre validé par Alain (décision (c)) : ... → débruitage → CORRECTIONS
+# (gains + équilibrage + recalage) → netteté/chaîne couleur → étirement.
+
+def appliquer_gains_canaux(img, gains, force=1.0):
+    """Multiplie chaque canal d'un composite par un gain par CANAL
+    (séquence de 3, ordre R/G/B). `force` < 1 atténue la correction
+    (`gains ** force`, comme l'équilibrage à force partielle). → COPIE ;
+    image inchangée si elle n'est pas un composite couleur ou sans gains."""
+    if img is None or gains is None:
+        return img
+    a = np.asarray(img, dtype=np.float32)
+    if a.ndim != 3 or a.shape[-1] != 3:
+        return img
+    g = np.asarray(gains, dtype=np.float32)
+    if g.shape != (3,):
+        return img
+    if force < 1.0:
+        g = g ** float(force)
+    if bool(np.allclose(g, 1.0)):
+        return img
+    return (a * g.reshape(1, 1, 3)).astype(np.float32)
+
+
+def appliquer_gains(img, gains):
+    """Applique des gains R/G/B (dict 'R'/'G'/'B' → facteur) à un composite
+    (H, W, 3). → COPIE (ou l'image telle quelle si rien à faire) ; no-op sur
+    une image qui n'est pas un composite couleur."""
+    if img is None or not gains:
+        return img
+    a = np.asarray(img, dtype=np.float32)
+    if a.ndim != 3 or a.shape[-1] != 3:
+        return img
+    g = [float(gains.get(c, 1.0)) for c in ("R", "G", "B")]
+    if abs(g[0] - 1.0) < 1e-9 and abs(g[1] - 1.0) < 1e-9 \
+            and abs(g[2] - 1.0) < 1e-9:
+        return img
+    return appliquer_gains_canaux(a, np.array(g, np.float32))
+
+
+def appliquer_equilibrage(img, cadre=None, force=1.0):
+    """Équilibrage des canaux (« auto », jalon 13) appliqué à un COMPOSITE :
+    gains dérivés du FOND (percentile bas), force < 1 → correction partielle.
+    → COPIE ; no-op si l'image n'est pas un composite couleur ou si le fond
+    est dégénéré (canal noir : aucun gain raisonnable)."""
+    if img is None:
+        return img
+    a = np.asarray(img, dtype=np.float32)
+    if a.ndim != 3 or a.shape[-1] != 3:
+        return img
+    gains = gains_equilibre(a, cadre)
+    if gains is None:
+        return img
+    return appliquer_gains_canaux(a, gains, force)
+
+
+def corrections_couleur(img, gains=None, wb_auto=False, wb_force=1.0,
+                        cadre=None, linear_fit=False, linear_fit_mode="offset"):
+    """CHAÎNE DES CORRECTIONS DE COULEUR d'un composite (décision (c)) :
+    gains (manuels × SPCC/Gaia) → équilibrage des canaux (auto) → recalage
+    colorimétrique « Linear Fit ». SANS état ni cache : utilisable telle
+    quelle depuis la façade (`CompositeStacker`, qui gère ses caches) comme
+    depuis le thread du solveur live, qui re-compose l'image traitée.
+
+    → (image corrigée, diag du recalage — None si aucun recalcul). L'entrée
+    n'est JAMAIS modifiée ; une image non couleur (mono, 2D) ressort telle
+    quelle (ces corrections portent sur les couleurs)."""
+    out = appliquer_gains(img, gains)
+    diag = None
+    if wb_auto:
+        out = appliquer_equilibrage(out, cadre, wb_force)
+    if linear_fit:
+        out, diag = aligner_canaux(out, mode=linear_fit_mode)
+    return out, diag
 
 
 # ------------------------------------------------------ façade worker -----
@@ -282,7 +373,8 @@ class CompositeStacker:
     (add / mean / n / cadre / note_alignement / k / set_rejet / wb_auto /
     wb_force / reset) — ainsi TOUT le code existant du worker (aperçu,
     sauvegardes, traitement externe) fonctionne sans le savoir : mean()
-    renvoie le COMPOSITE linéaire.
+    renvoie le COMPOSITE linéaire, corrections de couleur comprises
+    (`mean(corrections=False)` renvoie l'empilement BRUT).
 
     Décisions tranchées (AVANCEMENT.md, 18/09/2026) :
     - les stackers de rôle accumulent des CANAUX 2D (extraire_canal) dans le
@@ -465,9 +557,10 @@ class CompositeStacker:
         appliqués ici — `composer()` normalise chaque rôle par ses propres
         percentiles, ce qui ABSORBERAIT un facteur global (vérifié : le
         composite ne changeait pas). Ils passent par `gains_effectifs()`, donc
-        par les gains de CANAL appliqués APRÈS la normalisation ; les couches
-        restent BRUTES (contrat jalon 54 : le solveur live re-compose depuis
-        les couches brutes et ré-applique les gains lui-même)."""
+        par les gains de CANAL appliqués APRÈS la composition, dans la chaîne
+        de sortie (`_appliquer_corrections`) ; les couches restent BRUTES
+        (contrat jalon 54 : le solveur live re-compose depuis les couches
+        brutes et ré-applique les corrections lui-même)."""
         out = {}
         for role, s in self.stackers.items():
             if s.n == 0:
@@ -481,10 +574,12 @@ class CompositeStacker:
         PHOTOMÉTRIQUES convertis de RÔLE en CANAL (jalon 56, étape 5).
 
         Pourquoi par canal : `composer()` normalise chaque rôle par ses propres
-        percentiles AVANT d'appliquer les gains → un facteur par rôle appliqué
-        en amont serait absorbé (piège vérifié au banc : le composite ne
+        percentiles AVANT toute correction → un facteur par rôle appliqué en
+        amont serait absorbé (piège vérifié au banc : le composite ne
         changeait pas). Les facteurs mesurés sont donc convertis via
-        `canaux_rgb` de la composition, puis appliqués APRÈS la normalisation.
+        `canaux_rgb` de la composition, puis appliqués APRÈS la composition
+        (chaîne de sortie, `_appliquer_corrections`) — donc JAMAIS dans la
+        sauvegarde linéaire brute.
 
         Rôle alimentant PLUSIEURS canaux (O3 → G et B en HOO) : même facteur
         partout. Canal alimenté par plusieurs rôles (cas rare) : MOYENNE
@@ -506,7 +601,7 @@ class CompositeStacker:
             gains[canal] = float(gains.get(canal, 1.0)) * g
         return gains
 
-    def mean_avec_canaux(self, recadre=True):
+    def mean_avec_canaux(self, recadre=True, corrections=True):
         """(composite, {rôle: carte 2D}) en UNE passe de moyennes (jalon 24) :
         le worker a besoin des DEUX à chaque nouvel empilement (composite pour
         l'affichage, couches pour le traitement par couche du solveur live) —
@@ -514,46 +609,66 @@ class CompositeStacker:
         Jalon 54 : le recalage « Linear Fit » est appliqué au COMPOSITE SEUL
         (les couches restent brutes — elles alimentent les caches du solveur
         et sa recomposition, qui ré-applique le recalage lui-même).
+
+        `corrections` (chantier 24/09/2026 — décision d'Alain) :
+          True  (DÉFAUT)  → chaîne de SORTIE : composite + corrections de
+                            couleur (gains SPCC/Gaia/manuels, équilibrage,
+                            recalage colorimétrique) = ce qui s'AFFICHE ;
+          False           → composite BRUT, sans AUCUNE correction : c'est la
+                            référence enregistrée par « Enregistrer
+                            l'empilement (linéaire) ». Le fichier ne dépend
+                            donc plus de l'état des cases de couleur.
+        Les corrections ne s'appliquent QUE sur le chemin recadré (visu +
+        sauvegardes) : `recadre=False` est la référence d'ALIGNEMENT (jalon 13)
+        et reste brutalement brute, comme en mono.
+
         → (composite ou None, dict — vide si aucun rôle n'a de frame)."""
         canaux = self.moyennes(recadre=recadre)
         if not canaux:
             return None, None
         try:
-            # Jalon 56 (étape 5) : gains EFFECTIFS (manuels × photométriques
-            # convertis en canaux) — appliqués par composer() APRÈS la
-            # normalisation, sinon ils seraient absorbés par elle.
-            # NOTE MESURÉE (24/09/2026) : `composer()` normalise chaque rôle par
-            # SES percentiles, ce qui ré-égalise les canaux et ÉCRASE une part
-            # du contraste de couleur. Une normalisation COMMUNE aux trois
-            # canaux (testée) NE suffit PAS : sans soustraction du fond, le fond
-            # pollué déséquilibré devient visible et l'étirement l'amplifie
-            # (mesuré : R/G affiché 0,079 — image inutilisable). La neutralisation
-            # du fond relève du RECALAGE COLORIMÉTRIQUE (Linear Fit, mode
-            # « Gain + offset ») : mesuré sur les couches réelles, SPCC seule
-            # laisse un fond linéaire 0,0130/0,0219/0,0385 (très bleu) alors que
-            # SPCC + Linear Fit donne 0,0213/0,0219/0,0220 — fond NEUTRE.
-            comp = composer(canaux, self.composition,
-                            gains=self.gains_effectifs(),
-                            mode_l=self.mode_l)
+            comp = composer(canaux, self.composition, mode_l=self.mode_l)
         except ValueError:
             comp = None                   # formes hétérogènes (ne doit pas
-        # Jalon 58b : ÉQUILIBRAGE DES CANAUX (auto, jalon 13) sur le COMPOSITE.
-        # BUG CORRIGÉ (constat Alain, 24/09/2026) : il n'avait AUCUN effet en
-        # mode composition — `LiveStacker._equilibrer` est no-op sur une carte
-        # 2D, or chaque rôle de la composition EST une carte 2D (l'équilibrage
-        # attend une image couleur). La case cochée ne changeait donc rien à
-        # l'affichage. Ici on l'applique au composite (H, W, 3), là où les trois
-        # canaux existent enfin — même fonction `gains_equilibre`, même force.
-        if comp is not None and self._wb_auto and recadre:
-            comp = self._equilibrer_composite(comp)
-        # Jalon 54d : le recalage ne s'applique QUE au chemin recadré
-        # (visu + sauvegardes). mean(recadre=False) est la RÉFÉRENCE
-        # d'alignement (jalon 13) : elle reste BRUTE — exactement comme
-        # LiveStacker.mean(recadre=False) en mono. Avant ce correctif, le
-        # fit contaminait la référence en mode compo (contrat violé).
-        if comp is not None and self.linear_fit and recadre:
-            comp = self._recaler_fit(comp)         # → case DÉCOCHÉE = brut
+        # Jalon 58b/chantier 24-09 : ÉQUILIBRAGE DES CANAUX (auto, jalon 13)
+        # sur le COMPOSITE, puis RECALAGE « Linear Fit » — et, en amont, les
+        # GAINS (manuels × SPCC/Gaia). BUG CORRIGÉ (constat Alain, 24/09/2026) :
+        # l'équilibrage n'avait AUCUN effet en mode composition —
+        # `LiveStacker._equilibrer` est no-op sur une carte 2D, or chaque rôle
+        # de la composition EST une carte 2D (l'équilibrage attend une image
+        # couleur). Ici les corrections s'appliquent au composite (H, W, 3),
+        # là où les trois canaux existent enfin — même fonction
+        # `gains_equilibre`, même force.
+        # NOTE MESURÉE (24/09/2026) : les corrections étant appliquées APRÈS
+        # `composer()` (qui normalise chaque rôle par SES percentiles), elles ne
+        # sont PLUS absorbées par cette normalisation : c'est tout l'intérêt du
+        # chantier. Une normalisation COMMUNE aux trois canaux (testée) NE
+        # suffisait PAS : sans soustraction du fond, le fond pollué
+        # déséquilibré devient visible et l'étirement l'amplifie (mesuré :
+        # R/G affiché 0,079 — image inutilisable). La neutralisation du fond
+        # relève du RECALAGE COLORIMÉTRIQUE (Linear Fit, mode « Gain + offset ») :
+        # mesuré sur les couches réelles, SPCC seule laisse un fond linéaire
+        # 0,0130/0,0219/0,0385 (très bleu) alors que SPCC + Linear Fit donne
+        # 0,0213/0,0219/0,0220 — fond NEUTRE.
+        if comp is not None and corrections and recadre:
+            comp = self._appliquer_corrections(comp)
         return comp, canaux
+
+    def _appliquer_corrections(self, comp):
+        """Chaîne des corrections de couleur du composite (chantier
+        24/09/2026, décision (b)/(c)) — MÊME ordre que `corrections_couleur` :
+        gains effectifs (manuels × SPCC/Gaia) → équilibrage des canaux →
+        recalage « Linear Fit » (avec ses caches : `mean()` est appelée ~20×/s).
+        No-op sur une image non couleur (Mono : aucune correction de couleur,
+        l'empilement mono est déjà brut)."""
+        if comp is None or comp.ndim != 3 or comp.shape[-1] != 3:
+            return comp
+        comp = appliquer_gains(comp, self.gains_effectifs())
+        if self._wb_auto:
+            comp = self._equilibrer_composite(comp)
+        if self.linear_fit:
+            comp = self._recaler_fit(comp)         # → case DÉCOCHÉE = brut
+        return comp
 
     def _equilibrer_composite(self, comp):
         """Équilibrage des canaux du COMPOSITE (jalon 13 appliqué au composite,
@@ -570,11 +685,7 @@ class CompositeStacker:
         else:
             gains = gains_equilibre(comp, self.cadre)
             self._wb_cache_comp = (cle, gains)
-        if gains is None:
-            return comp
-        if self.wb_force < 1.0:
-            gains = gains ** float(self.wb_force)
-        return (comp * gains.reshape(1, 1, 3)).astype(np.float32)
+        return appliquer_gains_canaux(comp, gains, self.wb_force)
 
     def _recaler_fit(self, comp):
         """Recalage « Linear Fit » du composite (jalon 54) : cf.
@@ -600,11 +711,15 @@ class CompositeStacker:
         self.fit_diag = diag
         return out if diag is not None else comp
 
-    def mean(self, recadre=True):
-        """Composite LINÉAIRE courant (composer : normalisation par canal +
-        gains + LRGB), recadré au cadre commun si `recadre`. → (H, W, 3)
-        float32 (ou (H, W) en Mono), None si aucun rôle n'a de frame."""
-        comp, _ = self.mean_avec_canaux(recadre=recadre)
+    def mean(self, recadre=True, corrections=True):
+        """Composite LINÉAIRE courant (composer : normalisation par canal,
+        puis — si `corrections` — les corrections de couleur de la chaîne de
+        sortie), recadré au cadre commun si `recadre`. → (H, W, 3) float32
+        (ou (H, W) en Mono), None si aucun rôle n'a de frame.
+
+        `corrections=False` → EMPILEMENT BRUT (aucun gain, aucun équilibrage,
+        aucun recalage) : c'est ce que la sauvegarde linéaire enregistre."""
+        comp, _ = self.mean_avec_canaux(recadre=recadre, corrections=corrections)
         return comp
 
     def etat(self):

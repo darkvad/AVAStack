@@ -331,23 +331,32 @@ class LiveStacker:
         self.wsum += w
         self.n += 1
 
-    def mean(self, recadre=True):
+    def mean(self, recadre=True, corrections=True):
         """Moyenne pondérée courante. `recadre=False` renvoie l'accumulation
         COMPLÈTE, sans le recadrage d'intersection — réservé à la référence
         d'alignement (jalon 13) : la référence doit rester dans le MÊME repère
         que les frames alignées, sinon chaque rafraîchissement décalerait tout
         l'empilement (c'était le bug silencieux du bouton « Réf. =
-        empilement », qui fournissait l'empilement RECADRÉ)."""
+        empilement », qui fournissait l'empilement RECADRÉ).
+
+        `corrections=False` (chantier 24/09/2026, règle d'Alain : la sauvegarde
+        linéaire est BRUTE) → ni équilibrage des canaux ni recalage
+        colorimétrique : l'EMPILEMENT BRUT. Ce paramètre existe aussi pour que
+        l'interface reste identique à celle de `CompositeStacker.mean()` ;
+        en composition multi-rôles, les corrections sont portées par la façade."""
         if self.n == 0:
             return None
         img = (self.sum / np.maximum(self.wsum, 1e-9)).astype(np.float32)
-        img = self._equilibrer(img)
+        if corrections:
+            img = self._equilibrer(img)
         if not recadre or self.cadre is None:  # pas de recadrage (dégénéré)
             return img
         y0, x0, y1, x1 = self.cadre
         if img.ndim == 3 and img.shape[0] <= 4:    # (C, H, W)
-            return self._recaler_fit(img[:, y0:y1, x0:x1])
-        return self._recaler_fit(img[y0:y1, x0:x1, ...])  # (H, W) ou (H,W,C)
+            crop = img[:, y0:y1, x0:x1]
+        else:                                      # (H, W) ou (H, W, C)
+            crop = img[y0:y1, x0:x1, ...]
+        return self._recaler_fit(crop) if corrections else crop
 
     def _recaler_fit(self, img):
         """Recalage colorimétrique « Linear Fit » (jalon 54) : R et B

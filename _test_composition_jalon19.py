@@ -6,8 +6,9 @@ Vérifie (sans interface, numpy seul) :
   - extraire_canal : mono intact, couleur → canal(x) du rôle, luma pour L ;
   - normaliser : linéaire SANS clip (étoiles > 1 conservées) ;
   - composer : mapping SHO/HOO exacts (bornes figées), canal absent →
-    zéros sans planter, gains, LRGB (L présent → combine, chroma
-    préservée ; L vide → radio synthétisé/dégradé), Mono → 2D ;
+    zéros sans planter, gains (appliqués APRÈS composer, chaîne de sortie
+    depuis v2.35.0), LRGB (L présent → combine, chroma préservée ; L vide →
+    radio synthétisé/dégradé), Mono → 2D ;
   - formes hétérogènes → ValueError claire.
 
 Exécution : python _test_composition_jalon19.py
@@ -15,6 +16,7 @@ Exécution : python _test_composition_jalon19.py
 import numpy as np
 
 from avastack.processing.composition import (CANAUX_CFA, COMPOSITIONS,
+                                             appliquer_gains,
                                              bornes_normalisation,
                                              extraire_canal, composer,
                                              normaliser, roles_de,
@@ -94,12 +96,20 @@ sho2 = composer({"S2": np.full((8, 8), 0.2, np.float32),
 verifie(sho2 is not None and np.allclose(sho2[..., 2], 0.0)
         and np.allclose(sho2[..., 0], 0.2),
         "rôle O3 vide → canal B à zéros, pas d'exception")
-sho3 = composer({"S2": np.full((8, 8), 0.2, np.float32),
-                 "Ha": np.full((8, 8), 0.3, np.float32),
-                 "O3": np.full((8, 8), 0.4, np.float32)},
-                "SHO", gains={"R": 2.0}, bornes=B01)
+sho3 = appliquer_gains(
+    composer({"S2": np.full((8, 8), 0.2, np.float32),
+              "Ha": np.full((8, 8), 0.3, np.float32),
+              "O3": np.full((8, 8), 0.4, np.float32)},
+             "SHO", bornes=B01), {"R": 2.0})
 verifie(np.allclose(sho3[..., 0], 0.4) and np.allclose(sho3[..., 1], 0.3),
-        "gains appliqués après normalisation (R ×2)")
+        "gains appliqués APRÈS composer() — chaîne de sortie (R ×2) "
+        "(v2.35.0 : les gains ne sont plus dans composer())")
+verifie(np.allclose(composer(
+            {"S2": np.full((8, 8), 0.2, np.float32),
+             "Ha": np.full((8, 8), 0.3, np.float32),
+             "O3": np.full((8, 8), 0.4, np.float32)},
+            "SHO", bornes=B01)[..., 0], 0.2),
+        "composer() SEUL ne porte plus aucun gain (empilement BRUT)")
 verifie(composer({}, "SHO") is None, "aucun rôle fourni → None (pas de plantage)")
 
 print("[5] composer HOO : O3 alimente G ET B")

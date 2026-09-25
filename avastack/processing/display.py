@@ -11,7 +11,6 @@ from . import couleurs as _couleurs
 from . import composition as _composition
 from . import denoise as _denoise
 from . import sharpness as _sharpness
-from . import stacking as _stacking
 from . import veralux as _veralux
 
 
@@ -126,14 +125,19 @@ class DisplayProcessor:
         # --- Jalon 24 : mode composition (multi-couches) ---------------------
         # Posé par l'UI à chaque nouvel état de la file worker :
         # (canaux {rôle → carte 2D linéaire de l'APERÇU}, nom de composition,
-        # gains, mode_l). None en mode mono → la chaîne agit sur le composite
-        # comme avant (jalon 4/9). En composition, le gradient ET le
-        # débruitage sont faits PAR COUCHE (décision d'Alain du 19/09/2026 :
-        # la pollution lumineuse et la lune ne frappent pas pareil selon le
-        # filtre, et la palette Hubble n'est pas un fond physique — le modèle
-        # de fond de GraXpert ne doit voir que des couches mono 2D). La
-        # netteté reste SUR LE COMPOSITE (PSF identique pour toutes les
-        # couches, meilleur SNR après débruitage, moitié moins de calcul).
+        # gains, mode_l, recalage Linear Fit, équilibrage des canaux). None en
+        # mode mono → la chaîne agit sur le composite comme avant (jalon 4/9).
+        # En composition, le gradient ET le débruitage sont faits PAR COUCHE
+        # (décision d'Alain du 19/09/2026 : la pollution lumineuse et la lune
+        # ne frappent pas pareil selon le filtre, et la palette Hubble n'est
+        # pas un fond physique — le modèle de fond de GraXpert ne doit voir que
+        # des couches mono 2D). Les trois derniers éléments sont les
+        # CORRECTIONS DE COULEUR (décision (b)/(c) du 24/09/2026) : le solveur
+        # les applique lui-même APRÈS la recomposition des couches traitées
+        # (avant la netteté et l'étirement) — les couches, elles, restent
+        # BRUTES (contrat jalon 54). La netteté reste SUR LE COMPOSITE (PSF
+        # identique pour toutes les couches, meilleur SNR après débruitage,
+        # moitié moins de calcul).
         self.vl_compo = None
         self._gx_couches = {}         # rôle → (clé, couche après gradient)
         self._dn_couches = {}         # rôle → (clé, couche après débruitage)
@@ -328,6 +332,13 @@ class DisplayProcessor:
             compo = job[7] if len(job) > 7 else None
             fit = (compo[4] if compo is not None and len(compo) > 4
                    else None)
+            # Chantier 24/09/2026 (décision (b)/(c)) : l'équilibrage des
+            # canaux (auto, et sa force) fait partie des CORRECTIONS, comme les
+            # gains et le recalage — transporté en 6e élément du tuple de
+            # composition (déballage TOLÉRANT : les jobs antérieurs n'ont que
+            # 5 éléments → pas d'équilibrage côté solveur).
+            wb = (compo[5] if compo is not None and len(compo) > 5
+                  else None)
             # --- Jalon 24 : mode COMPOSITION — gradient ET débruitage PAR
             # COUCHE, AVANT recomposition (décision d'Alain du 19/09/2026 :
             # la pollution lumineuse et la clarté de la lune ne frappent pas
@@ -388,18 +399,32 @@ class DisplayProcessor:
                                 self._dn_couches[role] = (cle, c2)
                     traites[role] = c
                 try:
+                    # composer() NE porte AUCUNE correction de couleur : le
+                    # composite re-fait depuis les couches traitées est BRUT,
+                    # les corrections s'appliquent juste après, dans l'ordre
+                    # validé (débruitage → CORRECTIONS → netteté/étirement).
                     comp = _composition.composer(traites, nom_compo,
-                                                 gains=gains, mode_l=mode_l)
+                                                 mode_l=mode_l)
                 except Exception as exc:    # formes hétérogènes (ne doit pas
                     comp = None             # arriver : cadre commun) → repli
                     msgs.append(f"Recomposition : {exc}")
                 if comp is not None:
-                    if fit is not None and fit[0]:
-                        # Jalon 54 : le recalage « Linear Fit » est appliqué
-                        # au composite RE-FAIT (les couches restent brutes)
-                        # — sinon la vue « traitée » perdrait le calage
-                        # colorimétrique de la vue « empilement ».
-                        comp, _ = _stacking.aligner_canaux(comp, mode=fit[1])
+                    # --- Corrections de couleur (décision (b)/(c)) : gains
+                    # EFFECTIFS (manuels × SPCC/Gaia) → équilibrage des canaux
+                    # → recalage « Linear Fit ». Sans cache ici (un job par
+                    # nouvel empilement) et SANS état : `moyennes()` et le
+                    # composite BRUT restent intacts (contrat jalon 54). Les
+                    # trois réglages sont transportés dans le job — le solveur
+                    # lit une copie, jamais l'UI.
+                    comp, _diag_fit = _composition.corrections_couleur(
+                        comp,
+                        gains=gains,
+                        wb_auto=bool(wb[0]) if wb else False,
+                        wb_force=float(wb[1]) if wb else 1.0,
+                        cadre=wb[2] if wb and len(wb) > 2 else None,
+                        linear_fit=bool(fit[0]) if fit is not None else False,
+                        linear_fit_mode=(fit[1] if fit is not None
+                                         else "offset"))
                     img_gx = comp           # composite re-fait depuis les
                     gx_actif = False        # couches traitées : la chaîne
                     dn_actif = False        # composite est sautée ci-dessous
