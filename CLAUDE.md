@@ -171,6 +171,24 @@ Trois boutons d enregistrement aux rôles DISTINCTS — ne jamais fusionner :
   synchro `_sync_vl_graxpert_vue`). Les réglages STF sont MASQUÉS
   (pas grisés) en mode VeraLux — ils n y ont aucun effet.
 
+**RÈGLE (décision d'Alain, 24/09/2026) — LA SAUVEGARDE LINÉAIRE EST BRUTE.**
+Elle ne contient QUE l'empilement : ni retrait de gradient, ni correction de
+couleur. Les corrections de couleur — SPCC, gains photométriques (Gaia),
+équilibrage des canaux, recalage colorimétrique (Linear Fit) — appartiennent à
+la CHAÎNE DE SORTIE (affichage et sortie « traitée »), JAMAIS au fichier
+linéaire : sinon celui-ci n'est ni brut ni fini. Justification : une correction
+appliquée en amont est absorbée en partie par la normalisation par canal de
+`composer()`, et le retrait de gradient vit déjà sur une COPIE (GraXpert live ne
+modifie jamais l'empilement) ; garder le fichier brut est donc le seul moyen
+d'avoir une référence reproductible et un traitement ultérieur propre.
+Sorties attendues : ① **empilement linéaire BRUT** (référence) ; ② **empilement
+traité linéaire** (gradient retiré + corrections, sans étirement) ; ③ **tel que
+vu** (étiré). ÉTAT DU CODE au 24/09/2026 : divergence connue à corriger — les
+gains SPCC/Gaia, l'équilibrage et le Linear Fit sont appliqués dans
+`composer()`, donc présents dans `CompositeStacker.mean()`, qui sert à la fois à
+l'affichage ET à la sauvegarde linéaire ; le chantier de mise en conformité est
+spécifié dans AVANCEMENT.md (constats de code, ordre d'implémentation, bancs).
+
 ## Doc outils externes (CLI)
 
 ### GraXpert CLI

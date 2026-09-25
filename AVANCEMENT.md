@@ -23,6 +23,69 @@ dans le changelog du source et l'historique git.)
     `canal_*.fit` (autre bouton) sont, elles, **brutes** (ni normalisation ni
     gain) : c'est la base de la mesure SPCC. Désormais **écrit dans l'en-tête**
     (AVACOMPO, AVASPCC, AVAGAIA, AVAWB, AVAFIT, AVAFRAME, AVALAYER).
+  - **CHANTIER À DÉMARRER (session neuve) — « SAUVEGARDE BRUTE + CORRECTIONS
+    DE COULEUR DANS LA CHAÎNE DE SORTIE »** (décision d'Alain, 24/09/2026 ;
+    RIEN N'EST CODÉ). OBJECTIF : rendre la sauvegarde linéaire conforme à sa
+    définition (CLAUDE.md § Sauvegardes) en sortant les corrections de couleur du
+    chemin de sauvegarde, et en les appliquant dans la chaîne de sortie.
+    DÉCISIONS ACTÉES PAR ALAIN :
+      1. la **sauvegarde linéaire ne contient NI gradient retiré NI correction de
+         couleur** — elle est BRUTE (le gradient est déjà conforme : GraXpert
+         live travaille sur une COPIE, l'empilement n'est jamais modifié) ;
+      2. les **corrections de couleur (SPCC, gains Gaia) s'appliquent dans la
+         CHAÎNE DE SORTIE** : solveur d'affichage, APRÈS GraXpert/débruitage par
+         couche et la recomposition, AVANT l'étirement ;
+      3. **AJOUTER une 3e sortie linéaire** : « empilement traité (linéaire) » =
+         gradient retiré + corrections appliquées, SANS étirement (fichier prêt à
+         traiter ; intermédiaire entre « brut » et « tel que vu ») ;
+      4. le **Linear Fit reste un outil d'AFFICHAGE** (usage réel d'Alain) : il
+         suit le même chemin que les autres corrections et quitte donc, lui
+         aussi, la sauvegarde linéaire brute.
+    CONSTATS DE CODE (vérifiés le 24/09/2026 — point de départ) :
+      • `CompositeStacker.mean()` → `mean_avec_canaux()` → `composer(gains=
+        gains_effectifs(), …)` : c'est LÀ que les gains (manuels × [SPCC OU
+        Gaia]) entrent aujourd'hui. `mean()` sert à TROIS appelants : l'affichage
+        (worker), la **sauvegarde linéaire** (worker) et le traitement externe
+        manuel — plus `mean_avec_canaux()` pour le solveur live ;
+      • `moyennes()` renvoie les couches BRUTES par rôle : c'est la base de la
+        MESURE (SPCC, photométrie) et des fichiers `canal_*.fit` — à NE PAS
+        toucher ;
+      • le job du solveur transporte DÉJÀ `(canaux, nom_compo, gains, mode_l,
+        fit)` (jalons 24/54) et le solveur ré-applique lui-même le Linear Fit :
+        c'est le point d'application naturel des corrections ;
+      • `composer()` **normalise chaque rôle** par ses propres percentiles
+        (0,25 %/99,7 %) : une part des corrections y est absorbée (mesuré au
+        banc : contraste R/G 1,60 → 1,000). Les corrections appliquées APRÈS la
+        recomposition (chaîne de sortie) ne subiront plus cet écrasement ;
+      • `aligner_canaux` (Linear Fit) : R et B recalés sur le VERT — mode
+        « offset » : `offset_X = med_G − med_X` (fonds égalisés) ; mode
+        « gain + offset » : `gain_X = σ_G/σ_X` (borné 0,25–4) puis offset. G
+        inchangé, entrée jamais modifiée ;
+      • en-têtes FITS v2.34.7 : `AVASPCC`/`AVAGAIA` décrivent aujourd'hui une
+        APPLICATION — à requalifier en MESURE (et une clé distincte pour
+        « appliqué »), sinon le fichier mentirait après le chantier.
+  - **SUITE DU CHANTIER (ordre proposé, à valider)** : ① `mean()` reçoit deux
+    chemins (avec corrections pour l'affichage / brut pour la sauvegarde linéaire)
+    sans changer le défaut des appelants ; ② la sauvegarde linéaire utilise le
+    chemin brut ; ③ les gains sont transportés dans le job du solveur et
+    appliqués dans `display._vl_worker` (composition : après la recomposition ;
+    mono : sur l'image) ; ④ l'application des gains sort de `composer()` ;
+    ⑤ 3e sortie linéaire « traitée » ; ⑥ en-têtes (mesure vs appliqué) ;
+    ⑦ bancs. BANCS À ADAPTER : `_test_photometrie_jalon56.py` [10],
+    `_test_compo_ui_jalon19.py`, `_test_compo_worker_jalon19.py`,
+    `_test_fit_canaux_jalon54.py` ; BANC À CRÉER : « le fichier linéaire est
+    IDENTIQUE avec et sans SPCC/Gaia/équilibrage/Linear Fit cochés » (preuve de
+    « brut ») alors que l'affichage, lui, change. PIÈGES : `mean()` est appelé
+    ~20×/s et par plusieurs chemins ; le solveur vit dans un THREAD (les gains
+    doivent être transportés dans le job, jamais lus depuis l'UI) ; les caches
+    `_fit_cache`/`_wb_cache_comp`/`_gx_couches`/`_gx_cache` ont des clés qui
+    dépendent des gains et devront suivre.
+  - **À CONFIRMER PAR ALAIN avant de coder** : (a) la 3e sortie = NOUVEAU bouton
+    ou réutilisation du bouton existant « Enregistrer le résultat traité
+    (linéaire) » (aujourd'hui lié au traitement externe manuel ⚡) ; (b)
+    l'« équilibrage des canaux (auto) » suit-il le même chemin que les autres
+    corrections d'affichage ? (c) l'ordre exact souhaité dans la chaîne :
+    GraXpert → débruitage → corrections → netteté/SCNR → étirement.
 
   - **VALIDATION (24/09/2026, mêmes pixels)** : Siril sur `spcc_brut_RGB.fit` →
     R/V = 0,087250 + **0,872563**·cat (σ 0,1226), B/V = 0,114178 +
