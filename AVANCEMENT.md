@@ -10,49 +10,68 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **Version stable de référence : AVAStack v2.37.2** (`avastack/__init__.py`),
-  branche `master` — **LE CŒUR « CRAMÉ » ÉTAIT UNE COUPE À 1,0, PAS UN
-  PARAMÈTRE** (constat d'Alain, 25/09/2026 : « le cœur de M31 est vraiment
-  cramé », DANS l'appli et pas seulement sur le PNG — et il étire en VeraLux,
-  donc ce n'était aucun réglage / aucune technique à chercher) :
-  - **Mesure** : la VUE n'est pas le fichier. Le fichier linéaire est ramené dans
-    [0,1] par un facteur global (`borner_lineaire` : AVASCALE = 13,12 sur sa M31
-    2.37.1, 15,27 sur sa 115 frames) ; la chaîne d'étirement recevait, elle,
-    l'image à l'échelle MÉMOIRE et la **coupait à 1,0 avant d'étirer**. Profil du
-    cœur par anneaux (0-10 … 45-60 px, canal vert) : mémoire = **86,00 | 86,00 |
-    86,00 | 86,00 | 86,00** (PLAT = le « cramé ») contre fichier borné = **85,83 |
-    78,67 | 73,12 | 67,37 | 62,61** (dégradé conservé). Le cœur ENTIER (0,43 à
-    0,79 % de l'image) était écrasé sur une seule valeur.
-  - **Aucun paramètre VeraLux en cause** — mesuré sur son empilement : b 2→25,
-    target_bg 0,10→0,35, color_grip, shadow_convergence, convergence_power, logD
-    forcé 2,0/4,0 → **0 pixel cramé dans TOUS les cas** ; et son PNG de 23:12 est
-    à 0,9975 de corrélation avec son rendu de 17:49 (même image, étirement plus
-    dur) : c'est bien la coupe, en amont du moteur, qui écrasait le cœur.
-  - **Correctif** : `veralux.normaliser_lin()` (UN SEUL facteur GLOBAL, la règle
-    exacte des sauvegardes linéaires), utilisé par `etirer()` ET par
-    `rendu_pleine_resolution` (vue « tel que vu », donc PNG/TIFF). Le rendu ne
-    dépend plus de l'échelle arbitraire (`etirer(x) == etirer(3·x)` à 1,2e-06) ;
-    le dégradé du cœur revient (0,00 → 18,8 / 23,2 points d'étendue sur ses deux
-    fichiers) ; une image déjà ≤ 1 n'est pas modifiée (vérifié contre un appel
-    direct du moteur). Au passage, l'ancien `np.clip(..., out=img)` écrasait le
-    tableau de l'APPELANT — `normaliser_lin` copie réellement.
-  - **Preuve visuelle** (son fichier, échelle mémoire, planche avant/après) :
-    `C:\Astro\test\_diag_coeur_AVANT_APRES.jpg` — en haut un disque plat, en bas
-    le noyau, le dégradé et les bandes de poussière. Banc
-    `_test_coeur_crame_jalon64.py` (RÉUSSI).
-  - **VALIDÉ PAR ALAIN (25/09/2026, appli relancée)** : « Le cœur n'est
-    effectivement plus cramé ni plat ». Verdict annexe : cocher le débruitage
-    **NLM ne dégrade PAS** le cœur en vrai — contrairement à la mesure du banc
-    (écrasement à l'échelle mémoire, mesuré sur une image synthétique) : le
-    débruitage est donc LAISSÉ TEL QUEL (code gelé du 16/09/2026).
-  - **VALIDÉE AUSSI, dans la foulée, par Alain** : la **chaîne EXTERNE
-    complète** sur sa M31 (GraXpert gradient + débruitage par couche, BXT, puis
-    cases 7 « neutraliser la couleur du fond » et 8 « réduire le bruit
-    chromatique ») — son mot : « validée (pour le moment) » (il la retestera sur
-    d'autres cibles). Fichiers produits : `m31_traite_externe_lineaire.fits` et
-    `m31_traite_externe_etire.fits/png/tif` dans `C:\Astro\test`.
+- **Version stable de référence : AVAStack v2.37.3** (`avastack/__init__.py`),
+  branche `master` — **LE HALO DE COULEUR DES ÉTOILES ÉTAIT FABRIQUÉ PAR LA
+  RÉDUCTION DE BRUIT CHROMATIQUE** (constat d'Alain, 26/09/2026 : « les étoiles
+  brillantes rouges et bleues ont un halo gênant », VISIBLE AUSSI dans le fichier
+  passé par BlurXTerminator — « en général, c'est un halo killer pourtant ») :
+  - **Mesure** sur son empilement M31 réel, couronne r = 3..9 px en multiples du
+    niveau de ciel local (fond neutralisé = l'ordre réel de la chaîne) : étoile
+    la plus brillante (rouge) R 41,3 → 34,9 (−16 %) et B 19,9 → 23,6 (+19 %) ;
+    étoile bleue R 3,53 → 1,74 (−51 %) et B 2,72 → 3,92 (+44 %) — un **HALO BLEU
+    créé là où il n'y en avait aucun** (R/B 1,30 → 0,44) ; la LUMINANCE, elle, ne
+    bougeait pas (±6 %). Contrôle : à force ≈ 0, la même conversion YCrCb→RVB rend
+    l'image AU BIT PRÈS → c'est le FLOU qui est en cause, pas la conversion.
+  - **Cause** : un écart de chroma (Cr/Cb) ne dépend PAS de la luminosité du
+    pixel ; le flou mélangeait donc la couleur du CŒUR de l'étoile avec celle du
+    CIEL voisin et déposait ce mélange sur les AILES faibles, où un minuscule
+    écart devient une énorme couleur.
+  - **Pourquoi BXT n'a rien pu faire** : la chaîne externe applique les cases 7/8
+    APRÈS BlurXTerminator (`_run_external`) — le halo naît APRÈS le « halo
+    killer ». À noter : BXT a bien un réglage de halos, `--ash` /
+    `--adjust-star-halos` (−0,5…+0,5) dont le DÉFAUT 0,00 signifie « aucun
+    ajustement », et la commande par défaut de l'appli ne le passe pas — piste
+    INDÉPENDANTE, non modifiée ici (à essayer côté BXT si des halos RÉELS
+    subsistent ; testé sur un extrait : `-0.30` réduit encore, `+0.30` conserve).
+  - **Correctif (option (A) choisie par Alain, 26/09/2026)** : ① `reduire_bruit_
+    chroma` lisse désormais le RAPPORT de couleur (chroma ÷ échelle locale), et
+    l'échelle locale est le MINIMUM entre la luminance DU PIXEL (elle borne la
+    correction près d'une étoile → plus de halo) et sa version LISSÉE (échelle
+    constante sur le fond → le bruit de luminance ne se re-dépose pas dans la
+    couleur) ; ② le rayon SUIT la RÉSOLUTION (`couleurs.rayon_chroma_apercu` +
+    `DisplayProcessor.vl_chroma_rayon`) : l'aperçu de l'appli (facteur 0,417 sur
+    son image) passait de 3 px effectifs (7,2 px pleine résolution) à 1,25 px —
+    l'écran redevient fidèle au fichier.
+  - **Effets mesurés** : grain coloré du fond ×0,17 sur son fichier (×0,16 avant →
+    bénéfice conservé) ; halo de son étoile bleue R/B 1,32 (référence 1,30) au
+    lieu de 0,44 ; **écart RENDU** du halo (après VeraLux, en points de % du pic
+    vert) sur 6 étoiles brillantes de son fichier : **1,4 à 1,9 point** avec le
+    correctif contre 2,7 à 24,5 points avec l'ancienne formule.
+  - **Bancs** : `_test_chroma_halo_jalon65.py` (NOUVEAU — halo d'une étoile à
+    ailes larges préservé, TÉMOIN = l'ancienne formule ré-écrite exprès pour
+    prouver que le banc DISCRIMINE, rayon ⇄ résolution avec plancher de mesure,
+    transport par le solveur, et son fichier réel en argument) ;
+    `_test_chroma_nr_jalon63.py` ajusté (borne haute documentée au lieu de
+    l'égalité (1−force) : la formulation par ratio n'est plus exactement
+    linéaire) ; non-régression rejouée — jalon1/2/3, jalon4, jalon5, jalon6,
+    jalon7, jalon19 (×2), jalon22, jalon39, jalon40, jalon41, jalon47, jalon62,
+    jalon63, jalon64 : **TOUS PASSENT**.
+  - **Preuve visuelle à juger par Alain** : `C:\Astro\test\
+    _diag_halo_etoiles_AVANT_APRES.jpg` (aperçu de l'appli ET pleine résolution,
+    avant/après + écart ×8).
+  - **PROCHAINE ÉTAPE** : Alain relance l'appli (v2.37.3) et dit si le halo a
+    disparu DANS LA VISU et dans un fichier passé par BXT ; ses commentaires
+    décideront si l'on baisse aussi le rayon de RÉFÉRENCE (3 px) ou si l'on
+    ajoute `--ash` à la commande BXT pour les halos réels.
 
-- **Version stable précédente : AVAStack v2.37.1** — les ajouts récents (SPCC,
+- **Version stable précédente : AVAStack v2.37.2** — le cœur « cramé » était une
+  COUPE à 1,0 appliquée avant l'étirement, alors que l'empilement vit à une
+  échelle arbitraire (13-18) : correctif `veralux.normaliser_lin()` (UN SEUL
+  facteur GLOBAL, la règle des sauvegardes linéaires), le dégradé du cœur est
+  revenu ; validé par Alain le 25/09/2026, y compris la chaîne externe complète.
+  (Détails : changelog du source + `_test_coeur_crame_jalon64.py`.)
+
+- **Avant cela : AVAStack v2.37.1** — les ajouts récents (SPCC,
   déjà présente dans la chaîne externe, plus les cases **« 7. Neutraliser la
   couleur du fond »** — cochée par défaut — et **« 8. Réduire le bruit
   chromatique »**) intégrés à la chaîne de traitement EXTERNE au même rang que
@@ -129,6 +148,14 @@ dans le changelog du source et l'historique git.)
 
 ## En attente / prochaine session
 
+- **VALIDATION VISUELLE D'ALAIN SUR v2.37.3** (le halo de couleur) : relancer
+  l'appli, vérifier la visu (l'aperçu applique maintenant le rayon ramené) ET un
+  fichier passé par BlurXTerminator ; la planche
+  `C:\Astro\test\_diag_halo_etoiles_AVANT_APRES.jpg` sert de référence visuelle.
+  Selon son verdict : (a) rien à faire ; (b) baisser aussi le rayon de RÉFÉRENCE
+  (3 px) ; (c) ajouter `--ash` (−0,3 … −0,5) à sa commande BXT pour les halos
+  RÉELS. Son verdict décidera aussi si l'on reconstruit à nouveau l'installateur
+  2.37.3 (déjà reconstruit en fin de passe).
 - **Grain GRIS résiduel** : la réduction du bruit chromatique ne touche PAS le
   grain de luminance (mesuré ×1,00) — seul le débruitage live (NLM, force 0,5)
   ou plus d'intégration le réduit. Sujet OUVERT si Alain veut aller plus loin
@@ -169,6 +196,27 @@ dans le changelog du source et l'historique git.)
   doivent produire le même rendu (constat : la SPCC y était déjà via les
   corrections de couleur, mais la neutralisation du fond et le bruit chromatique
   manquaient → v2.37.1).
+- Leçons EN ATTENTE d'accord d'Alain (26/09/2026, constats de sa session « halo
+  des étoiles » — texte proposé, rien n'est écrit dans CLAUDE.md sans son accord) :
+  1. **La couleur d'un pixel est un RAPPORT, pas un écart absolu** : lisser une
+     chroma ABSOLUE (Cr/Cb de YCrCb) mélange la couleur du CŒUR d'une étoile avec
+     celle du CIEL et la dépose sur les AILES faibles, où un minuscule écart
+     devient une énorme couleur — halo de couleur fabriqué (mesuré : R/B d'une
+     couronne d'étoile 1,30 → 0,44). Lisser le RAPPORT de couleur, à une échelle
+     bornée par la luminance locale, le supprime sans perdre le bénéfice.
+  2. **Toute échelle SPATIALE (rayon de flou, seuil de détection) doit suivre la
+     RÉSOLUTION** : la même valeur en pixels appliquée à un APERÇU RÉDUIT étale
+     relativement plus qu'aux fichiers (constat : 3 px d'aperçu = 7,2 px pleine
+     résolution sur son image de 3838 px → halo 2,4× plus large à l'écran) ;
+     l'écran doit montrer ce que le fichier contient.
+  3. **Une correction appliquée EN FIN de chaîne externe est invisible à l'outil
+     qui la précède** : BXT tourne AVANT les cases 7/8, donc son « halo killer »
+     ne peut rien contre un halo créé après lui (et son réglage de halos `--ash`
+     vaut 0,00 par défaut, absent de la commande par défaut de l'appli).
+  4. **Quand une formule change de NATURE, la propriété du banc doit être
+     ré-énoncée honnêtement** (borne haute documentée au lieu d'une égalité
+     devenue impossible) — et **une fidélité (aperçu ⇄ fichier) se mesure PAR
+     RAPPORT au plancher de mesure** du redimensionnement, jamais en absolu.
 
 ## Setup d'Alain
 

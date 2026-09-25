@@ -182,11 +182,21 @@ class DisplayProcessor:
         # R/G (0,902) mais B/G reste à 1,174 — la SPCC applique K_B/K_G = 1,32,
         # et un gain multiplicatif amplifie le bruit du canal qu'il monte.
         # `couleurs.reduire_bruit_chroma` lisse la CHROMA (YCrCb) en laissant la
-        # luminance intacte, JUSTE APRÈS la neutralisation et juste AVANT
+        # luminance intacte, JUSTE APRÈS la neutralisation et juste avant
         # l'étirement (no-op sur un composite monochrome). Décocher = grain
-        # coloré d'origine (comportement v2.36.x).
+        # coloré d'origine (comportement v2.36.x). v2.37.3 : le lissage porte
+        # désormais sur le RAPPORT de couleur (chroma / luminance locale) — un
+        # écart de chroma absolu n'a pas de sens physique dans les ailes faibles
+        # d'une étoile, où il fabriquait un halo de couleur (cf. couleurs.py).
         self.vl_chroma = False         # réduction du bruit chromatique (opt-in)
         self.vl_chroma_force = 0.5     # part du bruit chromatique retirée
+        # v2.37.3 : rayon du flou de chroma. La valeur de RÉFÉRENCE (3 px) est
+        # celle de la PLEINE RÉSOLUTION — donc celle des fichiers ; l'interface
+        # le ramène à l'échelle de l'APERÇU (`couleurs.rayon_chroma_apercu`),
+        # sinon le même rayon en pixels étale la couleur des étoiles 1/scale
+        # fois plus loin qu'elles à l'écran que dans les fichiers (constat du
+        # 26/09/2026 : 3 px d'aperçu = 7,2 px pleine résolution à 3838 px).
+        self.vl_chroma_rayon = _couleurs.RAYON_CHROMA_DEFAUT
         self.vl_seeing = None         # mesure du seeing (jalon 10, dict) : sert
                                       # de PSF à la netteté — posée par le
                                       # thread d'acquisition, jamais mesurée ici
@@ -313,7 +323,8 @@ class DisplayProcessor:
                 self.vl_scnr, self.vl_demagenta, self.vl_scnr_doux,
                 bool(self.vl_neutre_fond),             # v2.36.1 (option)
                 bool(self.vl_chroma),                  # v2.37.0 (option)
-                round(float(self.vl_chroma_force), 2))
+                round(float(self.vl_chroma_force), 2),
+                round(float(self.vl_chroma_rayon), 2))  # v2.37.3 (résolution)
 
     def _vl_worker(self):
         """Thread solveur : enchaîne — si activés — GraXpert live (jalon 4)
@@ -360,6 +371,11 @@ class DisplayProcessor:
             # déballage tolérant : les jobs antérieurs n'en ont pas → inactif).
             chroma_actif = bool(job[9]) if len(job) > 9 else False
             chroma_force = float(job[10]) if len(job) > 10 else 0.5
+            # v2.37.3 : rayon du flou de chroma, déjà ramené à l'échelle de
+            # l'image reçue par l'interface (déballage TOLÉRANT : les jobs
+            # antérieurs n'en ont pas → rayon de référence pleine résolution).
+            chroma_rayon = (float(job[11]) if len(job) > 11
+                            else _couleurs.RAYON_CHROMA_DEFAUT)
             # Jalon 24 : données de composition transportées dans le job
             # (8e élément : (canaux, nom, gains, mode_l), None en mode mono).
             # Jalon 54 : 5e élément OPTIONNEL du tuple — (actif, mode) du
@@ -590,8 +606,8 @@ class DisplayProcessor:
             # amplifié. No-op si l'option est décochée ou si l'image est mono.
             if chroma_actif:
                 self.vl_stage = "chroma"        # jalon 40 : étape courante
-                img_net = _couleurs.reduire_bruit_chroma(img_net,
-                                                         force=chroma_force)
+                img_net = _couleurs.reduire_bruit_chroma(
+                    img_net, force=chroma_force, rayon=chroma_rayon)
             prefixe = ((f"GraXpert live : {err_gx} ; " if err_gx else "")
                        + (f"Débruitage live : {err_dn} ; " if err_dn else "")
                        + (f"Netteté live : {err_net} ; " if err_net else ""))
@@ -647,6 +663,7 @@ class DisplayProcessor:
             # v2.37.0 : réduction du bruit chromatique (10e et 11e éléments).
             chroma = bool(self.vl_chroma)
             chroma_force = float(self.vl_chroma_force)
+            chroma_rayon = float(self.vl_chroma_rayon)   # v2.37.3 (résolution)
             # Jalon 24 : couches de la composition (posées par l'UI, jamais
             # mutées en place — remplacement entier), capturées avec le job.
             compo = self.vl_compo
@@ -658,7 +675,7 @@ class DisplayProcessor:
                     # remplacée pendant le calcul
                     self._vl_job = (img.astype(np.float32).copy(), params,
                                     key, gx, dn, sh, coul, compo, nf,
-                                    chroma, chroma_force)
+                                    chroma, chroma_force, chroma_rayon)
                     self._vl_wake.set()
             self._vl_src, self._vl_key = img, key
         with self._vl_lock:

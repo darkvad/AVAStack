@@ -168,6 +168,7 @@ Source: "{#RepoRoot}\_test_fond_bleu_jalon62.py"; DestDir: "{app}"; Flags: ignor
 ; mesure a 1,174 sur ses empilements M31), le transport au solveur VeraLux
 ; (sortie identique a la chaine attendue) et le branchement UI/config (rendu
 ; IMMEDIAT au clic, sans nouvelle frame).
+Source: "{#RepoRoot}\_test_chroma_halo_jalon65.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}\_test_chroma_nr_jalon63.py"; DestDir: "{app}"; Flags: ignoreversion
 
 ; veralux_core_headless.py : code tiers GPL-3.0-or-later (Riccardo Paterniti),

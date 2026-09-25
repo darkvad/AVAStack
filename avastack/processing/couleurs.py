@@ -128,7 +128,46 @@ def neutraliser_fond(img, force=1.0, garde=0.10):
     return (a * gg.reshape(1, 1, 3)).astype(np.float32)
 
 
-def reduire_bruit_chroma(img, force=0.5, rayon=3.0):
+# --- Réduction du bruit chromatique : échelles de référence ------------------
+# Rayon de flou de RÉFÉRENCE, en pixels PLEINE RÉSOLUTION (la valeur validée par
+# Alain sur ses empilements) ; PLANCHER_CHROMA borne l'échelle de normalisation
+# de la chroma (fraction de la luminance médiane de l'image).
+RAYON_CHROMA_DEFAUT = 3.0
+RAYON_CHROMA_MIN = 0.6
+PLANCHER_CHROMA = 0.25
+
+
+def rayon_chroma_apercu(scale, rayon=RAYON_CHROMA_DEFAUT):
+    """Rayon de flou ÉQUIVALENT pour une image RÉDUITE (aperçu) de facteur
+    `scale` (< 1) — le rayon de référence reste exprimé, lui, en pixels PLEINE
+    RÉSOLUTION.
+
+    POURQUOI (constat réel d'Alain, 26/09/2026, v2.37.3) : le solveur de
+    l'aperçu reçoit une image RÉDUITE (facteur 1600/largeur — 0,417 sur son
+    image de 3838 px) alors que le rayon restait fixé à 3 px. Or les ÉTOILES
+    rétrécissent avec l'image : le même flou de 3 px étale donc leur couleur
+    1/scale = 2,4 fois plus loin PAR RAPPORT À LEUR TAILLE à l'écran que dans
+    le fichier pleine résolution. Le rayon suit désormais la résolution :
+    l'aperçu montre ce que le fichier contient (règle du projet : « le fichier
+    correspond à l'écran »).
+
+    scale : facteur de réduction ayant servi à construire l'aperçu (1.0 =
+            pleine résolution → rayon inchangé) ;
+    → rayon effectif, en pixels de l'image reçue, jamais sous RAYON_CHROMA_MIN
+    (en dessous il n'y a plus rien à lisser : le grain vit à l'échelle du
+    pixel). Aucune exception : `scale` illisible ou absurde → rayon de
+    référence (jamais moins de travail que demandé).
+    """
+    try:
+        s = float(scale)
+    except (TypeError, ValueError):
+        return float(rayon)
+    if not np.isfinite(s) or s <= 0.0:
+        return float(rayon)
+    return max(RAYON_CHROMA_MIN, float(rayon) * min(1.0, s))
+
+
+def reduire_bruit_chroma(img, force=0.5, rayon=RAYON_CHROMA_DEFAUT):
     """Réduit le BRUIT CHROMATIQUE d'une image couleur (v2.37.0) — le
     « chroma noise reduction », équivalent d'un SCNR généralisé.
 
@@ -147,19 +186,49 @@ def reduire_bruit_chroma(img, force=0.5, rayon=3.0):
     (c'est le seul levier direct : ni l'équilibrage, ni le SCNR vert ne
     corrigent un excès de grain BLEU).
 
-    Calcul (espace YCrCb de OpenCV ; Y = luminance INCHANGÉE par construction,
-    seuls Cr et Cb sont réécrits — mesuré au banc : écart < 1e-6 sur le canal Y
-    de OpenCV sur le fond, et < 1,4e-05 en tout, cette petite queue venant des
-    pixels du bord haut de l'échelle où la reconstruction YCrCb→RVB sature) :
-      lisse = flou gaussien de rayon `rayon` (px) sur Cr et Cb ;
-      Cr', Cb' = chroma + force · (lisse − chroma).
-    Le grain vit à l'échelle du PIXEL, la couleur des objets (nébuleuses,
-    étoiles) s'étale sur beaucoup plus que `rayon` : mesuré au banc, le grain
-    coloré tombe d'un facteur ~4 (rayon 3) sans que la couleur de l'objet bouge
-    de plus de 1 %. Sur une image MONOCHROME, il n'y a pas de chroma : no-op.
+    CORRECTIF v2.37.3 (constat d'Alain, 26/09/2026 : « les étoiles brillantes
+    rouges et bleues ont un halo gênant », VISIBLE AUSSI APRÈS BlurXTerminator) :
+    la chroma était jusqu'ici lissée comme un ÉCART ABSOLU (Cr/Cb tels quels).
+    Or un écart de chroma ne dépend PAS de la luminosité du pixel : autour d'une
+    étoile, le flou mélangeait la couleur du CŒUR avec celle du CIEL voisin et
+    déposait ce mélange sur les AILES faibles, où un minuscule écart devient une
+    énorme couleur. MESURÉ sur son empilement M31 (anneau r = 3..9 px, en
+    multiples du niveau de ciel local, fond neutralisé) :
+      - étoile la plus brillante (rouge) : R 41,3 → 34,9 (−16 %) et B 19,9 →
+        23,6 (+19 %) — le halo perdait la couleur de l'étoile et prenait celle
+        du fond (R/B 2,08 → 1,47) ;
+      - étoile bleue : R 3,53 → 1,74 (−51 %) et B 2,72 → 3,92 (+44 %) — un HALO
+        BLEU apparaissait là où il n'y en avait aucun (R/B 1,30 → 0,44).
+    C'est bien le FLOU qui est en cause, pas la conversion : à force ≈ 0, la même
+    conversion YCrCb→RVB rend l'image au bit près (vérifié sur son fichier).
+    À cela s'ajoute que BXT tourne AVANT cette case dans la chaîne externe : le
+    halo est donc créé APRÈS le « halo killer », qui ne peut rien y faire.
+
+    Calcul (v2.37.3) — on lisse la chroma NORMALISÉE PAR LA LUMINOSITÉ, c'est-
+    à-dire le RAPPORT de couleur, puis on le re-multiplie par l'échelle locale
+    `den` (minimum entre la luminance du pixel et sa version lissée, plancher
+    PLANCHER_CHROMA × luminance médiane) :
+      cn = (chroma − 0,5) / den ; lisse = flou gaussien de rayon `rayon` sur cn ;
+      chroma' = 0,5 + den · (cn + force · (lisse − cn)).
+    Sur le FOND, `den` est la version lissée (quasi constante) : la part demandée
+    du grain coloré disparaît — mesuré ×0,169 à force 0,847, contre ×0,155 pour
+    l'ancienne formulation. Près d'une ÉTOILE, `den` redevient la luminance du
+    pixel (la plus faible) : l'amplitude de couleur reste celle de la lumière
+    réellement présente — mesuré sur son étoile bleue, R/B 1,26 (référence 1,30)
+    au lieu de 0,44. Y (luminance) n'est JAMAIS réécrit (seuls Cr et Cb le
+    sont) — mesuré au banc : écart < 2e-6 sur le canal Y de OpenCV sur le fond,
+    et < 1,4e-05 en tout, cette petite queue venant des pixels du bord haut de
+    l'échelle où la reconstruction YCrCb→RVB sature. Le grain vit à l'échelle du
+    PIXEL, la couleur des objets (nébuleuses) s'étale sur beaucoup plus que
+    `rayon` : la couleur de l'objet reste préservée à mieux de 2 %. Sur une image
+    MONOCHROME, il n'y a pas de chroma : no-op.
 
     force : 0..1 — part du bruit chromatique retirée (0 = no-op, 1 = chroma
-            entièrement lissée) ; rayon : écart-type du flou, en pixels.
+            entièrement lissée) ;
+    rayon : écart-type du flou, EN PIXELS DE L'IMAGE REÇUE. Il vaut
+            RAYON_CHROMA_DEFAUT (3 px en PLEINE RÉSOLUTION) pour un fichier, et
+            `rayon_chroma_apercu(scale)` pour un aperçu réduit — sinon le halo
+            est 1/scale fois trop large à l'écran par rapport aux fichiers.
     → copie float32, entrée JAMAIS modifiée, aucune exception (numpy/OpenCV,
     mêmes garanties que les autres primitives de ce module)."""
     a = np.asarray(img, dtype=np.float32)
@@ -168,10 +237,24 @@ def reduire_bruit_chroma(img, force=0.5, rayon=3.0):
         return a.copy()               # mono, forme inattendue ou force nulle
     f = np.float32(min(1.0, max(0.0, float(force))))
     ycc = cv2.cvtColor(a, cv2.COLOR_RGB2YCrCb)
+    y = ycc[..., 0]
+    niveau = float(np.median(y))
+    if not np.isfinite(niveau) or niveau <= 1e-9:
+        return a.copy()               # image noire/vide : aucune échelle locale
+    # ÉCHELLE LOCALE de la chroma (v2.37.3) : le MINIMUM entre la luminance DU
+    # PIXEL et sa version LISSÉE. Le pixel borne la correction près d'une étoile
+    # (l'amplitude de couleur reste celle de la lumière réellement présente →
+    # plus de halo) ; la version lissée donne une échelle quasi constante sur le
+    # fond (le bruit de luminance ne se re-dépose pas dans la couleur → le grain
+    # coloré tombe toujours d'un facteur (1 − force)). Le plancher évite la
+    # division par zéro dans les pixels noirs ou négatifs.
+    den = np.maximum(np.minimum(y, cv2.GaussianBlur(y, (0, 0),
+                                                   sigmaX=float(rayon))),
+                     np.float32(max(PLANCHER_CHROMA * niveau, 1e-7)))
     for i in (1, 2):                  # Cr puis Cb — jamais Y (canal 0)
-        c = ycc[..., i]
-        lisse = cv2.GaussianBlur(c, (0, 0), sigmaX=float(rayon))
-        ycc[..., i] = c + f * (lisse - c)
+        cn = (ycc[..., i] - 0.5) / den          # RAPPORT de couleur local
+        lisse = cv2.GaussianBlur(cn, (0, 0), sigmaX=float(rayon))
+        ycc[..., i] = 0.5 + den * (cn + f * (lisse - cn))
     out = cv2.cvtColor(ycc, cv2.COLOR_YCrCb2RGB)
     # Le flou d'un plan de chroma reste dans l'intervalle de ses voisins, mais
     # la reconstruction peut passer très légèrement sous zéro près du noir :

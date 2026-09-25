@@ -14,9 +14,56 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.37.2"
+AVASTACK_VERSION = "2.37.3"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.37.3 : LE HALO DE COULEUR DES ÉTOILES ÉTAIT FABRIQUÉ PAR LA RÉDUCTION DE
+#   BRUIT CHROMATIQUE. Constat d'Alain (26/09/2026) : « les étoiles brillantes
+#   rouges et bleues ont un halo gênant », VISIBLE AUSSI dans le fichier passé
+#   par BlurXTerminator (« en général, c'est un halo killer pourtant »).
+#   MESURES QUI L'ÉTABLISSENT, sur son empilement M31 réel (anneau r = 3..9 px
+#   autour des étoiles, en multiples du niveau de ciel local, fond neutralisé) :
+#   - étoile la plus brillante (rouge) : R 41,3 → 34,9 (−16 %) et B 19,9 →
+#     23,6 (+19 %) — le halo perdait la couleur de l'étoile et prenait celle du
+#     fond (R/B 2,08 → 1,47) ;
+#   - étoile bleue : R 3,53 → 1,74 (−51 %) et B 2,72 → 3,92 (+44 %) — un HALO
+#     BLEU APPARAISSAIT là où il n'y en avait aucun (R/B 1,30 → 0,44) ;
+#   - la LUMINANCE, elle, ne bougeait pas (±6 %) : c'est un halo de COULEUR ;
+#   - contrôle : à force ≈ 0, la même conversion YCrCb→RVB rend l'image AU BIT
+#     PRÈS → c'est le FLOU qui est en cause, pas la conversion.
+#   CAUSE : un écart de chroma (Cr/Cb) ne dépend PAS de la luminosité du pixel.
+#   Le flou mélangeait donc la couleur du CŒUR de l'étoile avec celle du CIEL
+#   voisin et déposait ce mélange sur les AILES faibles, où un minuscule écart
+#   devient une énorme couleur.
+#   POURQUOI BXT N'A RIEN PU FAIRE : la chaîne externe applique les cases 7/8
+#   APRÈS BlurXTerminator (fin de `_run_external`) — le halo est créé APRÈS le
+#   « halo killer ». (BXT a bien un réglage de halos, `--ash` −0,5…+0,5, dont le
+#   défaut 0,00 = « aucun ajustement » : la commande par défaut de l'appli ne le
+#   passe pas — piste indépendante, NON modifiée ici.)
+#   POURQUOI C'ÉTAIT PIRE À L'ÉCRAN : l'aperçu est réduit (facteur 1600/largeur,
+#   0,417 sur son image de 3838 px) alors que le rayon restait fixé à 3 px : les
+#   ÉTOILES rétrécissent avec l'aperçu, pas le flou → 3 px d'aperçu valaient
+#   7,2 px pleine résolution, soit un halo 2,4 fois plus large par rapport aux
+#   étoiles que dans les fichiers.
+#   CORRECTIF (option (A) choisie par Alain, 26/09/2026 : « correctif complet ») :
+#   1. `couleurs.reduire_bruit_chroma` lisse désormais le RAPPORT de couleur
+#      (chroma / luminance locale) et le re-multiplie par cette échelle ; celle-ci
+#      est le MINIMUM entre la luminance DU PIXEL et sa version LISSÉE — le pixel
+#      borne la correction près d'une étoile (plus de halo), la version lissée
+#      donne une échelle quasi constante sur le fond (le bruit de luminance ne se
+#      re-dépose pas dans la couleur). MESURÉ (force 0,847) : grain coloré du fond
+#      ×0,169 (ancienne formulation ×0,155 → l'essentiel du bénéfice est
+#      conservé) et halo de l'étoile bleue R/B 1,26 (référence sans réduction
+#      1,30) au lieu de 0,44 ;
+#   2. `couleurs.rayon_chroma_apercu(scale)` + `DisplayProcessor.vl_chroma_rayon` :
+#      le rayon SUIT LA RÉSOLUTION (l'interface le ramène à l'échelle de l'aperçu,
+#      les fichiers gardent les 3 px de référence) — l'écran redevient fidèle au
+#      fichier (règle du projet : « le fichier correspond à l'écran »).
+#   BANC : `_test_chroma_halo_jalon65.py` (halo d'une étoile à ailes larges :
+#   préservé à quelques %, grain du fond toujours retiré, rayon qui suit la
+#   résolution, transport par le solveur) + `_test_chroma_nr_jalon63.py` rejoué.
+#   Repli si régression : v2.37.2 (5545a9c).
+
 # v2.37.2 : LE CŒUR « CRAMÉ » EST UNE COUPE, PAS UN PARAMÈTRE. Constat d'Alain
 #   (25/09/2026) : « le cœur de M31 est vraiment cramé », DANS l'appli et pas
 #   seulement sur le PNG — et il étire en VeraLux, donc ce n'était pas un

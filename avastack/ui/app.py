@@ -6337,6 +6337,13 @@ class App:
             if scale < 1.0:
                 show = cv2.resize(show, None, fx=scale, fy=scale,
                                   interpolation=cv2.INTER_AREA)
+            # v2.37.3 : le rayon du flou de chroma suit la RÉSOLUTION — l'aperçu
+            # est réduit d'un facteur `scale`, les ÉTOILES aussi : à rayon
+            # constant en pixels, leur couleur s'étalerait 1/scale fois plus loin
+            # par rapport à leur taille à l'écran que dans les fichiers (halo
+            # 2,4 fois plus large à 3838 px). Les fichiers gardent, eux, le rayon
+            # de référence (`couleurs.RAYON_CHROMA_DEFAUT`).
+            self.disp.vl_chroma_rayon = couleurs_mod.rayon_chroma_apercu(scale)
             # Jalon 10 : seeing live (FWHM médiane + nombre d'étoiles) sur
             # l'APERÇU — c'est la résolution sur laquelle la netteté live
             # travaillera, la PSF mesurée y est donc directement exploitable.
@@ -6465,6 +6472,10 @@ class App:
         show = (cv2.resize(stack, None, fx=scale, fy=scale,
                            interpolation=cv2.INTER_AREA) if scale < 1.0
                 else stack)
+        # v2.37.3 : le rayon du flou de chroma suit la RÉSOLUTION (même règle
+        # qu'à la fin de la boucle d'acquisition : l'aperçu est réduit, les
+        # étoiles aussi → cf. `couleurs.rayon_chroma_apercu`).
+        self.disp.vl_chroma_rayon = couleurs_mod.rayon_chroma_apercu(scale)
         if self._mode_compo and canaux:
             gains_eff2 = (self.stacker.gains_effectifs()
                           if hasattr(self.stacker, "gains_effectifs")

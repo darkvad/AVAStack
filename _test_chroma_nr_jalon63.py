@@ -17,8 +17,10 @@ défaut. »
 Vérifie :
   [1] `couleurs.reduire_bruit_chroma` : no-op (mono, force 0), l'entrée n'est
       jamais modifiée, aucune exception sur une forme inattendue ;
-  [2] le grain CHROMATIQUE du fond tombe du facteur demandé (mesuré en σ haute
-      fréquence sur une zone de ciel) sans toucher à la LUMINANCE ;
+  [2] le grain CHROMATIQUE du fond tombe de la part demandée (mesuré en σ haute
+      fréquence sur une zone de ciel ; borne haute à 8 points près depuis la
+      v2.37.3, la formulation par RAPPORT de couleur n'étant plus exactement
+      linéaire) sans toucher à la LUMINANCE ;
   [3] la couleur de l'OBJET (chroma étendue, basse fréquence) est préservée ;
   [4] LE CAS D'ALAIN : des gains de type SPCC déséquilibrent le grain (B/G 1,32),
       la réduction de bruit chromatique le RAMÈNE vers 1,00 ;
@@ -139,9 +141,18 @@ for force in (0.25, 0.5, 1.0):
     ratio = max(ch) / max(ch0)
     ecart_y = float(np.abs(
         cv2.cvtColor(s, cv2.COLOR_RGB2YCrCb)[..., 0] - y0).max())
-    verifie(abs(ratio - (1.0 - force)) < 0.05,
-            f"force {force} : grain CHROMATIQUE ×{ratio:.3f} (attendu "
-            f"×{1.0 - force:.2f} — la part demandée est retirée)")
+    # v2.37.3 : le lissage porte désormais sur le RAPPORT de couleur, dont
+    # l'échelle suit la luminosité locale → il reste quelques pour cent du grain
+    # coloré là où l'ancienne formulation (linéaire en chroma absolue) tombait
+    # exactement à (1 − force). On garantit donc une BORNE HAUTE : au pire
+    # 8 points de plus que la part demandée (mesuré 0,4 point à force 0,5 et
+    # 7,0 points à force 1,0 sur cette scène). Contrepartie décidée avec Alain
+    # (26/09/2026) : elle supprime le HALO de couleur fabriqué autour des
+    # étoiles (cf. `_test_chroma_halo_jalon65.py`).
+    verifie(ratio <= (1.0 - force) + 0.08,
+            f"force {force} : grain CHROMATIQUE ×{ratio:.3f} (au plus "
+            f"×{1.0 - force + 0.08:.2f} — la part demandée est retirée à "
+            f"8 points près)")
     # Le canal Y de OpenCV doit être intact — mesuré sur le FOND (la zone qui
     # compte) ; sur toute l'image il reste une queue < 1,4e-05 dans le cœur, où
     # la reconstruction YCrCb→RVB sature au bord haut de l'échelle.
@@ -205,9 +216,10 @@ for force in (0.5, 1.0):
     s = C.reduire_bruit_chroma(spcc, force=force)
     ch_apres = chroma_hf(s)
     ratio = max(ch_apres) / max(ch_avant)
-    verifie(abs(ratio - (1.0 - force)) < 0.05,
+    verifie(ratio <= (1.0 - force) + 0.08,
             f"force {force} : GRAIN COLORÉ (chroma haute fréquence) ×{ratio:.3f} "
-            f"— la part demandée du grain coloré disparaît")
+            f"(borne haute ×{1.0 - force + 0.08:.2f}) — la part demandée du grain "
+            f"coloré disparaît (cf. borne documentée au [2])")
 colore = max(chroma_hf(C.reduire_bruit_chroma(spcc, force=1.0))) / max(ch_avant)
 verifie(colore < 0.10,
         f"force 1,0 : il ne reste {colore * 100:.1f} % du grain coloré — le "
