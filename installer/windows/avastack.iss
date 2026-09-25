@@ -161,6 +161,15 @@ Source: "{#RepoRoot}\_test_norm_commune_jalon61.py"; DestDir: "{app}"; Flags: ig
 ; -> fond lineaire, gains proposes, fond etire avant/apres, et controle du PNG ecrit.
 Source: "{#RepoRoot}\_test_fond_bleu_jalon62.py"; DestDir: "{app}"; Flags: ignoreversion
 
+; Banc de la REDUCTION DU BRUIT CHROMATIQUE (v2.37.0, demande d'Alain : « un
+; equivalent de SCNR pour le bleu », case DECOCHEE par defaut) : la primitive
+; (grain colore x(1-force) exactement, luminance intacte, couleur de l'objet
+; preservee), le cas REEL (gains de la SPCC : K_B/K_G = 1,318 -> grain B/G
+; mesure a 1,174 sur ses empilements M31), le transport au solveur VeraLux
+; (sortie identique a la chaine attendue) et le branchement UI/config (rendu
+; IMMEDIAT au clic, sans nouvelle frame).
+Source: "{#RepoRoot}\_test_chroma_nr_jalon63.py"; DestDir: "{app}"; Flags: ignoreversion
+
 ; veralux_core_headless.py : code tiers GPL-3.0-or-later (Riccardo Paterniti),
 ; copie tel quel (sa licence exige de transmettre le source a cote du binaire).
 Source: "{#RepoRoot}\veralux_core_headless.py"; DestDir: "{app}"; Flags: ignoreversion

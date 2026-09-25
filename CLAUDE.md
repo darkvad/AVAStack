@@ -312,6 +312,33 @@ Pièges :
   « moitié sombre » n'est plus du ciel et les gains partent à la borne (d'où le
   garde-fou ±10 % et l'annonce des gains à l'écran). Banc :
   `_test_fond_bleu_jalon62.py` [2]/[3].
+- **UN GAIN MULTIPLICATIF AMPLIFIE LE BRUIT DU CANAL QU'IL MONTE** (mesure du
+  25/09/2026, v2.37.0) : sur ses empilements M31, le grain du fond était
+  équilibré en R/G (0,902) mais **B/G = 1,174** — et les comptes tombent
+  exactement : (σ_B·K_B)/(σ_G·K_G) = 0,891 × (1,0000/0,7587) = 1,174, c'est-à-dire
+  **K_B/K_G = 1,32 de la SPCC** appliqué à un grain de couche déjà plus fin en
+  bleu (0,891). Corollaire : ni l'équilibrage des canaux ni un SCNR de canal ne
+  peuvent corriger un excès de grain BLEU. Le levier est de lisser la **CHROMA**
+  (`couleurs.reduire_bruit_chroma`, espace YCrCb : seuls Cr/Cb sont réécrits,
+  donc la LUMINANCE ne bouge pas) — et il ne peut, par construction, retirer que
+  la *couleur* du grain : la part de LUMINANCE (mesurée ×1,00 après lissage)
+  relève du débruitage/l'intégration. Mesurer le grain CHROMATIQUE sur les écarts
+  de couleur (R−G, B−G), pas sur les canaux : le grain de luminance y est commun
+  et s'annule. Banc : `_test_chroma_nr_jalon63.py`.
+- **LES MESURES ASTRO/PHOTOMÉTRIE/SPCC SONT RELANCÉES PAR LE WORKER, PAS PAR
+  L'UI** (constat réel d'Alain du 25/09/2026, v2.37.0 : « je voulais refaire
+  calculer la SPCC mais étant en fin de stack, ben ça le fait pas en décochant et
+  recochant… le libellé reste gris avec les anciennes valeurs »). Les tours
+  `_astro_tour` / `_photo_tour` / `_spcc_tour` vivent dans la boucle de frames :
+  dès qu'aucune brute n'est lisible (« lu is None ») ou que l'empilement est en
+  pause (« ■ Arrêter »), le worker sort **avant** eux → une mesure demandée par
+  une case n'était tentée qu'à la PROCHAINE frame, qui n'arrive jamais en fin de
+  source. Parade : une case de mesure pose une **demande** servie par le worker
+  même sans frame (`_servir_demandes_sans_frame`), et le texte de la mesure est
+  poussé à l'UI (`_pousser_rendu` rafraîchit les lignes de mesure du dict d'état
+  réutilisé). **Règle : ne jamais déclencher une mesure depuis un callback Tk**
+  (elle est lente et mute l'état du worker) — poser une demande, laisser le
+  worker la servir.
 - **DÉBRUITAGE LOCAL CLASSIQUE SUR STACKS ASTRO = FOND « LÉOPARD »**
   (constat réel du 15/09/2026 ; jalons 7/8/9 ABANDONNÉS ce jour-là, puis
   **REMIS le 16/09/2026 à la demande d'Alain — v2.3.4, mêmes algorithmes,

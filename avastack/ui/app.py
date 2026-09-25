@@ -316,6 +316,14 @@ class App:
         self.photo_info = ""             # texte de la ligne dédiée ("" = rien)
         self.photo_couleur = "#888888"
         self._photo_actif = False        # case « Photométrie » (instantané Tk)
+        # v2.37.0 : DEMANDE explicite de mesure (décochage/recochage de la case).
+        # Le worker la sert même quand AUCUNE frame n'est lisible — constat
+        # d'Alain du 25/09/2026 : « en fin de stack, décocher et recocher la
+        # SPCC ne met rien à jour : le libellé reste gris avec les anciennes
+        # valeurs ». Sans ce service, la mesure n'était tentée qu'à la prochaine
+        # frame, qui n'arrive jamais en fin de source (cf.
+        # _servir_demandes_sans_frame).
+        self._photo_demande = False
         # Jalon 58 : SPCC ABSOLUE (calibration spectrophotométrique « à la
         # Siril ») — mesure SÉPARÉE, qui a besoin des profils CAPTEUR/FILTRES de
         # la base Siril et des spectres Gaia. Elle remplace les gains Gaia
@@ -328,6 +336,7 @@ class App:
         self._spcc_actif = False         # case « SPCC » (instantané Tk)
         self._spcc_essais = 0            # tentatives de mesure (session)
         self._spcc_dernier = 0.0         # instant de la dernière tentative
+        self._spcc_demande = False       # v2.37.0 : mesure redemandée par la case
         # Jalon 56 (étape 5) : CASE À PART, DÉCOCHÉE PAR DÉFAUT (opt-in demandé
         # par Alain, 23/09/2026) — c'est elle, et elle seule, qui fait écrire
         # les gains photométriques dans le stacker (donc qui CHANGE l'image).
@@ -674,6 +683,18 @@ class App:
         if "vl_neutre_fond" in c:
             self.var_vl_neutre.set(bool(c.get("vl_neutre_fond")))
             self._on_vl_neutre()
+        # v2.37.0 : réduction du bruit chromatique — DÉFAUT DÉCOCHÉE, donc une
+        # config antérieure (sans la clé) la laisse décochée ; la FORCE est
+        # restaurée de façon TOLÉRANTE (valeur hors [0,1] ou illisible :
+        # IGNORÉE, la valeur d'usage reste — comme le débruitage live).
+        v = c.get("vl_chroma_force")
+        if isinstance(v, (int, float)) and not isinstance(v, bool) \
+                and 0.0 <= float(v) <= 1.0:
+            self.var_vl_chroma_force.set(float(v))
+        self.disp.vl_chroma_force = float(self.var_vl_chroma_force.get())
+        if c.get("vl_chroma"):
+            self.var_vl_chroma.set(True)
+            self._on_vl_chroma()
         # Jalon 42 : cadence d'empilement — restauration TOLÉRANTE (valeur
         # absente/inconnue → « dès réception », jamais de surprise).
         cad = c.get("cadence_lecture")
@@ -737,6 +758,10 @@ class App:
         # v2.36.1 : neutralisation de la couleur du fond — booléen EXPLICITE
         # (comme les autres cases : si Alain la décoche, elle reste décochée).
         c["vl_neutre_fond"] = bool(self.var_vl_neutre.get())
+        # v2.37.0 : réduction du bruit chromatique — booléen EXPLICITE (comme
+        # les autres cases) + force dans [0, 1].
+        c["vl_chroma"] = bool(self.var_vl_chroma.get())
+        c["vl_chroma_force"] = float(self.var_vl_chroma_force.get())
         c["ext_scnr"] = bool(self.var_ext_scnr.get())
         c["ext_scnr_doux"] = bool(self.var_ext_scnr_doux.get())
         c["ext_demagenta"] = bool(self.var_ext_demagenta.get())
@@ -1712,6 +1737,31 @@ class App:
                        "bleu (mesuré R/G 0,36 · B/G 1,61 → 1,02 · 1,00).",
                   foreground="#888888", wraplength=310).pack(anchor="w")
 
+        # --- v2.37.0 : RÉDUCTION DU BRUIT CHROMATIQUE (opt-in, DÉCOCHÉE par
+        # défaut — choix d'Alain, 25/09/2026 : « oui pour la réduction de bruit
+        # chromatique (j'allais te demander un équivalent de SCNR pour le bleu de
+        # toute façon) et case décochée par défaut »). Justification MESURÉE sur
+        # ses empilements M31 (41 et 115 frames) : le grain du fond est équilibré
+        # en R/G (0,90) mais B/G reste à ~1,17 — la SPCC applique K_B/K_G = 1,32,
+        # et un gain multiplicatif amplifie le bruit du canal qu'il monte. Elle
+        # lisse la CHROMA (YCrCb) en laissant la LUMINANCE intacte : ni le niveau
+        # ni le contraste du fond ne bougent, seulement le grain coloré.
+        self.var_vl_chroma = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self.frm_couleur,
+                        text="Réduire le bruit chromatique (live)",
+                        variable=self.var_vl_chroma,
+                        command=self._on_vl_chroma).pack(anchor="w", pady=(4, 0))
+        self.var_vl_chroma_force = tk.DoubleVar(value=0.5)
+        self._add_slider(self.frm_couleur, "Force du bruit chromatique",
+                         self.var_vl_chroma_force, 0.0, 1.0, 0.05,
+                         self._on_vl_chroma, "{:.2f}")
+        ttk.Label(self.frm_couleur,
+                  text="Lisse la COULEUR du grain (YCrCb) sans toucher à la "
+                       "luminance : un gain par canal (SPCC en tête) amplifie le "
+                       "bruit du canal qu'il monte — mesuré : B/G 1,17 → ~1,00. "
+                       "Force = part du bruit chromatique retirée.",
+                  foreground="#888888", wraplength=310).pack(anchor="w")
+
         # --- État des calculs (jalons 40/41) : cadre INDÉPENDANT du moteur —
         # visible en VeraLux (étapes du solveur : ⏳ préparation/composition/
         # GraXpert/débruitage/netteté/étirement, puis résultat GX/DN/NET/COUL
@@ -2174,14 +2224,15 @@ class App:
         (capteur/filtre/blanc) invalide la mesure : un coefficient calculé pour
         d'autres bandes serait faux."""
         self._spcc_actif = bool(self.var_spcc.get())
+        self._spcc_demande = self._spcc_actif     # v2.37.0 : mesure à (re)faire
         if not self._spcc_actif:
             if self.spcc is not None:
                 self.spcc.reset()
             self.spcc_info = "SPCC : désactivée"
             self.spcc_couleur = "#888888"
         else:
-            self.spcc_info = ""
-            self.spcc_couleur = "#888888"
+            self.spcc_info = "SPCC : mesure demandée…"
+            self.spcc_couleur = "#c98a00"
             self._spcc_essais = 0        # nouvelle mesure autorisée
             self._spcc_dernier = 0.0
             if self.spcc is not None and self.spcc.valide:
@@ -2297,17 +2348,19 @@ class App:
         la mesure à zéro et l'ANNONCE ; recocher relance une mesure (le worker
         la tentera au prochain tour, sur l'empilement courant)."""
         self._photo_actif = bool(self.var_photo.get())
+        self._photo_demande = self._photo_actif   # v2.37.0 : mesure à (re)faire
         if not self._photo_actif:
             if self.photometrie is not None:
                 self.photometrie.reset()
             self.photo_info = "Photométrie : désactivée"
             self.photo_couleur = "#888888"
         else:
-            # Recochée : la mesure repart de zéro (le worker la retentera au
-            # prochain tour — aucun zéro-point d'une session révolue ne doit
-            # rester affiché).
-            self.photo_info = ""
-            self.photo_couleur = "#888888"
+            # Recochée : la mesure repart de zéro (le worker la retentera — au
+            # prochain tour, et MÊME sans nouvelle frame en fin de stack :
+            # cf. _servir_demandes_sans_frame — aucun zéro-point d'une session
+            # révolue ne doit rester affiché).
+            self.photo_info = "Photométrie : mesure demandée…"
+            self.photo_couleur = "#c98a00"
         self._rafraichir_rendu = True
         self._maj_photo_vue()
 
@@ -2624,6 +2677,30 @@ class App:
         if actif != self.disp.vl_neutre_fond:
             self.disp.vl_neutre_fond = actif    # la clé change → re-résolution
 
+    def _on_vl_chroma(self):
+        """Case/curseur « Réduire le bruit chromatique » (v2.37.0) : force lue
+        (tolérante — une saisie invalide laisse la valeur précédente) et
+        transportée au solveur VeraLux (10e/11e éléments du job), qui l'applique
+        juste avant l'étirement. Rendu IMMÉDIAT, comme les autres cases couleur :
+        c'est la leçon du jalon 39, revécue avec la neutralisation du fond
+        (constat d'Alain du 25/09/2026 : une case couleur qui n'appelle pas
+        `_refresh_preview()` semble inerte jusqu'à la frame suivante)."""
+        try:
+            self.disp.vl_chroma_force = min(
+                1.0, max(0.0, float(self.var_vl_chroma_force.get())))
+        except (tk.TclError, TypeError, ValueError):
+            pass                            # saisie invalide : on garde
+        self._sync_vl_chroma_vue()
+        self._refresh_preview()
+
+    def _sync_vl_chroma_vue(self):
+        """État SEUL (sans rendu) de la case « Réduire le bruit chromatique » —
+        vue « empilement » uniquement, comme les autres corrections de couleur."""
+        actif = bool(self.var_vl_chroma.get()) \
+            and self.var_view.get() != "traitée"
+        if actif != self.disp.vl_chroma:
+            self.disp.vl_chroma = actif      # la clé change → re-résolution
+
     def _on_vl_demagenta(self):
         """Case démagenta (jalon 22) : idem SCNR (jalon 39 : rendu immédiat)."""
         self._sync_vl_demagenta_vue()
@@ -2660,6 +2737,7 @@ class App:
         self._sync_vl_scnr_doux_vue()
         self._sync_vl_demagenta_vue()
         self._sync_vl_neutre_vue()          # v2.36.1 : fond neutre avant étirement
+        self._sync_vl_chroma_vue()          # v2.37.0 : bruit chromatique
 
     def _on_vl_sharp(self):
         """Case/curseur de la netteté live (jalon 12) : répercute les
@@ -2762,7 +2840,8 @@ class App:
                                            or self.disp.vl_scnr_doux
                                            or self.disp.vl_demagenta) else "") \
                         + ("FOND ✓ · " if self.disp.vl_neutre_gains
-                           is not None else "")
+                           is not None else "") \
+                        + ("CHR ✓ · " if self.disp.vl_chroma else "")
                     texte = (f"{prefixe}logD "
                              f"{self.disp.vl_log_d_resolu:.2f} · "
                              f"fond {d['median_luminance_finale']:.3f}")
@@ -3769,6 +3848,9 @@ class App:
             vl_scnr=d.vl_scnr, vl_demagenta=d.vl_demagenta,
             vl_scnr_doux=d.vl_scnr_doux,
             vl_neutre_fond=bool(d.vl_neutre_fond),   # v2.36.1
+            # v2.37.0 : réduction du bruit chromatique (case + force).
+            vl_chroma=bool(d.vl_chroma),
+            vl_chroma_force=float(d.vl_chroma_force),
             vl_sharp=d.vl_sharp, vl_sharp_iterations=d.vl_sharp_iterations)
         st = self.stacker
         if st is not None:
@@ -4039,6 +4121,15 @@ class App:
             if (vue == "pile" and reglages.get("vl_neutre_fond")
                     and reglages.get("stretch") == "veralux"):
                 source = couleurs_mod.neutraliser_fond(source)
+            # v2.37.0 : réduction du bruit chromatique — APRÈS la neutralisation
+            # (un gain par canal) et juste AVANT l'étirement, comme dans le
+            # solveur live ; elle aussi réservée à l'étirement VeraLux (en STF,
+            # l'aperçu ne l'applique pas : le fichier doit être identique à
+            # l'écran) et JAMAIS dans la 3e sortie linéaire ci-dessus.
+            if (vue == "pile" and reglages.get("vl_chroma")
+                    and reglages.get("stretch") == "veralux"):
+                source = couleurs_mod.reduire_bruit_chroma(
+                    source, force=float(reglages.get("vl_chroma_force") or 0.5))
             rendu = self.disp.rendu_pleine_resolution(source, reglages)
             if session != self._session:    # session relancée entre-temps
                 return
@@ -5887,12 +5978,17 @@ class App:
                     self._prochain_scan = maintenant + 0.4
             lu = (self.camera.read() if self._autoriser_lecture() else None)
             if lu is None:
+                # v2.37.0 : aucune frame à lire (fin de source, lecture en
+                # pause) — les demandes qui ne dépendent PAS d'une frame sont
+                # servies ICI (SPCC/photométrie redemandées par leur case).
+                self._servir_demandes_sans_frame()
                 time.sleep(0.005)
                 continue
             # Jalon 26 : empilement en pause (« ■ Arrêter ») → on maintient
             # la lecture du flux (la caméra reste connectée, la file du SDK
             # se vide) mais on n'empile rien.
             if not self.empilement_on:
+                self._servir_demandes_sans_frame()   # idem : mesures sans frame
                 time.sleep(0.05)
                 continue
             # Jalon 19 : source « composition » → read() renvoie (img, rôle).
@@ -6241,7 +6337,11 @@ class App:
         l'UI : même chaîne que la fin de boucle (recadrage/fit inclus dans
         mean(), aperçu réduit, couches vers le solveur), SANS l'alignement
         ni la mesure de seeing (rien n'a changé pour eux). Le dict d'état
-        du dernier rendu est réutilisé : les compteurs n'ont pas bougé."""
+        du dernier rendu est réutilisé : les compteurs n'ont pas bougé —
+        SAUF les lignes de MESURE (astro/photométrie/SPCC/re-stack), qui
+        peuvent avoir été réécrites depuis (v2.37.0 : une mesure servie sans
+        nouvelle frame ne poussait pas son texte → le libellé restait sur
+        l'ancienne valeur, cf. constat d'Alain du 25/09/2026)."""
         canaux = None
         if self._mode_compo and hasattr(self.stacker, "mean_avec_canaux"):
             stack, canaux = self.stacker.mean_avec_canaux()
@@ -6269,11 +6369,48 @@ class App:
                                                "normalisation_commune", False)))
         else:
             self.disp.vl_compo = None
+        # v2.37.0 : les lignes de MESURE du dict réutilisé sont RAFRAÎCHIES
+        # (voir la docstring) — les compteurs, eux, n'ont pas bougé.
+        if isinstance(getattr(self, "_dernier_st", None), dict):
+            self._dernier_st.update(astro=self.astro_info, photo=self.photo_info,
+                                    spcc=self.spcc_info,
+                                    restack=self.restack_info)
         try:
             self.q.put_nowait((show, self._compute_hist(show),
                                self._dernier_st))
         except queue.Full:
             pass
+
+    def _servir_demandes_sans_frame(self):
+        """v2.37.0 — demandes de l'utilisateur qui NE dépendent PAS d'une
+        nouvelle brute, servies par le worker même quand aucune frame n'est
+        lisible ou que l'empilement est en pause.
+
+        Constat d'Alain (25/09/2026) : « je voulais refaire calculer la SPCC mais
+        étant en fin de stack, ben ça le fait pas en décochant et recochant et ça
+        ne met donc rien à jour (le libellé dessous ne passe pas au vert et reste
+        gris avec les anciennes valeurs) ». Cause : en fin de source (dossier
+        épuisé) ou après « ■ Arrêter », le worker sortait par « lu is None » ou
+        « not empilement_on » AVANT les tours de mesure (_astro_tour /
+        _photo_tour / _spcc_tour) : la mesure n'était donc tentée qu'à la
+        PROCHAINE frame, qui n'arrive jamais. Les mesures ne dépendent que de
+        l'EMPILEMENT COURANT : les servir ici ne coûte rien (elles gardent leurs
+        propres délais/plafonds et ne repartent que sur demande explicite d'une
+        case — jamais en boucle)."""
+        if self.stacker is None or self.stacker.n <= 0:
+            self._spcc_demande = self._photo_demande = False
+            return
+        servi = False
+        if self._spcc_demande:
+            self._spcc_demande = False
+            self._spcc_tour(self.stacker)      # garde-fous internes (valide,
+            servi = True                       # actif, essais, WCS, frames)
+        if self._photo_demande:
+            self._photo_demande = False
+            self._photo_tour(self.stacker)
+            servi = True
+        if servi:
+            self._pousser_rendu()              # le texte de mesure part à l'UI
 
     @staticmethod
     def _compute_hist(img):

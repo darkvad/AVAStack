@@ -10,16 +10,29 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **Version stable de référence : AVAStack v2.36.2** (`avastack/__init__.py`),
-  branche `master` — **CORRECTIF D'UI (constat d'Alain, 25/09/2026)** : « la case
-  Neutraliser la couleur du fond ne provoque pas une visualisation immédiate
-  quand on la coche et la décoche… ça semble attendre une nouvelle frame ». Même
-  bug que le jalon 39 (SCNR/SCNR doux/démagenta) : le callback posait l'état sans
-  appeler `_refresh_preview()`. Corrigé, et le banc
-  `_test_couleurs_immediat_jalon39.py` teste désormais les QUATRE cases couleur.
-- **MESURES SUR SES DEUX NOUVEAUX FICHIERS (v2.36.1, normalisation commune,
-  41 et 115 frames demandés / 51 et 123 empilées)** — `_diag_empilement_couleur.py` :
-  - grain (planchèr de bruit) : σ 0,000519 / 0,000579 / 0,000673 à 41 frames →
+- **Version stable de référence : AVAStack v2.37.0** (`avastack/__init__.py`),
+  branche `master` — **DEUX DEMANDES D'ALAIN (25/09/2026)** :
+  - **(a) Réduction du bruit chromatique** (« un équivalent de SCNR pour le bleu »
+    — son mot ; sa réponse : « oui […] et case DÉCOCHÉE par défaut »). Nouvelle
+    primitive `couleurs.reduire_bruit_chroma(img, force)` : lissage de la CHROMA
+    en espace YCrCb (seuls Cr/Cb réécrits → luminance intacte, écart < 2e-06 sur
+    le fond), appliquée APRÈS la neutralisation et AVANT l'étirement, dans le
+    solveur VeraLux (10e/11e éléments du job) et dans le chemin « tel que vu » —
+    jamais dans la sortie 3 (linéaire). Case + curseur de force dans « Couleur
+    live », rendu immédiat. Banc `_test_chroma_nr_jalon63.py` (le grain coloré
+    tombe exactement de la part demandée : ×0,751/×0,502/×0,024 pour 0,25/0,5/1,0
+    ; couleur de l'objet préservée à 0,86 % ; le grain de LUMINANCE n'est pas
+    touché → le grain restant est GRIS, c'est le débruitage qui réduit son
+    amplitude).
+  - **(b) Refaire une mesure en fin de stack** (« en fin de stack, ça ne met rien
+    à jour : le libellé reste gris avec les anciennes valeurs ») : le worker
+    sortait par « lu is None » / « not empilement_on » AVANT `_astro_tour` /
+    `_photo_tour` / `_spcc_tour`. Désormais une case décochée/recochée pose une
+    DEMANDE servie sans frame (`_servir_demandes_sans_frame`) et le texte de la
+    mesure est poussé (`_pousser_rendu` rafraîchit les lignes de mesure).
+- **MESURES SUR SES DEUX FICHIERS v2.36.1 (41 et 115 frames, 51/123 empilées)** —
+  `_diag_empilement_couleur.py` :
+  - grain (plancher de bruit) : σ 0,000519 / 0,000579 / 0,000673 à 41 frames →
     **0,000338 / 0,000375 / 0,000440** à 115 frames, soit **÷1,53** pour ×2,8 de
     frames (théorie 1/√n = 1,67 ; l'écart vient du ciel lui-même 6 % plus sombre).
     **LE GRAIN DU FOND S'AMÉLIORE ENFIN AVEC L'INTÉGRATION** : le rapport
@@ -36,12 +49,6 @@ dans le changelog du source et l'historique git.)
     (σ_B·K_B)/(σ_G·K_G) = 0,891 × 1,318 = 1,174 ✔ (mesuré 1,174) : **c'est la SPCC
     elle-même qui monte le grain bleu** (K_B/K_G = 1,32), pas la normalisation.
     Sans correction, l'équilibre serait R/G 1,10 · B/G 0,89.
-  - **PISTE PROPOSÉE (non implémentée, à trancher par Alain)** : réduction du
-    BRUIT CHROMATIQUE (une case opt-in, juste avant l'étirement) — lisser les
-    composantes de CHROMA (espace YCrCb, cv2, déjà utilisé) sans toucher à la
-    luminance : le grésillement coloré du fond tombe, la couleur des objets
-    (étendue, donc basse fréquence) est préservée. Équivalent de ce que font
-    SCNR/chroma-NR de PixInsight, mais CIBLÉ sur le bruit au lieu d'un canal.
 - **Version stable précédente : AVAStack v2.36.1** — **CORRECTIFS « FOND BLEU »**
   - ① **LE PNG/TIFF EXPORTÉ AVAIT R ET B PERMUTÉS** (bug VIEUX, silencieux) :
     `save_image` donnait l'image RGB de l'appli à `cv2.imencode`, qui attend du

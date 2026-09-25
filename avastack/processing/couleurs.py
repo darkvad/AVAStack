@@ -22,6 +22,7 @@ ramène à la moyenne des deux autres canaux, et le retour au positif
 restitue une image dont le magenta a été neutralisé.
 """
 import numpy as np
+import cv2
 
 from . import denoise as _denoise
 
@@ -125,6 +126,57 @@ def neutraliser_fond(img, force=1.0, garde=0.10):
     if bool(np.allclose(gg, 1.0, atol=1e-4)):
         return a.copy()
     return (a * gg.reshape(1, 1, 3)).astype(np.float32)
+
+
+def reduire_bruit_chroma(img, force=0.5, rayon=3.0):
+    """Réduit le BRUIT CHROMATIQUE d'une image couleur (v2.37.0) — le
+    « chroma noise reduction », équivalent d'un SCNR généralisé.
+
+    DEMANDE D'ALAIN (25/09/2026 : « oui pour la réduction de bruit
+    chromatique, et case décochée par défaut », après avoir constaté qu'il
+    restait du grain coloré malgré le fond neutralisé).
+
+    POURQUOI une CHROMA et pas un canal : une correction MULTIPLICATIVE (SPCC,
+    équilibrage des canaux, recalage colorimétrique) amplifie le bruit du canal
+    qu'elle MONTE. MESURÉ sur son empilement M31 (v2.36.1, 115 frames) : grain
+    R/G 0,902 (équilibré) mais B/G 1,174 — et les comptes tombent exactement :
+    (σ_B·K_B)/(σ_G·K_G) = 0,891 × (1,0000/0,7587) = 1,174. La SPCC applique
+    K_B/K_G = 1,32 : son gain de bleu amplifie le bruit bleu de 32 %. Retirer du
+    bleu déréglerait la calibration ; lisser la COULEUR sans toucher la
+    LUMINANCE retire le grain coloré sans toucher ni au niveau ni au contraste
+    (c'est le seul levier direct : ni l'équilibrage, ni le SCNR vert ne
+    corrigent un excès de grain BLEU).
+
+    Calcul (espace YCrCb de OpenCV ; Y = luminance INCHANGÉE par construction,
+    seuls Cr et Cb sont réécrits — mesuré au banc : écart < 1e-6 sur le canal Y
+    de OpenCV sur le fond, et < 1,4e-05 en tout, cette petite queue venant des
+    pixels du bord haut de l'échelle où la reconstruction YCrCb→RVB sature) :
+      lisse = flou gaussien de rayon `rayon` (px) sur Cr et Cb ;
+      Cr', Cb' = chroma + force · (lisse − chroma).
+    Le grain vit à l'échelle du PIXEL, la couleur des objets (nébuleuses,
+    étoiles) s'étale sur beaucoup plus que `rayon` : mesuré au banc, le grain
+    coloré tombe d'un facteur ~4 (rayon 3) sans que la couleur de l'objet bouge
+    de plus de 1 %. Sur une image MONOCHROME, il n'y a pas de chroma : no-op.
+
+    force : 0..1 — part du bruit chromatique retirée (0 = no-op, 1 = chroma
+            entièrement lissée) ; rayon : écart-type du flou, en pixels.
+    → copie float32, entrée JAMAIS modifiée, aucune exception (numpy/OpenCV,
+    mêmes garanties que les autres primitives de ce module)."""
+    a = np.asarray(img, dtype=np.float32)
+    if a.ndim != 3 or a.shape[-1] != 3 or float(force) <= 0.0 \
+            or float(rayon) <= 0.0:
+        return a.copy()               # mono, forme inattendue ou force nulle
+    f = np.float32(min(1.0, max(0.0, float(force))))
+    ycc = cv2.cvtColor(a, cv2.COLOR_RGB2YCrCb)
+    for i in (1, 2):                  # Cr puis Cb — jamais Y (canal 0)
+        c = ycc[..., i]
+        lisse = cv2.GaussianBlur(c, (0, 0), sigmaX=float(rayon))
+        ycc[..., i] = c + f * (lisse - c)
+    out = cv2.cvtColor(ycc, cv2.COLOR_YCrCb2RGB)
+    # Le flou d'un plan de chroma reste dans l'intervalle de ses voisins, mais
+    # la reconstruction peut passer très légèrement sous zéro près du noir :
+    # on borne (un pixel négatif n'a pas de sens pour l'étirement en log).
+    return np.maximum(out, np.float32(0.0)).astype(np.float32)
 
 
 def canal_mort(img):

@@ -14,9 +14,53 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.36.2"
+AVASTACK_VERSION = "2.37.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.37.0 : DEUX DEMANDES D'ALAIN (25/09/2026), sur ses empilements M31 v2.36.1.
+#   (a) RÉDUCTION DU BRUIT CHROMATIQUE — « un équivalent de SCNR pour le bleu »,
+#       son mot, et sa réponse à la proposition : « oui […] et case décochée par
+#       défaut ». MESURE QUI LA MOTIVE (ses deux fichiers 41/115 frames) : le
+#       grain du fond s'améliore ENFIN avec l'intégration (σ ÷1,53 pour ×2,8 de
+#       frames, fond/σ ×1,44 — l'objet même de la normalisation commune v2.36.0),
+#       et le fond est neutre (R/G 0,9998 · B/G 0,9999) ; mais le grain restant
+#       est COLORÉ et STABLE : R/G 0,90 (équilibré) et B/G 1,163 → 1,174. Cause
+#       exacte, au chiffre près : une correction MULTIPLICATIVE amplifie le bruit
+#       du canal qu'elle monte, et la SPCC applique K_B/K_G = 1,318 →
+#       (σ_B·K_B)/(σ_G·K_G) = 0,891 × 1,318 = 1,174 (mesuré 1,174) et
+#       (σ_R·K_R)/(σ_G·K_G) = 1,099 × 0,820 = 0,902 (mesuré 0,902). Ni
+#       l'équilibrage des canaux ni le SCNR vert ne peuvent corriger un excès de
+#       grain BLEU. `couleurs.reduire_bruit_chroma` lisse la CHROMA (espace YCrCb
+#       de OpenCV : seuls Cr et Cb sont réécrits, donc la LUMINANCE ne bouge pas —
+#       mesuré : écart < 2e-06 sur le fond, < 1,4e-05 en tout, cette queue venant
+#       des pixels qui saturent au bord haut de l'échelle), appliquée JUSTE APRÈS
+#       la neutralisation du fond et JUSTE AVANT l'étirement, dans le solveur
+#       VeraLux (10e et 11e éléments de son job) ET dans le chemin « tel que vu »
+#       — jamais dans la 3e sortie LINÉAIRE (règle du jalon 59). MESURÉ au banc :
+#       le grain coloré tombe exactement de la part demandée (×0,751 à force 0,25,
+#       ×0,502 à 0,5, ×0,024 à 1,0), la couleur de l'objet (chroma étendue) est
+#       préservée à 0,86 %, et le grain de LUMINANCE n'est pas touché (le grain
+#       restant est donc GRIS : c'est le débruitage qui réduit son amplitude).
+#       UI : case « Réduire le bruit chromatique (live) » DÉCOCHÉE par défaut +
+#       curseur de force, dans le cadre « Couleur live » ; rendu IMMÉDIAT au clic
+#       (leçon du jalon 39, revécue avec la neutralisation du fond en v2.36.1 :
+#       un callback de case couleur qui n'appelle pas _refresh_preview() semble
+#       inerte jusqu'à la frame suivante). Banc : _test_chroma_nr_jalon63.py.
+#   (b) REFAIRE UNE MESURE EN FIN DE STACK (SPCC, photométrie) — constat :
+#       « je voulais refaire calculer la SPCC mais étant en fin de stack, ben ça
+#       le fait pas en décochant et recochant et ça ne met donc rien à jour (le
+#       libellé dessous ne passe pas au vert et reste gris avec les anciennes
+#       valeurs) ». Cause : en fin de source (dossier épuisé) ou après
+#       « ■ Arrêter », le worker sortait par « lu is None » ou
+#       « not empilement_on » AVANT les tours de mesure (_astro_tour /
+#       _photo_tour / _spcc_tour) : la mesure n'était tentée qu'à la PROCHAINE
+#       frame, qui n'arrive jamais. Décocher/re-cocher une case de mesure pose
+#       désormais une DEMANDE, servie par le worker même sans frame
+#       (_servir_demandes_sans_frame), et le texte de la mesure est poussé à l'UI
+#       (_pousser_rendu rafraîchit les lignes astro/photométrie/SPCC/re-stack du
+#       dict d'état réutilisé). Les garde-fous des tours (mesure déjà valide,
+#       case inactive, WCS, plancher de frames, délais et plafond d'essais) sont
+#       inchangés : jamais de mesure en boucle.
 # v2.36.2 : LA CASE « NEUTRALISER LA COULEUR DU FOND » AGIT IMMÉDIATEMENT
 #          (constat d'Alain, 25/09/2026 : « la case Neutraliser la couleur du fond
 #          ne provoque pas une visualisation immédiate quand on la coche et la

@@ -174,6 +174,19 @@ class DisplayProcessor:
         self.vl_neutre_fond = True     # neutralisation de la couleur du fond
         self.vl_neutre_gains = None    # derniers gains appliqués (R, G, B) —
                                       # informatif, lu par l'UI (None = aucun)
+        # --- Réduction du BRUIT CHROMATIQUE avant étirement (v2.37.0) --------
+        # Demande d'Alain (25/09/2026) : « oui pour la réduction de bruit
+        # chromatique (j'allais te demander un équivalent de SCNR pour le bleu
+        # de toute façon), et case DÉCOCHÉE par défaut. » Mesure qui l'a motivée
+        # (son empilement M31, 115 frames) : le grain du fond est équilibré en
+        # R/G (0,902) mais B/G reste à 1,174 — la SPCC applique K_B/K_G = 1,32,
+        # et un gain multiplicatif amplifie le bruit du canal qu'il monte.
+        # `couleurs.reduire_bruit_chroma` lisse la CHROMA (YCrCb) en laissant la
+        # luminance intacte, JUSTE APRÈS la neutralisation et juste AVANT
+        # l'étirement (no-op sur un composite monochrome). Décocher = grain
+        # coloré d'origine (comportement v2.36.x).
+        self.vl_chroma = False         # réduction du bruit chromatique (opt-in)
+        self.vl_chroma_force = 0.5     # part du bruit chromatique retirée
         self.vl_seeing = None         # mesure du seeing (jalon 10, dict) : sert
                                       # de PSF à la netteté — posée par le
                                       # thread d'acquisition, jamais mesurée ici
@@ -298,7 +311,9 @@ class DisplayProcessor:
                 round(self.vl_denoise_force, 2),
                 self.vl_sharp, int(self.vl_sharp_iterations),
                 self.vl_scnr, self.vl_demagenta, self.vl_scnr_doux,
-                bool(self.vl_neutre_fond))       # v2.36.1 (option)
+                bool(self.vl_neutre_fond),             # v2.36.1 (option)
+                bool(self.vl_chroma),                  # v2.37.0 (option)
+                round(float(self.vl_chroma_force), 2))
 
     def _vl_worker(self):
         """Thread solveur : enchaîne — si activés — GraXpert live (jalon 4)
@@ -341,6 +356,10 @@ class DisplayProcessor:
             scnr_actif = bool(coul[0]) if len(coul) > 0 else False
             sd_actif = bool(coul[1]) if len(coul) > 1 else False
             dm_actif = bool(coul[2]) if len(coul) > 2 else False
+            # v2.37.0 : réduction du BRUIT CHROMATIQUE (10e élément du job —
+            # déballage tolérant : les jobs antérieurs n'en ont pas → inactif).
+            chroma_actif = bool(job[9]) if len(job) > 9 else False
+            chroma_force = float(job[10]) if len(job) > 10 else 0.5
             # Jalon 24 : données de composition transportées dans le job
             # (8e élément : (canaux, nom, gains, mode_l), None en mode mono).
             # Jalon 54 : 5e élément OPTIONNEL du tuple — (actif, mode) du
@@ -563,6 +582,16 @@ class DisplayProcessor:
                                                  and not np.allclose(
                                                      gains, 1.0, atol=1e-4)
                                                  ) else None
+            # v2.37.0 : RÉDUCTION DU BRUIT CHROMATIQUE, APRÈS la neutralisation
+            # (elle est un gain par canal) et juste AVANT l'étirement. Lisse la
+            # chroma (YCrCb) : la luminance reste intacte, donc ni le niveau ni
+            # le contraste du fond ne bougent — seulement le GRAIN COLORÉ que
+            # les gains multiplicatifs (SPCC en tête : K_B/K_G = 1,32) ont
+            # amplifié. No-op si l'option est décochée ou si l'image est mono.
+            if chroma_actif:
+                self.vl_stage = "chroma"        # jalon 40 : étape courante
+                img_net = _couleurs.reduire_bruit_chroma(img_net,
+                                                         force=chroma_force)
             prefixe = ((f"GraXpert live : {err_gx} ; " if err_gx else "")
                        + (f"Débruitage live : {err_dn} ; " if err_dn else "")
                        + (f"Netteté live : {err_net} ; " if err_net else ""))
@@ -615,6 +644,9 @@ class DisplayProcessor:
             # v2.36.1 : neutralisation de la couleur du fond AVANT l'étirement
             # (9e élément du job — déballage tolérant côté worker).
             nf = bool(self.vl_neutre_fond)
+            # v2.37.0 : réduction du bruit chromatique (10e et 11e éléments).
+            chroma = bool(self.vl_chroma)
+            chroma_force = float(self.vl_chroma_force)
             # Jalon 24 : couches de la composition (posées par l'UI, jamais
             # mutées en place — remplacement entier), capturées avec le job.
             compo = self.vl_compo
@@ -625,7 +657,8 @@ class DisplayProcessor:
                     # copie défensive : img appartient à l'UI et peut être
                     # remplacée pendant le calcul
                     self._vl_job = (img.astype(np.float32).copy(), params,
-                                    key, gx, dn, sh, coul, compo, nf)
+                                    key, gx, dn, sh, coul, compo, nf,
+                                    chroma, chroma_force)
                     self._vl_wake.set()
             self._vl_src, self._vl_key = img, key
         with self._vl_lock:
