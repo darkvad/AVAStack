@@ -373,9 +373,11 @@ class App:
         self.proc_show = None           # aperçu traité (réduit, pour affichage)
         self.proc_full = None           # résultat traité pleine résolution (sauvegarde)
         self.proc_new = False           # un nouveau résultat vient d'arriver
-        self.save_asseen_request = None  # (chemin, vue, réglages) — jalon 5, capté côté UI
+        self.save_asseen_request = None  # (chemin, vue, réglages, lineaire)
         self.asseen_busy = False        # sauvegarde « tel que vu » en cours (thread dédié)
         self.asseen_result = None       # chemin ou "ERREUR: …" — écrit par le thread, lu par _tick
+        self.asseen_titre = None        # titre du dialogue (les 2 boutons partagent le thread)
+        self.msg_outils = None          # erreurs d'outil non bloquantes (chaîne par couche)
         self.ext_msg = "—"              # message d'état (écrit par le thread, lu par _tick)
         self._ext_shown = None
         self._vl_lbl_txt = "—"          # mémo du texte affiché dans lbl_vl
@@ -3505,6 +3507,8 @@ class App:
         self.save_asseen_request = None       # sauvegarde « tel que vu » annulée
         self.asseen_busy = False
         self.asseen_result = None
+        self.asseen_titre = None
+        self.msg_outils = None
         self.ext_request = False
         self.ext_busy = False
         self.ext_state = "idle"
@@ -3696,6 +3700,7 @@ class App:
                        ("PNG 16 bits", "*.png")])
         if not path:
             return
+        self.asseen_titre = "Enregistrer tel que vu"
         self.save_asseen_request = (path, vue, self._reglages_rendu(), False)
 
     def _save_traite_lineaire(self):
@@ -3726,10 +3731,79 @@ class App:
                        ("PNG 16 bits", "*.png")])
         if not path:
             return
+        self.asseen_titre = titre
         self.save_asseen_request = (path, "pile", self._reglages_rendu(), True)
 
+    def _couches_brutes(self):
+        """Couches BRUTES recadrées (dict rôle → carte 2D) pour la chaîne par
+        couche, ou None hors composition (mono : une seule image)."""
+        st = self.stacker
+        if st is None or not hasattr(st, "moyennes"):
+            return None
+        try:
+            return st.moyennes()
+        except Exception:
+            return None
+
+    def _couches_pleine_resolution(self, canaux, reglages):
+        """Chaîne PAR COUCHE en pleine résolution — identique à celle du
+        solveur live (jalon 24) : GraXpert live puis débruitage live sur CHAQUE
+        couche 2D, puis recomposition (composer) et CORRECTIONS de couleur.
+
+        POURQUOI par couche : GraXpert live et le débruitage live sont
+        contractés pour des images de [0..1] (cf. `external.live.appliquer` et
+        `denoise`) — les COUCHES le sont, le COMPOSITE non : la normalisation
+        par rôle laisse un cœur d'étoile monter bien au-dessus de 1 (mesuré :
+        17,94 sur l'empilement M31 d'Alain, 165 frames). Appliquer ces outils au
+        composite le rescalait (GraXpert normalise sa sortie) et l'ÉCRÊTAIT (le
+        NLM fait `clip(0, 1)` : 96 % des pixels > 1 perdus à la mesure) : le
+        fichier n'était plus linéaire. Par couche, tout reste ≤ 1 et le
+        composite recomposé garde son échelle.
+
+        → (composite corrigé, message) ; jamais d'exception (les erreurs d'outil
+        sont remontées en message et l'appelant décide)."""
+        traites, msgs = {}, []
+        for role, couche in canaux.items():
+            c = np.asarray(couche, dtype=np.float32)
+            if reglages.get("vl_graxpert"):
+                if float(np.max(np.abs(c))) < 1e-9:
+                    msgs.append(f"GraXpert live ({role}) : couche vide — "
+                                "ignorée")
+                else:
+                    c2, err = gx_live.appliquer(c, reglages["vl_graxpert_cmd"])
+                    if err:
+                        msgs.append(f"GraXpert live ({role}) : {err}")
+                    else:
+                        c = c2
+            if reglages.get("vl_denoise"):
+                c2, err = denoiser_local.denoiser(
+                    c, reglages.get("vl_denoise_methode", "nlm"),
+                    reglages.get("vl_denoise_force", 0.5))
+                if err:
+                    msgs.append(f"Débruitage live ({role}) : {err}")
+                else:
+                    c = c2
+            traites[role] = c
+        try:
+            comp = composition_mod.composer(
+                traites, self.stacker.composition,
+                mode_l=self.stacker.mode_l)
+        except Exception as exc:
+            return None, f"Recomposition impossible : {exc}"
+        if comp is None:
+            return None, "Recomposition impossible (aucune couche exploitable)"
+        comp, _diag = composition_mod.corrections_couleur(
+            comp,
+            gains=reglages.get("corr_gains"),
+            wb_auto=bool(reglages.get("corr_wb", False)),
+            wb_force=float(reglages.get("corr_wb_force", 1.0)),
+            cadre=reglages.get("corr_cadre"),
+            linear_fit=bool(reglages.get("corr_fit", False)),
+            linear_fit_mode=reglages.get("corr_fit_mode", "offset"))
+        return comp, " ; ".join(msgs)
+
     def _save_asseen_thread(self, path, vue, source, reglages, session,
-                            lineaire=False):
+                            lineaire=False, canaux=None):
         """Thread de sauvegarde « tel que vu » (jalon 5) : GraXpert live si
         activé (vue « empilement » uniquement), puis débruitage/netteté live,
         puis rendu pleine résolution identique à l'affichage, puis écriture du
@@ -3739,10 +3813,26 @@ class App:
         `lineaire=True` (chantier 24/09/2026) : MÊME chaîne, mais elle s'arrête
         AVANT l'étirement et écrit l'image LINÉAIRE (bornée [0,1], en-tête FITS
         AUTO-DESCRIPTIF) — c'est la 3e sortie « empilement traité (linéaire) ».
-        `source` est alors l'empilement BRUT et les corrections de couleur sont
-        appliquées ICI, après le débruitage — ordre validé par Alain (c)."""
+
+        `canaux` (couches BRUTES) : en COMPOSITION et vue « empilement », la
+        chaîne GraXpert/débruitage est faite PAR COUCHE (cf.
+        `_couches_pleine_resolution`) — sans quoi le composite (> 1) serait
+        rescalé et écrêté par des outils contractés pour [0..1]. Le composite
+        est alors déjà corrigé : les corrections ne sont pas réappliquées."""
+        corrige = False
         try:
-            if vue == "pile" and reglages.get("vl_graxpert"):
+            if (vue == "pile" and canaux
+                    and (reglages.get("vl_graxpert")
+                         or reglages.get("vl_denoise"))):
+                comp, msg = self._couches_pleine_resolution(canaux, reglages)
+                if comp is None:
+                    self.asseen_result = f"ERREUR: {msg}"
+                    return
+                if msg:
+                    self.msg_outils = msg     # erreurs d'outil non bloquantes
+                source = comp
+                corrige = True
+            if not corrige and vue == "pile" and reglages.get("vl_graxpert"):
                 gx, err = gx_live.appliquer(source, reglages["vl_graxpert_cmd"])
                 if err:
                     # On ne sauvegarde PAS une image « presque comme vue » :
@@ -3753,7 +3843,7 @@ class App:
             # Jalon 9 : le débruitage live fait partie de la chaîne affichée
             # (stack → GX → débruitage → étirement) — reproduit ici en pleine
             # résolution pour que le fichier corresponde à l'écran.
-            if vue == "pile" and reglages.get("vl_denoise"):
+            if not corrige and vue == "pile" and reglages.get("vl_denoise"):
                 img_dn, err = denoiser_local.denoiser(
                     source, reglages.get("vl_denoise_methode", "nlm"),
                     reglages.get("vl_denoise_force", 0.5))
@@ -3764,9 +3854,9 @@ class App:
             # --- CHANTIER 24/09/2026 (décision (c) d'Alain) : les CORRECTIONS
             # DE COULEUR s'appliquent ICI, après le débruitage et AVANT la
             # netteté — c'est l'ordre de la chaîne de sortie. Seule la 3e sortie
-            # LINÉAIRE en a besoin (la vue « tel que vu » reproduit la chaîne
-            # affichée, dont le composite est déjà corrigé en amont).
-            if lineaire:
+            # LINÉAIRE en a besoin, et seulement si la chaîne par couche ne les
+            # a pas déjà appliquées (elle finit par `corrections_couleur`).
+            if lineaire and not corrige:
                 source, _diag = composition_mod.corrections_couleur(
                     source,
                     gains=reglages.get("corr_gains"),
@@ -5469,17 +5559,23 @@ class App:
                     if vue == "traitée":
                         # copie défensive : proc_full peut être remplacé
                         source = self.proc_full.astype(np.float32).copy()
+                        canaux = None
                     else:
                         # Pleine résolution. « tel que vu » : le composite de la
                         # chaîne affichée (corrections comprises) ; 3e sortie
                         # linéaire : l'empilement BRUT — les corrections sont
                         # appliquées plus loin, après le débruitage (décision (c)).
                         source = self.stacker.mean(corrections=not lineaire)
+                        # Couches BRUTES : en COMPOSITION, la chaîne
+                        # GraXpert/débruitage du fichier est faite PAR COUCHE
+                        # (comme le solveur live) — le composite dépasse 1 et
+                        # serait rescale/écrêté (cf. _couches_pleine_resolution).
+                        canaux = self._couches_brutes()
                     self.asseen_busy = True
                     threading.Thread(
                         target=self._save_asseen_thread,
                         args=(path, vue, source, reglages, self._session,
-                              lineaire),
+                              lineaire, canaux),
                         daemon=True).start()
 
             # Sauvegarde LINÉAIRE de l'empilement : consommation de la demande
@@ -6248,11 +6344,16 @@ class App:
             else "normal")
         if self.asseen_result:
             p, self.asseen_result = self.asseen_result, None
+            titre = self.asseen_titre or "Enregistrer tel que vu"
+            self.asseen_titre = None
+            outils = self.msg_outils        # erreurs d'outil (couche par couche)
+            self.msg_outils = None
             if p.startswith("ERREUR"):
-                messagebox.showerror("Enregistrer tel que vu", p)
+                messagebox.showerror(titre, p)
             else:
-                messagebox.showinfo("Enregistrer tel que vu",
-                                    f"Image « tel que vu » sauvegardée :\n{p}")
+                messagebox.showinfo(
+                    titre, f"Image sauvegardée :\n{p}"
+                    + (f"\n\nOutils : {outils}" if outils else ""))
         self.root.after(30, self._tick)
 
     def _show_image(self, disp):

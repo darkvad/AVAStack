@@ -120,6 +120,12 @@ Source: "{#RepoRoot}\_diag_couleur_gains.py"; DestDir: "{app}"; Flags: ignorever
 ; des COULEURS D'ETOILES en magnitudes.
 Source: "{#RepoRoot}\_diag_spcc.py"; DestDir: "{app}"; Flags: ignoreversion
 
+; Outil : QUE CONTIENNENT les fichiers d'empilement (brut vs traité) ? Fond et
+; bruit par canal, contraste de fond R/G et B/G, rapport brut/traité, clés AVA*
+; de l'en-tête. C'est l'outil qui a identifié l'écrêtage [0..1] de la chaîne
+; live en v2.35.1 (voir aussi _test_save_brute_jalon59.py).
+Source: "{#RepoRoot}\_diag_empilement_couleur.py"; DestDir: "{app}"; Flags: ignoreversion
+
 ; Banc SPCC (v2.34.0, jalon 58) : verifie le MODELE contre une VERITE
 ; ANALYTIQUE — image fabriquee a partir des spectres et de reponses connues
 ; (attenuations instrumentales x0,7 / x1,3) : les pentes de regression doivent

@@ -14,9 +14,39 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.35.0"
+AVASTACK_VERSION = "2.35.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.35.1 : CORRECTIF DE LA CHAÎNE PLEINE RÉSOLUTION EN COMPOSITION (constat réel
+#          d'Alain, 25/09/2026, sur son empilement M31 RGB de 165 frames).
+#          LA CHAÎNE LIVE EST CONTRACTÉE POUR [0..1] ET LE COMPOSITE DÉPASSE 1 :
+#          • le débruitage live (NLM) fait `np.clip(data, 0, 1)` pour passer en
+#            16 bits — mesuré sur l'empilement réel : 71 232 des 73 766 pixels
+#            > 1 ÉCRÊTÉS (96 %) ;
+#          • GraXpert live reçoit une image > 1 qu'il normalise : sa sortie
+#            revient autour de 1.
+#          Conséquence sur la 3e sortie « empilement traité (linéaire) » écrite
+#          par Alain : AVASCALE = 1,2106 au lieu de 17,94 (échelle divisée par
+#          ~15) et cœurs d'étoiles écrêtés — le fichier n'était plus linéaire.
+#          CORRECTIF : en COMPOSITION et vue « empilement », la sauvegarde
+#          pleine résolution (« tel que vu » ET « empilement traité (linéaire) »)
+#          exécute la chaîne PAR COUCHE, exactement comme le solveur live :
+#          GraXpert puis débruitage sur CHAQUE couche 2D (toutes ≤ 1),
+#          recomposition (`composer`), CORRECTIONS, puis netteté/SCNR. Le
+#          composite reste dans sa plage linéaire (aucun écrêtage, aucune
+#          remise à l'échelle) et le fichier correspond enfin à l'écran.
+#          `ui.app._couches_pleine_resolution` porte la chaîne (sans cache : une
+#          sauvegarde est un instantané) ; `denoise._nlm` documente désormais son
+#          CONTRAT D'ÉCHELLE [0..1] (l'écrêtage était silencieux).
+#          Aussi : les dialogues de sauvegarde portent le titre du bouton
+#          employé, et les erreurs d'outil par couche sont affichées (non
+#          bloquantes) au lieu d'être perdues.
+#          OUTIL AJOUTÉ : `_diag_empilement_couleur.py` — que contiennent les
+#          fichiers (fond et σ par canal, contraste de fond R/G et B/G, rapport
+#          brut/traité, clés AVA*). C'est ce qui a identifié le problème.
+#          BANC : `_test_save_brute_jalon59.py` [7] vérifie que GraXpert live
+#          voit bien 2 COUCHES 2D (jamais le composite) et que l'échelle
+#          linéaire est PRÉSERVÉE (AVASCALE ≈ celle du brut, contre 1,21 avant).
 # v2.35.0 : LA SAUVEGARDE LINÉAIRE DEVIENT BRUTE + LES CORRECTIONS DE COULEUR
 #          PASSENT DANS LA CHAÎNE DE SORTIE (chantier du 24/09/2026, décisions
 #          d'Alain ; étapes ①→⑦ du plan).

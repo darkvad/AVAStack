@@ -10,12 +10,23 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **Version stable de référence : AVAStack v2.35.0** (`avastack/__init__.py`),
-  branche `master` — **SAUVEGARDE LINÉAIRE BRUTE + CORRECTIONS DE COULEUR DANS
-  LA CHAÎNE DE SORTIE** : le chantier du 24/09/2026 (décisions d'Alain) est
-  CODÉ en entier, étapes ①→⑦ du plan, et tous les bancs logiciels sont au vert
-  (sweep complet du 25/09/2026 : 50 bancs, code de sortie 0 ; les bancs
-  matériels sont hors sweep).
+- **Version stable de référence : AVAStack v2.35.1** (`avastack/__init__.py`),
+  branche `master` — **CORRECTIF v2.35.1 (constat RÉEL d'Alain, 25/09/2026)** :
+  en COMPOSITION, la sauvegarde pleine résolution traitait GraXpert/débruitage
+  live sur le COMPOSITE (> 1 : un cœur d'étoile monte à ~18 après la
+  normalisation par rôle) alors que ces outils sont CONTRACTÉS POUR [0..1] —
+  GraXpert rescalait sa sortie et le NLM la `clip(0,1)` (mesuré sur son
+  empilement M31 : 96 % des pixels > 1 perdus, AVASCALE 1,21 au lieu de 17,94).
+  La sauvegarde pleine résolution exécute désormais la chaîne **PAR COUCHE**
+  (comme le solveur live) : GX + débruitage sur chaque couche 2D, recomposition,
+  CORRECTIONS, puis netteté/SCNR → le fichier garde son échelle linéaire
+  (banc `_test_save_brute_jalon59.py` [7]). Outil de diagnostic ajouté :
+  `_diag_empilement_couleur.py`.
+- **CHANTIER v2.35.0** (24/09/2026, décisions d'Alain) — tous les bancs
+  logiciels au vert (sweep du 25/09/2026 : 50 bancs, code de sortie 0 ; les
+  bancs matériels sont hors sweep) :
+  **SAUVEGARDE LINÉAIRE BRUTE + CORRECTIONS DE COULEUR DANS LA CHAÎNE DE
+  SORTIE** (étapes ①→⑦ du plan), en détail :
   - `composer()` ne porte PLUS aucun gain : il produit l'EMPILEMENT BRUT
     (normalisation par rôle + combine L). `composer(gains=…)` N'EXISTE PLUS.
   - Toutes les corrections de couleur vivent en AVAL, dans
@@ -68,12 +79,38 @@ dans le changelog du source et l'historique git.)
     sont ;
   - pour toute comparaison EXTERNE avec Siril, sauvegarder le linéaire
     (maintenant BRUT par construction : c'est la référence reproductible).
+  - **LES OUTILS LIVE SONT CONTRACTÉS POUR [0..1]** (v2.35.1) : GraXpert live
+    rescalait et le NLM (`denoise._nlm`) ÉCRÊTE à [0,1] + quantifie 16 bits.
+    Une image qui dépasse 1 doit donc y entrer **PAR COUCHE** (les couches
+    sont ≤ 1, le composite NON : ~18 après la normalisation par rôle).
+    Vérifier AVASCALE dans l'en-tête d'un fichier écrit : s'il vaut ≈ 1 alors
+    que le brut vaut ~18, l'écrêtage a eu lieu.
+  - `_diag_empilement_couleur.py` répond en une commande à « pourquoi mon
+    image est-elle colorée / bruitée ? » : fond et σ par canal (le BRUIT),
+    contraste de fond R/G et B/G, rapport brut/traité, clés AVA*.
+- **EN ATTENTE DE DÉCISION D'ALAIN (piste ouverte, 25/09/2026)** : le bruit
+  coloré vu en zoom (bleu/vert) après application des corrections. Mesuré sur
+  son M31 RGB : le composite BRUT a un fond R/G 0,859 · B/G 1,233 avec un bruit
+  ÉGAL dans les 3 canaux — parce que `composer()` normalise CHAQUE rôle par ses
+  propres percentiles, ce qui égalise aussi les bruits (les couches brutes
+  mesurées sont, elles, très inégales : σ R 0,0033 / G 0,0025 / B 0,0017).
+  Les corrections s'appliquant MAINTENANT EN PLEIN (elles n'étaient plus
+  absorbées par cette normalisation), le déséquilibre de bruit réapparaît :
+  SPCC (R ×0,53 / G ×0,67 / B ×1,0) × Linear Fit (R ×0,76 / B ×1,21) →
+  R fortement atténué, B/G conservés → le bruit restant est BLEU-VERT.
+  Pistes : (a) normalisation COMMUNE aux 3 rôles quand des corrections sont
+  actives (la piste rejetée en v2.34.6 le sera moins maintenant que GraXpert
+  live retire le fond PAR COUCHE) ; (b) appliquer les gains AUX COUCHES avec
+  des bornes de normalisation FIGÉES (l'argument `bornes=` de `composer()`
+  existe déjà) ; (c) ne pas empiler le GAIN du Linear Fit sur la SPCC (Siril
+  n'ajoute à la SPCC qu'une référence de FOND — l'offset) ; (d) accepter.
 - **À FAIRE / À VALIDER PAR ALAIN** :
-  - test RÉEL du chantier (empilement M31 ou palettes, SPCC + équilibrage +
-    Linear Fit cochés) : vérifier que « empilement (linéaire) » sort bien
-    neutre/brut (Siril : plus de gain implicite à annuler) et que « tel que vu »
-    + « empilement traité (linéaire) » portent bien les corrections.
-    **Installer l'installateur 2.35.0 AVANT** (le chantier touche 5 fichiers) ;
+  - test RÉEL du correctif 2.35.1 : réécrire « empilement traité (linéaire) »
+    avec GraXpert + débruitage live actifs et vérifier AVASCALE (~18, plus
+    1,2) et des cœurs d'étoiles non écrêtés. **Installer l'installateur
+    2.35.1 AVANT** ;
+  - test RÉEL du chantier v2.35.0 : « empilement (linéaire) » neutre/brut
+    (Siril : plus de gain implicite à annuler) ;
   - étape 6 du jalon 56 : validation Siril/ASTAP des fichiers écrits, puis test
     réel multi-filtres avec les gains photométriques cochés.
 - **POINT CLARIFIÉ (24/09/2026)** : la SPCC de Siril exige les COURBES DE

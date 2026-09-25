@@ -378,6 +378,52 @@ verifie(os.path.exists(p_brut2) and not np.allclose(
 verifie(float(np.nanmax(v_traite)) <= 1.0 + 1e-6,
         f"fichier borné [0,1] (max {float(np.nanmax(v_traite)):.5f})")
 
+# ============ [7] chaîne PAR COUCHE quand GraXpert/débruitage live sont actifs
+# (constat RÉEL du 25/09/2026 : appliqués au COMPOSITE (> 1), GraXpert le
+#  rescale et le NLM l'ÉCRÊTE à [0,1] — le fichier linéaire perdait son
+#  échelle (AVASCALE 1,21 au lieu de 17,94) et ses cœurs. Ces outils sont
+#  contractés pour [0..1] : ils doivent voir les COUCHES.)
+print("[7] GraXpert/débruitage live : traités PAR COUCHE, échelle préservée")
+app.msg_outils = None
+app.asseen_result = None
+app.save_asseen_request = None
+app.disp.vl_graxpert = True
+app.disp.vl_graxpert_cmd = 'copy "{input}" "{output}"'
+app.disp.vl_denoise = True
+app.disp.vl_denoise_methode = "nlm"
+app.disp.vl_denoise_force = 0.5
+vus = []
+
+
+def _gx_factice(img, cmd):
+    vus.append(img.shape)
+    return np.asarray(img, np.float32).copy(), ""
+
+
+ui.gx_live.appliquer = _gx_factice          # outil factice : identité
+p_couches = os.path.join(tmp, "traite_par_couche.fits")
+app.save_asseen_request = (p_couches, "pile", app._reglages_rendu(), True)
+t0 = time.time()
+while app.asseen_result is None and time.time() - t0 < 40:
+    time.sleep(0.05)
+verifie(app.asseen_result == p_couches and os.path.exists(p_couches),
+        f"3e sortie écrite avec GraXpert + débruitage live actifs "
+        f"(« {app.asseen_result} »)")
+verifie(len(vus) == 2 and all(s == (H, W) for s in vus),
+        f"GraXpert live a vu 2 COUCHES 2D ({vus}) — jamais le composite")
+if os.path.exists(p_couches):
+    v_c = load_image(p_couches)
+    h_c = fits.open(p_couches)[0].header
+    ech_c = float(h_c.get("AVASCALE", 1.0) or 1.0)
+    verifie(ech_c > 1.5,
+            f"ÉCHELLE LINÉAIRE PRÉSERVÉE : AVASCALE = {ech_c:.3f} (le composite "
+            f"brut est à {float(h_brut1.get('AVASCALE', 0)):.2f} ; l'ancien "
+            "chemin par composite donnait 1,21 — NLM écrêtait à [0,1])")
+    verifie(not np.allclose(v_c, load_image(p_brut2)),
+            "le fichier par couche diffère du brut (débruitage + corrections)")
+    verifie("equilibrage canaux" in str(h_c.get("AVAAPPLI", "")),
+            f"en-tête AVAAPPLI conservé (« {h_c.get('AVAAPPLI')} »)")
+
 app.running = False
 th.join(timeout=5)
 root.destroy()

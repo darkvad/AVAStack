@@ -133,6 +133,14 @@ def _nlm(img, force):
     16 bits ; force 0.5 → h ≈ 0.8σ), appliqué en DEUX passes faibles
     (0.6·h puis 0.4·h).
 
+    ⚠️ CONTRAT D'ÉCHELLE [0..1] : le traitement passe par un uint16, donc
+    l'image est ÉCRÊTÉE à [0,1] (`np.clip`) puis quantifiée (1/65535). Un
+    appelant qui lui donne une image > 1 perd tout ce qui dépasse — c'est le
+    cas d'un COMPOSITE multi-rôles (normalisation par rôle : un cœur d'étoile
+    monte à ~18, mesuré). Les chemins qui traitent un composite doivent donc
+    passer PAR COUCHE (cf. ui.app._couches_pleine_resolution), ou assumer
+    l'écrêtage en connaissance de cause.
+
     ANTI-LÉOPARD (retours de tests réels d'Alain, 15/09/2026) :
       - h ≈ 1σ est le réglage astro usuel — un h trop fort (l'ancien 3σ)
         moyenne des zones « similaires » lointaines → fond tacheté ;
