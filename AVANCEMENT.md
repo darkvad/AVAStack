@@ -80,12 +80,35 @@ dans le changelog du source et l'historique git.)
     doivent être transportés dans le job, jamais lus depuis l'UI) ; les caches
     `_fit_cache`/`_wb_cache_comp`/`_gx_couches`/`_gx_cache` ont des clés qui
     dépendent des gains et devront suivre.
-  - **À CONFIRMER PAR ALAIN avant de coder** : (a) la 3e sortie = NOUVEAU bouton
-    ou réutilisation du bouton existant « Enregistrer le résultat traité
-    (linéaire) » (aujourd'hui lié au traitement externe manuel ⚡) ; (b)
-    l'« équilibrage des canaux (auto) » suit-il le même chemin que les autres
-    corrections d'affichage ? (c) l'ordre exact souhaité dans la chaîne :
-    GraXpert → débruitage → corrections → netteté/SCNR → étirement.
+  - **DÉCISIONS DE CLÔTURE (24/09/2026 — les trois points sont TRANCHÉS par
+    Alain, le chantier peut démarrer tel quel)** :
+      (a) la 3e sortie linéaire (« empilement traité ») aura un **bouton DÉDIÉ**,
+          distinct de « Enregistrer le résultat traité (linéaire) » qui reste
+          lié au **traitement EXTERNE manuel** (⚡) — on sépare nettement les
+          deux familles : traitement LIVE (GraXpert/débruitage live, corrections,
+          étirement) vs traitement EXTERNE (GraXpert/BXT à la demande, sur un
+          instantané) ;
+      (b) l'**équilibrage des canaux (auto)** ET le **recalage colorimétrique
+          (Linear Fit)** vont dans la **CHAÎNE DE SORTIE**, comme la SPCC et les
+          gains Gaia (ce sont des corrections d'affichage : aucun des trois ne
+          doit entrer dans la sauvegarde linéaire brute) ;
+      (c) **ordre validé** de la chaîne de sortie : GraXpert (par couche en
+          composition) → débruitage → **CORRECTIONS (SPCC/Gaia + équilibrage +
+          Linear Fit)** → netteté / chaîne couleur (SCNR…) → **étirement**
+          VeraLux/STF.
+  - **FIN DE SESSION (24/09/2026)** — état livré et vérifié : **v2.34.7**
+    committée et poussée (`c73f199` → doc, `a2d8ff4` → v2.34.7), installateur
+    2.34.7 compilé, **tous les bancs au vert** (SPCC 11 sections, composition 19
+    enrichi, compo UI/worker 19, restack 16/18/20, fit canaux 54, calib compo 53,
+    photométrie 56, catalogues 56, solveur 56 + réel M31, align 13/15, config 6,
+    UI 31/47, sauvegardes, VeraLux…). **PROCHAINE SESSION = CODER LE CHANTIER** :
+    étapes ①→⑦ ci-dessus (`mean()` à deux chemins, sauvegarde linéaire brute,
+    corrections transportées dans le job du solveur et appliquées dans
+    `display._vl_worker`, sortie de `composer()`, bouton dédié pour la sortie
+    linéaire traitée, en-têtes « mesure » vs « appliqué », bancs adaptés +
+    nouveau banc « fichier linéaire identique avec/sans les cases cochées »).
+    Aucun code n'a été modifié pour ce chantier : seules les deux mémoires l'ont
+    été.
 
   - **VALIDATION (24/09/2026, mêmes pixels)** : Siril sur `spcc_brut_RGB.fit` →
     R/V = 0,087250 + **0,872563**·cat (σ 0,1226), B/V = 0,114178 +

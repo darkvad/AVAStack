@@ -182,8 +182,10 @@ appliquée en amont est absorbée en partie par la normalisation par canal de
 modifie jamais l'empilement) ; garder le fichier brut est donc le seul moyen
 d'avoir une référence reproductible et un traitement ultérieur propre.
 Sorties attendues : ① **empilement linéaire BRUT** (référence) ; ② **empilement
-traité linéaire** (gradient retiré + corrections, sans étirement) ; ③ **tel que
-vu** (étiré). ÉTAT DU CODE au 24/09/2026 : divergence connue à corriger — les
+traité linéaire** (gradient retiré + corrections, sans étirement) par un **bouton
+DÉDIÉ** — distinct de « Enregistrer le résultat traité (linéaire) » qui reste
+lié au traitement EXTERNE manuel (⚡, GraXpert/BXT à la demande sur un
+instantané) ; ③ **tel que vu** (étiré). ÉTAT DU CODE au 24/09/2026 : divergence connue à corriger — les
 gains SPCC/Gaia, l'équilibrage et le Linear Fit sont appliqués dans
 `composer()`, donc présents dans `CompositeStacker.mean()`, qui sert à la fois à
 l'affichage ET à la sauvegarde linéaire ; le chantier de mise en conformité est
