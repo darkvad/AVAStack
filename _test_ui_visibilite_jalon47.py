@@ -147,6 +147,48 @@ app.var_cadence.set("dès réception")
 app._on_cadence()
 verifie(app.cadence_lecture == 0, "retour « dès réception » → 0")
 
+# ======================= [7] MOLETTE : ne change JAMAIS la valeur d'une liste
+# Constat RÉEL d'Alain (25/09/2026) : en défilant les réglages à la molette, si
+# le curseur passait sur (ou près de) une LISTE DÉROULANTE, la molette changeait
+# sa valeur TOUTE SEULE (profil SPCC, méthode du recalage…) — des tests ont pu
+# être faussés. La liaison de CLASSE Tk (`ttk::combobox::Scroll`) est supprimée
+# au démarrage : pour changer une valeur, il faut OUVRIR la liste.
+print("[7] molette : aucun changement de valeur des listes déroulantes")
+liste = getattr(app, "cb_fit_methode", None)
+verifie(liste is not None, "combobox de la méthode de recalage présente")
+if liste is not None:
+    verifie(liste.bind_class("TCombobox", "<MouseWheel>") == "",
+            "liaison de CLASSE Tk de la molette supprimée "
+            "(ttk::combobox::Scroll)")
+    avant = app.var_fit_methode.get()
+    for _ in range(3):                       # 3 crans vers le bas
+        liste.event_generate("<MouseWheel>", delta=-120,
+                             x=liste.winfo_width() // 2,
+                             y=liste.winfo_height() // 2)
+    root.update()
+    verifie(app.var_fit_methode.get() == avant,
+            f"3 crans de molette sur la liste : valeur INCHANGÉE "
+            f"(« {avant} » → « {app.var_fit_methode.get()} »)")
+    liste.event_generate("<MouseWheel>", delta=120,
+                         x=liste.winfo_width() // 2,
+                         y=liste.winfo_height() // 2)
+    root.update()
+    verifie(app.var_fit_methode.get() == avant,
+            "un cran vers le haut non plus : toujours inchangée")
+    # la liste reste utilisable normalement (choix explicite → code interne) :
+    # `_code_fit_methode` est LA fonction qui traduit le libellé choisi pour le
+    # stacker et l'instantané du worker.
+    app.var_fit_methode.set("Gain + offset")
+    app._on_linear_fit()
+    verifie(app._code_fit_methode() == "gain_offset"
+            and app.var_fit_methode.get() == "Gain + offset",
+            "la liste fonctionne toujours normalement (choix explicite "
+            "« Gain + offset » → gain_offset)")
+    app.var_fit_methode.set(avant)
+    app._on_linear_fit()
+    verifie(app._code_fit_methode() == "offset",
+            "retour à « Offset seul (fond) » → offset")
+
 root.destroy()
 print()
 print("RÉSULTAT :", "TOUT PASSE" if ok else "ÉCHECS PRÉSENTS")

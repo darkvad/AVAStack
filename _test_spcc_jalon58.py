@@ -482,6 +482,16 @@ try:
     texte = app.lbl_spcc.cget("text")
     verifie("0.90" in texte and "1.10" in texte,
             f"ligne d'état affiche les coefficients ({texte[:70]}…)")
+    # La mesure SPCC est faite UNE fois par session : le libellé le DIT (sur
+    # combien de frames + comment refaire) — constat d'Alain, 25/09/2026 : on
+    # croyait la case inerte alors qu'elle ne recalcule simplement plus.
+    app.spcc.diag["frames"] = 42
+    app._maj_spcc_etat()
+    app._maj_spcc_vue()
+    texte_n = app.lbl_spcc.cget("text")
+    verifie("42 frames" in texte_n and "recocher" in texte_n,
+            f"le libellé dit la profondeur de la mesure "
+            f"(« {texte_n[-72:]} »)")
     # v2.34.6 : la sauvegarde DIT ce qu'elle contient (gains SPCC appliqués).
     ent = app._entete_reglages()
     verifie(str(ent.get("AVASPCC", "")).startswith("K=")

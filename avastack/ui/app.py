@@ -932,6 +932,23 @@ class App:
         canvas.bind_all("<Button-4>", _wheel)     # Linux
         canvas.bind_all("<Button-5>", _wheel)
 
+        # --- PIÈGE MAJEUR D'ERGONOMIE (constat d'Alain, 25/09/2026) -----------
+        # Tk associe la MOLETTE aux listes déroulantes par une liaison de CLASSE
+        # (`ttk::combobox::Scroll`) : en défilant les réglages, si le curseur
+        # passait sur une liste (ou juste à côté), la molette CHANGEait sa
+        # valeur TOUTE SEULE — profil de capteur/filtre de la SPCC, méthode du
+        # recalage colorimétrique, référence de blanc… Des réglages ont ainsi pu
+        # changer sans que l'utilisateur l'ait voulu, ce qui a faussé des tests.
+        # On SUPPRIME ces liaisons de classe : la molette ne modifie plus aucune
+        # liste, elle continue de faire défiler le panneau (handler `bind_all`
+        # ci-dessus). Pour changer une valeur, il faut désormais OUVRIR la liste.
+        for _classe in ("TCombobox", "TSpinbox", "Spinbox"):
+            for _ev in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+                try:
+                    self.root.unbind_class(_classe, _ev)
+                except tk.TclError:
+                    pass
+
         # --- Caméra : la SOURCE + Démarrer/Arrêter sont TOUJOURS visibles ;
         # les contrôles propres à la caméra (exposition, gain, roue, TEC,
         # détection SDK…) vont dans un sous-cadre qui n'apparaît QUE pour une
@@ -4844,6 +4861,11 @@ class App:
                                  else "#d04040")
             self._maj_spcc_vue()
             return
+        # Sur COMBIEN de frames la mesure a été faite : la mesure SPCC est faite
+        # UNE fois par session (SessionSpcc) — le dire évite de croire que la
+        # case ne « rafraîchit » plus rien (constat d'Alain, 25/09/2026).
+        if isinstance(self.spcc.diag, dict):
+            self.spcc.diag.setdefault("frames", int(stacker.n))
         self._maj_spcc_etat()
         self._maj_spcc_vue()
 
@@ -4957,9 +4979,19 @@ class App:
         if spcc_ok:
             k = self.spcc.coefficients
             ent["AVASPCC"] = f"K={k[0]:.4f}/{k[1]:.4f}/{k[2]:.4f}"
+        elif self._spcc_actif:
+            # Case cochée SANS mesure exploitable : le dire, sinon on croit que
+            # la SPCC est entrée dans le fichier alors que rien n'a été appliqué
+            # (constat d'Alain, 25/09/2026 : fichiers écrits avant que la mesure
+            # ne soit disponible, en-tête muet).
+            ent["AVASPCC"] = ("non appliquee (case cochee, mesure "
+                              "indisponible)")
         if gaia_ok:
             ent["AVAGAIA"] = " ".join(
                 f"{b}={g:.4f}" for b, g in sorted(self.photometrie.gains.items()))
+        elif self._photo_gains_actif:
+            ent["AVAGAIA"] = ("non appliques (case cochee, mesure "
+                              "indisponible)")
         # CE QUI EST APPLIQUÉ à l'image écrite (étape ⑥).
         if not applique:
             ent["AVAAPPLI"] = "aucune (empilement BRUT)"

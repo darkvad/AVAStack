@@ -14,9 +14,34 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.35.1"
+AVASTACK_VERSION = "2.35.2"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.35.2 : TROIS CORRECTIFS D'ERGONOMIE ET D'HONNÊTETÉ (constats d'Alain,
+#          25/09/2026).
+#          ① LA MOLETTE CHANGEait LA VALEUR DES LISTES DÉROULANTES. Tk associe
+#            la molette aux `ttk.Combobox` par une liaison de CLASSE
+#            (`ttk::combobox::Scroll`, vérifiée : un cran de molette fait passer
+#            la valeur de « a » à « b ») : en défilant les réglages, si le
+#            curseur passait sur (ou près de) une liste, elle changeait TOUTE
+#            SEULE — profil de capteur/filtre de la SPCC, méthode du recalage,
+#            référence de blanc… Des réglages ont donc pu changer sans que
+#            l'utilisateur l'ait voulu, et FAUSSER DES TESTS. Les liaisons de
+#            classe de la molette sont SUPPRIMÉES au démarrage (`unbind_class`
+#            sur TCombobox/TSpinbox/Spinbox) : la molette ne modifie plus aucune
+#            liste, elle continue de faire défiler le panneau ; pour changer une
+#            valeur il faut désormais OUVRIR la liste. Banc :
+#            `_test_ui_visibilite_jalon47.py` [7] (3 crans de molette → valeur
+#            inchangée, et le choix explicite fonctionne toujours).
+#          ② AVASPCC/AVAGAIA DISENT QUAND RIEN N'EST APPLIQUÉ : si la case est
+#            cochée mais qu'aucune mesure exploitable n'existe, l'en-tête écrit
+#            « non appliquee (case cochee, mesure indisponible) » au lieu de
+#            rester muet — c'est ce silence qui avait fait croire que la SPCC
+#            était entrée dans un fichier alors que non.
+#          ③ LA MESURE SPCC EST FAITE UNE FOIS PAR SESSION (c'est son principe,
+#            et un décochage/recochage la refait) : le libellé le DIT désormais
+#            — « mesure faite sur N frames (décocher/recocher la case pour
+#            refaire) ». Sans ça, la case semble « ne plus rien rafraîchir ».
 # v2.35.1 : CORRECTIF DE LA CHAÎNE PLEINE RÉSOLUTION EN COMPOSITION (constat réel
 #          d'Alain, 25/09/2026, sur son empilement M31 RGB de 165 frames).
 #          LA CHAÎNE LIVE EST CONTRACTÉE POUR [0..1] ET LE COMPOSITE DÉPASSE 1 :

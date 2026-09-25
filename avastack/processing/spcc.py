@@ -611,6 +611,14 @@ def texte_resume(k, diag):
            f"{diag.get('b_bg', float('nan')):.3f} "
            f"(σ {diag.get('sigma_bg', float('nan')):.3f}) sur "
            f"{diag.get('n_regression', 0)} étoiles")
+    # La mesure est faite UNE fois par session (cf. SessionSpcc) : dire SUR
+    # COMBIEN de frames elle a été faite, et comment la refaire — sinon la case
+    # semble « ne plus rien rafraîchir » alors que c'est le principe même de la
+    # mesure (constat d'Alain, 25/09/2026).
+    n = diag.get("frames")
+    if n:
+        txt += (f" · mesure faite sur {int(n)} frames (décocher/recocher la "
+                "case pour refaire)")
     if diag.get("avertissement"):
         txt += " — ⚠ " + diag["avertissement"]
     return txt
