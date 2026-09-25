@@ -10,10 +10,38 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **Version stable de référence : AVAStack v2.36.0** (`avastack/__init__.py`),
-  branche `master` — **OPTION « NORMALISATION COMMUNE DES CANAUX » (demande
-  d'Alain, 25/09/2026)** : « ce bruit, qu'on utilise SPCC ou pas, est présent ;
-  plus on empile, plus VeraLux tire sur l'étirement ». Mesure sur son empilement
+- **Version stable de référence : AVAStack v2.36.1** (`avastack/__init__.py`),
+  branche `master` — **CORRECTIFS « FOND BLEU » (constats d'Alain, 25/09/2026 :
+  « le fichier tel que vu en png : PROBLEME, vachement bleu et ca me fait ca
+  depuis le début » + « il reste quand même pas mal de bruit bleu »)** :
+  - ① **LE PNG/TIFF EXPORTÉ AVAIT R ET B PERMUTÉS** (bug VIEUX, silencieux) :
+    `save_image` donnait l'image RGB de l'appli à `cv2.imencode`, qui attend du
+    BGR (`load_image` convertit à la lecture) → l'aller-retour interne restait
+    cohérent, donc invisible, mais TOUS les fichiers exportés (visionneuses,
+    Siril, GraXpert) montraient les canaux échangés. Mesuré sur son PNG :
+    PNG_R ≈ FITS_B, corrélation 1,0000. → conversion RGB→BGR avant `imencode` ;
+    les bancs relisent désormais les fichiers écrits avec un lecteur INDÉPENDANT.
+  - ② **L'ÉTIREMENT VERALUX BLEUISSAIT LE FOND** : le fichier LINÉAIRE a un fond
+    neutre (R/G 0,9991 · B/G 0,9991), mais VeraLux soustrait une **ancre**
+    (0,0313) puis étire en log → pour le fond ne compte que le **résidu** (canal
+    − ancre) : ciels 0,0321/0,0326/0,0332 (3,6 % de bleu) → résidus 1 : 1,70 :
+    2,44 → **fond étiré R/G 0,363 · B/G 1,611**. → nouvelle case **« Neutraliser
+    la couleur du fond (live) »** (COCHÉE par défaut, cadre « Couleur live ») :
+    gains ~2 % mesurés sur la médiane de la moitié sombre, appliqués juste avant
+    l'étirement → fond étiré **1,020 · 0,996**. Les gains appliqués sont ANNONCÉS
+    dans « État des calculs » ; garde-fou ±10 % (sur un cadrage dominé par un
+    objet étendu la moitié sombre n'est plus du ciel). ⚠️ L'équilibrage des
+    canaux ne corrige PAS ça : il estime le fond sur un percentile bas (les
+    coins, déjà neutres) alors que l'ancre vit dans l'histogramme global.
+  - **À TESTER PAR ALAIN** : réécrire « tel que vu » (FITS **et PNG** — le PNG
+    doit maintenant être d'accord avec le FITS) sur le même empilement ;
+    vérifier de visu que le fond bleu a disparu à l'écran (case cochée) et, si
+    un fond coloré reste voulu, décocher la case. Le banc `_test_fond_bleu_jalon62.py`
+    accepte un fichier RÉEL en argument : `python _test_fond_bleu_jalon62.py
+    <fits>` affiche fond linéaire, gains, fond étiré avant/après.
+- **Version stable précédente : AVAStack v2.36.0** — **OPTION « NORMALISATION
+  COMMUNE DES CANAUX » (demande d'Alain, 25/09/2026)** : « ce bruit, qu'on utilise
+  SPCC ou pas, est présent ; plus on empile, plus VeraLux tire sur l'étirement ». Mesure sur son empilement
   M31 : l'empilement est CORRECT (grain ÷2,2 pour ×4 de frames) mais le **fond du
   composite ne s'améliore pas** (fond/σ 2,88 à 28 frames → 2,50 à 111) et son
   grain est **coloré** (R/G 0,66 · B/G 1,45). CAUSE : `composer()` calait CHAQUE

@@ -53,6 +53,80 @@ def demagenta(img):
     return (1.0 - scnr(1.0 - a)).astype(np.float32)
 
 
+def gains_fond(img, garde=0.10):
+    """Gains par canal (R, G, B) qui NEUTRALISENT LA COULEUR DU FOND d'une image
+    couleur — ou None si l'image ne s'y prête pas (mono, canal vide).
+
+    Estimation : la MÉDIANE DE LA MOITIÉ LA PLUS SOMBRE de l'image (sélection par
+    luminance), canal par canal. Ce choix est volontaire : la médiane GLOBALE est
+    déplacée par un objet qui remplirait le champ (une grande nébuleuse), alors
+    que la moitié sombre reste du CIEL dans tous les cas ; et un percentile TRÈS
+    bas (ce qu'utilise `composition.appliquer_equilibrage`) décrit les coins les
+    plus sombres, pas le ciel moyen — c'est justement cet écart qui laissait
+    passer le fond bleu que VeraLux amplifiait (cf. `neutraliser_fond`).
+
+    `garde` borne les gains à ±garde (10 % par défaut). POURQUOI si serré : sur
+    un cadrage où un OBJET étendu domine (une nébuleuse qui remplit le champ),
+    la « moitié sombre » n'est plus du ciel mais l'objet lui-même — mesuré au
+    banc : les gains partent alors à la borne (0,82 / 1,18 avec une garde de
+    18 %), c'est-à-dire une désaturation visible de l'objet. Aucun estimateur bon
+    marché ne sait distinguer un ciel d'un objet étendu (c'est le travail de
+    GraXpert) : on borne donc l'ampleur de la correction, on ANNONCE les gains
+    appliqués à l'écran, et la case se décoche. Le cas visé (le résidu de couleur
+    du ciel qui bleuit tout après l'étirement) demande 2 %. Une palette
+    volontairement colorée (SHO, fond vert…) garde donc l'intention de
+    l'utilisateur."""
+    a = np.asarray(img, dtype=np.float32)
+    if a.ndim != 3 or a.shape[-1] != 3:
+        return None
+    lum = a.mean(axis=2)
+    masque = lum <= float(np.percentile(lum, 50))
+    if not bool(masque.any()):
+        return None
+    med = [float(np.median(a[..., c][masque])) for c in range(3)]
+    if min(med) <= 1e-9:                  # canal vide : aucun gain raisonnable
+        return None
+    return tuple(float(v) for v in np.clip(np.array([med[1] / m for m in med],
+                                                    dtype=np.float32),
+                                           1.0 - garde, 1.0 + garde))
+
+
+def neutraliser_fond(img, force=1.0, garde=0.10):
+    """Neutralise la COULEUR DU FOND (gains par canal) — « background
+    neutralization », à appliquer JUSTE AVANT l'étirement.
+
+    POURQUOI (constat d'Alain, 25/09/2026 : « vachement bleu » en PNG alors que
+    le FITS était juste — et le fond restait bleu à l'écran) : l'étirement
+    VeraLux soustrait une ANCRE (un scalaire lu dans l'histogramme de luminance)
+    puis étire logarithmiquement. Pour le fond, il ne reste donc que le RÉSIDU
+    (niveau du canal − ancre) : quelques pour cent d'écart de ciel deviennent
+    plusieurs centaines de pour cent d'écart de couleur. MESURÉ sur son
+    empilement M31 : ciels R 0,0321 / G 0,0326 / B 0,0332 (3,6 % — ciel bleu
+    réel), ancre 0,0313 → résidus +0,00080 / +0,00137 / +0,00196 (rapports
+    1 : 1,70 : 2,44) → fond étiré à R/G 0,363 · B/G 1,611, franchement bleu.
+    Deux gains de 2 % appliqués AVANT l'étirement le ramènent à R/G 1,020 ·
+    B/G 0,996 (mesuré sur le même fichier).
+
+    À ne pas confondre avec `composition.appliquer_equilibrage` (équilibrage des
+    canaux) : celui-ci neutralise le fond estimé sur un PERCENTILE BAS — les
+    coins les plus sombres, déjà neutres (0,1 % mesuré) — alors que l'ancre de
+    VeraLux vit dans l'histogramme globbal. Les deux se complètent.
+
+    force : 0..1 — atténue la correction (`gains ** force`), comme l'équilibrage.
+    → copie float32 ; image mono ou non couleur renvoyée inchangée ; jamais
+    d'exception (numpy seul)."""
+    a = np.asarray(img, dtype=np.float32)
+    g = gains_fond(a, garde)
+    if g is None:
+        return a.copy()
+    gg = np.array(g, dtype=np.float32)
+    if force < 1.0:
+        gg = gg ** float(force)
+    if bool(np.allclose(gg, 1.0, atol=1e-4)):
+        return a.copy()
+    return (a * gg.reshape(1, 1, 3)).astype(np.float32)
+
+
 def canal_mort(img):
     """→ nom du canal entièrement vide ('R', 'G' ou 'B') d'une image
     couleur, ou None si les trois canaux portent des données (ou si img

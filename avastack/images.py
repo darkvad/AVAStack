@@ -213,7 +213,20 @@ def save_image(path, arr, entete=None):
                 hdu.header[str(k).upper()] = v
         hdu.writeto(path, overwrite=True)
     else:
-        u16 = (np.clip(arr, 0, 1) * 65535).astype(np.uint16)
+        d = np.asarray(arr, dtype=np.float32)
+        u16 = (np.clip(d, 0, 1) * 65535).astype(np.uint16)
+        # CORRECTIF v2.36.1 (constat d'Alain, 25/09/2026 : le PNG « tel que vu »
+        # était « vachement bleu » alors que le FITS du même écran était juste) :
+        # `cv2.imencode` attend du BGR (convention OpenCV) alors que TOUTE
+        # l'appli travaille en RGB — `load_image` convertit à la lecture
+        # (COLOR_BGR2RGB). Sans cette conversion, chaque PNG/TIFF écrit sortait
+        # avec R et B PERMUTÉS (mesuré sur son fichier : PNG_R ≈ FITS_B et
+        # PNG_B ≈ FITS_R, corrélation 1,0000) — et l'aller-retour interne
+        # (écriture sans conversion, relecture avec conversion) restait
+        # cohérent, ce qui masquait le bug : seuls les outils EXTERNES (viewer,
+        # Siril, GraXpert…) et l'utilisateur le voyaient.
+        if u16.ndim == 3 and u16.shape[-1] == 3:
+            u16 = cv2.cvtColor(u16, cv2.COLOR_RGB2BGR)
         ok, buf = cv2.imencode(ext, u16)
         if not ok:
             raise IOError("Encodage impossible")

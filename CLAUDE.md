@@ -287,6 +287,31 @@ Pièges :
 
 ## Pièges (leçons du projet AVAStack)
 
+- **`cv2.imencode` ATTEND DU BGR** (constat réel du 25/09/2026, v2.36.1) :
+  toute l'appli travaille en **RGB** et `load_image` convertit à la lecture
+  (`COLOR_BGR2RGB`), mais `save_image` passait l'image RGB telle quelle à
+  `cv2.imencode` → **tout PNG/TIFF exporté avait R et B PERMUTÉS** (mesuré sur
+  un vrai fichier : PNG_R ≈ FITS_B, corrélation 1,0000). Le piège est
+  **silencieux** : l'aller-retour interne (écriture sans conversion, relecture
+  avec conversion) restait cohérent, seuls les visionneuses, Siril, GraXpert et
+  Alain le voyaient — depuis des versions (Alain : « ça me fait ça depuis le
+  début »). **Règle : avant tout `imencode`/`imwrite` d'une image à 3 canaux,
+  convertir `COLOR_RGB2BGR` ; et un banc qui teste l'écriture d'un fichier image
+  doit le RELIRE avec un lecteur indépendant (OpenCV brut, PIL), jamais
+  seulement par `load_image`.** Banc : `_test_fond_bleu_jalon62.py` [1].
+- **UN ÉTIREMENT LOG AMPLIFIE LA COULEUR DU FOND** (constat réel du
+  25/09/2026, v2.36.1) : VeraLux soustrait une **ancre** (scalaire lu dans
+  l'histogramme de luminance) puis étire en log ; pour le fond, seul compte le
+  **résidu** (niveau du canal − ancre) → 3,6 % d'écart de ciel (fond pourtant
+  mesuré NEUTRE à 0,1 % sur les zones les plus lisses) devenaient un fond étiré
+  R/G 0,363 · B/G 1,611, franchement bleu. Ne pas chercher la cause dans
+  l'empilement : **mesurer le fond du fichier LINÉAIRE** (`_diag_empilement_couleur.py`)
+  avant d'accuser la composition. Correctif : `couleurs.neutraliser_fond` juste
+  avant l'étirement (gains ~2 % mesurés sur la médiane de la moitié sombre).
+  Attention au corollaire : sur un cadrage **dominé par un objet étendu**, la
+  « moitié sombre » n'est plus du ciel et les gains partent à la borne (d'où le
+  garde-fou ±10 % et l'annonce des gains à l'écran). Banc :
+  `_test_fond_bleu_jalon62.py` [2]/[3].
 - **DÉBRUITAGE LOCAL CLASSIQUE SUR STACKS ASTRO = FOND « LÉOPARD »**
   (constat réel du 15/09/2026 ; jalons 7/8/9 ABANDONNÉS ce jour-là, puis
   **REMIS le 16/09/2026 à la demande d'Alain — v2.3.4, mêmes algorithmes,

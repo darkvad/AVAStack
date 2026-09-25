@@ -158,6 +158,22 @@ class DisplayProcessor:
         self.vl_demagenta = False     # négatif → SCNR → positif (anti-magenta)
         self.vl_scnr_doux = False     # jalon 23 : SCNR borné par le bruit
                                       # (bruit seul — structure préservée)
+        # --- Neutralisation de la COULEUR DU FOND avant étirement (v2.36.1) --
+        # Constat d'Alain (25/09/2026) : « le fond reste bleu » à l'écran et
+        # « vachement bleu » en PNG. Mesuré : le fichier LINÉAIRE a un fond
+        # neutre (R/G 0,9991), mais VeraLux soustrait une ANCRE puis étire en
+        # log → quelques pour cent d'écart de ciel deviennent un facteur 2,4 de
+        # couleur de fond (résidus 1 : 1,70 : 2,44 → fond étiré R/G 0,363 ·
+        # B/G 1,611). `couleurs.neutraliser_fond` corrige par des gains par
+        # canal (~2 % ici) mesurés sur la médiane de la MOITIÉ SOMBRE juste
+        # AVANT l'étirement → fond étiré R/G 1,020 · B/G 0,996. ACTIF par
+        # défaut (c'est un défaut de rendu, pas un choix esthétique) ;
+        # l'équilibrage des canaux ne le remplace pas : il estime le fond sur
+        # un percentile bas (les coins, déjà neutres), pas sur l'histogramme
+        # global où vit l'ancre. Décocher = ancien rendu.
+        self.vl_neutre_fond = True     # neutralisation de la couleur du fond
+        self.vl_neutre_gains = None    # derniers gains appliqués (R, G, B) —
+                                      # informatif, lu par l'UI (None = aucun)
         self.vl_seeing = None         # mesure du seeing (jalon 10, dict) : sert
                                       # de PSF à la netteté — posée par le
                                       # thread d'acquisition, jamais mesurée ici
@@ -281,7 +297,8 @@ class DisplayProcessor:
                 self.vl_denoise, self.vl_denoise_methode,
                 round(self.vl_denoise_force, 2),
                 self.vl_sharp, int(self.vl_sharp_iterations),
-                self.vl_scnr, self.vl_demagenta, self.vl_scnr_doux)
+                self.vl_scnr, self.vl_demagenta, self.vl_scnr_doux,
+                bool(self.vl_neutre_fond))       # v2.36.1 (option)
 
     def _vl_worker(self):
         """Thread solveur : enchaîne — si activés — GraXpert live (jalon 4)
@@ -343,6 +360,10 @@ class DisplayProcessor:
             # déballage tolérant (les jobs antérieurs n'en ont pas).
             norm_commune = (bool(compo[6]) if compo is not None
                             and len(compo) > 6 else False)
+            # v2.36.1 : neutralisation de la couleur du fond avant étirement
+            # (9e élément du job — déballage tolérant : les jobs des bancs
+            # antérieurs n'ont que 8 éléments → option considérée décochée).
+            nf = bool(job[8]) if len(job) > 8 else False
             # --- Jalon 24 : mode COMPOSITION — gradient ET débruitage PAR
             # COUCHE, AVANT recomposition (décision d'Alain du 19/09/2026 :
             # la pollution lumineuse et la clarté de la lune ne frappent pas
@@ -522,6 +543,26 @@ class DisplayProcessor:
                 img_net = _couleurs.scnr_doux(img_net)
             if dm_actif:
                 img_net = _couleurs.demagenta(img_net)
+            # v2.36.1 : NEUTRALISATION DE LA COULEUR DU FOND, juste AVANT
+            # l'étirement (9e élément du job, déballage tolérant). L'étirement
+            # VeraLux soustrait une ancre puis étire en log : quelques pour cent
+            # d'écart de ciel y deviennent un facteur ~2,4 de couleur de fond
+            # (mesuré : fond étiré R/G 0,363 · B/G 1,611 → R/G 1,020 ·
+            # B/G 0,996 après correction). Les gains appliqués sont publiés
+            # (`vl_neutre_gains`) pour que l'interface puisse les ANNONCER.
+            gains = None
+            if nf:
+                gains = _couleurs.gains_fond(img_net)
+                if gains is not None and not np.allclose(gains, 1.0,
+                                                         atol=1e-4):
+                    img_net = _couleurs.neutraliser_fond(img_net)
+            with self._vl_lock:
+                # Publié pour l'UI (annonce honnête de ce qui est appliqué) ;
+                # None si l'option est décochée ou si rien n'a été corrigé.
+                self.vl_neutre_gains = gains if (nf and gains is not None
+                                                 and not np.allclose(
+                                                     gains, 1.0, atol=1e-4)
+                                                 ) else None
             prefixe = ((f"GraXpert live : {err_gx} ; " if err_gx else "")
                        + (f"Débruitage live : {err_dn} ; " if err_dn else "")
                        + (f"Netteté live : {err_net} ; " if err_net else ""))
@@ -571,6 +612,9 @@ class DisplayProcessor:
             sh = (self.vl_sharp, int(self.vl_sharp_iterations))
             coul = (self.vl_scnr, self.vl_scnr_doux,
                     self.vl_demagenta)     # jalon 22/23 : chaîne couleur
+            # v2.36.1 : neutralisation de la couleur du fond AVANT l'étirement
+            # (9e élément du job — déballage tolérant côté worker).
+            nf = bool(self.vl_neutre_fond)
             # Jalon 24 : couches de la composition (posées par l'UI, jamais
             # mutées en place — remplacement entier), capturées avec le job.
             compo = self.vl_compo
@@ -581,7 +625,7 @@ class DisplayProcessor:
                     # copie défensive : img appartient à l'UI et peut être
                     # remplacée pendant le calcul
                     self._vl_job = (img.astype(np.float32).copy(), params,
-                                    key, gx, dn, sh, coul, compo)
+                                    key, gx, dn, sh, coul, compo, nf)
                     self._vl_wake.set()
             self._vl_src, self._vl_key = img, key
         with self._vl_lock:

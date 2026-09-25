@@ -668,6 +668,12 @@ class App:
         if c.get("vl_demagenta"):
             self.var_vl_demagenta.set(True)
             self._on_vl_demagenta()
+        # v2.36.1 : neutralisation de la couleur du fond — DÉFAUT COCHÉE, donc on
+        # ne l'active que si la config la demande ET qu'une valeur est présente
+        # (une config antérieure ne doit pas changer le défaut).
+        if "vl_neutre_fond" in c:
+            self.var_vl_neutre.set(bool(c.get("vl_neutre_fond")))
+            self._on_vl_neutre()
         # Jalon 42 : cadence d'empilement — restauration TOLÉRANTE (valeur
         # absente/inconnue → « dès réception », jamais de surprise).
         cad = c.get("cadence_lecture")
@@ -728,6 +734,9 @@ class App:
         c["vl_scnr"] = bool(self.var_vl_scnr.get())
         c["vl_scnr_doux"] = bool(self.var_vl_scnr_doux.get())
         c["vl_demagenta"] = bool(self.var_vl_demagenta.get())
+        # v2.36.1 : neutralisation de la couleur du fond — booléen EXPLICITE
+        # (comme les autres cases : si Alain la décoche, elle reste décochée).
+        c["vl_neutre_fond"] = bool(self.var_vl_neutre.get())
         c["ext_scnr"] = bool(self.var_ext_scnr.get())
         c["ext_scnr_doux"] = bool(self.var_ext_scnr_doux.get())
         c["ext_demagenta"] = bool(self.var_ext_demagenta.get())
@@ -1684,6 +1693,24 @@ class App:
                         text="Démagenta — négatif + SCNR (live)",
                         variable=self.var_vl_demagenta,
                         command=self._on_vl_demagenta).pack(anchor="w")
+        # --- v2.36.1 : NEUTRALISATION DE LA COULEUR DU FOND avant étirement ---
+        # Constat d'Alain (25/09/2026) : le fond restait bleu à l'écran (et le
+        # PNG était franchement bleu, pour une autre raison : canaux permutés).
+        # COCHÉE PAR DÉFAUT : ce n'est pas un choix esthétique mais la
+        # correction d'un défaut de rendu (l'ancre de VeraLux transforme
+        # quelques pour cent d'écart de ciel en facteur ~2,4 de couleur de
+        # fond). Décocher = ancien rendu.
+        self.var_vl_neutre = tk.BooleanVar(value=True)
+        ttk.Checkbutton(self.frm_couleur,
+                        text="Neutraliser la couleur du fond (live)",
+                        variable=self.var_vl_neutre,
+                        command=self._on_vl_neutre).pack(anchor="w", pady=(4, 0))
+        ttk.Label(self.frm_couleur,
+                  text="Égalise les 3 canaux sur la MÉDIANE DE LA MOITIÉ SOMBRE "
+                       "(gains ~2 %) juste avant l'étirement : l'ancre de "
+                       "VeraLux transformait 2 % d'écart de ciel en un fond "
+                       "bleu (mesuré R/G 0,36 · B/G 1,61 → 1,02 · 1,00).",
+                  foreground="#888888", wraplength=310).pack(anchor="w")
 
         # --- État des calculs (jalons 40/41) : cadre INDÉPENDANT du moteur —
         # visible en VeraLux (étapes du solveur : ⏳ préparation/composition/
@@ -2577,6 +2604,20 @@ class App:
         if actif != self.disp.vl_scnr:
             self.disp.vl_scnr = actif       # la clé change → re-résolution
 
+    def _on_vl_neutre(self):
+        """Case « Neutraliser la couleur du fond » (v2.36.1) : le solveur
+        VeraLux applique les gains AVANT l'étirement (le direct aussi :
+        `disp.vl_neutre_fond` entre dans la clé des réglages → re-résolution)."""
+        self._sync_vl_neutre_vue()
+
+    def _sync_vl_neutre_vue(self):
+        """Vue « empilement » uniquement (même règle que SCNR/débruitage : en vue
+        « traitée », l'image vient du traitement externe, sans étirement live)."""
+        actif = bool(self.var_vl_neutre.get()) \
+            and self.var_view.get() != "traitée"
+        if actif != self.disp.vl_neutre_fond:
+            self.disp.vl_neutre_fond = actif    # la clé change → re-résolution
+
     def _on_vl_demagenta(self):
         """Case démagenta (jalon 22) : idem SCNR (jalon 39 : rendu immédiat)."""
         self._sync_vl_demagenta_vue()
@@ -2612,6 +2653,7 @@ class App:
         self._sync_vl_scnr_vue()
         self._sync_vl_scnr_doux_vue()
         self._sync_vl_demagenta_vue()
+        self._sync_vl_neutre_vue()          # v2.36.1 : fond neutre avant étirement
 
     def _on_vl_sharp(self):
         """Case/curseur de la netteté live (jalon 12) : répercute les
@@ -2712,10 +2754,19 @@ class App:
                         + ("NET ✓ · " if self.disp.vl_sharp else "") \
                         + ("COUL ✓ · " if (self.disp.vl_scnr
                                            or self.disp.vl_scnr_doux
-                                           or self.disp.vl_demagenta) else "")
-                    self._lbl_vl_texte(
-                        f"{prefixe}logD {self.disp.vl_log_d_resolu:.2f} · "
-                        f"fond {d['median_luminance_finale']:.3f}", "#1d7f1d")
+                                           or self.disp.vl_demagenta) else "") \
+                        + ("FOND ✓ · " if self.disp.vl_neutre_gains
+                           is not None else "")
+                    texte = (f"{prefixe}logD "
+                             f"{self.disp.vl_log_d_resolu:.2f} · "
+                             f"fond {d['median_luminance_finale']:.3f}")
+                    # v2.36.1 : ANNONCE les gains de neutralisation du fond (sans
+                    # quoi l'utilisateur ne peut pas savoir ce qui a été corrigé).
+                    if self.disp.vl_neutre_gains is not None:
+                        g = self.disp.vl_neutre_gains
+                        texte += (f" · fond neutralisé (R {g[0]:.4f} / "
+                                  f"G {g[1]:.4f} / B {g[2]:.4f})")
+                    self._lbl_vl_texte(texte, "#1d7f1d")
         if en_cours_vl:               # solveur VeraLux : l'étape courante
             txt = f"⏳ calcul : {self.disp.vl_stage or 'préparation'}…"
             if txt != self._vl_lbl_txt:
@@ -3711,6 +3762,7 @@ class App:
             vl_denoise_force=d.vl_denoise_force,
             vl_scnr=d.vl_scnr, vl_demagenta=d.vl_demagenta,
             vl_scnr_doux=d.vl_scnr_doux,
+            vl_neutre_fond=bool(d.vl_neutre_fond),   # v2.36.1
             vl_sharp=d.vl_sharp, vl_sharp_iterations=d.vl_sharp_iterations)
         st = self.stacker
         if st is not None:
@@ -3970,6 +4022,17 @@ class App:
                 self.dernier_applicatif = entete.get("AVAAPPLI")
                 self.asseen_result = path
                 return
+            # v2.36.1 : neutralisation de la couleur du fond, JUSTE AVANT
+            # l'étirement — UNIQUEMENT pour un étirement VeraLux (c'est son
+            # ANCRE qui amplifie la couleur du fond ; le STF étire avec une
+            # seule transformation sur la luminance, donc n'est pas concerné) et
+            # JAMAIS pour la 3e sortie LINÉAIRE ci-dessus, qui doit rester
+            # « empilement + corrections » (verrouillé par le banc jalon 59 [6]).
+            # Même ordre que dans le solveur live : le fichier « tel que vu » est
+            # identique à l'écran.
+            if (vue == "pile" and reglages.get("vl_neutre_fond")
+                    and reglages.get("stretch") == "veralux"):
+                source = couleurs_mod.neutraliser_fond(source)
             rendu = self.disp.rendu_pleine_resolution(source, reglages)
             if session != self._session:    # session relancée entre-temps
                 return

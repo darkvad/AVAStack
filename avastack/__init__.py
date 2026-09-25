@@ -14,9 +14,51 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.36.0"
+AVASTACK_VERSION = "2.36.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.36.1 : LE FOND BLEU — DEUX CAUSES, DEUX CORRECTIFS (constats d'Alain,
+#          25/09/2026 : « le fichier tel que vu en png : PROBLEME, vachement bleu
+#          et ca me fait ca depuis le début je pense, donc problème vieux », puis
+#          « il reste quand même pas mal de bruit bleu »).
+#          ① PNG/TIFF : R ET B ÉTAIENT PERMUTÉS À L'ÉCRITURE. `save_image`
+#            passait l'image RGB de l'appli à `cv2.imencode`, qui attend du BGR
+#            (`load_image`, lui, convertit à la lecture) : TOUT PNG/TIFF exporté
+#            sortait les canaux échangés. Piège SILENCIEUX : l'aller-retour
+#            interne restait cohérent (écriture sans conversion, relecture avec),
+#            donc ni les bancs ni l'application ne le voyaient — seulement les
+#            visionneuses, Siril, GraXpert et Alain. MESURÉ sur son PNG :
+#            PNG_R ≈ FITS_B et PNG_B ≈ FITS_R (corrélation 1,0000). Correctif :
+#            conversion RGB→BGR avant `imencode` pour les images à 3 canaux ; le
+#            banc relit désormais les fichiers écrits avec un lecteur
+#            INDÉPENDANT (OpenCV brut ET PIL), jamais seulement par load_image.
+#          ② L'ÉTIREMENT VERALUX AMPLIFIAIT LA COULEUR DU CIEL JUSQU'AU BLEU.
+#            Le fichier linéaire a pourtant un fond NEUTRE (R/G 0,9991 ·
+#            B/G 0,9991 mesuré), mais VeraLux soustrait une ANCRE (scalaire lu
+#            dans l'histogramme de luminance) puis étire en log : pour le fond,
+#            seul compte le RÉSIDU (niveau du canal − ancre). MESURÉ : ciels
+#            0,0321 / 0,0326 / 0,0332 (3,6 % de bleu), ancre 0,0313 → résidus
+#            +0,00080 / +0,00137 / +0,00196 (rapports 1 : 1,70 : 2,44) → fond
+#            ÉTIRÉ R/G 0,363 · B/G 1,611. L'équilibrage des canaux ne l'enlève
+#            pas : il estime le fond sur un PERCENTILE BAS (les coins les plus
+#            sombres, déjà neutres à 0,1 %) alors que l'ancre vit dans
+#            l'histogramme GLOBAL — les deux se complètent.
+#            Correctif : `couleurs.neutraliser_fond` — gains par canal (~2 % ici)
+#            mesurés sur la MÉDIANE DE LA MOITIÉ SOMBRE (robuste à un objet qui
+#            remplirait le champ, contrairement à la médiane globale) et appliqués
+#            JUSTE AVANT l'étirement → fond étiré R/G 1,020 · B/G 0,996 (mesuré
+#            sur le même fichier). Case « Neutraliser la couleur du fond (live) »
+#            dans « Couleur live », COCHÉE PAR DÉFAUT (c'est un défaut de rendu,
+#            pas un choix esthétique ; décocher = ancien rendu), gains ANNONCÉS
+#            dans l'état des calculs. Garde-fou ±10 % : sur un cadrage dominé par
+#            un objet étendu la « moitié sombre » n'est plus du ciel (mesuré au
+#            banc : les gains partent à la borne) — l'ampleur reste donc bornée,
+#            et rien n'est appliqué si l'image est mono, déjà neutre, ou si un
+#            canal est vide. Transport : clé des réglages du solveur (9e élément
+#            du job), chemin de sauvegarde « tel que vu », config
+#            (`vl_neutre_fond`). Banc : `_test_fond_bleu_jalon62.py` — qui
+#            mesure aussi, en option, un fichier RÉEL donné en argument (fond
+#            linéaire, gains, fond étiré avant/après, et contrôle du PNG écrit).
 # v2.36.0 : NORMALISATION COMMUNE DES CANAUX EN COMPOSITION — **OPTION** (demande
 #          d'Alain, 25/09/2026 : « ce bruit, qu'on utilise SPCC ou pas, est
 #          présent ; plus on empile, plus VeraLux tire sur l'étirement »).

@@ -151,6 +151,16 @@ Source: "{#RepoRoot}\_test_save_brute_jalon59.py"; DestDir: "{app}"; Flags: igno
 ; il reste inchange (x0,9) et COLORE -> c'est la cause du grain que voit Alain.
 Source: "{#RepoRoot}\_test_norm_commune_jalon61.py"; DestDir: "{app}"; Flags: ignoreversion
 
+; Banc des CORRECTIFS v2.36.1 (fond bleu, constats d'Alain du 25/09/2026) :
+; (1) les PNG/TIFF ne permutent plus R et B (verifie par DEUX lecteurs
+; independants : OpenCV brut et PIL) ; (2) neutralisation de la couleur du fond
+; avant l'etirement VeraLux (gains ~2 % mesures sur la mediane de la moitie
+; sombre : fond etire de R/G 0,36 B/G 1,61 -> 1,02 / 1,00) ; (3) branchement
+; UI/solveur/config. Accepte un fichier REEL en argument :
+;   python _test_fond_bleu_jalon62.py "mon_fichier_lineaire.fits"
+; -> fond lineaire, gains proposes, fond etire avant/apres, et controle du PNG ecrit.
+Source: "{#RepoRoot}\_test_fond_bleu_jalon62.py"; DestDir: "{app}"; Flags: ignoreversion
+
 ; veralux_core_headless.py : code tiers GPL-3.0-or-later (Riccardo Paterniti),
 ; copie tel quel (sa licence exige de transmettre le source a cote du binaire).
 Source: "{#RepoRoot}\veralux_core_headless.py"; DestDir: "{app}"; Flags: ignoreversion
