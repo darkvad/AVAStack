@@ -253,26 +253,50 @@ def find_output(src, outbase):
 def auto_unflip(proc, ref):
     """Certains outils externes rendent l'image en miroir vertical (convention
     FITS « bas en haut » vs image « haut en bas »). Compare le résultat traité
-    à l'empilement d'origine (sous-échantillonnés pour la vitesse) et retourne
-    le résultat dans la bonne orientation. Marge de sécurité : ne retourne que
-    si le miroir corrèle NETTEMENT mieux (évite les faux positifs sur une image
-    quasi symétrique)."""
+    à l'empilement d'origine et retourne le résultat dans la bonne orientation.
+    Marge de sécurité : ne retourne que si le miroir corrèle NETTEMENT mieux
+    (+0,20 depuis la v2.38.2 — mesuré +0,27 à +0,46 sur les vrais miroirs, contre
+    un écart de bruit < 0,05 quand l'orientation est bonne).
+
+    CORRECTION v2.38.2 (constat mesuré sur les fichiers d'Alain, 27/09/2026) :
+    la comparaison se fait désormais sur une version ÉTIRÉE et NORMALISÉE des
+    deux images. Sur des images LINÉAIRES, la corrélation brute est écrasée par
+    les quelques pixels du cœur des objets (≈ 1 contre un ciel à 0,03) : mesuré
+    sur ses deux fichiers M31, les deux orientations donnaient +0,1085 (droite)
+    et +0,1212 (miroir) — écart +0,0127, SOUS la marge de 0,05 → le miroir du
+    CLI rc-astro (BXT) n'était pas détecté, et le résultat du ⚡ était
+    enregistré ET affiché À L'ENVERS (constaté sur les fichiers v2.373, v2.38.0
+    et v2.38.1 : corrélation +0,99 en miroir contre +0,35 tel quel). Sur ces
+    MÊMES images, la comparaison étirée donne +0,539 (droite) contre +0,996
+    (miroir) : la décision devient franche. Banc : `_test_unflip_jalon69.py`.
+    """
     try:
         a = proc if proc.ndim == 2 else proc.mean(axis=2)
         b = ref if ref.ndim == 2 else ref.mean(axis=2)
         if a.shape != b.shape:
             return proc                       # formes différentes → ne rien risquer
-        a = a[::max(1, a.shape[0] // 256), ::max(1, a.shape[1] // 256)]
-        b = b[::max(1, b.shape[0] // 256), ::max(1, b.shape[1] // 256)]
-        a = a.astype(np.float64)
-        b = b.astype(np.float64)
+        # Sous-échantillonnage par MOYENNE (INTER_AREA) : un pas de sélection
+        # « 1 pixel sur N » fabriquait de l'aliasing et perturbait la mesure.
+        ech = max(1.0, max(a.shape) / 256.0)
+        taille = (max(8, int(round(a.shape[1] / ech))),
+                  max(8, int(round(a.shape[0] / ech))))
+
+        def preparer(x):
+            """Luminance → étirement doux → normalisée (cf. docstring)."""
+            y = cv2.resize(np.asarray(x, np.float32), taille,
+                           interpolation=cv2.INTER_AREA)
+            bas, haut = (float(v) for v in np.percentile(y, (0.5, 99.5)))
+            y = np.clip((y - bas) / max(1e-9, haut - bas), 0.0, 1.0)
+            return np.sqrt(y).astype(np.float64)
+
+        a, b = preparer(a), preparer(b)
 
         def corr(x, y):
             x, y = x - x.mean(), y - y.mean()
             d = np.sqrt((x * x).sum() * (y * y).sum())
             return float((x * y).sum() / d) if d > 0 else 0.0
 
-        if corr(a, b[::-1]) > corr(a, b) + 0.05:
+        if corr(a, b[::-1]) > corr(a, b) + 0.20:
             return proc[::-1]                 # miroir vertical → on redresse
         return proc
     except Exception:

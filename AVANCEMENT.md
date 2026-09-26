@@ -10,7 +10,36 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **PASSE EN COURS — AVAStack v2.38.1 : LE RENDU PLEINE RÉSOLUTION VAUT AUSSI
+- **PASSE EN COURS — AVAStack v2.38.2 : LE RÉSULTAT DU ⚡ N'EST PLUS À
+  L'ENVERS** (code + banc livrés le 27/09/2026, **EN ATTENTE DE TON TEST** ;
+  installateur 2.38.2 reconstruit). Découvert en mesurant ton impression de
+  « bruit bleu » (voir le bloc suivant) : tes deux « tel que vu » v2.38.1
+  montraient le MÊME champ, mais **l'un retourné haut-bas** (corrélation +0,99
+  en miroir contre +0,35 tel quel) — défaut présent depuis BXT (v2.373, v2.38.0,
+  v2.38.1), qui touchait aussi l'ÉCRAN en vue « traitée ». CAUSE MESURÉE :
+  `auto_unflip` comparait les images LINÉAIRES brutes (« 1 pixel sur N ») — sur
+  tes fichiers, droite +0,1085 contre miroir +0,1212, écart +0,0127 < marge
+  0,05 → aucune décision (le grain et la texture d'outil, non partagés,
+  écrasent la mesure : rapport basses/hautes fréquences 0,25). CORRECTIF :
+  comparaison sur images ÉTIRÉES + normalisées, sous-échantillonnage par MOYENNE
+  (INTER_AREA), marge +0,20 → mesuré +0,539 contre +0,996, décision franche.
+  Banc NEUF `_test_unflip_jalon69.py` (correction sur scène asymétrique, 4 cas
+  SANS faux positif dont le miroir HORIZONTAL, tes vrais fichiers en témoin).
+  Non-régression : 12 bancs rejoués, TOUS PASSENT. Repli : v2.38.1.
+
+- **TON TEST DE LA v2.38.1 (27/09/2026) — « le fichier traité a plus de bruit
+  bleu que le stack » : VÉRIFIÉ, MAIS PAS COMME ON LE CROIT** (mesuré sur le
+  MÊME ciel — 84 blocs de fond communs —, `_diag_bleu_externe_jalon69.py`) : le
+  **grain** bleu (1 px) est au contraire PLUS FAIBLE dans le fichier traité
+  (×0,73 ; rouge ×0,65 ; luminance ×0,75), MAIS le **moucheté bleu 2-8 px est
+  28 % PLUS FORT** (×1,28), son fond est **33 % plus clair** (0,259 → 0,343 :
+  l'étirement est résolu séparément sur chaque image) et son bruit est « en
+  plaques » (σ/MAD 2,95 contre 2,21) — signature d'un traitement IA (BXT
+  `--ash -0.3` + débruitage GraXpert) que la réduction du bruit chromatique
+  **épargne volontairement sur les structures** (correctif v2.37.5). Sujet à
+  trancher (cf. « En attente »), rien n'est appliqué.
+
+- **PASSE PRÉCÉDENTE — AVAStack v2.38.1 : LE RENDU PLEINE RÉSOLUTION VAUT AUSSI
   POUR LA VUE « TRAITÉE »** (code + banc livrés le 27/09/2026, **EN ATTENTE DE
   TON TEST RÉEL** ; installateur 2.38.1 reconstruit). Demande d'Alain :
   « ok pour le rendu pleine résolution en vue traitée, je pensais que c'était
@@ -187,6 +216,14 @@ dans le changelog du source et l'historique git.)
 
 - **AUCUN DÉFAUT CONNU OUVERT** sur la v2.38.0 (validée). Sujets OUVERTS, par ordre
   d'intérêt, à trancher par Alain quand il le souhaite :
+  - **Moucheté bleu du fichier traité (mesuré le 27/09/2026)** : +28 % à
+    l'échelle 2-8 px à cause de BXT (déconvolution `--ash -0.3`) + débruitage IA,
+    alors que le GRAIN FIN y est MEILLEUR qu'en live (×0,73) ; pistes à trancher
+    par Alain : ① `--ash` moins agressif (ou absent) dans la commande BXT,
+    ② BXT n'agit qu'en global aujourd'hui, ③ réduction du bruit chromatique plus
+    forte APRÈS BXT (force 0,6 et rayon 3 px pleine résolution actuellement),
+    ④ accepter tel quel (le grain pixel est meilleur). Rien n'est appliqué :
+    décision d'Alain.
   - **INSTALLATEUR LINUX / macOS (demande d'Alain, 27/09/2026 : « il faudra
     regarder comment faire un installateur pour Linux … et comment avoir les
     prérequis, ce ne sera pas les dll »)** — étude FAITE (27/09/2026), route à

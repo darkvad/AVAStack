@@ -14,9 +14,39 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.38.1"
+AVASTACK_VERSION = "2.38.2"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.38.2 : LE RÉSULTAT DU ⚡ N'EST PLUS À L'ENVERS (miroir vertical du CLI
+#   rc-astro que `auto_unflip` ne détectait pas). Constat MESURÉ chez Alain
+#   (27/09/2026) en comparant ses deux « tel que vu » de la v2.38.1 : le fichier
+#   du ⚡ et celui de l'empilement montrent le même champ, mais l'un est retourné
+#   haut-bas (corrélation +0,99 en miroir contre +0,35 tel quel). Le défaut
+#   existait depuis l'arrivée de BXT (constaté sur les fichiers v2.373, v2.38.0
+#   et v2.38.1) et touchait AUSSI l'écran en vue « traitée » — le seul endroit
+#   qui applique les outils EXTERNES.
+#   CAUSE : `images.auto_unflip` comparait les images LINÉAIRES brutes par une
+#   corrélation de Pearson sur un sous-échantillonnage « 1 pixel sur N ».
+#   Sur ses fichiers, les deux orientations donnaient +0,1085 (droite) et
+#   +0,1212 (miroir) — écart +0,0127, très en dessous de la marge de 0,05 : la
+#   mesure était ÉCRASÉE par tout ce qui n'est PAS partagé entre les deux images
+#   (grain, texture fine des outils, cadrage légèrement différent — le ⚡
+#   travaille sur un instantané PLUS RÉCENT que l'empilement sauvegardé : mesuré,
+#   le rapport basses/hautes fréquences vaut 0,25 dans les deux images, cf.
+#   `_diag_unflip_mecanisme.py`).
+#   CORRECTIF : la comparaison se fait sur les images ÉTIRÉES et NORMALISÉES
+#   (percentiles 0,5/99,5 puis racine carrée), sous-échantillonnées par MOYENNE
+#   (INTER_AREA) au lieu d'un pas de sélection, et la marge passe à +0,20
+#   (mesuré +0,27 à +0,46 sur les vrais miroirs, < 0,05 quand l'orientation est
+#   bonne). Mesuré sur les mêmes fichiers : +0,539 (droite) contre +0,996
+#   (miroir) → décision franche, miroir redressé.
+#   BANC `_test_unflip_jalon69.py` : correction sur une scène franchement
+#   asymétrique, QUATRE cas sans faux positif (image droite, miroir HORIZONTAL —
+#   qui ne doit jamais être touché —, bruit seul, formes différentes), et les
+#   VRAIS fichiers du ⚡ en témoin (l'ancienne formule, ré-écrite, y est
+#   aveugle).
+#   Repli si régression : v2.38.1.
+
 # v2.38.1 : LE RENDU PLEINE RÉSOLUTION VAUT AUSSI POUR LA VUE « TRAITÉE » (et
 #   corrige, dans cette vue, un écran qui montrait la MAUVAISE image). Demande
 #   d'Alain (27/09/2026) : « ok pour le rendu pleine résolution en vue traitée,
