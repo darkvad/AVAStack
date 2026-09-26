@@ -242,6 +242,13 @@ class App:
         # `_poser_rayon_chroma`, les fichiers l'utilisent tel quel.
         self.rayon_chroma_ref = 3.0
         self._echelle_apercu = 1.0   # dernier facteur de réduction de l'aperçu
+        # v2.38.0 : empilement PLEINE RÉSOLUTION (copie défensive) pour l'option
+        # « Rendu pleine résolution » de l'écran — posé en fin de boucle
+        # d'acquisition, SEUL endroit qui a l'image complète sous la main.
+        self._stack_pleine_res = None
+        # …et son état, en attribut PYTHON (lisible par les threads de travail,
+        # contrairement à une variable Tk : cf. `_pleine_res_activee`).
+        self.pleine_res_ecran = False
         self._session = 0           # anti-mélange entre sessions
         # Jalon 15 : archive temporaire des frames calibrées (fondation du
         # re-stack « à la Siril » : recalcul de l'empilement sur une meilleure
@@ -719,6 +726,12 @@ class App:
         if c.get("vl_chroma"):
             self.var_vl_chroma.set(True)
             self._on_vl_chroma()
+        # v2.38.0 : RENDU PLEINE RÉSOLUTION de l'écran — booléen EXPLICITE ; clé
+        # absente (config antérieure) → DÉCOCHÉE, le comportement d'origine
+        # (aperçu 1600 px) est préservé.
+        if c.get("vl_pleine_res_ecran"):
+            self.var_vl_pleine_res.set(True)
+            self._on_vl_pleine_res()
         # Jalon 42 : cadence d'empilement — restauration TOLÉRANTE (valeur
         # absente/inconnue → « dès réception », jamais de surprise).
         cad = c.get("cadence_lecture")
@@ -789,6 +802,9 @@ class App:
         # v2.37.4 : rayon de RÉFÉRENCE du flou de chroma, en pixels PLEINE
         # RÉSOLUTION (curseur « Rayon de référence »).
         c["vl_chroma_rayon_ref"] = float(self.rayon_chroma_ref)
+        # v2.38.0 : rendu pleine résolution de l'écran (booléen EXPLICITE, comme
+        # les autres cases : décoché, il reste décoché).
+        c["vl_pleine_res_ecran"] = bool(self.var_vl_pleine_res.get())
         c["ext_scnr"] = bool(self.var_ext_scnr.get())
         c["ext_scnr_doux"] = bool(self.var_ext_scnr_doux.get())
         c["ext_demagenta"] = bool(self.var_ext_demagenta.get())
@@ -1695,6 +1711,27 @@ class App:
         self.cb_vl_profil.pack(anchor="w")
         self.cb_vl_profil.bind("<<ComboboxSelected>>",
                                lambda e: self._on_vl_profil())
+
+        # --- v2.38.0 : RENDU PLEINE RÉSOLUTION pour l'écran (demande d'Alain,
+        # 26/09/2026 : « sur l'écran, je veux pouvoir zoomer sur l'image pleine
+        # résolution »). Coché : la chaîne d'affichage (GraXpert/débruitage/
+        # netteté/couleurs/étirement) tourne sur l'empilement COMPLET — l'écran
+        # montre alors EXACTEMENT ce que le fichier contiendra, et le zoom
+        # recadre de VRAIS pixels au lieu de grossir l'aperçu 1600 px (mesuré au
+        # jalon 66 : l'anneau de couleur des étoiles, invisible sur l'aperçu,
+        # n'apparaît que dans les fichiers). Coût mesuré ×4,3 (~7-8 s par
+        # recalcul complet contre ~1,7 s) : décoché par défaut.
+        self.var_vl_pleine_res = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self.frm_veralux,
+                        text="Rendu pleine résolution (zoom fidèle)",
+                        variable=self.var_vl_pleine_res,
+                        command=self._on_vl_pleine_res).pack(anchor="w",
+                                                             pady=(6, 0))
+        ttk.Label(self.frm_veralux,
+                  text="L'écran étire l'image COMPLÈTE : le zoom montre de vrais "
+                       "pixels, identiques au fichier enregistré. Plus lent "
+                       "(~7-8 s par rendu, contre ~2 s pour l'aperçu).",
+                  foreground="#888888", wraplength=310).pack(anchor="w")
 
         # --- Netteté live (jalon 12) : cadre INDÉPENDANT du moteur
         # d'étirement (demande d'Alain) — Richardson-Lucy s'applique AVANT
@@ -2810,6 +2847,39 @@ class App:
         self._poser_rayon_chroma(self._echelle_apercu)
         self._refresh_preview()
 
+    def _pleine_res_activee(self):
+        """True si l'option « Rendu pleine résolution » de l'écran est cochée
+        (v2.38.0).
+
+        ATTENTION THREADS : l'état vit dans `self.pleine_res_ecran`, un simple
+        attribut Python — la boucle d'acquisition et `_pousser_rendu` (threads de
+        travail) l'interrogent pour mémoriser l'empilement COMPLET. Une variable
+        Tk ne peut PAS être lue hors du thread d'interface
+        (`RuntimeError: main thread is not in main loop`, constat réel du banc
+        jalon 59 : la sauvegarde n'était plus produite), d'où ce miroir posé
+        UNIQUEMENT par l'interface (`_on_vl_pleine_res`, restauration de config)."""
+        return bool(getattr(self, "pleine_res_ecran", False))
+
+    def _on_vl_pleine_res(self):
+        """Case « Rendu pleine résolution (zoom fidèle) » (v2.38.0, demande
+        d'Alain du 26/09/2026 : « sur l'écran, je veux pouvoir zoomer sur l'image
+        pleine résolution »).
+
+        Trois effets, et rien d'autre :
+          - l'état est MIRÉ dans un attribut Python (`self.pleine_res_ecran`),
+            seul lisible par les threads de travail (cf. `_pleine_res_activee`) ;
+          - décochée : la copie pleine résolution (25 Mo) est LIBÉRÉE ;
+          - `notify_new_stack()` force un nouveau rendu — le cache du solveur
+            VeraLux n'a pour clé que les RÉGLAGES, pas la résolution : sans ce
+            drapeau, l'ancien rendu d'aperçu resservirait.
+        Pendant le calcul (7 à 8 s), l'écran garde la dernière image."""
+        v = getattr(self, "var_vl_pleine_res", None)
+        self.pleine_res_ecran = bool(v.get()) if v is not None else False
+        if not self.pleine_res_ecran:
+            self._stack_pleine_res = None
+        self.disp.notify_new_stack()
+        self._refresh_preview()
+
     def _on_vl_demagenta(self):
         """Case démagenta (jalon 22) : idem SCNR (jalon 39 : rendu immédiat)."""
         self._sync_vl_demagenta_vue()
@@ -2984,20 +3054,23 @@ class App:
         if self.var_view.get() == "traitée":
             if self.proc_show is not None:
                 self.last_show = self.proc_show
-                self._show_image(self.disp.process(self.last_show, live=False))
+                self._show_image(self.disp.process(
+                    self._src_rendu(self.last_show), live=False))
             else:
                 self._set_ext_msg("Aucun résultat traité — cliquez « ⚡ Traiter » d'abord.")
         else:
             if self.show_stack is not None:
                 self.last_show = self.show_stack
-                self._show_image(self.disp.process(self.last_show, live=False))
+                self._show_image(self.disp.process(
+                    self._src_rendu(self.last_show), live=False))
 
     def _refresh_preview(self):
         """Re-rend l'aperçu immédiatement après un réglage (indispensable en mode
         dossier : pas de frame régulière pour rafraîchir l'écran).
         live=False : ne fait pas avancer le lissage temporel des stats."""
         if self.last_show is not None:
-            self._show_image(self.disp.process(self.last_show, live=False))
+            self._show_image(self.disp.process(
+                self._src_rendu(self.last_show), live=False))
 
     def _push_settings(self):
         # Instantanés « thread-safe » (attributs simples lus par le worker) :
@@ -6425,6 +6498,12 @@ class App:
             if scale < 1.0:
                 show = cv2.resize(show, None, fx=scale, fy=scale,
                                   interpolation=cv2.INTER_AREA)
+            # v2.38.0 : garde l'empilement COMPLET sous la main pour l'option
+            # « Rendu pleine résolution » (copie défensive : le stacker réécrit
+            # son tampon à la frame suivante).
+            if self._pleine_res_activee():
+                self._stack_pleine_res = np.asarray(
+                    stack if stack is not None else show, np.float32).copy()
             # v2.37.3/v2.37.4 : le rayon du flou de chroma suit la RÉSOLUTION —
             # l'aperçu est réduit d'un facteur `scale`, les ÉTOILES aussi : à
             # rayon constant en pixels, leur couleur s'étalerait 1/scale fois plus
@@ -6560,6 +6639,10 @@ class App:
         show = (cv2.resize(stack, None, fx=scale, fy=scale,
                            interpolation=cv2.INTER_AREA) if scale < 1.0
                 else stack)
+        # v2.38.0 : même mémorisation que la boucle d'acquisition, pour l'option
+        # « Rendu pleine résolution » de l'écran.
+        if self._pleine_res_activee():
+            self._stack_pleine_res = np.asarray(stack, np.float32).copy()
         # v2.37.3/v2.37.4 : le rayon du flou de chroma suit la RÉSOLUTION (même
         # règle qu'à la fin de la boucle d'acquisition : l'aperçu est réduit, les
         # étoiles aussi → cf. `_poser_rayon_chroma`).
@@ -6812,7 +6895,7 @@ class App:
                 self._draw_hist(hist)
                 if self.var_view.get() == "pile":     # la vue traitée garde son instantané
                     self.last_show = show
-                    self._show_image(self.disp.process(show))
+                    self._show_image(self.disp.process(self._src_rendu(show)))
         except queue.Empty:
             pass
         if self.disp.vl_graxpert:      # jalon 4 : la commande GraXpert peut
@@ -6839,7 +6922,8 @@ class App:
             self.btn_save_proc.config(state="normal")
             if self.var_view.get() == "traitée" and self.proc_show is not None:
                 self.last_show = self.proc_show
-                self._show_image(self.disp.process(self.proc_show, live=False))
+                self._show_image(self.disp.process(
+                    self._src_rendu(self.proc_show), live=False))
         if self.ext_msg != self._ext_shown:
             self._ext_shown = self.ext_msg
             self.lbl_ext.config(
@@ -6890,6 +6974,26 @@ class App:
                        f"\n{corr}" if corr else "")
                     + (f"\n\nOutils : {outils}" if outils else ""))
         self.root.after(30, self._tick)
+
+    def _src_rendu(self, lineaire):
+        """Image LINÉAIRE donnée à la chaîne d'affichage (v2.38.0).
+
+        Par défaut : `lineaire`, l'aperçu 1600 px — rapide (~1,7 s), mais la
+        chaîne non linéaire (GraXpert, débruitage, netteté, couleurs, chroma,
+        étirement) n'est alors PAS appliquée à la même échelle que pour le
+        fichier : mesuré au jalon 66, écart moyen 0,015-0,023 et jusqu'à 0,49 aux
+        cœurs d'étoiles — l'anneau de couleur des étoiles, lui, n'existe QUE dans
+        les fichiers (l'aperçu l'écrase).
+
+        Option « Rendu pleine résolution » COCHÉE (et empilement complet
+        disponible) : la MÊME chaîne est appliquée à l'image COMPLÈTE → l'écran
+        montre exactement ce que le fichier contiendra, et le zoom recadre de
+        VRAIS pixels. Coût mesuré : 7,2-8,3 s par recalcul complet (×4,3).
+        Repli sur l'aperçu quand aucun empilement pleine résolution n'existe
+        (vue « traitée », début de session)."""
+        if self._pleine_res_activee() and self._stack_pleine_res is not None:
+            return self._stack_pleine_res
+        return lineaire
 
     def _show_image(self, disp):
         """Mémorise la dernière image étirée puis la dessine (zoom/pan conservés)."""
@@ -6999,8 +7103,17 @@ class App:
         self.cv_img.delete("all")
         self.cv_img.create_image(cw // 2, ch // 2, image=self._photo)
         if self.zoom > 1.01:
+            # v2.38.0 : l'échelle RÉELLE (px image par px écran) est affichée —
+            # 1,00 signifie que l'écran montre les pixels du fichier sans
+            # interpolation ; avec le rendu pleine résolution, ces pixels sont
+            # ceux que le fichier contiendra.
+            info = f"{scale:.2f} px image / px écran" \
+                + (", 1:1" if abs(scale - 1.0) < 0.02 else "")
+            if self._pleine_res_activee():
+                info += " · PLEINE RÉSOLUTION"
             self.cv_img.create_text(8, 8, anchor="nw", fill="#ffd75e",
-                                    text=f"zoom ×{self.zoom:.1f}   (double-clic : ajuster)")
+                                    text=f"zoom ×{self.zoom:.1f}   ({info})   "
+                                         f"double-clic : ajuster")
 
     def _draw_hist(self, chans):
         self.cv_hist.delete("all")

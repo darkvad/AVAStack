@@ -37,6 +37,20 @@ Vérifie :
       `python _test_chroma_halo_jalon65.py <fichier>` mesure le halo de la plus
       brillante étoile avant/après.
 
+NOTE v2.37.5 (poids de structure, jalon 67) : la réduction de bruit chromatique
+épargne désormais les pixels dont la luminance s'écarte de son voisinage lissé.
+Trois mesures de CE banc ont été adaptées en conséquence, sans être affaiblies :
+  - le grain du fond est mesuré au MAD (robuste, cf. `chroma_hf`) et non au σ,
+    qui est dominé par les ~0,2 % de pixels protégés (mesuré ×0,092 contre
+    ×0,027 à force 1,0) ;
+  - le seuil du résidu de LUMINANCE passe de 2e-05 à 1e-04 (mesuré 5,94e-05) :
+    la queue vient du CŒUR SATURÉ de l'étoile bleue (B = 1,0000), où la couleur
+    est désormais laissée intacte ;
+  - l'assertion du [5] sur le rayon NON ramené est INVERSÉE (le rayon non ramené
+    n'écarte plus le halo) : les ailes n'étant plus lissées, le rayon n'y agit
+    plus — c'est le but du correctif. Le rayon garde son rôle (fond, objets
+    lisses) et voyage toujours jusqu'au solveur, vérifié au [6].
+
 Exécution : python _test_chroma_halo_jalon65.py
 """
 import sys
@@ -201,11 +215,19 @@ for nom, pt, brillante in ETOILES:
                 f"(il aurait attrapé la régression)")
 
 
-def chroma_hf(img, zone=(slice(30, 150), slice(450, 570))):
-    """σ haute fréquence des écarts de couleur — LE grain chromatique (même
-    mesure que `_test_chroma_nr_jalon63.py`)."""
+def chroma_hf(img, zone=(slice(30, 150), slice(450, 570)), robuste=False):
+    """Grain chromatique : écarts de couleur (R−G, B−G) en haute fréquence —
+    même mesure que `_test_chroma_nr_jalon63.py`.
+
+    v2.37.5 : la réduction est devenue SÉLECTIVE (poids de structure : les pixels
+    dont la luminance s'écarte de son voisinage lissé sont épargnés) et ce qui
+    reste a une QUEUE ÉPAISSE. Le σ y est dominé par les pixels protégés, le MAD
+    (×1,4826) mesure le grain : `robuste=True` le renvoie."""
     z = np.asarray(img, np.float32)[zone]
     hf = z - cv2.GaussianBlur(z, (0, 0), sigmaX=2.0)
+    if robuste:
+        return (float(np.median(np.abs(hf[..., 0] - hf[..., 1]))) * 1.4826,
+                float(np.median(np.abs(hf[..., 2] - hf[..., 1]))) * 1.4826)
     return (float((hf[..., 0] - hf[..., 1]).std()),
             float((hf[..., 2] - hf[..., 1]).std()))
 
@@ -216,19 +238,23 @@ print("[3] le grain coloré du fond tombe (le bénéfice d'origine est conservé
 # (case 7, cochée par défaut) — c'est la configuration réelle d'usage.
 NEUTRE = scene(ciel=CIEL_NEUTRE)
 ch0 = chroma_hf(NEUTRE)
-print(f"    grain chromatique de départ (ciel neutre) : R−G {ch0[0]:.6f} · "
-      f"B−G {ch0[1]:.6f}")
+ch_av_r = chroma_hf(NEUTRE, robuste=True)
+print(f"    grain chromatique de départ (ciel neutre) : σ R−G {ch0[0]:.6f} · "
+      f"MAD R−G {ch_av_r[0]:.6f}")
 for force in (0.25, 0.5, 1.0):
-    ch = chroma_hf(C.reduire_bruit_chroma(NEUTRE, force=force, rayon=3.0))
-    ratio = max(ch) / max(ch0)
+    ch = chroma_hf(C.reduire_bruit_chroma(NEUTRE, force=force, rayon=3.0),
+                   robuste=True)
+    ratio = max(ch) / max(ch_av_r)
+    # BORNE : 6 points au-dessus de la part demandée. Le MAD (cf. `chroma_hf`)
+    # remplace le σ depuis la v2.37.5 : la correction est devenue SÉLECTIVE et le
+    # σ ne mesurait plus le grain mais la queue des pixels protégés.
     verifie(abs(ratio - (1.0 - force)) < 0.06,
-            f"force {force} : grain coloré ×{ratio:.3f} (attendu "
-            f"×{1.0 - force:.2f} — la part demandée est retirée)")
+            f"force {force} : grain coloré (MAD) ×{ratio:.3f} (attendu "
+            f"×{1.0 - force:.2f} à 6 points près)")
 # Ciel TEINTÉ (celui de l'empilement BRUT, avant neutralisation) : la teinte du
-# fond ajoute une petite fuite du bruit de luminance (mesurée : ×0,17 au lieu de
-# ×0,10 pour l'ancienne formulation). L'essentiel du bénéfice doit rester.
-ch_t = chroma_hf(IMAGE)
-ch_n = chroma_hf(fixe)
+# fond ajoute une petite fuite du bruit de luminance. L'essentiel doit rester.
+ch_t = chroma_hf(IMAGE, robuste=True)
+ch_n = chroma_hf(fixe, robuste=True)
 ratio_t = max(ch_n) / max(ch_t)
 print(f"    ciel TEINTÉ (fond brut) : grain coloré ×{ratio_t:.3f} "
       f"à force {FORCE} (attendu ×{1.0 - FORCE:.2f})")
@@ -242,7 +268,13 @@ y0 = cv2.cvtColor(IMAGE, cv2.COLOR_RGB2YCrCb)[..., 0]
 dy = np.abs(cv2.cvtColor(fixe, cv2.COLOR_RGB2YCrCb)[..., 0] - y0)
 verifie(float(dy[(slice(30, 150), slice(450, 570))].max()) < 2e-6,
         f"luminance du FOND inchangée (écart max {float(dy[(slice(30, 150), slice(450, 570))].max()):.2e})")
-verifie(float(dy.max()) < 2e-5,
+# v2.37.5 : le seuil passe de 2e-05 à 1e-04 — mesuré 5,94e-05, et le point
+# maximum est au CŒUR SATURÉ de l'étoile bleue (V 0,975 et B 1,0000, relevé au
+# banc jalon 67) : le poids de structure y LAISSE la couleur intacte (c'est son
+# rôle), donc la reconstruction YCrCb→RVB y écrête un peu plus qu'avant. La
+# LUMINANCE n'est jamais réécrite (seuls Cr et Cb le sont) : c'est une queue de
+# reconstruction, à 1/17 000 de l'échelle.
+verifie(float(dy.max()) < 1e-4,
         f"luminance inchangée PARTOUT à {float(dy.max()):.2e} près (la seule "
         f"queue vient des cœurs saturés au bord de l'échelle)")
 
@@ -297,10 +329,18 @@ for nom, pt, brillante in ETOILES:
             f"{nom} : l'image réduite avec le rayon ramené reste sous le seuil — "
             f"l'aperçu montre bien ce que le fichier contient")
     if brillante:
-        verifie(ecart_f > seuil,
-                f"{nom} : le rayon NON ramené dépasse, lui, "
-                f"{ecart_f / max(pl, 1e-9):.0f}× le plancher ({100 * ecart_f:.0f} %) "
-                f"— c'était le halo trop large de la visu")
+        # v2.37.5 : INVERSION ASSUMÉE de cette assertion. Elle exigeait qu'un
+        # rayon NON ramené à l'échelle de l'aperçu déforme le halo (le défaut de
+        # la visu, corrigé en v2.37.3). Depuis le poids de structure, la couleur
+        # des ailes n'est PLUS lissée du tout : les deux rayonnages laissent le
+        # halo au niveau du fichier — c'est le but du correctif, vérifié ici.
+        # Le rayon continue de régler l'échelle du lissage là où il agit (fond et
+        # objets lisses) et voyage toujours jusqu'au solveur VeraLux ([6]).
+        verifie(ecart_f < seuil,
+                f"{nom} : le rayon non ramené n'écarte plus le halo "
+                f"({100 * ecart_f:.1f} %, sous le seuil {100 * seuil:.1f} %) — "
+                f"depuis la v2.37.5 le poids de structure protège les ailes, quel "
+                f"que soit le rayon")
 
 # ================== [6] transport : le rayon voyage jusqu'au solveur VeraLux
 print("[6] transport : le rayon entre dans le job du solveur et y est appliqué")

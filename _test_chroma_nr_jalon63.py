@@ -20,7 +20,9 @@ Vérifie :
   [2] le grain CHROMATIQUE du fond tombe de la part demandée (mesuré en σ haute
       fréquence sur une zone de ciel ; borne haute à 8 points près depuis la
       v2.37.3, la formulation par RAPPORT de couleur n'étant plus exactement
-      linéaire) sans toucher à la LUMINANCE ;
+      linéaire ; mesuré au MAD depuis la v2.37.5 — cf. `chroma_hf` : la réduction
+      est devenue SÉLECTIVE et le σ est dominé par la queue des ~0,2 % de pixels
+      protégés) sans toucher à la LUMINANCE ;
   [3] la couleur de l'OBJET (chroma étendue, basse fréquence) est préservée ;
   [4] LE CAS D'ALAIN : des gains de type SPCC déséquilibrent le grain (B/G 1,32),
       la réduction de bruit chromatique le RAMÈNE vers 1,00 ;
@@ -95,16 +97,25 @@ def luminance(a):
     return 0.299 * a[..., 0] + 0.587 * a[..., 1] + 0.114 * a[..., 2]
 
 
-def chroma_hf(a, zone=ZONE_CIEL):
-    """σ haute fréquence des ÉCARTS DE COULEUR (R−G et B−G) : c'est LA mesure du
+def chroma_hf(a, zone=ZONE_CIEL, robuste=False):
+    """ÉCARTS DE COULEUR (R−G et B−G) en haute fréquence : c'est LA mesure du
     grain CHROMATIQUE. Le grain de LUMINANCE, lui, est commun aux trois canaux et
     s'annule dans ces différences — c'est pour ça qu'une réduction de bruit
-    chromatique ne peut PAS l'enlever (rôle du débruitage)."""
+    chromatique ne peut PAS l'enlever (rôle du débruitage).
+
+    v2.37.5 : la réduction est devenue SÉLECTIVE (le poids de structure protège
+    les pixels dont la luminance s'écarte de son voisinage lissé) : ce qui reste
+    a donc une QUEUE ÉPAISSE, et un σ y est dominé par les ~0,2 % de pixels
+    protégés — mesuré ×0,092 à force 1,0 alors que le grain réellement restant
+    vaut ×0,027 (jalon 67). `robuste=True` rend le MAD (×1,4826), insensible à
+    cette queue : c'est lui qui mesure LE GRAIN, le σ mesure la queue."""
     a = np.asarray(a, np.float32)
     out = []
     for i, j in ((0, 1), (2, 1)):
         d = a[..., i][zone] - a[..., j][zone]
-        out.append(float((d - cv2.GaussianBlur(d, (0, 0), sigmaX=2.0)).std()))
+        hf = d - cv2.GaussianBlur(d, (0, 0), sigmaX=2.0)
+        out.append(float(np.median(np.abs(hf))) * 1.4826 if robuste
+                   else float(hf.std()))
     return out
 
 
@@ -132,27 +143,29 @@ verifie(max(g0) / min(g0) < 1.05,
         f"({np.round(g0, 6).tolist()} — c'est le fond déjà neutralisé)")
 hf = lambda p: float((p - cv2.GaussianBlur(p, (0, 0), sigmaX=2.0)).std())
 ch0 = chroma_hf(scene)
+ch0r = chroma_hf(scene, robuste=True)
 y0 = cv2.cvtColor(scene, cv2.COLOR_RGB2YCrCb)[..., 0].copy()
 print(f"    grain CHROMATIQUE de départ : R−G {ch0[0]:.6f} · "
       f"B−G {ch0[1]:.6f} (le grain coloré à retirer)")
 for force in (0.25, 0.5, 1.0):
     s = C.reduire_bruit_chroma(scene, force=force)
     ch = chroma_hf(s)
-    ratio = max(ch) / max(ch0)
+    ratio = max(chroma_hf(s, robuste=True)) / max(ch0r)
     ecart_y = float(np.abs(
         cv2.cvtColor(s, cv2.COLOR_RGB2YCrCb)[..., 0] - y0).max())
     # v2.37.3 : le lissage porte désormais sur le RAPPORT de couleur, dont
     # l'échelle suit la luminosité locale → il reste quelques pour cent du grain
     # coloré là où l'ancienne formulation (linéaire en chroma absolue) tombait
     # exactement à (1 − force). On garantit donc une BORNE HAUTE : au pire
-    # 8 points de plus que la part demandée (mesuré 0,4 point à force 0,5 et
-    # 7,0 points à force 1,0 sur cette scène). Contrepartie décidée avec Alain
-    # (26/09/2026) : elle supprime le HALO de couleur fabriqué autour des
-    # étoiles (cf. `_test_chroma_halo_jalon65.py`).
+    # 8 points de plus que la part demandée.
+    # v2.37.5 : la mesure passe au MAD (cf. `chroma_hf`) — la correction est
+    # devenue SÉLECTIVE (poids de structure) et le σ, dominé par la queue des
+    # pixels protégés, ne mesure plus le grain (×0,092 contre ×0,027 au banc 67).
     verifie(ratio <= (1.0 - force) + 0.08,
             f"force {force} : grain CHROMATIQUE ×{ratio:.3f} (au plus "
             f"×{1.0 - force + 0.08:.2f} — la part demandée est retirée à "
-            f"8 points près)")
+            f"8 points près ; σ brut ×{max(ch) / max(ch0):.3f}, queue des "
+            f"pixels protégés)")
     # Le canal Y de OpenCV doit être intact — mesuré sur le FOND (la zone qui
     # compte) ; sur toute l'image il reste une queue < 1,4e-05 dans le cœur, où
     # la reconstruction YCrCb→RVB sature au bord haut de l'échelle.
@@ -212,15 +225,18 @@ verifie(1.28 < b_avant < 1.36 and 0.78 < r_avant < 0.86,
         f"grain BLEU en excès (×{b_avant:.3f}) et rouge en déficit "
         f"(×{r_avant:.3f}) : c'est le déséquilibre constaté sur son fichier")
 ch_avant = chroma_hf(spcc)
+ch_avant_r = chroma_hf(spcc, robuste=True)
 for force in (0.5, 1.0):
     s = C.reduire_bruit_chroma(spcc, force=force)
     ch_apres = chroma_hf(s)
-    ratio = max(ch_apres) / max(ch_avant)
+    ratio = max(chroma_hf(s, robuste=True)) / max(ch_avant_r)
     verifie(ratio <= (1.0 - force) + 0.08,
-            f"force {force} : GRAIN COLORÉ (chroma haute fréquence) ×{ratio:.3f} "
-            f"(borne haute ×{1.0 - force + 0.08:.2f}) — la part demandée du grain "
+            f"force {force} : GRAIN COLORÉ (chroma haute fréquence, MAD) "
+            f"×{ratio:.3f} (borne haute ×{1.0 - force + 0.08:.2f} ; σ brut "
+            f"×{max(ch_apres) / max(ch_avant):.3f}) — la part demandée du grain "
             f"coloré disparaît (cf. borne documentée au [2])")
-colore = max(chroma_hf(C.reduire_bruit_chroma(spcc, force=1.0))) / max(ch_avant)
+colore = (max(chroma_hf(C.reduire_bruit_chroma(spcc, force=1.0), robuste=True))
+          / max(ch_avant_r))
 verifie(colore < 0.10,
         f"force 1,0 : il ne reste {colore * 100:.1f} % du grain coloré — le "
         f"grain restant est GRIS (amplitude par canal, rôle du débruitage)")

@@ -10,78 +10,75 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **Version stable de référence : AVAStack v2.37.4** (`avastack/__init__.py`),
-  branche `master` — **LE HALO DE COULEUR DES ÉTOILES ÉTAIT FABRIQUÉ PAR LA
-  RÉDUCTION DE BRUIT CHROMATIQUE** (constat d'Alain, 26/09/2026 : « les étoiles
-  brillantes rouges et bleues ont un halo gênant », VISIBLE AUSSI dans le fichier
-  passé par BlurXTerminator — « en général, c'est un halo killer pourtant »).
-  **VERDICT D'ALAIN (26/09/2026) : « on a plus le super halo de couleur, ca c'est
-  bien »** ; il reste des halos RÉELS (optiques) — traités côté BXT pour les
-  fichiers, et le RAYON DE RÉFÉRENCE est désormais RÉGLABLE pour la visu live
-  (v2.37.4, dernier point ci-dessous). Mesures :
-  - **Mesure** sur son empilement M31 réel, couronne r = 3..9 px en multiples du
-    niveau de ciel local (fond neutralisé = l'ordre réel de la chaîne) : étoile
-    la plus brillante (rouge) R 41,3 → 34,9 (−16 %) et B 19,9 → 23,6 (+19 %) ;
-    étoile bleue R 3,53 → 1,74 (−51 %) et B 2,72 → 3,92 (+44 %) — un **HALO BLEU
-    créé là où il n'y en avait aucun** (R/B 1,30 → 0,44) ; la LUMINANCE, elle, ne
-    bougeait pas (±6 %). Contrôle : à force ≈ 0, la même conversion YCrCb→RVB rend
-    l'image AU BIT PRÈS → c'est le FLOU qui est en cause, pas la conversion.
-  - **Cause** : un écart de chroma (Cr/Cb) ne dépend PAS de la luminosité du
-    pixel ; le flou mélangeait donc la couleur du CŒUR de l'étoile avec celle du
-    CIEL voisin et déposait ce mélange sur les AILES faibles, où un minuscule
-    écart devient une énorme couleur.
-  - **Pourquoi BXT n'a rien pu faire** : la chaîne externe applique les cases 7/8
-    APRÈS BlurXTerminator (`_run_external`) — le halo naît APRÈS le « halo
-    killer ». À noter : BXT a bien un réglage de halos, `--ash` /
-    `--adjust-star-halos` (−0,5…+0,5) dont le DÉFAUT 0,00 signifie « aucun
-    ajustement », et la commande par défaut de l'appli ne le passe pas — piste
-    INDÉPENDANTE, non modifiée ici (à essayer côté BXT si des halos RÉELS
-    subsistent ; testé sur un extrait : `-0.30` réduit encore, `+0.30` conserve).
-  - **Correctif (option (A) choisie par Alain, 26/09/2026)** : ① `reduire_bruit_
-    chroma` lisse désormais le RAPPORT de couleur (chroma ÷ échelle locale), et
-    l'échelle locale est le MINIMUM entre la luminance DU PIXEL (elle borne la
-    correction près d'une étoile → plus de halo) et sa version LISSÉE (échelle
-    constante sur le fond → le bruit de luminance ne se re-dépose pas dans la
-    couleur) ; ② le rayon SUIT la RÉSOLUTION (`couleurs.rayon_chroma_apercu` +
-    `DisplayProcessor.vl_chroma_rayon`) : l'aperçu de l'appli (facteur 0,417 sur
-    son image) passait de 3 px effectifs (7,2 px pleine résolution) à 1,25 px —
-    l'écran redevient fidèle au fichier.
-  - **Effets mesurés** : grain coloré du fond ×0,17 sur son fichier (×0,16 avant →
-    bénéfice conservé) ; halo de son étoile bleue R/B 1,32 (référence 1,30) au
-    lieu de 0,44 ; **écart RENDU** du halo (après VeraLux, en points de % du pic
-    vert) sur 6 étoiles brillantes de son fichier : **1,4 à 1,9 point** avec le
-    correctif contre 2,7 à 24,5 points avec l'ancienne formule.
-  - **Bancs** : `_test_chroma_halo_jalon65.py` (NOUVEAU — halo d'une étoile à
-    ailes larges préservé, TÉMOIN = l'ancienne formule ré-écrite exprès pour
-    prouver que le banc DISCRIMINE, rayon ⇄ résolution avec plancher de mesure,
-    transport par le solveur, et son fichier réel en argument) ;
-    `_test_chroma_nr_jalon63.py` ajusté (borne haute documentée au lieu de
-    l'égalité (1−force) : la formulation par ratio n'est plus exactement
-    linéaire) ; non-régression rejouée — jalon1/2/3, jalon4, jalon5, jalon6,
-    jalon7, jalon19 (×2), jalon22, jalon39, jalon40, jalon41, jalon47, jalon62,
-    jalon63, jalon64 : **TOUS PASSENT**.
-  - **Preuve visuelle à juger par Alain** : `C:\Astro\test\
-    _diag_halo_etoiles_AVANT_APRES.jpg` (aperçu de l'appli ET pleine résolution,
-    avant/après + écart ×8).
-  - **PROCHAINE ÉTAPE** : Alain relance l'appli (v2.37.3) et dit si le halo a
-    disparu DANS LA VISU et dans un fichier passé par BXT ; ses commentaires
-    décideront si l'on baisse aussi le rayon de RÉFÉRENCE (3 px) ou si l'on
-    ajoute `--ash` à la commande BXT pour les halos réels.
-  - **v2.37.4 — CURSEUR « RAYON DE RÉFÉRENCE » (demande d'Alain, 26/09/2026)** :
-    le flou de chroma s'ajuste de 0,5 à 8 px (pas de 0,25) sous la case. Le
-    réglage est exprimé en pixels PLEINE RÉSOLUTION : l'aperçu le ramène à SON
-    échelle (`_poser_rayon_chroma` → `couleurs.rayon_chroma_apercu`), alors que
-    le rendu « tel que vu » et la chaîne EXTERNE (15e élément du job, juste après
-    la force) l'utilisent tel quel ; persistance `vl_chroma_rayon_ref` avec
-    restauration TOLÉRANTE (hors [0,5 ; 8] → ignoré). `RAYON_CHROMA_MIN` passe de
-    0,6 à 0,2 px (un petit rayon de référence ne doit pas être gonflé sur un
-    aperçu réduit). Bancs : `_test_chroma_halo_jalon65.py` [6bis] et
-    `_test_dn_jalon7.py` (job 15 éléments) ; 19 bancs rejoués, TOUS PASSENT.
-  - **VERDICT D'ALAIN SUR v2.37.3 (26/09/2026)** : « on a plus le super halo de
-    couleur, ca c'est bien » ✔ — le halo FABRIQUÉ par la chroma NR est clos. Il
-    RESTE des halos RÉELS (optiques) : il les traitera côté BXT pour les fichiers
-    (piste `--ash`, non passée par la commande par défaut), et dispose maintenant
-    du curseur de rayon pour la visu live.
+- **Version stable de référence : AVAStack v2.38.0** (`avastack/__init__.py`),
+  branche `master` — **JALON 67/68 : L'ANNEAU DE COULEUR EST CORRIGÉ DANS LES
+  FICHIERS, ET L'ÉCRAN PEUT MONTRER LA PLEINE RÉSOLUTION**. Décision d'Alain
+  (26/09/2026, après l'enquête du jalon 66) : « b) et c), car sur l'écran je veux
+  pouvoir zoomer sur l'image pleine résolution — ça aurait été ma prochaine
+  demande ». Trois choses ont été faites dans la même passe :
+  - **① LE CORRECTIF DE L'ANNEAU (v2.37.5)** — `couleurs._poids_structure` : la
+    correction du flou de chroma est multipliée par 1/(1 + (|Y − flou(Y)|/(3 σ))⁶),
+    qui vaut ~1 sur le FOND (écart ≈ 1 σ : 0,999) et ~0 sur une STRUCTURE
+    (0,5 à 3 σ, 0,045 à 5 σ). MESURÉ sur son empilement réel : anneau des 4
+    étoiles (R/G × le fond) **1,96 sans chroma → 4,63 (v2.37.4) → 2,00 (v2.37.5)** ;
+    grain chromatique du fond toujours retiré à 76 % (×0,24 contre ×0,16) ; objet
+    étendu : couleur préservée à 0,05 % ; luminance jamais réécrite. Banc NEUF
+    `_test_chroma_structure_jalon67.py` (7 sections, TÉMOIN = la formule v2.37.4
+    ré-écrite exprès pour prouver que le banc DISCRIMINE ; son fichier réel en
+    [7], section sautée s'il est absent).
+  - **② TROISIÈME CAUSE ÉCRAN ⇄ FICHIER, TROUVÉE ET CORRIGÉE (v2.38.0)** :
+    `DisplayProcessor.rendu_pleine_resolution` ne transmettait le FOND CIBLE
+    (`vl_target_bg`) que lorsque le logD restait à résoudre. Une fois le logD
+    mémorisé (cas courant en live), l'étirement reprenait le défaut du module
+    (0,20) au lieu du réglage d'Alain (0,16) : MESURÉ sur une image réelle, fond
+    final **0,197 contre 0,159** — écart moyen **9,6 niveaux** de 8 bits (17 au
+    pire). Le fichier était donc PLUS CLAIR que l'écran. Corrigé : écran et
+    fichier coïncident maintenant AU BIT PRÈS (banc jalon 68 [3], écart 0).
+  - **③ ZOOM SUR LA PLEINE RÉSOLUTION (v2.38.0)** : nouvelle case « Rendu pleine
+    résolution (zoom fidèle) » (cadre « Affichage », DÉCOCHÉE par défaut,
+    persistée `vl_pleine_res_ecran`). Cochée, la chaîne d'affichage tourne sur
+    l'empilement COMPLET → l'écran montre ce que le fichier contiendra et le zoom
+    recadre de VRAIS pixels (1:1 exact, libellé du zoom = échelle réelle en px
+    image/px écran + mention PLEINE RÉSOLUTION). Coût mesuré 7,2-8,3 s contre
+    1,7-1,9 s (×4,3) — d'où l'option ; décocher libère la copie (25 Mo) ; repli
+    sur l'aperçu si aucun empilement complet (vue « traitée », début de session).
+    `App._src_rendu` choisit la source ; l'état vit dans un attribut PYTHON
+    (`pleine_res_ecran`) car les threads de travail ne peuvent PAS lire une
+    variable Tk (`RuntimeError: main thread is not in main loop`, constatée et
+    corrigée pendant la passe — la sauvegarde ne sortait plus). Banc NEUF
+    `_test_zoom_pleine_res_jalon68.py` (option/persistance/libération, source de
+    rendu, ÉCRAN = FICHIER écart 0, zoom 1:1 au bit près contre l'aperçu grossi —
+    détail fin 8,73 contre 1,49 —, libellé).
+  - **NON-RÉGRESSION : 32 bancs rejoués, TOUS PASSENT.** Trois mesures de
+    `_test_chroma_nr_jalon63.py` et `_test_chroma_halo_jalon65.py` ont été
+    adaptées, chacune documentée sur place (jamais affaiblie) : le grain est mesuré
+    au MAD et non au σ (la correction étant devenue SÉLECTIVE, le σ est dominé par
+    la queue des ~0,2 % de pixels protégés : ×0,092 contre ×0,027) ; le seuil du
+    résidu de luminance passe de 2e-05 à 1e-04 (queue au CŒUR SATURÉ, B = 1,0000) ;
+    et l'assertion sur le rayon non ramené est INVERSÉE (les ailes n'étant plus
+    lissées, le rayon ne les déforme plus — c'est le but du correctif).
+  - **PROCHAINE ÉTAPE (test réel d'Alain)** : installateur REBÂTI (v2.38.0) —
+    ① vérifier que les étoiles des FICHIERS n'ont plus d'anneau de couleur (et que
+    le grain coloré du fond reste bien retiré) ; ② cocher « Rendu pleine
+    résolution » et zoomer à la molette (le libellé doit afficher 1:1) pour juger
+    ses étoiles en pixels réels. Repli : v2.37.5, puis v2.37.4 (9927539).
+
+  **JALON 66 — RAPPEL CONDENSÉ (enquête, aucun code touché)** : le PNG n'était pas
+  en cause (PNG ⇄ FITS identiques à 1/65535 près, moyenne 0,5 niveau) ; l'écart
+  venait de la RÉSOLUTION (chaîne sur l'aperçu 1600 px à l'écran, sur les 3839 px
+  pour le fichier : écart moyen 0,0147-0,0234, max 0,3728-0,4941) ; l'anneau était
+  fabriqué par la chroma NR à pleine résolution (1,80 → 2,33/2,93/3,89 aux forces
+  0,25/0,50/0,85, le rayon l'élargissant) ; coût de l'écran pleine résolution
+  mesuré (1,7-1,9 s → 7,2-8,3 s, ×4,3). Détail complet : changelog du source,
+  `_diag_*jalon66.py` (9 bancs + 2 planches) et `_diag_couts_jalon66.py`.
+
+  **JALON 65 — RAPPEL CONDENSÉ** : halo de couleur des étoiles brillantes fabriqué
+  par la chroma NR d'alors (étoile bleue R/B 1,30 → 0,44), corrigé en v2.37.3 en
+  lissant le RAPPORT de couleur (échelle = min(luminance du pixel, sa version
+  lissée)) puis en faisant SUIVRE la RÉSOLUTION au rayon (v2.37.3) ; curseur
+  « Rayon de référence » 0,5-8 px ajouté en v2.37.4 (`vl_chroma_rayon_ref`).
+  Verdict d'Alain : « on a plus le super halo de couleur, ca c'est bien ». Détail :
+  changelog du source + `_test_chroma_halo_jalon65.py`.
 
 - **Version stable précédente : AVAStack v2.37.2** — le cœur « cramé » était une
   COUPE à 1,0 appliquée avant l'étirement, alors que l'empilement vit à une
@@ -167,36 +164,34 @@ dans le changelog du source et l'historique git.)
 
 ## En attente / prochaine session
 
-- **PNG : « petit souci encore sur les étoiles » (constat d'Alain, 26/09/2026 —
-  à traiter dans une AUTRE session, non qualifié)** : en clôturant, Alain a
-  signalé qu'il reste un petit défaut sur les étoiles dans la **sauvegarde PNG**
-  (« on regardera dans une autre session »). RIEN n'est mesuré ni reproduit à ce
-  stade : d'abord QUALIFIER avec lui (quelle sauvegarde PNG — « tel que vu » ou
-  résultat d'un traitement externe ? forme, taille, couleur, halo des étoiles ?),
-  puis comparer PIXEL À PIXEL le PNG et le FITS du MÊME rendu (la méthode qui
-  avait attrapé la permutation R-B en v2.36.1), et vérifier la conversion 16 bits
-  de `images.save_image` ainsi que le chemin de rendu propre au PNG.
-- **ALAIN ESSAIE LE CURSEUR DE RAYON (v2.37.4)** en visu live : il a maintenant la
-  main sur l'étalement de la couleur des étoiles (rayon de RÉFÉRENCE de 0,5 à 8 px ;
-  l'aperçu suit automatiquement son échelle, les fichiers utilisent le rayon tel
-  quel). Le halo FABRIQUÉ est clos (« on a plus le super halo de couleur », ✔
-  verdict d'Alain) ; les halos RÉELS restants relèvent de BXT (`--ash`, −0,3 … −0,5,
-  absent de la commande par défaut) pour les fichiers. Son choix de rayon sera
-  simplement persisté dans sa config : aucun code à changer.
+- **ALAIN TESTE v2.38.0 (installateur rebâti)** — deux choses à juger :
+  ① un fichier « tel que vu » : les étoiles moyennes rouges ne doivent plus avoir
+  d'anneau de couleur (et le grain coloré du fond doit rester retiré — mesuré au
+  banc : 76 % retiré contre 84 % avant, invisible à l'œil) ;
+  ② la case « Rendu pleine résolution (zoom fidèle) » (cadre « Affichage ») :
+  cocher, laisser le rendu se faire (7-8 s), puis zoomer à la molette — le libellé
+  doit afficher « 1:1 » et les étoiles doivent être celles du fichier. La case
+  reste décochée au prochain démarrage s'il la décoche (persistée).
+  Point d'attention : avec un débruitage NLM live actif (son réglage), chaque
+  nouvelle frame coûte ~7-8 s en pleine résolution → la visu ralentit (c'est le
+  prix de la fidélité, et le cache ne rejoue que ce qui a changé).
+- **ALAIN ESSAIE LE CURSEUR DE RAYON (v2.37.4)** en visu live : rayon de RÉFÉRENCE
+  de 0,5 à 8 px (l'aperçu suit son échelle, les fichiers l'utilisent tel quel).
+  Depuis la v2.37.5 le rayon agit surtout sur le FOND et les objets lisses : la
+  couleur des étoiles n'est plus lissée du tout (poids de structure). Les halos
+  RÉELS restants relèvent de BXT (`--ash`, −0,3 … −0,5, absent de la commande par
+  défaut) pour les fichiers. Son choix sera persisté : aucun code à changer.
 - **Grain GRIS résiduel** : la réduction du bruit chromatique ne touche PAS le
   grain de luminance (mesuré ×1,00) — seul le débruitage live (NLM, force 0,5)
   ou plus d'intégration le réduit. Sujet OUVERT si Alain veut aller plus loin
   (piste : débruiteur épargnant les étoiles, cf. CLAUDE.md).
-- **CLOS par cette session** : cœur de M31 VALIDÉ par Alain sur l'appli v2.37.2
-  (« Le cœur n'est effectivement plus cramé ni plat ») ✔ ; **chaîne EXTERNE
-  complète VALIDÉE** par lui dans la foulée (« validée pour le moment ») ✔ ;
-  débruitage NLM essayé par lui sans dégradation du cœur → laissé tel quel ✔ ;
-  profils SPCC re-sélectionnés par Alain
-  (« les filtres sont bons » : R/G/B MiniCam8M +
-  « Average Spiral Galaxy ») ✔ ; option « normalisation commune des canaux »
-  UTILISÉE et mesurée sur ses deux empilements M31 (AVACOMPO dans les fichiers) ✔ ;
-  fond bleu des PNG/FITS clos ✔ ;
-  PNG ↔ FITS concordants (à revérifier à la prochaine exportation « tel que vu »).
+- **CLOS par les sessions précédentes** : cœur de M31 VALIDÉ par Alain sur
+  l'appli v2.37.2 (« Le cœur n'est effectivement plus cramé ni plat ») ✔ ;
+  **chaîne EXTERNE complète VALIDÉE** par lui ✔ ; débruitage NLM essayé sans
+  dégradation du cœur ✔ ; profils SPCC re-sélectionnés
+  (« les filtres sont bons ») ✔ ; option « normalisation commune des canaux »
+  UTILISÉE et mesurée sur ses deux empilements M31 ✔ ; fond bleu des PNG/FITS
+  clos ✔ ; PNG ↔ FITS concordants (1/65535 près, re-mesuré au jalon 66) ✔.
 
 ## Statuts CLAUDE.md
 
@@ -271,6 +266,28 @@ dans le changelog du source et l'historique git.)
   à la charge de l'agent, sans qu'Alain ait à le demander.
 
 ## Clôtures précédentes
+
+- 26/09/2026 (v2.38.0, bcfaeb2) : SESSION « ANNEAU DE COULEUR CORRIGÉ ET
+  ZOOM PLEINE RÉSOLUTION », sur décision d'Alain (« b) et c), car sur l'écran je
+  veux pouvoir zoomer sur l'image pleine résolution »). Livré : ① l'enquête du
+  jalon 66 (PNG hors de cause ; écart écran ⇄ fichier dû à la RÉSOLUTION ; anneau
+  fabriqué par la chroma NR) ; ② le CORRECTIF par POIDS DE STRUCTURE
+  (`couleurs._poids_structure`, v2.37.5 : la correction est éteinte là où la
+  luminance s'écarte de son voisinage lissé) — anneau 4,63 → 2,00 sur son
+  empilement, grain coloré du fond encore retiré à 76 % ; ③ une TROISIÈME cause
+  écran ⇄ fichier trouvée et corrigée : `rendu_pleine_resolution` ne transmettait
+  pas le FOND CIBLE au moteur quand le logD était déjà résolu (fichier rendu avec
+  0,20 au lieu de 0,16 : fond final 0,197 contre 0,159, écart moyen 9,6 niveaux) ;
+  ④ l'option « Rendu pleine résolution (zoom fidèle) » : la chaîne d'affichage
+  tourne sur l'empilement COMPLET, l'écran montre ce que le fichier contiendra et
+  le zoom recadre de vrais pixels (1:1 ; coût ×4,3 mesuré, décocher libère la
+  copie). Bancs : `_test_chroma_structure_jalon67.py` et
+  `_test_zoom_pleine_res_jalon68.py` (NOUVEAUX) ; 32 bancs rejoués, TOUS PASSENT.
+  Trois mesures de bancs 63/65 adaptées et documentées (grain au MAD, seuil du
+  résidu de luminance, assertion du rayon inversée). Piège : une variable Tk lue
+  depuis un thread de travail lève `RuntimeError: main thread is not in main loop`
+  — corrigé pendant la passe (l'état vit dans un attribut Python). Installateur
+  2.38.0 reconstruit. Repli si régression : v2.37.5, puis v2.37.4 (9927539).
 
 - 26/09/2026 (v2.37.4, 9927539) : SESSION « LE HALO DE COULEUR DES ÉTOILES »,
   VALIDÉE PAR ALAIN (« on a plus le super halo de couleur, ça c'est bien » ;

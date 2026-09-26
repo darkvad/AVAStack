@@ -135,6 +135,15 @@ def neutraliser_fond(img, force=1.0, garde=0.10):
 RAYON_CHROMA_DEFAUT = 3.0
 RAYON_CHROMA_MIN = 0.2
 PLANCHER_CHROMA = 0.25
+# v2.37.5 : SEUIL de STRUCTURE du flou de chroma, en σ du bruit de luminance
+# (σ estimé sur place par MAD de l'écart à son propre flou gaussien), et FORME
+# de la transition. Mesuré au banc jalon 67 : sur le FOND (écart ≈ 1 σ) le poids
+# vaut 1/(1 + 1/3⁶) = 0,999 → le grain coloré tombe toujours (mesuré ×0,16 à
+# ×0,19 sur son empilement, contre ×0,16 pour la v2.37.4) ; sur une ÉTOILE le
+# poids tombe à 0,5 dès 3 σ, 0,045 à 5 σ et 0,0007 à 10 σ → plus d'anneau
+# (mesuré 1,96 sans chroma → 4,63 v2.37.4 → 2,00 v2.37.5).
+SEUIL_STRUCTURE_CHROMA = 3.0
+EXPOSANT_STRUCTURE_CHROMA = 6.0
 
 
 def rayon_chroma_apercu(scale, rayon=RAYON_CHROMA_DEFAUT):
@@ -165,6 +174,54 @@ def rayon_chroma_apercu(scale, rayon=RAYON_CHROMA_DEFAUT):
     if not np.isfinite(s) or s <= 0.0:
         return float(rayon)
     return max(RAYON_CHROMA_MIN, float(rayon) * min(1.0, s))
+
+
+def _poids_structure(lum, flou, ecart_min):
+    """Poids 1.0 sur le FOND (grain seul) → 0.0 sur une STRUCTURE (étoile, bord).
+
+    POURQUOI (v2.37.5, constat d'Alain du 26/09/2026 : « les étoiles moyennes
+    rouges sont bien plus rouges et ont presque un halo » DANS LES FICHIERS, alors
+    que l'affichage est correct) : le flou de chroma est appliqué PLEINE RÉSOLUTION
+    au fichier mais à l'APERÇU 1600 px à l'écran. Sur le fichier, le flou du
+    RAPPORT `cn = (Cr−0,5)/den` dépose la couleur du CŒUR de l'étoile dans ses
+    ailes (`den = min(y, flou(y))` y est faible) et y fabrique un ANNEAU coloré,
+    mesuré R/G 1,80 sans chroma → 2,33 / 2,93 / 3,89 aux forces 0,25 / 0,50 / 0,85
+    (sa valeur). À l'écran l'étoile fait 1 px : le flou écrase l'anneau, donc il
+    ne le voyait que dans les fichiers.
+
+    Le remède est un poids qui ne laisse la correction travailler QUE là où la
+    luminance ressemble à son voisinage lissé — c'est-à-dire sur le FOND (grain
+    pixel à pixel) et sur les zones LISSES (nébuleuses) — et pas sur une
+    structure : `lum` est la luminance Y de l'image, `flou` SON propre flou
+    gaussien (déjà calculé par l'appelant, aucun flou supplémentaire).
+
+    σ du bruit : MAD de l'écart (insensible aux étoiles et à la structure, qui
+    pèsent peu dans la médiane des |écarts|) × 1,4826 → σ d'une loi normale ;
+    `ecart_min` est un plancher d'échelle (fraction de la luminance médiane)
+    pour les images SANS bruit, où le MAD serait nul alors que la structure,
+    elle, existe toujours. L'échantillonnage (1 pixel sur N) ne change pas le
+    MAD et évite un tri de plusieurs millions de valeurs à chaque appel.
+
+    poids = 1 / (1 + (|écart| / (SEUIL·σ)) ** EXPOSANT) — un seuil DOUX mais
+    FRANCHI : à 1 σ (le grain du fond) le poids vaut 0,999 (le grain coloré tombe
+    toujours), à 3 σ il est de 0,5, à 5 σ de 0,045, à 10 σ de 0,0007 (plus rien
+    n'est déposé dans les ailes). L'exposant a été MESURÉ : à 4 la transition
+    laissait encore l'anneau à +6 % de la référence sur la scène témoin, à 6 il
+    revient au niveau sans chroma — et le grain du fond est MIEUX préservé
+    (1 σ : 0,999 contre 0,988).
+    Si l'échelle est inexploitable (σ non fini, ≤ 0), renvoie None : l'appelant
+    retombe alors sur 1.0, c'est-à-dire le comportement v2.37.4 à l'identique.
+    """
+    ecart = np.asarray(lum, dtype=np.float32) - np.asarray(flou, dtype=np.float32)
+    pas = max(1, int(ecart.size) // 400000)
+    sig = float(np.median(np.abs(ecart.ravel()[::pas]))) * 1.4826
+    sig = max(sig, float(ecart_min))
+    if not np.isfinite(sig) or sig <= 0.0:
+        return None
+    r = np.abs(ecart) / np.float32(SEUIL_STRUCTURE_CHROMA * sig)
+    return (np.float32(1.0)
+            / (np.float32(1.0) + np.power(r, np.float32(
+                EXPOSANT_STRUCTURE_CHROMA)))).astype(np.float32)
 
 
 def reduire_bruit_chroma(img, force=0.5, rayon=RAYON_CHROMA_DEFAUT):
@@ -204,12 +261,31 @@ def reduire_bruit_chroma(img, force=0.5, rayon=RAYON_CHROMA_DEFAUT):
     À cela s'ajoute que BXT tourne AVANT cette case dans la chaîne externe : le
     halo est donc créé APRÈS le « halo killer », qui ne peut rien y faire.
 
-    Calcul (v2.37.3) — on lisse la chroma NORMALISÉE PAR LA LUMINOSITÉ, c'est-
-    à-dire le RAPPORT de couleur, puis on le re-multiplie par l'échelle locale
-    `den` (minimum entre la luminance du pixel et sa version lissée, plancher
-    PLANCHER_CHROMA × luminance médiane) :
+    CORRECTIF v2.37.5 (constat d'Alain, 26/09/2026 : « les étoiles moyennes rouges
+    sont bien plus rouges et ont presque un halo … alors que l'affichage est
+    correct ») : la v2.37.3 avait corrigé le halo des étoiles BRILLANTES ; il
+    restait, dans les FICHIERS seulement, un ANNEAU de couleur autour de TOUTES
+    les étoiles (même blanches et bleues). Le flou du RAPPORT `cn = (Cr−0,5)/den`
+    dépose la couleur du CŒUR dans les ailes, où `den = min(y, flou(y))` est
+    faible : un minuscule dépôt absolu devient une énorme couleur après
+    l'étirement. MESURÉ sur son empilement (R/G de l'anneau 2-3 px d'aperçu, × le
+    R/G du fond) : 1,80 sans chroma → 2,33 à 0,25 → 2,93 à 0,50 → 3,89 à 0,85
+    (sa valeur) ; le rayon l'élargit encore. À l'écran, l'étoile fait 1 px et le
+    flou écrase l'anneau : c'est POURQUOI il ne le voyait que dans les fichiers
+    (l'écran étire l'APERÇU 1600 px, le fichier la PLEINE résolution).
+    Le remède est le POIDS DE STRUCTURE `_poids_structure` : la correction est
+    multipliée par 1 / (1 + (|Y − flou(Y)| / (SEUIL·σ)) ** EXPOSANT), qui vaut
+    ~1 sur le fond (grain seul, écart ≈ 1 σ) et ~0 sur une structure (étoile,
+    bord d'objet) — on garde donc tout le bénéfice sur le grain coloré du fond
+    sans jamais déposer de couleur dans les ailes d'une étoile.
+
+    Calcul (v2.37.3, poids v2.37.5) — on lisse la chroma NORMALISÉE PAR LA
+    LUMINOSITÉ, c'est-à-dire le RAPPORT de couleur, puis on le re-multiplie par
+    l'échelle locale `den` (minimum entre la luminance du pixel et sa version
+    lissée, plancher PLANCHER_CHROMA × luminance médiane) :
       cn = (chroma − 0,5) / den ; lisse = flou gaussien de rayon `rayon` sur cn ;
-      chroma' = 0,5 + den · (cn + force · (lisse − cn)).
+      poids = 1 / (1 + (|Y − flou(Y)| / (SEUIL·σ)) ** EXPOSANT) ;
+      chroma' = 0,5 + den · (cn + poids · force · (lisse − cn)).
     Sur le FOND, `den` est la version lissée (quasi constante) : la part demandée
     du grain coloré disparaît — mesuré ×0,169 à force 0,847, contre ×0,155 pour
     l'ancienne formulation. Près d'une ÉTOILE, `den` redevient la luminance du
@@ -248,13 +324,20 @@ def reduire_bruit_chroma(img, force=0.5, rayon=RAYON_CHROMA_DEFAUT):
     # fond (le bruit de luminance ne se re-dépose pas dans la couleur → le grain
     # coloré tombe toujours d'un facteur (1 − force)). Le plancher évite la
     # division par zéro dans les pixels noirs ou négatifs.
-    den = np.maximum(np.minimum(y, cv2.GaussianBlur(y, (0, 0),
-                                                   sigmaX=float(rayon))),
+    flou_y = cv2.GaussianBlur(y, (0, 0), sigmaX=float(rayon))
+    den = np.maximum(np.minimum(y, flou_y),
                      np.float32(max(PLANCHER_CHROMA * niveau, 1e-7)))
+    # v2.37.5 : poids de STRUCTURE — 1 sur le fond, ~0 sur une étoile ou un bord.
+    # Sans lui, le flou du RAPPORT dépose la couleur du CŒUR de l'étoile dans ses
+    # ailes et y fabrique l'ANNEAU visible dans les fichiers (cf. _poids_structure).
+    poids = _poids_structure(y, flou_y, 1e-4 * niveau)
     for i in (1, 2):                  # Cr puis Cb — jamais Y (canal 0)
         cn = (ycc[..., i] - 0.5) / den          # RAPPORT de couleur local
         lisse = cv2.GaussianBlur(cn, (0, 0), sigmaX=float(rayon))
-        ycc[..., i] = 0.5 + den * (cn + f * (lisse - cn))
+        corr = np.float32(f) * (lisse - cn)
+        if poids is not None:                   # None = échelle inexploitable :
+            corr = corr * poids                 # comportement v2.37.4 exact
+        ycc[..., i] = 0.5 + den * (cn + corr)
     out = cv2.cvtColor(ycc, cv2.COLOR_YCrCb2RGB)
     # Le flou d'un plan de chroma reste dans l'intervalle de ses voisins, mais
     # la reconstruction peut passer très légèrement sous zéro près du noir :

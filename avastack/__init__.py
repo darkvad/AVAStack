@@ -14,9 +14,92 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.37.4"
+AVASTACK_VERSION = "2.38.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.38.0 : ZOOM SUR L'IMAGE PLEINE RÉSOLUTION (et deux corrections de fidélité
+#   écran ⇄ fichier). Demande d'Alain (26/09/2026) : « sur l'écran, je veux
+#   pouvoir zoomer sur l'image pleine résolution » — le zoom existait (molette
+#   ×1 à ×32, double-clic pour ajuster) mais il agrandissait l'APERÇU 1600 px,
+#   donc du flou interpolé, et la chaîne non linéaire y tournait à une AUTRE
+#   échelle que pour le fichier.
+#   (1) NOUVELLE OPTION « Rendu pleine résolution (zoom fidèle) » (case à cocher
+#       dans le cadre « Affichage », DÉCOCHÉE par défaut, persistée
+#       `vl_pleine_res_ecran`) : quand elle est cochée, la chaîne d'affichage
+#       (GraXpert/débruitage/netteté/couleurs/neutralisation/chroma/étirement)
+#       tourne sur l'empilement COMPLET → l'écran montre EXACTEMENT ce que le
+#       fichier contiendra et le zoom recadre de VRAIS pixels (1:1 exact).
+#       Coût MESURÉ (`_diag_couts_jalon66.py`) : 7,2-8,3 s par recalcul complet
+#       contre 1,7-1,9 s (×4,3), d'où le choix d'une option. Décocher LIBÈRE la
+#       copie pleine résolution (25 Mo). Repli sur l'aperçu si aucun empilement
+#       complet n'existe (vue « traitée », début de session).
+#       - le libellé du zoom affiche désormais l'échelle RÉELLE (px image par px
+#         écran, « 1:1 ») et la mention PLEINE RÉSOLUTION.
+#   (2) CORRECTION — LE FICHIER « tel que vu » NE CORRESPONDAIT PAS À L'ÉCRAN :
+#       `DisplayProcessor.rendu_pleine_resolution` ne transmettait le FOND CIBLE
+#       (`vl_target_bg`) que lorsque le logD restait à résoudre. Une fois le logD
+#       mémorisé (cas courant en live), l'étirement reprenait le défaut du module
+#       (0,20) au lieu du réglage de l'utilisateur. MESURÉ sur une image réelle :
+#       fond final 0,197 contre 0,159 attendu, écart moyen 9,6 niveaux de 8 bits
+#       (17 au pire) — le fichier était donc PLUS CLAIR que l'écran. Le fond cible
+#       est maintenant transmis dans les deux modes : écran et fichier coïncident
+#       au bit près (banc jalon 68 [3], écart 0).
+#   (3) BANC `_test_zoom_pleine_res_jalon68.py` (NOUVEAU) : option (défaut,
+#       persistance, libération mémoire), source de rendu (`_src_rendu`), ÉCRAN =
+#       FICHIER (écart 0), zoom 1:1 au bit près contre l'aperçu grossi (détail fin
+#       8,73 contre 1,49), libellé du zoom.
+#   - Non-régression : 20 bancs rejoués (dont `_test_save_asseen_jalon5.py`,
+#     `_test_sharp_live_jalon12.py`, `_test_coeur_crame_jalon64.py`, toute la
+#     chaîne couleur), TOUS PASSENT.
+#   Repli si régression : v2.37.5.
+# v2.37.5 : L'ANNEAU DE COULEUR AUTOUR DES ÉTOILES DANS LES FICHIERS (poids de
+#   structure du flou de chroma). Constat d'Alain (26/09/2026) : « les étoiles
+#   moyennes rouges sont bien plus rouges et ont presque un halo. Cela se produit
+#   aussi bien dans le tel que vu stack que dans le tel que vu traité alors que
+#   l'affichage est correct ». ENQUÊTE PRÉALABLE (9 bancs de diagnostic
+#   `_diag_*jalon66.py`, aucun code touché) :
+#   - le FICHIER PNG n'est pas en cause : PNG ⇄ FITS du même rendu sont
+#     identiques à 1/65535 près sur ses deux cas (moyenne 0,5 niveau, 0,000 % des
+#     pixels au-delà d'un niveau) ;
+#   - l'écart est entre l'ÉCRAN et le FICHIER : la chaîne non linéaire est
+#     appliquée à l'APERÇU 1600 px pour l'écran, à la PLEINE RÉSOLUTION 3839 px
+#     pour le fichier (écart moyen 0,015-0,023, max 0,37-0,49 aux cœurs) ;
+#   - l'anneau est FABRIQUÉ par la réduction du bruit chromatique à PLEINE
+#     RÉSOLUTION : R/G de l'anneau (× le R/G du fond) 1,80 sans chroma → 2,33 /
+#     2,93 / 3,89 aux forces 0,25 / 0,50 / 0,85 (sa valeur), et le RAYON
+#     l'élargit (3 px → 6,5 · 5 px → 10,2). À l'écran l'étoile fait 1 px : le flou
+#     y écrase l'anneau — d'où un défaut visible SEULEMENT dans les fichiers ;
+#   - mécanisme (mesuré au pixel) : le flou du RAPPORT `cn = (Cr−0,5)/den` dépose
+#     la couleur du CŒUR (où `den = flou(y)` est petit) dans les AILES, où `den`
+#     est au niveau du ciel : +0,0014 sur Cr pour un ciel à 0,03, soit ~5 % de la
+#     luminance locale — le seul étirement VeraLux suffit ensuite à en faire un
+#     anneau (R/G ×2,4).
+#   CORRECTIF : `couleurs._poids_structure` — la correction est multipliée par
+#   1 / (1 + (|Y − flou(Y)| / (3 σ)) ** 6), qui vaut ~1 sur le FOND (grain seul,
+#   écart ≈ 1 σ : 0,999) et ~0 sur une STRUCTURE (0,5 à 3 σ, 0,045 à 5 σ, 0,0007
+#   à 10 σ). σ est le MAD de l'écart de luminance à son propre flou (×1,4826),
+#   échantillonné ; aucun flou supplémentaire (celui de `den` est réutilisé).
+#   - MESURÉ sur son empilement réel : anneau des 4 étoiles 1,96 (sans chroma) →
+#     4,63 (v2.37.4) → 2,00 (v2.37.5) ; grain chromatique du fond (MAD
+#     passe-haut) ×0,16 (v2.37.4) → ×0,24 (v2.37.5), soit 76 % du grain coloré
+#     toujours retiré — le bénéfice d'origine est conservé ;
+#   - la couleur d'un objet étendu (nébuleuse) bouge de moins de 0,05 % et la
+#     LUMINANCE (canal Y) n'est pas réécrite (résidu de reconstruction < 1,5e-6
+#     sur le fond, 3,7e-05 au total, au cœur saturé) ;
+#   - BANC `_test_chroma_structure_jalon67.py` (NOUVEAU, 7 sections) : contrat de
+#     base, anneau sur une scène témoin (TÉMOIN = la formule v2.37.4 ré-écrite
+#     exprès, qui doit, elle, fabriquer l'anneau), grain du fond, objet étendu,
+#     luminance, transition du poids, et son FICHIER RÉEL (chemin donné en
+#     argument, section sautée si absent).
+#   - Deux bancs existants ont vu TROIS de leurs mesures adaptées au changement,
+#     chacune documentée sur place (jamais affaiblie) : le grain est mesuré au MAD
+#     et non au σ dans `_test_chroma_nr_jalon63.py` et `_test_chroma_halo_jalon65.py`
+#     (la correction étant devenue SÉLECTIVE, le σ est dominé par la queue des
+#     ~0,2 % de pixels protégés : ×0,092 contre ×0,027) ; le seuil du résidu de
+#     luminance passe de 2e-05 à 1e-04 dans `_test_chroma_halo_jalon65.py` (queue
+#     au CŒUR SATURÉ, B = 1,0000) ; et son assertion sur le rayon non ramené est
+#     inversée (les ailes n'étant plus lissées, le rayon ne les déforme plus).
+#   Repli si régression : v2.37.4 (9927539).
 # v2.37.4 : LE RAYON DE RÉFÉRENCE DU FLOU DE CHROMA EST RÉGLABLE (visu live).
 #   Retour d'Alain (26/09/2026) après la v2.37.3 : « on n'a plus le super halo de
 #   couleur, ça c'est bien » — mais il RESTE des halos RÉELS (optiques), qu'il

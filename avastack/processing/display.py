@@ -866,10 +866,20 @@ class DisplayProcessor:
                 log_d = r("vl_log_d_resolu", self.vl_log_d_resolu)
             else:
                 log_d = None
-            params = dict(profil=r("vl_profil", self.vl_profil))
+            params = dict(profil=r("vl_profil", self.vl_profil),
+                          # v2.38.0 : le FOND CIBLE de l'étape de sortie du moteur
+                          # est transmis DANS LES DEUX MODES. Il ne l'était que
+                          # lorsque le logD restait à résoudre : une fois le logD
+                          # mémorisé (cas courant en live), `etirer` reprenait le
+                          # défaut du module (0,20) alors que l'écran, lui, utilise
+                          # le fond cible de l'utilisateur — mesuré sur une image
+                          # réelle : fond final 0,197 contre 0,159, écart moyen
+                          # 9,6 niveaux de 8 bits (17 au pire). Le fichier ne
+                          # correspondait donc PAS à l'écran, ce que la règle du
+                          # projet interdit (« le fichier correspond à l'écran »).
+                          target_bg=float(r("vl_target_bg", self.vl_target_bg)))
             if log_d is None:
-                params.update(mode=_veralux.MODE_TARGET_BG,
-                              target_bg=r("vl_target_bg", self.vl_target_bg))
+                params.update(mode=_veralux.MODE_TARGET_BG)
             else:
                 params.update(mode=_veralux.MODE_LOG_D, log_d=log_d)
             x, _, _ = _veralux.etirer(img, **params)
