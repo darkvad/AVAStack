@@ -12,10 +12,13 @@ dans le changelog du source et l'historique git.)
 
 - **Version stable de référence : AVAStack v2.38.0** (`avastack/__init__.py`),
   branche `master` — **JALON 67/68 : L'ANNEAU DE COULEUR EST CORRIGÉ DANS LES
-  FICHIERS, ET L'ÉCRAN PEUT MONTRER LA PLEINE RÉSOLUTION**. Décision d'Alain
-  (26/09/2026, après l'enquête du jalon 66) : « b) et c), car sur l'écran je veux
-  pouvoir zoomer sur l'image pleine résolution — ça aurait été ma prochaine
-  demande ». Trois choses ont été faites dans la même passe :
+  FICHIERS, ET L'ÉCRAN PEUT MONTRER LA PLEINE RÉSOLUTION. VALIDÉ PAR ALAIN
+  (26/09/2026 : « C'est OK, on valide »)** — installateur 2.38.0 installé et
+  testé. Décision d'Alain à l'origine de la passe (26/09/2026, après l'enquête du
+  jalon 66) : « b) et c), car sur l'écran je veux pouvoir zoomer sur l'image
+  pleine résolution — ça aurait été ma prochaine demande ». Détail complet :
+  changelog du source (v2.38.0, v2.37.5) et `## Clôtures précédentes` ci-dessous.
+  Trois choses ont été faites dans la même passe :
   - **① LE CORRECTIF DE L'ANNEAU (v2.37.5)** — `couleurs._poids_structure` : la
     correction du flou de chroma est multipliée par 1/(1 + (|Y − flou(Y)|/(3 σ))⁶),
     qui vaut ~1 sur le FOND (écart ≈ 1 σ : 0,999) et ~0 sur une STRUCTURE
@@ -57,11 +60,12 @@ dans le changelog du source et l'historique git.)
     résidu de luminance passe de 2e-05 à 1e-04 (queue au CŒUR SATURÉ, B = 1,0000) ;
     et l'assertion sur le rayon non ramené est INVERSÉE (les ailes n'étant plus
     lissées, le rayon ne les déforme plus — c'est le but du correctif).
-  - **PROCHAINE ÉTAPE (test réel d'Alain)** : installateur REBÂTI (v2.38.0) —
-    ① vérifier que les étoiles des FICHIERS n'ont plus d'anneau de couleur (et que
-    le grain coloré du fond reste bien retiré) ; ② cocher « Rendu pleine
-    résolution » et zoomer à la molette (le libellé doit afficher 1:1) pour juger
-    ses étoiles en pixels réels. Repli : v2.37.5, puis v2.37.4 (9927539).
+  - **VALIDÉ PAR ALAIN (26/09/2026) — « C'est OK, on valide »** : installateur
+    2.38.0 installé et testé (étoiles des fichiers sans anneau de couleur ; zoom
+    pleine résolution opérationnel). Prochaine session : voir
+    `## En attente / prochaine session` (aucune urgence : aucun défaut connu ouvert
+    sur cette passe). Repli si une régression apparaissait : v2.37.5, puis v2.37.4
+    (9927539).
 
   **JALON 66 — RAPPEL CONDENSÉ (enquête, aucun code touché)** : le PNG n'était pas
   en cause (PNG ⇄ FITS identiques à 1/65535 près, moyenne 0,5 niveau) ; l'écart
@@ -164,34 +168,41 @@ dans le changelog du source et l'historique git.)
 
 ## En attente / prochaine session
 
-- **ALAIN TESTE v2.38.0 (installateur rebâti)** — deux choses à juger :
-  ① un fichier « tel que vu » : les étoiles moyennes rouges ne doivent plus avoir
-  d'anneau de couleur (et le grain coloré du fond doit rester retiré — mesuré au
-  banc : 76 % retiré contre 84 % avant, invisible à l'œil) ;
-  ② la case « Rendu pleine résolution (zoom fidèle) » (cadre « Affichage ») :
-  cocher, laisser le rendu se faire (7-8 s), puis zoomer à la molette — le libellé
-  doit afficher « 1:1 » et les étoiles doivent être celles du fichier. La case
-  reste décochée au prochain démarrage s'il la décoche (persistée).
-  Point d'attention : avec un débruitage NLM live actif (son réglage), chaque
-  nouvelle frame coûte ~7-8 s en pleine résolution → la visu ralentit (c'est le
-  prix de la fidélité, et le cache ne rejoue que ce qui a changé).
-- **ALAIN ESSAIE LE CURSEUR DE RAYON (v2.37.4)** en visu live : rayon de RÉFÉRENCE
-  de 0,5 à 8 px (l'aperçu suit son échelle, les fichiers l'utilisent tel quel).
-  Depuis la v2.37.5 le rayon agit surtout sur le FOND et les objets lisses : la
-  couleur des étoiles n'est plus lissée du tout (poids de structure). Les halos
-  RÉELS restants relèvent de BXT (`--ash`, −0,3 … −0,5, absent de la commande par
-  défaut) pour les fichiers. Son choix sera persisté : aucun code à changer.
-- **Grain GRIS résiduel** : la réduction du bruit chromatique ne touche PAS le
-  grain de luminance (mesuré ×1,00) — seul le débruitage live (NLM, force 0,5)
-  ou plus d'intégration le réduit. Sujet OUVERT si Alain veut aller plus loin
-  (piste : débruiteur épargnant les étoiles, cf. CLAUDE.md).
+- **AUCUN DÉFAUT CONNU OUVERT** sur la v2.38.0 (validée). Sujets OUVERTS, par ordre
+  d'intérêt, à trancher par Alain quand il le souhaite :
+  - **Le rendu pleine résolution ne couvre que la vue « empilement »** : en vue
+    « traitée », `_src_rendu` retombe sur l'aperçu (aucun empilement complet à
+    disposition — le résultat externe vit dans un instantané pleine résolution
+    mais n'est pas mémorisé pour l'affichage). À faire si Alain veut juger un
+    résultat EXTERNE au zoom : mémoriser aussi cet instantané.
+  - **Coût du rendu pleine résolution quand le débruitage NLM live est actif**
+    (son réglage) : ~7-8 s par nouvelle frame (le NLM pleine résolution pèse
+    3,9-4,1 s à lui seul). Pistes : ne le refaire que sur nouvelle frame (déjà le
+    cas via les caches), ou un bouton « rendu pleine résolution » à la demande,
+    ou suspendre pendant l'acquisition et rafraîchir à l'arrêt.
+  - **Grain GRIS résiduel** : la réduction du bruit chromatique ne touche PAS le
+    grain de luminance (mesuré ×1,00) — seul le débruitage live (NLM, force 0,5)
+    ou plus d'intégration le réduit. Piste : débruiteur épargnant les étoiles
+    (cf. CLAUDE.md).
+  - **Curseur « Rayon de référence » (v2.37.4)** : depuis la v2.37.5 il agit
+    surtout sur le FOND et les objets lisses (la couleur des étoiles n'est plus
+    lissée du tout). Son choix sera persisté : aucun code à changer. Halos RÉELS
+    restants → BXT (`--ash`, −0,3 … −0,5, absent de la commande par défaut).
+  - **Vérifié pendant la clôture** : la chaîne EXTERNE ne porte AUCUN fond cible
+    à elle (aucun `target_bg` dans `avastack/external` ni `avastack/processing`
+    hors du module VeraLux) — elle passe par le même `rendu_pleine_resolution`,
+    donc elle bénéficie du correctif de fidélité de la v2.38.0.
+- **CLOS par cette session** : anneau de couleur des étoiles dans les fichiers
+  (corrigé et validé par Alain) ✔ ; zoom sur la pleine résolution (livré et
+  validé) ✔ ; « le fichier correspond à l'écran » pour un étirement VeraLux
+  (écart 0 mesuré au banc jalon 68) ✔ ; PNG ⇄ FITS (hors de cause, 1/65535 près) ✔.
 - **CLOS par les sessions précédentes** : cœur de M31 VALIDÉ par Alain sur
   l'appli v2.37.2 (« Le cœur n'est effectivement plus cramé ni plat ») ✔ ;
   **chaîne EXTERNE complète VALIDÉE** par lui ✔ ; débruitage NLM essayé sans
   dégradation du cœur ✔ ; profils SPCC re-sélectionnés
   (« les filtres sont bons ») ✔ ; option « normalisation commune des canaux »
   UTILISÉE et mesurée sur ses deux empilements M31 ✔ ; fond bleu des PNG/FITS
-  clos ✔ ; PNG ↔ FITS concordants (1/65535 près, re-mesuré au jalon 66) ✔.
+  clos ✔ ; halo des étoiles brillantes du jalon 65 ✔.
 
 ## Statuts CLAUDE.md
 
@@ -268,8 +279,10 @@ dans le changelog du source et l'historique git.)
 ## Clôtures précédentes
 
 - 26/09/2026 (v2.38.0, ce54c55) : SESSION « ANNEAU DE COULEUR CORRIGÉ ET
-  ZOOM PLEINE RÉSOLUTION », sur décision d'Alain (« b) et c), car sur l'écran je
-  veux pouvoir zoomer sur l'image pleine résolution »). Livré : ① l'enquête du
+  ZOOM PLEINE RÉSOLUTION », **VALIDÉE PAR ALAIN (« C'est OK, on valide »)** —
+  installateur 2.38.0 installé et testé le jour même. Livré, sur sa décision
+  (« b) et c), car sur l'écran je veux pouvoir zoomer sur l'image pleine
+  résolution ») : ① l'enquête du
   jalon 66 (PNG hors de cause ; écart écran ⇄ fichier dû à la RÉSOLUTION ; anneau
   fabriqué par la chroma NR) ; ② le CORRECTIF par POIDS DE STRUCTURE
   (`couleurs._poids_structure`, v2.37.5 : la correction est éteinte là où la
