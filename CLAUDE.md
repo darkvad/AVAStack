@@ -691,6 +691,73 @@ Pièges :
   résultat est simplement mauvais) au lieu d'être attrapée à la
   configuration.
 
+- **La couleur d'un pixel est un RAPPORT, pas un écart absolu** (constat réel
+  d'Alain, 26/09/2026, v2.37.3 — « les étoiles brillantes rouges et bleues ont un
+  halo gênant », visible aussi après BlurXTerminator). Lisser une chroma
+  ABSOLUE (les Cr/Cb de YCrCb tels quels) autour d'une étoile mélange la couleur
+  de son CŒUR avec celle du CIEL voisin et dépose ce mélange sur ses AILES
+  FAIBLES, où un minuscule écart devient une énorme couleur. MESURÉ sur son
+  empilement M31 (anneau r = 3..9 px, en multiples du niveau de ciel local) : la
+  couronne d'une étoile rouge passait de R 41,3 à 34,9 et de B 19,9 à 23,6
+  (+19 %) ; celle d'une étoile bleue de R 3,53 à 1,74 (−51 %) avec B 2,72 → 3,92
+  (+44 %) — un HALO BLEU créé là où il n'y en avait aucun (R/B 1,30 → 0,44) —
+  alors que la LUMINANCE ne bougeait que de ±6 % : c'est un halo de COULEUR. Le
+  correctif lisse le RAPPORT de couleur (chroma ÷ échelle locale, l'échelle étant
+  bornée par la luminance DU PIXEL — le fond gardant, lui, sa luminance LISSÉE
+  pour que le bruit de luminance ne se re-dépose pas dans la couleur) : le grain
+  coloré du fond tombe toujours (×0,17), le halo redevient celui de l'image non
+  traitée (R/B 1,32 contre 1,30), et l'écart RENDU sur 6 étoiles brillantes ne
+  dépasse plus 1,9 point de % du pic contre 24,5 points avant. Vérification de
+  méthode à refaire : à force ≈ 0, la même conversion YCrCb→RVB rend l'image AU
+  BIT PRÈS — c'est le FLOU qui est en cause, jamais la conversion.
+- **Toute échelle SPATIALE (rayon de flou, seuil de détection, taille de fenêtre)
+  doit suivre la RÉSOLUTION** (constat réel d'Alain, 26/09/2026, v2.37.3/v2.37.4).
+  La même valeur en PIXELS appliquée à un APERÇU RÉDUIT étale relativement plus
+  qu'aux fichiers : l'aperçu de l'appli est réduit d'un facteur 1600/largeur
+  (0,417 sur son image de 3838 px) alors que le rayon restait fixé à 3 px → 3 px
+  d'aperçu = 7,2 px pleine résolution, soit un halo 2,4 fois plus large par
+  rapport aux étoiles à l'écran que dans le fichier (mesuré — c'est exactement ce
+  qu'Alain voyait). Le rayon se règle désormais en pixels PLEINE RÉSOLUTION
+  (curseur « Rayon de référence », 0,5 à 8 px) et l'APERÇU le ramène à son
+  échelle (`couleurs.rayon_chroma_apercu`) ; les fichiers (rendu « tel que vu »,
+  chaîne externe) l'utilisent tel quel. Règle générale : l'écran doit montrer ce
+  que le fichier contient — et un plancher du type « jamais moins de 0,6 px »
+  fausse la fidélité d'un PETIT rayon, à vérifier à chaque fois.
+
+- **Une correction appliquée EN FIN de chaîne externe est invisible à l'outil qui
+  la précède** (constat réel d'Alain, 26/09/2026, v2.37.3 : « en général, c'est un
+  halo killer pourtant », à propos de BlurXTerminator). L'ordre de la chaîne
+  externe place les corrections couleur (cases 7/8) APRÈS BXT
+  (`ui/app._run_external`) : un halo FABRIQUÉ par l'une de ces corrections ne peut
+  pas être corrigé par l'outil, qui a travaillé sur une image encore saine. Trois
+  corollaires du même constat : (a) une correction OPT-IN n'est pas INOFFENSIVE
+  parce qu'elle est décochée par défaut — celle-ci fabriquait un halo de couleur
+  sur les étoiles vives ; (b) quand un outil externe a une option DÉDIÉE au
+  symptôme, la vérifier AVANT de suspecter le reste : BXT a bien
+  `--ash`/`--adjust-star-halos` (−0,5…+0,5), mais son défaut est **0,00 = aucun
+  ajustement** et la commande par défaut de l'appli ne le passe pas (mesuré sur un
+  extrait réel : `-0.30` réduit encore, `+0.30` conserve) — « halo killer » n'était
+  donc pas en cause, il n'était simplement pas activé ; (c) les vraies sorties
+  d'un outil doivent être VÉRIFIÉES à la lecture : BXT rendait l'image en MIROIR
+  VERTICAL (corrélation 0,94 avec l'entrée retournée, 0,00 sans) et recadre les
+  valeurs dans [0,1] — deux faits qui invalident toute mesure faite sans
+  redresser ni normaliser (`images.auto_unflip` le fait déjà).
+- **Quand une formule change de NATURE, la propriété du banc doit être ré-énoncée
+  honnêtement — et une FIDÉLITÉ se mesure PAR RAPPORT à son plancher de mesure**
+  (constat de méthode du 26/09/2026, v2.37.3/v2.37.4). Le banc du jalon 63
+  affirmait que la part demandée du grain coloré disparaissait EXACTEMENT
+  (×1−force) : vrai de l'ancienne formulation (un mélange linéaire de chroma),
+  faux de la nouvelle (normalisée par la luminance locale) — l'assertion a été
+  remplacée par une BORNE HAUTE documentée (au pire +8 points ; mesuré 7,0 à
+  force 1,0 sur un fond teinté) plutôt que d'infléchir la formule pour satisfaire
+  un test devenu faux. De même, pour comparer un APERÇU réduit à une image pleine
+  résolution, le double redimensionnement introduit sa propre erreur (mesurée 5 à
+  6 % sur la couleur d'une couronne) : la comparaison doit se lire PAR RAPPORT à
+  ce plancher (mesuré sur la même image SANS le traitement), sinon on attribue au
+  traitement une erreur qui vient de la mesure. Corollaire : un banc qui veut
+  prouver qu'il DISCRIMINE doit embarquer un TÉMOIN (ici l'ancienne formule
+  ré-écrite dans le banc, qui doit échouer là où la nouvelle passe).
+
 ## Maintenance des fichiers de connaissance (CLAUDE.md)
 
 Ce fichier sert de mémoire à long terme pour les agents IA. **Règle

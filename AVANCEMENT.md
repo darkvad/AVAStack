@@ -167,6 +167,15 @@ dans le changelog du source et l'historique git.)
 
 ## En attente / prochaine session
 
+- **PNG : « petit souci encore sur les étoiles » (constat d'Alain, 26/09/2026 —
+  à traiter dans une AUTRE session, non qualifié)** : en clôturant, Alain a
+  signalé qu'il reste un petit défaut sur les étoiles dans la **sauvegarde PNG**
+  (« on regardera dans une autre session »). RIEN n'est mesuré ni reproduit à ce
+  stade : d'abord QUALIFIER avec lui (quelle sauvegarde PNG — « tel que vu » ou
+  résultat d'un traitement externe ? forme, taille, couleur, halo des étoiles ?),
+  puis comparer PIXEL À PIXEL le PNG et le FITS du MÊME rendu (la méthode qui
+  avait attrapé la permutation R-B en v2.36.1), et vérifier la conversion 16 bits
+  de `images.save_image` ainsi que le chemin de rendu propre au PNG.
 - **ALAIN ESSAIE LE CURSEUR DE RAYON (v2.37.4)** en visu live : il a maintenant la
   main sur l'étalement de la couleur des étoiles (rayon de RÉFÉRENCE de 0,5 à 8 px ;
   l'aperçu suit automatiquement son échelle, les fichiers utilisent le rayon tel
@@ -214,27 +223,17 @@ dans le changelog du source et l'historique git.)
   doivent produire le même rendu (constat : la SPCC y était déjà via les
   corrections de couleur, mais la neutralisation du fond et le bruit chromatique
   manquaient → v2.37.1).
-- Leçons EN ATTENTE d'accord d'Alain (26/09/2026, constats de sa session « halo
-  des étoiles » — texte proposé, rien n'est écrit dans CLAUDE.md sans son accord) :
-  1. **La couleur d'un pixel est un RAPPORT, pas un écart absolu** : lisser une
-     chroma ABSOLUE (Cr/Cb de YCrCb) mélange la couleur du CŒUR d'une étoile avec
-     celle du CIEL et la dépose sur les AILES faibles, où un minuscule écart
-     devient une énorme couleur — halo de couleur fabriqué (mesuré : R/B d'une
-     couronne d'étoile 1,30 → 0,44). Lisser le RAPPORT de couleur, à une échelle
-     bornée par la luminance locale, le supprime sans perdre le bénéfice.
-  2. **Toute échelle SPATIALE (rayon de flou, seuil de détection) doit suivre la
-     RÉSOLUTION** : la même valeur en pixels appliquée à un APERÇU RÉDUIT étale
-     relativement plus qu'aux fichiers (constat : 3 px d'aperçu = 7,2 px pleine
-     résolution sur son image de 3838 px → halo 2,4× plus large à l'écran) ;
-     l'écran doit montrer ce que le fichier contient.
-  3. **Une correction appliquée EN FIN de chaîne externe est invisible à l'outil
-     qui la précède** : BXT tourne AVANT les cases 7/8, donc son « halo killer »
-     ne peut rien contre un halo créé après lui (et son réglage de halos `--ash`
-     vaut 0,00 par défaut, absent de la commande par défaut de l'appli).
-  4. **Quand une formule change de NATURE, la propriété du banc doit être
-     ré-énoncée honnêtement** (borne haute documentée au lieu d'une égalité
-     devenue impossible) — et **une fidélité (aperçu ⇄ fichier) se mesure PAR
-     RAPPORT au plancher de mesure** du redimensionnement, jamais en absolu.
+- Leçons ÉCRITES le 26/09/2026 (accord d'Alain en clôture : « tu peux mettre à jour
+  claude ») — section « Pièges », 4 entrées : ① **la couleur d'un pixel est un
+  RAPPORT, pas un écart absolu** (le halo de couleur des étoiles venait de là) ;
+  ② **toute échelle SPATIALE doit suivre la RÉSOLUTION** (aperçu ⇄ fichiers, avec
+  le piège du plancher qui fausse un petit rayon) ; ③ **une correction en FIN de
+  chaîne externe est invisible à l'outil qui la précède** (et l'option DÉDIÉE d'un
+  outil doit être vérifiée — `--ash` de BXT, `0,00` par défaut — de même que ses
+  sorties : miroir vertical, recadrage dans [0,1]) ; ④ **ré-énoncer honnêtement la
+  propriété d'un banc quand la formule change**, mesurer une fidélité PAR RAPPORT
+  à son plancher de mesure, et embarquer un TÉMOIN dans un banc qui doit prouver
+  qu'il discrimine.
 
 ## Setup d'Alain
 
@@ -272,6 +271,30 @@ dans le changelog du source et l'historique git.)
   à la charge de l'agent, sans qu'Alain ait à le demander.
 
 ## Clôtures précédentes
+
+- 26/09/2026 (v2.37.4, 9927539) : SESSION « LE HALO DE COULEUR DES ÉTOILES »,
+  VALIDÉE PAR ALAIN (« on a plus le super halo de couleur, ça c'est bien » ;
+  essais du curseur de rayon OK). Livré : ① la CAUSE — la réduction de bruit
+  chromatique (v2.37.0) lissait une chroma ABSOLUE, donc autour d'une étoile le
+  flou mélangeait la couleur du cœur avec celle du ciel et la déposait sur les
+  ailes faibles (mesuré sur son M31 : R/B d'une couronne 1,30 → 0,44 sur une
+  étoile bleue, R −51 %, B +44 %), et le correctif qui lisse désormais le RAPPORT
+  de couleur (échelle = min(luminance du pixel, sa version lissée)) ; ② le RAYON
+  qui SUIT LA RÉSOLUTION (`couleurs.rayon_chroma_apercu` +
+  `DisplayProcessor.vl_chroma_rayon`) — l'aperçu montrait un halo 2,4× plus large
+  que les fichiers ; ③ le CURSEUR « Rayon de référence » (0,5 à 8 px, v2.37.4,
+  à sa demande pour ses essais en visu), transporté jusqu'à la chaîne EXTERNE
+  (job 14 → 15 éléments) et persistant (`vl_chroma_rayon_ref`). Effets mesurés :
+  grain coloré du fond ×0,17 (bénéfice conservé), écart RENDU du halo ≤ 1,9 point
+  de % du pic contre 24,5 avant. Bancs : `_test_chroma_halo_jalon65.py` (NOUVEAU,
+  avec TÉMOIN de l'ancienne formule pour prouver qu'il discrimine) +
+  `_test_chroma_nr_jalon63.py` (borne haute documentée) + `_test_dn_jalon7.py`
+  (job 15 éléments) ; 19 bancs rejoués, TOUS PASSENT. Installateur 2.37.4
+  reconstruit (le banc est ajouté au .iss). Constats annexes : BXT rend ses
+  sorties en MIROIR VERTICAL et recadrées dans [0,1], et son réglage de halos
+  `--ash` vaut 0,00 par défaut (donc inactif) — laissé à Alain pour les halos
+  RÉELS. Leçons de méthode ÉCRITES dans CLAUDE.md (4 entrées, accord d'Alain).
+  Repli si régression : v2.37.2 (5545a9c).
 
 - 25/09/2026 (v2.37.2, 5545a9c) : SESSION « LE CŒUR CRAMÉ ÉTAIT UNE COUPE »,
   VALIDÉE PAR ALAIN (« Le cœur n'est effectivement plus cramé ni plat »). Livré :
