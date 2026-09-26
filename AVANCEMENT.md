@@ -444,33 +444,19 @@ dans le changelog du source et l'historique git.)
   RÉELS. Leçons de méthode ÉCRITES dans CLAUDE.md (4 entrées, accord d'Alain).
   Repli si régression : v2.37.2 (5545a9c).
 
-- 25/09/2026 (v2.37.2, 5545a9c) : SESSION « LE CŒUR CRAMÉ ÉTAIT UNE COUPE »,
-  VALIDÉE PAR ALAIN (« Le cœur n'est effectivement plus cramé ni plat »). Livré :
-  la CAUSE (le chemin d'étirement COUPAIT l'image vivante à 1,0 alors que
-  l'empilement vit à l'échelle mémoire 13-18 → le cœur entier sur une valeur
-  unique, disque plat, pendant que le fichier borné gardait son dégradé) et le
-  correctif `veralux.normaliser_lin()` (facteur GLOBAL, règle des sauvegardes
-  linéaires, appliqué à `etirer()` et à la vue « tel que vu ») ; au passage,
-  l'ancien `np.clip(out=img)` écrasait le tableau de l'appelant. Bancs : 64 dont
-  `_test_coeur_crame_jalon64.py` (nouveau) ; non-régression rejouée (jalon1/2/3/5,
-  jalon40, jalon63). Verdict annexe : cocher NLM ne dégrade PAS le cœur en vrai
-  (contrairement à la mesure du banc sur image synthétique) → débruitage laissé
-  tel quel. Sa **chaîne EXTERNE complète** (GraXpert + BXT + cases 7/8) VALIDÉE
-  dans la foulée (« pour le moment »). Installateur 2.37.2 reconstruit ; les
-  fichiers de diagnostic de la séance (dont la planche avant/après) ont été
-  supprimés à sa demande — la preuve reste reproductible par le banc. Repli si
-  régression : v2.37.1 (db0e870).
-
-- 25/09/2026 (v2.37.1, db0e870) : SESSION « FOND BLEU → GRAIN BLEU → CHAÎNE
-  EXTERNE », VALIDÉE PAR ALAIN (« Ça me parait OK »). Livré : PNG/TIFF sans
-  permutation R-B (v2.36.1) ; neutralisation de la couleur du fond avant étirement
-  (défaut COCHÉ) ; réduction du BRUIT CHROMATIQUE (opt-in, force = curseur
-  « Couleur live ») ; mesures SPCC/photométrie relançables EN FIN DE STACK ; cases
-  couleur à rendu IMMÉDIAT ; et les deux corrections pré-étirement intégrées à la
-  chaîne de traitement EXTERNE (la SPCC y était déjà, vérifié). Bancs : 63 dont
-  `_test_chroma_nr_jalon63.py` (nouveau) et `_test_couleurs_immediat_jalon39.py`
-  étendu aux quatre cases. Installateur 2.37.1 reconstruit. Repli si régression :
-  v2.36.0 (5f91ae0) = comportement d'avant ces correctifs.
+- 25/09/2026 (v2.37.2, 5545a9c ; puis v2.37.1, db0e870) : DEUX SESSIONS VALIDÉES
+  PAR ALAIN — « le cœur cramé » (CAUSE : l'étirement COUPAIT l'image vivante à 1,0
+  alors que l'empilement vit à l'échelle mémoire 13-18 → cœur entier sur une seule
+  valeur, disque plat ; correctif `veralux.normaliser_lin()`, facteur GLOBAL, règle
+  des sauvegardes linéaires, appliqué à `etirer()` et à la vue « tel que vu » — au
+  passage `np.clip(out=img)` écrasait le tableau de l'appelant) et « fond bleu →
+  grain bleu → chaîne externe » (PNG/TIFF sans permutation R-B ; neutralisation de
+  la couleur du fond avant étirement, défaut coché ; réduction du bruit
+  chromatique opt-in, force = curseur « Couleur live » ; mesures SPCC/photométrie
+  relançables en fin de stack ; cases couleur à rendu immédiat ; les deux
+  corrections pré-étirement INTÉGRÉES à la chaîne EXTERNE, validée par lui dans la
+  foulée). Bancs neufs `_test_coeur_crame_jalon64.py`, `_test_chroma_nr_jalon63.py`.
+  Repli : v2.36.0 (5f91ae0).
 - 21/09/2026 (v2.23.3, aca5ca5) : jalon 55 VALIDÉ PAR ALAIN en réel
   (M31 RGB, mode dossier) — gains R/G/B temps réel, image équilibrée.
   Rappel opérationnel : équilibrage auto OU Linear Fit re-normalisent les
