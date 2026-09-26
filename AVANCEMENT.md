@@ -216,14 +216,30 @@ dans le changelog du source et l'historique git.)
 
 - **AUCUN DÉFAUT CONNU OUVERT** sur la v2.38.0 (validée). Sujets OUVERTS, par ordre
   d'intérêt, à trancher par Alain quand il le souhaite :
-  - **Moucheté bleu du fichier traité (mesuré le 27/09/2026)** : +28 % à
-    l'échelle 2-8 px à cause de BXT (déconvolution `--ash -0.3`) + débruitage IA,
-    alors que le GRAIN FIN y est MEILLEUR qu'en live (×0,73) ; pistes à trancher
-    par Alain : ① `--ash` moins agressif (ou absent) dans la commande BXT,
-    ② BXT n'agit qu'en global aujourd'hui, ③ réduction du bruit chromatique plus
-    forte APRÈS BXT (force 0,6 et rayon 3 px pleine résolution actuellement),
-    ④ accepter tel quel (le grain pixel est meilleur). Rien n'est appliqué :
-    décision d'Alain.
+  - **Moucheté bleu du fichier traité (mesuré le 27/09/2026 ; piste BXT posée
+    par Alain : « BXT a des paramètres pour les étoiles, les halos ET les
+    objets — peut-être faut-il voir le défaut pour les structures si on ne passe
+    rien ? »)** : le moucheté 2-8 px est **×1,27 à ×1,31 PARTOUT** dans le champ
+    (mesuré par classe de fond, du ciel pur au halo :
+    `_diag_mouchete_structures_jalon69.py`), donc PAS un défaut localisé aux
+    structures ; le grain fin 1-2 px est au contraire **RÉDUIT** (×0,76 dans le
+    ciel : le débruitage IA travaille). Cause probable : **BXT tourne avec le
+    volet « objets » à son défaut**. Options RÉELLEMENT lues dans son CLI
+    installé (v2.6.9, `rc-astro bxt --help`) : `--ss/--sharpen-stars` [0–0,7]
+    défaut **0,50** ; `--ash/--adjust-star-halos` [−0,5–0,5] défaut 0,00 (sa
+    commande passe −0,3) ; **`--sn/--sharpen-nonstellar` [0–1] défaut 0,50** ;
+    `--nsd/--nonstellar-diameter` [0–8] défaut 0,0 ; `--ansp/--auto-nonstellar-psf`
+    défaut true ; **`--correct-only`** = corriger la PSF SANS accentuer.
+    Essais à faire (champ « commande BXT », en gardant `-o "{output}" --overwrite`) :
+    ① `--sn 0` ② `--correct-only` ③ `--sn 0.25` — puis re-mesurer avec
+    `_diag_bleu_externe_jalon69.py <ref.fits> <autre.fits>` (la ligne « taches
+    2-8 px » doit revenir vers ×1,0). ⚠ faire les essais SANS empiler plus de
+    brutes entre deux (le ⚡ part de l'instantané courant). Rien n'est appliqué.
+  - **Traçabilité des outils externes (constat)** : les commandes GraXpert/BXT
+    et leurs paramètres ne sont écrits dans AUCUN fichier — `AVAAPPLI` ne décrit
+    que les corrections de couleur (`_entete_reglages`), et les « tel que vu »
+    n'ont pas d'en-tête. Proposition à trancher : consigner la chaîne externe
+    (commandes + options) dans l'en-tête de la sauvegarde linéaire du ⚡.
   - **INSTALLATEUR LINUX / macOS (demande d'Alain, 27/09/2026 : « il faudra
     regarder comment faire un installateur pour Linux … et comment avoir les
     prérequis, ce ne sera pas les dll »)** — étude FAITE (27/09/2026), route à
