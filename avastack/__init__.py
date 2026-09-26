@@ -14,9 +14,41 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.38.2"
+AVASTACK_VERSION = "2.38.3"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.38.3 : PARAMÈTRES BXT EXPLICITES ET TRAÇABILITÉ DES OUTILS EXTERNES. Trois
+#   finitions demandées par Alain (27/09/2026), après la mesure du moucheté bleu
+#   de son fichier traité (« image magnifique avec -sn 0.3 »).
+#   (1) COMMANDE BXT PAR DÉFAUT EXPLICITE — le CLI rc-astro a des défauts qui
+#       AGISSENT tant qu'on ne passe rien (lues dans `rc-astro bxt --help` du
+#       CLI INSTALLÉ, v2.6.9 : --ss 0,50, --ash 0,00, --sn 0,50). La commande par
+#       défaut ne passait que --ash : le volet « objets » (--sn) tournait donc à
+#       0,50 sans que rien ne l'écrive — c'est lui qui ajoutait le moucheté
+#       chromatique 2-8 px (MESURÉ ×1,28 contre la vue live, contre ×0,48 avec
+#       0,3 ; σ/MAD du bleu 2,95 → 1,49). Nouvelle commande par défaut :
+#       --ss 0.5 --ash -0.3 --sn 0.3. Les commandes MÉMORISÉES (config.json,
+#       `cmd_bxt`) restent prioritaires : rien ne change tout seul chez un
+#       utilisateur existant (ajouter « --sn 0.3 » au champ suffit).
+#   (2) TRAÇABILITÉ DES OUTILS EXTERNES — leurs commandes (donc leurs
+#       PARAMÈTRES) n'étaient écrites NULLE PART : `AVAAPPLI` ne décrivait que
+#       les corrections de couleur, et les « tel que vu » n'avaient aucun
+#       en-tête. `App._entete_externe()` (nouvelle) consigne maintenant, dans les
+#       fichiers écrits DEPUIS un résultat du ⚡ : AVAOUTIL (outils cochés),
+#       AVACMDGX / AVACMDDN / AVACMDBX (commandes réellement exécutées, options
+#       comprises), AVAAPPLI (corrections pré-étirement), AVAFRAME, AVAVUE.
+#       Appliqué à la sortie LINÉAIRE du ⚡ (« 💾 Enregistrer le résultat
+#       traité ») ET au « tel que vu » de la vue « traitée » ; la vue
+#       « empilement » garde son comportement d'origine (aucun mot-clé).
+#       Déballage TOLÉRANT (job ancien à 8 éléments accepté).
+#   (3) LISEZMOI de l'installateur : encadré « RÉGLAGES DE BXT » (les défauts du
+#       CLI agissent, la commande fournie les écrit, « --sn 0.3 » à ajouter si
+#       la commande mémorisée date d'avant).
+#   Banc NEUF `_test_bxt_entete_jalon69.py` (commande par défaut, en-tête depuis
+#   le job — complet, ancien, absent —, mots-clés RELUS par astropy dans les
+#   deux fichiers écrits, vue « empilement » toujours sans mot-clé).
+#   Repli si régression : v2.38.2.
+
 # v2.38.2 : LE RÉSULTAT DU ⚡ N'EST PLUS À L'ENVERS (miroir vertical du CLI
 #   rc-astro que `auto_unflip` ne détectait pas). Constat MESURÉ chez Alain
 #   (27/09/2026) en comparant ses deux « tel que vu » de la v2.38.1 : le fichier

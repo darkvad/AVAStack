@@ -394,6 +394,7 @@ class App:
                                         # (local, en mémoire)
         self.proc_show = None           # aperçu traité (réduit, pour affichage)
         self.proc_full = None           # résultat traité pleine résolution (sauvegarde)
+        self.proc_entete = None         # en-tête FITS de ce résultat (v2.38.3)
         self.proc_new = False           # un nouveau résultat vient d'arriver
         self.save_asseen_request = None  # (chemin, vue, réglages, lineaire)
         self.asseen_busy = False        # sauvegarde « tel que vu » en cours (thread dédié)
@@ -3891,6 +3892,7 @@ class App:
         self._maj_photo_vue()
         self._maj_astro_vue()
         self.proc_show = self.proc_full = None
+        self.proc_entete = None               # v2.38.3
         self.proc_new = False
         self.save_asseen_request = None       # sauvegarde « tel que vu » annulée
         self.asseen_busy = False
@@ -4333,7 +4335,14 @@ class App:
             rendu = self.disp.rendu_pleine_resolution(source, reglages)
             if session != self._session:    # session relancée entre-temps
                 return
-            save_image(path, rendu)
+            # v2.38.3 : en vue « traitée », cette image VIENT de la chaîne
+            # externe (c'était le SEUL fichier sans aucune traçabilité).
+            entete = None
+            if vue == "traitée":
+                entete = self._entete_externe()
+                entete["AVAVUE"] = ("resultat traite externe, tel que vu "
+                                    "(ETIRE)")
+            save_image(path, rendu, entete=entete)
             self.asseen_result = path
         except Exception as e:
             self.asseen_result = f"ERREUR: {e}"
@@ -4492,8 +4501,9 @@ class App:
                 # l'empilement linéaire (un résultat d'outil externe peut
                 # lui aussi dépasser 1 : le borner évite un fichier que les
                 # lecteurs supposant [0,1] afficheraient « saturé »).
-                img, _ = borner_lineaire(self.proc_full)
-                save_image(path, img)
+                img, entete = borner_lineaire(self.proc_full,
+                                              dict(self.proc_entete or {}))
+                save_image(path, img, entete=entete)
                 messagebox.showinfo("Enregistrer", f"Résultat traité sauvegardé :\n{path}")
             except Exception as e:
                 messagebox.showerror("Enregistrer", str(e))
@@ -4704,6 +4714,9 @@ class App:
             if session != self._session:             # session relancée entre-temps
                 return
             self.proc_full = img                     # pleine résolution (sauvegarde)
+            # v2.38.3 : la chaîne QUI A PRODUIT ce résultat (outils et leurs
+            # paramètres) est consignée dans l'en-tête du fichier enregistré.
+            self.proc_entete = self._entete_externe(n_frames)
             h, w = img.shape[:2]
             scale = min(1.0, 1600.0 / float(max(h, w)))
             if scale < 1.0:
@@ -4836,6 +4849,7 @@ class App:
             if session != self._session:      # session relancée entre-temps
                 return
             self.proc_full = img
+            self.proc_entete = self._entete_externe(n_frames)   # v2.38.3
             h, w = img.shape[:2]
             scale = min(1.0, 1600.0 / float(max(h, w)))
             if scale < 1.0:
@@ -5510,6 +5524,58 @@ class App:
         ent["AVAAPPLI"] = " + ".join(parts) if parts else "aucune"
         return ent
 
+    def _entete_externe(self, n_frames=None):
+        """En-tête FITS du RÉSULTAT du ⚡ traitement externe (v2.38.3).
+
+        POURQUOI (constat d'Alain, 27/09/2026) : les commandes des outils — donc
+        leurs PARAMÈTRES — n'étaient écrites NULLE PART. `AVAAPPLI` ne décrivait
+        que les corrections de couleur, et les « tel que vu » n'avaient aucun
+        en-tête : un fichier ne disait pas de quelle chaîne il venait, alors que
+        le réglage des outils change la texture fine (mesuré : moucheté chroma
+        2-8 px ×0,37 entre `--sn 0,50` — le défaut du CLI non passé — et 0,3).
+
+        Les commandes RÉELLEMENT utilisées par le ⚡ sont consignées telles
+        quelles (elles portent leurs options : `--ash`, `--sn`, `-strength`…) ;
+        l'en-tête est construit au moment du traitement, depuis `ext_job` (lu par
+        le thread de travail, jamais une variable Tk). Déballage TOLÉRANT : un
+        job à 8 éléments (formats antérieurs) reste accepté."""
+        j = tuple(self.ext_job or ())
+
+        def val(i, defaut=None):
+            return j[i] if len(j) > i else defaut
+
+        outils = []
+        if val(0):
+            outils.append("GraXpert gradient")
+        if val(2):
+            methode = val(6) or "?"
+            outils.append("debruitage "
+                          + ("GraXpert" if methode == "graxpert" else methode))
+        if val(4):
+            outils.append("BXT")
+        preet = []
+        for actif, nom in ((val(8), "SCNR"), (val(9), "SCNR doux"),
+                           (val(10), "demagenta"), (val(11), "fond neutre"),
+                           (val(12), "chroma")):
+            if actif:
+                preet.append(nom)
+        if val(12):
+            preet.append("chroma force %.2f rayon %.1fpx"
+                         % (float(val(13, 0.5)), float(val(14, 3.0))))
+        ent = {"AVAOUTIL": " + ".join(outils) if outils else "aucun",
+               "AVAAPPLI": " + ".join(preet) if preet else "aucune",
+               "AVAVUE": ("resultat du traitement externe (LINEAIRE, "
+                          "avant etirement)")}
+        if val(1):
+            ent["AVACMDGX"] = str(val(1))
+        if val(3):
+            ent["AVACMDDN"] = str(val(3))
+        if val(5):
+            ent["AVACMDBX"] = str(val(5))
+        if n_frames:
+            ent["AVAFRAME"] = int(n_frames)
+        return ent
+
     def _astro_entete_sauvegarde(self, entete=None, forme=None):
         """Jalon 56 : complète un en-tête de sauvegarde avec les mots-clés WCS
         de la grille ACTUELLE (recadrage d'intersection inclus) — le FITS écrit
@@ -6037,6 +6103,7 @@ class App:
                 self._spcc_essais = 0
                 self._spcc_dernier = 0.0
                 self.proc_show = self.proc_full = None
+                self.proc_entete = None           # v2.38.3
                 self.proc_new = False
                 self.save_asseen_request = None   # sauvegarde « tel que vu » annulée
                 self.asseen_busy = False

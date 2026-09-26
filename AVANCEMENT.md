@@ -10,9 +10,32 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **PASSE EN COURS — AVAStack v2.38.2 : LE RÉSULTAT DU ⚡ N'EST PLUS À
-  L'ENVERS** (code + banc livrés le 27/09/2026, **EN ATTENTE DE TON TEST** ;
-  installateur 2.38.2 reconstruit). Découvert en mesurant ton impression de
+- **PASSE EN COURS — AVAStack v2.38.3 : PARAMÈTRES BXT EXPLICITES, TRAÇABILITÉ
+  DES OUTILS EXTERNES, LISEZMOI** (code + banc livrés le 27/09/2026, **EN
+  ATTENTE DE TON TEST** ; installateur 2.38.3 reconstruit). Les trois finitions
+  demandées après ton essai BXT (`--sn 0.3`, « image magnifique ») :
+  - **① commande BXT par défaut EXPLICITE** : `--ss 0.5 --ash -0.3 --sn 0.3`
+    (`external/detection._BXT_OPTIONS`). « Ne rien passer » laissait le volet
+    OBJETS à 0,50 (défaut du CLI) — MESURÉ : moucheté 2-8 px ×1,28 contre la vue
+    live, ×0,48 avec 0,3. ⚠ ta commande MÉMORISÉE (config.json, `cmd_bxt`) reste
+    prioritaire : ajoute `--sn 0.3` au champ pour en profiter.
+  - **② traçabilité** : `App._entete_externe()` écrit maintenant, dans les
+    fichiers issus du ⚡ (sortie LINÉAIRE **et** « tel que vu » de la vue
+    traitée) : `AVAOUTIL`, `AVACMDGX`, `AVACMDDN`, `AVACMDBX` (commandes
+    RÉELLES, options comprises → un fichier dit quel `--sn` l'a produit),
+    `AVAAPPLI`, `AVAFRAME`, `AVAVUE`. La vue « empilement » garde son
+    comportement (aucun mot-clé).
+  - **③ LISEZMOI** de l'installateur : encadré « RÉGLAGES DE BXT ».
+  - Banc NEUF `_test_bxt_entete_jalon69.py` (commande par défaut, en-tête depuis
+    le job — complet / ancien / absent —, mots-clés RELUS par astropy, vue
+    « empilement » toujours sans mot-clé). Non-régression : 12 bancs rejoués,
+    TOUS PASSENT. Repli : v2.38.2.
+
+- **PASSE PRÉCÉDENTE, VALIDÉE PAR LA MESURE — AVAStack v2.38.2 : LE RÉSULTAT DU
+  ⚡ N'EST PLUS À L'ENVERS** (27/09/2026 ; **vérifié sur TON fichier** : le « tel
+  que vu » du ⚡ en v2.38.2 est dans le BON SENS — +0,870 tel quel contre +0,309
+  en miroir — alors que ceux des v2.373, v2.38.0 et v2.38.1 sont en miroir).
+  Découvert en mesurant ton impression de
   « bruit bleu » (voir le bloc suivant) : tes deux « tel que vu » v2.38.1
   montraient le MÊME champ, mais **l'un retourné haut-bas** (corrélation +0,99
   en miroir contre +0,35 tel quel) — défaut présent depuis BXT (v2.373, v2.38.0,
@@ -26,10 +49,6 @@ dans le changelog du source et l'historique git.)
   Banc NEUF `_test_unflip_jalon69.py` (correction sur scène asymétrique, 4 cas
   SANS faux positif dont le miroir HORIZONTAL, tes vrais fichiers en témoin).
   Non-régression : 12 bancs rejoués, TOUS PASSENT. Repli : v2.38.1.
-  **VÉRIFIÉ SUR SON FICHIER (27/09/2026)** : le « tel que vu » du ⚡ en v2.38.2
-  est dans le BON SENS (corrélation +0,870 tel quel contre +0,309 en miroir),
-  alors que ceux des v2.373, v2.38.0 et v2.38.1 sont en miroir (+0,33/+0,89,
-  +0,35/+0,90, +0,31/+0,87) → **le correctif fonctionne en réel**.
 
 - **TON TEST DE LA v2.38.1 (27/09/2026) — « le fichier traité a plus de bruit
   bleu que le stack » : VÉRIFIÉ, MAIS PAS COMME ON LE CROIT** (mesuré sur le
@@ -60,79 +79,25 @@ dans le changelog du source et l'historique git.)
     VRAIE chaîne de sauvegarde, libellé d'aide) ; non-régression : 11 bancs
     rejoués, TOUS PASSENT. Repli si régression : v2.38.0.
 
-- **Version stable VALIDÉE de référence : AVAStack v2.38.0** (`avastack/__init__.py`),
-  branche `master` — **JALON 67/68 : L'ANNEAU DE COULEUR EST CORRIGÉ DANS LES
-  FICHIERS, ET L'ÉCRAN PEUT MONTRER LA PLEINE RÉSOLUTION. VALIDÉ PAR ALAIN
-  (26/09/2026 : « C'est OK, on valide »)** — installateur 2.38.0 installé et
-  testé. Décision d'Alain à l'origine de la passe (26/09/2026, après l'enquête du
-  jalon 66) : « b) et c), car sur l'écran je veux pouvoir zoomer sur l'image
-  pleine résolution — ça aurait été ma prochaine demande ». Détail complet :
-  changelog du source (v2.38.0, v2.37.5) et `## Clôtures précédentes` ci-dessous.
-  Trois choses ont été faites dans la même passe :
-  - **① LE CORRECTIF DE L'ANNEAU (v2.37.5)** — `couleurs._poids_structure` : la
-    correction du flou de chroma est multipliée par 1/(1 + (|Y − flou(Y)|/(3 σ))⁶),
-    qui vaut ~1 sur le FOND (écart ≈ 1 σ : 0,999) et ~0 sur une STRUCTURE
-    (0,5 à 3 σ, 0,045 à 5 σ). MESURÉ sur son empilement réel : anneau des 4
-    étoiles (R/G × le fond) **1,96 sans chroma → 4,63 (v2.37.4) → 2,00 (v2.37.5)** ;
-    grain chromatique du fond toujours retiré à 76 % (×0,24 contre ×0,16) ; objet
-    étendu : couleur préservée à 0,05 % ; luminance jamais réécrite. Banc NEUF
-    `_test_chroma_structure_jalon67.py` (7 sections, TÉMOIN = la formule v2.37.4
-    ré-écrite exprès pour prouver que le banc DISCRIMINE ; son fichier réel en
-    [7], section sautée s'il est absent).
-  - **② TROISIÈME CAUSE ÉCRAN ⇄ FICHIER, TROUVÉE ET CORRIGÉE (v2.38.0)** :
-    `DisplayProcessor.rendu_pleine_resolution` ne transmettait le FOND CIBLE
-    (`vl_target_bg`) que lorsque le logD restait à résoudre. Une fois le logD
-    mémorisé (cas courant en live), l'étirement reprenait le défaut du module
-    (0,20) au lieu du réglage d'Alain (0,16) : MESURÉ sur une image réelle, fond
-    final **0,197 contre 0,159** — écart moyen **9,6 niveaux** de 8 bits (17 au
-    pire). Le fichier était donc PLUS CLAIR que l'écran. Corrigé : écran et
-    fichier coïncident maintenant AU BIT PRÈS (banc jalon 68 [3], écart 0).
-  - **③ ZOOM SUR LA PLEINE RÉSOLUTION (v2.38.0)** : nouvelle case « Rendu pleine
-    résolution (zoom fidèle) » (cadre « Affichage », DÉCOCHÉE par défaut,
-    persistée `vl_pleine_res_ecran`). Cochée, la chaîne d'affichage tourne sur
-    l'empilement COMPLET → l'écran montre ce que le fichier contiendra et le zoom
-    recadre de VRAIS pixels (1:1 exact, libellé du zoom = échelle réelle en px
-    image/px écran + mention PLEINE RÉSOLUTION). Coût mesuré 7,2-8,3 s contre
-    1,7-1,9 s (×4,3) — d'où l'option ; décocher libère la copie (25 Mo) ; repli
-    sur l'aperçu si aucun empilement complet (vue « traitée », début de session).
-    `App._src_rendu` choisit la source ; l'état vit dans un attribut PYTHON
-    (`pleine_res_ecran`) car les threads de travail ne peuvent PAS lire une
-    variable Tk (`RuntimeError: main thread is not in main loop`, constatée et
-    corrigée pendant la passe — la sauvegarde ne sortait plus). Banc NEUF
-    `_test_zoom_pleine_res_jalon68.py` (option/persistance/libération, source de
-    rendu, ÉCRAN = FICHIER écart 0, zoom 1:1 au bit près contre l'aperçu grossi —
-    détail fin 8,73 contre 1,49 —, libellé).
-  - **NON-RÉGRESSION : 32 bancs rejoués, TOUS PASSENT.** Trois mesures de
-    `_test_chroma_nr_jalon63.py` et `_test_chroma_halo_jalon65.py` ont été
-    adaptées, chacune documentée sur place (jamais affaiblie) : le grain est mesuré
-    au MAD et non au σ (la correction étant devenue SÉLECTIVE, le σ est dominé par
-    la queue des ~0,2 % de pixels protégés : ×0,092 contre ×0,027) ; le seuil du
-    résidu de luminance passe de 2e-05 à 1e-04 (queue au CŒUR SATURÉ, B = 1,0000) ;
-    et l'assertion sur le rayon non ramené est INVERSÉE (les ailes n'étant plus
-    lissées, le rayon ne les déforme plus — c'est le but du correctif).
-  - **VALIDÉ PAR ALAIN (26/09/2026) — « C'est OK, on valide »** : installateur
-    2.38.0 installé et testé (étoiles des fichiers sans anneau de couleur ; zoom
-    pleine résolution opérationnel). Prochaine session : voir
-    `## En attente / prochaine session` (aucune urgence : aucun défaut connu ouvert
-    sur cette passe). Repli si une régression apparaissait : v2.37.5, puis v2.37.4
-    (9927539).
+- **Version stable VALIDÉE précédente : AVAStack v2.38.0** — l'anneau de couleur
+  des étoiles dans les FICHIERS (fabriqué par la réduction du bruit chromatique,
+  corrigé par un poids de structure en v2.37.5 : anneau mesuré 4,63 → 2,00), le
+  fichier « tel que vu » qui ne correspondait pas à l'écran (fond cible non
+  transmis au moteur : fond 0,197 contre 0,159, 9,6 niveaux d'écart) et l'écran
+  capable de rendre la PLEINE RÉSOLUTION (option « Rendu pleine résolution »,
+  coût ×4,3). Validé par Alain le 26/09/2026 (« C'est OK, on valide »),
+  installateur 2.38.0 testé. Détails : changelog du source (v2.38.0, v2.37.5) et
+  bancs `_test_zoom_pleine_res_jalon68.py`, `_test_chroma_structure_jalon67.py`.
+  Repli si régression : v2.37.5 puis v2.37.4 (9927539).
 
-  **JALON 66 — RAPPEL CONDENSÉ (enquête, aucun code touché)** : le PNG n'était pas
-  en cause (PNG ⇄ FITS identiques à 1/65535 près, moyenne 0,5 niveau) ; l'écart
-  venait de la RÉSOLUTION (chaîne sur l'aperçu 1600 px à l'écran, sur les 3839 px
-  pour le fichier : écart moyen 0,0147-0,0234, max 0,3728-0,4941) ; l'anneau était
-  fabriqué par la chroma NR à pleine résolution (1,80 → 2,33/2,93/3,89 aux forces
-  0,25/0,50/0,85, le rayon l'élargissant) ; coût de l'écran pleine résolution
-  mesuré (1,7-1,9 s → 7,2-8,3 s, ×4,3). Détail complet : changelog du source,
-  `_diag_*jalon66.py` (9 bancs + 2 planches) et `_diag_couts_jalon66.py`.
-
-  **JALON 65 — RAPPEL CONDENSÉ** : halo de couleur des étoiles brillantes fabriqué
-  par la chroma NR d'alors (étoile bleue R/B 1,30 → 0,44), corrigé en v2.37.3 en
-  lissant le RAPPORT de couleur (échelle = min(luminance du pixel, sa version
-  lissée)) puis en faisant SUIVRE la RÉSOLUTION au rayon (v2.37.3) ; curseur
-  « Rayon de référence » 0,5-8 px ajouté en v2.37.4 (`vl_chroma_rayon_ref`).
-  Verdict d'Alain : « on a plus le super halo de couleur, ca c'est bien ». Détail :
-  changelog du source + `_test_chroma_halo_jalon65.py`.
+  **JALONS 66 ET 65 (condensés)** : l'écart écran ⇄ fichier venait de la
+  RÉSOLUTION (chaîne sur l'aperçu 1600 px, fichier en 3839 px : écart moyen
+  0,015-0,023) et l'anneau de couleur était fabriqué par la chroma NR pleine
+  résolution — d'où le rendu pleine résolution à l'écran (jalon 68) et le correctif
+  par poids de structure (v2.37.5). Le halo des étoiles brillantes (R/B 1,30 →
+  0,44) avait été réglé en v2.37.3 (flou du RAPPORT de couleur, rayon suivant la
+  résolution), puis le curseur « Rayon de référence » en v2.37.4. Détails :
+  changelog du source, `_diag_*jalon66.py`, `_test_chroma_halo_jalon65.py`.
 
 - **Version stable précédente : AVAStack v2.37.2** — le cœur « cramé » était une
   COUPE à 1,0 appliquée avant l'étirement, alors que l'empilement vit à une
@@ -149,25 +114,11 @@ dans le changelog du source et l'historique git.)
 - **Avant cela : v2.37.0** — réduction du bruit chromatique (opt-in, force =
   curseur « Couleur live ») et mesures (astrométrie/photométrie/SPCC) relançables
   en fin de stack (case décochée/recochée = demande servie sans frame).
-- **MESURES SUR SES DEUX FICHIERS v2.36.1 (41 et 115 frames, 51/123 empilées)** —
-  `_diag_empilement_couleur.py` :
-  - grain (plancher de bruit) : σ 0,000519 / 0,000579 / 0,000673 à 41 frames →
-    **0,000338 / 0,000375 / 0,000440** à 115 frames, soit **÷1,53** pour ×2,8 de
-    frames (théorie 1/√n = 1,67 ; l'écart vient du ciel lui-même 6 % plus sombre).
-    **LE GRAIN DU FOND S'AMÉLIORE ENFIN AVEC L'INTÉGRATION** : le rapport
-    fond/σ passe de ~63/57/49 (R/G/B) à ~91/82/70, soit **×1,44** — c'est
-    exactement ce que la normalisation commune devait apporter (avant, il restait
-    CONSTANT : 2,88 → 2,50 sur 28→111 frames) ;
-  - fond toujours **neutre** (R/G 0,9998 · B/G 0,9999) ✔ ;
-  - **grain résiduel COLORÉ et STABLE** : R/G 0,898→0,902 (équilibré) mais
-    **B/G 1,163→1,174** : le bleu reste ~17 % plus bruité que le vert. Cause
-    MESURÉE (comptes exacts) : une correction MULTIPLICATIVE amplifie le bruit du
-    canal qu'elle monte. Les gains appliqués (SPCC K=0,6223/0,7587/1,0000 +
-    équilibrage force 0,43 + offsets) donnent
-    (σ_R·K_R)/(σ_G·K_G) = 1,099 × 0,820 = 0,902 ✔ (mesuré 0,902) et
-    (σ_B·K_B)/(σ_G·K_G) = 0,891 × 1,318 = 1,174 ✔ (mesuré 1,174) : **c'est la SPCC
-    elle-même qui monte le grain bleu** (K_B/K_G = 1,32), pas la normalisation.
-    Sans correction, l'équilibre serait R/G 1,10 · B/G 0,89.
+- **Référence de mesure (v2.36.1, `_diag_empilement_couleur.py`)** : grain du fond
+  ÷1,53 pour ×2,8 de poses (σ 0,000519 → 0,000338 à 41 → 115 frames) ; fond/σ
+  ×1,44 ; fond NEUTRE (R/G 0,9998 · B/G 0,9999) ; **grain bleu B/G 1,17**, monté
+  par les gains multiplicatifs de la SPCC (σ_B·K_B / σ_G·K_G = 0,891 × 1,318) —
+  point de départ du grain bleu réglé en v2.37.0. Détail : changelog du source.
 - **HISTORIQUE CONDENSÉ (v2.35.0 → v2.36.1)** — traces complètes dans le
   changelog de `avastack/__init__.py` et l'historique git ; les leçons durables
   sont dans les « Pièges » de CLAUDE.md :
@@ -218,43 +169,21 @@ dans le changelog du source et l'historique git.)
 
 ## En attente / prochaine session
 
-- **AUCUN DÉFAUT CONNU OUVERT** sur la v2.38.0 (validée). Sujets OUVERTS, par ordre
-  d'intérêt, à trancher par Alain quand il le souhaite :
-  - **Moucheté bleu du fichier traité (mesuré le 27/09/2026 ; piste BXT posée
-    par Alain : « BXT a des paramètres pour les étoiles, les halos ET les
-    objets — peut-être faut-il voir le défaut pour les structures si on ne passe
-    rien ? »)** : le moucheté 2-8 px est **×1,27 à ×1,31 PARTOUT** dans le champ
-    (mesuré par classe de fond, du ciel pur au halo :
-    `_diag_mouchete_structures_jalon69.py`), donc PAS un défaut localisé aux
-    structures ; le grain fin 1-2 px est au contraire **RÉDUIT** (×0,76 dans le
-    ciel : le débruitage IA travaille). Cause probable : **BXT tourne avec le
-    volet « objets » à son défaut**. Options RÉELLEMENT lues dans son CLI
-    installé (v2.6.9, `rc-astro bxt --help`) : `--ss/--sharpen-stars` [0–0,7]
-    défaut **0,50** ; `--ash/--adjust-star-halos` [−0,5–0,5] défaut 0,00 (sa
-    commande passe −0,3) ; **`--sn/--sharpen-nonstellar` [0–1] défaut 0,50** ;
-    `--nsd/--nonstellar-diameter` [0–8] défaut 0,0 ; `--ansp/--auto-nonstellar-psf`
-    défaut true ; **`--correct-only`** = corriger la PSF SANS accentuer.
-    Essais à faire (champ « commande BXT », en gardant `-o "{output}" --overwrite`) :
-    ① `--sn 0` ② `--correct-only` ③ `--sn 0.25` — puis re-mesurer avec
-    `_diag_bleu_externe_jalon69.py <ref.fits> <autre.fits>` (la ligne « taches
-    2-8 px » doit revenir vers ×1,0). ⚠ faire les essais SANS empiler plus de
-    brutes entre deux (le ⚡ part de l'instantané courant). Rien n'est appliqué.
-    → **RÉSULTAT MESURÉ (son essai `--sn 0.3`, 27/09/2026) : VÉRIFIÉ PAR LES
-    CHIFFRES, et « image magnifique » (son verdict).** A/B sur la chaîne externe
-    seule (les deux fichiers du ⚡) : moucheté 2-8 px ×0,37, excursions fortes
-    4,15 % → 0,72 % du ciel ; face au stack « tel que vu » de la même version :
-    ×1,28 (--sn 0,50) → **×0,48** (--sn 0,3), σ/MAD du bleu 2,95 → **1,49**
-    (« plaques » → grain), grain bleu déjà ×0,53. Le PNG livré est EXACTEMENT le
-    FITS (écart max 1/65535, moyenne 0,5/65535), même sens, canaux dans le bon
-    ordre (`_diag_png_fits_jalon69.py`). ⚠ RÉSERVE : les fichiers comparés
-    viennent d'instants différents (l'empilement grandissait) — un A/B parfait
-    exige de FIGER l'empilement entre deux essais. Réglage retenu : **`--sn 0.3`**
-    (à reporter dans la commande BXT par défaut ? décision d'Alain).
-  - **Traçabilité des outils externes (constat)** : les commandes GraXpert/BXT
-    et leurs paramètres ne sont écrits dans AUCUN fichier — `AVAAPPLI` ne décrit
-    que les corrections de couleur (`_entete_reglages`), et les « tel que vu »
-    n'ont pas d'en-tête. Proposition à trancher : consigner la chaîne externe
-    (commandes + options) dans l'en-tête de la sauvegarde linéaire du ⚡.
+- **AUCUN DÉFAUT CONNU OUVERT** sur la v2.38.3 (livrée) ni sur la v2.38.2
+  (vérifiée par la mesure). Sujets OUVERTS, par ordre d'intérêt :
+  - **CLOS PAR LA v2.38.3 — MOUCHETÉ BLEU DU FICHIER TRAITÉ** (piste BXT d'Alain,
+    27/09/2026) : mesuré ×1,27-1,31 PARTOUT dans le champ (donc pas « les
+    structures » ; le grain fin était au contraire réduit), cause = le volet
+    « objets » de BXT (`--sn`, défaut 0,50 tant que rien n'est passé — options du
+    CLI installé v2.6.9) ; son essai `--sn 0.3` mesuré (moucheté ×0,37 sur la
+    chaîne externe, ×0,48 face à la vue live, σ/MAD du bleu 2,95 → 1,49) est
+    **livré par défaut** (`--ss 0.5 --ash -0.3 --sn 0.3`). Détails : changelog
+    v2.38.3, `_diag_mouchete_structures_jalon69.py`, CLAUDE.md.
+  - **CLOS PAR LA v2.38.3 — TRAÇABILITÉ DES OUTILS EXTERNES** : `AVAOUTIL`,
+    `AVACMDGX`, `AVACMDDN` et `AVACMDBX` sont écrits dans les fichiers issus du ⚡
+    (sortie linéaire ET « tel que vu » de la vue traitée). Reste possible (non
+    demandé) : écrire aussi un en-tête sur le « tel que vu » de la vue
+    « empilement ».
   - **INSTALLATEUR LINUX / macOS (demande d'Alain, 27/09/2026 : « il faudra
     regarder comment faire un installateur pour Linux … et comment avoir les
     prérequis, ce ne sera pas les dll »)** — étude FAITE (27/09/2026), route à
@@ -358,6 +287,22 @@ dans le changelog du source et l'historique git.)
   d'ANCRE ; deux normalisations distinctes rendent une SSD aveugle —
   partager les bornes) ; jalon 24 (valider les placeholders d'un gabarit
   AVANT la substitution). Plus AUCUNE leçon en attente.
+- Leçons ÉCRITES le 27/09/2026 (accord d'Alain : « met a jour claude ») — section
+  « Pièges », 5 entrées : ① « ne rien passer » à un CLI tiers n'est PAS neutre, et
+  la source qui fait foi est le `--help` de l'outil INSTALLÉ (BXT `--sn` resté à
+  0,50, responsable du moucheté) → écrire les paramètres explicitement ET les
+  consigner dans le fichier ; ② comparer deux images LINÉAIRES non étirées rend
+  une corrélation aveugle (`auto_unflip` : +0,1085 contre +0,1212 → miroir non
+  corrigé pendant quatre versions) → normaliser et ÉTIRER avant de corréler,
+  marge large (+0,20) ; ③ deux fichiers du même champ peuvent ne pas être
+  superposés (le ⚡ part d'un instantané plus récent que les fichiers déjà
+  enregistrés) → vérifier orientation et alignement, et FIGER l'empilement pour un
+  A/B propre ; ④ localiser un défaut par ÉCHELLE (1-2 px grain, 2-8 px texture
+  d'outil, 8-30 px plaques) et par classe de fond AVANT d'accuser un maillon ;
+  ⑤ le rapport σ/MAD décrit l'ALLURE du bruit (1,5 = grain, 3 = plaques), à
+  mesurer sur des blocs de fond COMMUNS aux deux images. AJOUTÉE aussi : la
+  section « Portage Linux / macOS — prérequis et installateur » (prérequis
+  système, règles udev, noms des `.so`, paquets pip par OS, piste INDI).
 - Leçons ÉCRITES le 25/09/2026 (au fil de la session, constats d'Alain) : un
   `imencode` attend du BGR (PNG/TIFF R-B permutés pendant des mois) ; un étirement
   log AMPLIFIE la couleur du fond (l'ancre de VeraLux) ; un gain MULTIPLICATIF
@@ -432,6 +377,24 @@ dans le changelog du source et l'historique git.)
 
 ## Clôtures précédentes
 
+- 27/09/2026 (v2.38.2 puis v2.38.3) : SESSION « LE FICHIER DU ⚡ ÉTAIT À
+  L'ENVERS, ET LE MOUCHETÉ BLEU VIENT DE BXT », **mesures validées par Alain**
+  (« image magnifique avec -sn 0.3 ») : ① son test de la v2.38.1 (« le fichier
+  traité a plus de bruit bleu que le stack ») MESURÉ — le grain est au contraire
+  MEILLEUR (×0,73) mais le moucheté 2-8 px est ×1,28 ; ② en mesurant, découverte
+  que le fichier du ⚡ était en **MIROIR VERTICAL** (v2.373, v2.38.0, v2.38.1),
+  cause `auto_unflip` (corrélation aveugle sur images linéaires : +0,1085 contre
+  +0,1212) → **v2.38.2** (comparaison étirée/normalisée, marge +0,20, banc
+  `_test_unflip_jalon69.py`) — vérifié ensuite sur son fichier v2.38.2 (bon sens) ;
+  ③ sa piste BXT confirmée : `--sn` (volet objets) restait au défaut 0,50 →
+  son essai `--sn 0.3` mesuré (moucheté 2-8 px ×0,37, excursions 4,15 % → 0,72 %,
+  σ/MAD 2,95 → 1,49) → **v2.38.3** (paramètres BXT explicites par défaut :
+  `--ss 0.5 --ash -0.3 --sn 0.3` ; traçabilité `AVAOUTIL`/`AVACMDGX`/`AVACMDDN`/
+  `AVACMDBX` dans les fichiers issus du ⚡ ; encadré LISEZMOI) ; ④ au passage :
+  installateur Linux/macOS ÉTUDIÉ (prérequis, règles udev, noms des `.so`, piste
+  INDI) et consigné dans AVANCEMENT + CLAUDE.md (5 leçons + la section portage) ;
+  ⑤ son PNG est identique au FITS (écart max 1/65535, même sens, canaux dans le
+  bon ordre). Repli si régression : v2.38.2.
 - 26/09/2026 (v2.38.0, ce54c55) : SESSION « ANNEAU DE COULEUR CORRIGÉ ET
   ZOOM PLEINE RÉSOLUTION », **VALIDÉE PAR ALAIN (« C'est OK, on valide »)** —
   installateur 2.38.0 installé et testé le jour même. Livré, sur sa décision

@@ -81,12 +81,28 @@ def commande_par_defaut_graxpert_dn():
     return f'"{exe}" ' + _GX_DN_OPTIONS
 
 
+# Options BXT ÉCRITES EXPLICITEMENT (v2.38.3, décision d'Alain, 27/09/2026).
+# POURQUOI : le CLI rc-astro a des DÉFAUTS qui agissent tant qu'on ne passe rien
+# — `--help` du CLI installé (v2.6.9) : `--ss/--sharpen-stars` défaut 0,50,
+# `--ash/--adjust-star-halos` défaut 0,00, **`--sn/--sharpen-nonstellar` défaut
+# 0,50**. La commande d'origine ne passait que `--ash` : le volet « objets »
+# tournait donc à 0,50 sans que rien ne l'écrive, et c'est lui qui ajoutait le
+# moucheté chromatique 2-8 px MESURÉ sur l'empilement d'Alain (×1,28 contre la
+# vue live ; ×0,48 avec `--sn 0.3`, σ/MAD du bleu 2,95 → 1,49). Réglage retenu :
+# étoiles 0,5 (défaut), halos −0,3 (halos réels constatés), objets 0,3.
+_BXT_OPTIONS = ('bxt "{input}" -o "{output}" --overwrite '
+                '--ss 0.5 --ash -0.3 --sn 0.3')
+
+
 def commande_par_defaut_bxt():
-    """Commande BlurXTerminator (rc-astro) : chemin détecté sinon binaire nu."""
+    """Commande BlurXTerminator (rc-astro) : chemin détecté sinon binaire nu.
+
+    Les paramètres sont EXPLICITES (cf. `_BXT_OPTIONS`) : « ne rien passer »
+    n'est PAS neutre — le CLI applique alors ses propres défauts."""
     exe = trouver_exe(_NOM_RC_ASTRO, "AVASTACK_RC_ASTRO", _SOUS_RC_ASTRO)
     if exe is None:
-        return 'rc-astro bxt "{input}" -o "{output}" --overwrite'
-    return f'"{exe}" bxt "{{input}}" -o "{{output}}" --overwrite'
+        return "rc-astro " + _BXT_OPTIONS
+    return f'"{exe}" ' + _BXT_OPTIONS
 
 
 # Commandes effectives au lancement : persistance d'abord, détection ensuite.

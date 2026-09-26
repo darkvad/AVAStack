@@ -174,6 +174,7 @@ Source: "{#RepoRoot}\_test_chroma_structure_jalon67.py"; DestDir: "{app}"; Flags
 Source: "{#RepoRoot}\_test_zoom_pleine_res_jalon68.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}\_test_pleine_res_traitee_jalon69.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}\_test_unflip_jalon69.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#RepoRoot}\_test_bxt_entete_jalon69.py"; DestDir: "{app}"; Flags: ignoreversion
 
 ; veralux_core_headless.py : code tiers GPL-3.0-or-later (Riccardo Paterniti),
 ; copie tel quel (sa licence exige de transmettre le source a cote du binaire).

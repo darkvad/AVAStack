@@ -172,6 +172,18 @@ s'ils sont installés, sinon indique leur chemin dans l'application
 (bouton "…" de la section "Traitement externe"). Ces réglages sont
 mémorisés.
 
+RÉGLAGES DE BXT (important) : le CLI rc-astro applique SES PROPRES
+valeurs par défaut tant qu'on ne passe rien — dont 0,50 pour
+l'accentuation des OBJETS (--sn), qui ajoute un moucheté de couleur dans
+le fond du ciel (mesuré ×1,28 contre la vue live sur un empilement réel).
+La commande fournie passe désormais les paramètres EXPLICITEMENT :
+  --ss 0.5 (étoiles)  --ash -0.3 (halos)  --sn 0.3 (objets)
+Si ta commande mémorisée date d'avant, ajoute simplement " --sn 0.3 " à
+la fin du champ : le fond devient nettement plus lisse (moucheté mesuré
+divisé par 2,7). Ces paramètres sont écrits dans l'en-tête des fichiers
+enregistrés (mots-clés AVACMDBX, AVACMDGX, AVAOUTIL) : tu peux donc
+vérifier après coup ce qui a réellement été appliqué.
+
 FICHIERS DE CONFIGURATION
 -------------------------
 Tes réglages sont mémorisés dans :

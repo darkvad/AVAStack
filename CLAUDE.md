@@ -105,6 +105,43 @@ sans qu'Alain ait à y penser.
 powershell -NoProfile -ExecutionPolicy Bypass -File installer\windows\build_avastack.ps1
 ```
 
+## Portage Linux / macOS — prérequis et installateur (étude du 27/09/2026)
+
+Contrainte d'Alain : l'application doit tourner sur Windows / Linux / macOS. Le
+code est DÉJÀ multiplateforme (chemins de config par OS, `compat.ZWO_DLL_NAME`,
+`cameras/sdk_loader.nom_bibliotheque`, détection des outils externes selon l'OS) :
+le chantier restant est l'INSTALLATION. Éléments vérifiés le 27/09/2026 (CLI
+installé, documentations et pages constructeurs) :
+
+- **Prérequis LINUX (ce ne sont PAS des DLL)** : `python3` ≥ 3.10 +
+  `python3-venv` + **`python3-tk`** (Tkinter n'existe PAS sur pip : c'est LA
+  différence de fond avec Windows), `libgl1` et `libglib2.0-0` (roues
+  `opencv-python`), `libusb-1.0-0` (dépendance documentée du SDK Player One).
+- **Accès USB : les règles udev** — sans elles, la caméra n'est visible QUE en
+  root. Chaque SDK constructeur fournit son fichier : ZWO `asi.rules`
+  (`sudo install asi.rules /etc/udev/rules.d`, le vendor id `03c3` est déjà
+  écrit dedans), Player One `99-player_one_astronomy.rules`, ToupTek et SVBONY
+  leurs fichiers respectifs.
+- **Bibliothèques constructeurs** : `libASICamera2.so` (ZWO),
+  `libPlayerOneCamera.so`, `libtoupcam.so`, `libSVBCameraSDK.so` (+ `.dylib` sous
+  macOS) — exactement les noms que cherche le code. **QHY : rien à faire** (le
+  paquet pip `qhyccd` embarque le SDK natif, roues `cp310-abi3` manylinux_2_34 +
+  Windows ; PAS de roue macOS en revanche). Sur Debian/Ubuntu,
+  `libplayeronecamera2t64` apporte la bibliothèque Player One.
+- **Outils externes** : GraXpert existe en Linux (zip) et macOS (dmg) ; le CLI
+  rc-astro (BlurXTerminator) existe pour Windows, macOS ET Linux.
+- **macOS** : Python de python.org (Tk inclus) ou `brew install python-tk@3.14`,
+  puis bundle `.app` + signature/notarisation Apple (sinon Gatekeeper bloque).
+- **Piste « zéro .so » : INDI** — les pilotes INDI *embarquent* eux-mêmes le SDK
+  constructeur (le dépôt `indi-3rdparty` redistribue des binaires constructeurs :
+  `indi_asi_ccd`, `indi_qhy_ccd`, `indi_playerone_ccd`, `indi_toupbase`, pilote
+  SVBony), mais sur Debian/Ubuntu c'est le PAQUET INDI qui apporte les `.so` ET
+  les règles udev. Faire d'AVAStack un CLIENT INDI (socket 7624, XML + BLOBs
+  FITS ; `indipyclient` = pur Python, pip) supprimerait tout `.so` côté
+  application et unifierait les trois OS — jalon à part entière (nouvelle source
+  d'acquisition, capacités lues sur les propriétés du pilote, test réel), à
+  programmer APRÈS le portage direct (qui réutilise tout l'existant).
+
 ## Conventions non-négociables
 
 - Commentaires et docstrings **en français**, cohérents avec l existant.
@@ -659,8 +696,50 @@ Pièges :
   l'écran de 9,6 niveaux de 8 bits en moyenne (fond 0,197 au lieu de 0,159),
   sans que l'écart de résolution, lui, l'explique.
 
-## Leçons générales transposables (projet pipeline siril)
+- **« NE RIEN PASSER » À UN CLI TIERS N'EST PAS NEUTRE — et la source qui fait
+  foi est le `--help` de l'outil INSTALLÉ.** Constat réel (27/09/2026, v2.38.3) :
+  la commande BXT ne passait que `--ash -0.3` ; le volet « objets »
+  (`--sn/--sharpen-nonstellar`) restait donc à son défaut de **0,50**, invisible
+  dans le champ de commande — et c'est lui qui ajoutait un moucheté chromatique
+  2-8 px (mesuré ×1,28 contre la vue live ; ×0,48 avec 0,3 ; σ/MAD du bleu
+  2,95 → 1,49). La page d'aide web était TRONQUÉE : c'est `rc-astro bxt --help`
+  (CLI v2.6.9 installé chez Alain) qui a donné noms, plages ET défauts.
+  Corollaires : écrire les paramètres EXPLICITEMENT dans la commande par défaut,
+  et les CONSIGNER dans le fichier (en-tête) — sinon un fichier ne dit pas de
+  quelle chaîne il vient.
+- **COMPARER DEUX IMAGES LINÉAIRES NON ÉTIRÉES REND LA MESURE AVEUGLE.**
+  Constat réel (27/09/2026) : `auto_unflip` comparait les images linéaires brutes
+  (corrélation de Pearson, sous-échantillonnage « 1 pixel sur N ») et mesurait
+  +0,1085 (bonne orientation) contre +0,1212 (miroir) — écart +0,0127, SOUS la
+  marge de 0,05, donc aucune décision : le résultat du CLI rc-astro est resté en
+  MIROIR VERTICAL dans les fichiers ET à l'écran (v2.373, v2.38.0, v2.38.1),
+  parce que ce qui n'est PAS partagé (grain, texture d'outil) écrase tout — mesuré :
+  la variance hautes fréquences vaut 4× les basses. Sur les MÊMES images, la
+  comparaison ÉTIRÉE et NORMALISÉE (percentiles 0,5/99,5 puis racine, moyenne par
+  INTER_AREA) donne +0,539 contre +0,996 : décision franche. Règle : normaliser et
+  étirer AVANT de corréler, et exiger une marge LARGE (+0,20 : un vrai miroir
+  gagne de +0,27 à +0,46, une orientation correcte reste sous 0,05).
+- **DEUX FICHIERS DU MÊME CHAMP PEUVENT NE PAS ÊTRE SUPERPOSÉS AU PIXEL.** Le ⚡
+  travaille sur un INSTANTANÉ de l'empilement, plus récent que les fichiers de
+  l'empilement déjà enregistrés : grain et textures fines diffèrent, et une
+  comparaison « même ciel » au pixel près devient fausse (mesuré : 11 blocs
+  communs trouvés sur 858 au lieu de 84 après redressement). Vérifier ORIENTATION
+  et alignement avant toute mesure, et FIGER l'empilement pour un A/B propre —
+  sinon on attribue à un réglage ce qui vient du nombre de poses.
+- **LOCALISER UN DÉFAUT PAR ÉCHELLE ET PAR CLASSE DE FOND AVANT D'ACCUSER UN
+  MAILLON.** L'échelle dit le coupable : 1-2 px = grain, 2-8 px = texture
+  d'outil (IA/déconvolution), 8-30 px = plaques. Constat réel (27/09/2026) : le
+  moucheté du fichier traité était ×1,27-1,31 PARTOUT (ciel pur comme halo de
+  galaxie) — donc PAS un défaut « des structures » mais une texture ajoutée
+  globalement —, tandis que le grain fin était RÉDUIT (×0,76) : le débruitage
+  travaillait. C'est cette mesure qui a orienté vers le volet « objets » de BXT.
+- **LE RAPPORT σ/MAD DÉCRIT L'ALLURE DU BRUIT, à mesurer sur le MÊME ciel.**
+  σ/MAD ≈ 1,5 : du grain ; ≈ 3 : du moucheté « en plaques » (mesuré sur un fond
+  réel : 2,95 à `--sn 0,50`, 1,49 à 0,3). Le calculer sur des blocs de fond
+  COMMUNS aux deux images (le masque se choisit une fois, pas par image), sinon
+  deux ciels différents sont comparés.
 
+## Leçons générales transposables (projet pipeline siril)
 - **Toute fonction opérant sur des données image : vérifier si elle suppose
   implicitement un nombre de canaux fixe** avant de la réutiliser sur un
   chemin mono/narrowband (bug réel : tableau (H,W) mono indexé comme
