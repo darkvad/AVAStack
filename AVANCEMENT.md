@@ -267,7 +267,7 @@ dans le changelog du source et l'historique git.)
 
 ## Clôtures précédentes
 
-- 26/09/2026 (v2.38.0, bcfaeb2) : SESSION « ANNEAU DE COULEUR CORRIGÉ ET
+- 26/09/2026 (v2.38.0, ce54c55) : SESSION « ANNEAU DE COULEUR CORRIGÉ ET
   ZOOM PLEINE RÉSOLUTION », sur décision d'Alain (« b) et c), car sur l'écran je
   veux pouvoir zoomer sur l'image pleine résolution »). Livré : ① l'enquête du
   jalon 66 (PNG hors de cause ; écart écran ⇄ fichier dû à la RÉSOLUTION ; anneau
