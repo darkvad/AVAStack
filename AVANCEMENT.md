@@ -228,6 +228,22 @@ dans le changelog du source et l'historique git.)
       `*.so`/`*.dylib` avec l'application et posera les `*.rules` dans
       `/lib/udev/rules.d/` (une seule fois, sudo) — `*.so`/`*.dylib`/`*.rules`
       ajoutés au `.gitignore` le 27/09/2026 (comme `*.dll`).
+  - **PISTE INDI (question d'Alain, 27/09/2026 : « les softs astro Linux
+    utilisent les drivers INDI, ça remplacerait les .so ? »)** — vérifié :
+    NON, les pilotes INDI **embarquent/lient eux-mêmes** le SDK constructeur
+    (le dépôt `indi-3rdparty` redistribue des binaires **fournis par les
+    constructeurs** — `indi_asi_ccd`, `indi_qhy_ccd`, `indi_playerone_ccd`,
+    `indi_toupbase` pour la famille ToupTek, pilote SVBony dédié) ; mais sur
+    Debian/Ubuntu c'est le PAQUET INDI qui apporte les `.so` **et** les règles
+    udev → pour Alain, aucun téléchargement manuel. LÀ où INDI change vraiment
+    la donne : faire d'AVAStack un **CLIENT INDI** (socket 7624, XML + BLOBs
+    FITS ; `indipyclient` = pur Python, pip, aucune bibliothèque constructeur) →
+    plus AUCUN `.so` ni `zwoasi`/`qhyccd` côté appli, et **une seule route pour
+    les trois OS** et toutes les marques (indiserver local ou distant, comme
+    Ekos « remote »). À programmer comme un **jalon à part** (nouvelle source
+    d'acquisition, capacités lues sur les propriétés INDI du pilote au lieu de
+    `capacites.py`, test matériel réel) — **PAS avant** le portage Linux avec
+    les `.so`, qui réutilise tout l'existant.
   - **Coût du rendu pleine résolution quand le débruitage NLM live est actif**
     (son réglage) : ~7-8 s par nouvelle frame (le NLM pleine résolution pèse
     3,9-4,1 s à lui seul). Pistes : ne le refaire que sur nouvelle frame (déjà le
