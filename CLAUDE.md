@@ -620,6 +620,44 @@ Pièges :
   capture (expo posée 30 ms revenue à 2000 ms après stop/start) →
   désactiver l'auto-sauvegarde si le SDK l'expose (`SVBSetAutoSaveParam(0)`)
   et reposer les réglages après chaque restart.
+- **Une variable Tkinter (`BooleanVar`, `StringVar`…) ne peut être LUE que depuis
+  le THREAD D'INTERFACE** : toute lecture depuis un thread de travail lève
+  `RuntimeError: main thread is not in main loop` (ou rend une valeur périmée
+  silencieuse sur d'autres plateformes). Constat réel (26/09/2026, v2.38.0) :
+  l'option « Rendu pleine résolution », lue par la boucle d'acquisition pour
+  mémoriser l'empilement complet, faisait planter le cycle d'acquisition — plus
+  AUCUNE sauvegarde ne sortait, et c'est le banc de sauvegarde qui l'a attrapé.
+  Un état partagé entre l'interface et les threads de travail doit vivre dans un
+  ATTRIBUT PYTHON mis à jour par l'interface ; la variable Tk n'est que son
+  reflet d'affichage.
+- **Après un traitement SÉLECTIF (masque, poids de structure…), un σ ne mesure
+  plus le NIVEAU de ce qui reste : il mesure la QUEUE.** Constat réel
+  (26/09/2026, v2.37.5) : la réduction de bruit chromatique épargne désormais les
+  pixels structurés (~0,2 % d'entre eux gardent tout leur grain) → le σ du grain
+  restant valait ×0,092 alors que le grain réellement restant valait ×0,027
+  (MAD). Deux bancs donnaient donc un faux échec. Règle : mesurer un NIVEAU au
+  MAD (×1,4826) et garder le σ imprimé à côté, comme information.
+- **Une scène de banc doit reproduire le MÉCANISME du défaut, pas seulement son
+  allure.** Constat réel (26/09/2026, banc jalon 67) : l'étoile synthétique était
+  écrêtée à 1,0 par un `clip` — cœur BLANC, donc aucune couleur à déposer ;
+  l'anneau de couleur ne se reproduisait pas et le TÉMOIN ne discrimininait rien
+  (+5 % au lieu de +140 % sur les données réelles). Les valeurs à respecter se
+  relèvent sur le fichier RÉEL : cœur ~0,5 pour un ciel ~0,03, AUCUN écrêtage
+  haut, PSF plus FINE que le flou testé, grain ~2 % du niveau de ciel.
+- **En mode logD imposé, les diagnostics du moteur VeraLux affichent une ancre
+  `0,000000` : c'est un ARTEFACT**, pas une mesure (l'ancre n'est calculée que
+  pendant la résolution du logD, sur un sous-échantillon). Ne jamais en conclure
+  « l'ancre du fichier est nulle ». L'ancre réellement utilisée se mesure en
+  rejouant les méthodes du moteur — comparaison bit à bit possible (écart
+  0,000000), à condition de passer le MÊME `target_bg` que la chaîne (avec le
+  défaut 0,20 au lieu de 0,16, l'écart monte à 0,068).
+- **Une option qui prétend rendre « l'écran identique au fichier » doit être
+  verrouillée par un banc qui compare les DEUX CHEMINS sur la MÊME image, avec
+  égalité exigée (pas une tolérance).** Constat réel (26/09/2026, v2.38.0) :
+  c'est cette assertion (écart 0) qui a révélé que `rendu_pleine_resolution` ne
+  transmettait pas le fond cible au moteur — le fichier était plus clair que
+  l'écran de 9,6 niveaux de 8 bits en moyenne (fond 0,197 au lieu de 0,159),
+  sans que l'écart de résolution, lui, l'explique.
 
 ## Leçons générales transposables (projet pipeline siril)
 

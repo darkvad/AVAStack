@@ -240,6 +240,19 @@ dans le changelog du source et l'historique git.)
   propriété d'un banc quand la formule change**, mesurer une fidélité PAR RAPPORT
   à son plancher de mesure, et embarquer un TÉMOIN dans un banc qui doit prouver
   qu'il discrimine.
+- Leçons ÉCRITES le 26/09/2026 (2ᵉ passe, accord d'Alain en clôture : « Oui,
+  ajoute les 5 entrées ») — section « Pièges », 5 entrées : ① **une variable
+  Tkinter ne peut être LUE que depuis le thread d'interface** (l'état partagé vit
+  dans un attribut Python ; constat : la sauvegarde ne sortait plus) ; ② **après un
+  traitement SÉLECTIF, un σ mesure la queue et non le niveau** → mesurer au MAD
+  (deux bancs donnaient un faux échec) ; ③ **une scène de banc doit reproduire le
+  MÉCANISME du défaut** (une étoile écrêtée à 1,0 = cœur blanc = aucun anneau, le
+  témoin ne discriminait rien) ; ④ **les diagnostics du moteur VeraLux en logD
+  imposé affichent une ancre 0,000000 : artefact** (et la comparaison bit à bit
+  exige le même `target_bg`) ; ⑤ **une option « l'écran = le fichier » doit être
+  verrouillée par une égalité exigée, pas une tolérance** — c'est cette assertion
+  qui a révélé le fond cible non transmis. Reste EN ATTENTE (25/09/2026) : la
+  parité des corrections pré-étirement entre chaîne LIVE et chaîne EXTERNE.
 
 ## Setup d'Alain
 
@@ -299,8 +312,9 @@ dans le changelog du source et l'historique git.)
   Trois mesures de bancs 63/65 adaptées et documentées (grain au MAD, seuil du
   résidu de luminance, assertion du rayon inversée). Piège : une variable Tk lue
   depuis un thread de travail lève `RuntimeError: main thread is not in main loop`
-  — corrigé pendant la passe (l'état vit dans un attribut Python). Installateur
-  2.38.0 reconstruit. Repli si régression : v2.37.5, puis v2.37.4 (9927539).
+  — corrigé pendant la passe (l'état vit dans un attribut Python). **5 leçons
+  écrites dans CLAUDE.md** (accord d'Alain en clôture). Installateur 2.38.0
+  reconstruit. Repli si régression : v2.37.5, puis v2.37.4 (9927539).
 
 - 26/09/2026 (v2.37.4, 9927539) : SESSION « LE HALO DE COULEUR DES ÉTOILES »,
   VALIDÉE PAR ALAIN (« on a plus le super halo de couleur, ça c'est bien » ;
