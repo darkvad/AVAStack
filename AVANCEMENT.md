@@ -210,6 +210,24 @@ dans le changelog du source et l'historique git.)
     Windows/macOS/**Linux**. **macOS** : Python de python.org (Tk inclus) ou
     `brew install python-tk@3.14`, puis bundle `.app` + signature/notarisation
     Apple pour éviter le blocage Gatekeeper.
+    - **À FAIRE QUAND LES `.so` ARRIVENT** (décision d'Alain, 27/09/2026 :
+      « on va attendre que je récupère les .so » ; ordre de priorité = le sien :
+      QHY, Player One, ToupTek, SVBony, ZWO). Fichiers attendus par le code (il
+      les cherche DÉJÀ sous ces noms, `cameras/sdk_loader.nom_bibliotheque`) :
+      ① **QHY = RIEN à télécharger** (la roue pip `qhyccd` manylinux embarque
+      déjà `libqhyccd.so` ; repli `AVASTACK_QHY_DIR`) ; ② **Player One** :
+      `libPlayerOneCamera.so` + `99-player_one_astronomy.rules`, et
+      **`libusb-1.0-0`** (dépendance du .so, documentée par Player One —
+      `apt install libusb-1.0-0`), ou le paquet Debian/Ubuntu
+      `libplayeronecamera2t64` ; ③ **ToupTek** : `libtoupcam.so` (variante x64,
+      glibc ≥ 2.14) + les règles udev du SDK ; ④ **SVBony** :
+      `libSVBCameraSDK.so` + ses règles ; ⑤ **ZWO** : `libASICamera2.so` +
+      **`asi.rules`** (`sudo install asi.rules /etc/udev/rules.d`), vendor id
+      `03c3`, déjà écrit dans le fichier fourni. Dépôt : RACINE du projet (ou
+      sous-dossier `sdk/`, ou `AVASTACK_*_DIR`). L'installateur Linux copiera les
+      `*.so`/`*.dylib` avec l'application et posera les `*.rules` dans
+      `/lib/udev/rules.d/` (une seule fois, sudo) — `*.so`/`*.dylib`/`*.rules`
+      ajoutés au `.gitignore` le 27/09/2026 (comme `*.dll`).
   - **Coût du rendu pleine résolution quand le débruitage NLM live est actif**
     (son réglage) : ~7-8 s par nouvelle frame (le NLM pleine résolution pèse
     3,9-4,1 s à lui seul). Pistes : ne le refaire que sur nouvelle frame (déjà le

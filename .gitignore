@@ -15,7 +15,16 @@ _gx_jalon4_compteur.txt
 
 # SDK binaires constructeurs (code proprietaire, jamais dans le depot) —
 # poses a la racine du projet, embarques dans l'installateur par avastack.iss
+# (Windows : *.dll) et par les installateurs Linux/macOS (lib*.so / lib*.dylib,
+# plus les fichiers *.rules d'acces USB des cameras, poses par l'installateur
+# dans /lib/udev/rules.d — cf. installer/linux).
 *.dll
+*.so
+*.dylib
+# ... et les fichiers de regles udev des SDK cameras (ZWO asi.rules,
+# Player One 99-player_one_astronomy.rules, ...) : deposes a la racine du
+# projet comme les binaires, ils n'ont rien a faire dans le depot.
+*.rules
 
 # Artefacts d'installateur
 installer/windows/output/
