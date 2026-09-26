@@ -14,9 +14,31 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.37.3"
+AVASTACK_VERSION = "2.37.4"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.37.4 : LE RAYON DE RÉFÉRENCE DU FLOU DE CHROMA EST RÉGLABLE (visu live).
+#   Retour d'Alain (26/09/2026) après la v2.37.3 : « on n'a plus le super halo de
+#   couleur, ça c'est bien » — mais il RESTE des halos RÉELS (optiques), qu'il
+#   traitera côté BlurXTerminator pour les fichiers ; pour la VISU LIVE il
+#   demande le réglage du rayon de référence afin de faire des essais.
+#   - Nouveau curseur « Rayon de référence (px pleine rés.) » (0,5 à 8 px, pas de
+#     0,25) sous la case « Réduire le bruit chromatique », avec sa légende (plus
+#     grand = grain coloré mieux retiré, mais couleur des étoiles plus étalée).
+#   - Le réglage est en pixels PLEINE RÉSOLUTION : l'aperçu le ramène à SON
+#     échelle (`App._poser_rayon_chroma` → `couleurs.rayon_chroma_apercu`), alors
+#     que le rendu « tel que vu » et la chaîne EXTERNE (15e élément du job, après
+#     la force) l'utilisent tel quel. `RAYON_CHROMA_MIN` passe de 0,6 à 0,2 px :
+#     un petit rayon de référence ne doit pas être gonflé sur un aperçu réduit.
+#   - Persistance `vl_chroma_rayon_ref`, restauration TOLÉRANTE (hors [0,5 ; 8] ou
+#     illisible → la valeur d'usage reste, comme pour la force).
+#   - BANC : `_test_chroma_halo_jalon65.py` [6bis] (curseur, échelle de l'aperçu,
+#     bornes, rendu pleine résolution, 15e élément du job) et `_test_dn_jalon7.py`
+#     mis à jour (le job externe passe de 14 à 15 éléments). Non-régression :
+#     19 bancs rejoués, TOUS PASSENT. Les jobs antérieurs (≤ 14 éléments) restent
+#     acceptés : déballage tolérant → rayon de référence.
+#   Repli si régression : v2.37.3 (5c38d23).
+
 # v2.37.3 : LE HALO DE COULEUR DES ÉTOILES ÉTAIT FABRIQUÉ PAR LA RÉDUCTION DE
 #   BRUIT CHROMATIQUE. Constat d'Alain (26/09/2026) : « les étoiles brillantes
 #   rouges et bleues ont un halo gênant », VISIBLE AUSSI dans le fichier passé

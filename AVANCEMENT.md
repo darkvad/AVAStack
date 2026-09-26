@@ -10,11 +10,15 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **Version stable de référence : AVAStack v2.37.3** (`avastack/__init__.py`),
+- **Version stable de référence : AVAStack v2.37.4** (`avastack/__init__.py`),
   branche `master` — **LE HALO DE COULEUR DES ÉTOILES ÉTAIT FABRIQUÉ PAR LA
   RÉDUCTION DE BRUIT CHROMATIQUE** (constat d'Alain, 26/09/2026 : « les étoiles
   brillantes rouges et bleues ont un halo gênant », VISIBLE AUSSI dans le fichier
-  passé par BlurXTerminator — « en général, c'est un halo killer pourtant ») :
+  passé par BlurXTerminator — « en général, c'est un halo killer pourtant »).
+  **VERDICT D'ALAIN (26/09/2026) : « on a plus le super halo de couleur, ca c'est
+  bien »** ; il reste des halos RÉELS (optiques) — traités côté BXT pour les
+  fichiers, et le RAYON DE RÉFÉRENCE est désormais RÉGLABLE pour la visu live
+  (v2.37.4, dernier point ci-dessous). Mesures :
   - **Mesure** sur son empilement M31 réel, couronne r = 3..9 px en multiples du
     niveau de ciel local (fond neutralisé = l'ordre réel de la chaîne) : étoile
     la plus brillante (rouge) R 41,3 → 34,9 (−16 %) et B 19,9 → 23,6 (+19 %) ;
@@ -63,6 +67,21 @@ dans le changelog du source et l'historique git.)
     disparu DANS LA VISU et dans un fichier passé par BXT ; ses commentaires
     décideront si l'on baisse aussi le rayon de RÉFÉRENCE (3 px) ou si l'on
     ajoute `--ash` à la commande BXT pour les halos réels.
+  - **v2.37.4 — CURSEUR « RAYON DE RÉFÉRENCE » (demande d'Alain, 26/09/2026)** :
+    le flou de chroma s'ajuste de 0,5 à 8 px (pas de 0,25) sous la case. Le
+    réglage est exprimé en pixels PLEINE RÉSOLUTION : l'aperçu le ramène à SON
+    échelle (`_poser_rayon_chroma` → `couleurs.rayon_chroma_apercu`), alors que
+    le rendu « tel que vu » et la chaîne EXTERNE (15e élément du job, juste après
+    la force) l'utilisent tel quel ; persistance `vl_chroma_rayon_ref` avec
+    restauration TOLÉRANTE (hors [0,5 ; 8] → ignoré). `RAYON_CHROMA_MIN` passe de
+    0,6 à 0,2 px (un petit rayon de référence ne doit pas être gonflé sur un
+    aperçu réduit). Bancs : `_test_chroma_halo_jalon65.py` [6bis] et
+    `_test_dn_jalon7.py` (job 15 éléments) ; 19 bancs rejoués, TOUS PASSENT.
+  - **VERDICT D'ALAIN SUR v2.37.3 (26/09/2026)** : « on a plus le super halo de
+    couleur, ca c'est bien » ✔ — le halo FABRIQUÉ par la chroma NR est clos. Il
+    RESTE des halos RÉELS (optiques) : il les traitera côté BXT pour les fichiers
+    (piste `--ash`, non passée par la commande par défaut), et dispose maintenant
+    du curseur de rayon pour la visu live.
 
 - **Version stable précédente : AVAStack v2.37.2** — le cœur « cramé » était une
   COUPE à 1,0 appliquée avant l'étirement, alors que l'empilement vit à une
@@ -148,14 +167,13 @@ dans le changelog du source et l'historique git.)
 
 ## En attente / prochaine session
 
-- **VALIDATION VISUELLE D'ALAIN SUR v2.37.3** (le halo de couleur) : relancer
-  l'appli, vérifier la visu (l'aperçu applique maintenant le rayon ramené) ET un
-  fichier passé par BlurXTerminator ; la planche
-  `C:\Astro\test\_diag_halo_etoiles_AVANT_APRES.jpg` sert de référence visuelle.
-  Selon son verdict : (a) rien à faire ; (b) baisser aussi le rayon de RÉFÉRENCE
-  (3 px) ; (c) ajouter `--ash` (−0,3 … −0,5) à sa commande BXT pour les halos
-  RÉELS. Son verdict décidera aussi si l'on reconstruit à nouveau l'installateur
-  2.37.3 (déjà reconstruit en fin de passe).
+- **ALAIN ESSAIE LE CURSEUR DE RAYON (v2.37.4)** en visu live : il a maintenant la
+  main sur l'étalement de la couleur des étoiles (rayon de RÉFÉRENCE de 0,5 à 8 px ;
+  l'aperçu suit automatiquement son échelle, les fichiers utilisent le rayon tel
+  quel). Le halo FABRIQUÉ est clos (« on a plus le super halo de couleur », ✔
+  verdict d'Alain) ; les halos RÉELS restants relèvent de BXT (`--ash`, −0,3 … −0,5,
+  absent de la commande par défaut) pour les fichiers. Son choix de rayon sera
+  simplement persisté dans sa config : aucun code à changer.
 - **Grain GRIS résiduel** : la réduction du bruit chromatique ne touche PAS le
   grain de luminance (mesuré ×1,00) — seul le débruitage live (NLM, force 0,5)
   ou plus d'intégration le réduit. Sujet OUVERT si Alain veut aller plus loin

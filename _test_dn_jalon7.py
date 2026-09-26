@@ -119,12 +119,15 @@ app._request_ext()
 j = app.ext_job
 # v2.37.1 : 14-tuple — les 11 premiers éléments sont les jalons 22/23, puis la
 # neutralisation du fond, le bruit chromatique et la force de ce dernier.
-verifie(app.ext_request is True and isinstance(j, tuple) and len(j) == 14
+# v2.37.4 : 15e élément = le RAYON DE RÉFÉRENCE du flou de chroma (px PLEINE
+# RÉSOLUTION, curseur « Rayon de référence »).
+verifie(app.ext_request is True and isinstance(j, tuple) and len(j) == 15
         and j[8] is False and j[9] is False and j[10] is False
-        and j[11] is True and j[12] is False and 0.0 <= j[13] <= 1.0,
-        "ext_job est un 14-tuple (gx, cmd, dn, cmd_dn, bxt, cmd_bxt, mode, "
-        "force, scnr, scnr_doux, demagenta, neutre_fond, chroma, force_chroma) "
-        "— jalons 22/23 + v2.37.1")
+        and j[11] is True and j[12] is False and 0.0 <= j[13] <= 1.0
+        and 0.5 <= j[14] <= 8.0,
+        "ext_job est un 15-tuple (gx, cmd, dn, cmd_dn, bxt, cmd_bxt, mode, "
+        "force, scnr, scnr_doux, demagenta, neutre_fond, chroma, force_chroma, "
+        "rayon_chroma_ref) — jalons 22/23 + v2.37.1 + v2.37.4")
 verifie(j[2] is True and j[6] == "nlm" and abs(j[7] - 0.4) < 1e-9
         and j[3] == "",
         "mode local (nlm) + force transportés, commande vide (étape en mémoire)")

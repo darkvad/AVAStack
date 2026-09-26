@@ -237,6 +237,11 @@ class App:
         self._seeing_t0 = 0.0          # horodatage de la dernière mesure
         self.show_stack = None       # dernier aperçu linéaire de l'empilement
         self.last_show = None       # image linéaire actuellement affichée
+        # v2.37.4 : rayon du flou de chroma, en pixels PLEINE RÉSOLUTION (le
+        # curseur « Rayon de référence ») — l'aperçu le ramène à SON échelle via
+        # `_poser_rayon_chroma`, les fichiers l'utilisent tel quel.
+        self.rayon_chroma_ref = 3.0
+        self._echelle_apercu = 1.0   # dernier facteur de réduction de l'aperçu
         self._session = 0           # anti-mélange entre sessions
         # Jalon 15 : archive temporaire des frames calibrées (fondation du
         # re-stack « à la Siril » : recalcul de l'empilement sur une meilleure
@@ -700,6 +705,17 @@ class App:
                 and 0.0 <= float(v) <= 1.0:
             self.var_vl_chroma_force.set(float(v))
         self.disp.vl_chroma_force = float(self.var_vl_chroma_force.get())
+        # v2.37.4 : rayon de RÉFÉRENCE du flou de chroma, en pixels PLEINE
+        # RÉSOLUTION — restauré TOLÉRANT (hors [0,5 ; 8] ou illisible : IGNORÉ, la
+        # valeur d'usage reste le défaut du module) et immédiatement reposé à
+        # l'échelle de l'aperçu (`_poser_rayon_chroma`), comme le fait le worker à
+        # chaque aperçu.
+        r = c.get("vl_chroma_rayon_ref")
+        if isinstance(r, (int, float)) and not isinstance(r, bool) \
+                and 0.5 <= float(r) <= 8.0:
+            self.rayon_chroma_ref = float(r)
+            self.var_vl_chroma_rayon.set(float(r))
+        self._poser_rayon_chroma(self._echelle_apercu)
         if c.get("vl_chroma"):
             self.var_vl_chroma.set(True)
             self._on_vl_chroma()
@@ -770,6 +786,9 @@ class App:
         # les autres cases) + force dans [0, 1].
         c["vl_chroma"] = bool(self.var_vl_chroma.get())
         c["vl_chroma_force"] = float(self.var_vl_chroma_force.get())
+        # v2.37.4 : rayon de RÉFÉRENCE du flou de chroma, en pixels PLEINE
+        # RÉSOLUTION (curseur « Rayon de référence »).
+        c["vl_chroma_rayon_ref"] = float(self.rayon_chroma_ref)
         c["ext_scnr"] = bool(self.var_ext_scnr.get())
         c["ext_scnr_doux"] = bool(self.var_ext_scnr_doux.get())
         c["ext_demagenta"] = bool(self.var_ext_demagenta.get())
@@ -1773,6 +1792,23 @@ class App:
                        "bruit du canal qu'il monte — mesuré : B/G 1,17 → ~1,00. "
                        "Force = part du bruit chromatique retirée.",
                   foreground="#888888", wraplength=310).pack(anchor="w")
+        # --- v2.37.4 : RAYON DE RÉFÉRENCE du flou de chroma (demande d'Alain,
+        # 26/09/2026 : « pour la visu live, mets à disposition le réglage du rayon
+        # de référence pour pouvoir faire des tests »). Exprimé en pixels PLEINE
+        # RÉSOLUTION : l'aperçu de l'appli le ramène à sa propre échelle
+        # (`couleurs.rayon_chroma_apercu`) pour rester fidèle aux fichiers, et la
+        # chaîne EXTERNE comme la sauvegarde « tel que vu » l'utilisent tel quel.
+        self.var_vl_chroma_rayon = tk.DoubleVar(value=couleurs_mod.RAYON_CHROMA_DEFAUT)
+        self._add_slider(self.frm_couleur, "Rayon de référence (px pleine rés.)",
+                         self.var_vl_chroma_rayon, 0.5, 8.0, 0.25,
+                         self._on_vl_chroma_rayon, "{:.2f}")
+        ttk.Label(self.frm_couleur,
+                  text="Rayon du flou qui lisse la couleur : plus grand = grain "
+                       "coloré mieux retiré, mais couleur des étoiles plus "
+                       "étalée (halo de couleur). L'aperçu applique ce rayon à "
+                       "SON échelle, les fichiers à la pleine résolution — "
+                       "l'écran reste fidèle au fichier.",
+                  foreground="#888888", wraplength=310).pack(anchor="w")
 
         # --- État des calculs (jalons 40/41) : cadre INDÉPENDANT du moteur —
         # visible en VeraLux (étapes du solveur : ⏳ préparation/composition/
@@ -2747,6 +2783,32 @@ class App:
             and self.var_view.get() != "traitée"
         if actif != self.disp.vl_chroma:
             self.disp.vl_chroma = actif      # la clé change → re-résolution
+
+    def _poser_rayon_chroma(self, scale):
+        """Pose le rayon EFFECTIF du flou de chroma pour une image d'échelle
+        `scale` (v2.37.4). Le réglage utilisateur (`self.rayon_chroma_ref`) est
+        exprimé en pixels PLEINE RÉSOLUTION ; l'aperçu travaille, lui, sur une
+        image RÉDUITE — le rayon doit suivre la résolution, sinon l'écran étale la
+        couleur des étoiles plus loin que les fichiers (constat du 26/09/2026 :
+        3 px d'aperçu = 7,2 px pleine résolution sur son image de 3838 px, soit
+        un halo 2,4 fois plus large à l'écran). Appelé par le worker qui construit
+        l'aperçu ET par le curseur de rayon."""
+        self._echelle_apercu = float(scale)
+        self.disp.vl_chroma_rayon = couleurs_mod.rayon_chroma_apercu(
+            scale, self.rayon_chroma_ref)
+
+    def _on_vl_chroma_rayon(self):
+        """Curseur « Rayon de référence » du flou de chroma (v2.37.4, demande
+        d'Alain) : rayon lu (tolérant — une saisie invalide laisse la valeur
+        précédente), rayon effectif de l'aperçu reposé à SON échelle, et rendu
+        IMMÉDIAT (même leçon que les autres cases couleur, jalon 39)."""
+        try:
+            v = float(self.var_vl_chroma_rayon.get())
+        except (tk.TclError, TypeError, ValueError):
+            v = self.rayon_chroma_ref         # saisie invalide : on garde
+        self.rayon_chroma_ref = min(8.0, max(0.5, v))
+        self._poser_rayon_chroma(self._echelle_apercu)
+        self._refresh_preview()
 
     def _on_vl_demagenta(self):
         """Case démagenta (jalon 22) : idem SCNR (jalon 39 : rendu immédiat)."""
@@ -3898,6 +3960,10 @@ class App:
             # v2.37.0 : réduction du bruit chromatique (case + force).
             vl_chroma=bool(d.vl_chroma),
             vl_chroma_force=float(d.vl_chroma_force),
+            # v2.37.4 : rayon de RÉFÉRENCE du flou de chroma, en pixels PLEINE
+            # RÉSOLUTION — le rendu pleine résolution l'utilise TEL QUEL (l'écran,
+            # lui, le ramène à l'échelle de l'aperçu : `_poser_rayon_chroma`).
+            vl_chroma_rayon_ref=float(self.rayon_chroma_ref),
             vl_sharp=d.vl_sharp, vl_sharp_iterations=d.vl_sharp_iterations)
         st = self.stacker
         if st is not None:
@@ -4176,7 +4242,12 @@ class App:
             if (vue == "pile" and reglages.get("vl_chroma")
                     and reglages.get("stretch") == "veralux"):
                 source = couleurs_mod.reduire_bruit_chroma(
-                    source, force=float(reglages.get("vl_chroma_force") or 0.5))
+                    source, force=float(reglages.get("vl_chroma_force") or 0.5),
+                    # v2.37.4 : rayon de RÉFÉRENCE, pleine résolution (l'image
+                    # rendue ici est en pleine résolution — l'aperçu, lui, est
+                    # ramené à son échelle par `_poser_rayon_chroma`).
+                    rayon=float(reglages.get("vl_chroma_rayon_ref")
+                                or couleurs_mod.RAYON_CHROMA_DEFAUT))
             rendu = self.disp.rendu_pleine_resolution(source, reglages)
             if session != self._session:    # session relancée entre-temps
                 return
@@ -4304,7 +4375,13 @@ class App:
                         # externe ne lit jamais une variable Tk.
                         self.var_ext_neutre.get(),
                         self.var_ext_chroma.get(),
-                        float(self.disp.vl_chroma_force))
+                        float(self.disp.vl_chroma_force),
+                        # v2.37.4 : RAYON DE RÉFÉRENCE du flou de chroma
+                        # (15e élément), en pixels PLEINE RÉSOLUTION — la chaîne
+                        # externe travaille à cette résolution, elle l'utilise
+                        # tel quel. Capturé ici : le thread de traitement ne lit
+                        # JAMAIS une variable Tk.
+                        float(self.rayon_chroma_ref))
         self.ext_request = True
         self._set_ext_msg("Traitement demandé…", state="busy")
         self.btn_ext.config(state="disabled")
@@ -4395,6 +4472,12 @@ class App:
                 else False
             force_chroma_ext = (float(self.ext_job[13])
                                 if len(self.ext_job) > 13 else 0.5)
+            # v2.37.4 : rayon de RÉFÉRENCE du flou de chroma (15e élément —
+            # déballage tolérant : les jobs antérieurs n'en ont pas → rayon de
+            # référence, soit le comportement de la v2.37.3).
+            rayon_chroma_ext = (float(self.ext_job[14])
+                                if len(self.ext_job) > 14
+                                else couleurs_mod.RAYON_CHROMA_DEFAUT)
             steps = []
             if use_gx:
                 steps.append(("GraXpert gradient", "cmd", cmd_gx))
@@ -4535,7 +4618,7 @@ class App:
                     img = couleurs_mod.neutraliser_fond(img)
             if chroma_ext:
                 img = couleurs_mod.reduire_bruit_chroma(
-                    img, force=force_chroma_ext)
+                    img, force=force_chroma_ext, rayon=rayon_chroma_ext)
             if session != self._session:             # session relancée entre-temps
                 return
             self.proc_full = img                     # pleine résolution (sauvegarde)
@@ -4587,6 +4670,11 @@ class App:
                 else False
             force_chroma_ext = (float(self.ext_job[13])
                                 if len(self.ext_job) > 13 else 0.5)
+            # v2.37.4 : rayon de RÉFÉRENCE du flou de chroma (15e élément —
+            # déballage tolérant, comme la chaîne mono).
+            rayon_chroma_ext = (float(self.ext_job[14])
+                                if len(self.ext_job) > 14
+                                else couleurs_mod.RAYON_CHROMA_DEFAUT)
             tmp = tempfile.mkdtemp(prefix="avastack_compo_")
             journal = os.path.join(tmp, "outils_sortie.txt")
             n_etapes = ((len(canaux) if use_gx else 0)
@@ -4662,7 +4750,7 @@ class App:
                     img = couleurs_mod.neutraliser_fond(img)
             if chroma_ext:
                 img = couleurs_mod.reduire_bruit_chroma(
-                    img, force=force_chroma_ext)
+                    img, force=force_chroma_ext, rayon=rayon_chroma_ext)
             if session != self._session:      # session relancée entre-temps
                 return
             self.proc_full = img
@@ -6337,13 +6425,13 @@ class App:
             if scale < 1.0:
                 show = cv2.resize(show, None, fx=scale, fy=scale,
                                   interpolation=cv2.INTER_AREA)
-            # v2.37.3 : le rayon du flou de chroma suit la RÉSOLUTION — l'aperçu
-            # est réduit d'un facteur `scale`, les ÉTOILES aussi : à rayon
-            # constant en pixels, leur couleur s'étalerait 1/scale fois plus loin
-            # par rapport à leur taille à l'écran que dans les fichiers (halo
-            # 2,4 fois plus large à 3838 px). Les fichiers gardent, eux, le rayon
-            # de référence (`couleurs.RAYON_CHROMA_DEFAUT`).
-            self.disp.vl_chroma_rayon = couleurs_mod.rayon_chroma_apercu(scale)
+            # v2.37.3/v2.37.4 : le rayon du flou de chroma suit la RÉSOLUTION —
+            # l'aperçu est réduit d'un facteur `scale`, les ÉTOILES aussi : à
+            # rayon constant en pixels, leur couleur s'étalerait 1/scale fois plus
+            # loin à l'écran que dans les fichiers (halo 2,4 fois plus large à
+            # 3838 px). Le réglage est le curseur « Rayon de référence » (pleine
+            # résolution) : cf. `_poser_rayon_chroma`.
+            self._poser_rayon_chroma(scale)
             # Jalon 10 : seeing live (FWHM médiane + nombre d'étoiles) sur
             # l'APERÇU — c'est la résolution sur laquelle la netteté live
             # travaillera, la PSF mesurée y est donc directement exploitable.
@@ -6472,10 +6560,10 @@ class App:
         show = (cv2.resize(stack, None, fx=scale, fy=scale,
                            interpolation=cv2.INTER_AREA) if scale < 1.0
                 else stack)
-        # v2.37.3 : le rayon du flou de chroma suit la RÉSOLUTION (même règle
-        # qu'à la fin de la boucle d'acquisition : l'aperçu est réduit, les
-        # étoiles aussi → cf. `couleurs.rayon_chroma_apercu`).
-        self.disp.vl_chroma_rayon = couleurs_mod.rayon_chroma_apercu(scale)
+        # v2.37.3/v2.37.4 : le rayon du flou de chroma suit la RÉSOLUTION (même
+        # règle qu'à la fin de la boucle d'acquisition : l'aperçu est réduit, les
+        # étoiles aussi → cf. `_poser_rayon_chroma`).
+        self._poser_rayon_chroma(scale)
         if self._mode_compo and canaux:
             gains_eff2 = (self.stacker.gains_effectifs()
                           if hasattr(self.stacker, "gains_effectifs")

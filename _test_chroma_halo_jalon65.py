@@ -379,6 +379,49 @@ diff = float(np.abs(a2 - a1).max()) if (a2 is not None and a1 is not None) else 
 verifie(a2 is not None and ecart2 < 1e-6,
         f"…et le rayon de référence (3 px) donne bien un AUTRE rendu — écart "
         f"max {ecart2:.2e} avec un appel direct, {diff:.2e} entre les deux rayons")
+
+# ---------------------------------- [6bis] le CURSEUR du rayon de référence
+print("[6bis] curseur « Rayon de référence » (v2.37.4) : aperçu à SON échelle, "
+      "fichiers et chaîne externe au rayon demandé")
+import types                                                      # noqa: E402
+verifie(hasattr(app, "var_vl_chroma_rayon")
+        and abs(float(app.var_vl_chroma_rayon.get()) - C.RAYON_CHROMA_DEFAUT) < 1e-9,
+        "curseur présent et au défaut du module (3,00 px pleine résolution)")
+app._echelle_apercu = 0.5                     # ce que pose le worker sur un aperçu
+app.var_vl_chroma_rayon.set(2.0)
+app._on_vl_chroma_rayon()
+verifie(abs(app.rayon_chroma_ref - 2.0) < 1e-9
+        and abs(float(d.vl_chroma_rayon) - 1.0) < 1e-9,
+        f"référence 2,0 px sur un aperçu ×0,5 → rayon effectif 1,00 px "
+        f"({d.vl_chroma_rayon:.2f}) : l'aperçu suit SON échelle")
+cle_l2 = d._vl_params()
+app.var_vl_chroma_rayon.set(4.0)
+app._on_vl_chroma_rayon()
+verifie(abs(float(d.vl_chroma_rayon) - 2.0) < 1e-9
+        and d._vl_params() != cle_l2,
+        "curseur à 4,0 px → 2,00 px sur l'aperçu ET la clé des réglages change "
+        "(re-résolution)")
+app.var_vl_chroma_rayon.set(99.0)             # hors bornes
+app._on_vl_chroma_rayon()
+verifie(abs(app.rayon_chroma_ref - 8.0) < 1e-9,
+        "valeur hors bornes ramenée à 8,0 px (borne haute)")
+app.var_vl_chroma_rayon.set(3.0)
+app._on_vl_chroma_rayon()
+r = app._reglages_rendu()
+verifie(abs(float(r.get("vl_chroma_rayon_ref")) - 3.0) < 1e-9,
+        "le rendu « tel que vu » (pleine résolution) reçoit le rayon de "
+        "RÉFÉRENCE, non ramené")
+app.running = True                            # _request_ext : pas de worker lancé
+app.stacker = types.SimpleNamespace(n=5)
+app.var_ext_chroma.set(True)
+app._request_ext()
+j = app.ext_job
+verifie(isinstance(j, tuple) and len(j) == 15
+        and abs(float(j[14]) - 3.0) < 1e-9,
+        f"chaîne EXTERNE : le rayon de référence voyage en 15e élément "
+        f"({j[14] if isinstance(j, tuple) and len(j) > 14 else 'absent'})")
+app.ext_request = False
+app.ext_busy = False
 root.destroy()
 
 # ============ [7] SUR UN FICHIER RÉEL (optionnel) : son halo, avant / après

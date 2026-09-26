@@ -133,7 +133,7 @@ def neutraliser_fond(img, force=1.0, garde=0.10):
 # Alain sur ses empilements) ; PLANCHER_CHROMA borne l'échelle de normalisation
 # de la chroma (fraction de la luminance médiane de l'image).
 RAYON_CHROMA_DEFAUT = 3.0
-RAYON_CHROMA_MIN = 0.6
+RAYON_CHROMA_MIN = 0.2
 PLANCHER_CHROMA = 0.25
 
 
