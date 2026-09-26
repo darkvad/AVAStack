@@ -14,9 +14,40 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.38.0"
+AVASTACK_VERSION = "2.38.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.38.1 : LE RENDU PLEINE RÉSOLUTION VAUT AUSSI POUR LA VUE « TRAITÉE » (et
+#   corrige, dans cette vue, un écran qui montrait la MAUVAISE image). Demande
+#   d'Alain (27/09/2026) : « ok pour le rendu pleine résolution en vue traitée,
+#   je pensais que c'était évident de le faire ».
+#   (1) CORRECTION — EN VUE « TRAITÉE », L'ÉCRAN MONTRAIT L'EMPILEMENT :
+#       `_src_rendu` rendait `_stack_pleine_res` (l'empilement COMPLET) dès que
+#       l'option était cochée, SANS regarder la vue. Or en vue « traitée »
+#       l'écran doit montrer le RÉSULTAT du ⚡ traitement externe : il montrait
+#       donc l'empilement, et le zoom « fidèle » ne portait pas sur l'image
+#       annoncée. Constat rendu possible par la v2.38.0 (l'option n'existait pas
+#       avant, la vue « traitée » retombait alors sur l'aperçu).
+#   (2) NOUVELLE `App._src_pleine_res()` : la source pleine résolution suit la
+#       VUE — « empilement » → `_stack_pleine_res` (copie de l'empilement
+#       complet), « traitée » → `proc_full` (résultat externe, DÉJÀ mémorisé pour
+#       les sauvegardes : AUCUNE copie supplémentaire, aucun octet en plus).
+#       Décocher l'option libère la copie de l'empilement mais laisse `proc_full`
+#       intact (il sert à « 💾 Enregistrer le résultat traité (linéaire) » et à
+#       « tel que vu » en vue traitée) ; repli sur l'aperçu tant que l'image
+#       complète de la vue n'existe pas (début de session, avant le premier ⚡).
+#       Le libellé d'aide de la case dit maintenant que l'option couvre les deux
+#       vues (empilement ou résultat traité).
+#   (3) BANC `_test_pleine_res_traitee_jalon69.py` (NOUVEAU) : source par vue
+#       (et NON l'empilement en vue traitée — le témoin serait muet sans la
+#       correction), option décochée, replis, et « l'écran = le fichier » en vue
+#       traitée (le rendu affiché comparé au fichier écrit par la chaîne de
+#       sauvegarde « tel que vu », égalité exigée).
+#   - Non-régression : `_test_zoom_pleine_res_jalon68.py` rejoué (l'option et le
+#     zoom en vue « empilement » sont inchangés), ainsi que les bancs d'interface
+#     qui touchent la vue (jalon 5, 9, 12, 39).
+#   Repli si régression : v2.38.0.
+
 # v2.38.0 : ZOOM SUR L'IMAGE PLEINE RÉSOLUTION (et deux corrections de fidélité
 #   écran ⇄ fichier). Demande d'Alain (26/09/2026) : « sur l'écran, je veux
 #   pouvoir zoomer sur l'image pleine résolution » — le zoom existait (molette

@@ -10,7 +10,24 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **Version stable de référence : AVAStack v2.38.0** (`avastack/__init__.py`),
+- **PASSE EN COURS — AVAStack v2.38.1 : LE RENDU PLEINE RÉSOLUTION VAUT AUSSI
+  POUR LA VUE « TRAITÉE »** (code + banc livrés le 27/09/2026, **EN ATTENTE DE
+  TON TEST RÉEL** ; installateur 2.38.1 reconstruit). Demande d'Alain :
+  « ok pour le rendu pleine résolution en vue traitée, je pensais que c'était
+  évident de le faire ». Deux choses :
+  - **DÉFAUT CORRIGÉ** : en vue « traitée », cocher l'option affichait
+    l'EMPILEMENT au lieu du résultat du ⚡ (`_src_rendu` rendait
+    `_stack_pleine_res` sans regarder la vue) ;
+  - **NOUVELLE `App._src_pleine_res()`** : la source pleine résolution suit la
+    VUE — empilement complet en vue « empilement », `proc_full` (résultat
+    externe, DÉJÀ mémorisé pour les sauvegardes → aucun octet en plus) en vue
+    « traitée » ; repli sur l'aperçu tant que l'image complète de la vue n'existe
+    pas. Banc NEUF `_test_pleine_res_traitee_jalon69.py` (source par vue avec
+    TÉMOIN qui discrimine, replis, ÉCRAN = FICHIER en vue traitée ÉCART 0 avec la
+    VRAIE chaîne de sauvegarde, libellé d'aide) ; non-régression : 11 bancs
+    rejoués, TOUS PASSENT. Repli si régression : v2.38.0.
+
+- **Version stable VALIDÉE de référence : AVAStack v2.38.0** (`avastack/__init__.py`),
   branche `master` — **JALON 67/68 : L'ANNEAU DE COULEUR EST CORRIGÉ DANS LES
   FICHIERS, ET L'ÉCRAN PEUT MONTRER LA PLEINE RÉSOLUTION. VALIDÉ PAR ALAIN
   (26/09/2026 : « C'est OK, on valide »)** — installateur 2.38.0 installé et
@@ -170,11 +187,29 @@ dans le changelog du source et l'historique git.)
 
 - **AUCUN DÉFAUT CONNU OUVERT** sur la v2.38.0 (validée). Sujets OUVERTS, par ordre
   d'intérêt, à trancher par Alain quand il le souhaite :
-  - **Le rendu pleine résolution ne couvre que la vue « empilement »** : en vue
-    « traitée », `_src_rendu` retombe sur l'aperçu (aucun empilement complet à
-    disposition — le résultat externe vit dans un instantané pleine résolution
-    mais n'est pas mémorisé pour l'affichage). À faire si Alain veut juger un
-    résultat EXTERNE au zoom : mémoriser aussi cet instantané.
+  - **INSTALLATEUR LINUX / macOS (demande d'Alain, 27/09/2026 : « il faudra
+    regarder comment faire un installateur pour Linux … et comment avoir les
+    prérequis, ce ne sera pas les dll »)** — étude FAITE (27/09/2026), route à
+    trancher par Alain : ① **SCRIPT + venv** (équivalent exact de l'installateur
+    Windows : `installer/linux/install_avastack.sh` → `~/.local/share/AVAStack`,
+    venv, `pip install -r requirements.txt`, lanceur + `.desktop`) ; ② paquet
+    **.deb** (Debian/Ubuntu) ; ③ **AppImage** (un seul fichier, embarque
+    Python+Tk) ; ④ **Flatpak** (sandbox → ouvrir l'accès USB des caméras).
+    **PRÉREQUIS LINUX (ce ne sont PAS des DLL)** : `python3` ≥ 3.10,
+    `python3-venv`, **`python3-tk`** (Tkinter n'existe PAS en pip), `libgl1` et
+    `libglib2.0-0` (roues `opencv-python`), `libusb-1.0-0`, plus les
+    **règles udev** des caméras (accès USB sans root). Les bibliothèques
+    constructeurs deviennent `libASICamera2.so`, `libPlayerOneCamera.so`,
+    `libtoupcam.so`, `libSVBCameraSDK.so` (Linux) / `*.dylib` (macOS) — le code
+    les cherche DÉJÀ sous ces noms (`compat.ZWO_DLL_NAME`,
+    `cameras.sdk_loader.nom_bibliotheque`), et l'installateur Windows les
+    embarque : même mécanisme côté Linux. **QHY : rien à faire** (le paquet pip
+    `qhyccd` 0.1.3 fournit des roues `cp310-abi3` manylinux_2_34 + Windows ; PAS
+    de roue macOS en revanche). **Outils externes** : GraXpert existe en Linux
+    (zip) et macOS (dmg) ; le CLI BlurXTerminator (rc-astro) existe pour
+    Windows/macOS/**Linux**. **macOS** : Python de python.org (Tk inclus) ou
+    `brew install python-tk@3.14`, puis bundle `.app` + signature/notarisation
+    Apple pour éviter le blocage Gatekeeper.
   - **Coût du rendu pleine résolution quand le débruitage NLM live est actif**
     (son réglage) : ~7-8 s par nouvelle frame (le NLM pleine résolution pèse
     3,9-4,1 s à lui seul). Pistes : ne le refaire que sur nouvelle frame (déjà le
@@ -192,6 +227,10 @@ dans le changelog du source et l'historique git.)
     à elle (aucun `target_bg` dans `avastack/external` ni `avastack/processing`
     hors du module VeraLux) — elle passe par le même `rendu_pleine_resolution`,
     donc elle bénéficie du correctif de fidélité de la v2.38.0.
+- **CLOS par la passe en cours (v2.38.1, en attente du test réel d'Alain)** : le
+  rendu pleine résolution ne se limite plus à la vue « empilement » — la vue
+  « traitée » a SA source pleine résolution (le résultat du ⚡), et le défaut
+  d'affichage que ce manque cachait est corrigé ✔ (banc `_test_pleine_res_traitee_jalon69.py`).
 - **CLOS par cette session** : anneau de couleur des étoiles dans les fichiers
   (corrigé et validé par Alain) ✔ ; zoom sur la pleine résolution (livré et
   validé) ✔ ; « le fichier correspond à l'écran » pour un étirement VeraLux

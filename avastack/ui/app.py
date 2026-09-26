@@ -1721,6 +1721,11 @@ class App:
         # jalon 66 : l'anneau de couleur des étoiles, invisible sur l'aperçu,
         # n'apparaît que dans les fichiers). Coût mesuré ×4,3 (~7-8 s par
         # recalcul complet contre ~1,7 s) : décoché par défaut.
+        # v2.38.1 (demande d'Alain, 27/09/2026 : « ok pour le rendu pleine
+        # résolution en vue traitée ») : l'option vaut pour les DEUX vues — en
+        # vue « traitée » la source est le résultat du ⚡ traitement externe
+        # (`proc_full`, déjà mémorisé pour les sauvegardes : aucune copie en
+        # plus), cf. `_src_pleine_res`.
         self.var_vl_pleine_res = tk.BooleanVar(value=False)
         ttk.Checkbutton(self.frm_veralux,
                         text="Rendu pleine résolution (zoom fidèle)",
@@ -1728,7 +1733,8 @@ class App:
                         command=self._on_vl_pleine_res).pack(anchor="w",
                                                              pady=(6, 0))
         ttk.Label(self.frm_veralux,
-                  text="L'écran étire l'image COMPLÈTE : le zoom montre de vrais "
+                  text="L'écran étire l'image COMPLÈTE — empilement, ou résultat "
+                       "traité en vue « traitée » : le zoom montre de vrais "
                        "pixels, identiques au fichier enregistré. Plus lent "
                        "(~7-8 s par rendu, contre ~2 s pour l'aperçu).",
                   foreground="#888888", wraplength=310).pack(anchor="w")
@@ -2868,7 +2874,10 @@ class App:
         Trois effets, et rien d'autre :
           - l'état est MIRÉ dans un attribut Python (`self.pleine_res_ecran`),
             seul lisible par les threads de travail (cf. `_pleine_res_activee`) ;
-          - décochée : la copie pleine résolution (25 Mo) est LIBÉRÉE ;
+          - décochée : la copie pleine résolution de l'EMPILEMENT (25 Mo) est
+            LIBÉRÉE. `proc_full` (résultat du ⚡ traitement externe) n'est PAS
+            touché : il sert aux sauvegardes « résultat traité (linéaire) » et
+            « tel que vu » en vue traitée, indépendamment de cette option ;
           - `notify_new_stack()` force un nouveau rendu — le cache du solveur
             VeraLux n'a pour clé que les RÉGLAGES, pas la résolution : sans ce
             drapeau, l'ancien rendu d'aperçu resservirait.
@@ -6975,8 +6984,30 @@ class App:
                     + (f"\n\nOutils : {outils}" if outils else ""))
         self.root.after(30, self._tick)
 
+    def _src_pleine_res(self):
+        """Image LINÉAIRE pleine résolution de la VUE COURANTE (v2.38.1), ou
+        None si elle n'existe pas encore.
+
+        Vue « empilement » → `self._stack_pleine_res`, la copie de l'empilement
+        COMPLET posée par la boucle d'acquisition (seul endroit du code qui a
+        l'image entière sous la main).
+        Vue « traitée » → `self.proc_full`, le résultat du ⚡ traitement externe :
+        il est DÉJÀ mémorisé (sauvegardes « résultat traité (linéaire) » et
+        « tel que vu » en vue traitée, cf. `_save_proc` / `_save_asseen`), donc
+        l'écran peut s'en servir SANS copie supplémentaire — et il montre alors
+        le même instantané que celui que le fichier contiendra.
+
+        ⚠️ THREADS : `self.var_view` (variable Tk) ne se lit QUE depuis le thread
+        d'interface ; cette méthode n'est appelée que par `_src_rendu`, lui-même
+        réservé à l'UI (`_tick`, `_on_view`, `_refresh_preview`) — jamais par la
+        boucle d'acquisition ni par un thread de travail."""
+        if self.var_view.get() == "traitée":
+            return self.proc_full
+        return self._stack_pleine_res
+
     def _src_rendu(self, lineaire):
-        """Image LINÉAIRE donnée à la chaîne d'affichage (v2.38.0).
+        """Image LINÉAIRE donnée à la chaîne d'affichage (v2.38.0 ; pleine
+        résolution en vue « traitée » depuis la v2.38.1).
 
         Par défaut : `lineaire`, l'aperçu 1600 px — rapide (~1,7 s), mais la
         chaîne non linéaire (GraXpert, débruitage, netteté, couleurs, chroma,
@@ -6985,14 +7016,25 @@ class App:
         cœurs d'étoiles — l'anneau de couleur des étoiles, lui, n'existe QUE dans
         les fichiers (l'aperçu l'écrase).
 
-        Option « Rendu pleine résolution » COCHÉE (et empilement complet
-        disponible) : la MÊME chaîne est appliquée à l'image COMPLÈTE → l'écran
-        montre exactement ce que le fichier contiendra, et le zoom recadre de
-        VRAIS pixels. Coût mesuré : 7,2-8,3 s par recalcul complet (×4,3).
-        Repli sur l'aperçu quand aucun empilement pleine résolution n'existe
-        (vue « traitée », début de session)."""
-        if self._pleine_res_activee() and self._stack_pleine_res is not None:
-            return self._stack_pleine_res
+        Option « Rendu pleine résolution » COCHÉE (et image complète disponible
+        pour la vue courante) : la MÊME chaîne est appliquée à l'image COMPLÈTE →
+        l'écran montre exactement ce que le fichier contiendra, et le zoom
+        recadre de VRAIS pixels. Coût mesuré : 7,2-8,3 s par recalcul complet
+        (×4,3).
+
+        v2.38.1 — la source suit la VUE (`_src_pleine_res`) : en vue « traitée »
+        c'est le RÉSULTAT EXTERNE pleine résolution qui est rendu. Avant, la
+        méthode rendait l'empilement complet quel que soit l'état de la vue : en
+        vue « traitée », l'écran montrait donc l'EMPILEMENT au lieu du résultat
+        du ⚡ (et le zoom « fidèle » ne portait pas sur l'image annoncée).
+
+        Repli sur l'aperçu quand l'image complète de la vue n'existe pas encore :
+        avant le premier empilement d'une session, ou en vue « traitée » avant le
+        premier ⚡ traitement."""
+        if self._pleine_res_activee():
+            src = self._src_pleine_res()
+            if src is not None:
+                return src
         return lineaire
 
     def _show_image(self, disp):
