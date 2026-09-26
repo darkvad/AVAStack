@@ -26,6 +26,10 @@ dans le changelog du source et l'historique git.)
   Banc NEUF `_test_unflip_jalon69.py` (correction sur scène asymétrique, 4 cas
   SANS faux positif dont le miroir HORIZONTAL, tes vrais fichiers en témoin).
   Non-régression : 12 bancs rejoués, TOUS PASSENT. Repli : v2.38.1.
+  **VÉRIFIÉ SUR SON FICHIER (27/09/2026)** : le « tel que vu » du ⚡ en v2.38.2
+  est dans le BON SENS (corrélation +0,870 tel quel contre +0,309 en miroir),
+  alors que ceux des v2.373, v2.38.0 et v2.38.1 sont en miroir (+0,33/+0,89,
+  +0,35/+0,90, +0,31/+0,87) → **le correctif fonctionne en réel**.
 
 - **TON TEST DE LA v2.38.1 (27/09/2026) — « le fichier traité a plus de bruit
   bleu que le stack » : VÉRIFIÉ, MAIS PAS COMME ON LE CROIT** (mesuré sur le
@@ -235,6 +239,17 @@ dans le changelog du source et l'historique git.)
     `_diag_bleu_externe_jalon69.py <ref.fits> <autre.fits>` (la ligne « taches
     2-8 px » doit revenir vers ×1,0). ⚠ faire les essais SANS empiler plus de
     brutes entre deux (le ⚡ part de l'instantané courant). Rien n'est appliqué.
+    → **RÉSULTAT MESURÉ (son essai `--sn 0.3`, 27/09/2026) : VÉRIFIÉ PAR LES
+    CHIFFRES, et « image magnifique » (son verdict).** A/B sur la chaîne externe
+    seule (les deux fichiers du ⚡) : moucheté 2-8 px ×0,37, excursions fortes
+    4,15 % → 0,72 % du ciel ; face au stack « tel que vu » de la même version :
+    ×1,28 (--sn 0,50) → **×0,48** (--sn 0,3), σ/MAD du bleu 2,95 → **1,49**
+    (« plaques » → grain), grain bleu déjà ×0,53. Le PNG livré est EXACTEMENT le
+    FITS (écart max 1/65535, moyenne 0,5/65535), même sens, canaux dans le bon
+    ordre (`_diag_png_fits_jalon69.py`). ⚠ RÉSERVE : les fichiers comparés
+    viennent d'instants différents (l'empilement grandissait) — un A/B parfait
+    exige de FIGER l'empilement entre deux essais. Réglage retenu : **`--sn 0.3`**
+    (à reporter dans la commande BXT par défaut ? décision d'Alain).
   - **Traçabilité des outils externes (constat)** : les commandes GraXpert/BXT
     et leurs paramètres ne sont écrits dans AUCUN fichier — `AVAAPPLI` ne décrit
     que les corrections de couleur (`_entete_reglages`), et les « tel que vu »
