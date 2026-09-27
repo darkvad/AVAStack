@@ -101,6 +101,10 @@ from ..processing import veralux as veralux_moteur
 # chaque réempilement). Le worker ne touche jamais au catalogue lui-même
 # (processing → catalogues, jamais l'inverse : pas de cycle d'import).
 from ..processing import astrometrie as astro_mod
+# Jalon 70 : CATALOGUES (dossier par OS, présence du catalogue astro, et
+# téléchargement Gaia DR3) — l'astrométrie interne en dépend, et son absence
+# doit être DITE (constat Linux du 27/09/2026 : échec silencieux).
+from .. import catalogues as cat_mod
 # Jalon 56 (étape 4) : photométrie — zéro-point instrumental PAR BANDE via le
 # WCS (appariement mutuel des étoiles de l'empilement au catalogue Gaia). On
 # MESURE ici ; l'application aux gains du stacker est l'étape 5.
@@ -1415,6 +1419,31 @@ class App:
         self.lbl_astro = ttk.Label(box, text="Astrométrie : —",
                                    foreground="#888888")
         self.lbl_astro.pack(anchor="w", pady=(2, 0))
+        # Jalon 70 — DONNÉES de l'astrométrie : l'application DIT où elle
+        # cherche le catalogue Gaia DR3 de Siril, laisse choisir un autre
+        # dossier (config `chemin_catalogues`), et le télécharge (1,1 Go,
+        # reprise + sha256 vérifié). Sans catalogue, l'astrométrie interne ne
+        # peut pas aboutir : le dire ici évite l'échec silencieux constaté
+        # sous Linux le 27/09/2026.
+        row_cat = ttk.Frame(box)
+        row_cat.pack(fill="x", pady=(2, 0))
+        ttk.Label(row_cat, text="Catalogues :").pack(side="left")
+        self.lbl_cat_dossier = ttk.Label(row_cat, text="—",
+                                        foreground="#888888")
+        self.lbl_cat_dossier.pack(side="left", padx=(4, 0))
+        ttk.Button(row_cat, text="📂", width=3,
+                   command=self._choisir_dossier_catalogues).pack(
+            side="left", padx=(4, 0))
+        self.btn_cat_dl = ttk.Button(row_cat, text="⬇ Gaia", width=9,
+                                     command=self._telecharger_catalogue)
+        self.btn_cat_dl.pack(side="left", padx=(2, 0))
+        self.lbl_cat_etat = ttk.Label(box, text="", foreground="#888888")
+        self.lbl_cat_etat.pack(anchor="w")
+        # File de la conversation réseau → UI (le thread de téléchargement n'a
+        # PAS le droit de toucher un widget : il ne pose que des messages ici).
+        self._cat_q = queue.Queue()
+        self._cat_dl_actif = False
+        self._maj_cat_vue()
         # Jalon 56 (étape 4) : PHOTOMÉTRIE — zéro-point instrumental par BANDE,
         # mesuré sur l'empilement via le WCS (appariement mutuel des étoiles au
         # catalogue Gaia de Siril). Case SÉPARÉE et cochée par défaut : la
@@ -2329,6 +2358,7 @@ class App:
             self.suivi_astro.reset()
         self._rafraichir_rendu = True     # la ligne d'état suit SANS brute
         self._maj_astro_vue()
+        self._maj_cat_vue()
 
     def _on_spcc(self):
         """Jalon 58 : case « SPCC (couleurs absolues) » — OPT-IN, décochée par
@@ -2531,6 +2561,91 @@ class App:
         else:
             txt, col = "Astrométrie : en attente d'indices", "#c98a00"
         self.lbl_astro.config(text=txt, foreground=col)
+
+    def _maj_cat_vue(self):
+        """Ligne « Catalogues » (jalon 70) : dossier RÉELLEMENT utilisé par
+        l'application, présence du catalogue astrométrique, nombre de chunks
+        spectro (informatif : la SPCC et la photométrie s'en servent). Jamais de
+        ligne muette — c'est ce silence qui a coûté la soirée du 27/09/2026."""
+        if getattr(self, "lbl_cat_dossier", None) is None:
+            return
+        try:
+            d = cat_mod.dossier_catalogues()
+        except Exception as exc:                     # dossier illisible
+            self.lbl_cat_dossier.config(text="?", foreground="#d04040")
+            self.lbl_cat_etat.config(text=f"catalogues : {exc}",
+                                     foreground="#d04040")
+            return
+        self.lbl_cat_dossier.config(
+            text=(d if len(d) <= 56 else "…" + d[-55:]), foreground="#888888")
+        if self._cat_dl_actif:
+            return                     # la ligne de progression fait foi
+        etat = cat_mod.etat_local(d)
+        astro = etat.get("astro")
+        n_ch = len(etat.get("chunks") or {})
+        if astro:
+            txt, col = (f"catalogue astro : présent ({os.path.basename(astro)})",
+                        "#1d7f1d")
+        else:
+            txt = ("catalogue astro : ABSENT — l'astrométrie interne ne peut "
+                   "pas aboutir (bouton ⬇ Gaia, ou déposer le fichier ici)")
+            col = "#c98a00"
+        self.lbl_cat_etat.config(
+            text=f"{txt} — spectres Gaia : {n_ch} chunk(s)", foreground=col)
+
+    def _choisir_dossier_catalogues(self):
+        """Choisit le dossier des catalogues et le PERSISTE (config
+        `chemin_catalogues`). Un dossier VIDE est accepté : c'est là que le
+        bouton ⬇ écrira."""
+        try:
+            depart = cat_mod.dossier_catalogues()
+        except Exception:
+            depart = os.path.expanduser("~")
+        d = filedialog.askdirectory(title="Dossier des catalogues (Gaia/Siril)",
+                                    initialdir=depart)
+        if not d:
+            return
+        CONFIG["chemin_catalogues"] = d
+        sauver_config(dict(CONFIG))
+        # Un catalogue peut déjà être là (ou arriver par le réseau) : on rouvre
+        # les essais et on efface un éventuel « DONNÉES MANQUANTES » affiché.
+        self.astro_info = ""
+        self._rafraichir_rendu = True
+        self._maj_cat_vue()
+        self._maj_astro_vue()
+
+    def _telecharger_catalogue(self):
+        """Télécharge le catalogue astrométrique Gaia DR3 de Siril (≈ 1,1 Go
+        compressé) dans le dossier des catalogues — thread DÉDIÉ : reprise
+        après coupure et sha256 vérifié par le téléchargeur ; l'interface ne
+        reçoit que des messages par file (jamais d'appel Tk depuis ce thread)."""
+        if self._cat_dl_actif:
+            return
+        try:
+            d = cat_mod.dossier_catalogues()
+            os.makedirs(d, exist_ok=True)
+        except OSError as exc:
+            self.lbl_cat_etat.config(text=f"téléchargement impossible : {exc}",
+                                     foreground="#d04040")
+            return
+        self._cat_dl_actif = True
+        self.btn_cat_dl.state(["disabled"])
+        self.lbl_cat_etat.config(
+            text=f"téléchargement du catalogue Gaia (≈ 1,1 Go) dans {d}…",
+            foreground="#c98a00")
+
+        def travail():
+            try:
+                from ..catalogues import telechargeur as dl
+
+                chemin, telecharge = dl.telecharger_catalogue_astro(
+                    d, lambda nom, frac: self._cat_q.put(
+                        ("progres", nom, float(frac))))
+                self._cat_q.put(("fini", chemin, bool(telecharge)))
+            except Exception as exc:          # réseau, disque, sha256…
+                self._cat_q.put(("erreur", str(exc)))
+
+        threading.Thread(target=travail, daemon=True).start()
 
     def _lire_indices_image(self):
         """Jalon 56 : lit AD/Dec/champ depuis l'image COURANTE (dernière brute
@@ -6789,6 +6904,44 @@ class App:
 
     # ------------------------------------------------------------ rafraîchissement UI
     def _tick(self):
+        # Jalon 70 : messages du TÉLÉCHARGEMENT des catalogues (thread → UI).
+        # Le thread réseau ne touche AUCUN widget : il ne pose que des messages
+        # ici, et c'est ce thread Tk qui les traduit en texte.
+        while getattr(self, "_cat_q", None) is not None:
+            try:
+                msg = self._cat_q.get_nowait()
+            except queue.Empty:
+                break
+            genre = msg[0]
+            if genre == "progres":
+                _, nom, frac = msg
+                self.lbl_cat_etat.config(
+                    text=(f"téléchargement {nom} : {frac * 100:.0f} % "
+                          "(la reprise est automatique si la connexion coupe)"),
+                    foreground="#c98a00")
+            elif genre == "fini":
+                _, chemin, telecharge = msg
+                self._cat_dl_actif = False
+                self.btn_cat_dl.state(["!disabled"])
+                self.astro_info = ""        # les essais d'astrométrie repartent
+                self._rafraichir_rendu = True
+                self._maj_cat_vue()
+                self._maj_astro_vue()
+                self.lbl_cat_etat.config(
+                    text=(("catalogue astro téléchargé : " if telecharge
+                           else "catalogue astro déjà présent : ")
+                          + os.path.basename(chemin)),
+                    foreground="#1d7f1d")
+            else:
+                _, texte = msg
+                self._cat_dl_actif = False
+                self.btn_cat_dl.state(["!disabled"])
+                self._maj_cat_vue()
+                self.lbl_cat_etat.config(
+                    text=(f"téléchargement : ÉCHEC — {texte} "
+                          "(le fichier .part reste : relancer reprend où on "
+                          "s'est arrêté)"),
+                    foreground="#d04040")
         # Détection SDK (thread → UI) : consommation du résultat — les
         # variables/labels Tk ne sont touchés QUE depuis ce thread principal.
         if self._detect_result is not None:

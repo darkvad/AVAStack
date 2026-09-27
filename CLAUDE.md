@@ -128,6 +128,23 @@ Règles qui vont avec :
 - après toute passe de code, annoncer en fin de réponse le CHEMIN EXACT de
   l'artefact reconstruit (version comprise).
 
+- **Données astronomiques exigées (jalon 70, constat réel d'Alain du
+  27/09/2026 : « l'astrométrie ne trouve pas de résultat… et ça échoue en
+  silence »)** : l'astrométrie interne exige le catalogue Gaia DR3 de Siril ;
+  sous Linux, Siril le range dans **`~/.local/share/siril`** (documentation
+  Siril 1.4.4, `core.catalogue_gaia_astro`) — chemin que l'application ne
+  cherchait PAS (elle ne testait que `~/.local/share/kstars`, qui ne contient
+  justement pas les fichiers `siril_cat*`, puis retombait sur un dossier
+  AVAStack vide ; le repli ASTAP, lui, est absent si `astap_cli` n'est pas
+  installé). Depuis la v2.38.4 : `catalogues.dossiers_siril()` (chemins par OS,
+  `XDG_DATA_HOME` honoré), clé `chemin_catalogues` RÉELLEMENT honorée + ligne
+  « Catalogues » (dossier utilisé, présence, boutons 📂/⬇ Gaia), téléchargement
+  du catalogue dans un THREAD (reprise + sha256), et **arrêt des essais** quand
+  la cause est une donnée manquante (`solveur.MSG_CATALOGUE_ABSENT`), qui
+  repartent dès qu'un catalogue apparaît. Leçon générale : **une donnée absente
+  doit être dite, avec le chemin cherché** — un « aucun résultat » silencieux
+  coûte une soirée de test à Alain.
+
 ## Bancs et diagnostics — emplacement (décision d'Alain, 27/09/2026)
 
 Les bancs (`_diag_*.py` : diagnostics ; `_test_*.py` : non-régression) ne

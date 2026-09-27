@@ -47,6 +47,31 @@ AVASTACK_<MARQUE>_DIR, par exemple AVASTACK_PLAYERONE_DIR=~/SDK/PlayerOne.)
   - Touptek/Altair : libtoupcam.so + ses règles.
   - SVBONY   : libSVBCameraSDK.so + ses règles.
 
+ASTRONOMÉTRIE : IL FAUT UN CATALOGUE D'ÉTOILES
+---------------------------------------------
+L'astrométrie (et la photométrie/couleurs qui s'appuient dessus) a besoin des
+DONNÉES Gaia DR3 de Siril — ce ne sont pas des bibliothèques (*.so), ce sont
+des FICHIERS d'étoiles, et ils ne sont pas fournis dans ce paquet :
+
+  - soit tu les as déjà (Siril installé) : AVAStack cherche dans
+    ~/.local/share/siril (dossier de Siril sous Linux) puis dans
+    ~/.local/share/kstars ;
+  - soit tu cliques sur « ⬇ Gaia » dans la fenêtre « Astrométrie » : le
+    catalogue astrométrique (≈ 1,1 Go) est téléchargé dans le dossier affiché
+    par la ligne « Catalogues » (reprise automatique après coupure, sha256
+    vérifié) ;
+  - soit tu déposes toi-même siril_cat_healpix8_astro.dat (ou .dat.bz2) dans
+    ce dossier — le bouton 📂 en choisit un autre, et c'est mémorisé.
+
+La ligne « Catalogues » dit à tout moment OÙ l'application cherche, si le
+catalogue est présent, et combien de morceaux « spectres Gaia » (utiles à la
+SPCC) sont là. Sans catalogue, l'astrométrie l'annonce clairement
+(« DONNÉES MANQUANTES — … ») au lieu d'échouer en silence.
+
+Autre possibilité : ASTAP (outil externe `astap_cli` + une base d'étoiles de
+type G18/H18 pour chercher sans coordonnées) — AVAStack le détecte dans le
+PATH et dans /usr/local/bin, /usr/bin, /opt/astap.
+
 BANCS CAMÉRA INSTALLÉS (sous-dossier bancs/cameras)
 -----------------------------------------------
 Seuls les bancs du THÈME CAMÉRA sont installés avec l'application :

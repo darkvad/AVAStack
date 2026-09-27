@@ -39,6 +39,22 @@ fichiers : un banc caméra ajouté entre tout seul, un banc de dev ne part pas.
 5. Affiche un rappel des SDK caméras à télécharger manuellement (ZWO,
    Player One, Touptek/Altair, SVBONY) et copie un LISEZMOI.txt.
 
+## Les données de l'astrométrie ne sont pas embarquées (ni DLL, ni pip)
+
+L'astrométrie (et la photométrie/couleurs qui en dépendent) a besoin des
+**données Gaia DR3 de Siril** — des fichiers d'étoiles, jamais embarqués dans
+un installateur (1,1 Go, licence CC-BY). Depuis la v2.38.4, l'application :
+
+- CHERCHE aux bons endroits par OS (`~/.local/share/siril` sous Linux —
+  l'emplacement documenté de Siril —, `%LOCALAPPDATA%\Siril` sous Windows,
+  `~/Library/Application Support/Siril` sous macOS, plus les dossiers KStars) ;
+- DIT où elle cherche et si le catalogue est présent (ligne « Catalogues ») ;
+- le TÉLÉCHARGE à la demande (bouton « ⬇ Gaia », reprise + sha256) ;
+- accepte un dossier choisi par l'utilisateur (config `chemin_catalogues`) ;
+- ARRÊTE les essais d'astrométrie quand la cause est une donnée manquante
+  (au lieu de répéter 20 fois le même échec) et repart dès qu'un catalogue
+  apparaît.
+
 ## Ce que l'installateur n'embarque PAS
 
 - Les **SDK binaires constructeurs** (ASICamera2.dll, PlayerOneCamera.dll,

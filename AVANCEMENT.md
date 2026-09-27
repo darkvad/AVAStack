@@ -10,7 +10,50 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **RÉORGANISATION DES BANCS — `bancs/` + `bancs/cameras/`, SEUL LE THÈME CAMÉRA
+- **PASSE EN COURS — AVAStack v2.38.4 : ASTRONOMÉTRIE SOUS LINUX (DONNÉES DITES
+  ET TÉLÉCHARGEABLES)** (code + banc + doc + installateurs, 27/09/2026, **EN
+  ATTENTE DE TON TEST**). Ton constat après l'installateur Linux : « l'astrométrie
+  ne trouve pas de résultat… et ça échoue en silence ». **Cause trouvée et
+  mesurée** :
+  - `catalogues.dossier_catalogues()` ne cherchait que `%LOCALAPPDATA%\Siril`
+    (Windows) et `~/.local/share/kstars` — le dossier Linux de Siril
+    (`~/.local/share/siril`, doc Siril 1.4.4) n'était JAMAIS essayé, et le
+    dossier KStars ne contient pas les `siril_cat*` du projet → repli sur un
+    dossier AVAStack VIDE (rejoué ici : `dossier_catalogues()` = dossier de
+    config vide) → échec certain du solveur interne, sans repli ASTAP (absent
+    sous Linux) et sans trace (l'appli n'a pas de journal : la raison ne vivait
+    que dans la ligne d'état).
+  - **① chemins par OS** : `dossiers_siril()` (Linux/Windows/macOS, XDG honoré)
+    et `dossier_catalogues()` réécrit (surcharge de config > dossier Siril
+    utilisable > dossier de config AVAStack).
+  - **② `chemin_catalogues` RÉELLEMENT honorée** (elle n'existait que dans une
+    docstring) : ligne « Catalogues » dans la fenêtre Astrométrie — dossier
+    utilisé, présence du catalogue, nombre de chunks spectro — + bouton 📂
+    (dossier choisi et mémorisé).
+  - **③ bouton « ⬇ Gaia »** : téléchargement du catalogue astrométrique
+    (≈ 1,1 Go) dans le dossier affiché, en THREAD, reprise + sha256 (le
+    téléchargeur existait mais n'était branché NULLE PART) ; progression et fin
+    affichées, bouton neutralisé pendant le transfert.
+  - **④ fin du silence** : `solveur.MSG_CATALOGUE_ABSENT` reconnu par
+    `SuiviAstrometrie` → les essais S'ARRÊTENT (au lieu de 20 pour rien), la
+    ligne dit « DONNÉES MANQUANTES — … » avec le dossier cherché, et les essais
+    repartent TOUT SEULS dès qu'un catalogue apparaît.
+  - **⑤ LISEZMOI** Windows/Linux : section « catalogue d'étoiles » (ce qui est
+    requis, où le mettre, ce que font les boutons) ; README installateur ;
+    CLAUDE.md (leçon).
+  - Banc NEUF `_test_catalogues_jalon70.py` (24 vérifications : chemins par OS,
+    surcharge de config, arrêt/reprise des essais, ligne « Catalogues » + 
+    téléchargeur FACTICE). **Non-régression : 12 bancs rejoués, TOUS PASSENT**
+    (catalogues jalon56, branchement astrométrie, photométrie, SPCC, config,
+    UI ×2, BXT, chroma structure, zoom pleine rés, sauvegarde brute).
+  - **Artéfacts RECONSTRUITS** : installateur Windows
+    `avastack-setup-2.38.4.exe` et paquet Linux
+    `avastack-setup-2.38.4-linux.tar.gz`. Repli si régression : v2.38.3.
+  - Reste à faire : ton essai sous Linux (l'astrométrie doit maintenant DIRE
+    « DONNÉES MANQUANTES » puis fonctionner après le téléchargement ou le
+    dépôt du fichier).
+
+
   EST INSTALLÉ** (décision d'Alain, 27/09/2026 : « dossier bancs PARTOUT avec
   juste un thème à part pour les caméras ; seuls les bancs caméra seront dans
   les installateurs — le reste n'a rien à y faire, c'est pour du dev ») :

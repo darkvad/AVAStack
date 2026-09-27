@@ -34,6 +34,32 @@ copie-la simplement dans CE dossier (ou définis une variable
 d'environnement pointant vers le dossier qui la contient, par exemple
 AVASTACK_PLAYERONE_DIR=C:\chemin\vers\SDK\PlayerOne).
 
+CATALOGUES (ASTRONOMÉTRIE ET COULEURS)
+--------------------------------------
+L'astrométrie (et la photométrie/couleurs qui en dépendent) s'appuie sur les
+DONNÉES Gaia DR3 de Siril — des FICHIERS d'étoiles, pas des DLL. Une ligne
+« Catalogues », dans la fenêtre « Astrométrie », dit à tout moment :
+
+  - OÙ l'application cherche (dossier utilisé) ;
+  - si le catalogue astro est PRÉSENT ou ABSENT ;
+  - combien de morceaux « spectres Gaia » (utiles à la SPCC) sont installés.
+
+Elle est accompagnée de deux boutons :
+
+  - 📂 : choisir un AUTRE dossier de catalogues (le choix est mémorisé) ;
+  - ⬇ Gaia : télécharger le catalogue astrométrique (≈ 1,1 Go) dans ce dossier
+    — reprise automatique si la connexion coupe, empreinte sha256 vérifiée.
+
+Ordre de recherche (le premier utilisable gagne) : le dossier choisi par 📂,
+puis %LOCALAPPDATA%\Siril (celui de Siril), puis un dossier « catalogues »
+dans %APPDATA%\AVAStack — c'est là qu'écrit le bouton ⬇ si rien d'autre
+n'existe. Sans catalogue, l'astrométrie le DIT (« DONNÉES MANQUANTES — … »)
+au lieu d'échouer sans explication.
+
+Autre possibilité : ASTAP (astap_cli + une base d'étoiles de type G18/H18
+pour chercher sans coordonnées) — AVAStack le détecte dans le PATH, dans
+« C:\Program Files\astap » et dans les emplacements Linux/macOS.
+
 BANCS CAMÉRA INSTALLÉS (sous-dossier bancs\cameras)
 --------------------------------------------------
 Les outils autonomes de diagnostic caméra sont installés avec AVAStack, dans

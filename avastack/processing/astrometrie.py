@@ -51,6 +51,7 @@ import numpy as np
 
 from ..catalogues import WcsTan, compose_M, propager
 from ..catalogues import balayage_possible, bases_installees
+from ..catalogues import MSG_CATALOGUE_ABSENT, chemin_catalogue_astro
 from ..catalogues import resoudre as _resoudre_interne
 from ..catalogues import resoudre_avec_astap as _resoudre_astap
 from ..images import borner_lineaire, save_image
@@ -389,6 +390,10 @@ class SuiviAstrometrie:
         self.essais = 0                   # tentatives de résolution (session)
         self.propagations = 0             # propagations réussies
         self.derniere_erreur = ""
+        # Jalon 70 : cause de DONNÉES (catalogue astrométrique absent) — quand
+        # elle est posée, les essais s'arrêtent : ce n'est pas l'image qui est
+        # en cause, et répéter 20 fois le même échec ne l'aurait pas résolu.
+        self.donnees_absentes = ""
         self._dernier_essai = 0.0
         self._n_dernier_essai = 0         # profondeur de l'empilement essayée
                                           # (un doublement justifie un essai
@@ -442,6 +447,15 @@ class SuiviAstrometrie:
         jamais, même à 33 frames."""
         if self.resolu or not self.pret:
             return False
+        if self.donnees_absentes:
+            # Cause de DONNÉES : tant que le catalogue n'est pas là, réessayer
+            # ne peut pas aboutir (constat Linux du 27/09/2026 : 20 essais pour
+            # répéter le même échec). Dès qu'un catalogue apparaît — fichier
+            # déposé, téléchargé, ou dossier changé dans l'interface — les
+            # essais repartent, SANS redémarrer l'application.
+            if chemin_catalogue_astro(self.dossier) is None:
+                return False
+            self.donnees_absentes = ""
         n = int(n_frames)
         if n < ASTRO_MIN_FRAMES:
             return False
@@ -461,6 +475,10 @@ class SuiviAstrometrie:
         afficher : jamais de silence sur l'absence de WCS)."""
         if self.resolu:
             return ""
+        if self.donnees_absentes:
+            # Rien à attendre d'un empilement plus profond : c'est une DONNÉE
+            # qui manque — on dit laquelle et où, jamais de silence.
+            return f"DONNÉES MANQUANTES — {self.donnees_absentes}"
         if not self.pret:
             return "indices de la cible manquants"
         if self.essais >= ASTRO_MAX_ESSAIS:
@@ -513,6 +531,9 @@ class SuiviAstrometrie:
                      "echelle_arcsec_px": float(wcs.echelle_arcsec),
                      "angle_deg": float(wcs.angle_deg), "methode": str(methode)}
         self.derniere_erreur = ""
+        # Un WCS adopté (ASTAP) rend le catalogue astrométrique inutile pour la
+        # session : la cause « données manquantes » tombe.
+        self.donnees_absentes = ""
         return True, self.texte_resume()
 
     # -- résolution -----------------------------------------------------------
@@ -549,11 +570,14 @@ class SuiviAstrometrie:
             wcs, info, msg = None, {}, f"exception du solveur ({exc})"
         if wcs is None:
             self.derniere_erreur = str(msg or "échec de résolution")
+            if self.derniere_erreur.startswith(MSG_CATALOGUE_ABSENT):
+                self.donnees_absentes = self.derniere_erreur
             return False, self.derniere_erreur
         self.wcs = wcs
         self.matrice = np.eye(2, 3)
         self.info = dict(info or {})
         self.derniere_erreur = ""
+        self.donnees_absentes = ""
         return True, self.texte_resume()
 
     # -- propagation ----------------------------------------------------------

@@ -40,6 +40,12 @@ import cv2
 
 from .siril_cat import CatalogueSiril
 
+# Message PARTAGÉ du « catalogue astrométrique absent » (jalon 70) : le solveur
+# l'émet, `processing.astrometrie` le RECONNAÎT pour ne plus relancer d'essais
+# inutiles (cause de données, pas cause d'image) et l'interface le montre tel
+# quel, chemin cherché compris.
+MSG_CATALOGUE_ABSENT = "catalogue Gaia astrométrique de Siril introuvable"
+
 # --- Garde-fous généraux ----------------------------------------------------
 CHAMP_DEG_MIN, CHAMP_DEG_MAX = 0.05, 5.0     # champ indicé plausible (deg)
 ECHELLE_ARCSEC_MIN, ECHELLE_ARCSEC_MAX = 0.05, 30.0
@@ -610,9 +616,10 @@ def _extraire_catalogue(ra0, dec0, champ_deg, forme, dossier=None,
     d = dossier or dossier_catalogues()
     etat = etat_local(d)
     if not etat.get("astro"):
-        return None, ("catalogue Gaia astrométrique de Siril introuvable "
-                      f"dans {d} — lancez le téléchargeur (jalon 56, "
-                      "étape 1)")
+        return None, (MSG_CATALOGUE_ABSENT + f" dans {d} — ligne « Catalogues » "
+                      "de l'interface : y déposer le fichier "
+                      "(siril_cat_healpix8_astro.dat) ou le télécharger "
+                      "(bouton ⬇ Gaia)")
     h_img, w_img = forme
     rayon = 0.5 * math.hypot(w_img, h_img) * champ_deg / w_img \
         + MARGE_INDICES

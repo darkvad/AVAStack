@@ -14,7 +14,46 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.38.3"
+AVASTACK_VERSION = "2.38.4"
+
+# --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.38.4 : ASTRONOMÉTRIE SOUS LINUX — LES DONNÉES MANQUANTES SONT DITES, ET
+#   TÉLÉCHARGEABLES DEPUIS L'APPLICATION (constat réel d'Alain, 27/09/2026 :
+#   installateur Linux essayé — « l'astrométrie ne trouve pas de résultat…
+#   et ça échoue en silence »).
+#   CAUSE MESURÉE (rejoué depuis la branche Linux, HOME vierge) : le dossier
+#   des catalogues n'était cherché QUE sous `%LOCALAPPDATA%\Siril` (Windows) et
+#   `~/.local/share/kstars` — le dossier Linux de Siril (`~/.local/share/siril`,
+#   vérifié dans la doc Siril 1.4.4 : `core.catalogue_gaia_astro`) n'était
+#   JAMAIS essayé, et le dossier KStars ne contient justement PAS les fichiers
+#   `siril_cat*` du projet → repli sur un dossier AVAStack VIDE, donc échec
+#   certain du solveur interne ; aucun repli possible par ASTAP (astap_cli
+#   absent sous Linux) ; et la raison ne vivait que dans une ligne d'état
+#   remplacée au tour suivant (l'application n'a pas de journal) — d'où
+#   l'impression de silence.
+#   (1) `catalogues.dossiers_siril()` : chemins PAR OS (`~/.local/share/siril`
+#       sous Linux, `%LOCALAPPDATA%\Siril` sous Windows, Application Support
+#       sous macOS, `XDG_DATA_HOME` honoré) — et c'est le CONTENU (`siril_cat*`)
+#       qui décide quel dossier est utilisable, plus un nom de dossier supposé ;
+#   (2) la clé de config `chemin_catalogues` est RÉELLEMENT honorée (elle
+#       n'existait que dans une docstring) : ligne « Catalogues » dans la
+#       fenêtre Astrométrie (dossier utilisé + présence du catalogue + nombre de
+#       chunks spectro), bouton 📂 pour choisir un autre dossier (persisté) ;
+#   (3) bouton « ⬇ Gaia » : téléchargement du catalogue astrométrique Gaia DR3
+#       de Siril (≈ 1,1 Go) dans le dossier affiché, en THREAD séparé, avec
+#       reprise après coupure et sha256 vérifié (`catalogues.telechargeur`
+#       existait mais n'était branché NULLE PART) : progression dans la ligne
+#       d'état, jamais d'appel Tk depuis le thread ;
+#   (4) `SuiviAstrometrie` : l'absence de catalogue est reconnue comme cause de
+#       DONNÉES (`solveur.MSG_CATALOGUE_ABSENT`) → les essais s'ARRÊTENT au lieu
+#       d'en consommer 20 pour rien, la ligne d'état dit « DONNÉES MANQUANTES —
+#       … » avec le dossier cherché, et les essais repartent TOUT SEULS dès
+#       qu'un catalogue apparaît (fichier déposé, téléchargé, dossier changé) ;
+#   (5) LISEZMOI Windows et Linux : section « données de l'astrométrie » (ce
+#       qui est requis, où le mettre, ce que fait le bouton).
+#   Banc NEUF `_test_catalogues_jalon70.py` (chemins par OS, surcharge de config,
+#   arrêt/reprise des essais, ligne « Catalogues » de l'UI avec téléchargeur
+#   factice — jamais de réseau dans un banc). Repli si régression : v2.38.3.
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
 # v2.38.3 : PARAMÈTRES BXT EXPLICITES ET TRAÇABILITÉ DES OUTILS EXTERNES. Trois
