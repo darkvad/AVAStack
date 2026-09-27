@@ -54,10 +54,10 @@ dans le changelog du source et l'historique git.)
   faux transfert attend que l'UI ait consommé chaque palier).
   **Reste à faire : TON ESSAI SOUS LINUX** (l'application doit démarrer — et si
   elle ne démarre pas, elle doit maintenant le DIRE et l'écrire : envoie-moi
-  `~/.config/AVAStack/journal.txt`). Artefact :
+  `~/.config/AVAStack/journal.txt`). **Artefacts reconstruits** :
   `installer/linux/output/avastack-setup-2.38.7-linux.tar.gz` (61 fichiers,
-  506 Kio, SHA-256 `09e1f724afb22111fe9a847fae2bfce6a64d088a8db5f275326a84d237df2191`) ;
-  installateur Windows **à recompiler sur cette machine** (Inno Setup absent ici).
+  506 Kio, SHA-256 `09e1f724afb22111fe9a847fae2bfce6a64d088a8db5f275326a84d237df2191`)
+  et `installer/windows/output/avastack-setup-2.38.7.exe` (10,9 Mo).
   Repli si régression : v2.38.6.
 
 - **Jalons antérieurs immédiats** (détails dans le changelog de
