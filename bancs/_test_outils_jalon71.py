@@ -35,6 +35,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 
 from avastack import siril_ini as ini_mod
 from avastack import config as config_mod
@@ -87,7 +88,7 @@ def simule_os(windows=False, macos=False):
     det_mod.IS_WINDOWS = ini_mod.IS_WINDOWS = config_mod.IS_WINDOWS = windows
     det_mod.IS_MACOS = ini_mod.IS_MACOS = config_mod.IS_MACOS = macos
     cat_mod.IS_WINDOWS, cat_mod.IS_MACOS = windows, macos
-    det_mod.shutil.which = lambda nom: None      # « hors PATH » par défaut
+    det_mod.shutil.which = lambda nom, path=None: None      # « hors PATH » par défaut
 
 
 def restaure():
@@ -168,7 +169,7 @@ verifie(meme(det_mod.chemin_graxpert(), exe4),
 
 print("[2] Ordre de recherche : Siril > env > PATH > OS > filtre")
 # PATH : une piste moins explicite doit CÉDER devant celles d'avant.
-det_mod.shutil.which = lambda nom: ("/faux/bin/GraXpert-linux"
+det_mod.shutil.which = lambda nom, path=None: ("/faux/bin/GraXpert-linux"
                                     if nom == "GraXpert-linux" else None)
 verifie(meme(det_mod.chemin_graxpert(), "/faux/bin/GraXpert-linux"),
         "PATH utilisé quand aucune piste plus explicite n'existe")
@@ -216,7 +217,7 @@ ini7 = ecrit_ini(["[core]",
                   "graxpert_path=" + exe7.replace(os.sep, os.sep * 2)])
 verifie(ini_mod.lire_cle(ini_mod.CLE_GRAXPERT) == exe7,
         "clé lue, antislashs déséchappés (C:\\\\Users → C:\\Users)")
-det_mod.shutil.which = lambda nom: "/faux/bin/GraXpert-linux"
+det_mod.shutil.which = lambda nom, path=None: "/faux/bin/GraXpert-linux"
 verifie(meme(det_mod.chemin_graxpert(), exe7),
         "l'ini de Siril prime sur le PATH (choix explicite de l'utilisateur)")
 os.rename(ini7, ini7 + ".bak")
@@ -270,13 +271,13 @@ verifie(m8.startswith("exécutable introuvable"),
         f"chemin DISPARU : « {m8[:42]}… »")
 m9 = live_mod.outil_manquant("graxpert {input} -cli -output {outbase}")
 verifie("PATH" in m9, f"binaire nu hors PATH : « {m9} »")
-det_mod.shutil.which = lambda nom: "/faux/bin/graxpert" if nom == "graxpert" \
+det_mod.shutil.which = lambda nom, path=None: "/faux/bin/graxpert" if nom == "graxpert" \
     else None
 verifie(live_mod.outil_manquant("graxpert {input} -cli -output {outbase}") == "",
         "binaire nu PRÉSENT dans le PATH : aucun message")
 verifie(live_mod.outil_manquant("") == "commande absente",
         "commande vide : cas signalé sans exception")
-det_mod.shutil.which = lambda nom: None          # aucun outil : cas d'Alain
+det_mod.shutil.which = lambda nom, path=None: None          # aucun outil : cas d'Alain
 img, err = live_mod.appliquer(np.zeros((4, 4)), "graxpert {input} -cli "
                                                 "-output {outbase}")
 verifie("introuvable" in err and img.shape == (4, 4),
@@ -313,6 +314,15 @@ config_mod.CONFIG["cmd_graxpert_dn"] = (f'"{absente}" "{{input}}" '
 root = tk.Tk()
 root.withdraw()
 ui = app_mod.App(root)
+# v2.38.11 : la DÉTECTION des outils et la re-détection d'un binaire disparu
+# (v2.38.5) sont désormais DIFFÉRÉES — après l'affichage et BORNÉES : un dossier
+# monté par le réseau (NAS) ne doit plus pouvoir retenir la fenêtre. On pompe
+# donc la boucle d'événements, comme le fait l'application au démarrage.
+_fin = time.time() + 15.0
+while time.time() < _fin and "mesure en cours" in ui.lbl_etat_graxpert.cget("text"):
+    ui._tick()
+    root.update()
+    time.sleep(0.01)
 verifie(absente not in ui.var_cmd_graxpert.get(),
         "commande persistée SANS outil : re-détectée à l'ouverture "
         "(plus de valeur figée)")

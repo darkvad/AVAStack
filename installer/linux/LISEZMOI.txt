@@ -178,6 +178,20 @@ DEUX ÉCHECS DÉJÀ RENCONTRÉS, ET CE QU'ILS DISENT (v2.38.8)
         sudo pacman -S tk                  (Arch/Manjaro)
     puis relance l'installateur.
 
+NAS, DOSSIER SUR MONTAGE RÉSEAU, PARE-FEU (v2.38.11)
+L'application MESURE des dossiers au démarrage (dossier de travail, catalogues,
+détection des outils) — jamais AVANT d'ouvrir la fenêtre, et toujours avec un
+DÉLAI. Si un dossier est sur un NAS injoignable (pare-feu qui le filtre, montage
+qui ne répond pas), la mesure est ABANDONNÉE au bout de quelques secondes :
+  - la fenêtre s'ouvre quand même (c'était le défaut corrigé : elle ne venait
+    jamais, sans aucun message ni ligne de journal) ;
+  - la ligne concernée dit « NON MESURÉ » / « ILLISIBLE » au lieu de faire
+    semblant ;
+  - le journal (`journal.txt`) NOMME l'étape qui a bloqué : c'est la ligne
+    « étape — … » juste avant l'interruption. Regarde le réseau et le pare-feu
+    (par exemple tes règles `nftables` pour le NAS), puis rouvre le dossier dans
+    l'application (bouton « 📂 Dossier ») : la mesure repart aussitôt.
+
 En cas de problème : ce fichier journal.txt contient tout ce qu'il faut pour
 comprendre sans deviner — joins-le à ton message.
 

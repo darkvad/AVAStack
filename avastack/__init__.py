@@ -17,9 +17,71 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.38.10"
+AVASTACK_VERSION = "2.38.11"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.38.11 : LE DÉMARRAGE NE PEUT PLUS SE BLOQUER (NAS, montage réseau, pare-feu).
+#   Constat RÉEL d'Alain (27/09/2026, Linux, v2.38.10) : « cette version ne se
+#   lance pas (ni depuis application, ni depuis ligne de commande) — pas
+#   d'enregistrement dans le journal ; en ligne de commande ça affiche juste la
+#   version ».
+#   CAUSE MESURÉE (avec SA contre-épreuve : `nftables` arrêté → la même version
+#   démarre) : ses dossiers de COUCHES R/G/B sont sur un **NAS** (et dans
+#   config.json) ; un `stat`/`listdir` sur un montage réseau INJOIGNABLE attend
+#   le montage INDÉFINIMENT (autofs n'a pas de délai). Or l'application
+#   INSPECTAIT ces dossiers AVANT d'afficher (détection des outils à l'import du
+#   module, dossier de travail, catalogues — dont `_on_astro`, appelée par la
+#   restauration de la configuration) : la fenêtre ne venait donc jamais. Et
+#   comme la PREMIÈRE ligne du journal était écrite APRÈS la mesure de
+#   l'environnement, elle n'existait pas non plus — panne totale, muette. L'audit
+#   du code, lui, ne montrait rien : il n'y avait pas de bug, seulement des
+#   mesures de disque NON BORNÉES.
+#   (1) module NEUF `avastack.delais` : `borne(fn, defaut, delai)` exécute une
+#       mesure dans un fil DÉMON et rend `(valeur, abouti)` — au-delà du délai on
+#       ABANDONNE, et l'interface le DIT. Délai dans `delais.DELAI_DEFAUT` (un
+#       seul endroit à régler ; un banc peut le réduire pour éprouver le cas) ;
+#   (2) `journal.etape()` : « miette de pain » écrite AVANT chaque étape qui
+#       touche le disque — si elle se bloque, la dernière ligne du journal la
+#       NOMME (c'est ce qui a manqué pour diagnostiquer en une minute) ;
+#   (3) DÉMARRAGE : la première ligne du journal est écrite SANS AUCUN accès
+#       disque (version, interpréteur, argv), et la mesure d'environnement est
+#       bornée ; son échec est DIT (« environnement NON MESURÉ — un accès disque
+#       BLOQUE : montage réseau NAS injoignable ? pare-feu ? ») ;
+#   (4) INTERFACE : toute mesure de disque devient DIFFÉRÉE (après l'affichage) et
+#       BORNÉE — nettoyage des résidus, dossier de travail, état des outils,
+#       catalogues — dans UN fil démon dont les résultats passent par une file et
+#       sont appliqués par `_tick` (jamais de Tk hors du fil d'interface) ; les
+#       libellés annoncent « mesure en cours… » puis disent la vérité (« espace
+#       NON MESURÉ », « ILLISIBLE », « état NON MESURÉ ») au lieu de garder un
+#       texte trompeur ; la ligne de travail n'appelle plus `disk_usage` depuis le
+#       fil Tk ;
+#   (5) `external.detection` ne touche PLUS le disque À L'IMPORT (commandes par
+#       défaut = valeur persistée ou repli binaire nu) : la détection réelle se
+#       fait après l'affichage, bornée (`detecter_outils`), et la re-détection
+#       d'un binaire disparu (v2.38.5, options conservées) suit la même voie ; les
+#       MONTAGES RÉSEAU sont écartés des racines balayées et le PATH passé à
+#       `shutil.which` est privé de ses dossiers réseau ;
+#   (6) `travail.type_systeme()` / `sur_montage_reseau()` (le point de montage le
+#       PLUS LONG décide, comme pour le tmpfs) — `est_tmpfs` s'appuie dessus ;
+#   (7) les sondes d'un GESTE restent immédiates, mais BORNÉES quand elles
+#       précèdent une boîte de dialogue (dossier initial).
+#   Banc NEUF `bancs/_test_demarrage_non_bloquant_jalon74.py` (17 vérifs) :
+#   `delais.borne` (résultat, délai chronométré, jamais d'exception), la miette de
+#   pain, le point d'entrée malgré une mesure bloquée, **App(root) construit en
+#   moins d'une seconde MALGRÉ trois sondes qui dorment 30 s**, les lignes qui
+#   disent la vérité, les montages réseau écartés, et — mesuré dans un
+#   SOUS-PROCESSUS — « import = zéro `which`/`glob` ».
+#   Bancs RÉPARÉS au passage (causes consignées dans CLAUDE.md) :
+#   ① jalon 72 bloquait sur un `messagebox.showinfo` NON INTERCEPTÉ (prouvé
+#      préexistant : le banc de la version intacte bloque au même endroit, pile
+#      mesurée au `faulthandler`) ;
+#   ② jalons 70 et 71 attendaient les sondes SYNCHRONES : ils POMPENT désormais la
+#      boucle d'événements jusqu'à ce que la mesure différée remplisse les lignes
+#      (et leurs doublures de `shutil.which` acceptent le mot-clé `path`).
+#   Doc : LISEZMOI Windows/Linux (« un NAS injoignable ne retient plus
+#   l'ouverture »), CLAUDE.md (règle : le démarrage ne fait aucune mesure
+#   susceptible de bloquer). Repli si régression : v2.38.10.
+#
 # v2.38.10 : LES LIGNES À TEXTE LIBRE NE PERDENT PLUS RIEN (astrométrie,
 #   catalogues, re-stack) — même famille que le bouton « Journal » de la v2.38.9.
 #   Constat RÉEL d'Alain (27/09/2026) : « le champ et le bouton pour récupérer

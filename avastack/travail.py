@@ -80,8 +80,25 @@ def est_tmpfs(chemin):
     catastrophique pour des FITS de 25 à 35 Mo écrits en série. On cherche le
     point de montage le PLUS LONG qui préfixe le chemin (celui qui porte
     réellement le fichier, pas `/`)."""
+    return type_systeme(chemin) == "tmpfs"
+
+
+# Types de systèmes de fichiers RÉSEAU (NAS) : un `stat` sur ces montages peut
+# ATTENDRE INDÉFINIMENT quand le réseau ne répond pas (autofs n'a pas de délai
+# par défaut ; un pare-feu qui filtre le NAS suffit). Constat RÉEL d'Alain,
+# 27/09/2026 : ses dossiers de couches R/G/B sont sur son NAS, `nftables`
+# filtrait ce NAS, et l'application ne s'ouvrait plus — sans un mot.
+TYPES_RESEAU = ("nfs", "nfs4", "cifs", "smb3", "smbfs", "sshfs", "fuse.sshfs",
+                "fuse.rclone", "glusterfs", "ceph", "9p", "afs", "davfs",
+                "fuse.gvfsd-fuse", "autofs")
+
+
+def type_systeme(chemin):
+    """Type de système de fichiers qui porte RÉELLEMENT `chemin` (point de
+    montage le PLUS LONG qui le préfixe), ou "" si inconnu (Windows/macOS, ou
+    `/proc/mounts` absent). Jamais d'exception."""
     if IS_WINDOWS or IS_MACOS:
-        return False                    # pas de tmpfs de ce genre, /tmp sur disque
+        return ""
     cible = os.path.realpath(os.path.abspath(chemin))
     meilleur, fstype = "", ""
     for point, type_fs in points_de_montage():
@@ -89,7 +106,14 @@ def est_tmpfs(chemin):
         prefixe = p if p == "/" else p.rstrip(os.sep) + os.sep
         if (cible == p or cible.startswith(prefixe)) and len(p) > len(meilleur):
             meilleur, fstype = p, type_fs
-    return fstype == "tmpfs"
+    return fstype
+
+
+def sur_montage_reseau(chemin):
+    """`chemin` est-il sur un montage RÉSEAU (NAS : NFS, SMB, sshfs…) ?
+    → bool, jamais d'exception. Sert à NE PAS balayer ces dossiers : un accès
+    que le réseau (ou un pare-feu) bloque y attend indéfiniment."""
+    return type_systeme(chemin) in TYPES_RESEAU
 
 
 def dossier_defaut():

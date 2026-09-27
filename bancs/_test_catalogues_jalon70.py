@@ -200,6 +200,14 @@ _ASK = app_mod.filedialog.askdirectory
 root = tk.Tk()
 root.withdraw()
 ui = app_mod.App(root)
+# v2.38.11 : la ligne « Catalogues » est remplie par la mesure DIFFÉRÉE (bornée,
+# APRÈS l'affichage — un dossier sur un NAS ne doit pas retenir la fenêtre). On
+# pompe donc la boucle d'événements, comme le fait l'application au démarrage.
+_fin = time.time() + 15.0
+while time.time() < _fin and "mesure en cours" in ui.lbl_cat_dossier.cget("text"):
+    ui._tick()
+    root.update()
+    time.sleep(0.05)
 dossier = cat_mod.dossier_catalogues()
 verifie("ABSENT" in ui.lbl_cat_etat.cget("text"),
         f"ligne d'état : {ui.lbl_cat_etat.cget('text')[:52]}…")

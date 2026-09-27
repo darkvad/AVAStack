@@ -271,6 +271,14 @@ DEUX ÉCHECS DÉJÀ RENCONTRÉS, ET CE QU'ILS DISENT (v2.38.8)
     python… » → réinstalle Python depuis python.org (Tkinter y est inclus),
     puis relance l'installateur.
 
+NAS, LECTEUR RÉSEAU (v2.38.11)
+Les mesures de dossiers faites au démarrage (dossier de travail, catalogues,
+détection des outils) ont lieu APRÈS l'ouverture de la fenêtre et avec un DÉLAI :
+un dossier sur un lecteur réseau injoignable (NAS débranché, partage refusé) est
+ABANDONNÉ au bout de quelques secondes — la fenêtre s'ouvre quand même, la ligne
+concernée dit « NON MESURÉ » / « ILLISIBLE », et le journal (`journal.txt`)
+NOMME l'étape qui a bloqué (regarde la dernière ligne « étape — … »).
+
 En cas de problème : ce fichier journal.txt contient tout ce qu'il faut pour
 comprendre sans deviner — joins-le à ton message.
 

@@ -12,23 +12,47 @@ import re
 import shutil
 
 from .. import siril_ini
+from .. import travail
 from ..compat import IS_WINDOWS, IS_MACOS
 from ..config import CONFIG
 
 
 def _racines():
-    """Racines d'installation à sonder, par OS (liste ordonnée, sans trou)."""
+    """Racines d'installation à sonder, par OS (liste ordonnée, sans trou).
+
+    v2.38.11 : les racines situées sur un **montage RÉSEAU (NAS)** sont
+    ÉCARTÉES. POURQUOI (constat RÉEL d'Alain, 27/09/2026) : cette détection
+    tournait à l'IMPORT de l'interface, et `os.path.isfile`/`glob` font des
+    `stat` — sur un NAS injoignable (pare-feu `nftables`, autofs sans délai) ils
+    ATTENDENT INDÉFINIMENT : l'application ne s'ouvrait plus, sans un mot. Un
+    outil installé sur un NAS se désigne à la main (bouton « … »), ce qui est de
+    toute façon le geste prévu."""
     if IS_WINDOWS:
         noms = ("LOCALAPPDATA", "PROGRAMFILES", "PROGRAMFILES(X86)",
                 "PROGRAMW6432")
-        return [os.environ.get(n, "") for n in noms]
-    if IS_MACOS:
-        return [os.path.expanduser("~/Applications"), "/Applications"]
-    # Linux : dossier utilisateur (extraction d'un archive), `bin` utilisateur,
-    # puis les emplacements système. `~` est sondé EN DERNIER et seulement par
-    # nom d'outil/filtre : aucune exploration récursive du dossier personnel.
-    return [os.path.expanduser("~/.local"), "/usr/local", "/opt",
-            os.path.expanduser("~/Applications"), os.path.expanduser("~")]
+        racines = [os.environ.get(n, "") for n in noms]
+    elif IS_MACOS:
+        racines = [os.path.expanduser("~/Applications"), "/Applications"]
+    else:
+        # Linux : dossier utilisateur (extraction d'un archive), `bin` utilisateur,
+        # puis les emplacements système. `~` est sondé EN DERNIER et seulement par
+        # nom d'outil/filtre : aucune exploration récursive du dossier personnel.
+        racines = [os.path.expanduser("~/.local"), "/usr/local", "/opt",
+                   os.path.expanduser("~/Applications"),
+                   os.path.expanduser("~")]
+    return [r for r in racines if r and not travail.sur_montage_reseau(r)]
+
+
+def _path_local():
+    """Le PATH privé de ses dossiers situés sur un MONTAGE RÉSEAU (NAS).
+
+    `shutil.which` teste CHAQUE dossier du PATH : un dossier sur un NAS
+    injoignable fait donc attendre la recherche indéfiniment (constat du
+    27/09/2026). → None si aucun dossier local ne reste : `shutil.which`
+    utilisera alors le PATH tel quel (cas dégénéré, mieux vaut essayer)."""
+    morceaux = [d for d in (os.environ.get("PATH") or "").split(os.pathsep)
+                if d and not travail.sur_montage_reseau(d)]
+    return os.pathsep.join(morceaux) or None
 
 
 def _noms_graxpert():
@@ -97,7 +121,7 @@ def trouver_exe(noms, env_var, sous_chemins, chemins_directs=(),
     if env and os.path.isfile(env):
         return os.path.normpath(env)
     for nom in noms:
-        trouve = shutil.which(nom)
+        trouve = shutil.which(nom, path=_path_local())
         if trouve:
             return os.path.normpath(trouve)
     racines = [r for r in _racines() if r]
@@ -192,12 +216,32 @@ def commande_par_defaut_bxt():
     return f'"{exe}" ' + _BXT_OPTIONS
 
 
-# Commandes effectives au lancement : persistance d'abord, détection ensuite.
-# (Charge UNE fois à l'import, comme l'ancien module unique.)
-DEFAULT_CMD_GRAXPERT = CONFIG.get("cmd_graxpert") or commande_par_defaut_graxpert()
+# Commandes effectives AU DÉMARRAGE (v2.38.11) : la valeur PERSISTÉE si elle
+# existe, sinon le REPLI SANS AUCUN ACCÈS DISQUE (binaire nu, que le shell
+# résoudra au lancement).
+#
+# POURQUOI PLUS DE DÉTECTION ICI : cette détection tournait à l'IMPORT de
+# l'interface et balaie le PATH et des dossiers de l'OS (`which`, `glob`,
+# `isfile`) — sur un NAS injoignable, ces `stat` attendent indéfiniment et
+# l'application ne s'ouvrait plus (constat RÉEL d'Alain, 27/09/2026, dossiers de
+# couches R/G/B sur son NAS, `nftables` filtrant ce NAS). La détection se fait
+# désormais APRÈS l'affichage, bornée (cf. `detecter_outils` et `delais.borne`
+# côté interface).
+DEFAULT_CMD_GRAXPERT = CONFIG.get("cmd_graxpert") or ("graxpert " + _GX_OPTIONS)
 DEFAULT_CMD_GRAXPERT_DN = (CONFIG.get("cmd_graxpert_dn")
-                           or commande_par_defaut_graxpert_dn())
-DEFAULT_CMD_BXT = CONFIG.get("cmd_bxt") or commande_par_defaut_bxt()
+                           or ("graxpert " + _GX_DN_OPTIONS))
+DEFAULT_CMD_BXT = CONFIG.get("cmd_bxt") or ("rc-astro " + _BXT_OPTIONS)
+
+
+def detecter_outils():
+    """DÉTECTION RÉELLE des trois outils (accès disque : PATH + dossiers de l'OS).
+
+    À APPELER APRÈS l'affichage, et avec un délai (`delais.borne`) : c'est le
+    seul endroit qui touche le disque pour les outils. → dict `{clé: commande}`
+    (commande détectée, ou repli binaire nu si l'outil n'est pas trouvé)."""
+    return {"cmd_graxpert": commande_par_defaut_graxpert(),
+            "cmd_graxpert_dn": commande_par_defaut_graxpert_dn(),
+            "cmd_bxt": commande_par_defaut_bxt()}
 
 
 def commande_avec_strength(cmd, val):

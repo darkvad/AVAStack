@@ -18,6 +18,7 @@ from PIL import Image, ImageTk
 
 from ..compat import IS_WINDOWS
 from .. import AVASTACK_VERSION
+from .. import delais
 from .. import journal
 from .. import travail
 from ..config import CONFIG, sauver_config
@@ -113,8 +114,7 @@ from ..processing import photometrie as photo_mod
 from ..processing import spcc as spcc_mod
 from ..external.detection import (
     DEFAULT_CMD_GRAXPERT, DEFAULT_CMD_GRAXPERT_DN, DEFAULT_CMD_BXT,
-    commande_avec_strength, commande_par_defaut_graxpert,
-    commande_par_defaut_graxpert_dn, commande_par_defaut_bxt)
+    commande_avec_strength, detecter_outils)
 
 
 class App:
@@ -436,26 +436,27 @@ class App:
         # c'est ce qui rend un démarrage raté diagnosticable quand la fenêtre
         # n'apparaît jamais (constat d'Alain, 27/09/2026 : « l'appli ne se
         # lance pas sous linux », sans aucun message).
+        # File des mesures de disque DIFFÉRÉES (v2.38.11) — créée AVANT
+        # l'interface : `_restaurer_config` (appelée juste après la construction)
+        # peut déjà en demander une, et elle doit rester BORNÉE.
+        self._mesures = queue.Queue()
+        self._mesure_en_cours = False
         journal.note("démarrage", "construction de l'interface")
         self._build_ui()
         journal.note("démarrage", "restauration de la configuration")
         self._restaurer_config()
-        # v2.38.6 : RÉSIDUS des sessions précédentes. Une fermeture brutale laisse
-        # ses dossiers `avastack_*` derrière elle (frames de 32 Mo, FITS d'étapes) :
-        # 2,8 Go constatés dans le `/tmp` d'Alain (un tmpfs → de la RAM perdue),
-        # parce que rien ne les récupérait jamais. Le nettoyage ne touche JAMAIS
-        # un dossier récent (session en cours, y compris d'une autre instance).
-        try:
-            self._travail_recycle = travail.nettoyer_orphelins()
-        except Exception:
-            self._travail_recycle = (0, 0)
-        if self._travail_recycle[0]:
-            self._maj_travail_vue()
-            journal.note("démarrage", "%d dossier(s) de travail recyclés (%s)"
-                         % (self._travail_recycle[0],
-                            travail.texte_octets(self._travail_recycle[1])))
-        journal.note("démarrage", "prêt")
+        # v2.38.11 : LES MESURES DE DISQUE SONT DIFFÉRÉES ET BORNÉES. La fenêtre
+        # s'ouvre D'ABORD ; le nettoyage des résidus, l'état des outils, le
+        # dossier de travail et les catalogues sont sondés dans un fil DÉMON
+        # (5 s par mesure), et l'interface le dit. Constat RÉEL du 27/09/2026 : un
+        # dossier de couches R/G/B sur un NAS filtré par `nftables` bloquait ces
+        # sondes faites AVANT l'affichage → l'application ne s'ouvrait pas, sans
+        # AUCUN message ni ligne de journal (la mesure de l'environnement, qui
+        # précédait la première ligne, se bloquait aussi).
+        self._travail_recycle = (0, 0)
+        journal.note("démarrage", "prêt (mesures de disque différées, bornées)")
         self.root.after(30, self._tick)
+        self.root.after(150, self._premieres_mesures)
 
     # ------------------------------------------------------------ persistance config
     def _restaurer_config(self):
@@ -508,27 +509,21 @@ class App:
         # 27/09/2026) est une chaîne non vide : elle se retrouvait donc figée
         # dans config.json à vie, invisible, et aucune correction de la
         # détection ne pouvait plus la déloger.
-        for cle, var, detecte in (
-                ("cmd_graxpert", self.var_cmd_graxpert,
-                 commande_par_defaut_graxpert),
-                ("cmd_graxpert_dn", self.var_cmd_graxpert_dn,
-                 commande_par_defaut_graxpert_dn),
-                ("cmd_bxt", self.var_cmd_bxt, commande_par_defaut_bxt)):
+        # v2.38.11 : AUCUNE SONDE DISQUE ICI. On restaure les commandes
+        # PERSISTÉES (texte), on ANNONCE que la mesure est en cours, et c'est le
+        # fil de mesures (borné, APRÈS l'affichage) qui détecte les outils,
+        # re-détecte un binaire disparu et sonde le dossier de travail.
+        # POURQUOI : ces sondes (`which`, `isfile`, `glob`, `disk_usage`)
+        # ATTENDENT indéfiniment sur un montage réseau injoignable — le
+        # 27/09/2026, un dossier de couches R/G/B sur le NAS (filtré par
+        # `nftables`) empêchait ainsi l'application de s'ouvrir, sans un mot.
+        for cle, var in (("cmd_graxpert", self.var_cmd_graxpert),
+                         ("cmd_graxpert_dn", self.var_cmd_graxpert_dn),
+                         ("cmd_bxt", self.var_cmd_bxt)):
             enreg = (c.get(cle) or "").strip()
             if enreg:
                 var.set(enreg)
-            txt = var.get().strip()
-            if gx_live.outil_manquant(txt):
-                # Binaire repris de la détection, OPTIONS de l'utilisateur
-                # conservées (remplacer_binaire) : installer GraXpert après
-                # coup suffit, sans perdre -correction/-smoothing/-strength.
-                var.set(gx_live.remplacer_binaire(txt, detecte()))
-        # v2.38.5 : l'état de la détection est AFFICHÉ dans le cadre
-        # « Traitement externe » (chemin trouvé, ou outil introuvable) — c'est
-        # ce qui manquait pour que le constat d'Alain soit visible immédiatement.
-        self._maj_etat_outils()
-        # v2.38.6 : dossier de travail + espace libre (cf. _maj_travail_vue).
-        self._maj_travail_vue()
+        self._annoncer_mesures()
         if c.get("ext_graxpert"):
             self.var_ext_graxpert.set(True)
         # Jalons 7/8 (remis le 16/09/2026) — débruitage du traitement
@@ -1536,7 +1531,11 @@ class App:
         # PAS le droit de toucher un widget : il ne pose que des messages ici).
         self._cat_q = queue.Queue()
         self._cat_dl_actif = False
-        self._maj_cat_vue()
+        # v2.38.11 : la ligne « Catalogues » (dossier + présence du catalogue)
+        # demande des `listdir`/`glob` sur des dossiers qui peuvent être sur un
+        # NAS : plus de sonde ICI (avant l'affichage). Le fil de mesures la
+        # remplit APRÈS l'ouverture, borné ; l'appel direct reste pour un geste
+        # de l'utilisateur (bouton 📂, téléchargement terminé).
         # Jalon 56 (étape 4) : PHOTOMÉTRIE — zéro-point instrumental par BANDE,
         # mesuré sur l'empilement via le WCS (appariement mutuel des étoiles au
         # catalogue Gaia de Siril). Case SÉPARÉE et cochée par défaut : la
@@ -2477,7 +2476,14 @@ class App:
             self.suivi_astro.reset()
         self._rafraichir_rendu = True     # la ligne d'état suit SANS brute
         self._maj_astro_vue()
-        self._maj_cat_vue()
+        # v2.38.11 : la ligne « Catalogues » demande des `listdir` sur des
+        # dossiers qui peuvent être sur un NAS → sonde DIFFÉRÉE et bornée.
+        # POURQUOI ICI PRÉCISÉMENT : `_on_astro` est appelée par
+        # `_restaurer_config`, donc AVANT l'affichage ; mesuré au faulthandler le
+        # 27/09/2026, cette sonde synchrone faisait attendre le MONTAGE NAS et
+        # l'application ne s'ouvrait pas (30 s de blocage observés sur la sonde
+        # simulée du banc jalon 74).
+        self._demander_mesures()
 
     def _on_spcc(self):
         """Jalon 58 : case « SPCC (couleurs absolues) » — OPT-IN, décochée par
@@ -2681,19 +2687,48 @@ class App:
             txt, col = "Astrométrie : en attente d'indices", "#c98a00"
         self.lbl_astro.config(text=txt, foreground=col)
 
+    def _sonder_catalogues(self):
+        """SONDE le dossier des catalogues (accès disque) → `(dossier, état, err)`.
+
+        Séparée de l'affichage (v2.38.11) : elle fait des `listdir`/`glob` sur des
+        dossiers qui peuvent être sur un NAS — donc potentiellement bloqués — et
+        doit pouvoir tourner HORS du fil d'interface, bornée.
+        → `("", None, message)` si la sonde échoue : l'affichage le dit."""
+        try:
+            d = cat_mod.dossier_catalogues()
+        except Exception as exc:                     # dossier illisible
+            return ("", None, str(exc))
+        try:
+            return (d, cat_mod.etat_local(d), "")
+        except Exception as exc:
+            return (d, None, str(exc))
+
     def _maj_cat_vue(self):
         """Ligne « Catalogues » (jalon 70) : dossier RÉELLEMENT utilisé par
         l'application, présence du catalogue astrométrique, nombre de chunks
         spectro (informatif : la SPCC et la photométrie s'en servent). Jamais de
-        ligne muette — c'est ce silence qui a coûté la soirée du 27/09/2026."""
+        ligne muette — c'est ce silence qui a coûté la soirée du 27/09/2026.
+
+        v2.38.11 : sonde ET affiche — appelée par un GESTE de l'utilisateur (📂,
+        fin de téléchargement) ; au démarrage, la sonde est différée et bornée."""
+        d, etat, err = self._sonder_catalogues()
+        self._appliquer_cat_vue(d, etat, err)
+
+    def _appliquer_cat_vue(self, d, etat, err=""):
+        """Affiche la ligne « Catalogues » (fil d'interface).
+
+        `d` vide (ou `etat` None) = sonde NON aboutie : on le DIT au lieu de
+        laisser un ancien texte (accès disque bloqué — montage réseau NAS ?)."""
         if getattr(self, "lbl_cat_dossier", None) is None:
             return
-        try:
-            d = cat_mod.dossier_catalogues()
-        except Exception as exc:                     # dossier illisible
-            self.lbl_cat_dossier.config(text="?", foreground="#d04040")
-            self.lbl_cat_etat.config(text=f"catalogues : {exc}",
-                                     foreground="#d04040")
+        if not d:
+            self.lbl_cat_dossier.config(
+                text="Catalogues : NON MESURÉ — un accès disque bloque "
+                     "(montage réseau NAS ?)", foreground="#d04040")
+            self.lbl_cat_etat.config(
+                text=f"catalogues : inspection impossible ({err or 'délai dépassé'}) "
+                     "— montage réseau NAS injoignable, ou pare-feu ?",
+                foreground="#d04040")
             return
         # v2.38.10 : texte BORNÉ (44 caractères : la largeur du libellé) et
         # préfixe DANS le texte. POURQUOI : un chemin n'a pas d'espace, donc
@@ -2706,12 +2741,16 @@ class App:
             foreground="#888888")
         if self._cat_dl_actif:
             return                     # la ligne de progression fait foi
-        etat = cat_mod.etat_local(d)
+        if etat is None:
+            self.lbl_cat_etat.config(
+                text=f"catalogues : état NON MESURÉ ({err or 'délai dépassé'}) "
+                     "— accès disque bloqué ?", foreground="#c98a00")
+            return
         astro = etat.get("astro")
         n_ch = len(etat.get("chunks") or {})
         if astro:
-            txt, col = (f"catalogue astro : présent ({os.path.basename(astro)})",
-                        "#1d7f1d")
+            txt = f"catalogue astro : présent ({os.path.basename(astro)})"
+            col = "#1d7f1d"
         else:
             txt = ("catalogue astro : ABSENT — l'astrométrie interne ne peut "
                    "pas aboutir (bouton ⬇ Gaia, ou déposer le fichier ici)")
@@ -2723,10 +2762,11 @@ class App:
         """Choisit le dossier des catalogues et le PERSISTE (config
         `chemin_catalogues`). Un dossier VIDE est accepté : c'est là que le
         bouton ⬇ écrira."""
-        try:
-            depart = cat_mod.dossier_catalogues()
-        except Exception:
-            depart = os.path.expanduser("~")
+        # v2.38.11 : la sonde d'aperçu est BORNÉE (le dossier peut être sur un
+        # NAS injoignable) — la boîte de dialogue s'ouvre quoi qu'il arrive.
+        depart = delais.borne(cat_mod.dossier_catalogues,
+                              os.path.expanduser("~"),
+                              delais.DELAI_DEFAUT)[0]
         d = filedialog.askdirectory(title="Dossier des catalogues (Gaia/Siril)",
                                     initialdir=depart)
         if not d:
@@ -2737,8 +2777,10 @@ class App:
         # les essais et on efface un éventuel « DONNÉES MANQUANTES » affiché.
         self.astro_info = ""
         self._rafraichir_rendu = True
-        self._maj_cat_vue()
         self._maj_astro_vue()
+        # Rafraîchissement DIFFÉRÉ (borné) : la ligne « Catalogues » se remplit
+        # dans la seconde, sans risquer d'attendre le NAS.
+        self._demander_mesures()
 
     def _telecharger_catalogue(self):
         """Télécharge le catalogue astrométrique Gaia DR3 de Siril (≈ 1,1 Go
@@ -4649,6 +4691,26 @@ class App:
         self._maj_libelles_calib()
 
     # ------------------------------------------------------------ traitement externe
+    def _champs_outils(self):
+        """Les trois (variable Tk, libellé, nom) du cadre « Traitement externe »."""
+        return ((self.var_cmd_graxpert, self.lbl_etat_graxpert, "GraXpert"),
+                (self.var_cmd_graxpert_dn, self.lbl_etat_gx_dn,
+                 "GraXpert (débruitage)"),
+                (self.var_cmd_bxt, self.lbl_etat_bxt, "BlurXTerminator"))
+
+    def _sonder_outils(self, commandes):
+        """SONDE les trois outils (accès disque) → [(nom, manque, binaire)].
+
+        `commandes` est un instantané [(nom, texte)] pris côté Tk (v2.38.11) :
+        la sonde peut ainsi tourner HORS du thread d'interface (thread de mesures,
+        borné) — c'est elle qui balaie le PATH et des dossiers, donc elle qui
+        pouvait se bloquer sur un NAS injoignable."""
+        etats = []
+        for nom, cmd in commandes:
+            manque = gx_live.outil_manquant(cmd)
+            etats.append((nom, manque, "" if manque else gx_live.binaire_de(cmd)))
+        return etats
+
     def _maj_etat_outils(self, *_a):
         """Affiche l'état de DÉTECTION des outils externes (v2.38.5).
 
@@ -4659,22 +4721,163 @@ class App:
         elle passait pour bonne, et l'échec n'apparaissait qu'à l'exécution
         (« command not found » du shell, noyé dans la sortie de l'outil).
         Chaque ligne dit maintenant OÙ est l'outil, ou qu'il est introuvable.
-        Appelée au démarrage, à chaque modification des champs (trace) et par
-        les bancs ; jamais depuis un thread de calcul."""
-        for var, lbl, nom in (
-                (self.var_cmd_graxpert, self.lbl_etat_graxpert, "GraXpert"),
-                (self.var_cmd_graxpert_dn, self.lbl_etat_gx_dn,
-                 "GraXpert (débruitage)"),
-                (self.var_cmd_bxt, self.lbl_etat_bxt, "BlurXTerminator")):
-            cmd = var.get().strip()
-            manque = gx_live.outil_manquant(cmd)
+
+        v2.38.11 : appelée sur un GESTE de l'utilisateur (champ modifié) — elle
+        sonde donc ici ; au démarrage, la sonde est faite par le thread de
+        mesures borné et l'affichage passe par `_appliquer_etats_outils`."""
+        commandes = [(nom, var.get().strip())
+                     for var, _lbl, nom in self._champs_outils()]
+        self._appliquer_etats_outils(self._sonder_outils(commandes))
+
+    def _appliquer_etats_outils(self, etats):
+        """Affiche [(nom, manque, binaire)] — thread d'interface seulement."""
+        for (_var, lbl, nom), (_n, manque, binaire) in zip(self._champs_outils(),
+                                                           etats):
             if manque:
                 lbl.config(text=f"⚠ {nom} : {manque} — bouton « … » pour le "
-                                "désigner",
-                           foreground="#c98a00")
+                                "désigner", foreground="#c98a00")
             else:
-                lbl.config(text=f"✔ {nom} : {gx_live.binaire_de(cmd)}",
-                           foreground="#1d7f1d")
+                lbl.config(text=f"✔ {nom} : {binaire}", foreground="#1d7f1d")
+
+    # ------------------------------------ mesures de disque DIFFÉRÉES (v2.38.11)
+    def _annoncer_mesures(self):
+        """Pose les libellés « mesure en cours… » AVANT les sondes différées.
+
+        L'utilisateur voit ainsi que l'application regarde — et si une sonde ne
+        répond pas (montage réseau NAS), la ligne reste HONNÊTE au lieu de
+        garder un ancien texte qui mentirait."""
+        for _var, lbl, nom in self._champs_outils():
+            lbl.config(text=f"{nom} : mesure en cours…", foreground="#888888")
+        if getattr(self, "lbl_travail", None) is not None:
+            self.lbl_travail.config(text="dossier de travail : mesure en cours…",
+                                    foreground="#888888")
+        if getattr(self, "lbl_cat_dossier", None) is not None:
+            self.lbl_cat_dossier.config(text="Catalogues : mesure en cours…",
+                                        foreground="#888888")
+
+    def _commandes_outils(self):
+        """Instantané [(nom, texte)] des trois commandes, pris CÔTÉ TK."""
+        return [(nom, var.get().strip())
+                for var, _lbl, nom in self._champs_outils()]
+
+    def _premieres_mesures(self):
+        """Mesures de disque du démarrage, HORS du fil d'interface (v2.38.11)."""
+        self._demander_mesures(nettoyage=True)
+
+    def _demander_mesures(self, nettoyage=False):
+        """Lance les sondes de disque dans un FIL DÉMON, chacune bornée à 5 s.
+
+        POURQUOI (constat RÉEL du 27/09/2026) : une sonde sur un dossier monté
+        par le réseau (NAS) ATTEND indéfiniment quand ce réseau est filtré — elle
+        ne doit donc ni empêcher l'ouverture (les sondes sont différées APRÈS
+        l'affichage), ni figer l'interface (fil démon + délai). Les résultats
+        passent par `self._mesures` et sont appliqués par `_tick`, dans le fil
+        d'interface. Une seule salve à la fois."""
+        if getattr(self, "_mesure_en_cours", False):
+            return
+        self._mesure_en_cours = True
+        commandes = self._commandes_outils()
+
+        def _fond():
+            msg = {}
+            try:
+                if nettoyage:
+                    journal.etape("nettoyage des résidus de session")
+                    msg["recyclage"] = delais.borne(
+                        travail.nettoyer_orphelins, (0, 0), delais.DELAI_DEFAUT)[0]
+                journal.etape("dossier de travail")
+                msg["travail"] = delais.borne(self._sonder_travail,
+                                              ("", -1, False), delais.DELAI_DEFAUT)[0]
+                # Outils : DÉTECTION puis re-détection d'un binaire disparu
+                # (v2.38.5 : binaire repris, OPTIONS conservées), et seulement
+                # ensuite la sonde d'état — pour que l'affichage corresponde aux
+                # commandes réellement en place.
+                journal.etape("détection des outils externes")
+                detectes = delais.borne(detecter_outils, None, delais.DELAI_DEFAUT)[0]
+                if detectes:
+                    # La re-détection sonde ELLE AUSSI le disque (`outil_manquant`
+                    # par commande) : elle est donc bornée comme le reste.
+                    msg["commandes"] = delais.borne(
+                        lambda: self._commandes_rafraichies(commandes, detectes),
+                        {}, delais.DELAI_DEFAUT)[0]
+                else:
+                    msg["commandes"] = {}
+                journal.etape("état des outils externes")
+                a_sonder = [(nom, (msg["commandes"].get(cle) or txt).strip())
+                            for cle, nom, txt in (
+                                ("cmd_graxpert", "GraXpert", commandes[0][1]),
+                                ("cmd_graxpert_dn", "GraXpert (débruitage)",
+                                 commandes[1][1]),
+                                ("cmd_bxt", "BlurXTerminator", commandes[2][1]))]
+                msg["outils"] = delais.borne(
+                    lambda: self._sonder_outils(a_sonder), None, delais.DELAI_DEFAUT)[0]
+                journal.etape("dossiers des catalogues")
+                msg["catalogues"] = delais.borne(self._sonder_catalogues,
+                                                 ("", None, ""), delais.DELAI_DEFAUT)[0]
+            except Exception:
+                journal.erreur("mesures de démarrage")
+            finally:
+                self._mesures.put(msg)
+
+        threading.Thread(target=_fond, daemon=True,
+                         name="mesures-disque").start()
+
+    def _commandes_rafraichies(self, commandes, detectes):
+        """Re-détection (v2.38.5, déplacée ici en v2.38.11) : une commande dont
+        l'EXÉCUTABLE a disparu est corrigée — le binaire est repris de la
+        détection, les OPTIONS de l'utilisateur sont CONSERVÉES
+        (`remplacer_binaire`), donc installer GraXpert après coup suffit sans
+        perdre -correction/-smoothing/-strength.
+
+        PURE : `commandes` = [(nom, texte)] persisté, `detectes` = {clé: texte}
+        calculé par `detecter_outils()` dans le fil de mesures borné.
+        → {clé: texte corrigé} (vide si rien ne change, pour ne rien écraser)."""
+        cles = ("cmd_graxpert", "cmd_graxpert_dn", "cmd_bxt")
+        out = {}
+        for (nom, txt), cle in zip(commandes, cles):
+            det = (detectes.get(cle) or "").strip()
+            txt = (txt or "").strip()
+            if txt and det and gx_live.outil_manquant(txt):
+                out[cle] = gx_live.remplacer_binaire(txt, det)
+        return out
+
+    def _appliquer_mesures(self, msg):
+        """Applique les résultats d'une salve de mesures (fil d'interface)."""
+        self._mesure_en_cours = False
+        # Commandes corrigées par la re-détection (binaire retrouvé/disparu) :
+        # posées AVANT l'affichage des états, qui les reflète.
+        for cle, txt in (msg.get("commandes") or {}).items():
+            var = {"cmd_graxpert": getattr(self, "var_cmd_graxpert", None),
+                   "cmd_graxpert_dn": getattr(self, "var_cmd_graxpert_dn", None),
+                   "cmd_bxt": getattr(self, "var_cmd_bxt", None)}.get(cle)
+            if var is not None and txt:
+                var.set(txt)
+        recy = msg.get("recyclage")
+        if recy and recy[0]:
+            self._travail_recycle = recy
+            journal.note("démarrage", "%d dossier(s) de travail recyclés (%s)"
+                         % (recy[0], travail.texte_octets(recy[1])))
+        travail_info = msg.get("travail")
+        if travail_info:
+            self._appliquer_travail_vue(*travail_info)
+        if msg.get("outils"):
+            self._appliquer_etats_outils(msg["outils"])
+        cat = msg.get("catalogues")
+        if cat:
+            self._appliquer_cat_vue(*cat)
+
+    def _sonder_travail(self):
+        """SONDE le dossier de travail (accès disque) → (dossier, libre, ram).
+
+        Séparée de l'affichage pour pouvoir tourner HORS du thread d'interface,
+        bornée (v2.38.11) : si le dossier est sur un NAS injoignable, cette sonde
+        attend indéfiniment — elle ne doit donc pas retenir la fenêtre.
+        → `("", -1, False)` si le dossier est illisible."""
+        try:
+            d = travail.dossier_travail()
+        except Exception:
+            return ("", -1, False)
+        return (d, travail.espace_libre(d), travail.est_tmpfs(d))
 
     def _maj_travail_vue(self):
         """Ligne « dossier de travail » (v2.38.6) : le dossier RÉELLEMENT utilisé
@@ -4685,24 +4888,33 @@ class App:
         chaîne BlurX → écriture partielle d'un FITS → « 24962352 requested and
         10902832 written », message incompréhensible et AUCUNE indication du
         dossier utilisé. Cette ligne est la réponse : ce que l'application écrit,
-        où elle l'écrit, et combien d'espace il reste."""
+        où elle l'écrit, et combien d'espace il reste.
+
+        v2.38.11 : sonde ET affiche — appelée par un GESTE (bouton 📂) ; au
+        démarrage c'est le thread de mesures borné qui sonde."""
+        d, libre, ram = self._sonder_travail()
+        self._appliquer_travail_vue(d, libre, ram)
+
+    def _appliquer_travail_vue(self, d, libre, ram):
+        """Affiche la ligne (thread d'interface). `libre = -1` : espace NON mesuré
+        (accès disque bloqué — montage réseau NAS ?) : on le DIT."""
         if getattr(self, "lbl_travail", None) is None:
             return
-        try:
-            d = travail.dossier_travail()
-        except Exception as exc:                     # dossier illisible
-            self.lbl_travail.config(text=f"dossier de travail : {exc}",
-                                    foreground="#d04040")
+        if not d:
+            self.lbl_travail.config(
+                text="dossier de travail : ILLISIBLE / non mesuré — un accès "
+                     "disque bloque (montage réseau NAS ?)",
+                foreground="#d04040")
             return
-        libre = travail.espace_libre(d)
-        ram = travail.est_tmpfs(d)
         txt = f"dossier de travail : {d}"
-        if libre:
+        if libre > 0:
             txt += f" — {travail.texte_octets(libre)} libres"
+        elif libre < 0:
+            txt += " — espace NON MESURÉ (accès disque bloqué ?)"
         if ram:
             txt += " ⚠ en RAM (tmpfs) : préférez un disque"
             col = "#c98a00"
-        elif libre and libre < (1 << 30):
+        elif libre > 0 and libre < (1 << 30):
             txt += " ⚠ presque plein"
             col = "#c98a00"
         else:
@@ -4717,10 +4929,11 @@ class App:
         """Choisit le dossier de travail et le PERSISTE (config
         `dossier_travail`) : c'est là que vont les frames archivées et les FITS
         des outils externes. Le volume choisi peut être un disque de données."""
-        try:
-            depart = travail.dossier_travail()
-        except Exception:
-            depart = os.path.expanduser("~")
+        # v2.38.11 : aperçu de départ BORNÉ (le dossier de travail peut être sur
+        # un NAS injoignable) — la boîte de dialogue s'ouvre quoi qu'il arrive.
+        depart = delais.borne(travail.dossier_travail,
+                              os.path.expanduser("~"),
+                              delais.DELAI_DEFAUT)[0]
         d = filedialog.askdirectory(
             title="Dossier de travail (fichiers temporaires lourds)",
             initialdir=depart)
@@ -7238,6 +7451,14 @@ class App:
 
     # ------------------------------------------------------------ rafraîchissement UI
     def _tick(self):
+        # v2.38.11 : résultats des MESURES DE DISQUE différées (fil démon borné ;
+        # le fil ne touche AUCUN widget — il ne pose qu'un dictionnaire ici).
+        while getattr(self, "_mesures", None) is not None:
+            try:
+                msg = self._mesures.get_nowait()
+            except queue.Empty:
+                break
+            self._appliquer_mesures(msg)
         # Jalon 70 : messages du TÉLÉCHARGEMENT des catalogues (thread → UI).
         # Le thread réseau ne touche AUCUN widget : il ne pose que des messages
         # ici, et c'est ce thread Tk qui les traduit en texte.
@@ -7475,12 +7696,15 @@ class App:
         self._sync_vl_couleur_vue()
         self._sync_vl_sharp_vue()
         self._maj_lbl_cadence()   # jalon 44 : état de la cadence en direct
-        # v2.38.6 : espace du dossier de travail, rafraîchi toutes les 10 s (un
-        # appel système anodin) — la saturation devient VISIBLE pendant la
-        # session au lieu d'être découverte par un échec en pleine chaîne.
+        # v2.38.6 : espace du dossier de travail, rafraîchi toutes les 10 s —
+        # la saturation devient VISIBLE pendant la session au lieu d'être
+        # découverte par un échec en pleine chaîne.
+        # v2.38.11 : la sonde part dans le fil de mesures BORNÉ (jamais dans le
+        # fil d'interface : un dossier de travail sur un NAS injoignable figerait
+        # la fenêtre à chaque rafraîchissement).
         if time.time() - getattr(self, "_travail_t0", 0.0) > 10.0:
             self._travail_t0 = time.time()
-            self._maj_travail_vue()
+            self._demander_mesures()
         if self.disp.sh_new:      # netteté live : message du solveur (jalon 12)
             self.disp.sh_new = False
             self._maj_lbl_sharp()

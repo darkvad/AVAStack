@@ -10,34 +10,53 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **DERNIÈRE PASSE LIVRÉE (27/09/2026) — AVAStack v2.38.10 : LES LIGNES À TEXTE
-  LIBRE NE PERDENT PLUS RIEN (astrométrie, catalogues, re-stack)**. Ton constat :
-  « le champ et le bouton pour récupérer les coordonnées depuis les brutes ne
-  sont pas visibles sans agrandir la colonne ». **MESURE** (géométrie Tk, avec
-  chemins et messages LONGS comme les tiens) : **CINQ widgets étaient abandonnés
-  par `pack`** — champ « champ° » + bouton 📷 (astrométrie : ≈490 px requis pour
-  318 px), 📂 + « ⬇ Gaia » (dès que le chemin des catalogues est long : il est
-  INSÉCABLE, `wraplength` ne replie pas un chemin — il n'a pas d'espace), ⓘ
-  (re-stack, avec un message de ≈110 caractères) — et **QUATRE lignes d'état
-  étaient ROGNÉES** (jusqu'à 740 px requis pour 318 px affichés : le message qui
-  explique l'absence du catalogue Gaia était COUPÉ).
-  - Corrigé selon des RÈGLES appliquées partout : les petits boutons se posent
-    **avant** le texte libre ; un texte libre a une largeur **bornée**
-    (`wraplength` pour une phrase, `width` en caractères pour un chemin) ;
-    astrométrie sur 3 lignes (case / AD+Dec / champ°+📷), catalogues sur 2 lignes ;
-    lignes d'état en `wraplength`.
-  - **Banc 72 étendu à un AUDIT DE GÉOMÉTRIE de toute la fenêtre** (widget
-    écrasé / libellé rogné / widget débordé) exécuté avec des textes LONGS, plus
-    les cas nommés (📷, 📂 Dossier, ⬇ Gaia, ⓘ, champ°) → **31 vérifications**.
-  - Docs : CLAUDE.md (règles de mise en page), LISEZMOI (noms des boutons).
-  - **Reste à voir : ta vérification à l'écran** (champ + 📷 visibles sans
-    agrandir la colonne, à ta largeur habituelle).
-  Artefacts reconstruits (v2.38.10) :
-  `installer/linux/output/avastack-setup-2.38.10-linux.tar.gz` (512 Kio, SHA-256
-  `a38006a441e8558e8d8d7ceee49d86b2cc839a85d413a3c02b24c0a55b0f1f24`) et
-  `installer/windows/output/avastack-setup-2.38.10.exe` (10,9 Mo).
-  Non-régression : bancs 72 (31 vérifs), 73, 70, 56, 42, 19, 20 rejoués VERTS +
-  `compileall`. Repli si régression : v2.38.9.
+- **DERNIÈRE PASSE LIVRÉE (27/09/2026) — AVAStack v2.38.11 : LE DÉMARRAGE NE PEUT
+  PLUS SE BLOQUER (NAS, montage réseau, pare-feu)**. Ton constat : « cette version
+  ne se lance pas — pas d'enregistrement dans le journal ; en ligne de commande ça
+  affiche juste la version ». **CAUSE MESURÉE, avec ta contre-épreuve** (`nftables`
+  arrêté → la même version démarre) : tes **dossiers de couches R/G/B sont sur un
+  NAS** (et dans config.json) ; un `stat`/`listdir` sur un montage réseau
+  INJOIGNABLE **attend le montage indéfiniment** (autofs sans délai par défaut), et
+  l'application les inspectait **AVANT d'afficher** (détection des outils à
+  l'import, dossier de travail, catalogues — dont `_on_astro`, appelée par la
+  restauration de la config). Pire : la 1re ligne du journal était écrite APRÈS la
+  mesure d'environnement → **aucune trace**. L'audit du code ne montrait rien : il
+  n'y avait pas de bug, seulement des mesures de disque NON BORNÉES.
+  - Corrigé : `avastack/delais.py` (mesure bornée en fil démon → `(valeur,
+    abouti)`), `journal.etape()` (« miette de pain » qui NOMME l'étape bloquée),
+    1re ligne de journal SANS accès disque, mesures d'interface DIFFÉRÉES et
+    bornées (dossier de travail, outils, catalogues, nettoyage) avec libellés
+    honnêtes (« NON MESURÉ », « ILLISIBLE »), `external.detection` qui ne touche
+    plus le disque à l'IMPORT, MONTAGES RÉSEAU écartés des balayages (racines +
+    PATH), `travail.type_systeme()`/`sur_montage_reseau()`.
+  - **Banc NEUF 74** (17 vérifs) : `App(root)` construit en **0,78 s malgré trois
+    sondes qui dorment 30 s**, `delais.borne` chronométré, miette de pain, et
+    « import = zéro `which`/`glob` » mesuré en sous-processus. **Bancs RÉPARÉS** :
+    72 (dialog `showinfo` jamais intercepté — préexistant, PROUVÉ au `faulthandler`
+    sur la version intacte), 70 et 71 (ils attendaient les sondes synchrones : ils
+    POMPENT la boucle d'événements).
+  - Non-régression : **10 bancs rejoués VERTS** (74, 73, 72, 70, 71, 56, 42, 19,
+    20, 12) + `compileall` ; relance réelle de l'application OK (journal avec les
+    étapes).
+  - Artefacts reconstruits (v2.38.11) :
+    `installer/linux/output/avastack-setup-2.38.11-linux.tar.gz` (521 Kio, SHA-256
+    `9f60919b7ee6eebcc9ec8bcd8541ae52bbab7e91c38e45ca8703bb6bbce6cbda`) et
+    `installer/windows/output/avastack-setup-2.38.11.exe` (10,9 Mo).
+    Repli si régression : v2.38.10.
+  - **Reste à voir : ton essai avec `nftables` ACTIF** — l'application doit
+    s'ouvrir, écrire son journal, et dire « NON MESURÉ » pour ce qui est sur le NAS
+    (si un accès bloque encore, la dernière ligne « étape — … » le NOMMERA).
+
+- **PASSE PRÉCÉDENTE (27/09/2026) — AVAStack v2.38.10 : LES LIGNES À TEXTE LIBRE
+  NE PERDENT PLUS RIEN (astrométrie, catalogues, re-stack)**. Ton constat : « le
+  champ et le bouton pour récupérer les coordonnées depuis les brutes ne sont pas
+  visibles sans agrandir la colonne ». **MESURE** : **CINQ widgets étaient
+  abandonnés par `pack`** (champ « champ° » + 📷, 📂 + ⬇ Gaia dès que le chemin
+  est long, ⓘ du re-stack) et QUATRE lignes d'état étaient ROGNÉES (jusqu'à 740 px
+  requis pour 318 px). Corrigé : boutons posés AVANT le texte libre, largeurs
+  BORNÉES (`wraplength` pour une phrase, `width` pour un chemin), astrométrie sur
+  3 lignes, catalogues sur 2, lignes d'état qui se replient ; banc 72 étendu à un
+  AUDIT DE GÉOMÉTRIE de toute la fenêtre (31 vérifs).
 
 - **PASSE PRÉCÉDENTE (27/09/2026) — AVAStack v2.38.9 : LA LIGNE « FICHIERS
   DE TRAVAIL » ET LE BOUTON « JOURNAL » SONT ENFIN VISIBLES.** Ton constat,

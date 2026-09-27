@@ -582,6 +582,28 @@ ce qui manquait n'était pas une correction mais une MESURE.
   `Terminal=false`), en la marquant **NON PROUVÉE** — jamais présentée comme la
   cause. Ce que la panne a produit de durable : un test de démarrage à
   l'installation ET un journal à chaque lancement.
+- **LE DÉMARRAGE NE FAIT AUCUNE MESURE SUSCEPTIBLE DE BLOQUER** (v2.38.11, règle
+  née d'une panne MUETTE) : un `stat`/`listdir` sur un montage réseau INJOIGNABLE
+  (NAS filtré par un pare-feu, autofs sans délai) **attend indéfiniment**. D'où :
+  ① la **FENÊTRE d'abord**, les mesures ensuite — jamais l'inverse ; ② toute
+  mesure de disque passe par `delais.borne()` (fil démon + délai : on ABANDONNE et
+  l'interface le DIT) ; ③ la première ligne du journal est écrite **sans aucun
+  accès disque** — une trace qui dépend d'un accès disque n'est pas une trace ;
+  ④ `journal.etape()` AVANT chaque étape qui touche le disque (si elle se bloque,
+  la dernière ligne du journal la NOMME) ; ⑤ les montages réseau sont ÉCARTÉS des
+  balayages (`travail.TYPES_RESEAU` via `sur_montage_reseau`, et PATH privé de ses
+  dossiers réseau avant `shutil.which`) ; ⑥ la détection des outils externes n'est
+  plus faite à l'IMPORT du module (elle est bornée, après l'affichage).
+  Contre-épreuve : `App(root)` se construit en **0,8 s malgré trois sondes qui
+  dorment 30 s** (banc jalon 74).
+- **Un banc qui bloque n'accuse pas forcément le code (bis)** : le banc 72
+  s'arrêtait sur un `messagebox.showinfo` JAMAIS intercepté — un dialog modal
+  attend un clic indéfiniment. Reproduit sur la version INTACTE (worktree sur
+  HEAD) avec la pile `faulthandler` : **préexistant**, pas une régression. Règle :
+  dans un banc, intercepter TOUS les dialogues (`askdirectory`, `showinfo`,
+  `showwarning`, `showerror`) — et quand une sonde devient DIFFÉRÉE, POMPER la
+  boucle (`_tick` + `update`) au lieu de lire un libellé qui n'est pas encore
+  rempli.
 - **Ce qu'un journal apporte dès son premier jour** (preuve par les faits) : les
   5 lignes envoyées par Alain ont nommé l'interpréteur réel
   (`…/AVAStack/venv/bin/python`), `Tk 8.6/8.6`, le noyau, et le dossier de

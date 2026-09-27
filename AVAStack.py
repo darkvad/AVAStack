@@ -39,16 +39,43 @@ except Exception as exc:                 # même le journal est hors service
     print("AVAStack : journal indisponible (%s: %s)" % (type(exc).__name__, exc),
           file=sys.stderr)
 
+try:
+    from avastack import delais
+except Exception:                        # repli : on mesurera sans borne
+    delais = None
+
 
 def _demarrer():
     """Importe l'application et ouvre la fenêtre (étapes journalisées).
 
     Les imports vivent ICI et non au niveau du module : c'est ce qui permet de
     les envelopper — une dépendance absente doit dire son nom, pas mourir dans
-    un terminal que personne ne regarde."""
+    un terminal que personne ne regarde.
+
+    v2.38.11 — DEUX GARANTIES DE PLUS, tirées du constat RÉEL du 27/09/2026
+    (« cette version ne se lance pas », sans AUCUN message ni ligne de journal) :
+    ① la PREMIÈRE ligne est écrite **sans aucun accès disque** (version,
+       interpréteur, argv) : le journal ne peut plus rester vide ;
+    ② la mesure de l'environnement est **BORNÉE à 5 s** (fil démon) : un accès
+       disque bloqué (dossier de couches R/G/B sur un NAS injoignable, pare-feu
+       nftables) ne peut plus empêcher l'ouverture — et le journal DIT que la
+       mesure n'a pas abouti, au lieu de mourir en silence."""
     import avastack
     if journal:
-        journal.note("démarrage", journal.trace_env())
+        journal.note("démarrage", "AVAStack %s — %s — python %s — argv=%s"
+                     % (avastack.AVASTACK_VERSION, sys.executable,
+                        sys.version.split()[0], " ".join(sys.argv[1:]) or "—"))
+        journal.etape("mesure de l'environnement", "accès disque possible")
+        if delais is not None:
+            env, abouti = delais.borne(journal.trace_env, "", delais.DELAI_DEFAUT)
+        else:
+            env, abouti = journal.trace_env(), True
+        if abouti and env:
+            journal.note("démarrage", env)
+        else:
+            journal.note("démarrage", "environnement NON MESURÉ — un accès "
+                         "disque BLOQUE (montage réseau NAS injoignable ? "
+                         "pare-feu ?) : l'application continue sans lui")
     from avastack.ui.app import main
     if journal:
         journal.note("démarrage", "interface importée : ouverture de la fenêtre")

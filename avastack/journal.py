@@ -90,6 +90,16 @@ def note(etape, detail=""):
     return ecrire(ligne)
 
 
+def etape(nom, detail=""):
+    """Marque le DÉBUT d'une étape qui peut toucher le disque (v2.38.11).
+
+    POURQUOI : une étape qui se BLOQUE (montage réseau NAS injoignable, pare-feu
+    qui le filtre) n'écrit évidemment rien en sortant — mais la ligne écrite
+    AVANT elle NOMME l'étape bloquée. C'est cette « miette de pain » qui a
+    manqué le 27/09/2026 : le journal était vide, il n'y avait rien à lire."""
+    return note("étape", str(nom) + ((" — " + str(detail)) if detail else ""))
+
+
 def _libre(dossier):
     """Espace libre du volume de `dossier`, en texte (« — » si illisible)."""
     try:

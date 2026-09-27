@@ -250,9 +250,25 @@ config_mod.CONFIG["dossier_travail"] = perso
 root = tk.Tk()
 root.withdraw()
 ui = app_mod.App(root)
-verifie(perso in ui.lbl_travail.cget("text")
-        and "libres" in ui.lbl_travail.cget("text"),
-        "ligne de travail : « %s… »" % ui.lbl_travail.cget("text")[:72])
+# v2.38.11 : la sonde du dossier de travail est désormais DIFFÉRÉE (après
+# l'affichage, jamais avant) et bornée. On POMPE la boucle d'événements jusqu'à
+# ce que la ligne soit remplie — c'est exactement ce que fait l'application au
+# démarrage (le fil de mesures pose le résultat, `_tick` l'affiche).
+def _pomper(condition, secondes=15.0):
+    fin = time.time() + secondes
+    while time.time() < fin:
+        ui._tick()
+        root.update()
+        if condition():
+            return True
+        time.sleep(0.05)
+    return False
+
+
+verifie(_pomper(lambda: perso in ui.lbl_travail.cget("text")
+                and "libres" in ui.lbl_travail.cget("text")),
+        "ligne de travail remplie par la mesure DIFFÉRÉE : « %s… »"
+        % ui.lbl_travail.cget("text")[:72])
 
 # v2.38.9 — GÉOMÉTRIE de cette ligne : elle doit être VISIBLE SANS DÉFILEMENT et
 # ses TROIS boutons doivent être affichés. C'est la régression exacte du
@@ -397,14 +413,29 @@ verifie("RAM" in ui.lbl_travail.cget("text")
 travail.est_tmpfs = _TMPFS
 
 # Bouton 📂 : dossier choisi → persisté dans la config ET affiché.
+# NB (réparé le 27/09/2026) : ce chemin se termine par un `messagebox.showinfo`
+# (information voulue par l'application) — il DOIT être intercepté dans un banc,
+# sinon le banc attend indéfiniment qu'on clique « OK » (mesuré au faulthandler :
+# pile bloquée dans `commondialog.show` via `messagebox.showinfo`). Le docstring
+# de ce banc annonçait « dialog intercepté » alors que seul `askdirectory`
+# l'était.
 autre = os.path.join(TMP, "travail_choisi")
 os.makedirs(autre, exist_ok=True)
 app_mod.filedialog.askdirectory = lambda *a, **k: autre
-ui._choisir_dossier_travail()
+_info_prev = app_mod.messagebox.showinfo
+annonces = []
+app_mod.messagebox.showinfo = lambda *a, **k: annonces.append(a)
+try:
+    ui._choisir_dossier_travail()
+finally:
+    app_mod.messagebox.showinfo = _info_prev
 verifie(config_mod.CONFIG.get("dossier_travail") == autre
         and autre in ui.lbl_travail.cget("text")
         and sauve.get("dossier_travail") == autre,
-        "bouton 📂 : choix persisté (config) et affiché")
+        "bouton 📂 : choix persisté et affiché (dialog intercepté)")
+verifie(annonces and "Espace libre" in annonces[-1][1],
+        "bouton 📂 : le dossier ET son espace libre sont annoncés (%d dialog)"
+        % len(annonces))
 app_mod.filedialog.askdirectory = _ASK
 
 # Contrôle d'espace AVANT la chaîne : refus immédiat, AUCUN dossier laissé.
