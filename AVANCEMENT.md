@@ -10,125 +10,90 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **PASSE EN COURS — AVAStack v2.38.4 : ASTRONOMÉTRIE SOUS LINUX (DONNÉES DITES
-  ET TÉLÉCHARGEABLES)** (code + banc + doc + installateurs, 27/09/2026, **EN
-  ATTENTE DE TON TEST**). Ton constat après l'installateur Linux : « l'astrométrie
-  ne trouve pas de résultat… et ça échoue en silence ». **Cause trouvée et
-  mesurée** :
-  - `catalogues.dossier_catalogues()` ne cherchait que `%LOCALAPPDATA%\Siril`
-    (Windows) et `~/.local/share/kstars` — le dossier Linux de Siril
-    (`~/.local/share/siril`, doc Siril 1.4.4) n'était JAMAIS essayé, et le
-    dossier KStars ne contient pas les `siril_cat*` du projet → repli sur un
-    dossier AVAStack VIDE (rejoué ici : `dossier_catalogues()` = dossier de
-    config vide) → échec certain du solveur interne, sans repli ASTAP (absent
-    sous Linux) et sans trace (l'appli n'a pas de journal : la raison ne vivait
-    que dans la ligne d'état).
-  - **① chemins par OS** : `dossiers_siril()` (Linux/Windows/macOS, XDG honoré)
-    et `dossier_catalogues()` réécrit (surcharge de config > dossier Siril
-    utilisable > dossier de config AVAStack).
-  - **② `chemin_catalogues` RÉELLEMENT honorée** (elle n'existait que dans une
-    docstring) : ligne « Catalogues » dans la fenêtre Astrométrie — dossier
-    utilisé, présence du catalogue, nombre de chunks spectro — + bouton 📂
-    (dossier choisi et mémorisé).
-  - **③ bouton « ⬇ Gaia »** : téléchargement du catalogue astrométrique
-    (≈ 1,1 Go) dans le dossier affiché, en THREAD, reprise + sha256 (le
-    téléchargeur existait mais n'était branché NULLE PART) ; progression et fin
-    affichées, bouton neutralisé pendant le transfert.
-  - **④ fin du silence** : `solveur.MSG_CATALOGUE_ABSENT` reconnu par
-    `SuiviAstrometrie` → les essais S'ARRÊTENT (au lieu de 20 pour rien), la
-    ligne dit « DONNÉES MANQUANTES — … » avec le dossier cherché, et les essais
-    repartent TOUT SEULS dès qu'un catalogue apparaît.
-  - **⑤ LISEZMOI** Windows/Linux : section « catalogue d'étoiles » (ce qui est
-    requis, où le mettre, ce que font les boutons) ; README installateur ;
-    CLAUDE.md (leçon).
-  - Banc NEUF `_test_catalogues_jalon70.py` (24 vérifications : chemins par OS,
-    surcharge de config, arrêt/reprise des essais, ligne « Catalogues » + 
-    téléchargeur FACTICE). **Non-régression : 12 bancs rejoués, TOUS PASSENT**
-    (catalogues jalon56, branchement astrométrie, photométrie, SPCC, config,
-    UI ×2, BXT, chroma structure, zoom pleine rés, sauvegarde brute).
-  - **Artéfacts RECONSTRUITS** : installateur Windows
-    `avastack-setup-2.38.4.exe` et paquet Linux
-    `avastack-setup-2.38.4-linux.tar.gz`. Repli si régression : v2.38.3.
-  - Reste à faire : ton essai sous Linux (l'astrométrie doit maintenant DIRE
-    « DONNÉES MANQUANTES » puis fonctionner après le téléchargement ou le
-    dépôt du fichier).
+- **DERNIÈRE PASSE LIVRÉE (poussée le 27/09/2026) — AVAStack v2.38.4 :
+  ASTRONOMÉTRIE SOUS LINUX (DONNÉES DITES ET TÉLÉCHARGEABLES)**. Cause mesurée :
+  `dossier_catalogues()` ne testait que `%LOCALAPPDATA%\Siril` et
+  `~/.local/share/kstars` → repli sur un dossier AVAStack VIDE → échec certain
+  du solveur interne, sans repli ASTAP sous Linux et sans trace (pas de
+  journal). ① `dossiers_siril()` par OS (+ XDG), le CONTENU (`siril_cat*`)
+  décide ; ② `chemin_catalogues` RÉELLEMENT honorée (ligne « Catalogues »,
+  bouton 📂) ; ③ bouton « ⬇ Gaia » (thread, reprise, sha256) ; ④
+  `MSG_CATALOGUE_ABSENT` → `SuiviAstrometrie` arrête les essais et repart SEUL ;
+  ⑤ LISEZMOI Windows/Linux + CLAUDE.md ; banc NEUF
+  `bancs/_test_catalogues_jalon70.py` (24 vérifs, 12 bancs rejoués verts).
+  **Reste à faire : ton essai réel sous Linux** (l'astrométrie doit DIRE
+  « DONNÉES MANQUANTES » puis fonctionner après téléchargement/dépôt).
 
+- **PASSE EN COURS — AVAStack v2.38.5 : DÉTECTION DES OUTILS EXTERNES (GRAXPERT
+  SOUS LINUX, FIN DES ÉCHECS SILENCIEUX)** (code + banc + doc + installateurs,
+  27/09/2026). Ton constat après l'installateur Linux : « la détection de
+  l'emplacement de GraXpert ne s'est pas faite (celle de rec-astro BlurX oui) ».
+  **Cause trouvée et prouvée** :
+  - sous Linux le binaire officiel s'appelle **`GraXpert-linux`** (archive
+    `graxpert-linux-amd64.zip` des Releases officielles ; README : « chmod u+x
+    ./GraXpert-linux », « Linux: Replace GraXpert-win64.exe by GraXpert-linux »)
+    alors que `detection.py` ne cherchait que `graxpert`/`GraXpert` — or la
+    comparaison est SENSIBLE À LA CASSE sous Linux, et une archive décompressée
+    n'est pas dans le PATH → détection impossible ; les sous-chemins sondés
+    (`<racine>/GraXpert/<nom>`) ne couvraient ni ce nom ni le dossier
+    d'extraction ;
+  - rc-astro était trouvé parce que son installeur le pose DANS le PATH avec le
+    nom attendu (vérifié ici : `C:\Program Files\RC-Astro\CLI\rc-astro.exe`) ;
+  - **aggravant** : la commande de REPLI (« graxpert … », binaire nu) est une
+    chaîne non vide → elle était PERSISTÉE dans config.json et restaurée à
+    chaque lancement SANS re-test de l'exécutable : une détection ratée restait
+    figée à VIE, même après installation de GraXpert.
+  - **① chemins/noms par OS** (`_racines()`, `_noms_graxpert()`,
+    `_sous_graxpert()` calculés à l'appel) : Linux `GraXpert-linux`,
+    `GraXpert-linux-amd64`, `~/.local/bin`, `~/Applications`, `~` ; macOS
+    `GraXpert.app/Contents/MacOS/GraXpert` ; Windows `Programs\GraXpert\` ;
+    filtre borné `GraXpert*` (dossier d'archive, AppImage exécutable) ; chemins
+    retournés NORMALISÉS (`normpath`).
+  - **② l'INI DE SIRIL devient une source** : module NEUF `avastack/siril_ini.py`
+    (dossiers par OS — doc Siril 1.4.4 —, clé cherchée sans groupe,
+    déséchappement GKeyFile) : `graxpert_path` pour l'outil (ton ini le porte
+    déjà : `…\Programs\GraXpert\GraXpert.exe`), `catalogue_gaia_astro`/
+    `catalogue_gaia_photo` pour le dossier des catalogues (exigeait la clé).
+  - **③ plus de commande figée** : `external.live.outil_manquant()` distingue
+    chemin existant / nom dans le PATH / outil introuvable ; une commande sans
+    outil n'est plus persistée, et à l'ouverture elle est re-détectée en
+    conservant les OPTIONS de l'utilisateur (`remplacer_binaire()` : seul le
+    chemin change, ton `-correction Division -smoothing 0.8` reste).
+  - **④ l'interface DIT l'état** : ligne sous chaque commande du cadre
+    « Traitement externe » (« ✔ GraXpert : /chemin » vert, « ⚠ … : exécutable
+    introuvable… » orange), rafraîchie à chaque frappe ; refus AVANT de lancer
+    (case GraXpert live, bouton ⚡, étape de la chaîne) au lieu d'un
+    « command not found » noyé dans la sortie de l'outil.
+  - **⑤ doc** : LISEZMOI Linux (section « outils externes » : nom exact, chmod,
+    où poser le binaire, bouton « … », variables `AVASTACK_*`) et Windows ;
+    CLAUDE.md (tableau des noms par OS, ini Siril, piège de la commande figée).
+  - Banc NEUF `bancs/_test_outils_jalon71.py` (**38 vérifications** : Linux/
+    macOS/Windows simulés, ordre de recherche, ini Siril, chemin disparu,
+    `outil_manquant`, lignes d'état de l'UI réelle).
+  - **Non-régression : 18 bancs rejoués, TOUS VERTS** — dont deux RÉPARÉS au
+    passage : `_test_graxpert_live_jalon4.py` (son assistant `_gx_factice.py`
+    était resté à la racine lors du déplacement des bancs → `git mv` vers
+    `bancs/`) et `_test_dn_jalon7.py` (il vérifie que `-strength 0.9` d'une
+    commande persistée survit — d'où la fusion « chemin + options »).
+  - Reste à faire : ta réinstallation Linux, puis ton essai (la ligne doit
+    afficher « ✔ GraXpert : … » ou « ⚠ … introuvable » ; le temps de
+    téléchargement/dépôt du catalogue d'astrométrie compte pour v2.38.4).
 
-  EST INSTALLÉ** (décision d'Alain, 27/09/2026 : « dossier bancs PARTOUT avec
-  juste un thème à part pour les caméras ; seuls les bancs caméra seront dans
-  les installateurs — le reste n'a rien à y faire, c'est pour du dev ») :
-  - **109 bancs déplacés** par `git mv` (historique conservé) → `bancs/` : 93,
-    `bancs/cameras/` : 16. Le thème caméra a été établi par le CONTENU, pas par
-    le nom : les 5 bancs « composition » importent `MultiFolderCamera` et ne
-    sont donc PAS caméra (piège évité).
-  - **Bootstrap uniforme posé dans les 109** (5 lignes, juste après la
-    docstring) : il remonte les dossiers parents jusqu'à celui qui porte
-    `AVAStack.py` et l'ajoute à `sys.path` → le banc fonctionne depuis le dépôt
-    (`bancs/`, `bancs/cameras/`) ET depuis le dossier d'installation. **9 anciens
-    bootstraps supprimés** : 8 chemins absolus `c:\Astro\AstroLiveStack` (déjà
-    faux hors de ta machine) et 1 `__file__.rsplit("\\")`.
-  - **Installateurs** : `.iss` (109 lignes de bancs → UNE ligne) et packer Linux
-    n'embarquent QUE `bancs/cameras/` (16 fichiers) ; le script Linux copie
-    l'arbre `bancs/` du paquet (il listait encore les bancs à la racine du
-    paquet — corrigé). Paquet Linux : 162 → **69 fichiers** (505 Kio).
-  - **Doc** : LISEZMOI Windows et Linux réécrits (chemins `bancs\cameras\…`,
-    autres bancs = outils de dev non installés) ; les **97 lignes d'usage des
-    bancs** (« Usage : python _diag_xxx.py ») portent maintenant leur dossier
-    réel (`python bancs/…`, `python bancs/cameras/…`), résolu banc par banc dans
-    l'arbre ; CLAUDE.md : nouvelle section « Bancs et diagnostics —
-    emplacement » (bootstrap, lancement depuis la racine, règle des
-    installateurs) ; `installer/README.md` mis à jour.
-  - **Vérifications faites** : `ast.parse` des 109 (OK) ; 3 bancs REJOUÉS depuis
-    leur nouveau dossier et verts (`bancs/_test_veralux_jalon1.py`,
-    `bancs/cameras/_test_qhy_camera.py` 33/33, `bancs/cameras/_test_capacites.py`
-    29/29) ; un banc caméra rejoué depuis le PAQUET LINUX EXTRAIT (29/29) et
-    `import avastack` depuis ce paquet (2.38.3) ; les deux installateurs
-    reconstruits puis leur contenu contrôlé (16 bancs caméra, rien d'autre).
-  - Reste à faire : ton essai de l'installateur Linux, et `--cameras` quand les
-    `.so` constructeurs arriveront.
+- **PASSES TERMINÉES ET POUSSÉES (27/09/2026, hors code applicatif) — BANCS
+  RÉORGANISÉS, INSTALLATEURS NOMMÉS PAR VERSION, INSTALLATEUR LINUX** : 109
+  bancs déplacés dans `bancs/` (`bancs/cameras/` : 16 — seuls installés) avec
+  bootstrap uniforme ; `.iss` et packer Linux tirent le nom de l'artefact de
+  `AVASTACK_VERSION` (compilation REFUSÉE sans `/DAppVersion`) ; installateur
+  Linux `installer/linux/install_avastack.sh` (venv, prérequis vérifiés, SANS
+  caméras par défaut, option `--cameras`). Détails durables : changelog de
+  `avastack/__init__.py`, `installer/README.md`, section CLAUDE.md « Bancs et
+  diagnostics — emplacement ». Reste à faire : `--cameras` quand les `.so`
+  constructeurs arriveront.
 
-- **PASSE ANNEXE (27/09/2026, hors code applicatif) — INSTALLATEURS NOMMÉS AVEC
-  LEUR VERSION, INSTALLATEUR LINUX SANS CAMÉRAS** :
-  - **① nommage (demande d'Alain)** : tout artefact porte sa VERSION et la tire
-    de `AVASTACK_VERSION` — `installer/windows/output/avastack-setup-2.38.3.exe`
-    (l'`.iss` utilise `OutputBaseFilename=avastack-setup-{#AppVersion}` et REFUSE
-    désormais de compiler sans `/DAppVersion` : plus de define de repli à
-    maintenir, garde-fou TESTÉ) et
-    `installer/linux/output/avastack-setup-2.38.3-linux.tar.gz`. Convention
-    écrite dans CLAUDE.md (non négociable + registre des producteurs) et dans
-    `installer/README.md`.
-  - **② installateur LINUX — route ① tranchée par Alain** :
-    `installer/linux/install_avastack.sh` : prérequis VÉRIFIÉS avant toute copie
-    (`python3` ≥ 3.10, `python3-venv`/ensurepip, **`python3-tk`** — Tkinter
-    n'existe pas sur pip — avec la commande exacte par distribution), copie dans
-    `~/.local/share/AVAStack` (+ `VERSION.txt`), venv et dépendances via
-    `installer/common/avastack_setup.py` (le MÊME outil que Windows), lanceur
-    `lancer_avastack.sh` + `~/.local/bin/avastack` + entrée `.desktop`, puis
-    vérification en interprétant réellement (Tkinter, numpy/OpenCV/Pillow avec
-    rappel `libgl1`, astropy, état des caméras). Options : `--prefix`,
-    `--cameras` (pour plus tard), `--sans-raccourci`, `--forcer`,
-    `--desinstaller [--purger]`. Packer portable (stdlib, Windows/Linux/macOS) :
-    `installer/linux/build_avastack.py` — il convertit en LF les `.sh`/`.txt`
-    de l'archive (le dépôt Windows les écrit en CRLF, et un `.sh` en CRLF ne
-    s'exécute pas sous Linux : piège réel, corrigé et consigné dans CLAUDE.md).
-    **SANS CAMÉRAS** (demande d'Alain) : paquets `qhyccd`/`zwoasi` retirés de
-    l'installation et aucun `*.so` embarqué (garde-fou dans le packer) → mode
-    dossier / composition / OpenCV / simulé pleinement fonctionnel (imports
-    caméra PARESSEUX, vérifié dans le code).
-  - **③ reste à faire côté Linux** : essayer l'installateur sur une vraie machine
-    Linux (pas exécutable ici : Windows sans bash ni WSL — contrôles faits à la
-    lecture + inventaire de l'archive) ; puis `--cameras` quand les `.so`
-    constructeurs seront récupérés (liste des fichiers attendus plus bas).
-  - **④ ce lot est COMMITÉ et POUSSÉ** : `8b28e7f` (master, `origin/master`) —
-    `installer/linux/install_avastack.sh` est enregistré en 0755 dans le dépôt
-    (exécutable après un clone Linux). Aucun code applicatif touché : aucun
-    impact sur la v2.38.3 en attente de test.
-
-
-- **PASSE EN COURS — AVAStack v2.38.3 : PARAMÈTRES BXT EXPLICITES, TRAÇABILITÉ
-  DES OUTILS EXTERNES, LISEZMOI** (code + banc livrés le 27/09/2026, **EN
-  ATTENTE DE TON TEST** ; installateur 2.38.3 reconstruit). Les trois finitions
-  demandées après ton essai BXT (`--sn 0.3`, « image magnifique ») :
+- **PASSE LIVRÉE, EN ATTENTE DE TON TEST — AVAStack v2.38.3 : PARAMÈTRES BXT
+  EXPLICITES, TRAÇABILITÉ DES OUTILS EXTERNES, LISEZMOI** (code + banc livrés le
+  27/09/2026 ; installateur 2.38.3 reconstruit). Les trois finitions demandées
+  après ton essai BXT (`--sn 0.3`, « image magnifique ») :
   - **① commande BXT par défaut EXPLICITE** : `--ss 0.5 --ash -0.3 --sn 0.3`
     (`external/detection._BXT_OPTIONS`). « Ne rien passer » laissait le volet
     OBJETS à 0,50 (défaut du CLI) — MESURÉ : moucheté 2-8 px ×1,28 contre la vue
@@ -284,8 +249,18 @@ dans le changelog du source et l'historique git.)
 
 ## En attente / prochaine session
 
-- **AUCUN DÉFAUT CONNU OUVERT** sur la v2.38.3 (livrée) ni sur la v2.38.2
-  (vérifiée par la mesure). Sujets OUVERTS, par ordre d'intérêt :
+- **AUCUN DÉFAUT CONNU OUVERT** sur les v2.38.3, v2.38.4 et v2.38.5 (livrées).
+  **EN ATTENTE DE TES ESSAIS**, par ordre d'intérêt :
+  - **v2.38.5 (27/09/2026) — détection des outils externes** : sous Linux, dès
+    que l'archive GraXpert est décompressée et `chmod u+x`, la ligne d'état doit
+    afficher « ✔ GraXpert : /chemin/GraXpert-linux » (sinon « ⚠ … introuvable »
+    avec le bouton « … ») ; plus aucun échec silencieux à l'exécution.
+  - **v2.38.4 (27/09/2026) — astrométrie** : l'échec doit être DIT (« DONNÉES
+    MANQUANTES ») puis les essais repartent seuls après dépôt ou téléchargement
+    du catalogue.
+  - **v2.38.3 (27/09/2026) — réglages BXT** : ta commande MÉMORISÉE reste
+    prioritaire ; ajoute `--sn 0.3` au champ pour profiter du réglage mesuré.
+- Sujets OUVERTS (analyse close, décisions livrées), par ordre d'intérêt :
   - **CLOS PAR LA v2.38.3 — MOUCHETÉ BLEU DU FICHIER TRAITÉ** (piste BXT d'Alain,
     27/09/2026) : mesuré ×1,27-1,31 PARTOUT dans le champ (donc pas « les
     structures » ; le grain fin était au contraire réduit), cause = le volet
@@ -403,6 +378,14 @@ dans le changelog du source et l'historique git.)
   d'ANCRE ; deux normalisations distinctes rendent une SSD aveugle —
   partager les bornes) ; jalon 24 (valider les placeholders d'un gabarit
   AVANT la substitution). Plus AUCUNE leçon en attente.
+- Leçons ÉCRITES le 27/09/2026 (2e passe, v2.38.5) — section « Doc outils
+  externes (CLI) → Détection de l'exécutable » : le nom du binaire d'un outil
+  tiers CHANGE d'un OS à l'autre (`GraXpert-linux` sous Linux, bundle macOS) et
+  la comparaison est sensible à la casse hors Windows ; l'INI DE SIRIL
+  (`graxpert_path`, `catalogue_gaia_*`) est une source de détection déjà
+  renseignée par l'utilisateur (et GKeyFile échappe les antislashs) ; une
+  commande de REPLI persistée sans exécutable fige une détection ratée à vie →
+  re-tester, ne pas persister, et DIRE l'état dans l'interface.
 - Leçons ÉCRITES le 27/09/2026 (accord d'Alain : « met a jour claude ») — section
   « Pièges », 5 entrées : ① « ne rien passer » à un CLI tiers n'est PAS neutre, et
   la source qui fait foi est le `--help` de l'outil INSTALLÉ (BXT `--sn` resté à

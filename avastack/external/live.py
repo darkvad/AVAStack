@@ -73,6 +73,68 @@ def commande_valide(cmd):
                                                or "{outbase}" in cmd)
 
 
+def _decoupe(cmd):
+    """(tête TELLE QU'ÉCRITE, reste) d'une commande — guillemets conservés."""
+    c = (cmd or "").strip()
+    if not c:
+        return "", ""
+    if c.startswith('"'):
+        fin = c.find('"', 1)
+        if fin == -1:
+            return c, ""
+        return c[:fin + 1], c[fin + 1:].strip()
+    parts = c.split(None, 1)
+    return parts[0], (parts[1].strip() if len(parts) > 1 else "")
+
+
+def binaire_de(cmd):
+    """Premier jeton de la commande (guillemets ôtés), ou None.
+
+    `"C:\\...\\GraXpert.exe" "{input}" -cli …` → `C:\\...\\GraXpert.exe`."""
+    tete = _decoupe(cmd)[0]
+    if not tete:
+        return None
+    return (tete[1:-1].strip() if tete.startswith('"') else tete) or None
+
+
+def remplacer_binaire(cmd, reference):
+    """Commande `cmd` où SEUL le binaire est repris de `reference` (v2.38.5).
+
+    POURQUOI : quand l'exécutable d'une commande persistée n'existe plus (ou
+    n'a jamais été trouvé — cas Linux d'Alain, où la commande de repli «
+    graxpert … » avait été figée dans config.json), on reprend le chemin
+    fraîchement détecté SANS perdre les OPTIONS réglées par l'utilisateur
+    (`-correction Division -smoothing 0.8`, `-strength 0.9`…). Réécrire la
+    commande entière depuis le défaut effacerait ce réglage ; ne changer que
+    le binaire le préserve. Si la détection n'a rien trouvé, `reference`
+    porte le binaire nu — la commande reste donc exécutable telle quelle."""
+    tete = _decoupe(reference)[0]
+    if not tete:
+        return cmd
+    reste = _decoupe(cmd)[1]
+    return tete + (f" {reste}" if reste else "")
+
+
+def outil_manquant(cmd):
+    """Message si l'exécutable de `cmd` est INTROUVABLE, sinon "" (chaîne vide).
+
+    POURQUOI (constat d'Alain, 27/09/2026) : `commande_valide()` ne regardait
+    que les PLACEHOLDERS — la commande de repli « graxpert … » (binaire nu,
+    aucune détection réussie sous Linux) était donc jugée bonne, l'échec
+    n'apparaissant qu'à l'exécution par un « command not found » du shell,
+    noyé dans le message d'erreur de l'outil. Ici, un chemin (absolu ou
+    relatif) doit EXISTER, un nom nu doit être dans le PATH."""
+    nom = binaire_de(cmd)
+    if not nom:
+        return "commande absente"
+    if os.path.isfile(nom):
+        return ""
+    if os.sep in nom or (os.altsep and os.altsep in nom) or ":" in nom \
+            or nom.endswith((".exe", ".bat", ".cmd", ".AppImage")):
+        return f"exécutable introuvable : {nom}"
+    return "" if shutil.which(nom) else f"commande introuvable dans le PATH : {nom}"
+
+
 def cle_image(img):
     """Empreinte du CONTENU de l'image (clé du cache GraXpert du solveur :
     bouger un curseur VeraLux ne doit pas relancer GraXpert)."""
@@ -114,6 +176,12 @@ def appliquer(img, cmd, timeout=TIMEOUT_S):
     if not commande_valide(cmd):
         return img, ("commande absente ou incomplète "
                      "(il faut {input} et {output} ou {outbase})")
+    # v2.38.5 : dire l'outil INTROUVABLE ici plutôt que de le découvrir par un
+    # « command not found » du shell, noyé dans la sortie de l'outil.
+    manque = outil_manquant(cmd)
+    if manque:
+        return img, (f"{manque} — réglez le chemin dans « Traitement externe » "
+                     "(bouton « … ») ou installez l'outil")
     tmp = None
     try:
         tmp = tempfile.mkdtemp(prefix="avastack_gxlive_")

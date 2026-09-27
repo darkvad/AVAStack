@@ -14,7 +14,56 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.38.4"
+AVASTACK_VERSION = "2.38.5"
+
+# --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.38.5 : DÉTECTION DES OUTILS EXTERNES — GRAXPERT SOUS LINUX, ET FIN DES
+#   ÉCHECS SILENCIEUX (constat réel d'Alain, 27/09/2026 : « la détection de
+#   l'emplacement de GraXpert ne s'est pas faite (celle de rec-astro BlurX
+#   oui) »).
+#   CAUSE MESURÉE : sous Linux le binaire officiel de GraXpert s'appelle
+#   `GraXpert-linux` (archive `graxpert-linux-amd64.zip` des Releases
+#   officielles, README : « chmod u+x ./GraXpert-linux » et « Linux: Replace
+#   GraXpert-win64.exe by GraXpert-linux »), alors que le code ne cherchait
+#   que `graxpert`/`GraXpert` — comparaison SENSIBLE À LA CASSE sous Linux, et
+#   une archive décompressée n'est pas dans le PATH → détection impossible ;
+#   les sous-chemins sondés (`<racine>/GraXpert/<nom>`, racines `~/.local`,
+#   `/usr/local`, `/opt`) ne couvraient ni le nom ni le dossier d'extraction.
+#   rc-astro était trouvé parce que son installeur le place DANS le PATH, avec
+#   le nom attendu (vérifié : `C:\Program Files\RC-Astro\CLI\rc-astro.exe`).
+#   Aggravant : la commande de REPLI (« graxpert … », binaire nu) est une
+#   chaîne non vide → elle était PERSISTÉE dans config.json dès la première
+#   session et restaurée à chaque lancement SANS re-test de l'exécutable (le
+#   test n'avait lieu que si rien n'était enregistré) : une détection ratée
+#   restait figée à vie, même après installation de GraXpert.
+#   (1) `external.detection` : noms, sous-chemins et racines sont calculés PAR
+#       OS et complétés — Linux `GraXpert-linux`, `GraXpert-linux-amd64`,
+#       `bin/` utilisateur, `~/Applications`, `~` ; macOS
+#       `GraXpert.app/Contents/MacOS/GraXpert` ; Windows
+#       `Programs\GraXpert\` ; plus un filtre borné `GraXpert*` (dossier
+#       d'archive décompressée, AppImage exécutable) ;
+#   (2) l'INI DE SIRIL devient une source de détection : nouveau module
+#       `avastack.siril_ini` (lecture tolérante, déséchappement GKeyFile,
+#       chemins par OS vérifiés dans la doc Siril 1.4.4) — `graxpert_path`
+#       pour l'outil, `catalogue_gaia_astro`/`catalogue_gaia_photo` pour le
+#       dossier des catalogues (l'ini d'Alain porte les trois) ;
+#   (3) plus de commande figée : `external.live.outil_manquant()` distingue
+#       « chemin existant », « nom dans le PATH » et « outil introuvable » →
+#       re-détection à l'ouverture si l'exécutable a disparu, et une commande
+#       sans outil n'est PLUS persistée (elle était enregistrée telle quelle) ;
+#   (4) l'interface DIT l'état de la détection : une ligne sous chaque commande
+#       du cadre « Traitement externe » (« ✔ GraXpert : /chemin » ou
+#       « ⚠ GraXpert : exécutable introuvable — bouton « … » pour le désigner »),
+#       rafraîchie à chaque modification du champ ; avertissements AVANT de
+#       lancer (case GraXpert live, bouton ⚡) au lieu d'un « command not found »
+#       noyé dans la sortie de l'outil ;
+#   (5) LISEZMOI Windows et Linux (section « outils externes » : nom exact sous
+#       Linux, chmod, où le poser, bouton « … », variables AVASTACK_*) +
+#       CLAUDE.md (nom Linux/macOS du binaire, ini Siril, piège de la commande
+#       figée).
+#   Banc NEUF `bancs/_test_outils_jalon71.py` (détection rejouée sous Linux /
+#   macOS / Windows simulés, ini Siril, chemin disparu, ligne d'état de l'UI).
+#   Repli si régression : v2.38.4.
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
 # v2.38.4 : ASTRONOMÉTRIE SOUS LINUX — LES DONNÉES MANQUANTES SONT DITES, ET

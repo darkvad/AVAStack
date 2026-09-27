@@ -99,14 +99,24 @@ def dossier_catalogues():
     """Dossier des catalogues, dans cet ordre :
       1. la surcharge `chemin_catalogues` de la config (choix explicite de
          l'utilisateur — champ « Catalogues » de l'interface), si elle existe ;
-      2. le premier dossier de Siril/KStars qui contient DÉJÀ des fichiers du
+      2. le dossier DÉSIGNÉ par l'INI DE SIRIL (`catalogue_gaia_astro` /
+         `catalogue_gaia_photo`, v2.38.5) : c'est là que Siril a réellement
+         rangé ses catalogues Gaia, l'utilisateur l'a déjà renseigné (relevé
+         dans `%LOCALAPPDATA%\\siril\\config.1.4.ini` le 27/09/2026) ;
+      3. le premier dossier de Siril/KStars qui contient DÉJÀ des fichiers du
          projet (`siril_cat*`), par OS ;
-      3. le dossier `catalogues` de la configuration AVAStack, créé au besoin —
+      4. le dossier `catalogues` de la configuration AVAStack, créé au besoin —
          c'est là que le bouton de téléchargement de l'interface écrit."""
     from ..config import CONFIG
+    from .. import siril_ini
     surcharge = (CONFIG.get("chemin_catalogues") or "").strip()
     if surcharge and os.path.isdir(surcharge):
         return surcharge
+    for cle in (siril_ini.CLE_CATALOGUE_ASTRO, siril_ini.CLE_CATALOGUE_PHOTO):
+        p = siril_ini.lire_chemin(cle)
+        d = os.path.dirname(p) if p else ""
+        if d and _nb_catalogues(d):
+            return d
     for c in dossiers_siril():
         if _nb_catalogues(c):
             return c

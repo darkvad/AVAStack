@@ -6,48 +6,121 @@ détectées ou choisies via le bouton « … » de l'interface, les commandes
 complètes sont persistées dans config.json (cf. avastack/config.py).
 """
 
+import glob
 import os
 import re
 import shutil
 
+from .. import siril_ini
 from ..compat import IS_WINDOWS, IS_MACOS
 from ..config import CONFIG
 
 
-def trouver_exe(noms, env_var, sous_chemins):
-    """Cherche un exécutable : 1) variable d'environnement dédiée,
-    2) dans le PATH (shutil.which), 3) emplacements d'installation courants
-    selon l'OS. → chemin complet ou None."""
+def _racines():
+    """Racines d'installation à sonder, par OS (liste ordonnée, sans trou)."""
+    if IS_WINDOWS:
+        noms = ("LOCALAPPDATA", "PROGRAMFILES", "PROGRAMFILES(X86)",
+                "PROGRAMW6432")
+        return [os.environ.get(n, "") for n in noms]
+    if IS_MACOS:
+        return [os.path.expanduser("~/Applications"), "/Applications"]
+    # Linux : dossier utilisateur (extraction d'un archive), `bin` utilisateur,
+    # puis les emplacements système. `~` est sondé EN DERNIER et seulement par
+    # nom d'outil/filtre : aucune exploration récursive du dossier personnel.
+    return [os.path.expanduser("~/.local"), "/usr/local", "/opt",
+            os.path.expanduser("~/Applications"), os.path.expanduser("~")]
+
+
+def _noms_graxpert():
+    """Noms du binaire GraXpert, par OS.
+
+    PIÈGE MESURÉ (constat d'Alain, 27/09/2026, installateur Linux) : sous
+    LINUX le binaire officiel s'appelle **`GraXpert-linux`** — l'archive
+    `graxpert-linux-amd64.zip` (Releases Steffenhir/GraXpert) se décompresse
+    en `GraXpert-linux`, à rendre exécutable par `chmod u+x ./GraXpert-linux`
+    (README officiel : « Linux: Replace GraXpert-win64.exe by
+    GraXpert-linux »). L'ancienne liste ne contenait que `graxpert`/`GraXpert`
+    et, la comparaison étant SENSIBLE À LA CASSE sous Linux, la détection ne
+    pouvait RIEN trouver — l'application retombait sur la commande nue
+    « graxpert … » (le shell répondait « command not found » bien plus tard).
+    Sous macOS, l'exécutable vit dans le bundle (`GraXpert.app/Contents/
+    MacOS/GraXpert`), ce que `_sous_graxpert()` traduit."""
+    if IS_WINDOWS:
+        return ("graxpert.exe",)
+    if IS_MACOS:
+        return ("GraXpert", "graxpert")
+    return ("GraXpert-linux", "GraXpert-linux-amd64", "graxpert-linux",
+            "graxpert", "GraXpert")
+
+
+def _sous_graxpert():
+    """Sous-chemins d'installation de GraXpert (relatifs à `_racines()`)."""
+    if IS_WINDOWS:
+        # `...\\AppData\\Local\\Programs\\GraXpert\\GraXpert.exe` (obs. 27/09/2026)
+        return ("", os.path.join("Programs", "GraXpert"), "GraXpert")
+    if IS_MACOS:
+        return (os.path.join("GraXpert.app", "Contents", "MacOS"),
+                "GraXpert", "")
+    return ("GraXpert", "GraXpert-linux-amd64", "bin", "")
+
+
+def _noms_rc_astro():
+    """Noms du CLI rc-astro (BlurXTerminator) — même nom partout hors Windows."""
+    return ("rc-astro.exe",) if IS_WINDOWS else ("rc-astro",)
+
+
+def _sous_rc_astro():
+    """Sous-chemins d'installation de rc-astro."""
+    return (os.path.join("RC-Astro", "CLI"), "", "bin")
+
+
+def trouver_exe(noms, env_var, sous_chemins, chemins_directs=(),
+                motifs=()):
+    """Cherche un exécutable, du plus EXPLICITE au plus deviné :
+
+    1) `chemins_directs` : pistes nommées par un autre outil (ini de Siril,
+       dossier `GraXpert.app` de macOS) — l'utilisateur les a déjà désignées ;
+    2) `env_var` : variable d'environnement dédiée (`AVASTACK_GRAXPERT`…) ;
+    3) le PATH (`shutil.which`, insensible à la casse sous Windows seulement) ;
+    4) `racine/sous_chemin/nom` pour chaque racine de l'OS ;
+    5) `motifs` : dossiers ou fichiers commençant par le motif (ex.
+       `GraXpert*` — archive décompressée dans `~/GraXpert-linux-amd64/`,
+       ou AppImage posée dans `~/Applications/`) ; un fichier EXÉCUTABLE
+       trouvé par motif est accepté tel quel.
+    → chemin complet NORMALISÉ (`os.path.normpath` : jamais de « C:\\a/b » dans
+      une commande persistée ni dans la ligne d'état de l'interface), ou None
+      (aucune exception remontée ici)."""
+    for c in chemins_directs:
+        if c and os.path.isfile(c):
+            return os.path.normpath(c)
     env = os.environ.get(env_var)
     if env and os.path.isfile(env):
-        return env
+        return os.path.normpath(env)
     for nom in noms:
         trouve = shutil.which(nom)
         if trouve:
-            return trouve
-    racines = ([os.environ.get("LOCALAPPDATA", ""), os.environ.get("PROGRAMFILES", ""),
-                os.environ.get("PROGRAMFILES(X86)", ""), os.environ.get("PROGRAMW6432", "")]
-               if IS_WINDOWS else
-               [os.path.expanduser("~/Applications"), "/Applications"]
-               if IS_MACOS else
-               [os.path.expanduser("~/.local"), "/usr/local", "/opt"])
+            return os.path.normpath(trouve)
+    racines = [r for r in _racines() if r]
     for racine in racines:
-        if not racine:
-            continue
         for sous in sous_chemins:
             for nom in noms:
                 c = os.path.join(racine, sous, nom)
                 if os.path.isfile(c):
-                    return c
+                    return os.path.normpath(c)
+    for motif in motifs:
+        for racine in racines:
+            try:
+                candidats = sorted(glob.glob(os.path.join(racine, motif)))
+            except (OSError, re.error):       # motif invalide : jamais bloquant
+                continue
+            for p in candidats:
+                for nom in noms:
+                    c = os.path.join(p, nom)
+                    if os.path.isfile(c):
+                        return os.path.normpath(c)
+                if os.path.isfile(p) and os.access(p, os.X_OK):
+                    return os.path.normpath(p)      # AppImage / binaire nu
     return None
-
-
-# Noms de binaires par OS (Windows : .exe ; Linux/macOS : sans extension)
-_NOM_GRAXPERT = ("graxpert.exe",) if IS_WINDOWS else ("graxpert", "GraXpert")
-_NOM_RC_ASTRO = ("rc-astro.exe",) if IS_WINDOWS else ("rc-astro",)
-# Emplacements d'installation connus (relatifs aux racines de trouver_exe)
-_SOUS_GRAXPERT = ("" if IS_WINDOWS else "GraXpert",)
-_SOUS_RC_ASTRO = (os.path.join("RC-Astro", "CLI"), "")
 
 # Placeholders des commandes :
 #   {input}    fichier d'entrée (FITS temporaire, instantané de l'empilement)
@@ -65,9 +138,23 @@ _GX_DN_OPTIONS = ('"{input}" -cli -cmd denoising '
                   '-strength 0.5 -output "{outbase}"')
 
 
+def chemin_graxpert():
+    """Chemin de l'exécutable GraXpert réellement installé, ou None.
+
+    Ordre de recherche (v2.38.5) : la clé `graxpert_path` de l'INI DE SIRIL
+    (l'utilisateur l'a déjà désignée là, et c'est elle qui a permis de
+    comprendre le cas Linux) → variable `AVASTACK_GRAXPERT` → PATH → noms et
+    emplacements de l'OS → dossiers/fichiers `GraXpert*` (archive
+    décompressée, AppImage)."""
+    return trouver_exe(_noms_graxpert(), "AVASTACK_GRAXPERT", _sous_graxpert(),
+                       chemins_directs=(siril_ini.chemin_fichier(
+                           siril_ini.CLE_GRAXPERT),),
+                       motifs=("GraXpert*",))
+
+
 def commande_par_defaut_graxpert():
     """Commande GraXpert : chemin détecté si trouvé, sinon binaire nu (PATH)."""
-    exe = trouver_exe(_NOM_GRAXPERT, "AVASTACK_GRAXPERT", _SOUS_GRAXPERT)
+    exe = chemin_graxpert()
     if exe is None:
         return 'graxpert ' + _GX_OPTIONS
     return f'"{exe}" ' + _GX_OPTIONS
@@ -75,7 +162,7 @@ def commande_par_defaut_graxpert():
 
 def commande_par_defaut_graxpert_dn():
     """Commande GraXpert DÉBRUITAGE : même exécutable, -cmd denoising."""
-    exe = trouver_exe(_NOM_GRAXPERT, "AVASTACK_GRAXPERT", _SOUS_GRAXPERT)
+    exe = chemin_graxpert()
     if exe is None:
         return 'graxpert ' + _GX_DN_OPTIONS
     return f'"{exe}" ' + _GX_DN_OPTIONS
@@ -99,7 +186,7 @@ def commande_par_defaut_bxt():
 
     Les paramètres sont EXPLICITES (cf. `_BXT_OPTIONS`) : « ne rien passer »
     n'est PAS neutre — le CLI applique alors ses propres défauts."""
-    exe = trouver_exe(_NOM_RC_ASTRO, "AVASTACK_RC_ASTRO", _SOUS_RC_ASTRO)
+    exe = trouver_exe(_noms_rc_astro(), "AVASTACK_RC_ASTRO", _sous_rc_astro())
     if exe is None:
         return "rc-astro " + _BXT_OPTIONS
     return f'"{exe}" ' + _BXT_OPTIONS

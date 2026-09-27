@@ -72,6 +72,40 @@ Autre possibilité : ASTAP (outil externe `astap_cli` + une base d'étoiles de
 type G18/H18 pour chercher sans coordonnées) — AVAStack le détecte dans le
 PATH et dans /usr/local/bin, /usr/bin, /opt/astap.
 
+OUTILS EXTERNES (optionnel) : GRAXPERT, BLURXTERMINATOR
+------------------------------------------------------
+AVAStack sait lancer deux outils en ligne de commande : GraXpert (retrait
+de gradient, et un débruitage par IA, lent) et le CLI rc-astro
+(BlurXTerminator, netteté). Ils ne sont PAS fournis avec AVAStack : à
+installer toi-même. L'application dit TOUJOURS où elle les a trouvés — une
+ligne d'état sous chaque commande du cadre « Traitement externe (long) » :
+    ✔ GraXpert : /chemin/trouvé        (vert)
+    ⚠ GraXpert : exécutable introuvable…  (orange, avec le bouton « … »)
+
+GraXpert sous Linux :
+  1. télécharger l'archive « graxpert-linux-amd64.zip » depuis les Releases
+     officielles (github.com/Steffenhir/GraXpert/releases) ;
+  2. l'extraire où tu veux (par exemple ~/GraXpert-linux-amd64/) ;
+  3. la rendre exécutable — OBLIGATOIRE :
+         chmod u+x ~/GraXpert-linux-amd64/GraXpert-linux
+     sous Linux le binaire s'appelle « GraXpert-linux » (il n'y a ni
+     graxpert.exe ni paquet .deb) ;
+  4. relancer AVAStack : la ligne d'état doit afficher « ✔ GraXpert : … ».
+
+Détection automatique (dans cet ordre) : le chemin noté par SIRIL (clé
+graxpert_path de ~/.config/siril/configX.Y.ini) → la variable
+AVASTACK_GRAXPERT → le PATH → ~/.local, /usr/local, /opt, ~/Applications
+et ton dossier personnel (dossiers ou fichiers commençant par « GraXpert » :
+archive décompressée, AppImage). Si rien n'est trouvé, désigne l'exécutable
+une fois pour toutes avec le bouton « … » : le chemin est mémorisé.
+
+BlurXTerminator : l'installeur rc-astro pose « rc-astro » dans le PATH ;
+sinon, même bouton « … » (ou variable AVASTACK_RC_ASTRO).
+
+Aucun traitement externe n'est lancé sans son outil : l'application le dit
+AVANT de commencer (message clair) au lieu d'échouer en cours de route.
+
+
 BANCS CAMÉRA INSTALLÉS (sous-dossier bancs/cameras)
 -----------------------------------------------
 Seuls les bancs du THÈME CAMÉRA sont installés avec l'application :

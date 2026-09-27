@@ -202,10 +202,17 @@ faut me transmettre.
 
 TRAITEMENT EXTERNE (optionnel)
 -----------------------------
-GraXpert et BlurXTerminator (rc-astro.exe) sont détectés automatiquement
-s'ils sont installés, sinon indique leur chemin dans l'application
-(bouton "…" de la section "Traitement externe"). Ces réglages sont
-mémorisés.
+GraXpert et BlurXTerminator (rc-astro.exe) ne sont PAS fournis : ils
+s'installent à part. AVAStack les détecte (chemin noté par Siril, variable
+AVASTACK_GRAXPERT / AVASTACK_RC_ASTRO, PATH, dossiers d'installation
+courants) et AFFICHE toujours le résultat : une ligne d'état sous chaque
+commande du cadre "Traitement externe (long)" dit
+    ✔ GraXpert : C:\...\GraXpert.exe                (vert)
+    ⚠ GraXpert : exécutable introuvable...          (orange)
+Si la ligne est orange, désigne l'exécutable avec le bouton "…" : le
+chemin est mémorisé. Un traitement externe dont l'outil est introuvable
+n'est plus lancé du tout : tu es prévenu AVANT, au lieu de voir échouer la
+chaîne après plusieurs minutes.
 
 RÉGLAGES DE BXT (important) : le CLI rc-astro applique SES PROPRES
 valeurs par défaut tant qu'on ne passe rien — dont 0,50 pour

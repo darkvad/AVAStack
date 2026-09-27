@@ -478,24 +478,33 @@ class App:
         if c.get("process_existing") is False:
             self.var_process_existing.set(False)
         # Traitement externe : ne pas écraser une commande persistée par un
-        # défaut re-détecté qui aurait changé ; si la commande au démarrage
-        # était un chemin (détection) devenu inexistant, re-détecter.
-        for cle, var in (("cmd_graxpert", self.var_cmd_graxpert),
-                         ("cmd_graxpert_dn", self.var_cmd_graxpert_dn),
-                         ("cmd_bxt", self.var_cmd_bxt)):
-            enreg = c.get(cle)
+        # défaut re-détecté qui aurait changé — SAUF si son exécutable est
+        # INTROUVABLE (v2.38.5). POURQUOI : l'ancienne version ne testait
+        # l'existence du binaire QUE lorsqu'aucune commande n'était persistée ;
+        # or la commande de REPLI (binaire nu « graxpert … », écrite par une
+        # session où la détection avait échoué — cas Linux d'Alain,
+        # 27/09/2026) est une chaîne non vide : elle se retrouvait donc figée
+        # dans config.json à vie, invisible, et aucune correction de la
+        # détection ne pouvait plus la déloger.
+        for cle, var, detecte in (
+                ("cmd_graxpert", self.var_cmd_graxpert,
+                 commande_par_defaut_graxpert),
+                ("cmd_graxpert_dn", self.var_cmd_graxpert_dn,
+                 commande_par_defaut_graxpert_dn),
+                ("cmd_bxt", self.var_cmd_bxt, commande_par_defaut_bxt)):
+            enreg = (c.get(cle) or "").strip()
             if enreg:
                 var.set(enreg)
-            else:
-                # commande détectée automatiquement → vérifier que l'exe existe
-                premier = var.get().strip().split('"')[1] \
-                    if var.get().strip().startswith('"') else None
-                if premier and not os.path.isfile(premier):
-                    var.set(commande_par_defaut_graxpert()
-                            if cle == "cmd_graxpert" else
-                            commande_par_defaut_graxpert_dn()
-                            if cle == "cmd_graxpert_dn" else
-                            commande_par_defaut_bxt())
+            txt = var.get().strip()
+            if gx_live.outil_manquant(txt):
+                # Binaire repris de la détection, OPTIONS de l'utilisateur
+                # conservées (remplacer_binaire) : installer GraXpert après
+                # coup suffit, sans perdre -correction/-smoothing/-strength.
+                var.set(gx_live.remplacer_binaire(txt, detecte()))
+        # v2.38.5 : l'état de la détection est AFFICHÉ dans le cadre
+        # « Traitement externe » (chemin trouvé, ou outil introuvable) — c'est
+        # ce qui manquait pour que le constat d'Alain soit visible immédiatement.
+        self._maj_etat_outils()
         if c.get("ext_graxpert"):
             self.var_ext_graxpert.set(True)
         # Jalons 7/8 (remis le 16/09/2026) — débruitage du traitement
@@ -774,15 +783,20 @@ class App:
         # comme les autres cases : une case décochée ne doit pas hériter d'un True).
         c["norm_commune"] = bool(self.var_norm_commune.get())
         c["process_existing"] = self.var_process_existing.get()
-        # Les commandes ne sont persistées que si utilisées au moins une fois
-        # ou modifiées par l'utilisateur — sinon on laisse la détection se
-        # rejouer au prochain lancement (installation déplacée, etc.).
-        if self.var_cmd_graxpert.get().strip():
-            c["cmd_graxpert"] = self.var_cmd_graxpert.get().strip()
-        if self.var_cmd_graxpert_dn.get().strip():
-            c["cmd_graxpert_dn"] = self.var_cmd_graxpert_dn.get().strip()
-        if self.var_cmd_bxt.get().strip():
-            c["cmd_bxt"] = self.var_cmd_bxt.get().strip()
+        # Les commandes ne sont persistées que si leur OUTIL EXISTE (v2.38.5) :
+        # une commande de repli (« graxpert … », binaire nu) figée dans
+        # config.json empêchait la détection de rejouer au lancement suivant —
+        # l'utilisateur installait GraXpert après coup sans que rien ne change.
+        # Une commande sans outil est donc RETIRÉE de la config (la détection
+        # rejouera), la valeur restant affichée dans le champ de l'interface.
+        for cle, var in (("cmd_graxpert", self.var_cmd_graxpert),
+                         ("cmd_graxpert_dn", self.var_cmd_graxpert_dn),
+                         ("cmd_bxt", self.var_cmd_bxt)):
+            txt = var.get().strip()
+            if txt and not gx_live.outil_manquant(txt):
+                c[cle] = txt
+            else:
+                c.pop(cle, None)
         if self.var_ext_graxpert.get():
             c["ext_graxpert"] = True
         if self.var_ext_dn.get():
@@ -1913,6 +1927,11 @@ class App:
         ttk.Button(rowgx, text="…", width=3,
                    command=lambda: self._pick_exe(self.var_cmd_graxpert)
                    ).pack(side="left", padx=(4, 0))
+        # v2.38.5 : état de la détection, TOUJOURS visible (chemin trouvé, ou
+        # outil introuvable) — cf. _maj_etat_outils.
+        self.lbl_etat_graxpert = ttk.Label(box, text="—", foreground="#888888",
+                                           wraplength=310)
+        self.lbl_etat_graxpert.pack(anchor="w")
         # Jalon 8 (remis le 16/09/2026) : débruitage du traitement externe —
         # méthode au choix : GraXpert IA (lent, subprocess) OU algorithmes
         # locaux rapides (ondelettes/NLM, en mémoire) ; force commune 0..1.
@@ -1936,6 +1955,10 @@ class App:
         ttk.Button(rowdn, text="…", width=3,
                    command=lambda: self._pick_exe(self.var_cmd_graxpert_dn)
                    ).pack(side="left", padx=(4, 0))
+        # v2.38.5 : même état que ci-dessus pour le débruitage GraXpert.
+        self.lbl_etat_gx_dn = ttk.Label(box, text="—", foreground="#888888",
+                                        wraplength=310)
+        self.lbl_etat_gx_dn.pack(anchor="w")
         self.var_dn_force = tk.DoubleVar(value=0.5)
         self._add_slider(box, "Force du débruitage (0-1)", self.var_dn_force,
                          0.0, 1.0, 0.05, None, "{:.2f}")
@@ -1950,6 +1973,15 @@ class App:
         ttk.Button(rowbx, text="…", width=3,
                    command=lambda: self._pick_exe(self.var_cmd_bxt)
                    ).pack(side="left", padx=(4, 0))
+        # v2.38.5 : état de la détection pour BlurXTerminator (rc-astro).
+        self.lbl_etat_bxt = ttk.Label(box, text="—", foreground="#888888",
+                                      wraplength=310)
+        self.lbl_etat_bxt.pack(anchor="w")
+        # Un changement de commande (saisie, bouton « … », re-détection) met à
+        # jour l'état affiché : c'est le seul retour dont dispose l'utilisateur.
+        for _v in (self.var_cmd_graxpert, self.var_cmd_graxpert_dn,
+                   self.var_cmd_bxt):
+            _v.trace_add("write", self._maj_etat_outils)
         # Jalon 22/23 (décision d'Alain) : chaîne couleur en fin de traitement
         # externe — SCNR classique, puis SCNR doux (bruit seul, jalon 23 :
         # pensé pour les palettes narrowband), puis démagenta — sur l'image
@@ -2817,7 +2849,9 @@ class App:
     def _on_vl_graxpert(self):
         """Case « GraXpert live » (jalon 4) : enchaîne stack → GraXpert →
         VeraLux dans le thread solveur, à chaque nouvel empilement. Refusé
-        si la commande GraXpert n'est pas utilisable (placeholders)."""
+        si la commande GraXpert n'est pas utilisable (placeholders) ou si son
+        exécutable est INTROUVABLE (v2.38.5 : le shell répondait « command
+        not found » à chaque empilement, dans un message d'erreur illisible)."""
         actif = self.var_vl_graxpert.get()
         if actif:
             cmd = self.var_cmd_graxpert.get().strip()
@@ -2828,6 +2862,16 @@ class App:
                     "Commande GraXpert absente ou incomplète.\n"
                     "Vérifiez la commande dans « Traitement externe » "
                     "(elle doit contenir {input} et {output} ou {outbase}).")
+                return
+            manque = gx_live.outil_manquant(cmd)
+            if manque:
+                self.var_vl_graxpert.set(False)
+                messagebox.showwarning(
+                    "GraXpert live",
+                    f"{manque}.\n\n"
+                    "Désignez l'exécutable avec le bouton « … » du cadre "
+                    "« Traitement externe (long) » (sous Linux, le binaire "
+                    "s'appelle GraXpert-linux), ou installez GraXpert.")
                 return
             self.disp.vl_graxpert_cmd = cmd
             self._lbl_vl_texte("GraXpert live activé — calcul en cours…",
@@ -4511,6 +4555,33 @@ class App:
         self._maj_libelles_calib()
 
     # ------------------------------------------------------------ traitement externe
+    def _maj_etat_outils(self, *_a):
+        """Affiche l'état de DÉTECTION des outils externes (v2.38.5).
+
+        Constat d'Alain (27/09/2026, installateur Linux) : « la détection de
+        l'emplacement de GraXpert ne s'est pas faite » — et personne ne
+        pouvait le voir : la commande de repli (« graxpert … », binaire nu,
+        aucune détection réussie) contient les placeholders attendus, donc
+        elle passait pour bonne, et l'échec n'apparaissait qu'à l'exécution
+        (« command not found » du shell, noyé dans la sortie de l'outil).
+        Chaque ligne dit maintenant OÙ est l'outil, ou qu'il est introuvable.
+        Appelée au démarrage, à chaque modification des champs (trace) et par
+        les bancs ; jamais depuis un thread de calcul."""
+        for var, lbl, nom in (
+                (self.var_cmd_graxpert, self.lbl_etat_graxpert, "GraXpert"),
+                (self.var_cmd_graxpert_dn, self.lbl_etat_gx_dn,
+                 "GraXpert (débruitage)"),
+                (self.var_cmd_bxt, self.lbl_etat_bxt, "BlurXTerminator")):
+            cmd = var.get().strip()
+            manque = gx_live.outil_manquant(cmd)
+            if manque:
+                lbl.config(text=f"⚠ {nom} : {manque} — bouton « … » pour le "
+                                "désigner",
+                           foreground="#c98a00")
+            else:
+                lbl.config(text=f"✔ {nom} : {gx_live.binaire_de(cmd)}",
+                           foreground="#1d7f1d")
+
     def _pick_exe(self, var):
         """Sélectionne l'exécutable d'un outil externe et le place en tête de
         la commande — les options déjà saisies ({input}, {output}…) sont
@@ -4550,6 +4621,31 @@ class App:
                 or self.var_ext_chroma.get()):          # v2.37.1
             messagebox.showinfo("Traitement externe",
                                 "Cochez au moins un traitement.")
+            return
+        # v2.38.5 : dire AVANT de lancer (des minutes de calcul) qu'un outil
+        # est introuvable — l'échec n'arrivait jusque-là qu'à SON étape, sous
+        # la forme d'un « command not found » noyé dans la sortie de l'outil.
+        manques = []
+        for actif, var, nom in (
+                (self.var_ext_graxpert.get(), self.var_cmd_graxpert,
+                 "GraXpert (gradient)"),
+                (self.var_ext_dn.get() and self.DN_EXT_CODES.get(
+                    self.var_dn_methode.get(), "graxpert") == "graxpert",
+                 self.var_cmd_graxpert_dn, "GraXpert (débruitage)"),
+                (self.var_ext_bxt.get(), self.var_cmd_bxt,
+                 "BlurXTerminator")):
+            if not actif:
+                continue
+            m = gx_live.outil_manquant(var.get().strip())
+            if m:
+                manques.append(f"• {nom} : {m}")
+        if manques:
+            messagebox.showwarning(
+                "Traitement externe",
+                "Outil externe introuvable — le traitement échouerait :\n\n"
+                + "\n".join(manques)
+                + "\n\nRéglez le chemin avec le bouton « … » du cadre "
+                  "« Traitement externe (long) ».")
             return
         # Capture des réglages ici (thread principal) : le thread externe ne
         # touchera pas aux variables Tkinter. Méthode de débruitage : la
@@ -5058,6 +5154,15 @@ class App:
                                          and "{outbase}" not in cmd_tpl)):
             self._set_ext_msg(f"Commande {name} incomplète : il manque "
                               "{{input}} ou {output}/{outbase}.", state="error")
+            return None
+        # v2.38.5 : outil introuvable = échec ANNONCÉ (au lieu d'un « command
+        # not found » du shell, noyé dans la sortie de l'outil et illisible).
+        manque = gx_live.outil_manquant(cmd_tpl)
+        if manque:
+            self._set_ext_msg(
+                f"{name} : {manque} — désignez l'exécutable avec le bouton "
+                "« … » du cadre « Traitement externe (long) ».",
+                state="error")
             return None
         cmd = (cmd_tpl.replace("{input}", src)
                       .replace("{output}", outbase + ".fits")

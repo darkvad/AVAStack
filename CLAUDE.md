@@ -192,8 +192,11 @@ installé, documentations et pages constructeurs) :
   paquet pip `qhyccd` embarque le SDK natif, roues `cp310-abi3` manylinux_2_34 +
   Windows ; PAS de roue macOS en revanche). Sur Debian/Ubuntu,
   `libplayeronecamera2t64` apporte la bibliothèque Player One.
-- **Outils externes** : GraXpert existe en Linux (zip) et macOS (dmg) ; le CLI
-  rc-astro (BlurXTerminator) existe pour Windows, macOS ET Linux.
+- **Outils externes** : GraXpert existe en Linux (`graxpert-linux-amd64.zip`,
+  binaire **`GraXpert-linux`** à rendre exécutable) et macOS (dmg → bundle
+  `GraXpert.app`) ; le CLI rc-astro (BlurXTerminator) existe pour Windows,
+  macOS ET Linux. Détection détaillée : section « Détection de l'exécutable »
+  plus bas (v2.38.5).
 - **macOS** : Python de python.org (Tk inclus) ou `brew install python-tk@3.14`,
   puis bundle `.app` + signature/notarisation Apple (sinon Gatekeeper bloque).
 - **Route LINUX RETENUE (décision d'Alain, 27/09/2026) : ① script + venv**,
@@ -342,15 +345,62 @@ CORRECTIONS (gains + équilibrage + recalage) → netteté/SCNR → étirement.
 
 ## Doc outils externes (CLI)
 
+### Détection de l'exécutable (v2.38.5 — leçon du 27/09/2026)
+
+**Le nom du binaire n'est PAS le même selon l'OS** ; la comparaison est
+sensible à la casse sous Linux :
+
+| OS | GraXpert | rc-astro |
+|---|---|---|
+| Windows | `GraXpert.exe` (`%LOCALAPPDATA%\Programs\GraXpert\`) | `rc-astro.exe` |
+| Linux | **`GraXpert-linux`** (archive `graxpert-linux-amd64.zip`, `chmod u+x`) | `rc-astro` |
+| macOS | `GraXpert.app/Contents/MacOS/GraXpert` | `rc-astro` |
+
+Constat déclencheur : sous Linux, « la détection de l'emplacement de GraXpert
+ne s'est pas faite » — le code ne cherchait que `graxpert`/`GraXpert`, alors
+que le binaire s'appelle `GraXpert-linux` et qu'une archive décompressée n'est
+pas dans le PATH. Ordre de recherche implémenté (`external/detection.py`) :
+
+1. **l'INI DE SIRIL** (`graxpert_path`) — l'utilisateur l'a déjà désignée là ;
+2. la variable `AVASTACK_GRAXPERT` (resp. `AVASTACK_RC_ASTRO`) ;
+3. le PATH (`shutil.which`) ;
+4. les noms/emplacements de l'OS (`_noms_graxpert()`, `_sous_graxpert()`…) ;
+5. un filtre borné `GraXpert*` (dossier d'archive, AppImage exécutable).
+
+`avastack/siril_ini.py` lit le fichier de configuration de Siril
+(`~/.config/siril/configX.Y.ini` sous Linux, `%LOCALAPPDATA%\siril\` sous
+Windows, `~/Library/Application Support/org.free-astro.Siril/siril/` sous
+macOS — doc Siril 1.4.4) : `graxpert_path` pour l'outil,
+`catalogue_gaia_astro`/`catalogue_gaia_photo` pour le dossier des catalogues
+d'astrométrie. Piège : GKeyFile **échappe les antislashs** (`C:\\Users\\…`) —
+toute lecture doit déséchaîner, sinon le chemin n'existe pas.
+
+Piège majeur (mesuré) : la commande de REPLI (« `graxpert` … » sans chemin) est
+une chaîne non vide → elle était **persistée dans config.json** et restaurée
+sans re-test de l'exécutable : une détection ratée restait figée À VIE, même
+après installation de l'outil. Règles désormais :
+
+- on ne persiste jamais une commande dont l'exécutable est introuvable
+  (`external.live.outil_manquant()`) ;
+- à l'ouverture, une commande sans outil est **re-détectée** en conservant les
+  OPTIONS de l'utilisateur (`external.live.remplacer_binaire()`) : seuls le
+  chemin collé change, `-correction Division -smoothing 0.8` restent ;
+- l'interface AFFICHE l'état (« ✔ … : chemin » / « ⚠ … introuvable ») et
+  refuse de lancer un traitement externe sans outil (message AVANT, pas un
+  « command not found » noyé dans la sortie de l'outil).
+
 ### GraXpert CLI
 
 Syntaxe (le flag `-cli` est INDISPENSABLE en ligne de commande) :
 
 ```
-graxpert.exe <image> -cli -cmd background-extraction|denoising
-            [-correction Subtraction|Division] [-smoothing 0..1]
-            [-output <nom_sans_extension>] [-bg] [-ai_version X]
+GraXpert.exe <image> -cli -cmd background-extraction|denoising
+             [-correction Subtraction|Division] [-smoothing 0..1]
+             [-output <nom_sans_extension>] [-bg] [-ai_version X]
 ```
+
+(Sous Linux : `GraXpert-linux` au lieu de `GraXpert.exe` ; sous macOS : le
+binaire du bundle. Le reste de la ligne est identique.)
 
 Pièges :
 - `-correction` est **SENSIBLE À LA CASSE** (`Subtraction`/`Division`,
