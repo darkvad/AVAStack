@@ -241,6 +241,28 @@ Si un message parle d'« espace insuffisant » ou d'« écriture incomplète » 
 libère de la place (ou change le dossier de travail), puis relance le traitement.
 
 
+SI L'APPLICATION NE DÉMARRE PAS
+-------------------------------
+Depuis la v2.38.7, un démarrage impossible le DIT et le laisse ÉCRIT : plus de
+« rien du tout : aucune fenêtre, aucun message ».
+
+  - AVAStack écrit un JOURNAL à chaque lancement :
+        %APPDATA%\AVAStack\journal.txt
+    Il contient la version, le python utilisé, Tk, le dossier de travail et ses
+    étapes de démarrage — et, en cas d'échec, le traceback COMPLET de l'erreur ;
+  - quand un démarrage échoue, une BOÎTE DE DIALOGUE s'ouvre et donne la cause
+    (dépendance manquante, tkinter absent, …) avec le chemin du journal ;
+  - dans l'application, le bouton « Journal » (à côté de « Ouvrir », cadre
+    « Traitement externe (long) ») ouvre directement ce fichier ;
+  - si vraiment aucune fenêtre ne s'ouvre : lance l'application en terminal,
+    le message y apparaît aussitôt :
+
+        "%LOCALAPPDATA%\AVAStack\venv\Scripts\python.exe" ^
+            "%LOCALAPPDATA%\AVAStack\AVAStack.py"
+
+En cas de problème : ce fichier journal.txt contient tout ce qu'il faut pour
+comprendre sans deviner — joins-le à ton message.
+
 
 RÉGLAGES DE BXT (important) : le CLI rc-astro applique SES PROPRES
 valeurs par défaut tant qu'on ne passe rien — dont 0,50 pour

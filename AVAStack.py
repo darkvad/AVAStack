@@ -13,11 +13,73 @@ astropy pour FITS, zwoasi + SDK ASI pour les caméras ZWO).
 
 Test sans matériel : source « Simulée (démo) » → Démarrer.
 Test en dossier : choisir le dossier, éventuellement déposer une brute dedans → Démarrer.
+
+FILET DE DÉMARRAGE (v2.38.7) — constat RÉEL d'Alain (Linux, 27/09/2026) :
+« l'appli ne se lance pas sous linux », sans AUCUN message. Lancée par le menu
+(entrée .desktop en `Terminal=false`) ou par le lanceur `~/.local/bin/avastack`,
+l'application n'avait que son `stderr` pour parler : tout échec AVANT
+l'affichage (dépendance absente du venv, `tkinter` manquant, exception dans la
+construction de l'interface) était donc invisible ET sans trace écrite.
+
+Ici, le journal est ouvert AVANT le premier import de l'application (il ne
+dépend que de la bibliothèque standard), puis TOUT — imports compris — est
+enveloppé : l'échec est écrit dans `journal.txt` et MONTRÉ dans une boîte de
+dialogue, pour qu'un démarrage raté dise toujours pourquoi.
 """
 
-import avastack
-from avastack.ui.app import main
+import sys
+
+# --- ① le journal AVANT tout le reste (stdlib seulement) --------------------
+# `avastack/__init__.py` ne contient que la version et la documentation : cet
+# import ne peut pas échouer là où l'application, elle, échoue.
+try:
+    from avastack import journal
+except Exception as exc:                 # même le journal est hors service
+    journal = None
+    print("AVAStack : journal indisponible (%s: %s)" % (type(exc).__name__, exc),
+          file=sys.stderr)
+
+
+def _demarrer():
+    """Importe l'application et ouvre la fenêtre (étapes journalisées).
+
+    Les imports vivent ICI et non au niveau du module : c'est ce qui permet de
+    les envelopper — une dépendance absente doit dire son nom, pas mourir dans
+    un terminal que personne ne regarde."""
+    import avastack
+    if journal:
+        journal.note("démarrage", journal.trace_env())
+    from avastack.ui.app import main
+    if journal:
+        journal.note("démarrage", "interface importée : ouverture de la fenêtre")
+    main()
+    if journal:
+        journal.note("arrêt", "fenêtre fermée (sortie normale)")
+
+
+def _echec(exc):
+    """Démarrage impossible : journal + message VISIBLE + code de sortie 1."""
+    if journal:
+        court = journal.erreur("démarrage", exc)
+        journal.montrer(
+            "AVAStack ne peut pas démarrer",
+            court + "\n\nLe détail complet est dans le journal (bouton "
+            "« Journal » de la fenêtre) :\n" + journal.chemin_journal())
+    else:                                 # dernier recours : stderr, comme avant
+        import traceback
+        traceback.print_exception(type(exc), exc, exc.__traceback__)
+    return 1
+
 
 if __name__ == "__main__":
-    print(f"AVAStack v{avastack.AVASTACK_VERSION}")
-    main()
+    try:
+        import avastack
+        print(f"AVAStack v{avastack.AVASTACK_VERSION}")
+    except Exception:                     # le message n'est pas vital
+        pass
+    try:
+        _demarrer()
+    except SystemExit:
+        raise
+    except BaseException as e:            # y compris KeyboardInterrupt
+        raise SystemExit(_echec(e))

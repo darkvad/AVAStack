@@ -5,6 +5,7 @@ Structure (refactoring v2.0.0, depuis le fichier unique AstroLiveStack.py /
 AVAStack.py) :
   avastack.compat       — constantes multiplateforme (Windows/Linux/macOS)
   avastack.config       — persistance config.json
+  avastack.journal      — journal d'exécution (journal.txt) : « si l'appli ne démarre pas, elle le dit »
   avastack.travail      — dossier de travail, espace disque, écriture atomique
   avastack.siril_ini    — lecture de l'ini de Siril (outils + catalogues Gaia)
   avastack.images       — E/S image, débayerisation, utilitaires outils externes
@@ -16,9 +17,49 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.38.6"
+AVASTACK_VERSION = "2.38.7"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.38.7 : SI L'APPLICATION NE DÉMARRE PAS, ELLE LE DIT — journal, message
+#   visible, plus aucun échec muet au lancement (constat RÉEL d'Alain,
+#   27/09/2026, machine Linux : « l'appli ne se lance pas sous linux (elle se
+#   lance sous windows) », puis, relancé par le menu : « rien du tout : aucune
+#   fenêtre, aucun message »).
+#   CAUSE DE MÉTHODE : l'application n'a AUCUN journal (déjà la cause du
+#   silence de l'astrométrie en v2.38.4) et son seul canal d'erreur est
+#   `stderr` — or elle est lancée par une entrée de menu (`.desktop`,
+#   `Terminal=false`) ou par `~/.local/bin/avastack` : tout échec AVANT
+#   l'affichage (dépendance absente du venv, `tkinter` manquant, exception dans
+#   la construction de l'interface) est donc invisible ET sans trace. L'audit
+#   de la v2.38.6 (diffs, archive Linux, installateur, chaîne d'imports) n'a
+#   montré AUCUNE cause statique certaine : ce qui manquait, c'est la MESURE —
+#   d'où le filet ci-dessous, qui la rend possible.
+#   (1) module NEUF `avastack.journal` : journal sur disque
+#       (`<config>/journal.txt`, rotation à 1 Mio, jamais d'exception),
+#       `note()`, `erreur()` (traceback COMPLET conservé + texte court à
+#       montrer), `trace_env()` (versions, exécutable, Tk, OS, répertoire
+#       courant, dossier de travail et son espace libre), `montrer()` (boîte de
+#       dialogue Tk si possible, sinon `stderr`) et `ouvrir()` ;
+#   (2) FILET DE DÉMARRAGE aux deux points d'entrée : le journal est ouvert
+#       AVANT le premier import de l'application, TOUT (import de l'interface
+#       compris) est enveloppé, et un échec est journalisé PUIS MONTRÉ — un
+#       démarrage raté dit désormais pourquoi. `python -m avastack` n'est plus
+#       un second chemin à maintenir : il exécute le MÊME script (`runpy`) ;
+#   (3) ÉTAPES de démarrage journalisées (interface, configuration, nettoyage
+#       des résidus, « prêt », « arrêt ») et erreurs de RAPPEL d'interface
+#       (`Tk.report_callback_exception` → journal, au lieu d'un `stderr` que
+#       personne ne voit) ;
+#   (4) bouton « Journal » dans le cadre « Traitement externe », à côté du
+#       dossier de travail : il ouvre `journal.txt` (`travail.ouvrir_chemin`,
+#       qui ouvre aussi bien un FICHIER qu'un dossier) ;
+#   (5) test de DÉMARRAGE RÉEL à l'installation Linux : `install_avastack.sh`
+#       importe `avastack.ui.app` dans le venv et AFFICHE l'erreur exacte, au
+#       lieu de conclure « installation terminée » sur une application
+#       incapable de démarrer.
+#   Doc : LISEZMOI Linux/Windows (« si l'application ne démarre pas »),
+#   CLAUDE.md (leçon : tout échec au lancement doit laisser une trace ET être
+#   montré). Banc NEUF `bancs/_test_journal_jalon73.py`. Repli : v2.38.6.
+#
 # v2.38.6 : L'ESPACE DISQUE SE DIT — FIN DE L'ÉCRITURE PARTIELLE SILENCIEUSE
 #   (constat RÉEL d'Alain, 27/09/2026, Linux : « Erreur : 24962352 requested
 #   and 10902832 written » pendant BlurX, outil pourtant détecté au vert).

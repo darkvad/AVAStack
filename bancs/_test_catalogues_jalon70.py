@@ -223,10 +223,22 @@ _VRAI_DL = dl_mod.telecharger_catalogue_astro
 def faux_telechargement(dossier_cible, progression=None):
     # Un vrai transfert dure des minutes : deux paliers ESPACÉS suffisent à
     # vérifier que la progression s'affiche PENDANT le transfert.
+    #
+    # RENDEZ-VOUS OBLIGATOIRE (banc réparé le 27/09/2026) : `_tick` VIDE la file
+    # d'un coup (`get_nowait` en boucle). Si les deux paliers sont déjà dans la
+    # file au premier tick, le texte intermédiaire n'est jamais affiché — et le
+    # banc échouait alors SANS que l'application soit en cause (vérifié : la
+    # même vérification échoue sur v2.38.6, avant toute modification ; un vrai
+    # transfert, lui, annonce une progression par seconde, pas deux en 0,3 s).
+    # On attend donc que l'interface ait CONSOMMÉ chaque palier avant de poser
+    # le suivant.
     for fraction in (0.25, 0.75):
         if progression:
             progression("siril_cat_healpix8_astro.dat.bz2", fraction)
-        time.sleep(0.15)
+        fin = time.time() + 10.0
+        while not ui._cat_q.empty() and time.time() < fin:
+            time.sleep(0.01)          # le message est-il consommé par _tick ?
+        time.sleep(0.05)
     return catalogue_factice(dossier_cible,
                              "siril_cat_healpix8_astro.dat.bz2"), True
 

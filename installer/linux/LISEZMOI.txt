@@ -137,6 +137,34 @@ Pour libérer de la place : fermer AVAStack et supprimer les dossiers
 toute façon nettoyés au démarrage).
 
 
+SI L'APPLICATION NE DÉMARRE PAS
+-------------------------------
+Depuis la v2.38.7, un démarrage impossible le DIT et le laisse ÉCRIT : plus de
+« rien du tout : aucune fenêtre, aucun message ».
+
+  - AVAStack écrit un JOURNAL à chaque lancement :
+        ~/.config/AVAStack/journal.txt
+    (ou $XDG_CONFIG_HOME/AVAStack/journal.txt). Il contient la version, le
+    python utilisé, Tk, le dossier de travail et ses étapes de démarrage — et,
+    en cas d'échec, le traceback COMPLET de l'erreur ;
+  - quand un démarrage échoue, une BOÎTE DE DIALOGUE s'ouvre et donne la cause
+    (dépendance manquante, tkinter absent, …) avec le chemin du journal ;
+  - dans l'application, le bouton « Journal » (à côté de « Ouvrir », cadre
+    « Traitement externe (long) ») ouvre directement ce fichier ;
+  - si vraiment aucune fenêtre ne s'ouvre : relance en terminal, le message y
+    apparaît aussitôt :
+
+        bash ~/.local/share/AVAStack/lancer_avastack.sh
+
+  - l'installateur fait désormais ce test lui-même à la fin : « démarrage
+    (imports) OK » ou l'ERREUR EXACTE (paquet pip manquant, python3-tk, libgl1
+    / libglib2.0-0…). Si tu vois une erreur à cet endroit, c'est elle qu'il
+    faut corriger.
+
+En cas de problème : ce fichier journal.txt contient tout ce qu'il faut pour
+comprendre sans deviner — joins-le à ton message.
+
+
 BANCS CAMÉRA INSTALLÉS (sous-dossier bancs/cameras)
 -----------------------------------------------
 Seuls les OUTILS DE DIAGNOSTIC MATÉRIEL sont installés avec l'application :

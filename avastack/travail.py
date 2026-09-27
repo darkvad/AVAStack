@@ -251,10 +251,15 @@ def nettoyer_orphelins(age_h=AGE_ORPHELIN_H, dossiers=None, prefixe=PREFIXE):
     return n, octets
 
 
-def ouvrir_dossier(chemin):
-    """Ouvre `chemin` dans le gestionnaire de fichiers de l'OS.
+def ouvrir_chemin(chemin):
+    """Ouvre `chemin` (DOSSIER **ou FICHIER**) avec l'outil par défaut de l'OS.
     → "" si la commande est partie, sinon le message d'erreur (jamais
-    d'exception : l'appelant l'affiche tel quel)."""
+    d'exception : l'appelant l'affiche tel quel).
+
+    Un fichier est ouvert par son application associée, un dossier par le
+    gestionnaire de fichiers : c'est ce qui permet au bouton « Journal »
+    (v2.38.7) d'emprunter exactement le même chemin que « Ouvrir » (dossier de
+    travail)."""
     try:
         if IS_WINDOWS:
             os.startfile(chemin)                 # noqa: S606 (Windows)
@@ -265,4 +270,9 @@ def ouvrir_dossier(chemin):
         return ""
     except Exception as exc:                     # pas de gestionnaire : dire
         return str(exc)
+
+
+def ouvrir_dossier(chemin):
+    """Nom historique (v2.38.6) : ouvrir un dossier — cf. `ouvrir_chemin`."""
+    return ouvrir_chemin(chemin)
 

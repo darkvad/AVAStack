@@ -504,6 +504,57 @@ Leçon du 27/09/2026 (machine Linux d'Alain) : « Erreur : 24962352 requested an
   Tout nouveau contrôle dans un `try` large doit être placé après ses
   dépendances.
 
+## Démarrage, journal et échecs muets (v2.38.7)
+
+Constat du 27/09/2026 (machine Linux d'Alain, v2.38.6) : « l'appli ne se lance
+pas sous linux », puis, relancé par l'entrée de menu : « rien du tout : aucune
+fenêtre, aucun message ». L'audit du code n'a montré AUCUNE cause statique
+certaine (diffs de la version, archive Linux, installateur, chaîne d'imports) :
+ce qui manquait n'était pas une correction mais une MESURE.
+
+- **Une application lancée par un menu n'a pas de `stderr`.** L'entrée
+  `.desktop` est en `Terminal=false` et le lanceur (`~/.local/bin/avastack`)
+  n'est pas plus bavard : tout échec AVANT l'affichage (paquet absent du venv,
+  `tkinter` manquant, exception dans la construction de l'interface) est
+  INVISIBLE et ne laisse AUCUNE trace. **Règle : tout point d'entrée doit
+  écrire un journal sur disque ET MONTRER l'erreur** — même famille que le
+  silence de l'astrométrie en v2.38.4 (« l'application n'a pas de journal »).
+- **`avastack/journal.py`** : journal `<config>/journal.txt` (rotation à
+  1 Mio), `note()`, `erreur()` (traceback complet + texte court avec fichier et
+  ligne), `trace_env()`, `montrer()` (boîte Tk, repli `stderr`), `ouvrir()`. Le
+  journal est ouvert AVANT le premier import de l'application : il ne dépend que
+  de la bibliothèque standard (`config` importé PARESSEUSEMENT, repli sur le
+  dossier personnel) — c'est ce qui lui permet de dire POURQUOI l'application ne
+  démarre pas.
+- **Le filet vit dans les points d'entrée, UNE seule fois** : `AVAStack.py`
+  enveloppe TOUT (imports compris) et `python -m avastack` n'est plus un second
+  chemin — `avastack/__main__.py` exécute le même script (`runpy`). Deux
+  enchaînements recopiés finissent toujours par diverger.
+- **`Tk.report_callback_exception` doit être remplacé** (`main()` le branche sur
+  `journal.rapport_callback`) : sans cela, une exception dans un rappel (clic,
+  curseur, touche) n'est écrite que sur `stderr`, donc perdue pour un lancement
+  par le menu.
+- **`AVASTACK_SANS_DIALOGUE=1`** force `montrer()` en mode `stderr` : c'est ce
+  qui permet à un banc de traverser le chemin d'ÉCHEC RÉEL sans qu'une boîte de
+  dialogue attende qu'on la ferme (et à une exécution sans écran de continuer).
+- **Un démarrage cassé se mesure vraiment** : copier l'application dans un bac à
+  sable, y casser un module d'interface, lancer un SOUS-PROCESSUS et vérifier
+  code de sortie, journal et message — pas seulement simuler des appels (banc
+  `_test_journal_jalon73.py` [4]).
+- **À l'installation aussi** : `install_avastack.sh` importe `avastack.ui.app`
+  dans le venv à la fin (aucune fenêtre ouverte) et AFFICHE l'erreur exacte. Un
+  installateur qui conclut « terminé » sur une application incapable de démarrer
+  envoie l'utilisateur chercher au mauvais endroit.
+- **Un banc qui échoue n'accuse pas forcément le code** : avant de corriger,
+  rejouer la vérification sur la version PRÉCÉDENTE intacte (ici un `git
+  worktree` détaché sur HEAD, sans toucher à l'arbre de travail). Constat du
+  27/09/2026 : `_test_catalogues_jalon70.py` [4] échouait déjà sur v2.38.6. Cause
+  mesurée : `_tick` VIDE la file des messages du téléchargement d'un coup
+  (`get_nowait` en boucle) — un faux transfert qui pose ses deux paliers en
+  0,3 s n'a donc aucun texte intermédiaire à afficher, alors qu'un vrai
+  transfert annonce une progression par seconde. Réparé côté BANC (rendez-vous :
+  attendre que la file soit consommée avant de poser le palier suivant).
+
 ## Pièges (leçons du projet AVAStack)
 
 - **`cv2.imencode` ATTEND DU BGR** (constat réel du 25/09/2026, v2.36.1) :

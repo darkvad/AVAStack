@@ -329,7 +329,7 @@ ecrire_raccourcis() {
 
 # --- vérification -----------------------------------------------------------
 verifier_application() {
-    local py="$PREFIX/venv/bin/python"
+    local py="$PREFIX/venv/bin/python" err_demarrage
     info "vérification de l'installation"
     if "$py" -c 'import tkinter' >/dev/null 2>&1; then
         info "  Tkinter (interface)       OK"
@@ -352,6 +352,21 @@ verifier_application() {
         info "  caméras QHY (pip qhyccd)  OK"
     else
         info "  caméras                   non installées (mode dossier / simulé) — réglage livré"
+    fi
+    # v2.38.7 : DÉMARRAGE RÉEL de l'application — on IMPORTE l'interface dans le
+    # venv, depuis le dossier d'installation (aucune fenêtre ouverte). C'est ce
+    # test qui manquait le 27/09/2026 : l'installateur concluait « installation
+    # terminée », puis l'application ne s'ouvrait pas (« rien du tout : aucune
+    # fenêtre, aucun message ») et la cause exacte n'existait nulle part.
+    if err_demarrage="$( cd "$PREFIX" && "$py" -c 'import avastack.ui.app' 2>&1 )"
+    then
+        info "  démarrage (imports)       OK"
+    else
+        avis "  L'APPLICATION NE PEUT PAS DÉMARRER — erreur exacte :"
+        printf '%s\n' "$err_demarrage" | sed 's/^/      /' >&2 || true
+        avis "  corrige la cause ci-dessus, puis relance ce script ; le"
+        avis "  journal de l'application (journal.txt) gardera la trace des"
+        avis "  essais suivants : ${XDG_CONFIG_HOME:-$HOME/.config}/AVAStack/"
     fi
 }
 

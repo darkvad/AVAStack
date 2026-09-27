@@ -18,6 +18,7 @@ from PIL import Image, ImageTk
 
 from ..compat import IS_WINDOWS
 from .. import AVASTACK_VERSION
+from .. import journal
 from .. import travail
 from ..config import CONFIG, sauver_config
 from ..images import (CFA_MODE, borner_lineaire, lire_filtre_fits,
@@ -431,7 +432,13 @@ class App:
         self.ext_t0 = None              # début du traitement en cours (chrono)
         self._ext_popup = False        # erreur à signaler par popup
 
+        # v2.38.7 : chaque étape du démarrage est JOURNALISÉE (`journal.txt`) —
+        # c'est ce qui rend un démarrage raté diagnosticable quand la fenêtre
+        # n'apparaît jamais (constat d'Alain, 27/09/2026 : « l'appli ne se
+        # lance pas sous linux », sans aucun message).
+        journal.note("démarrage", "construction de l'interface")
         self._build_ui()
+        journal.note("démarrage", "restauration de la configuration")
         self._restaurer_config()
         # v2.38.6 : RÉSIDUS des sessions précédentes. Une fermeture brutale laisse
         # ses dossiers `avastack_*` derrière elle (frames de 32 Mo, FITS d'étapes) :
@@ -444,6 +451,10 @@ class App:
             self._travail_recycle = (0, 0)
         if self._travail_recycle[0]:
             self._maj_travail_vue()
+            journal.note("démarrage", "%d dossier(s) de travail recyclés (%s)"
+                         % (self._travail_recycle[0],
+                            travail.texte_octets(self._travail_recycle[1])))
+        journal.note("démarrage", "prêt")
         self.root.after(30, self._tick)
 
     # ------------------------------------------------------------ persistance config
@@ -1945,6 +1956,12 @@ class App:
         ttk.Button(rowtr, text="Ouvrir", width=7,
                    command=self._ouvrir_dossier_travail
                    ).pack(side="right", padx=(0, 4))
+        # v2.38.7 : le JOURNAL est à côté du dossier de travail — même famille
+        # de question (« où est-ce écrit, et qu'est-ce qui s'est passé ? ») et
+        # même accessibilité : c'est le premier fichier à regarder quand une
+        # chaîne échoue ou quand l'application ne démarre pas.
+        ttk.Button(rowtr, text="Journal", width=7,
+                   command=self._ouvrir_journal).pack(side="right", padx=(0, 4))
         self.var_ext_graxpert = tk.BooleanVar(value=False)
         ttk.Checkbutton(box, text="1. GraXpert — retrait de gradient",
                         variable=self.var_ext_graxpert).pack(anchor="w")
@@ -4684,6 +4701,19 @@ class App:
         if err:
             messagebox.showwarning("Dossier de travail",
                                    f"Impossible d'ouvrir « {d} » :\n{err}")
+
+    def _ouvrir_journal(self):
+        """Ouvre le JOURNAL de l'application (v2.38.7) : démarrages, erreurs
+        d'interface, échecs journalisés — c'est LE fichier à regarder (et à
+        envoyer) quand quelque chose ne va pas, en particulier quand la fenêtre
+        ne s'ouvre pas du tout."""
+        chemin = journal.chemin_journal()
+        err = journal.ouvrir()
+        if err:                              # aucun outil associé : le dire
+            messagebox.showwarning(
+                "Journal",
+                f"Impossible d'ouvrir le journal :\n{err}\n\nLe fichier est :\n"
+                f"{chemin}")
 
     def _pick_exe(self, var):
         """Sélectionne l'exécutable d'un outil externe et le place en tête de
@@ -7735,8 +7765,14 @@ class App:
 
 
 def main():
-    """Point d'entrée : ouvre la fenêtre principale."""
+    """Point d'entrée : ouvre la fenêtre principale.
+
+    v2.38.7 : `report_callback_exception` est remplacé par le journal — une
+    erreur dans un rappel d'interface (clic, curseur, touche) était écrite sur
+    `stderr` et nulle part ailleurs, donc invisible pour une application
+    lancée par le menu (constat d'Alain, 27/09/2026)."""
     root = tk.Tk()
+    root.report_callback_exception = journal.rapport_callback
     App(root)
     root.mainloop()
 

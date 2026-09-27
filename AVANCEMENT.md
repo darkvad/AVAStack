@@ -10,86 +10,89 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **DERNIÈRE PASSE LIVRÉE (poussée le 27/09/2026) — AVAStack v2.38.4 :
-  ASTRONOMÉTRIE SOUS LINUX (DONNÉES DITES ET TÉLÉCHARGEABLES)**. Cause mesurée :
-  `dossier_catalogues()` ne testait que `%LOCALAPPDATA%\Siril` et
-  `~/.local/share/kstars` → repli sur un dossier AVAStack VIDE → échec certain
-  du solveur interne, sans repli ASTAP sous Linux et sans trace (pas de
-  journal). ① `dossiers_siril()` par OS (+ XDG), le CONTENU (`siril_cat*`)
-  décide ; ② `chemin_catalogues` RÉELLEMENT honorée (ligne « Catalogues »,
-  bouton 📂) ; ③ bouton « ⬇ Gaia » (thread, reprise, sha256) ; ④
-  `MSG_CATALOGUE_ABSENT` → `SuiviAstrometrie` arrête les essais et repart SEUL ;
-  ⑤ LISEZMOI Windows/Linux + CLAUDE.md ; banc NEUF
-  `bancs/_test_catalogues_jalon70.py` (24 vérifs, 12 bancs rejoués verts).
-  **Reste à faire : ton essai réel sous Linux** (l'astrométrie doit DIRE
-  « DONNÉES MANQUANTES » puis fonctionner après téléchargement/dépôt).
+- **DERNIÈRE PASSE LIVRÉE (27/09/2026) — AVAStack v2.38.7 : SI L'APPLICATION NE
+  DÉMARRE PAS, ELLE LE DIT (journal + filet de démarrage)**. Ton constat : « l'appli
+  ne se lance pas sous linux », puis, relancé par le menu : « rien du tout : aucune
+  fenêtre, aucun message ». **Audit d'abord** (diffs de la v2.38.6, archive Linux,
+  installateur, chaîne d'imports) : AUCUNE cause statique certaine — ce qui manquait
+  n'était pas une correction mais une **mesure**. Cause de méthode : l'application
+  n'a **aucun journal** (même défaut que le silence de l'astrométrie en v2.38.4) et
+  son seul canal est `stderr`, que personne ne lit pour un lancement par entrée de
+  menu (`.desktop` en `Terminal=false`) ou par `~/.local/bin/avastack` : tout échec
+  AVANT l'affichage (paquet absent du venv, `tkinter` manquant, exception dans la
+  construction de l'interface) était invisible ET sans trace.
+  - **① module NEUF `avastack/journal.py`** : journal `<config>/journal.txt`
+    (rotation 1 Mio, jamais d'exception), `note()`, `erreur()` (traceback COMPLET
+    au journal + texte court à montrer, avec fichier et ligne), `trace_env()`
+    (versions, exécutable, Tk, OS, répertoire courant, dossier de travail + espace
+    libre), `montrer()` (boîte Tk, repli `stderr`), `ouvrir()` ;
+  - **② FILET dans les deux points d'entrée** : journal ouvert AVANT le premier
+    import de l'application, TOUT est enveloppé (imports compris), échec
+    journalisé PUIS MONTRÉ ; `python -m avastack` n'est plus un second chemin
+    (`runpy` exécute le même `AVAStack.py`) ;
+  - **③ étapes de démarrage journalisées** (interface, configuration, résidus,
+    « prêt », « arrêt ») et **`Tk.report_callback_exception` remplacé** : une
+    erreur de rappel (clic, curseur) n'est plus écrite seulement sur `stderr` ;
+  - **④ bouton « Journal »** à côté de « Ouvrir » (cadre « Traitement externe ») ;
+    `travail.ouvrir_chemin()` ouvre un FICHIER comme un dossier ;
+  - **⑤ test de DÉMARRAGE RÉEL à l'installation Linux** : `install_avastack.sh`
+    importe `avastack.ui.app` dans le venv et AFFICHE l'erreur exacte au lieu de
+    conclure « installation terminée » ;
+  - **⑥ `AVASTACK_SANS_DIALOGUE=1`** : force `montrer()` en `stderr` (bancs et
+    exécutions sans écran ; sans cela un banc traversant le chemin d'échec
+    attendrait qu'on ferme une boîte).
+  Banc NEUF `bancs/_test_journal_jalon73.py` (**27 vérifs**, dont un VRAI
+  sous-processus dont l'import d'interface est cassé : code 1 + traceback dans
+  `journal.txt`). Test de lancement réel sur Windows refait ✔ (journal écrit :
+  environnement, import, interface, configuration, « prêt »).
+  **Non-régression** : 13 bancs rejoués + le neuf, TOUS VERTS — dont un banc
+  RÉPARÉ, `_test_catalogues_jalon70.py` [4] (« la progression est affichée
+  pendant le transfert ») : mesuré d'abord qu'il échouait AUSSI sur la v2.38.6
+  intacte (worktree propre sur HEAD), donc pas une régression ; cause = `_tick`
+  VIDE la file d'un coup, et le faux transfert du banc posait ses deux paliers
+  en 0,3 s → aucun texte intermédiaire à voir ; réparé par un RENDEZ-VOUS (le
+  faux transfert attend que l'UI ait consommé chaque palier).
+  **Reste à faire : TON ESSAI SOUS LINUX** (l'application doit démarrer — et si
+  elle ne démarre pas, elle doit maintenant le DIRE et l'écrire : envoie-moi
+  `~/.config/AVAStack/journal.txt`). Artefact :
+  `installer/linux/output/avastack-setup-2.38.7-linux.tar.gz` (61 fichiers,
+  506 Kio, SHA-256 `6beecd645a8ba97b87456a24c11c2b32a12ceb3aa5057057e647ef32e7d19a3d`) ;
+  installateur Windows **à recompiler sur cette machine** (Inno Setup absent ici).
+  Repli si régression : v2.38.6.
 
-- **PASSE LIVRÉE ET POUSSÉE (27/09/2026) — AVAStack v2.38.5 : DÉTECTION DES
-  OUTILS EXTERNES** (GraXpert sous Linux). Cause prouvée : sous Linux le binaire
-  officiel s'appelle `GraXpert-linux` (archive `graxpert-linux-amd64.zip`) alors
-  que le code ne cherchait que `graxpert`/`GraXpert` — casse sensible sous Linux,
-  archive hors PATH ; aggravant : la commande de repli (« graxpert … », binaire
-  nu) était PERSISTÉE dans config.json et restaurée sans re-test, donc une
-  détection ratée restait figée à VIE. ① noms/racines par OS + filtre `GraXpert*` ;
-  ② module `avastack/siril_ini.py` (ini de Siril : `graxpert_path`,
-  `catalogue_gaia_*`) ; ③ `outil_manquant()` + re-détection qui CONSERVE les
-  options ; ④ ligne d'état « ✔ / ⚠ » sous chaque commande + refus AVANT de
-  lancer ; ⑤ doc ; banc `_test_outils_jalon71.py` (38 vérifs) ; installateurs
-  = 5 diagnostics caméra seulement (`_diag_*`). Repli : v2.38.4.
+- **Jalons antérieurs immédiats** (détails dans le changelog de
+  `avastack/__init__.py` et l'historique git) : **v2.38.6** espace disque (dossier
+  de travail effectif + alerte tmpfs, écriture atomique `.part`, plafond
+  `min(20 Go, 50 % du libre)`, fichiers de travail CONSERVÉS à l'échec) — ton essai
+  restait EN ATTENTE, il est désormais couvert par l'essai de la v2.38.7 ;
+  **v2.38.5** détection des outils externes (`GraXpert-linux`, ini de Siril,
+  état ✔/⚠ affiché) ✔ ; **v2.38.4** astrométrie Linux (dossiers Siril par OS,
+  `chemin_catalogues` honorée, bouton ⬇ Gaia, « DONNÉES MANQUANTES » dit au lieu
+  d'un silence) ✔.
 
-- **PASSE LIVRÉE ET POUSSÉE (commit `1cee330`, 27/09/2026) — AVAStack v2.38.6 :
-  L'ESPACE DISQUE SE DIT (FIN DE L'ÉCRITURE PARTIELLE SILENCIEUSE)** (code + banc
-  + doc + installateurs). Ton constat sous Linux : « Erreur : 24962352 requested
-  and 10902832 written » pendant BlurX, outil pourtant détecté au vert. **Cause
-  trouvée et mesurée** (tes `df -h` + `du`) :
-  - `numpy.ndarray.tofile()` (appelé par **astropy** pour écrire les données d'un
-    FITS : `io/fits/util.py::_array_to_file` « delegates directly to
-    ndarray.tofile ») a écrit **43 %** du fichier : 10 902 832 octets sur
-    24 962 352 — tout ce qui RESTAIT DE LIBRE. Signature d'un **volume plein**,
-    pas d'un chemin invalide (lequel échouerait à l'ouverture) ;
-  - `/tmp` de ta machine est un **tmpfs de 4,6 Go**, que l'application
-    remplissait ELLE-MÊME : 2,8 Go de dossiers `avastack_frames_*` (frames de
-    33 629 760 octets = ta Uranus-C Pro en float32) pendant que **116 Go**
-    dormaient sur `/` ;
-  - trois défauts démontrés : ① le plafond d'archivage était de **20 Go EN DUR**
-    (inopérant dans un volume de 4,6 Go) ; ② **rien ne nettoyait** les résidus
-    d'une session morte ; ③ l'échec ne disait ni le fichier, ni la cause, ni le
-    volume — et le dossier de travail était effacé par le `finally`.
-  - **① module NEUF `avastack/travail.py`** : dossier de travail effectif
-    (réglage > repli hors tmpfs `~/.cache/avastack` > temporaire système),
-    création UNIQUE des dossiers temporaires, espace libre, détection **tmpfs**
-    (`/proc/mounts`, point de montage le plus long), messages chiffrés, plafond
-    calculé sur l'espace réel, nettoyage des orphelins, ouverture du dossier ;
-  - **② réglage + BOUTON « dossier de travail »** dans l'interface (choix
-    persistant, espace libre affiché, alerte « ⚠ en RAM (tmpfs) », bouton
-    « Ouvrir »), rafraîchi toutes les 10 s ;
-  - **③ écriture ATOMIQUE** (`images.ecrire_fichier`/`ecrire_fits`) : espace
-    vérifié AVANT, fichier `.part` renommé, partiel TOUJOURS supprimé (plus de
-    FITS tronqué qui a l'air valide) — une seule route d'écriture FITS ;
-  - **④ messages clairs** : « écriture incomplète (10,4 Mo sur 23,8) — plus
-    d'espace sur le volume de « /tmp » (1,2 Mo libres, en RAM : tmpfs) : … »
-    (ENOSPC, quota et `ulimit -f` nommés) ;
-  - **⑤ contrôle d'espace AVANT la chaîne externe** (image × nb d'étapes) : refus
-    immédiat au lieu d'un échec après plusieurs minutes ;
-  - **⑥ plafond d'archivage RÉEL** : `min(20 Go, 50 % de l'espace libre)`,
-    recalculé à chaque frame ;
-  - **⑦ fichiers de travail CONSERVÉS** en cas d'échec (journal de l'outil
-    compris, chemin annoncé) + résidus nettoyés au démarrage.
-  - Doc : LISEZMOI Windows/Linux (« espace disque et dossier de travail »),
-    CLAUDE.md (leçon astropy → `numpy.tofile`). Banc NEUF
-    `bancs/_test_espace_jalon72.py` (**25 vérifications**).
-  - **Non-régression : 21 bancs rejoués, TOUS VERTS** — dont une RÉGRESSION
-    ATTRAPÉE ET CORRIGÉE : mon contrôle d'espace utilisait `n_etapes` avant sa
-    définition (chaîne par couche) et le `except` général en faisait un échec
-    SILENCIEUX (`_test_gradient_couche_jalon24.py`) → contrôle déplacé après ses
-    dépendances, consigné dans CLAUDE.md.
-  - Reste à faire : ta réinstallation Linux puis ton essai (la ligne doit
-    afficher le dossier de travail, son espace, et BXT doit passer).
-  - **Artefacts reconstruits** (à transférer vers ta machine Linux) :
-    `installer/windows/output/avastack-setup-2.38.6.exe` et
-    `installer/linux/output/avastack-setup-2.38.6-linux.tar.gz` (60 fichiers,
-    499 Kio, `SHA-256 59f21d2311be9bbbbacf78ec212170e76764357f2865276fbc5ca6ff971ac375`).
-    Repli si régression : v2.38.5.
+- **PASSES TERMINÉES (27/09/2026) — v2.38.5 et v2.38.6** (détails dans le
+  changelog de `avastack/__init__.py` et l'historique git : commits `98c83eb`,
+  `694ad3b`, `1cee330`) :
+  - **v2.38.5 — détection des outils externes** : sous Linux le binaire officiel
+    s'appelle `GraXpert-linux` alors que le code ne cherchait que
+    `graxpert`/`GraXpert` (casse sensible, archive hors PATH) ; aggravant, la
+    commande de REPLI (« graxpert … », binaire nu) était PERSISTÉE dans
+    config.json sans re-test, donc une détection ratée restait figée à vie.
+    Corrigé : noms et racines PAR OS, ini de Siril comme source de détection
+    (`avastack/siril_ini.py`), `outil_manquant()` + re-détection qui CONSERVE les
+    options, ligne d'état « ✔ / ⚠ » sous chaque commande, refus AVANT de lancer.
+    Banc `_test_outils_jalon71.py`.
+  - **v2.38.6 — l'espace disque se dit** : « Erreur : 24962352 requested and
+    10902832 written » pendant BlurX = écriture PARTIELLE par
+    `numpy.ndarray.tofile()` (appelé par astropy pour un FITS) sur un `/tmp`
+    **tmpfs de 4,6 Go** que l'application remplissait elle-même (2,8 Go de
+    dossiers `avastack_frames_*`, frames de 32 Mio) pendant que 116 Go dormaient
+    sur le disque. Corrigé : module NEUF `avastack/travail.py` (dossier de
+    travail EFFECTIF, alerte « en RAM (tmpfs) », messages chiffrés), réglage +
+    bouton « dossier de travail », écriture ATOMIQUE (`.part` renommé, partiel
+    supprimé), contrôle d'espace AVANT la chaîne externe, plafond d'archivage
+    `min(20 Go, 50 % de l'espace libre)`, fichiers de travail CONSERVÉS en cas
+    d'échec. Banc `_test_espace_jalon72.py` (25 vérifs).
 
 - **CLÔTURE DE SESSION (27/09/2026, soir)** — trois passes livrées et poussées le
   même jour, dans l'ordre : v2.38.4 (astrométrie Linux : chemins par OS,
@@ -101,8 +104,8 @@ dans le changelog du source et l'historique git.)
   (tous sur `origin/master`, arbre propre).
   - **VALIDÉ sur ta machine Linux** : astrométrie ✔, SPCC ✔, GraXpert ✔
     (v2.38.4 et v2.38.5 confirmées par l'effet, pas par le code).
-  - **EN ATTENTE** : ton essai de la v2.38.6 (dossier de travail affiché,
-    BXT qui passe) et, si tu veux, le rendu BXT avec `--sn 0.3`.
+  - **EN ATTENTE** : ton essai de la v2.38.7 sous Linux (démarrage = le sujet de
+    cette passe) — et, si tu veux, le rendu BXT avec `--sn 0.3`.
   - **Bancs** : 22 verts sur cette session (dont le neuf
     `_test_espace_jalon72.py`, 25 vérifs, et `_test_outils_jalon71.py`, 38) ;
     deux bancs RÉPARÉS au passage (assistant `_gx_factice.py` resté à la racine,
@@ -286,14 +289,19 @@ dans le changelog du source et l'historique git.)
 
 ## En attente / prochaine session
 
-- **AUCUN DÉFAUT CONNU OUVERT** sur les v2.38.3 à v2.38.6 (livrées).
+- **AUCUN DÉFAUT CONNU OUVERT** sur les v2.38.3 à v2.38.7 (livrées).
   **CONFIRMÉ PAR TON TEST RÉEL du 27/09/2026 (Linux)** : astrométrie ✔, SPCC ✔,
   GraXpert ✔ (« astrométrie, spcc OK / GraXpert OK ») → v2.38.4 et v2.38.5
   **validées sur ta machine**. **EN ATTENTE** :
-  - **v2.38.6 — espace disque** : la ligne « dossier de travail » doit afficher
-    le dossier utilisé + son espace libre (+ « ⚠ en RAM (tmpfs) » si `/tmp` en
-    est un), et BlurX doit passer sans « requested and written » — le dossier de
-    travail a été déplacé sur un disque (réglage, ou `TMPDIR` en attendant) ;
+  - **v2.38.7 — DÉMARRAGE SOUS LINUX (le sujet en cours)** : l'application doit
+    s'ouvrir ; si elle ne s'ouvre pas, elle doit maintenant le DIRE (boîte de
+    dialogue) et l'ÉCRIRE (`~/.config/AVAStack/journal.txt`) — c'est ce fichier
+    qu'il me faut pour corriger la cause au lieu de la deviner. La ligne
+    « journal de démarrage » du journal donne déjà : version, python, Tk, OS,
+    dossier de travail et son espace libre ;
+  - **v2.38.6 — espace disque** : à revoir dans la même session — la ligne
+    « dossier de travail » doit afficher le dossier + son espace libre
+    (+ « ⚠ en RAM (tmpfs) ») et BlurX doit passer sans « requested and written » ;
   - **v2.38.3 — rendu BXT** : ta commande MÉMORISÉE reste prioritaire ; ajoute
     `--sn 0.3` au champ pour profiter du réglage mesuré (moucheté bleu divisé
     par ~2,7). Ton essai du 27/09 n'a pas pu conclure (il a buté sur l'espace
