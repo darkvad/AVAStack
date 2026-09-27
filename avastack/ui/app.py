@@ -8,7 +8,6 @@ import time
 import math
 import queue
 import shutil
-import tempfile
 import threading
 
 import numpy as np
@@ -19,6 +18,7 @@ from PIL import Image, ImageTk
 
 from ..compat import IS_WINDOWS
 from .. import AVASTACK_VERSION
+from .. import travail
 from ..config import CONFIG, sauver_config
 from ..images import (CFA_MODE, borner_lineaire, lire_filtre_fits,
                       load_image, save_image, find_output, auto_unflip)
@@ -433,6 +433,17 @@ class App:
 
         self._build_ui()
         self._restaurer_config()
+        # v2.38.6 : RÉSIDUS des sessions précédentes. Une fermeture brutale laisse
+        # ses dossiers `avastack_*` derrière elle (frames de 32 Mo, FITS d'étapes) :
+        # 2,8 Go constatés dans le `/tmp` d'Alain (un tmpfs → de la RAM perdue),
+        # parce que rien ne les récupérait jamais. Le nettoyage ne touche JAMAIS
+        # un dossier récent (session en cours, y compris d'une autre instance).
+        try:
+            self._travail_recycle = travail.nettoyer_orphelins()
+        except Exception:
+            self._travail_recycle = (0, 0)
+        if self._travail_recycle[0]:
+            self._maj_travail_vue()
         self.root.after(30, self._tick)
 
     # ------------------------------------------------------------ persistance config
@@ -505,6 +516,8 @@ class App:
         # « Traitement externe » (chemin trouvé, ou outil introuvable) — c'est
         # ce qui manquait pour que le constat d'Alain soit visible immédiatement.
         self._maj_etat_outils()
+        # v2.38.6 : dossier de travail + espace libre (cf. _maj_travail_vue).
+        self._maj_travail_vue()
         if c.get("ext_graxpert"):
             self.var_ext_graxpert.set(True)
         # Jalons 7/8 (remis le 16/09/2026) — débruitage du traitement
@@ -1916,6 +1929,22 @@ class App:
         # de _run_external ; le « live » reste réservé aux étapes rapides)
         box = ttk.LabelFrame(left, text="Traitement externe (long)", padding=6)
         box.pack(fill="x", pady=3)
+        # v2.38.6 : ligne « dossier de travail » — c'est là que vont les fichiers
+        # LOURDS (frames archivées ~32 Mo, FITS d'étape des outils). Elle dit OÙ
+        # et l'ESPACE RESTANT : c'est exactement ce qui manquait le 27/09/2026,
+        # quand /tmp (tmpfs, 4,6 Go) s'est rempli et que la chaîne BlurX a échoué
+        # sur une écriture partielle (« 24962352 requested and 10902832 written »
+        # — message brut de numpy, ni fichier ni cause).
+        rowtr = ttk.Frame(box)
+        rowtr.pack(fill="x")
+        self.lbl_travail = ttk.Label(rowtr, text="—", foreground="#888888",
+                                     wraplength=250)
+        self.lbl_travail.pack(side="left")
+        ttk.Button(rowtr, text="📂", width=3,
+                   command=self._choisir_dossier_travail).pack(side="right")
+        ttk.Button(rowtr, text="Ouvrir", width=7,
+                   command=self._ouvrir_dossier_travail
+                   ).pack(side="right", padx=(0, 4))
         self.var_ext_graxpert = tk.BooleanVar(value=False)
         ttk.Checkbutton(box, text="1. GraXpert — retrait de gradient",
                         variable=self.var_ext_graxpert).pack(anchor="w")
@@ -4582,6 +4611,80 @@ class App:
                 lbl.config(text=f"✔ {nom} : {gx_live.binaire_de(cmd)}",
                            foreground="#1d7f1d")
 
+    def _maj_travail_vue(self):
+        """Ligne « dossier de travail » (v2.38.6) : le dossier RÉELLEMENT utilisé
+        pour les fichiers lourds (frames archivées, FITS des outils), son espace
+        libre, et l'alerte « en RAM » s'il s'agit d'un tmpfs.
+
+        Constat du 27/09/2026 : `/tmp` (tmpfs 4,6 Go) s'est rempli pendant une
+        chaîne BlurX → écriture partielle d'un FITS → « 24962352 requested and
+        10902832 written », message incompréhensible et AUCUNE indication du
+        dossier utilisé. Cette ligne est la réponse : ce que l'application écrit,
+        où elle l'écrit, et combien d'espace il reste."""
+        if getattr(self, "lbl_travail", None) is None:
+            return
+        try:
+            d = travail.dossier_travail()
+        except Exception as exc:                     # dossier illisible
+            self.lbl_travail.config(text=f"dossier de travail : {exc}",
+                                    foreground="#d04040")
+            return
+        libre = travail.espace_libre(d)
+        ram = travail.est_tmpfs(d)
+        txt = f"dossier de travail : {d}"
+        if libre:
+            txt += f" — {travail.texte_octets(libre)} libres"
+        if ram:
+            txt += " ⚠ en RAM (tmpfs) : préférez un disque"
+            col = "#c98a00"
+        elif libre and libre < (1 << 30):
+            txt += " ⚠ presque plein"
+            col = "#c98a00"
+        else:
+            col = "#888888"
+        recy = getattr(self, "_travail_recycle", None)
+        if recy and recy[0]:
+            txt += (f" · {recy[0]} dossier(s) recyclés "
+                    f"({travail.texte_octets(recy[1])})")
+        self.lbl_travail.config(text=txt, foreground=col)
+
+    def _choisir_dossier_travail(self):
+        """Choisit le dossier de travail et le PERSISTE (config
+        `dossier_travail`) : c'est là que vont les frames archivées et les FITS
+        des outils externes. Le volume choisi peut être un disque de données."""
+        try:
+            depart = travail.dossier_travail()
+        except Exception:
+            depart = os.path.expanduser("~")
+        d = filedialog.askdirectory(
+            title="Dossier de travail (fichiers temporaires lourds)",
+            initialdir=depart)
+        if not d:
+            return
+        CONFIG["dossier_travail"] = d
+        sauver_config(dict(CONFIG))
+        self._maj_travail_vue()
+        libre = travail.espace_libre(d)
+        messagebox.showinfo(
+            "Dossier de travail",
+            "Les fichiers de travail (frames archivées, FITS des étapes "
+            f"d'outils) seront écrits dans :\n{d}\n\n"
+            f"Espace libre : {travail.texte_octets(libre)}"
+            + ("\n\n⚠ Ce dossier est sur un volume de RAM (tmpfs) : il peut "
+               "saturer en pleine session — un disque vaut mieux."
+               if travail.est_tmpfs(d) else ""))
+
+    def _ouvrir_dossier_travail(self):
+        """Ouvre le dossier de travail dans le gestionnaire de fichiers : c'est
+        là que se trouvent les fichiers CONSERVÉS après l'échec d'une chaîne
+        externe (FITS d'entrée, sorties d'étape, journal `outils_sortie.txt`
+        de l'outil) — de quoi comprendre ce qui s'est passé."""
+        d = travail.dossier_travail()
+        err = travail.ouvrir_dossier(d)
+        if err:
+            messagebox.showwarning("Dossier de travail",
+                                   f"Impossible d'ouvrir « {d} » :\n{err}")
+
     def _pick_exe(self, var):
         """Sélectionne l'exécutable d'un outil externe et le place en tête de
         la commande — les options déjà saisies ({input}, {output}…) sont
@@ -4806,7 +4909,19 @@ class App:
                     self._set_ext_msg(f"Commande {name} incomplète : il manque "
                                       "{{input}} ou {output}/{outbase}.", state="error")
                     return
-            tmp = tempfile.mkdtemp(prefix="avastack_")
+            tmp = travail.creer_dossier("avastack_")
+            # v2.38.6 : la chaîne écrit PLUSIEURS FITS de la taille de l'image
+            # (entrée + une par étape). On vérifie l'espace AVANT d'écrire et on
+            # REFUSE en une phrase chiffrée, plutôt que de remplir le volume à la
+            # 3e étape après plusieurs minutes de calcul (constat du 27/09/2026 :
+            # « 24962352 requested and 10902832 written » sur un /tmp plein).
+            ok_esp, msg_esp = travail.verifier_espace(
+                tmp, int(np.asarray(stack).nbytes) * (len(steps) + 2),
+                f"la chaîne externe ({len(steps)} étape(s) + fichiers de "
+                "travail)")
+            if not ok_esp:
+                self._set_ext_msg(msg_esp, state="error")
+                return
             cur = os.path.join(tmp, "stack.fits")
             # Jalon 14 : les outils externes (GraXpert, et BXT côté PixInsight)
             # lisent le FITS avec les CANAUX sur NAXIS3 ((C, H, W) côté
@@ -4945,8 +5060,34 @@ class App:
         except Exception as e:
             self._set_ext_msg(f"Erreur : {e}", state="error")
         finally:
-            if tmp is not None:
+            self._fin_ext_tmp(tmp, session)
+
+    def _fin_ext_tmp(self, tmp, session):
+        """Fin de chaîne externe : nettoyage du dossier de travail — SAUF en cas
+        d'échec, où il est CONSERVÉ et annoncé (v2.38.6).
+
+        POURQUOI : le dossier était supprimé quoi qu'il arrive, donc le journal
+        de l'outil (`outils_sortie.txt`), les FITS d'entrée et les sorties
+        d'étape disparaissaient avec l'erreur — le « requested and written » du
+        27/09/2026 était indiagnosticable. Un dossier VIDÉ (échec avant toute
+        écriture) est supprimé comme avant (rien à conserver)."""
+        try:
+            if tmp is None:
+                pass
+            elif self.ext_state == "error":
+                vide = True
+                try:
+                    vide = not os.listdir(tmp)
+                except OSError:
+                    vide = True
+                if vide:
+                    shutil.rmtree(tmp, ignore_errors=True)
+                else:
+                    self.ext_msg = (f"{self.ext_msg} — fichiers de travail "
+                                    f"conservés : {tmp}")
+            else:
                 shutil.rmtree(tmp, ignore_errors=True)
+        finally:
             if session == self._session:
                 self.ext_busy = False
 
@@ -4981,11 +5122,22 @@ class App:
             rayon_chroma_ext = (float(self.ext_job[14])
                                 if len(self.ext_job) > 14
                                 else couleurs_mod.RAYON_CHROMA_DEFAUT)
-            tmp = tempfile.mkdtemp(prefix="avastack_compo_")
+            tmp = travail.creer_dossier("avastack_compo_")
             journal = os.path.join(tmp, "outils_sortie.txt")
             n_etapes = ((len(canaux) if use_gx else 0)
                         + (len(canaux) if use_dn and mode_dn == "graxpert"
                            else 0))
+            # v2.38.6 : espace vérifié AVANT d'écrire (entrée + une sortie par
+            # étape) — refus chiffré et immédiat plutôt qu'un volume saturé en
+            # pleine chaîne. Placé APRÈS `n_etapes` (piège attrapé par le banc
+            # jalon 24 : un `NameError` ici était avalé par le `except` et
+            # l'échec apparaissait… en silence).
+            ok_esp, msg_esp = travail.verifier_espace(
+                tmp, int(np.asarray(comp).nbytes) * (n_etapes + 2),
+                f"la chaîne externe par couche ({n_etapes} étape(s))")
+            if not ok_esp:
+                self._set_ext_msg(msg_esp, state="error")
+                return
             i_etape, msgs = 0, []
             traites = self._compo_couches_traitees(
                 canaux, use_gx, cmd_gx, use_dn, cmd_dn, mode_dn, force_dn,
@@ -5079,8 +5231,7 @@ class App:
         except Exception as e:
             self._set_ext_msg(f"Erreur : {e}", state="error")
         finally:
-            if tmp is not None:
-                shutil.rmtree(tmp, ignore_errors=True)
+            self._fin_ext_tmp(tmp, None)
 
     def _compo_couches_traitees(self, canaux, use_gx, cmd_gx, use_dn, cmd_dn,
                                 mode_dn, force_dn, tmp, journal, n_frames,
@@ -7246,6 +7397,12 @@ class App:
         self._sync_vl_couleur_vue()
         self._sync_vl_sharp_vue()
         self._maj_lbl_cadence()   # jalon 44 : état de la cadence en direct
+        # v2.38.6 : espace du dossier de travail, rafraîchi toutes les 10 s (un
+        # appel système anodin) — la saturation devient VISIBLE pendant la
+        # session au lieu d'être découverte par un échec en pleine chaîne.
+        if time.time() - getattr(self, "_travail_t0", 0.0) > 10.0:
+            self._travail_t0 = time.time()
+            self._maj_travail_vue()
         if self.disp.sh_new:      # netteté live : message du solveur (jalon 12)
             self.disp.sh_new = False
             self._maj_lbl_sharp()

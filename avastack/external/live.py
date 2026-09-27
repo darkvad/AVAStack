@@ -20,11 +20,11 @@ import hashlib
 import os
 import shutil
 import subprocess
-import tempfile
 
 import numpy as np
 
-from ..images import auto_unflip, find_output, load_image, save_image
+from .. import travail
+from ..images import auto_unflip, ecrire_fits, find_output, load_image
 
 TIMEOUT_S = 300        # au-delà, l'outil est considéré bloqué (1er lancement
                        # possible = téléchargement du modèle IA → long)
@@ -50,13 +50,13 @@ TIMEOUT_S = 300        # au-delà, l'outil est considéré bloqué (1er lancemen
 
 def _ecrire_entree(chemin, img):
     """Écrit l'aperçu pour l'outil externe. RGB : FITS canaux-en-tête
-    (convention attendue par le lecteur de GraXpert, cf. ci-dessus)."""
-    if img.ndim == 3:
-        from astropy.io import fits
-        d = np.ascontiguousarray(np.transpose(img, (2, 0, 1)))
-        fits.PrimaryHDU(d.astype(np.float32)).writeto(chemin, overwrite=True)
-    else:
-        save_image(chemin, img)
+    (convention attendue par le lecteur de GraXpert, cf. ci-dessus).
+
+    v2.38.6 : une SEULE route d'écriture FITS pour toute l'application
+    (`images.ecrire_fits` : espace vérifié avant, écriture `.part` renommée,
+    message clair si le volume est plein) — c'est ici que se jouait le
+    « N requested and M written » incompréhensible du 27/09/2026."""
+    return ecrire_fits(chemin, img)
 
 
 def _lire_sortie(chemin):
@@ -183,8 +183,18 @@ def appliquer(img, cmd, timeout=TIMEOUT_S):
         return img, (f"{manque} — réglez le chemin dans « Traitement externe » "
                      "(bouton « … ») ou installez l'outil")
     tmp = None
+    garder = False
     try:
-        tmp = tempfile.mkdtemp(prefix="avastack_gxlive_")
+        tmp = travail.creer_dossier("avastack_gxlive_")
+
+        def _msg_err(texte):
+            """Marque l'échec et dit OÙ sont les fichiers de travail conservés
+            (v2.38.6 : sans cela, le dossier — et le journal de l'outil — était
+            effacé quoi qu'il arrive, donc l'échec restait inexplicable)."""
+            nonlocal garder
+            garder = True
+            return f"{texte} — fichiers de travail conservés : {tmp}"
+
         src = os.path.join(tmp, "in.fits")
         outbase = os.path.join(tmp, "out")
         _ecrire_entree(src, img)
@@ -193,7 +203,7 @@ def appliquer(img, cmd, timeout=TIMEOUT_S):
                        .replace("{outbase}", outbase))
         code, err = _run_bloquant_survivable(commande, tmp, timeout)
         if err:
-            return img, err
+            return img, _msg_err(err)
         if code != 0:
             lignes = []
             try:
@@ -203,29 +213,34 @@ def appliquer(img, cmd, timeout=TIMEOUT_S):
             except OSError:
                 pass
             detail = lignes[-1] if lignes else "aucun message"
-            return img, f"code {code} : {detail}"
+            return img, _msg_err(f"code {code} : {detail}")
         res = find_output(src, outbase)
         if res is None:
-            return img, "fichier de sortie introuvable (l'outil n'a rien écrit)"
+            return img, _msg_err("fichier de sortie introuvable (l'outil n'a "
+                                 "rien écrit)")
         out = _lire_sortie(res)
         out = auto_unflip(out, img)       # éventuel miroir vertical FITS
         out = np.asarray(out, dtype=np.float32)
         if out.shape != img.shape:
-            return img, (f"dimensions de sortie {out.shape[:2]} ≠ "
-                         f"entrée {img.shape[:2]}")
+            return img, _msg_err(f"dimensions de sortie {out.shape[:2]} ≠ "
+                                 f"entrée {img.shape[:2]}")
         # Jalon 23b : sortie DÉGÉNÉRÉE (pixels non finis, image vide —
         # constat réel d'Alain en SHO sans S : « plus d'image dans la
         # visu ») → repli sur l'image brute avec un message clair, au
         # lieu d'un noir inexpliqué après étirement.
         if not np.isfinite(out).all():
-            return img, ("sortie contenant des pixels non finis (NaN/Inf) "
-                         "— outil ignoré, image brute conservée")
+            return img, _msg_err("sortie contenant des pixels non finis "
+                                 "(NaN/Inf) — outil ignoré, image brute "
+                                 "conservée")
         if float(np.max(np.abs(out))) < 1e-9:
-            return img, ("sortie vide (image noire) — outil ignoré, "
-                         "image brute conservée")
+            return img, _msg_err("sortie vide (image noire) — outil ignoré, "
+                                 "image brute conservée")
         return out, ""
     except Exception as exc:              # E/S, lecture…
-        return img, str(exc)
+        return img, (f"{exc}"
+                     + (f" — fichiers de travail conservés : {tmp}"
+                        if tmp else ""))
     finally:
-        if tmp is not None:
+        # v2.38.6 : le dossier n'est supprimé QUE si tout s'est bien passé.
+        if tmp is not None and not garder:
             shutil.rmtree(tmp, ignore_errors=True)

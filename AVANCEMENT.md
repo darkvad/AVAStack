@@ -24,72 +24,67 @@ dans le changelog du source et l'historique git.)
   **Reste à faire : ton essai réel sous Linux** (l'astrométrie doit DIRE
   « DONNÉES MANQUANTES » puis fonctionner après téléchargement/dépôt).
 
-- **PASSE EN COURS — AVAStack v2.38.5 : DÉTECTION DES OUTILS EXTERNES (GRAXPERT
-  SOUS LINUX, FIN DES ÉCHECS SILENCIEUX)** (code + banc + doc + installateurs,
-  27/09/2026). Ton constat après l'installateur Linux : « la détection de
-  l'emplacement de GraXpert ne s'est pas faite (celle de rec-astro BlurX oui) ».
-  **Cause trouvée et prouvée** :
-  - sous Linux le binaire officiel s'appelle **`GraXpert-linux`** (archive
-    `graxpert-linux-amd64.zip` des Releases officielles ; README : « chmod u+x
-    ./GraXpert-linux », « Linux: Replace GraXpert-win64.exe by GraXpert-linux »)
-    alors que `detection.py` ne cherchait que `graxpert`/`GraXpert` — or la
-    comparaison est SENSIBLE À LA CASSE sous Linux, et une archive décompressée
-    n'est pas dans le PATH → détection impossible ; les sous-chemins sondés
-    (`<racine>/GraXpert/<nom>`) ne couvraient ni ce nom ni le dossier
-    d'extraction ;
-  - rc-astro était trouvé parce que son installeur le pose DANS le PATH avec le
-    nom attendu (vérifié ici : `C:\Program Files\RC-Astro\CLI\rc-astro.exe`) ;
-  - **aggravant** : la commande de REPLI (« graxpert … », binaire nu) est une
-    chaîne non vide → elle était PERSISTÉE dans config.json et restaurée à
-    chaque lancement SANS re-test de l'exécutable : une détection ratée restait
-    figée à VIE, même après installation de GraXpert.
-  - **① chemins/noms par OS** (`_racines()`, `_noms_graxpert()`,
-    `_sous_graxpert()` calculés à l'appel) : Linux `GraXpert-linux`,
-    `GraXpert-linux-amd64`, `~/.local/bin`, `~/Applications`, `~` ; macOS
-    `GraXpert.app/Contents/MacOS/GraXpert` ; Windows `Programs\GraXpert\` ;
-    filtre borné `GraXpert*` (dossier d'archive, AppImage exécutable) ; chemins
-    retournés NORMALISÉS (`normpath`).
-  - **② l'INI DE SIRIL devient une source** : module NEUF `avastack/siril_ini.py`
-    (dossiers par OS — doc Siril 1.4.4 —, clé cherchée sans groupe,
-    déséchappement GKeyFile) : `graxpert_path` pour l'outil (ton ini le porte
-    déjà : `…\Programs\GraXpert\GraXpert.exe`), `catalogue_gaia_astro`/
-    `catalogue_gaia_photo` pour le dossier des catalogues (exigeait la clé).
-  - **③ plus de commande figée** : `external.live.outil_manquant()` distingue
-    chemin existant / nom dans le PATH / outil introuvable ; une commande sans
-    outil n'est plus persistée, et à l'ouverture elle est re-détectée en
-    conservant les OPTIONS de l'utilisateur (`remplacer_binaire()` : seul le
-    chemin change, ton `-correction Division -smoothing 0.8` reste).
-  - **④ l'interface DIT l'état** : ligne sous chaque commande du cadre
-    « Traitement externe » (« ✔ GraXpert : /chemin » vert, « ⚠ … : exécutable
-    introuvable… » orange), rafraîchie à chaque frappe ; refus AVANT de lancer
-    (case GraXpert live, bouton ⚡, étape de la chaîne) au lieu d'un
-    « command not found » noyé dans la sortie de l'outil.
-  - **⑤ doc** : LISEZMOI Linux (section « outils externes » : nom exact, chmod,
-    où poser le binaire, bouton « … », variables `AVASTACK_*`) et Windows ;
-    CLAUDE.md (tableau des noms par OS, ini Siril, piège de la commande figée).
-  - **⑥ décision d'Alain (27/09/2026, après inventaire des 16 bancs de
-    `bancs/cameras/`)** : les installateurs n'embarquent PLUS que les **5
-    outils de diagnostic matériel** (`_diag_*` : les seuls qu'il peut lancer
-    chez lui, puisqu'ils parlent aux vraies DLL et à ses caméras) ; les **11
-    bancs de régression** de la couche caméra (`_test_*`, SDK factices, aucun
-    matériel requis) sont des outils de DEV et restent au dépôt. Filtrage par
-    MOTIF dans les deux producteurs (`.iss` : `_diag_*.py` ; packer Linux :
-    `MOTIF_DIAG = "_diag_"`) → un nouveau diagnostic entre tout seul. Effet
-    mesuré : paquet Linux 70 → **59 fichiers**, 518 → **488 Kio** (les 5
-    diagnostics pèsent 294 Kio de source, les 11 tests 114 Kio) ; l'installateur
-    Windows ne compresse plus que les 5 `_diag_*` (log ISCC vérifié).
-  - Banc NEUF `bancs/_test_outils_jalon71.py` (**38 vérifications** : Linux/
-    macOS/Windows simulés, ordre de recherche, ini Siril, chemin disparu,
-    `outil_manquant`, lignes d'état de l'UI réelle).
-  - **Non-régression : 18 bancs rejoués, TOUS VERTS** — dont deux RÉPARÉS au
-    passage : `_test_graxpert_live_jalon4.py` (son assistant `_gx_factice.py`
-    était resté à la racine lors du déplacement des bancs → `git mv` vers
-    `bancs/`) et `_test_dn_jalon7.py` (il vérifie que `-strength 0.9` d'une
-    commande persistée survit — d'où la fusion « chemin + options »).
-  - Reste à faire : ta réinstallation Linux, puis ton essai (la ligne doit
-    afficher « ✔ GraXpert : … » ou « ⚠ … introuvable » ; le temps de
-    téléchargement/dépôt du catalogue d'astrométrie compte pour v2.38.4).
+- **PASSE LIVRÉE ET POUSSÉE (27/09/2026) — AVAStack v2.38.5 : DÉTECTION DES
+  OUTILS EXTERNES** (GraXpert sous Linux). Cause prouvée : sous Linux le binaire
+  officiel s'appelle `GraXpert-linux` (archive `graxpert-linux-amd64.zip`) alors
+  que le code ne cherchait que `graxpert`/`GraXpert` — casse sensible sous Linux,
+  archive hors PATH ; aggravant : la commande de repli (« graxpert … », binaire
+  nu) était PERSISTÉE dans config.json et restaurée sans re-test, donc une
+  détection ratée restait figée à VIE. ① noms/racines par OS + filtre `GraXpert*` ;
+  ② module `avastack/siril_ini.py` (ini de Siril : `graxpert_path`,
+  `catalogue_gaia_*`) ; ③ `outil_manquant()` + re-détection qui CONSERVE les
+  options ; ④ ligne d'état « ✔ / ⚠ » sous chaque commande + refus AVANT de
+  lancer ; ⑤ doc ; banc `_test_outils_jalon71.py` (38 vérifs) ; installateurs
+  = 5 diagnostics caméra seulement (`_diag_*`). Repli : v2.38.4.
 
+- **PASSE EN COURS — AVAStack v2.38.6 : L'ESPACE DISQUE SE DIT (FIN DE
+  L'ÉCRITURE PARTIELLE SILENCIEUSE)** (code + banc + doc + installateurs,
+  27/09/2026). Ton constat sous Linux : « Erreur : 24962352 requested and
+  10902832 written » pendant BlurX, outil pourtant détecté au vert. **Cause
+  trouvée et mesurée** (tes `df -h` + `du`) :
+  - `numpy.ndarray.tofile()` (appelé par **astropy** pour écrire les données d'un
+    FITS : `io/fits/util.py::_array_to_file` « delegates directly to
+    ndarray.tofile ») a écrit **43 %** du fichier : 10 902 832 octets sur
+    24 962 352 — tout ce qui RESTAIT DE LIBRE. Signature d'un **volume plein**,
+    pas d'un chemin invalide (lequel échouerait à l'ouverture) ;
+  - `/tmp` de ta machine est un **tmpfs de 4,6 Go**, que l'application
+    remplissait ELLE-MÊME : 2,8 Go de dossiers `avastack_frames_*` (frames de
+    33 629 760 octets = ta Uranus-C Pro en float32) pendant que **116 Go**
+    dormaient sur `/` ;
+  - trois défauts démontrés : ① le plafond d'archivage était de **20 Go EN DUR**
+    (inopérant dans un volume de 4,6 Go) ; ② **rien ne nettoyait** les résidus
+    d'une session morte ; ③ l'échec ne disait ni le fichier, ni la cause, ni le
+    volume — et le dossier de travail était effacé par le `finally`.
+  - **① module NEUF `avastack/travail.py`** : dossier de travail effectif
+    (réglage > repli hors tmpfs `~/.cache/avastack` > temporaire système),
+    création UNIQUE des dossiers temporaires, espace libre, détection **tmpfs**
+    (`/proc/mounts`, point de montage le plus long), messages chiffrés, plafond
+    calculé sur l'espace réel, nettoyage des orphelins, ouverture du dossier ;
+  - **② réglage + BOUTON « dossier de travail »** dans l'interface (choix
+    persistant, espace libre affiché, alerte « ⚠ en RAM (tmpfs) », bouton
+    « Ouvrir »), rafraîchi toutes les 10 s ;
+  - **③ écriture ATOMIQUE** (`images.ecrire_fichier`/`ecrire_fits`) : espace
+    vérifié AVANT, fichier `.part` renommé, partiel TOUJOURS supprimé (plus de
+    FITS tronqué qui a l'air valide) — une seule route d'écriture FITS ;
+  - **④ messages clairs** : « écriture incomplète (10,4 Mo sur 23,8) — plus
+    d'espace sur le volume de « /tmp » (1,2 Mo libres, en RAM : tmpfs) : … »
+    (ENOSPC, quota et `ulimit -f` nommés) ;
+  - **⑤ contrôle d'espace AVANT la chaîne externe** (image × nb d'étapes) : refus
+    immédiat au lieu d'un échec après plusieurs minutes ;
+  - **⑥ plafond d'archivage RÉEL** : `min(20 Go, 50 % de l'espace libre)`,
+    recalculé à chaque frame ;
+  - **⑦ fichiers de travail CONSERVÉS** en cas d'échec (journal de l'outil
+    compris, chemin annoncé) + résidus nettoyés au démarrage.
+  - Doc : LISEZMOI Windows/Linux (« espace disque et dossier de travail »),
+    CLAUDE.md (leçon astropy → `numpy.tofile`). Banc NEUF
+    `bancs/_test_espace_jalon72.py` (**25 vérifications**).
+  - **Non-régression : 21 bancs rejoués, TOUS VERTS** — dont une RÉGRESSION
+    ATTRAPÉE ET CORRIGÉE : mon contrôle d'espace utilisait `n_etapes` avant sa
+    définition (chaîne par couche) et le `except` général en faisait un échec
+    SILENCIEUX (`_test_gradient_couche_jalon24.py`) → contrôle déplacé après ses
+    dépendances, consigné dans CLAUDE.md.
+  - Reste à faire : ta réinstallation Linux puis ton essai (la ligne doit
+    afficher le dossier de travail, son espace, et BXT doit passer).
 - **PASSES TERMINÉES ET POUSSÉES (27/09/2026, hors code applicatif) — BANCS
   RÉORGANISÉS, INSTALLATEURS NOMMÉS PAR VERSION, INSTALLATEUR LINUX** : 109
   bancs déplacés dans `bancs/` (`bancs/cameras/` : 16 — seuls installés) avec
@@ -260,17 +255,19 @@ dans le changelog du source et l'historique git.)
 
 ## En attente / prochaine session
 
-- **AUCUN DÉFAUT CONNU OUVERT** sur les v2.38.3, v2.38.4 et v2.38.5 (livrées).
-  **EN ATTENTE DE TES ESSAIS**, par ordre d'intérêt :
-  - **v2.38.5 (27/09/2026) — détection des outils externes** : sous Linux, dès
-    que l'archive GraXpert est décompressée et `chmod u+x`, la ligne d'état doit
-    afficher « ✔ GraXpert : /chemin/GraXpert-linux » (sinon « ⚠ … introuvable »
-    avec le bouton « … ») ; plus aucun échec silencieux à l'exécution.
-  - **v2.38.4 (27/09/2026) — astrométrie** : l'échec doit être DIT (« DONNÉES
-    MANQUANTES ») puis les essais repartent seuls après dépôt ou téléchargement
-    du catalogue.
-  - **v2.38.3 (27/09/2026) — réglages BXT** : ta commande MÉMORISÉE reste
-    prioritaire ; ajoute `--sn 0.3` au champ pour profiter du réglage mesuré.
+- **AUCUN DÉFAUT CONNU OUVERT** sur les v2.38.3 à v2.38.6 (livrées).
+  **CONFIRMÉ PAR TON TEST RÉEL du 27/09/2026 (Linux)** : astrométrie ✔, SPCC ✔,
+  GraXpert ✔ (« astrométrie, spcc OK / GraXpert OK ») → v2.38.4 et v2.38.5
+  **validées sur ta machine**. **EN ATTENTE** :
+  - **v2.38.6 — espace disque** : la ligne « dossier de travail » doit afficher
+    le dossier utilisé + son espace libre (+ « ⚠ en RAM (tmpfs) » si `/tmp` en
+    est un), et BlurX doit passer sans « requested and written » — le dossier de
+    travail a été déplacé sur un disque (réglage, ou `TMPDIR` en attendant) ;
+  - **v2.38.3 — rendu BXT** : ta commande MÉMORISÉE reste prioritaire ; ajoute
+    `--sn 0.3` au champ pour profiter du réglage mesuré (moucheté bleu divisé
+    par ~2,7). Ton essai du 27/09 n'a pas pu conclure (il a buté sur l'espace
+    disque, cf. v2.38.6).
+
 - Sujets OUVERTS (analyse close, décisions livrées), par ordre d'intérêt :
   - **CLOS PAR LA v2.38.3 — MOUCHETÉ BLEU DU FICHIER TRAITÉ** (piste BXT d'Alain,
     27/09/2026) : mesuré ×1,27-1,31 PARTOUT dans le champ (donc pas « les

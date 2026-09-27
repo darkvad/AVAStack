@@ -44,7 +44,6 @@ l'acquisition.
 import os
 import re
 import shutil
-import tempfile
 import time
 
 import numpy as np
@@ -55,6 +54,7 @@ from ..catalogues import MSG_CATALOGUE_ABSENT, chemin_catalogue_astro
 from ..catalogues import resoudre as _resoudre_interne
 from ..catalogues import resoudre_avec_astap as _resoudre_astap
 from ..images import borner_lineaire, save_image
+from .. import travail
 
 try:
     from astropy.io import fits
@@ -295,7 +295,7 @@ def resoudre_aveugle_astap(img, fov_deg=0.0, ra0=None, dec0=None,
         return (None, None, None, None,
                 f"image inexploitable pour un balayage ({a.shape})")
     h, w = int(a.shape[0]), int(a.shape[1])
-    tmp = dossier or tempfile.mkdtemp(prefix="avastack_astro_")
+    tmp = dossier or travail.creer_dossier("avastack_astro_")
     propre = dossier is None
     chemin = os.path.join(tmp, "empilement_aveugle.fits")
     try:

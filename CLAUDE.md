@@ -469,6 +469,41 @@ Pièges :
 - **Une fonctionnalité optionnelle à risque non nul, même faible, gagne à
   rester opt-in (désactivée par défaut)** plutôt qu opt-out.
 
+## Espace disque et fichiers de travail (v2.38.6)
+
+Leçon du 27/09/2026 (machine Linux d'Alain) : « Erreur : 24962352 requested and
+10902832 written » pendant BlurX, outil pourtant détecté au vert.
+
+- **Ce message est celui de `numpy.ndarray.tofile()`**, appelé par astropy pour
+  écrire les données d'un FITS (`astropy/io/fits/util.py::_array_to_file` —
+  docstring du paquet installé : « If writing directly to an on-disk file this
+  delegates directly to `ndarray.tofile` »). Il signifie **écriture PARTIELLE**
+  (ici 10 902 832 octets sur 24 962 352 : tout ce qui restait de libre), donc
+  **volume plein** — PAS un chemin invalide (lequel échouerait à l'ouverture).
+  Ne jamais afficher ce message brut à l'utilisateur : passer par
+  `images.traduction_erreur_ecriture()`.
+- **`/tmp` sous Linux est souvent un tmpfs** (RAM) : mesuré chez Alain, 4,6 Go
+  que l'application remplissait elle-même (2,8 Go de dossiers
+  `avastack_frames_*` — frames de 32 Mio) pendant que 116 Go dormaient sur le
+  disque. D'où `avastack/travail.py` : dossier de travail EFFECTIF (réglage
+  `dossier_travail` > repli hors tmpfs `~/.cache/avastack` > temporaire
+  système), détection tmpfs par `/proc/mounts` (point de montage le PLUS LONG).
+- **Règles d'écriture (non négociables)** : toute écriture passe par
+  `images.ecrire_fichier`/`ecrire_fits` (espace vérifié AVANT, fichier `.part`
+  puis `os.replace`, partiel supprimé) ; tout `mkdtemp` passe par
+  `travail.creer_dossier` ; un plafond de taille se calcule sur l'espace RÉEL
+  (`travail.plafond_effectif`) — un garde-fou « 20 Go » en dur ne protège rien
+  dans un volume de 4,6 Go.
+- **Un échec doit laisser de quoi comprendre** : la chaîne externe CONSERVE son
+  dossier de travail (journal `outils_sortie.txt`, FITS d'entrée et d'étapes) et
+  annonce le chemin ; les résidus de plus de 6 h sont nettoyés au démarrage
+  (`travail.nettoyer_orphelins`).
+- **Piège de code associé** : un contrôle ajouté AVANT la définition d'une
+  variable (`n_etapes`) a fait échouer la chaîne par couche — et le `except`
+  général l'a transformé en échec SILENCIEUX (attrapé par le banc jalon 24).
+  Tout nouveau contrôle dans un `try` large doit être placé après ses
+  dépendances.
+
 ## Pièges (leçons du projet AVAStack)
 
 - **`cv2.imencode` ATTEND DU BGR** (constat réel du 25/09/2026, v2.36.1) :

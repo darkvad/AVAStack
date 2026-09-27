@@ -10,28 +10,36 @@ souvent lues à travers le réseau (NAS, mini-PC d'acquisition) et leur relectur
 n'est pas garantie ; une caméra SDK, elle, n'écrit aucun fichier.
 
 Chaque frame CALIBRÉE (donc directement re-empilable, sans rejouer darks/
-flats) est écrite en FITS float32 dans un dossier temporaire de session.
+flats) est écrite en FITS float32 dans un dossier de travail de session.
 Garde-fous (jamais de panne silencieuse) :
 - au plus une frame archivée par `intervalle_s` secondes : une source vidéo
   (webcam OpenCV ~30 fps, ciel simulé) ne doit pas noyer le disque — aux
   poses d'astronomie (≥ 30 s) la limite ne joue jamais ;
 - plafond de taille `max_octets` : au-delà, l'archivage S'ARRÊTE et le
   message est exposé dans la ligne d'état ; l'empilement continue normalement ;
+- **v2.38.6 — le plafond est RÉEL, pas déclaré** : un plafond de 20 Go en dur
+  ne protégeait rien dans un `/tmp` de 4,6 Go (constat d'Alain : « 24962352
+  requested and 10902832 written » pendant BlurX, tmpfs saturé). Le plafond
+  effectif vaut `min(max_octets, 50 % de l'espace libre du volume)` et il est
+  recalculé à chaque frame (`travail.plafond_effectif`) ;
 - tout échec d'écriture arrête aussi l'archivage (`erreur`), sans jamais
   interrompre le thread d'acquisition.
-Le dossier est supprimé à la fermeture de la session (`vider`).
+Le dossier est supprimé à la fermeture de la session (`vider`) ; les résidus
+d'une session morte sont nettoyés au démarrage (`travail.nettoyer_orphelins`).
 """
 import os
 import shutil
-import tempfile
 import time
 
+from .. import travail
 from ..images import save_image
 
 # Une frame archivée au plus toutes les `ARCHIVE_INTERVALLE_S` secondes.
 ARCHIVE_INTERVALLE_S = 1.0
-# Plafond de taille du dossier d'archive (20 Go ≈ 3 h de frames RGB float32
-# 8 Mpx à 120 s de pose) : au-delà, archivage arrêté et signalé.
+# Plafond de taille VOULU du dossier d'archive (20 Go ≈ 3 h de frames RGB
+# float32 8 Mpx à 120 s de pose) : il n'est JAMAIS dépassé, mais il est
+# abaissé à la moitié de l'espace libre réel (cf. `plafond_effectif`) — un
+# volume de 4,6 Go ne doit pas être rempli à 100 %.
 ARCHIVE_MAX_OCTETS = 20 * 1024 ** 3
 PREFIXE_DOSSIER = "avastack_frames_"
 
@@ -63,14 +71,23 @@ class ArchiveFrames:
             return None
         try:
             if self.dossier is None:
-                self.dossier = tempfile.mkdtemp(prefix=PREFIXE_DOSSIER)
+                self.dossier = travail.creer_dossier(PREFIXE_DOSSIER)
+            # v2.38.6 : plafond recalculé sur l'espace RÉEL (un tmpfs de 4,6 Go
+            # ne doit jamais être rempli par l'archive des frames).
+            plafond = travail.plafond_effectif(self.dossier, self.max_octets)
+            if self._taille >= plafond:
+                self.erreur = (f"plafond atteint ({self._taille / (1 << 30):.1f} "
+                               f"Go sur {plafond / (1 << 30):.1f} Go disponibles "
+                               "pour le travail) : archivage arrêté, l'empilement "
+                               "continue")
+                return None
             chemin = os.path.join(self.dossier, f"frame_{self.n:06d}.fits")
             save_image(chemin, frame)
             self._t0 = time.monotonic()
             self._taille += os.path.getsize(chemin)
             self.chemins.append(chemin)
             self.n += 1
-            if self._taille > self.max_octets:
+            if self._taille > plafond:
                 self.erreur = (f"plafond atteint "
                                f"({self._taille / (1 << 30):.1f} Go) : "
                                "archivage arrêté, l'empilement continue")

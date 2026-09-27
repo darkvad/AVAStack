@@ -14,7 +14,52 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.38.5"
+AVASTACK_VERSION = "2.38.6"
+
+# --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.38.6 : L'ESPACE DISQUE SE DIT — FIN DE L'ÉCRITURE PARTIELLE SILENCIEUSE
+#   (constat RÉEL d'Alain, 27/09/2026, Linux : « Erreur : 24962352 requested
+#   and 10902832 written » pendant BlurX, outil pourtant détecté au vert).
+#   CAUSE MESURÉE (df -h + du de sa machine) : `/tmp` est un tmpfs de 4,6 Go que
+#   l'application REMPLISSAIT ELLE-MÊME (2,8 Go de dossiers `avastack_frames_*`
+#   à 32 Mio la frame) pendant que 116 Go dormaient sur le disque. Le message
+#   vient de `numpy.ndarray.tofile()`, appelé par astropy pour écrire les
+#   données d'un FITS (`io/fits/util.py::_array_to_file` délègue à
+#   `ndarray.tofile`) : écriture PARTIELLE (10 902 832 octets sur 24 962 352,
+#   soit tout ce qui restait de libre) — signature d'un volume plein, pas d'un
+#   chemin invalide. Trois défauts démontrés : ① le plafond d'archivage des
+#   frames était de 20 Go EN DUR, donc inopérant dans un volume de 4,6 Go ;
+#   ② rien ne nettoyait les résidus d'une session morte ; ③ l'échec ne disait ni
+#   le fichier, ni la cause, ni le volume (et le dossier de travail était effacé
+#   par le `finally`, donc indiagnosticable).
+#   (1) module NEUF `avastack.travail` : dossier de travail EFFECTIF (réglage >
+#       repli hors tmpfs > temporaire système), création UNIQUE des dossiers
+#       temporaires (`creer_dossier`), espace libre du volume, détection tmpfs
+#       (`/proc/mounts`), messages chiffrés (`texte_octets`, `verifier_espace`),
+#       plafond calculé sur l'espace réel (`plafond_effectif`), nettoyage des
+#       orphelins (`nettoyer_orphelins`) et ouverture du dossier ;
+#   (2) RÉGLAGE + BOUTON « dossier de travail » dans l'interface (choix
+#       persistant, espace libre affiché, alerte si le volume est un tmpfs,
+#       bouton « Ouvrir ») — l'utilisateur peut le poser sur son disque de
+#       données ; rafraîchi toutes les 10 s ;
+#   (3) ÉCRITURE ATOMIQUE et CONTRÔLÉE (`images.ecrire_fichier`, `ecrire_fits`) :
+#       espace vérifié AVANT d'écrire, fichier écrit en `.part` puis RENOMMÉ,
+#       partiel TOUJOURS supprimé — plus jamais de FITS/PNG tronqué qui a l'air
+#       valide ; une seule route d'écriture FITS pour toute l'application ;
+#   (4) MESSAGES CLAIRS (`traduction_erreur_ecriture`) : « écriture incomplète
+#       (10,4 Mo sur 23,8) — plus d'espace sur le volume de « /tmp » (1,2 Mo
+#       libres, en RAM : tmpfs) : libérez de l'espace ou changez le dossier de
+#       travail » ; erreurs ENOSPC/quota/`ulimit -f` nommées ;
+#   (5) CONTRÔLE D'ESPACE AVANT la chaîne externe (image × nb d'étapes) : refus
+#       immédiat et chiffré, au lieu d'un échec après plusieurs minutes ;
+#   (6) PLAFOND D'ARCHIVAGE RÉEL : `min(20 Go, 50 % de l'espace libre)`,
+#       recalculé à chaque frame — le garde-fou se déclenche enfin ;
+#   (7) FICHIERS DE TRAVAIL CONSERVÉS en cas d'échec (FITS d'entrée, sorties
+#       d'étape, journal `outils_sortie.txt`), chemin annoncé dans le message ;
+#       RESIDUS nettoyés au démarrage (session morte, 2,8 Go chez Alain).
+#   Doc : LISEZMOI Windows/Linux (section « espace disque et dossier de
+#   travail ») + CLAUDE.md (leçon astropy → `numpy.tofile`). Banc NEUF
+#   `bancs/_test_espace_jalon72.py`. Repli si régression : v2.38.5.
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
 # v2.38.5 : DÉTECTION DES OUTILS EXTERNES — GRAXPERT SOUS LINUX, ET FIN DES

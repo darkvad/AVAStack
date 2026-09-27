@@ -216,6 +216,31 @@ Si la ligne est orange, désigne l'exécutable avec le bouton "…" : le
 chemin est mémorisé. Un traitement externe dont l'outil est introuvable
 n'est plus lancé du tout : tu es prévenu AVANT, au lieu de voir échouer la
 chaîne après plusieurs minutes.
+ESPACE DISQUE ET DOSSIER DE TRAVAIL
+-----------------------------------
+AVAStack écrit des fichiers LOURDS pendant qu'il travaille : les frames
+archivées (une trentaine de Mo chacune, pour pouvoir recalculer un empilement)
+et un FITS par étape de traitement externe. Ils vont dans le DOSSIER DE
+TRAVAIL, affiché en haut du cadre « Traitement externe (long) » avec l'espace
+libre restant — sous Windows c'est le dossier temporaire de ton compte, sur le
+disque.
+
+Depuis la v2.38.6 :
+  - le bouton « 📂 » choisit un autre dossier de travail (mémorisé) — utile pour
+    le poser sur un disque de données ; « Ouvrir » le montre ;
+  - avant de lancer un traitement externe, l'ESPACE est vérifié : si c'est
+    juste, AVAStack refuse en disant combien il faut et combien il reste, au
+    lieu d'échouer après plusieurs minutes de calcul ;
+  - l'écriture est ATOMIQUE (fichier écrit en .part puis renommé) : un FITS ou
+    un PNG tronqué n'est jamais laissé à la place d'une image valide ;
+  - en cas d'échec, les fichiers de travail sont CONSERVÉS et leur chemin est
+    annoncé (journal de l'outil compris) ;
+  - l'archivage des frames s'arrête de lui-même à la moitié de l'espace libre du
+    volume : il ne peut plus le remplir entièrement.
+Si un message parle d'« espace insuffisant » ou d'« écriture incomplète » :
+libère de la place (ou change le dossier de travail), puis relance le traitement.
+
+
 
 RÉGLAGES DE BXT (important) : le CLI rc-astro applique SES PROPRES
 valeurs par défaut tant qu'on ne passe rien — dont 0,50 pour

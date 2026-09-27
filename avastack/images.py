@@ -4,9 +4,12 @@ utilitaires pour les résultats des outils externes."""
 
 import os
 import glob
+import re
 
 import numpy as np
 import cv2
+
+from . import travail
 
 try:
     from astropy.io import fits
@@ -189,6 +192,112 @@ def borner_lineaire(arr, entete=None, seuil=1.0):
     return d, entete
 
 
+# --- Écriture ATOMIQUE et ESPACE DISQUE (v2.38.6) ---------------------------
+# Constat RÉEL (Alain, 27/09/2026, Linux) : « Erreur : 24962352 requested and
+# 10902832 written » au moment de BlurX. Ce message est celui de
+# `numpy.ndarray.tofile()`, appelé par ASTROPY pour écrire les données d'un
+# FITS (`io/fits/util.py::_array_to_file` : « delegates directly to
+# ndarray.tofile ») : l'écriture s'est ARRÊTÉE à 43 % — signature d'un VOLUME
+# PLEIN (le `/tmp` de sa machine est un tmpfs de 4,6 Go que l'archivage des
+# frames remplissait), pas d'un chemin invalide (lequel échouerait dès
+# l'ouverture). Deux corrections : ① on vérifie l'espace AVANT d'écrire et on
+# REFUSE avec une phrase chiffrée ; ② on écrit dans un `.part` qu'on RENOMME à
+# la fin, donc un fichier tronqué ne peut plus rester à la place d'une image
+# valide (danger réel : un FITS partiel se relit !).
+_MOTIF_PARTIEL = re.compile(r"(\d+)\s+requested\s+and\s+(\d+)\s+written")
+
+
+def traduction_erreur_ecriture(exc, chemin, octets=None):
+    """Phrase CLAIRE pour un échec d'écriture disque (v2.38.6).
+
+    L'utilisateur ne peut pas deviner ce que veut dire « N requested and M
+    written » : on lui dit le fichier, la quantité écrite, l'espace restant et
+    ce qu'il peut faire."""
+    dossier = os.path.dirname(os.path.abspath(chemin)) or "."
+    libre = travail.espace_libre(dossier)
+    txt, errno_ = str(exc), getattr(exc, "errno", None)
+    trouve = _MOTIF_PARTIEL.search(txt)
+    if trouve or errno_ in (28, 122):     # 28 = ENOSPC (plein), 122 = quota
+        detail = ("écriture incomplète (%s écrits sur %s) "
+                  % (travail.texte_octets(int(trouve.group(2))),
+                     travail.texte_octets(octets))
+                  if (trouve and octets) else "écriture incomplète ")
+        return (f"{detail}— plus d'espace sur le volume de « {dossier} » "
+                f"({travail.texte_octets(libre)} libres"
+                + (", en RAM : tmpfs" if travail.est_tmpfs(dossier) else "")
+                + ") : libérez de l'espace ou choisissez un autre dossier de "
+                  "travail (bouton « dossier de travail »).")
+    if errno_ == 27:                      # EFBIG : limite `ulimit -f`
+        return (f"écriture refusée (limite de taille de fichier du système) "
+                f"pour {chemin} : relevez `ulimit -f`.")
+    if errno_ == 2 or isinstance(exc, FileNotFoundError):
+        return f"dossier introuvable pour écrire {chemin}."
+    return (f"écriture impossible dans {chemin} : {txt} "
+            f"({travail.texte_octets(libre)} libres sur le volume)")
+
+
+
+def ecrire_fichier(chemin, ecrivain, octets=None, quoi=None):
+    """Écrit un fichier de façon ATOMIQUE, après contrôle d'espace.
+
+    `ecrivain(destination)` reçoit le chemin d'un fichier `.part` à écrire
+    (astropy pour un FITS, `ndarray.tofile` pour un PNG/TIFF). Renvoie le
+    chemin écrit, ou lève `OSError` avec un message CLAIR (jamais le message
+    brut de numpy) :
+
+      - espace vérifié AVANT l'écriture (`travail.verifier_espace`) ;
+      - le fichier partiel est TOUJOURS supprimé en cas d'échec ;
+      - `os.replace` à la fin : le nom définitif n'apparaît que complet."""
+    dossier = os.path.dirname(os.path.abspath(chemin)) or "."
+    quoi = quoi or f"l'écriture de {os.path.basename(chemin)}"
+    if octets:
+        ok, msg = travail.verifier_espace(dossier, octets, quoi)
+        if not ok:
+            raise OSError(msg)
+    part = chemin + ".part"
+    try:
+        ecrivain(part)
+    except Exception as exc:
+        supprimer_si_present(part)
+        raise OSError(traduction_erreur_ecriture(exc, chemin, octets)) from exc
+    try:
+        os.replace(part, chemin)
+    except OSError as exc:
+        supprimer_si_present(part)
+        raise OSError(traduction_erreur_ecriture(exc, chemin, octets)) from exc
+    return chemin
+
+
+def supprimer_si_present(chemin):
+    """Supprime un fichier partiel (jamais d'exception)."""
+    try:
+        if os.path.exists(chemin):
+            os.remove(chemin)
+    except OSError:
+        pass
+
+
+def ecrire_fits(chemin, arr, entete=None):
+    """Écrit un FITS float32 (astropy) de façon atomique — UNE seule route
+    d'écriture FITS pour l'application (sauvegardes ET fichiers de travail des
+    chaînes externes, qui avaient chacun la leur)."""
+    if not FITS_OK:
+        raise OSError("astropy est absent : écriture FITS impossible")
+    d = np.asarray(arr)
+    if d.ndim == 3 and d.shape[-1] <= 4 and d.shape[0] > 4:
+        d = np.transpose(d, (2, 0, 1))     # (H, W, C) → (C, H, W)
+    d = np.ascontiguousarray(d, dtype=np.float32)
+
+    def _ecrire(destination):
+        hdu = fits.PrimaryHDU(d)
+        if entete:
+            for k, v in entete.items():
+                hdu.header[str(k).upper()] = v
+        hdu.writeto(destination, overwrite=True)
+
+    return ecrire_fichier(chemin, _ecrire, octets=d.nbytes)
+
+
 def save_image(path, arr, entete=None):
     """Sauve une image float en FITS (si astropy) ou PNG/TIFF 16 bits.
 
@@ -201,36 +310,36 @@ def save_image(path, arr, entete=None):
     pour GraXpert). Mono 2D inchangé.
 
     entete : dict optionnel de mots-clés FITS (p.ex. {"FILTER": "Ha"})
-    — ignoré silencieusement pour les formats non FITS."""
+    — ignoré silencieusement pour les formats non FITS.
+
+    v2.38.6 : l'écriture passe par `ecrire_fits` / `ecrire_fichier` —
+    ESPACE VÉRIFIÉ AVANT, fichier écrit en `.part` puis renommé (jamais de
+    fichier tronqué), et message clair en cas d'échec (le message brut de
+    numpy « N requested and M written » ne disait ni le fichier ni la cause)."""
     ext = os.path.splitext(path)[1].lower()
     if ext in (".fits", ".fit", ".fts") and FITS_OK:
-        d = np.asarray(arr)
-        if d.ndim == 3 and d.shape[-1] <= 4 and d.shape[0] > 4:
-            d = np.transpose(d, (2, 0, 1))     # (H, W, C) → (C, H, W)
-        hdu = fits.PrimaryHDU(np.ascontiguousarray(d, dtype=np.float32))
-        if entete:
-            for k, v in entete.items():
-                hdu.header[str(k).upper()] = v
-        hdu.writeto(path, overwrite=True)
-    else:
-        d = np.asarray(arr, dtype=np.float32)
-        u16 = (np.clip(d, 0, 1) * 65535).astype(np.uint16)
-        # CORRECTIF v2.36.1 (constat d'Alain, 25/09/2026 : le PNG « tel que vu »
-        # était « vachement bleu » alors que le FITS du même écran était juste) :
-        # `cv2.imencode` attend du BGR (convention OpenCV) alors que TOUTE
-        # l'appli travaille en RGB — `load_image` convertit à la lecture
-        # (COLOR_BGR2RGB). Sans cette conversion, chaque PNG/TIFF écrit sortait
-        # avec R et B PERMUTÉS (mesuré sur son fichier : PNG_R ≈ FITS_B et
-        # PNG_B ≈ FITS_R, corrélation 1,0000) — et l'aller-retour interne
-        # (écriture sans conversion, relecture avec conversion) restait
-        # cohérent, ce qui masquait le bug : seuls les outils EXTERNES (viewer,
-        # Siril, GraXpert…) et l'utilisateur le voyaient.
-        if u16.ndim == 3 and u16.shape[-1] == 3:
-            u16 = cv2.cvtColor(u16, cv2.COLOR_RGB2BGR)
-        ok, buf = cv2.imencode(ext, u16)
-        if not ok:
-            raise IOError("Encodage impossible")
-        buf.tofile(path)
+        return ecrire_fits(path, arr, entete)
+    d = np.asarray(arr, dtype=np.float32)
+    u16 = (np.clip(d, 0, 1) * 65535).astype(np.uint16)
+    # CORRECTIF v2.36.1 (constat d'Alain, 25/09/2026 : le PNG « tel que vu »
+    # était « vachement bleu » alors que le FITS du même écran était juste) :
+    # `cv2.imencode` attend du BGR (convention OpenCV) alors que TOUTE
+    # l'appli travaille en RGB — `load_image` convertit à la lecture
+    # (COLOR_BGR2RGB). Sans cette conversion, chaque PNG/TIFF écrit sortait
+    # avec R et B PERMUTÉS (mesuré sur son fichier : PNG_R ≈ FITS_B et
+    # PNG_B ≈ FITS_R, corrélation 1,0000) — et l'aller-retour interne
+    # (écriture sans conversion, relecture avec conversion) restait
+    # cohérent, ce qui masquait le bug : seuls les outils EXTERNES (viewer,
+    # Siril, GraXpert…) et l'utilisateur le voyaient.
+    if u16.ndim == 3 and u16.shape[-1] == 3:
+        u16 = cv2.cvtColor(u16, cv2.COLOR_RGB2BGR)
+    ok, buf = cv2.imencode(ext, u16)       # l'extension FINALE choisit le format
+    if not ok:
+        raise OSError(f"format d'image non pris en charge pour l'écriture : "
+                      f"« {ext or 'sans extension'} »")
+    # Le buffer est en mémoire : sa taille est connue AVANT d'écrire.
+    return ecrire_fichier(path, lambda destination: buf.tofile(destination),
+                          octets=int(buf.nbytes))
 
 
 def find_output(src, outbase):
@@ -245,7 +354,8 @@ def find_output(src, outbase):
     base = os.path.splitext(src)[0]
     for pat in (outbase + "*", base + "*"):
         for f in sorted(glob.glob(pat)):
-            if os.path.isfile(f) and os.path.abspath(f) != os.path.abspath(src):
+            if os.path.isfile(f) and os.path.abspath(f) != os.path.abspath(src) \
+                    and not f.endswith(".part"):     # jamais un partiel (v2.38.6)
                 return f
     return None
 

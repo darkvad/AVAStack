@@ -106,6 +106,37 @@ Aucun traitement externe n'est lancé sans son outil : l'application le dit
 AVANT de commencer (message clair) au lieu d'échouer en cours de route.
 
 
+ESPACE DISQUE ET DOSSIER DE TRAVAIL
+-----------------------------------
+Pendant qu'il travaille, AVAStack écrit des fichiers LOURDS : les frames
+archivées (une trentaine de Mo chacune, pour pouvoir recalculer un empilement)
+et un FITS par étape de traitement externe (GraXpert, BlurXTerminator). Ils
+vont dans le DOSSIER DE TRAVAIL, affiché en haut du cadre « Traitement
+externe (long) » avec l'espace libre restant.
+
+⚠ SOUS LINUX : si /tmp est un « tmpfs » (un disque EN RAM), il se remplit vite
+et une écriture peut s'arrêter en route — l'erreur ressemblait à
+« 24962352 requested and 10902832 written », incompréhensible. Depuis la
+v2.38.6, AVAStack s'en protège :
+  - si /tmp est un tmpfs, le dossier de travail est mis sur le disque
+    (~/.cache/avastack) ; la ligne affiche « ⚠ en RAM (tmpfs) » le cas échéant ;
+  - le bouton « 📂 » choisit un autre dossier (mémorisé) — par exemple votre
+    disque de données — et « Ouvrir » le montre dans le gestionnaire ;
+  - avant de lancer un traitement externe, l'espace est VÉRIFIÉ : si c'est
+    juste, l'application refuse en disant combien il faut et combien il reste,
+    au lieu d'échouer après plusieurs minutes ;
+  - l'écriture est ATOMIQUE (fichier écrit en .part puis renommé) : un fichier
+    tronqué n'est jamais laissé à la place d'une image valide ;
+  - en cas d'échec, les fichiers de travail sont CONSERVÉS et leur chemin est
+    annoncé (journal de l'outil compris) — de quoi comprendre ce qui s'est
+    passé ;
+  - l'archivage des frames s'arrête de lui-même à la moitié de l'espace libre
+    du volume : il ne peut plus le remplir entièrement.
+Pour libérer de la place : fermer AVAStack et supprimer les dossiers
+« avastack_* » du dossier de travail (les résidus de plus de 6 heures sont de
+toute façon nettoyés au démarrage).
+
+
 BANCS CAMÉRA INSTALLÉS (sous-dossier bancs/cameras)
 -----------------------------------------------
 Seuls les OUTILS DE DIAGNOSTIC MATÉRIEL sont installés avec l'application :
