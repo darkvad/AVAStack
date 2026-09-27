@@ -1,0 +1,114 @@
+AVAStack — live stacking : LISEZ-MOI LINUX
+==========================================
+
+Merci d'avoir installé AVAStack ! Ce fichier concerne l'installation sous
+Linux (le paquet est `avastack-setup-<version>-linux.tar.gz`).
+
+CE QUI FONCTIONNE DANS CETTE VERSION
+------------------------------------
+Les sources d'images « sans caméra » sont prêtes et opérationnelles :
+  - Simulée (démo)             : ciel de démonstration, sans matériel ;
+  - Dossier surveillé          : empile les FITS/PNG/TIFF que ton logiciel
+                                 d'acquisition (N.I.N.A., KStars/Ekos,
+                                 APT, SGP...) écrit dans un dossier ;
+  - Composition multi-dossiers : RGB / HOO / SHO / LRGB (une couche par
+                                 dossier) ;
+  - OpenCV 0 et 1              : webcams et cartes d'acquisition génériques
+                                 (périphériques /dev/video0, /dev/video1).
+Tout le traitement est là : calibration (dark/flat), alignement, empilement
+avec rejet, étirement VeraLux, histogramme, sauvegardes FITS/TIFF/PNG,
+astrométrie, photométrie, outils externes (GraXpert / BlurXTerminator).
+
+CAMÉRAS : PAS ENCORE INSTALLÉES (c'est volontaire)
+--------------------------------------------------
+Les caméras astronomiques (QHY, ZWO, Player One, Touptek, SVBONY) ont besoin
+d'un SDK binaire fourni par le constructeur — sous Linux ce sont des
+fichiers `lib*.so` (plus les règles udev), et NON des paquets pip. Ce paquet
+n'en embarque aucun : l'application démarre sans eux, et l'ouverture d'une
+source caméra se contentera de dire que le SDK est introuvable.
+
+Quand tu auras récupéré les bibliothèques constructeurs, dépose-les dans le
+dossier EXTRAIT du paquet (à côté de `AVAStack.py`, ou dans un sous-dossier
+`sdk/`), puis relance l'installateur depuis ce dossier :
+
+    bash installer/install_avastack.sh --cameras
+
+Il installe alors les paquets caméras (qhyccd, zwoasi) et copie les
+`*.so` présents. Les règles udev (`*.rules`) seront posées dans
+/lib/udev/rules.d par l'installateur (avec sudo) : sans elles, la caméra
+n'est visible QUE en root.
+
+(Tu peux aussi pointer un dossier existant avec la variable d'environnement
+AVASTACK_<MARQUE>_DIR, par exemple AVASTACK_PLAYERONE_DIR=~/SDK/PlayerOne.)
+
+  - QHY      : rien à télécharger (le paquet pip qhyccd embarque le SDK).
+  - ZWO      : libASICamera2.so + asi.rules.
+  - Player One : libPlayerOneCamera.so + ses règles, et libusb-1.0-0.
+  - Touptek/Altair : libtoupcam.so + ses règles.
+  - SVBONY   : libSVBCameraSDK.so + ses règles.
+
+BANCS DE DIAGNOSTIC ET DE RÉGRESSION
+------------------------------------
+Les outils autonomes sont installés avec l'application (mêmes fichiers que
+sous Windows) :
+  - _diag_camera_qhy.py / _diag_camera_playerone.py /
+    _diag_camera_svbony.py / _diag_camera_touptek.py : diagnostic caméra ;
+  - _diag_solve_reel.py, _test_solveur_reel_m31.py : solveur astrométrique ;
+  - tous les `_test_*.py` : bancs de régression (à lancer avec
+    `./venv/bin/python _test_...py` depuis ce dossier).
+
+DÉPENDANCES SYSTÈME (si l'application refuse de démarrer)
+--------------------------------------------------------
+AVAStack a besoin de Tkinter (paquet SYSTÈME `python3-tk` : il n'existe pas
+sur pip) et, pour OpenCV, de bibliothèques graphiques. Si le lancement
+échoue, teste :
+
+    ./venv/bin/python -c "import tkinter"
+    ./venv/bin/python -c "import cv2"
+
+et installe ce qui manque (avec les droits administrateur) :
+
+    Debian / Ubuntu / Linux Mint :
+        sudo apt install python3 python3-venv python3-tk libgl1 libglib2.0-0 libusb-1.0-0
+    Fedora :
+        sudo dnf install python3 python3-tkinter mesa-libGL glib2 libusb1
+    Arch / Manjaro :
+        sudo pacman -S python python-pip tk libgl libusb
+
+CONFIGURATION ET DONNÉES
+------------------------
+Réglages de l'application :
+    ~/.config/AVAStack/config.json
+Les images que tu enregistres vont où TU choisis (aucun dossier imposé).
+
+Lancement :
+    avastack            (si ~/.local/bin est dans ton PATH)
+    ./lancer_avastack.sh (directement depuis le dossier d'installation)
+    ou l'entrée « AVAStack » du menu Applications.
+
+MISE À JOUR
+-----------
+Ferme AVAStack, extrais le nouveau paquet et relance `install_avastack.sh` :
+le venv et tes réglages sont réutilisés (l'ancienne installation reste
+consultable en cas de régression — les paquets sont nommés avec leur
+version).
+
+DÉSINSTALLATION
+---------------
+Depuis le dossier extrait du paquet (ou depuis le dépôt) :
+
+    bash installer/install_avastack.sh --desinstaller           (garde les réglages)
+    bash installer/install_avastack.sh --desinstaller --purger  (supprime aussi
+                                                                 les réglages)
+
+Si tu avais installé dans un autre dossier (`--prefix`), répète ce `--prefix`
+à la désinstallation. L'aide complète : `bash
+installer/install_avastack.sh --aide`.
+
+NOTES
+-----
+- L'installateur N'EMBARQUE PAS les SDK caméras : code constructeur, comme
+  sous Windows (cf. `.gitignore` du projet). Exception : QHY, dont le SDK
+  natif est inclus dans son paquet pip.
+- `veralux_core_headless.py` est un code TIERS (Riccardo Paterniti,
+  GPL-3.0-or-later) copié tel quel : sa licence voyage avec le paquet.

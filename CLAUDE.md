@@ -103,7 +103,30 @@ sans qu'Alain ait à y penser.
 ```powershell
 # Rebuild de l installateur (lit la version dans avastack/__init__.py)
 powershell -NoProfile -ExecutionPolicy Bypass -File installer\windows\build_avastack.ps1
+
+# Rebuild du paquet Linux (même version, lue dans le même source)
+python installer\linux\build_avastack.py
 ```
+
+**NOM DES INSTALLATEURS : toujours le numéro de version (consigne d'Alain,
+27/09/2026)** — c'est le nom de l'artefact qui dit ce que teste Alain, et deux
+versions ne doivent JAMAIS s'écraser. Registre :
+
+| Plateforme | Artefact | Producteur |
+| --- | --- | --- |
+| Windows | `installer/windows/output/avastack-setup-<version>.exe` | `build_avastack.ps1` (ISCC + `/DAppVersion`) |
+| Linux | `installer/linux/output/avastack-setup-<version>-linux.tar.gz` | `installer/linux/build_avastack.py` |
+
+Règles qui vont avec :
+- la version vient TOUJOURS de `AVASTACK_VERSION` (`avastack/__init__.py`) —
+  jamais recopiée à la main dans un nom de fichier ; `avastack.iss` **refuse**
+  de compiler sans `/DAppVersion` (`#error`) et le packer Linux la lit dans le
+  source ;
+- on ne renomme jamais un artefact après coup, et on ne remplace pas un
+  artefact d'une version antérieure (l'ancien reste à côté : c'est lui qui sert
+  de repli en cas de régression) ;
+- après toute passe de code, annoncer en fin de réponse le CHEMIN EXACT de
+  l'artefact reconstruit (version comprise).
 
 ## Portage Linux / macOS — prérequis et installateur (étude du 27/09/2026)
 
@@ -132,6 +155,28 @@ installé, documentations et pages constructeurs) :
   rc-astro (BlurXTerminator) existe pour Windows, macOS ET Linux.
 - **macOS** : Python de python.org (Tk inclus) ou `brew install python-tk@3.14`,
   puis bundle `.app` + signature/notarisation Apple (sinon Gatekeeper bloque).
+- **Route LINUX RETENUE (décision d'Alain, 27/09/2026) : ① script + venv**,
+  implémentée le même jour — `installer/linux/install_avastack.sh` (copie dans
+  `~/.local/share/AVAStack`, venv + `pip install`, lanceur
+  `~/.local/bin/avastack`, entrée `.desktop`), distribué en
+  `avastack-setup-<version>-linux.tar.gz` par `installer/linux/build_avastack.py`.
+  Le `.deb`, l'AppImage et le Flatpak restent des options NON retenues.
+  **Version livrée SANS CAMÉRAS** : les paquets `qhyccd`/`zwoasi` sont retirés de
+  l'installation et aucun `*.so` n'est embarqué → l'application démarre et
+  travaille en **mode dossier / composition / OpenCV / simulé** ; les caméras
+  viendront quand les `.so` constructeurs seront là (option `--cameras` du
+  script : installe les paquets pip et copie les `*.so` présents, puis rappelle
+  la commande des règles udev). Prérequis système à dire à l'utilisateur dans
+  cet ordre : `python3-venv`, **`python3-tk`**, `libgl1` + `libglib2.0-0`,
+  `libusb-1.0-0` — le script teste Tkinter et les imports réels et affiche la
+  commande par distribution.
+  ⚠ **FINS DE LIGNE (constat du 27/09/2026)** : le dépôt vit sur Windows
+  (`core.autocrlf=true`), donc les fichiers du disque sont en CRLF — or un
+  script `.sh` en CRLF NE S'EXÉCUTE PAS sous Linux (`set -euo pipefail\r` =
+  commande introuvable). Le packer convertit donc `.sh` et `.txt` en LF dans
+  l'archive (et corrige `info.size` en conséquence). Un script `install_*`
+  ajouté un jour doit passer par le packer, jamais être déposé dans le
+  `.tar.gz` tel quel.
 - **Piste « zéro .so » : INDI** — les pilotes INDI *embarquent* eux-mêmes le SDK
   constructeur (le dépôt `indi-3rdparty` redistribue des binaires constructeurs :
   `indi_asi_ccd`, `indi_qhy_ccd`, `indi_playerone_ccd`, `indi_toupbase`, pilote
@@ -159,6 +204,11 @@ installé, documentations et pages constructeurs) :
   de l éviter/la remplacer sans le dire — c est à Alain de trancher.
 - Vérifier la syntaxe (`ast.parse`) après CHAQUE édition avant de la
   considérer terminée.
+- **Installateurs nommés AVEC LE NUMÉRO DE VERSION** (consigne d'Alain,
+  27/09/2026) : `avastack-setup-<version>.exe` (Windows),
+  `avastack-setup-<version>-linux.tar.gz` (Linux), version lue dans
+  `AVASTACK_VERSION` — jamais un nom figé, jamais un artefact écrasé. Détail
+  et registre des producteurs : section « Installateur et tests réels ».
 - **Stashes : jamais de stash qui traîne.** Un `stash` n'est qu'une étape
   temporaire : dès que son contenu est repris, VÉRIFIÉ et commité, il se
   droppe (`git stash drop`) — le garder n'apporte que de l'ambiguïté aux

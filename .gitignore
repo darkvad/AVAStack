@@ -26,5 +26,7 @@ _gx_jalon4_compteur.txt
 # projet comme les binaires, ils n'ont rien a faire dans le depot.
 *.rules
 
-# Artefacts d'installateur
+# Artefacts d'installateur (le NOM porte la version : avastack-setup-<version>.exe,
+# avastack-setup-<version>-linux.tar.gz — cf. CLAUDE.md)
 installer/windows/output/
+installer/linux/output/

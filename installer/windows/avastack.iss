@@ -20,10 +20,13 @@
 #define RepoRoot "..\.."
 #define AppName "AVAStack"
 ; Version AVAStack : source unique de verite = AVASTACK_VERSION dans
-; avastack/__init__.py (lue par build_avastack.ps1). Le define de repli ne
-; sert qu'a une compilation manuelle ISCC sans /DAppVersion=.
+; avastack/__init__.py (lue par build_avastack.ps1 et passee via
+; /DAppVersion=...). Depuis le 27/09/2026 (consigne d'Alain) le nom de
+; l'artefact PORTE LA VERSION : compiler sans version produirait un
+; installateur MAL NOMME, qui mentirait sur ce qu'il contient -> on refuse
+; de compiler (plus aucun define de repli a maintenir).
 #ifndef AppVersion
-  #define AppVersion "2.13.0"
+  #error AppVersion non defini : compilez avec build_avastack.ps1, ou passez /DAppVersion=<version> a ISCC
 #endif
 #define MinPythonMajor 3
 #define MinPythonMinor 10
@@ -38,7 +41,10 @@ DefaultDirName={localappdata}\AVAStack
 DefaultGroupName=AVAStack
 DisableProgramGroupPage=yes
 OutputDir=output
-OutputBaseFilename=avastack-setup
+; Le nom de l'artefact PORTE LA VERSION (consigne d'Alain, 27/09/2026) :
+; c'est lui qui dit ce qu'on teste, et deux versions ne s'ecrasent JAMAIS
+; (avastack-setup-2.38.3.exe a cote de avastack-setup-2.38.2.exe).
+OutputBaseFilename=avastack-setup-{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 ArchitecturesAllowed=x64compatible

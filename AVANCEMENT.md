@@ -10,6 +10,40 @@ dans le changelog du source et l'historique git.)
 ---
 
 
+- **PASSE ANNEXE (27/09/2026, hors code applicatif) — INSTALLATEURS NOMMÉS AVEC
+  LEUR VERSION, INSTALLATEUR LINUX SANS CAMÉRAS** :
+  - **① nommage (demande d'Alain)** : tout artefact porte sa VERSION et la tire
+    de `AVASTACK_VERSION` — `installer/windows/output/avastack-setup-2.38.3.exe`
+    (l'`.iss` utilise `OutputBaseFilename=avastack-setup-{#AppVersion}` et REFUSE
+    désormais de compiler sans `/DAppVersion` : plus de define de repli à
+    maintenir, garde-fou TESTÉ) et
+    `installer/linux/output/avastack-setup-2.38.3-linux.tar.gz`. Convention
+    écrite dans CLAUDE.md (non négociable + registre des producteurs) et dans
+    `installer/README.md`.
+  - **② installateur LINUX — route ① tranchée par Alain** :
+    `installer/linux/install_avastack.sh` : prérequis VÉRIFIÉS avant toute copie
+    (`python3` ≥ 3.10, `python3-venv`/ensurepip, **`python3-tk`** — Tkinter
+    n'existe pas sur pip — avec la commande exacte par distribution), copie dans
+    `~/.local/share/AVAStack` (+ `VERSION.txt`), venv et dépendances via
+    `installer/common/avastack_setup.py` (le MÊME outil que Windows), lanceur
+    `lancer_avastack.sh` + `~/.local/bin/avastack` + entrée `.desktop`, puis
+    vérification en interprétant réellement (Tkinter, numpy/OpenCV/Pillow avec
+    rappel `libgl1`, astropy, état des caméras). Options : `--prefix`,
+    `--cameras` (pour plus tard), `--sans-raccourci`, `--forcer`,
+    `--desinstaller [--purger]`. Packer portable (stdlib, Windows/Linux/macOS) :
+    `installer/linux/build_avastack.py` — il convertit en LF les `.sh`/`.txt`
+    de l'archive (le dépôt Windows les écrit en CRLF, et un `.sh` en CRLF ne
+    s'exécute pas sous Linux : piège réel, corrigé et consigné dans CLAUDE.md).
+    **SANS CAMÉRAS** (demande d'Alain) : paquets `qhyccd`/`zwoasi` retirés de
+    l'installation et aucun `*.so` embarqué (garde-fou dans le packer) → mode
+    dossier / composition / OpenCV / simulé pleinement fonctionnel (imports
+    caméra PARESSEUX, vérifié dans le code).
+  - **③ reste à faire côté Linux** : essayer l'installateur sur une vraie machine
+    Linux (pas exécutable ici : Windows sans bash ni WSL — contrôles faits à la
+    lecture + inventaire de l'archive) ; puis `--cameras` quand les `.so`
+    constructeurs seront récupérés (liste des fichiers attendus plus bas).
+
+
 - **PASSE EN COURS — AVAStack v2.38.3 : PARAMÈTRES BXT EXPLICITES, TRAÇABILITÉ
   DES OUTILS EXTERNES, LISEZMOI** (code + banc livrés le 27/09/2026, **EN
   ATTENTE DE TON TEST** ; installateur 2.38.3 reconstruit). Les trois finitions
@@ -186,10 +220,11 @@ dans le changelog du source et l'historique git.)
     « empilement ».
   - **INSTALLATEUR LINUX / macOS (demande d'Alain, 27/09/2026 : « il faudra
     regarder comment faire un installateur pour Linux … et comment avoir les
-    prérequis, ce ne sera pas les dll »)** — étude FAITE (27/09/2026), route à
-    trancher par Alain : ① **SCRIPT + venv** (équivalent exact de l'installateur
-    Windows : `installer/linux/install_avastack.sh` → `~/.local/share/AVAStack`,
-    venv, `pip install -r requirements.txt`, lanceur + `.desktop`) ; ② paquet
+    prérequis, ce ne sera pas les dll »)** — étude FAITE (27/09/2026), route
+    TRANCHÉE par Alain : ① **SCRIPT + venv** — IMPLÉMENTÉE le 27/09/2026 (bloc
+    en tête de ce fichier : `installer/linux/install_avastack.sh` →
+    `~/.local/share/AVAStack`, venv, `pip install -r requirements.txt`, lanceur
+    + `.desktop`) ; ② paquet
     **.deb** (Debian/Ubuntu) ; ③ **AppImage** (un seul fichier, embarque
     Python+Tk) ; ④ **Flatpak** (sandbox → ouvrir l'accès USB des caméras).
     **PRÉREQUIS LINUX (ce ne sont PAS des DLL)** : `python3` ≥ 3.10,
