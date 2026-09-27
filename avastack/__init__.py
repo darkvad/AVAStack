@@ -17,9 +17,36 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.38.8"
+AVASTACK_VERSION = "2.38.9"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.38.9 : LA LIGNE « DOSSIER DE TRAVAIL » ET LE BOUTON « JOURNAL » SONT ENFIN
+#   VISIBLES (constat RÉEL d'Alain, 27/09/2026, capture d'écran à l'appui :
+#   « pas de chemin pour temp et pas de bouton journal », sur la v2.38.7).
+#   MESURE (géométrie Tk réelle) : les deux reproches étaient FONDÉS, pour deux
+#   raisons distinctes —
+#   ① le bouton « Journal » n'était JAMAIS AFFICHÉ : les trois boutons ne
+#      tenaient pas sur une ligne (cadre de 318 px = texte 243 + « Ouvrir » 43 +
+#      « 📂 » 28) et `pack` abandonne SILENCIEUSEMENT le widget qui n'a plus de
+#      place (`winfo_ismapped()` = 0) ;
+#   ② la ligne était à y≈2421 px sur les 3218 px de la colonne DÉFILANTE de
+#      gauche : sous le pli, donc invisible tant qu'on ne défile pas (et la
+#      molette n'agit que si le pointeur est SUR le panneau).
+#   (1) la ligne et ses boutons passent à DEUX lignes (le texte, puis les
+#       boutons) : plus rien ne peut être écrasé ;
+#   (2) ils remontent EN HAUT de la colonne, dans un cadre dédié « Fichiers de
+#       travail et journal » — indicateur GLOBAL (où vont les fichiers lourds,
+#       espace restant) et point d'entrée du DIAGNOSTIC : c'est là qu'on regarde
+#       d'abord ; le cadre « Traitement externe (long) » garde son rôle, avec un
+#       renvoi commenté vers le nouvel emplacement ;
+#   (3) libellé à `wraplength=300` (chemin long + espace libre lisibles).
+#   Banc `_test_espace_jalon72.py` : la GÉOMÉTRIE est désormais vérifiée (les
+#   trois boutons mappés, et la ligne dans la zone visible SANS défilement) —
+#   c'est exactement ce qui manquait pour attraper ce défaut. Doc : LISEZMOI
+#   Linux/Windows (où est la ligne), CLAUDE.md (leçon : `pack` abandonne un
+#   widget qui ne tient pas — le vérifier par `winfo_ismapped()`, pas à l'œil).
+#   Repli si régression : v2.38.8.
+#
 # v2.38.8 : LES ÉCHECS DE DÉMARRAGE CONNUS SONT EXPLIQUÉS (session sans bureau,
 #   Tkinter absent) — le journal a servi dès son premier jour.
 #   FAITS (Alain, 27/09/2026, machine Linux) :

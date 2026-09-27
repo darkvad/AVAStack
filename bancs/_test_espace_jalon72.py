@@ -254,6 +254,40 @@ verifie(perso in ui.lbl_travail.cget("text")
         and "libres" in ui.lbl_travail.cget("text"),
         "ligne de travail : « %s… »" % ui.lbl_travail.cget("text")[:72])
 
+# v2.38.9 — GÉOMÉTRIE de cette ligne : elle doit être VISIBLE SANS DÉFILEMENT et
+# ses TROIS boutons doivent être affichés. C'est la régression exacte du
+# 27/09/2026, vue par Alain : « pas de chemin pour temp et pas de bouton
+# journal ». Mesure d'alors : le bouton « Journal » n'était JAMAIS affiché
+# (`pack` abandonne SILENCIEUSEMENT le widget qui ne tient plus — trois boutons
+# sur une ligne dans un cadre de 318 px) et la ligne était à y≈2421 px sur les
+# 3218 px de la colonne défilante, donc sous le pli. `winfo_ismapped` ne dit rien
+# sur une fenêtre retirée : on l'affiche le temps de la mesure.
+from tkinter import ttk                        # noqa: E402
+ui.root.deiconify()
+ui.root.update()
+boutons = []
+
+
+def _boutons_de_travail(widget):
+    for enfant in widget.winfo_children():
+        if isinstance(enfant, ttk.Button):
+            boutons.append(enfant)
+        _boutons_de_travail(enfant)
+
+
+_boutons_de_travail(ui.lbl_travail.master)
+_vus = sorted(str(b.cget("text")) for b in boutons)
+verifie(_vus == ["Journal", "Ouvrir", "📂 Dossier"],
+        "les trois boutons existent : %s" % _vus)
+verifie(all(b.winfo_ismapped() for b in boutons),
+        "aucun bouton écrasé (non affiché : %s)"
+        % [b.cget("text") for b in boutons if not b.winfo_ismapped()])
+_y = ui.lbl_travail.winfo_rooty() - ui.root.winfo_rooty()
+verifie(0 <= _y < ui.root.winfo_height(),
+        "ligne VISIBLE sans défilement (y=%d px, fenêtre haute de %d px)"
+        % (_y, ui.root.winfo_height()))
+ui.root.withdraw()
+
 # Alerte « en RAM » : la ligne doit la dire (orange), comme sur son /tmp.
 _TMPFS = travail.est_tmpfs
 ui._travail_recycle = (0, 0)      # le nettoyage réel du démarrage ne pollue pas

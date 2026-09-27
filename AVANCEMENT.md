@@ -10,7 +10,35 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **DERNIÈRE PASSE LIVRÉE (27/09/2026) — AVAStack v2.38.8 : LES ÉCHECS DE
+- **DERNIÈRE PASSE LIVRÉE (27/09/2026) — AVAStack v2.38.9 : LA LIGNE « FICHIERS
+  DE TRAVAIL » ET LE BOUTON « JOURNAL » SONT ENFIN VISIBLES**. Ton constat,
+  capture d'écran à l'appui : « pas de chemin pour temp et pas de bouton
+  journal ». **MESURE** (géométrie Tk réelle) : les deux reproches étaient FONDÉS,
+  pour deux causes DISTINCTES — ① le bouton « Journal » n'était **jamais
+  affiché** (`pack` abandonne SILENCIEUSEMENT le widget qui ne tient plus : cadre
+  de 318 px = texte 243 + « Ouvrir » 43 + « 📂 » 28 → `winfo_ismapped()` = 0) ;
+  ② la ligne était à **y≈2421 px sur les 3218 px** de la colonne DÉFILANTE de
+  gauche, donc invisible sans défilement (« pas de chemin pour temp »).
+  - Corrigé : ligne et boutons sur **DEUX lignes** (le texte, puis les boutons),
+    dans un cadre dédié « **Fichiers de travail et journal** » placé **tout en
+    haut de la colonne** ; le cadre « Traitement externe (long) » garde son rôle
+    (renvoi commenté) ; libellé `wraplength=300`.
+  - Banc 72 **étendu à la GÉOMÉTRIE** : les TROIS boutons doivent être mappés et
+    la ligne visible SANS défilement (fenêtre affichée le temps de la mesure,
+    car `winfo_ismapped` ne dit rien sur une fenêtre retirée) — c'est
+    exactement ce contrôle qui manquait pour attraper le défaut.
+  - Docs : LISEZMOI Linux/Windows (nouvel emplacement), CLAUDE.md (leçon `pack`
+    abandonne un widget qui ne tient pas + un indicateur global va en haut).
+  - **Reste à voir : ta vérification à l'écran** (les deux éléments doivent être
+    visibles dès l'ouverture, sans défiler).
+  Artefacts reconstruits (v2.38.9) :
+  `installer/linux/output/avastack-setup-2.38.9-linux.tar.gz` (510 Kio, SHA-256
+  `7bb7307c6236f62666931ef4783f3b069f68aff17ae05ea392dc80dc202a7e55`) et
+  `installer/windows/output/avastack-setup-2.38.9.exe` (10,9 Mo).
+  Non-régression : 7 bancs rejoués VERTS (72 avec la géométrie, 73, 71, 42, 19,
+  20, 12) + `compileall`. Repli si régression : v2.38.8.
+
+- **PASSE PRÉCÉDENTE (27/09/2026) — AVAStack v2.38.8 : LES ÉCHECS DE
   DÉMARRAGE CONNUS SONT EXPLIQUÉS (session sans bureau, Tkinter absent)**.
   **FAITS, à ne pas confondre** (ton message du soir — j'avais lu trop vite) :
   ① la v2.38.7 lancée par **SSH, donc sans bureau**, est morte sur `tk.Tk()`
@@ -21,20 +49,18 @@ dans le changelog du source et l'historique git.)
   Applications** (aucune fenêtre, aucun message) reste **SANS EXPLICATION** — le
   journal n'existait pas, il n'en existe aucune trace. Mon hypothèse « c'était le
   SSH » était FAUSSE : corrigée partout (code, docs).
-  - `journal.conseil_installation()` : conseil ACTIONNABLE pour les deux échecs
-    CONNUS — pas de session graphique (lancer du bureau, `ssh -X`, ou `DISPLAY`)
-    et `tkinter` absent (paquet SYSTÈME : apt/dnf/pacman) — et `""` pour toute
-    autre cause : **jamais de conseil inventé** ; `journal.sans_affichage()`
-    conclut à DEUX indices (message de Tk + `DISPLAY` vide, ce dernier SOUS LINUX
-    seulement) ; `journal.rapport_echec()` met le message en forme UNE fois, pour
-    les deux points d'entrée.
+  - `journal.conseil_installation()`, `sans_affichage()`, `rapport_echec()` :
+    conseil ACTIONNABLE pour les deux échecs CONNUS (session sans bureau ;
+    `tkinter` absent — paquet SYSTÈME apt/dnf/pacman), détection à DEUX indices
+    (message de Tk + `DISPLAY` vide, ce dernier sous Linux seulement), message
+    mis en forme UNE fois pour les deux points d'entrée — et `""` pour toute
+    autre cause : **jamais de conseil inventé**.
   - **Le journal a servi dès son premier jour** : il a nommé l'environnement réel
     sans rien demander — soit la **validation sur ta machine du repli hors tmpfs
     de la v2.38.6** (ton `/tmp` est bien un tmpfs).
   - Doc : LISEZMOI Linux/Windows (« deux échecs déjà rencontrés »), CLAUDE.md
-    (leçon : JAMAIS d'attribution de cause sans trace) ; banc
-    `_test_journal_jalon73.py` section [6] — **33 vérifications** au total, dont
-    « aucun conseil inventé pour une cause inconnue ».
+    (leçon : JAMAIS d'attribution de cause sans trace) ; banc 73 section [6] —
+    **33 vérifications** au total, dont « aucun conseil inventé ».
   - **MESURE FAITE (ton essai, 27/09/2026 23:02) : relance PAR LE MENU
     Applications → ✔ DÉMARRE** (journal : `exe=…/AVAStack/venv/bin/python`,
     `Tk 8.6/8.6`, `cwd=/home/alain/.local/share/AVAStack` — le `Path=` du

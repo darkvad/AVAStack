@@ -588,6 +588,26 @@ ce qui manquait n'était pas une correction mais une MESURE.
   travail (`~/.cache/avastack`, 115,3 Go libres) — soit la VALIDATION sur sa
   machine du repli hors tmpfs de la v2.38.6 (son `/tmp` est bien un tmpfs) — sans
   rien lui demander d'autre que de lancer l'application.
+- **`pack` ABANDONNE silencieusement un widget qui ne tient plus** (v2.38.9,
+  mesuré) : trois boutons ajoutés sur une ligne du cadre « Traitement externe
+  (long) » (cadre de 318 px = texte 243 + « Ouvrir » 43 + « 📂 » 28) ont fait
+  disparaître le TROISIÈME — « Journal » — sans le moindre message :
+  `winfo_ismapped()` = 0, `winfo_width()` = 52 px. À l'œil, le bouton n'existe
+  pas (constat d'Alain : « pas de bouton journal », capture d'écran à l'appui).
+  Règle : un widget ajouté dans une ligne DÉJÀ chargée se vérifie par la
+  GÉOMÉTRIE (`winfo_ismapped()`, `winfo_width()`, `winfo_rooty()`), jamais à
+  l'œil — et un banc peut le faire (banc jalon 72 : les TROIS boutons doivent
+  être mappés ; la fenêtre est affichée le temps de la mesure, car
+  `winfo_ismapped` ne dit rien sur une fenêtre retirée/`withdraw`).
+- **Un indicateur GLOBAL va EN HAUT de la colonne** (v2.38.9, même constat) : la
+  ligne « dossier de travail + espace libre » et les boutons 📂/Ouvrir/Journal
+  vivaient en premières lignes du cadre « Traitement externe (long) », soit à
+  y≈2421 px sur les 3218 px d'une colonne DÉFILANTE → invisibles sans défilement
+  (« pas de chemin pour temp »). Ils ont désormais leur propre cadre « Fichiers
+  de travail et journal », TOUT EN HAUT de la colonne de gauche. Leçon : ce qui
+  répond à « où est-ce écrit ? » et « qu'est-ce qui s'est passé ? » ne doit pas
+  dépendre d'un défilement — et une ligne trop chargée se met sur DEUX lignes
+  (le texte, puis les boutons) plutôt que d'en sacrifier un.
 
 ## Pièges (leçons du projet AVAStack)
 

@@ -1082,6 +1082,33 @@ class App:
                 except tk.TclError:
                     pass
 
+        # --- Fichiers de travail et journal (v2.38.9) : EN HAUT de la colonne.
+        # POURQUOI CE DÉPLACEMENT : cette ligne est un indicateur GLOBAL (où vont
+        # les fichiers lourds — frames archivées, FITS des outils — et combien
+        # d'espace reste) et le POINT D'ENTRÉE du diagnostic (journal). Elle vivait
+        # en premières lignes du cadre « Traitement externe (long) », donc à 75 %
+        # de la hauteur d'une colonne DÉFILANTE (y≈2421 px sur 3218 px de
+        # contenu) : constat RÉEL d'Alain (27/09/2026) « pas de chemin pour temp
+        # et pas de bouton journal ». Mesure : les trois boutons ne tenaient pas
+        # sur une ligne (cadre 318 px = texte 243 + « Ouvrir » 43 + « 📂 » 28) et
+        # le troisième — « Journal » — n'était même pas AFFICHÉ
+        # (`winfo_ismapped()` = 0). D'où DEUX lignes : le texte, puis les boutons.
+        box = ttk.LabelFrame(left, text="Fichiers de travail et journal",
+                             padding=6)
+        box.pack(fill="x", pady=3)
+        self.lbl_travail = ttk.Label(box, text="—", foreground="#888888",
+                                     wraplength=300)
+        self.lbl_travail.pack(anchor="w", fill="x")
+        rowtr = ttk.Frame(box)
+        rowtr.pack(fill="x", pady=(3, 0))
+        ttk.Button(rowtr, text="📂 Dossier", width=12,
+                   command=self._choisir_dossier_travail).pack(side="left")
+        ttk.Button(rowtr, text="Ouvrir", width=8,
+                   command=self._ouvrir_dossier_travail
+                   ).pack(side="left", padx=(4, 0))
+        ttk.Button(rowtr, text="Journal", width=8,
+                   command=self._ouvrir_journal).pack(side="left", padx=(4, 0))
+
         # --- Caméra : la SOURCE + Démarrer/Arrêter sont TOUJOURS visibles ;
         # les contrôles propres à la caméra (exposition, gain, roue, TEC,
         # détection SDK…) vont dans un sous-cadre qui n'apparaît QUE pour une
@@ -1940,28 +1967,14 @@ class App:
         # de _run_external ; le « live » reste réservé aux étapes rapides)
         box = ttk.LabelFrame(left, text="Traitement externe (long)", padding=6)
         box.pack(fill="x", pady=3)
-        # v2.38.6 : ligne « dossier de travail » — c'est là que vont les fichiers
-        # LOURDS (frames archivées ~32 Mo, FITS d'étape des outils). Elle dit OÙ
-        # et l'ESPACE RESTANT : c'est exactement ce qui manquait le 27/09/2026,
-        # quand /tmp (tmpfs, 4,6 Go) s'est rempli et que la chaîne BlurX a échoué
-        # sur une écriture partielle (« 24962352 requested and 10902832 written »
-        # — message brut de numpy, ni fichier ni cause).
-        rowtr = ttk.Frame(box)
-        rowtr.pack(fill="x")
-        self.lbl_travail = ttk.Label(rowtr, text="—", foreground="#888888",
-                                     wraplength=250)
-        self.lbl_travail.pack(side="left")
-        ttk.Button(rowtr, text="📂", width=3,
-                   command=self._choisir_dossier_travail).pack(side="right")
-        ttk.Button(rowtr, text="Ouvrir", width=7,
-                   command=self._ouvrir_dossier_travail
-                   ).pack(side="right", padx=(0, 4))
-        # v2.38.7 : le JOURNAL est à côté du dossier de travail — même famille
-        # de question (« où est-ce écrit, et qu'est-ce qui s'est passé ? ») et
-        # même accessibilité : c'est le premier fichier à regarder quand une
-        # chaîne échoue ou quand l'application ne démarre pas.
-        ttk.Button(rowtr, text="Journal", width=7,
-                   command=self._ouvrir_journal).pack(side="right", padx=(0, 4))
+        # NB (v2.38.9) : la ligne « dossier de travail » et ses boutons étaient
+        # ICI, en premières lignes du cadre. Constat d'Alain (27/09/2026) :
+        # « pas de chemin pour temp et pas de bouton journal » — et la mesure lui
+        # a donné raison sur les deux points : le bouton « Journal » n'était
+        # JAMAIS affiché (`winfo_ismapped()=0`, cadre de 318 px trop étroit pour
+        # trois boutons) et la ligne était sous le pli (y≈2421 px sur 3218 px de
+        # colonne défilante). Ils vivent maintenant EN HAUT de la colonne, dans
+        # le cadre « Fichiers de travail et journal » (cf. plus haut).
         self.var_ext_graxpert = tk.BooleanVar(value=False)
         ttk.Checkbutton(box, text="1. GraXpert — retrait de gradient",
                         variable=self.var_ext_graxpert).pack(anchor="w")

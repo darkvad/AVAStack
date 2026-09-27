@@ -221,9 +221,10 @@ ESPACE DISQUE ET DOSSIER DE TRAVAIL
 AVAStack écrit des fichiers LOURDS pendant qu'il travaille : les frames
 archivées (une trentaine de Mo chacune, pour pouvoir recalculer un empilement)
 et un FITS par étape de traitement externe. Ils vont dans le DOSSIER DE
-TRAVAIL, affiché en haut du cadre « Traitement externe (long) » avec l'espace
-libre restant — sous Windows c'est le dossier temporaire de ton compte, sur le
-disque.
+TRAVAIL, affiché TOUT EN HAUT de la colonne de gauche (cadre « Fichiers de
+travail et journal ») avec l'espace libre restant — sous Windows c'est le
+dossier temporaire de ton compte, sur le disque. Les boutons « 📂 Dossier »,
+« Ouvrir » et « Journal » sont juste en dessous.
 
 Depuis la v2.38.6 :
   - le bouton « 📂 » choisit un autre dossier de travail (mémorisé) — utile pour
@@ -252,8 +253,10 @@ Depuis la v2.38.7, un démarrage impossible le DIT et le laisse ÉCRIT : plus de
     étapes de démarrage — et, en cas d'échec, le traceback COMPLET de l'erreur ;
   - quand un démarrage échoue, une BOÎTE DE DIALOGUE s'ouvre et donne la cause
     (dépendance manquante, tkinter absent, …) avec le chemin du journal ;
-  - dans l'application, le bouton « Journal » (à côté de « Ouvrir », cadre
-    « Traitement externe (long) ») ouvre directement ce fichier ;
+  - dans l'application, la ligne « Fichiers de travail et journal » (TOUT EN
+    HAUT de la colonne de gauche) affiche le dossier utilisé et son espace
+    libre ; les boutons « 📂 Dossier », « Ouvrir » et « Journal » sont juste en
+    dessous — « Journal » ouvre directement le fichier ;
   - si vraiment aucune fenêtre ne s'ouvre : lance l'application en terminal,
     le message y apparaît aussitôt :
 
