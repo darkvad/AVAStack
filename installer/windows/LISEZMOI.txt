@@ -46,7 +46,7 @@ DONNÉES Gaia DR3 de Siril — des FICHIERS d'étoiles, pas des DLL. Une ligne
 
 Elle est accompagnée de deux boutons :
 
-  - 📂 : choisir un AUTRE dossier de catalogues (le choix est mémorisé) ;
+  - 📂 Dossier : choisir un AUTRE dossier de catalogues (le choix est mémorisé) ;
   - ⬇ Gaia : télécharger le catalogue astrométrique (≈ 1,1 Go) dans ce dossier
     — reprise automatique si la connexion coupe, empreinte sha256 vérifiée.
 
@@ -227,8 +227,8 @@ dossier temporaire de ton compte, sur le disque. Les boutons « 📂 Dossier »,
 « Ouvrir » et « Journal » sont juste en dessous.
 
 Depuis la v2.38.6 :
-  - le bouton « 📂 » choisit un autre dossier de travail (mémorisé) — utile pour
-    le poser sur un disque de données ; « Ouvrir » le montre ;
+  - le bouton « 📂 Dossier » choisit un autre dossier de travail (mémorisé) —
+    utile pour le poser sur un disque de données ; « Ouvrir » le montre ;
   - avant de lancer un traitement externe, l'ESPACE est vérifié : si c'est
     juste, AVAStack refuse en disant combien il faut et combien il reste, au
     lieu d'échouer après plusieurs minutes de calcul ;

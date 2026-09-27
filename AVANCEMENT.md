@@ -10,8 +10,37 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **DERNIÈRE PASSE LIVRÉE (27/09/2026) — AVAStack v2.38.9 : LA LIGNE « FICHIERS
-  DE TRAVAIL » ET LE BOUTON « JOURNAL » SONT ENFIN VISIBLES**. Ton constat,
+- **DERNIÈRE PASSE LIVRÉE (27/09/2026) — AVAStack v2.38.10 : LES LIGNES À TEXTE
+  LIBRE NE PERDENT PLUS RIEN (astrométrie, catalogues, re-stack)**. Ton constat :
+  « le champ et le bouton pour récupérer les coordonnées depuis les brutes ne
+  sont pas visibles sans agrandir la colonne ». **MESURE** (géométrie Tk, avec
+  chemins et messages LONGS comme les tiens) : **CINQ widgets étaient abandonnés
+  par `pack`** — champ « champ° » + bouton 📷 (astrométrie : ≈490 px requis pour
+  318 px), 📂 + « ⬇ Gaia » (dès que le chemin des catalogues est long : il est
+  INSÉCABLE, `wraplength` ne replie pas un chemin — il n'a pas d'espace), ⓘ
+  (re-stack, avec un message de ≈110 caractères) — et **QUATRE lignes d'état
+  étaient ROGNÉES** (jusqu'à 740 px requis pour 318 px affichés : le message qui
+  explique l'absence du catalogue Gaia était COUPÉ).
+  - Corrigé selon des RÈGLES appliquées partout : les petits boutons se posent
+    **avant** le texte libre ; un texte libre a une largeur **bornée**
+    (`wraplength` pour une phrase, `width` en caractères pour un chemin) ;
+    astrométrie sur 3 lignes (case / AD+Dec / champ°+📷), catalogues sur 2 lignes ;
+    lignes d'état en `wraplength`.
+  - **Banc 72 étendu à un AUDIT DE GÉOMÉTRIE de toute la fenêtre** (widget
+    écrasé / libellé rogné / widget débordé) exécuté avec des textes LONGS, plus
+    les cas nommés (📷, 📂 Dossier, ⬇ Gaia, ⓘ, champ°) → **31 vérifications**.
+  - Docs : CLAUDE.md (règles de mise en page), LISEZMOI (noms des boutons).
+  - **Reste à voir : ta vérification à l'écran** (champ + 📷 visibles sans
+    agrandir la colonne, à ta largeur habituelle).
+  Artefacts reconstruits (v2.38.10) :
+  `installer/linux/output/avastack-setup-2.38.10-linux.tar.gz` (512 Kio, SHA-256
+  `a38006a441e8558e8d8d7ceee49d86b2cc839a85d413a3c02b24c0a55b0f1f24`) et
+  `installer/windows/output/avastack-setup-2.38.10.exe` (10,9 Mo).
+  Non-régression : bancs 72 (31 vérifs), 73, 70, 56, 42, 19, 20 rejoués VERTS +
+  `compileall`. Repli si régression : v2.38.9.
+
+- **PASSE PRÉCÉDENTE (27/09/2026) — AVAStack v2.38.9 : LA LIGNE « FICHIERS
+  DE TRAVAIL » ET LE BOUTON « JOURNAL » SONT ENFIN VISIBLES.** Ton constat,
   capture d'écran à l'appui : « pas de chemin pour temp et pas de bouton
   journal ». **MESURE** (géométrie Tk réelle) : les deux reproches étaient FONDÉS,
   pour deux causes DISTINCTES — ① le bouton « Journal » n'était **jamais
@@ -23,20 +52,8 @@ dans le changelog du source et l'historique git.)
     dans un cadre dédié « **Fichiers de travail et journal** » placé **tout en
     haut de la colonne** ; le cadre « Traitement externe (long) » garde son rôle
     (renvoi commenté) ; libellé `wraplength=300`.
-  - Banc 72 **étendu à la GÉOMÉTRIE** : les TROIS boutons doivent être mappés et
-    la ligne visible SANS défilement (fenêtre affichée le temps de la mesure,
-    car `winfo_ismapped` ne dit rien sur une fenêtre retirée) — c'est
-    exactement ce contrôle qui manquait pour attraper le défaut.
-  - Docs : LISEZMOI Linux/Windows (nouvel emplacement), CLAUDE.md (leçon `pack`
-    abandonne un widget qui ne tient pas + un indicateur global va en haut).
-  - **Reste à voir : ta vérification à l'écran** (les deux éléments doivent être
-    visibles dès l'ouverture, sans défiler).
-  Artefacts reconstruits (v2.38.9) :
-  `installer/linux/output/avastack-setup-2.38.9-linux.tar.gz` (510 Kio, SHA-256
-  `7bb7307c6236f62666931ef4783f3b069f68aff17ae05ea392dc80dc202a7e55`) et
-  `installer/windows/output/avastack-setup-2.38.9.exe` (10,9 Mo).
-  Non-régression : 7 bancs rejoués VERTS (72 avec la géométrie, 73, 71, 42, 19,
-  20, 12) + `compileall`. Repli si régression : v2.38.8.
+  - Banc 72 étendu à la géométrie, docs à jour — le tout repris et généralisé par
+    la v2.38.10 ci-dessus (audit de toute la fenêtre).
 
 - **PASSE PRÉCÉDENTE (27/09/2026) — AVAStack v2.38.8 : LES ÉCHECS DE
   DÉMARRAGE CONNUS SONT EXPLIQUÉS (session sans bureau, Tkinter absent)**.

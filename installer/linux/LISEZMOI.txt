@@ -61,7 +61,7 @@ des FICHIERS d'étoiles, et ils ne sont pas fournis dans ce paquet :
     par la ligne « Catalogues » (reprise automatique après coupure, sha256
     vérifié) ;
   - soit tu déposes toi-même siril_cat_healpix8_astro.dat (ou .dat.bz2) dans
-    ce dossier — le bouton 📂 en choisit un autre, et c'est mémorisé.
+    ce dossier — le bouton « 📂 Dossier » en choisit un autre, et c'est mémorisé.
 
 La ligne « Catalogues » dit à tout moment OÙ l'application cherche, si le
 catalogue est présent, et combien de morceaux « spectres Gaia » (utiles à la
@@ -122,8 +122,8 @@ et une écriture peut s'arrêter en route — l'erreur ressemblait à
 v2.38.6, AVAStack s'en protège :
   - si /tmp est un tmpfs, le dossier de travail est mis sur le disque
     (~/.cache/avastack) ; la ligne affiche « ⚠ en RAM (tmpfs) » le cas échéant ;
-  - le bouton « 📂 » choisit un autre dossier (mémorisé) — par exemple votre
-    disque de données — et « Ouvrir » le montre dans le gestionnaire ;
+  - le bouton « 📂 Dossier » choisit un autre dossier (mémorisé) — par exemple
+    votre disque de données — et « Ouvrir » le montre dans le gestionnaire ;
   - avant de lancer un traitement externe, l'espace est VÉRIFIÉ : si c'est
     juste, l'application refuse en disant combien il faut et combien il reste,
     au lieu d'échouer après plusieurs minutes ;

@@ -286,6 +286,104 @@ _y = ui.lbl_travail.winfo_rooty() - ui.root.winfo_rooty()
 verifie(0 <= _y < ui.root.winfo_height(),
         "ligne VISIBLE sans défilement (y=%d px, fenêtre haute de %d px)"
         % (_y, ui.root.winfo_height()))
+
+# v2.38.10 — AUDIT DE GÉOMÉTRIE de TOUTE la fenêtre, avec des TEXTES LONGS
+# (chemin de catalogues long, message de re-stack long, ligne d'état longue) :
+# c'est la classe de défaut qui a coûté deux allers-retours à Alain le
+# 27/09/2026 — même mécanique que le bouton « Journal » de la v2.38.9 :
+#   ① « écrasé » : widget GÉRÉ mais NON AFFICHÉ (`pack` l'abandonne faute de
+#      place, SANS aucun message) ;
+#   ② « rogné »  : libellé dont le texte ne tient pas dans la place allouée
+#      (l'information existe, mais elle est coupée) ;
+#   ③ « débordé » : widget qui sort de son parent.
+# Mesures du jour : ligne d'astrométrie (champ « champ° » + bouton 📷
+# abandonnés : ≈490 px requis pour 318 px), ligne des catalogues (📂 + ⬇ Gaia
+# abandonnés dès que le chemin est long), bouton ⓘ du re-stack abandonné avec un
+# message long, et QUATRE lignes d'état rognées (jusqu'à 740 px pour 318 px).
+_long_cat = os.path.join(TMP, "home-alain-.local-share-siril-gaia-dr3-donnees")
+os.makedirs(_long_cat, exist_ok=True)
+config_mod.CONFIG["chemin_catalogues"] = _long_cat
+ui._maj_cat_vue()
+ui.lbl_restack.config(
+    text=("Re-stack : 22:30:27 — re-stack #1 (test — Ha 3/4 — O3 2/2) : "
+          "5/6 frames (+4 vs avant) — score réf. 16.25 (4 → 25 étoiles)"))
+ui.lbl_cat_etat.config(text="catalogue astro : ABSENT — l'astrométrie interne "
+                             "ne peut pas aboutir — spectres Gaia : 0 chunk(s)")
+ui.root.deiconify()
+ui.root.update()
+
+
+def _libelle(w):
+    try:
+        return str(w.cget("text"))[:34] or type(w).__name__
+    except Exception:
+        return type(w).__name__
+
+
+def _auditer_geometrie(parent, defauts):
+    """`parent` est AFFICHÉ : on contrôle ses enfants, puis on descend."""
+    for enfant in parent.winfo_children():
+        gere = bool(enfant.winfo_manager())
+        mappe = bool(enfant.winfo_ismapped())
+        if gere and not mappe:                  # posé, mais AUCUNE place
+            defauts.append(("écrasé", enfant.winfo_class(), _libelle(enfant),
+                            enfant.winfo_reqwidth(), parent.winfo_width()))
+            continue                            # inutile de descendre dedans
+        if not mappe:                           # créé mais pas posé : normal
+            continue
+        if isinstance(enfant, ttk.Label) \
+                and enfant.winfo_reqwidth() > enfant.winfo_width() + 1:
+            defauts.append(("rogné", enfant.winfo_class(), _libelle(enfant),
+                            enfant.winfo_reqwidth(), enfant.winfo_width()))
+        if enfant.winfo_x() + enfant.winfo_width() > parent.winfo_width() + 1:
+            defauts.append(("débordé", enfant.winfo_class(), _libelle(enfant),
+                            enfant.winfo_reqwidth(), parent.winfo_width()))
+        _auditer_geometrie(enfant, defauts)
+
+
+_defauts = []
+_auditer_geometrie(ui.root, _defauts)
+verifie(not _defauts,
+        "aucun widget écrasé / rogné / débordé (textes longs) : %s"
+        % (_defauts[:3] if _defauts else "0 défaut"))
+
+# Les cas RÉELS du 27/09/2026, nommés — pour qu'un échec dise OÙ regarder.
+_a_trouver = {"📷": None, "📂 Dossier": None, "⬇ Gaia": None, "ⓘ": None}
+
+
+def _chercher_boutons(widget, trouves):
+    for enfant in widget.winfo_children():
+        try:
+            texte = str(enfant.cget("text"))
+        except Exception:
+            texte = ""
+        if texte in trouves:
+            trouves[texte] = bool(enfant.winfo_ismapped())
+        _chercher_boutons(enfant, trouves)
+
+
+_chercher_boutons(ui.root, _a_trouver)
+verifie(all(_a_trouver.values()),
+        "boutons des lignes à texte libre VISIBLES (astrométrie 📷, catalogues "
+        "📂/⬇ Gaia, re-stack ⓘ) : %s" % _a_trouver)
+_champ = []
+
+
+def _chercher_champ(widget):
+    for enfant in widget.winfo_children():
+        try:
+            if isinstance(enfant, ttk.Entry) \
+                    and enfant.cget("textvariable") == str(ui.var_astro_champ):
+                _champ.append(bool(enfant.winfo_ismapped()))
+        except Exception:
+            pass
+        _chercher_champ(enfant)
+
+
+_chercher_champ(ui.root)
+verifie(_champ == [True],
+        "champ « champ° » de l'astrométrie VISIBLE (mesuré : abandonné par "
+        "pack sur une ligne trop chargée)")
 ui.root.withdraw()
 
 # Alerte « en RAM » : la ligne doit la dire (orange), comme sur son /tmp.

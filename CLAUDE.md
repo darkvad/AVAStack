@@ -608,6 +608,25 @@ ce qui manquait n'était pas une correction mais une MESURE.
   répond à « où est-ce écrit ? » et « qu'est-ce qui s'est passé ? » ne doit pas
   dépendre d'un défilement — et une ligne trop chargée se met sur DEUX lignes
   (le texte, puis les boutons) plutôt que d'en sacrifier un.
+- **Règles de MISE EN PAGE de la colonne de gauche (v2.38.9/v2.38.10, mesurées)**
+  — `pack` alloue dans l'ORDRE DE POSE et **ABANDONNE silencieusement** ce qui ne
+  tient plus :
+  ① un petit bouton qui doit toujours être là se pose **AVANT** le texte libre
+     (`side="right"` ; ex. le ⓘ du re-stack) ;
+  ② un texte libre à largeur variable reçoit une **BORNE** : `wraplength` pour
+     une PHRASE, `width` (en caractères) pour un **CHEMIN** — car `wraplength`
+     ne replie PAS un chemin (il n'a pas d'espace) ;
+  ③ une ligne de contrôles à taille FIXE qui ne tient pas se répartit sur
+     PLUSIEURS lignes (astrométrie : case / AD+Dec / champ°+📷) ;
+  ④ ce qui répond à « où est-ce écrit ? / qu'est-ce qui s'est passé ? » va EN
+     HAUT de la colonne, pas à 2 400 px dans une zone défilante.
+  La vérification est **GÉOMÉTRIQUE et AUTOMATIQUE** : `bancs/_test_espace_jalon72.py`
+  audite TOUTE la fenêtre (widget géré mais non affiché ; libellé dont le texte
+  ne tient pas ; widget qui déborde) **avec des textes longs**. Ce contrôle a
+  trouvé cinq widgets écrasés et quatre textes rognés le 27/09/2026 — après deux
+  allers-retours avec Alain, dont un constat à l'écran. Un défaut de mise en page
+  ne se voit pas sur un chemin court dans un bac à sable : il faut des textes
+  LONGS pour le réveiller.
 
 ## Pièges (leçons du projet AVAStack)
 

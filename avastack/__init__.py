@@ -17,9 +17,43 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.38.9"
+AVASTACK_VERSION = "2.38.10"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.38.10 : LES LIGNES À TEXTE LIBRE NE PERDENT PLUS RIEN (astrométrie,
+#   catalogues, re-stack) — même famille que le bouton « Journal » de la v2.38.9.
+#   Constat RÉEL d'Alain (27/09/2026) : « le champ et le bouton pour récupérer
+#   les coordonnées depuis les brutes ne sont pas visibles sans agrandir la
+#   colonne ».
+#   MESURE (géométrie Tk, avec chemins et messages LONGS comme les siens) —
+#   CINQ widgets étaient abandonnés par `pack`, tous sur des lignes « à texte
+#   libre » :
+#   ① ligne d'astrométrie : ≈490 px requis pour 318 px disponibles → le champ
+#      « champ° » ET le bouton 📷 n'étaient pas affichés ;
+#   ② ligne des catalogues : le libellé du chemin est INSÉCABLE (un chemin n'a
+#      pas d'espace, donc `wraplength` ne le replie PAS) → 📂 et « ⬇ Gaia »
+#      abandonnés dès que le chemin est long (`~/.local/share/siril`) ;
+#   ③ ligne de re-stack : un message long (≈110 caractères) faisait disparaître
+#      le bouton ⓘ ;
+#   et QUATRE lignes d'état étaient ROGNÉES (texte coupé, information perdue) —
+#   jusqu'à 740 px requis pour 318 px affichés, dont le message qui explique
+#   l'absence du catalogue Gaia.
+#   (1) RÈGLES DE MISE EN PAGE appliquées partout : les petits boutons se posent
+#       AVANT le texte libre (`side="right"`) et un texte libre reçoit une
+#       LARGEUR BORNÉE (`wraplength` pour une phrase, `width` en caractères pour
+#       un chemin) — plus rien ne peut manger la ligne ;
+#   (2) astrométrie : TROIS lignes (case / AD + Dec / champ° + 📷) ;
+#   (3) catalogues : DEUX lignes (chemin borné à 44 caractères, queue conservée,
+#       puis « 📂 Dossier » et « ⬇ Gaia ») — le libellé porte son préfixe, la
+#       ligne d'origine à trois widgets n'existe plus ;
+#   (4) lignes d'état (astrométrie, catalogues, photométrie, re-stack) :
+#       `wraplength` — les messages se replient au lieu d'être coupés ;
+#   (5) banc jalon 72 : AUDIT DE GÉOMÉTRIE de toute la fenêtre (widget écrasé /
+#       libellé rogné / widget débordé) exécuté avec des TEXTES LONGS, plus les
+#       cas nommés (📷, 📂 Dossier, ⬇ Gaia, ⓘ, champ°) — c'est le contrôle qui
+#       manquait pour attraper cette famille de défauts du premier coup.
+#   Doc : CLAUDE.md (règles de mise en page). Repli si régression : v2.38.9.
+#
 # v2.38.9 : LA LIGNE « DOSSIER DE TRAVAIL » ET LE BOUTON « JOURNAL » SONT ENFIN
 #   VISIBLES (constat RÉEL d'Alain, 27/09/2026, capture d'écran à l'appui :
 #   « pas de chemin pour temp et pas de bouton journal », sur la v2.38.7).

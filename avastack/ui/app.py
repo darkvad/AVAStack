@@ -1441,12 +1441,18 @@ class App:
         # vert = re-stack réussi, ambre = échec.
         row_rs = ttk.Frame(box)
         row_rs.pack(fill="x", pady=(2, 0))
-        self.lbl_restack = ttk.Label(row_rs, text="Re-stack : —",
-                                     foreground="#888888")
-        self.lbl_restack.pack(side="left", fill="x", expand=True)
+        # v2.38.10 : le bouton « ⓘ » est posé EN PREMIER (`side="right"`) et le
+        # texte prend ce qui reste. POURQUOI : `pack` alloue dans l'ordre de
+        # pose et ABANDONNE le widget qui ne trouve plus de place — mesuré sur
+        # cette ligne, un message de re-stack long (≈110 caractères) faisait
+        # disparaître le bouton ⓘ (requête 28 px, allocation 0). Posé en
+        # premier, il ne peut plus être sacrifié ; le texte, lui, est rogné.
         ttk.Button(row_rs, text="ⓘ", width=3,
-                   command=self._montrer_restack_hist).pack(side="left",
+                   command=self._montrer_restack_hist).pack(side="right",
                                                             padx=(4, 0))
+        self.lbl_restack = ttk.Label(row_rs, text="Re-stack : —",
+                                     foreground="#888888", wraplength=250)
+        self.lbl_restack.pack(side="left", fill="x", expand=True)
         # Jalon 56 : ASTROMÉTRIE de l'empilement — case + indices de la cible.
         # Le solveur interne résout l'astrométrie UNE fois sur l'empilement
         # (ces indices l'y aident), puis le WCS est PROPAGÉ à chaque
@@ -1455,34 +1461,47 @@ class App:
         # Interprétation : « 0h42m44s » ou « 00 42 44 » = HEURES (« 0.7123h »
         # aussi) ; un décimal nu (« 10.68333 ») = DEGRÉS. La ligne d'état
         # rappelle les indices retenus — aucune interprétation silencieuse.
+        # v2.38.10 : TROIS lignes au lieu d'une. Mesure (constat d'Alain,
+        # 27/09/2026 : « le champ et le bouton pour récupérer les coordonnées
+        # depuis les brutes ne sont pas visibles sans agrandir la colonne ») :
+        # les huit widgets de cette ligne demandaient ≈490 px pour 318 px
+        # disponibles → `pack` ABANDONNAIT les deux derniers, le champ
+        # « champ° » et le bouton 📷, sans aucun message. Une ligne de contrôles
+        # à taille FIXE ne sait pas se replier : elle se répartit sur plusieurs
+        # lignes (la case d'abord, puis AD/Dec, puis champ° + le bouton 📷).
         row_a = ttk.Frame(box)
         row_a.pack(fill="x", pady=(4, 0))
         self.var_astro = tk.BooleanVar(value=False)
         ttk.Checkbutton(row_a, text="Astrométrie", variable=self.var_astro,
                         command=self._on_astro).pack(side="left")
-        ttk.Label(row_a, text="AD :").pack(side="left", padx=(6, 0))
+        row_ad = ttk.Frame(box)
+        row_ad.pack(fill="x", pady=(2, 0))
+        ttk.Label(row_ad, text="AD :").pack(side="left", padx=(6, 0))
         self.var_astro_ra = tk.StringVar(value="")
-        e_ra = ttk.Entry(row_a, textvariable=self.var_astro_ra, width=12)
+        e_ra = ttk.Entry(row_ad, textvariable=self.var_astro_ra, width=11)
         e_ra.pack(side="left", padx=(2, 0))
-        ttk.Label(row_a, text="Dec :").pack(side="left", padx=(4, 0))
+        ttk.Label(row_ad, text="Dec :").pack(side="left", padx=(4, 0))
         self.var_astro_dec = tk.StringVar(value="")
-        e_dec = ttk.Entry(row_a, textvariable=self.var_astro_dec, width=12)
+        e_dec = ttk.Entry(row_ad, textvariable=self.var_astro_dec, width=11)
         e_dec.pack(side="left", padx=(2, 0))
-        ttk.Label(row_a, text="champ° :").pack(side="left", padx=(4, 0))
+        row_ch = ttk.Frame(box)
+        row_ch.pack(fill="x", pady=(2, 0))
+        ttk.Label(row_ch, text="champ° :").pack(side="left", padx=(6, 0))
         self.var_astro_champ = tk.StringVar(value="")
-        e_ch = ttk.Entry(row_a, textvariable=self.var_astro_champ, width=6)
+        e_ch = ttk.Entry(row_ch, textvariable=self.var_astro_champ, width=6)
         e_ch.pack(side="left", padx=(2, 0))
         # Bouton : lire AD/Dec/champ depuis l'image courante (dernière brute
         # reçue ou dernier empilement sauvegardé) — remplit les trois champs.
-        ttk.Button(row_a, text="📷", width=3,
-                   command=self._lire_indices_image).pack(side="left", padx=(6, 0))
+        ttk.Button(row_ch, text="📷", width=3,
+                   command=self._lire_indices_image).pack(side="left",
+                                                          padx=(6, 0))
         # Les champs sont relus à la VALIDATION (Entrée / sortie du champ) —
         # pas à chaque frappe : un indice à moitié tapé serait refusé pour rien.
         for e in (e_ra, e_dec, e_ch):
             e.bind("<Return>", lambda ev: self._on_astro())
             e.bind("<FocusOut>", lambda ev: self._on_astro())
         self.lbl_astro = ttk.Label(box, text="Astrométrie : —",
-                                   foreground="#888888")
+                                   foreground="#888888", wraplength=310)
         self.lbl_astro.pack(anchor="w", pady=(2, 0))
         # Jalon 70 — DONNÉES de l'astrométrie : l'application DIT où elle
         # cherche le catalogue Gaia DR3 de Siril, laisse choisir un autre
@@ -1490,19 +1509,28 @@ class App:
         # reprise + sha256 vérifié). Sans catalogue, l'astrométrie interne ne
         # peut pas aboutir : le dire ici évite l'échec silencieux constaté
         # sous Linux le 27/09/2026.
+        # v2.38.10 : DEUX lignes (le chemin, puis les boutons). MESURE : le
+        # libellé du chemin, insécable (un chemin n'a pas d'espace, donc
+        # `wraplength` ne le replie PAS), prenait toute la ligne → avec un chemin
+        # long comme `~/.local/share/siril`, `pack` ABANDONNAIT 📂 et « ⬇ Gaia ».
+        # Le texte est en plus BORNÉ en caractères (`width`), ce qui garantit
+        # qu'il ne peut plus manger la ligne.
         row_cat = ttk.Frame(box)
         row_cat.pack(fill="x", pady=(2, 0))
-        ttk.Label(row_cat, text="Catalogues :").pack(side="left")
-        self.lbl_cat_dossier = ttk.Label(row_cat, text="—",
-                                        foreground="#888888")
-        self.lbl_cat_dossier.pack(side="left", padx=(4, 0))
-        ttk.Button(row_cat, text="📂", width=3,
-                   command=self._choisir_dossier_catalogues).pack(
-            side="left", padx=(4, 0))
-        self.btn_cat_dl = ttk.Button(row_cat, text="⬇ Gaia", width=9,
+        self.lbl_cat_dossier = ttk.Label(row_cat, text="Catalogues : —",
+                                         foreground="#888888", width=44,
+                                         anchor="w")
+        self.lbl_cat_dossier.pack(side="left")
+        row_cat_b = ttk.Frame(box)
+        row_cat_b.pack(fill="x", pady=(2, 0))
+        ttk.Button(row_cat_b, text="📂 Dossier", width=12,
+                   command=self._choisir_dossier_catalogues).pack(side="left",
+                                                                  padx=(6, 0))
+        self.btn_cat_dl = ttk.Button(row_cat_b, text="⬇ Gaia", width=9,
                                      command=self._telecharger_catalogue)
-        self.btn_cat_dl.pack(side="left", padx=(2, 0))
-        self.lbl_cat_etat = ttk.Label(box, text="", foreground="#888888")
+        self.btn_cat_dl.pack(side="left", padx=(4, 0))
+        self.lbl_cat_etat = ttk.Label(box, text="", foreground="#888888",
+                                      wraplength=310)
         self.lbl_cat_etat.pack(anchor="w")
         # File de la conversation réseau → UI (le thread de téléchargement n'a
         # PAS le droit de toucher un widget : il ne pose que des messages ici).
@@ -1521,7 +1549,7 @@ class App:
                         variable=self.var_photo,
                         command=self._on_photo).pack(side="left")
         self.lbl_photo = ttk.Label(box, text="Photométrie : —",
-                                   foreground="#888888")
+                                   foreground="#888888", wraplength=310)
         self.lbl_photo.pack(anchor="w", pady=(2, 0))
         # Jalon 56 (étape 5) : APPLICATION des gains photométriques au
         # composite — case SÉPARÉE, DÉCOCHÉE PAR DÉFAUT (opt-in d'Alain) : la
@@ -2667,8 +2695,15 @@ class App:
             self.lbl_cat_etat.config(text=f"catalogues : {exc}",
                                      foreground="#d04040")
             return
+        # v2.38.10 : texte BORNÉ (44 caractères : la largeur du libellé) et
+        # préfixe DANS le texte. POURQUOI : un chemin n'a pas d'espace, donc
+        # `wraplength` ne le replie PAS — un libellé insécable trop long mange
+        # la ligne où il vit (mesuré : avec `~/.local/share/siril`, les boutons
+        # 📂 et ⬇ Gaia étaient abandonnés par `pack`). La QUEUE du chemin est
+        # conservée : c'est elle qui nomme le dossier.
         self.lbl_cat_dossier.config(
-            text=(d if len(d) <= 56 else "…" + d[-55:]), foreground="#888888")
+            text="Catalogues : " + (d if len(d) <= 30 else "…" + d[-29:]),
+            foreground="#888888")
         if self._cat_dl_actif:
             return                     # la ligne de progression fait foi
         etat = cat_mod.etat_local(d)
