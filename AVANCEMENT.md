@@ -56,7 +56,7 @@ dans le changelog du source et l'historique git.)
   elle ne démarre pas, elle doit maintenant le DIRE et l'écrire : envoie-moi
   `~/.config/AVAStack/journal.txt`). Artefact :
   `installer/linux/output/avastack-setup-2.38.7-linux.tar.gz` (61 fichiers,
-  506 Kio, SHA-256 `6beecd645a8ba97b87456a24c11c2b32a12ceb3aa5057057e647ef32e7d19a3d`) ;
+  506 Kio, SHA-256 `09e1f724afb22111fe9a847fae2bfce6a64d088a8db5f275326a84d237df2191`) ;
   installateur Windows **à recompiler sur cette machine** (Inno Setup absent ici).
   Repli si régression : v2.38.6.
 
