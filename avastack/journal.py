@@ -139,6 +139,64 @@ def trace_env():
     return " · ".join(elements)
 
 
+def sans_affichage(exc=None, env=None):
+    """L'échec vient-il de l'ABSENCE de session graphique (bureau) ?
+
+    Constat RÉEL d'Alain (Linux, 27/09/2026) : lancée par SSH — donc sans
+    bureau —, la v2.38.7 est morte sur `tk.Tk()` :
+    `_tkinter.TclError: no display name and no $DISPLAY environment variable`.
+    C'est une ERREUR D'USAGE normale (il faut un bureau), pas une panne : elle
+    mérite une phrase actionnable, pas un traceback.
+
+    NB IMPORTANT (à ne pas confondre) : la panne du même jour par le MENU
+    Applications (v2.38.6 : aucune fenêtre, AUCUN message) est une AUTRE affaire,
+    restée sans explication — le lancement par SSH n'en est PAS la cause.
+
+    Deux indices, jamais un seul : le message de Tk (`no display name`,
+    `couldn't connect to display`), et — sous Linux seulement, où `DISPLAY`
+    existe — un `DISPLAY` vide. Un `env` FOURNI (bancs, tests) est la seule
+    autorité : il permet de rejouer le cas Linux depuis n'importe quel OS.
+    Sous Windows/macOS sans `env` fourni, on ne conclut QUE sur le message, pour
+    ne jamais refuser à tort."""
+    txt = str(exc or "")
+    if ("no display name" in txt or "$DISPLAY" in txt
+            or "couldn't connect to display" in txt):
+        return True
+    if env is not None:              # environnement explicite : il décide
+        return "TclError" in txt and not env.get("DISPLAY")
+    if os.name == "nt" or sys.platform == "darwin":
+        return False                 # `DISPLAY` ne veut rien dire ici
+    return "TclError" in txt and not os.environ.get("DISPLAY")
+
+
+def conseil_installation(exc=None):
+    """Conseil ACTIONNABLE pour un échec de démarrage CONNU, sinon "".
+
+    Deux cas nommés, ceux que le journal a réellement rencontrés :
+      ① session sans bureau (SSH sans redirection X, pas de `DISPLAY`) ;
+      ② `tkinter` absent du python utilisé (« No module named '_tkinter' ») —
+         sous Linux il ne s'installe PAS par pip : c'est un paquet système.
+    Ne jamais inventer un conseil pour une cause inconnue : l'absence de
+    correspondance doit rendre "" (l'appelant affiche alors le message générique)."""
+    txt = str(exc or "")
+    if sans_affichage(exc):
+        return ("AVAStack a besoin d'un BUREAU (session graphique) : celle-ci n'en "
+                "a pas.\n"
+                "  · depuis ton bureau : lance « avastack » (ou le menu "
+                "Applications) ;\n"
+                "  · par SSH : ajoute -X à la connexion (ssh -X …) pour rediriger "
+                "l'affichage, ou renseigne DISPLAY (par exemple DISPLAY=:0).")
+    if "'_tkinter'" in txt or "No module named 'tkinter'" in txt or \
+            "No module named \"tkinter\"" in txt:
+        return ("L'interface graphique de Python (Tkinter) n'est pas installée pour "
+                "ce python :\n"
+                "  Debian/Ubuntu : sudo apt install python3-tk\n"
+                "  Fedora        : sudo dnf install python3-tkinter\n"
+                "  Arch/Manjaro  : sudo pacman -S tk\n"
+                "puis relance l'installateur (bash installer/install_avastack.sh).")
+    return ""
+
+
 def _emplacement(exc):
     """« (fichier, ligne N) » du dernier cadre du traceback, ou ""."""
     try:
@@ -239,6 +297,22 @@ def montrer(titre, message):
         return "stderr"
     except Exception:
         return "aucun"
+
+
+def rapport_echec(exc, contexte="démarrage"):
+    """Texte à MONTRER pour un échec fatal : CONSEIL (si la cause est connue),
+    message court avec fichier et ligne, chemin du journal.
+
+    Une seule mise en forme, donc un seul comportement pour les deux points
+    d'entrée. Le traceback complet, lui, reste dans le journal (cf. `erreur`).
+    Le conseil sert quand la cause est CONNUE — typiquement une session sans
+    bureau (lancement par SSH), qui doit se comprendre sans lire un traceback."""
+    court = erreur(contexte, exc)
+    conseil = conseil_installation(exc)
+    morceaux = [conseil, court] if conseil else [court]
+    morceaux.append("Le détail complet est dans le journal (bouton « Journal » "
+                    "de la fenêtre) :\n" + chemin_journal())
+    return "\n\n".join(morceaux)
 
 
 def ouvrir():

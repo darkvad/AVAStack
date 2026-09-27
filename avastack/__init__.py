@@ -17,9 +17,41 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.38.7"
+AVASTACK_VERSION = "2.38.8"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.38.8 : LES ÉCHECS DE DÉMARRAGE CONNUS SONT EXPLIQUÉS (session sans bureau,
+#   Tkinter absent) — le journal a servi dès son premier jour.
+#   FAITS (Alain, 27/09/2026, machine Linux) :
+#   ① la v2.38.7 lancée par SSH, donc SANS BUREAU, est morte sur `tk.Tk()`
+#      (`_tkinter.TclError: no display name and no $DISPLAY environment
+#      variable`) : échec d'USAGE normal, mais qui ne disait rien d'actionnable ;
+#   ② sa relance depuis le bureau a fonctionné, et le journal a nommé
+#      l'environnement réel — `exe=/home/alain/.local/share/AVAStack/venv/bin/
+#      python`, `Tk 8.6/8.6`, `travail=/home/alain/.cache/avastack (115,3 Go
+#      libres)` — ce qui VALIDE au passage le repli hors tmpfs de la v2.38.6 sur
+#      sa machine (son `/tmp` est bien un tmpfs) ;
+#   ③ À NE PAS CONFONDRE : la panne de la v2.38.6 lancée depuis le MENU
+#      Applications (aucune fenêtre, aucun message) reste SANS EXPLICATION — le
+#      journal n'existait pas encore, il n'en existe donc AUCUNE trace, et toute
+#      attribution (session SSH, venv, bibliothèque) serait une supposition.
+#   (1) `journal.conseil_installation()` : conseil ACTIONNABLE pour les deux
+#       échecs CONNUS — ① pas de session graphique (lancer depuis le bureau,
+#       `ssh -X`, ou `DISPLAY`) ; ② Tkinter absent du python utilisé (paquet
+#       SYSTÈME : apt `python3-tk`, dnf `python3-tkinter`, pacman `tk`) — et ""
+#       pour toute autre cause : jamais de conseil inventé ;
+#   (2) `journal.sans_affichage()` : détection à DEUX indices (message de Tk, et
+#       `DISPLAY` vide SOUS LINUX seulement — la variable n'existe ni sous
+#       Windows ni sous macOS, où l'on ne conclut que sur le message) ;
+#   (3) `journal.rapport_echec()` : UNE mise en forme du message d'échec fatal
+#       (conseil + fichier/ligne + chemin du journal), utilisée par les deux
+#       points d'entrée (`AVAStack._echec()` s'y ramène) ;
+#   (4) doc : LISEZMOI Linux (les deux cas, avec les commandes exactes),
+#       CLAUDE.md (leçon de méthode : JAMAIS d'attribution de cause sans trace,
+#       et expliquer un échec d'usage au lieu de le laisser en traceback).
+#   Banc `_test_journal_jalon73.py` : section [6] (conseils, détection sans
+#   affichage, absence de conseil inventé). Repli si régression : v2.38.7.
+#
 # v2.38.7 : SI L'APPLICATION NE DÉMARRE PAS, ELLE LE DIT — journal, message
 #   visible, plus aucun échec muet au lancement (constat RÉEL d'Alain,
 #   27/09/2026, machine Linux : « l'appli ne se lance pas sous linux (elle se

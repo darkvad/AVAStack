@@ -427,6 +427,45 @@ contenu = lire_journal()
 verifie("rappel d'interface" in contenu and "ZeroDivisionError" in contenu,
         "erreur de rappel Tk : journalisée")
 
+# ======================== [6] échecs CONNUS : expliqués, jamais inventés
+print("[6] échecs connus de démarrage : un conseil ACTIONNABLE, sinon rien")
+
+
+class _TclError(Exception):
+    """Reproduit l'erreur RÉELLE de Tk sans bureau (constatée en SSH, v2.38.7)."""
+
+
+sans_bureau = _TclError("no display name and no $DISPLAY environment variable")
+tk_absent = ModuleNotFoundError("No module named '_tkinter'")
+verifie(journal.sans_affichage(sans_bureau),
+        "sans_affichage() : le message de Tk suffit (SSH sans bureau)")
+verifie(not journal.sans_affichage(tk_absent),
+        "sans_affichage() : « tkinter absent » n'est PAS confondu avec ça")
+# Le cas LINUX (DISPLAY), rejoué depuis n'importe quel OS grâce à `env` fourni.
+verifie(journal.sans_affichage(_TclError("boom TclError"), env={}),
+        "DISPLAY vide + TclError → session sans bureau (cas Linux)")
+verifie(not journal.sans_affichage(_TclError("boom TclError"),
+                                   env={"DISPLAY": ":0"}),
+        "DISPLAY présent + TclError → pas conclu (autre cause Tk)")
+conseil_bureau = journal.conseil_installation(sans_bureau)
+verifie("BUREAU" in conseil_bureau and "ssh -X" in conseil_bureau
+        and "avastack" in conseil_bureau,
+        "conseil « sans bureau » : où lancer, et comment rediriger l'affichage")
+conseil_tk = journal.conseil_installation(tk_absent)
+verifie("python3-tk" in conseil_tk and "pacman" in conseil_tk,
+        "conseil « tkinter absent » : paquet SYSTÈME, par distribution")
+verifie(journal.conseil_installation(ValueError("autre panne")) == "",
+        "aucun conseil inventé pour une cause inconnue (\"\")")
+# Le message MONTRÉ par le point d'entrée doit PORTER le conseil : c'est le cas
+# SSH du 27/09/2026, où l'utilisateur n'avait rien d'actionnable.
+montres.clear()
+purger_journal()
+code = entree._echec(sans_bureau)
+message = montres[-1][1] if montres else ""
+verifie(code == 1 and "BUREAU" in message and "TclError" in message
+        and journal.chemin_journal() in message,
+        "_échec() : conseil + cause + journal dans le message MONTRÉ")
+
 root.destroy()
 
 # --- fin du banc : tout est remis en place

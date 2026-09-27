@@ -58,13 +58,18 @@ def _demarrer():
 
 
 def _echec(exc):
-    """Démarrage impossible : journal + message VISIBLE + code de sortie 1."""
+    """Démarrage impossible : journal + message VISIBLE + code de sortie 1.
+
+    Le message porte le CONSEIL quand la cause est connue (session SANS BUREAU —
+    lancement par SSH, constaté le 27/09/2026 avec la v2.38.7 — ou `tkinter`
+    absent).
+
+    NB : la panne de la v2.38.6 lancée par le MENU Applications (aucune fenêtre,
+    aucun message) est une AUTRE histoire, restée sans explication ; ce filet ne
+    la prétend pas résolue — il la rend seulement mesurable."""
     if journal:
-        court = journal.erreur("démarrage", exc)
-        journal.montrer(
-            "AVAStack ne peut pas démarrer",
-            court + "\n\nLe détail complet est dans le journal (bouton "
-            "« Journal » de la fenêtre) :\n" + journal.chemin_journal())
+        journal.montrer("AVAStack ne peut pas démarrer",
+                        journal.rapport_echec(exc))
     else:                                 # dernier recours : stderr, comme avant
         import traceback
         traceback.print_exception(type(exc), exc, exc.__traceback__)

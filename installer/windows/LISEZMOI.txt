@@ -260,6 +260,14 @@ Depuis la v2.38.7, un démarrage impossible le DIT et le laisse ÉCRIT : plus de
         "%LOCALAPPDATA%\AVAStack\venv\Scripts\python.exe" ^
             "%LOCALAPPDATA%\AVAStack\AVAStack.py"
 
+DEUX ÉCHECS DÉJÀ RENCONTRÉS, ET CE QU'ILS DISENT (v2.38.8)
+  - « AVAStack a besoin d'un BUREAU (session graphique) : celle-ci n'en a pas. »
+    → l'application a été lancée dans une session SANS BUREAU (SSH, service,
+    tâche planifiée…) : lance-la depuis ta session Windows habituelle ;
+  - « L'interface graphique de Python (Tkinter) n'est pas installée pour ce
+    python… » → réinstalle Python depuis python.org (Tkinter y est inclus),
+    puis relance l'installateur.
+
 En cas de problème : ce fichier journal.txt contient tout ce qu'il faut pour
 comprendre sans deviner — joins-le à ton message.
 

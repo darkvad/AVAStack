@@ -161,6 +161,19 @@ Depuis la v2.38.7, un démarrage impossible le DIT et le laisse ÉCRIT : plus de
     / libglib2.0-0…). Si tu vois une erreur à cet endroit, c'est elle qu'il
     faut corriger.
 
+DEUX ÉCHECS DÉJÀ RENCONTRÉS, ET CE QU'ILS DISENT (v2.38.8)
+  - « AVAStack a besoin d'un BUREAU (session graphique) : celle-ci n'en a pas. »
+    → l'application a été lancée dans une session SANS BUREAU (typiquement en
+    SSH) : lance-la depuis ton bureau (« avastack », ou le menu Applications),
+    ou reconnecte-toi avec « ssh -X » (redirection de l'affichage), ou
+    renseigne DISPLAY (par exemple DISPLAY=:0) ;
+  - « L'interface graphique de Python (Tkinter) n'est pas installée pour ce
+    python… » → Tkinter ne s'installe PAS par pip, c'est un paquet SYSTÈME :
+        sudo apt install python3-tk        (Debian/Ubuntu/Mint)
+        sudo dnf install python3-tkinter   (Fedora)
+        sudo pacman -S tk                  (Arch/Manjaro)
+    puis relance l'installateur.
+
 En cas de problème : ce fichier journal.txt contient tout ce qu'il faut pour
 comprendre sans deviner — joins-le à ton message.
 

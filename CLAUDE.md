@@ -504,7 +504,7 @@ Leçon du 27/09/2026 (machine Linux d'Alain) : « Erreur : 24962352 requested an
   Tout nouveau contrôle dans un `try` large doit être placé après ses
   dépendances.
 
-## Démarrage, journal et échecs muets (v2.38.7)
+## Démarrage, journal et échecs muets (v2.38.7 / v2.38.8)
 
 Constat du 27/09/2026 (machine Linux d'Alain, v2.38.6) : « l'appli ne se lance
 pas sous linux », puis, relancé par l'entrée de menu : « rien du tout : aucune
@@ -554,6 +554,32 @@ ce qui manquait n'était pas une correction mais une MESURE.
   0,3 s n'a donc aucun texte intermédiaire à afficher, alors qu'un vrai
   transfert annonce une progression par seconde. Réparé côté BANC (rendez-vous :
   attendre que la file soit consommée avant de poser le palier suivant).
+- **Un échec de démarrage CONNU mérite un CONSEIL, pas un traceback** (v2.38.8) :
+  `journal.conseil_installation()` nomme les deux cas réellement rencontrés —
+  session SANS BUREAU (lancement par SSH sans `-X` : « lance depuis le bureau,
+  `ssh -X`, ou `DISPLAY=:0` ») et `tkinter` absent du python utilisé (paquet
+  SYSTÈME, jamais pip : apt `python3-tk`, dnf `python3-tkinter`, pacman `tk`).
+  Pour toute autre cause il rend `""` : **un conseil ne s'invente JAMAIS**.
+  `journal.sans_affichage()` conclut à DEUX indices (message de Tk ET `DISPLAY`
+  vide, ce dernier SOUS LINUX seulement — ailleurs la variable n'existe pas) ;
+  un `env` fourni fait autorité, ce qui permet de rejouer le cas Linux depuis
+  n'importe quel OS (banc `_test_journal_jalon73.py` [6]).
+- **NE JAMAIS ATTRIBUER UNE CAUSE SANS TRACE — même de bonne foi** (27/09/2026,
+  leçon durement apprise) : la panne de la v2.38.6 (« l'appli ne se lance pas »)
+  a été attribuée par erreur à un lancement par SSH ; Alain a corrigé — la
+  v2.38.6 avait été lancée par le **MENU Applications**, et c'est la **v2.38.7**
+  qui a planté en SSH (pas de bureau, `tk.Tk()` impossible). Deux échecs
+  distincts restent distincts ; une hypothèse vraisemblable n'est PAS une mesure,
+  et un échec sans trace reste SANS EXPLICATION (ici : aucune trace, le journal
+  n'existait pas encore). Corollaire : quand une panne est irréproductible,
+  proposer une expérience qui la rendrait observable (relancer par le menu et
+  comparer les lignes de journal) au lieu de conclure.
+- **Ce qu'un journal apporte dès son premier jour** (preuve par les faits) : les
+  5 lignes envoyées par Alain ont nommé l'interpréteur réel
+  (`…/AVAStack/venv/bin/python`), `Tk 8.6/8.6`, le noyau, et le dossier de
+  travail (`~/.cache/avastack`, 115,3 Go libres) — soit la VALIDATION sur sa
+  machine du repli hors tmpfs de la v2.38.6 (son `/tmp` est bien un tmpfs) — sans
+  rien lui demander d'autre que de lancer l'application.
 
 ## Pièges (leçons du projet AVAStack)
 
