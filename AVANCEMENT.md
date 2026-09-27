@@ -52,9 +52,16 @@ dans le changelog du source et l'historique git.)
   VIDE la file d'un coup, et le faux transfert du banc posait ses deux paliers
   en 0,3 s → aucun texte intermédiaire à voir ; réparé par un RENDEZ-VOUS (le
   faux transfert attend que l'UI ait consommé chaque palier).
-  **Reste à faire : TON ESSAI SOUS LINUX** (l'application doit démarrer — et si
-  elle ne démarre pas, elle doit maintenant le DIRE et l'écrire : envoie-moi
-  `~/.config/AVAStack/journal.txt`). **Artefacts reconstruits** :
+  **✔ VALIDÉ PAR TON ESSAI (27/09/2026, soir) : « l'appli fonctionne maintenant »
+  — l'application DÉMARRE sous Linux.** Ce qui est PROUVÉ : le filet n'a pas
+  gêné le démarrage, et le journal donne désormais l'environnement exact
+  (python du venv, Tk, dossier de travail). Ce qui n'est PAS prouvé : la CAUSE de
+  l'échec de la v2.38.6 (aucune fenêtre, aucun message). Hypothèses non
+  départageables en l'état — venv de l'installation précédente incomplet/cassé,
+  lancement par un autre python, ou bibliothèque système manquante : **à
+  consigner dès que les 2 premières lignes de `~/.config/AVAStack/journal.txt`
+  seront là** (elles nomment l'interpréteur et Tk réellement utilisés).
+  **Artefacts reconstruits** :
   `installer/linux/output/avastack-setup-2.38.7-linux.tar.gz` (61 fichiers,
   506 Kio, SHA-256 `09e1f724afb22111fe9a847fae2bfce6a64d088a8db5f275326a84d237df2191`)
   et `installer/windows/output/avastack-setup-2.38.7.exe` (10,9 Mo).
@@ -104,8 +111,10 @@ dans le changelog du source et l'historique git.)
   (tous sur `origin/master`, arbre propre).
   - **VALIDÉ sur ta machine Linux** : astrométrie ✔, SPCC ✔, GraXpert ✔
     (v2.38.4 et v2.38.5 confirmées par l'effet, pas par le code).
-  - **EN ATTENTE** : ton essai de la v2.38.7 sous Linux (démarrage = le sujet de
-    cette passe) — et, si tu veux, le rendu BXT avec `--sn 0.3`.
+  - **TON ESSAI v2.38.7 (Linux) : l'application DÉMARRE** ✔ (« l'appli fonctionne
+    maintenant »). Prochaine mesure attendue : les 2 premières lignes de
+    `~/.config/AVAStack/journal.txt` (interpréteur, Tk, dossier de travail) — et,
+    si tu veux, le rendu BXT avec `--sn 0.3`.
   - **Bancs** : 22 verts sur cette session (dont le neuf
     `_test_espace_jalon72.py`, 25 vérifs, et `_test_outils_jalon71.py`, 38) ;
     deux bancs RÉPARÉS au passage (assistant `_gx_factice.py` resté à la racine,
@@ -293,15 +302,17 @@ dans le changelog du source et l'historique git.)
   **CONFIRMÉ PAR TON TEST RÉEL du 27/09/2026 (Linux)** : astrométrie ✔, SPCC ✔,
   GraXpert ✔ (« astrométrie, spcc OK / GraXpert OK ») → v2.38.4 et v2.38.5
   **validées sur ta machine**. **EN ATTENTE** :
-  - **v2.38.7 — DÉMARRAGE SOUS LINUX (le sujet en cours)** : l'application doit
-    s'ouvrir ; si elle ne s'ouvre pas, elle doit maintenant le DIRE (boîte de
-    dialogue) et l'ÉCRIRE (`~/.config/AVAStack/journal.txt`) — c'est ce fichier
-    qu'il me faut pour corriger la cause au lieu de la deviner. La ligne
-    « journal de démarrage » du journal donne déjà : version, python, Tk, OS,
-    dossier de travail et son espace libre ;
-  - **v2.38.6 — espace disque** : à revoir dans la même session — la ligne
-    « dossier de travail » doit afficher le dossier + son espace libre
-    (+ « ⚠ en RAM (tmpfs) ») et BlurX doit passer sans « requested and written » ;
+  - ✔ **v2.38.7 — DÉMARRAGE SOUS LINUX : l'application DÉMARRE** (ton retour :
+    « l'appli fonctionne maintenant »). Ce qui reste à faire, maintenant que la
+    fenêtre s'ouvre :
+    ① **m'envoyer les 2 premières lignes de `~/.config/AVAStack/journal.txt`**
+       (elles nomment le python du venv, Tk, l'OS, le dossier de travail et son
+       espace) — c'est ce qui permettra de consigner la CAUSE de l'échec du
+       27/09 au lieu de la laisser en hypothèses ;
+    ② essayer le bouton « Journal » (il doit ouvrir le fichier) ;
+    ③ la chaîne BlurX (v2.38.6) doit passer sans « requested and written » et la
+       ligne « dossier de travail » doit afficher le dossier + son espace libre ;
+    ④ si tu veux : rendu BXT avec `--sn 0.3` (cf. ci-dessous).
   - **v2.38.3 — rendu BXT** : ta commande MÉMORISÉE reste prioritaire ; ajoute
     `--sn 0.3` au champ pour profiter du réglage mesuré (moucheté bleu divisé
     par ~2,7). Ton essai du 27/09 n'a pas pu conclure (il a buté sur l'espace
