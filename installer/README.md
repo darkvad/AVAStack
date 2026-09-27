@@ -14,18 +14,28 @@ figé — `avastack.iss` refuse même de compiler sans `/DAppVersion`. Deux
 versions ne s'écrasent donc jamais (celle d'avant reste à côté et sert de
 repli). Détail : CLAUDE.md, section « Installateur et tests réels ».
 
-## Bancs embarqués : le thème CAMÉRA seulement
+## Bancs embarqués : les DIAGNOSTICS MATÉRIEL caméra seulement
 
-Les deux installateurs n'embarquent que le thème caméra des bancs
-(`bancs/cameras/` dans le dépôt) : diagnostics matériels (`_diag_camera_*.py`,
-`_diag_qhy_sdk.py`) ET bancs de régression de la couche caméra
-(`_test_camera_*.py`, `_test_capacites*.py`, `_test_tec*.py`, …). Les autres
-bancs (solveur, couleurs, chromatisme, sauvegardes, gradient, alignement…) sont
-des outils de DÉVELOPPEMENT : ils vivent dans le dépôt, sous `bancs/`, et ne
-partent JAMAIS dans un installateur (décision d'Alain, 27/09/2026 : « seuls les
-bancs caméra seront dans les installateurs ; le reste n'a rien à y faire, c'est
-pour du dev »). Les deux installateurs pointent le DOSSIER, jamais une liste de
-fichiers : un banc caméra ajouté entre tout seul, un banc de dev ne part pas.
+Les deux installateurs n'embarquent que les **outils de diagnostic matériel**
+caméra — `bancs/cameras/_diag_*.py` : `_diag_camera_qhy.py`,
+`_diag_camera_playerone.py`, `_diag_camera_svbony.py`,
+`_diag_camera_touptek.py`, `_diag_qhy_sdk.py`. Ce sont les seuls outils que
+l'utilisateur peut LANCER chez lui : ils parlent aux vraies DLL et à ses
+caméras.
+
+Les bancs de **régression** de la couche caméra (`bancs/cameras/_test_*.py` :
+SDK factices, aucun matériel requis — `_test_qhy_camera.py`,
+`_test_camera_*.py`, `_test_capacites*.py`, `_test_tec*.py`, `_test_ui_*`,
+`_test_expo_*`, `_test_pilotage_*`, `_test_connexion_*`) sont des outils de
+DÉVELOPPEMENT : ils restent dans le dépôt et ne partent PAS dans les
+installateurs (décision d'Alain, 27/09/2026 : « l'installation ne contient que
+des outils réellement utilisables par moi »). Comme tous les autres bancs
+(solveur, couleurs, chromatisme, sauvegardes, gradient, alignement…).
+
+Les deux installateurs filtrent par **MOTIF**, jamais par liste de fichiers :
+le `.iss` embarque `bancs\cameras\_diag_*.py`, le packer Linux la même
+condition (`MOTIF_DIAG = "_diag_"`). Un nouveau diagnostic entre donc tout seul
+dans les deux installateurs ; un banc de régression ne part jamais.
 
 ## Ce que fait l'installateur Windows (avastack-setup-<version>.exe)
 
@@ -74,8 +84,9 @@ bash et sans rien qui ressemble à une DLL :
    pip) ; en cas de manque il affiche la commande exacte pour Debian/Ubuntu,
    Fedora et Arch, puis s'arrête (option `--forcer` pour passer outre).
 2. Copie l'application dans `~/.local/share/AVAStack` (option `--prefix`),
-   avec les bancs du THÈME CAMÉRA (`bancs/cameras/` — les autres bancs sont des
-   outils de développement et ne sont PAS installés, cf. ci-dessous), et note la
+   avec les **outils de diagnostic matériel caméra** (`bancs/cameras/_diag_*.py`
+   — les autres bancs, y compris les tests de régression caméra, sont des outils
+   de développement et ne sont PAS installés, cf. ci-dessus), et note la
    version installée dans `VERSION.txt`.
 3. Crée le venv et installe les dépendances via `common/avastack_setup.py` —
    le MÊME outil que l'installateur Windows (une seule route d'installation

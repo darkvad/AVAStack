@@ -72,9 +72,11 @@ le sous-dossier bancs\cameras :
 
 Ils réutilisent le MÊME code caméra que l'application, mais hors
 application : idéal pour comprendre un problème de caméra sans toucher au
-live stacking. Les bancs de régression de la couche caméra
-(_test_camera_*.py, _test_capacites*.py, _test_tec*.py…) y sont aussi : ils
-tournent SANS matériel (SDK factices).
+live stacking. Ce sous-dossier ne contient QUE ces outils : les bancs de
+régression de la couche caméra (_test_camera_*.py, _test_capacites*.py,
+_test_tec*.py…) tournent à vide (SDK factices), sans jamais voir tes
+pilotes ni tes caméras : ce sont des outils de développement, ils restent
+dans le dépôt.
 
 Pour en lancer un :
   1. ouvre une invite de commandes dans ce dossier ;
@@ -87,9 +89,10 @@ Pour en lancer un :
   avant de lancer AVAStack, et inversement.
 
 Les AUTRES bancs (solveur, couleurs, chromatisme, sauvegardes, gradient,
-alignement…) ne sont PAS installés : ce sont des outils de développement. Ils
-vivent dans le dépôt du projet, sous bancs\, et se lancent depuis la racine du
-dépôt avec l'environnement Python du dépôt.
+alignement… ET les bancs de régression caméra _test_*.py) ne sont PAS
+installés : ce sont des outils de développement. Ils vivent dans le dépôt du
+projet, sous bancs\, et se lancent depuis la racine du dépôt avec
+l'environnement Python du dépôt.
 
 Le banc PLAYER ONE permet de :
   - DÉTECTER les caméras Player One et lire leur fiche (modèle, capteur,

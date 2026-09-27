@@ -8,8 +8,10 @@ même règle que l'installateur Windows, cf. CLAUDE.md) : le nom de l'artéfact
 PORTE la version, jamais un nom figé.
 
 Contenu du paquet : l'application (`AVAStack.py` + package `avastack/`), les
-bancs du THÈME CAMÉRA (`bancs/cameras/` — les SEULS embarqués, décision d'Alain
-du 27/09/2026 : « seuls les bancs camera seront dans les installateurs »),
+OUTILS DE DIAGNOSTIC MATÉRIEL caméra (`bancs/cameras/_diag_*.py` — les SEULS
+bancs embarqués, décision d'Alain du 27/09/2026 : « l'installation ne contient
+que des outils réellement utilisables par moi » ; les bancs de RÉGRESSION
+`_test_*.py`, à SDK factices, sont des outils de DEV et restent au dépôt),
 `requirements.txt`, `veralux_core_headless.py`, et l'installateur
 (`installer/install_avastack.sh`, `installer/common/avastack_setup.py`,
 `LISEZMOI.txt`). Il ne contient AUCUN SDK constructeur
@@ -34,10 +36,15 @@ import tarfile
 
 MOTIF_VERSION = re.compile(r'^AVASTACK_VERSION\s*=\s*"([^"]+)"', re.M)
 FICHIERS_RACINE = ("AVAStack.py", "requirements.txt", "veralux_core_headless.py")
-# Thème CAMÉRA seulement : décision d'Alain du 27/09/2026 (« seuls les bancs
-# caméra seront dans les installateurs ; le reste n'a rien à y faire, c'est pour
-# du dev »). Les autres bancs vivent dans `bancs/` mais ne sont PAS embarqués.
+# Bancs embarqués : les OUTILS DE DIAGNOSTIC MATÉRIEL caméra seulement
+# (motif `_diag_*.py`), exactement comme `avastack.iss` — décision d'Alain du
+# 27/09/2026 : « l'installation ne contient que des outils réellement
+# utilisables par moi » (les diagnostics parlent aux VRAIES DLL et à SES
+# caméras). Les autres bancs — y compris les bancs de RÉGRESSION de la couche
+# caméra (`_test_*.py` : SDK factices, aucun matériel requis) — sont des outils
+# de DEV : ils vivent sous `bancs/` dans le dépôt et ne sont PAS embarqués.
 DOSSIER_CAMERAS = os.path.join("bancs", "cameras")
+MOTIF_DIAG = "_diag_"
 EXTENSIONS_INTERDITES = (".so", ".dll", ".dylib", ".rules")
 # Fichiers dont les fins de ligne DOIVENT être UNIX dans le paquet : un script
 # shell en CRLF ne s'exécute pas sous Linux (« set -euo pipefail\r » = commande
@@ -84,7 +91,7 @@ def fichiers_a_embarquer(racine):
         ajouter(os.path.join(racine, nom))
     dossier_cameras = os.path.join(racine, DOSSIER_CAMERAS)
     for nom in sorted(os.listdir(dossier_cameras)):
-        if nom.endswith(".py"):
+        if nom.startswith(MOTIF_DIAG) and nom.endswith(".py"):
             ajouter(os.path.join(dossier_cameras, nom),
                     "bancs/cameras/" + nom)
     for dossier, sous, noms in os.walk(os.path.join(racine, "avastack")):

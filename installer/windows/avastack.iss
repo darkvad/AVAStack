@@ -72,16 +72,16 @@ Source: "{#RepoRoot}\ASICamera2.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}\PlayerOneCamera.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}\ToupCam.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}\SVBCameraSDK.dll"; DestDir: "{app}"; Flags: ignoreversion
-; Bancs du theme CAMERA (bancs/cameras/ dans le depot) : outils de diagnostic
-; materiel d'Alain (detection, controles SDK, TEC, flux, capacites dynamiques)
-; ET bancs de regression de la couche camera (SDK factices, sans materiel).
-; Chacun trouve la racine du programme depuis son propre emplacement.
-;
-; Les AUTRES bancs ne sont PLUS installes (decision d'Alain, 27/09/2026 :
-; « seuls les bancs camera seront dans les installateurs ; le reste n'a rien
-; a y faire, c'est pour du dev ») : ils vivent dans le depot, sous bancs/, et
-; se lancent depuis la racine du depot (python bancs\_test_xxx.py).
-Source: "{#RepoRoot}\bancs\cameras\*.py"; DestDir: "{app}\bancs\cameras"; Flags: ignoreversion
+; Bancs du theme CAMERA (bancs/cameras/ dans le depot) : seuls les OUTILS DE
+; DIAGNOSTIC MATERIEL sont embarques (motif _diag_*.py) - decision d'Alain du
+; 27/09/2026 : l'installation ne contient QUE des outils qu'il peut lancer
+; lui-meme (ils parlent aux VRAIES DLL et a SES cameras : detection, controles
+; SDK, TEC, flux, capacites dynamiques). Le MOTIF (et non une liste) laisse
+; entrer tout nouveau diagnostic tout seul.
+; Les bancs de REGRESSION de la couche camera (_test_*.py : SDK factices,
+; aucun materiel requis) sont des outils de DEV : ils vivent dans le depot,
+; sous bancs/cameras/, et ne partent JAMAIS dans un installateur.
+Source: "{#RepoRoot}\bancs\cameras\_diag_*.py"; DestDir: "{app}\bancs\cameras"; Flags: ignoreversion
 
 
 ; veralux_core_headless.py : code tiers GPL-3.0-or-later (Riccardo Paterniti),

@@ -170,9 +170,12 @@ copier_application() {
     rm -rf "$dst/avastack"
     cp -R "$src/avastack" "$dst/avastack"
     find "$dst/avastack" -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
-    # Bancs installés : le THÈME CAMÉRA seulement. Le paquet ne contient que
-    # bancs/cameras (les autres bancs sont des outils de dev, jamais embarqués,
-    # décision d'Alain du 27/09/2026) ; on copie donc l'arbre bancs/ tel quel.
+    # Bancs installés : les OUTILS DE DIAGNOSTIC MATÉRIEL caméra
+    # seulement (`bancs/cameras/_diag_*.py`). Le paquet ne contient QUE
+    # ceux-là : les bancs de régression caméra et tous les autres bancs
+    # sont des outils de dev, jamais embarqués (décision d'Alain,
+    # 27/09/2026 : l'installation ne contient que des outils utilisables
+    # par lui). Arbre copié tel quel.
     if [ -d "$src/bancs" ]; then
         rm -rf "$dst/bancs"
         cp -R "$src/bancs" "$dst/bancs"

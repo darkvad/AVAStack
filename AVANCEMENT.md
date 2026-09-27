@@ -67,6 +67,17 @@ dans le changelog du source et l'historique git.)
   - **⑤ doc** : LISEZMOI Linux (section « outils externes » : nom exact, chmod,
     où poser le binaire, bouton « … », variables `AVASTACK_*`) et Windows ;
     CLAUDE.md (tableau des noms par OS, ini Siril, piège de la commande figée).
+  - **⑥ décision d'Alain (27/09/2026, après inventaire des 16 bancs de
+    `bancs/cameras/`)** : les installateurs n'embarquent PLUS que les **5
+    outils de diagnostic matériel** (`_diag_*` : les seuls qu'il peut lancer
+    chez lui, puisqu'ils parlent aux vraies DLL et à ses caméras) ; les **11
+    bancs de régression** de la couche caméra (`_test_*`, SDK factices, aucun
+    matériel requis) sont des outils de DEV et restent au dépôt. Filtrage par
+    MOTIF dans les deux producteurs (`.iss` : `_diag_*.py` ; packer Linux :
+    `MOTIF_DIAG = "_diag_"`) → un nouveau diagnostic entre tout seul. Effet
+    mesuré : paquet Linux 70 → **59 fichiers**, 518 → **488 Kio** (les 5
+    diagnostics pèsent 294 Kio de source, les 11 tests 114 Kio) ; l'installateur
+    Windows ne compresse plus que les 5 `_diag_*` (log ISCC vérifié).
   - Banc NEUF `bancs/_test_outils_jalon71.py` (**38 vérifications** : Linux/
     macOS/Windows simulés, ordre de recherche, ini Siril, chemin disparu,
     `outil_manquant`, lignes d'état de l'UI réelle).

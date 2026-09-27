@@ -150,7 +150,8 @@ Règles qui vont avec :
 Les bancs (`_diag_*.py` : diagnostics ; `_test_*.py` : non-régression) ne
 vivent PLUS à la racine : ils sont rangés sous **`bancs/`**, avec un seul thème
 séparé, **`bancs/cameras/`** (diagnostic matériel ET bancs de la couche caméra :
-SDK constructeurs, capacités, TEC, câblage UI des contrôles).
+SDK constructeurs, capacités, TEC, câblage UI des contrôles) — seuls les
+`_diag_*` partent dans les installateurs, cf. la puce « Installateurs ».
 
 - **Chaque banc porte un bootstrap autonome** (inséré juste après sa docstring)
   qui met dans `sys.path` le premier dossier parent contenant `AVAStack.py` —
@@ -161,11 +162,16 @@ SDK constructeurs, capacités, TEC, câblage UI des contrôles).
   `python bancs\_test_xxx.py` / `./venv/bin/python bancs/cameras/_diag_camera_qhy.py`.
   Les bancs qui lisent des images de test utilisent des chemins relatifs au
   dossier courant : on garde donc l'habitude de les lancer depuis la racine.
-- **Installateurs** : SEUL le thème caméra est embarqué (`bancs/cameras/`) —
-  « les autres bancs n'ont rien à y faire, c'est pour du dev » (Alain,
-  27/09/2026). Le `.iss` et le packer Linux pointent le dossier, jamais une
-  liste de fichiers : un banc caméra ajouté entre tout seul dans les deux
-  installateurs ; un banc de dev ne part JAMAIS.
+- **Installateurs** : seuls les OUTILS DE DIAGNOSTIC MATÉRIEL caméra sont
+  embarqués (`bancs/cameras/_diag_*.py`) — décision d'Alain du 27/09/2026 :
+  « l'installation ne contient que des outils réellement utilisables par moi »
+  (ces outils parlent aux VRAIES DLL et à SES caméras). Les bancs de RÉGRESSION
+  de la couche caméra (`bancs/cameras/_test_*.py` : SDK factices, aucun matériel
+  requis) sont des outils de DEV, comme tous les autres bancs : ils restent au
+  dépôt. Les deux producteurs filtrent par **MOTIF**, jamais par liste : le
+  `.iss` embarque `bancs\cameras\_diag_*.py`, le packer Linux la même condition
+  (`MOTIF_DIAG = "_diag_"`) → un NOUVEAU diagnostic entre tout seul dans les deux
+  installateurs, un banc de test ne part JAMAIS.
 - Un banc cité dans CLAUDE.md ou AVANCEMENT.md le reste par son NOM (les
   fichiers n'ont pas été renommés) : pour le retrouver, chercher sous `bancs/`.
 

@@ -108,14 +108,16 @@ AVANT de commencer (message clair) au lieu d'échouer en cours de route.
 
 BANCS CAMÉRA INSTALLÉS (sous-dossier bancs/cameras)
 -----------------------------------------------
-Seuls les bancs du THÈME CAMÉRA sont installés avec l'application :
+Seuls les OUTILS DE DIAGNOSTIC MATÉRIEL sont installés avec l'application :
   - bancs/cameras/_diag_camera_qhy.py, _diag_camera_playerone.py,
     _diag_camera_svbony.py, _diag_camera_touptek.py : diagnostic d'une caméra
     HORS de l'application (détection, contrôles SDK, TEC, flux) ;
-  - bancs/cameras/_diag_qhy_sdk.py : le SDK QHYCCD seul, sans caméra ;
-  - les bancs de régression de la couche caméra (_test_camera_*.py,
-    _test_capacites*.py, _test_tec*.py, _test_qhy_camera.py…) : ils tournent
-    SANS matériel (SDK factices).
+  - bancs/cameras/_diag_qhy_sdk.py : le SDK QHYCCD seul, sans caméra.
+
+Ces outils parlent aux VRAIES DLL et à TES caméras. Les bancs de régression de
+la couche caméra (_test_camera_*.py, _test_capacites*.py, _test_tec*.py…) ne
+sont PAS installés : ils tournent à vide (SDK factices) et ne voient jamais
+tes pilotes — ce sont des outils de développement, ils restent dans le dépôt.
 
 Lancement, depuis CE dossier (chaque banc trouve la racine du programme) :
     ./venv/bin/python bancs/cameras/_diag_camera_qhy.py
