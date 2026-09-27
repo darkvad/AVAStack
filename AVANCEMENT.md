@@ -42,6 +42,10 @@ dans le changelog du source et l'historique git.)
     Linux (pas exécutable ici : Windows sans bash ni WSL — contrôles faits à la
     lecture + inventaire de l'archive) ; puis `--cameras` quand les `.so`
     constructeurs seront récupérés (liste des fichiers attendus plus bas).
+  - **④ ce lot est COMMITÉ et POUSSÉ** : `8b28e7f` (master, `origin/master`) —
+    `installer/linux/install_avastack.sh` est enregistré en 0755 dans le dépôt
+    (exécutable après un clone Linux). Aucun code applicatif touché : aucun
+    impact sur la v2.38.3 en attente de test.
 
 
 - **PASSE EN COURS — AVAStack v2.38.3 : PARAMÈTRES BXT EXPLICITES, TRAÇABILITÉ
