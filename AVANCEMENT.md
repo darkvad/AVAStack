@@ -10,6 +10,40 @@ dans le changelog du source et l'historique git.)
 ---
 
 
+- **RÉORGANISATION DES BANCS — `bancs/` + `bancs/cameras/`, SEUL LE THÈME CAMÉRA
+  EST INSTALLÉ** (décision d'Alain, 27/09/2026 : « dossier bancs PARTOUT avec
+  juste un thème à part pour les caméras ; seuls les bancs caméra seront dans
+  les installateurs — le reste n'a rien à y faire, c'est pour du dev ») :
+  - **109 bancs déplacés** par `git mv` (historique conservé) → `bancs/` : 93,
+    `bancs/cameras/` : 16. Le thème caméra a été établi par le CONTENU, pas par
+    le nom : les 5 bancs « composition » importent `MultiFolderCamera` et ne
+    sont donc PAS caméra (piège évité).
+  - **Bootstrap uniforme posé dans les 109** (5 lignes, juste après la
+    docstring) : il remonte les dossiers parents jusqu'à celui qui porte
+    `AVAStack.py` et l'ajoute à `sys.path` → le banc fonctionne depuis le dépôt
+    (`bancs/`, `bancs/cameras/`) ET depuis le dossier d'installation. **9 anciens
+    bootstraps supprimés** : 8 chemins absolus `c:\Astro\AstroLiveStack` (déjà
+    faux hors de ta machine) et 1 `__file__.rsplit("\\")`.
+  - **Installateurs** : `.iss` (109 lignes de bancs → UNE ligne) et packer Linux
+    n'embarquent QUE `bancs/cameras/` (16 fichiers) ; le script Linux copie
+    l'arbre `bancs/` du paquet (il listait encore les bancs à la racine du
+    paquet — corrigé). Paquet Linux : 162 → **69 fichiers** (505 Kio).
+  - **Doc** : LISEZMOI Windows et Linux réécrits (chemins `bancs\cameras\…`,
+    autres bancs = outils de dev non installés) ; les **97 lignes d'usage des
+    bancs** (« Usage : python _diag_xxx.py ») portent maintenant leur dossier
+    réel (`python bancs/…`, `python bancs/cameras/…`), résolu banc par banc dans
+    l'arbre ; CLAUDE.md : nouvelle section « Bancs et diagnostics —
+    emplacement » (bootstrap, lancement depuis la racine, règle des
+    installateurs) ; `installer/README.md` mis à jour.
+  - **Vérifications faites** : `ast.parse` des 109 (OK) ; 3 bancs REJOUÉS depuis
+    leur nouveau dossier et verts (`bancs/_test_veralux_jalon1.py`,
+    `bancs/cameras/_test_qhy_camera.py` 33/33, `bancs/cameras/_test_capacites.py`
+    29/29) ; un banc caméra rejoué depuis le PAQUET LINUX EXTRAIT (29/29) et
+    `import avastack` depuis ce paquet (2.38.3) ; les deux installateurs
+    reconstruits puis leur contenu contrôlé (16 bancs caméra, rien d'autre).
+  - Reste à faire : ton essai de l'installateur Linux, et `--cameras` quand les
+    `.so` constructeurs arriveront.
+
 - **PASSE ANNEXE (27/09/2026, hors code applicatif) — INSTALLATEURS NOMMÉS AVEC
   LEUR VERSION, INSTALLATEUR LINUX SANS CAMÉRAS** :
   - **① nommage (demande d'Alain)** : tout artefact porte sa VERSION et la tire

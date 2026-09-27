@@ -128,6 +128,30 @@ Règles qui vont avec :
 - après toute passe de code, annoncer en fin de réponse le CHEMIN EXACT de
   l'artefact reconstruit (version comprise).
 
+## Bancs et diagnostics — emplacement (décision d'Alain, 27/09/2026)
+
+Les bancs (`_diag_*.py` : diagnostics ; `_test_*.py` : non-régression) ne
+vivent PLUS à la racine : ils sont rangés sous **`bancs/`**, avec un seul thème
+séparé, **`bancs/cameras/`** (diagnostic matériel ET bancs de la couche caméra :
+SDK constructeurs, capacités, TEC, câblage UI des contrôles).
+
+- **Chaque banc porte un bootstrap autonome** (inséré juste après sa docstring)
+  qui met dans `sys.path` le premier dossier parent contenant `AVAStack.py` —
+  il trouve donc l'application qu'il soit dans le dépôt (`bancs/`,
+  `bancs/cameras/`) ou dans le dossier d'installation. Ne pas le retirer, et ne
+  jamais remettre de chemin absolu de machine de dev.
+- **Lancement** : depuis la RACINE du dépôt (ou du dossier d'installation),
+  `python bancs\_test_xxx.py` / `./venv/bin/python bancs/cameras/_diag_camera_qhy.py`.
+  Les bancs qui lisent des images de test utilisent des chemins relatifs au
+  dossier courant : on garde donc l'habitude de les lancer depuis la racine.
+- **Installateurs** : SEUL le thème caméra est embarqué (`bancs/cameras/`) —
+  « les autres bancs n'ont rien à y faire, c'est pour du dev » (Alain,
+  27/09/2026). Le `.iss` et le packer Linux pointent le dossier, jamais une
+  liste de fichiers : un banc caméra ajouté entre tout seul dans les deux
+  installateurs ; un banc de dev ne part JAMAIS.
+- Un banc cité dans CLAUDE.md ou AVANCEMENT.md le reste par son NOM (les
+  fichiers n'ont pas été renommés) : pour le retrouver, chercher sous `bancs/`.
+
 ## Portage Linux / macOS — prérequis et installateur (étude du 27/09/2026)
 
 Contrainte d'Alain : l'application doit tourner sur Windows / Linux / macOS. Le

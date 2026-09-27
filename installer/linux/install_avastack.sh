@@ -170,13 +170,14 @@ copier_application() {
     rm -rf "$dst/avastack"
     cp -R "$src/avastack" "$dst/avastack"
     find "$dst/avastack" -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
-    # Bancs et diagnostics autonomes : les mêmes outils que l'installateur
-    # Windows (détection caméra, solveur, bancs de régression).
-    for f in "$src"/_diag_*.py "$src"/_test_*.py; do
-        if [ -f "$f" ]; then
-            cp -f "$f" "$dst/"
-        fi
-    done
+    # Bancs installés : le THÈME CAMÉRA seulement. Le paquet ne contient que
+    # bancs/cameras (les autres bancs sont des outils de dev, jamais embarqués,
+    # décision d'Alain du 27/09/2026) ; on copie donc l'arbre bancs/ tel quel.
+    if [ -d "$src/bancs" ]; then
+        rm -rf "$dst/bancs"
+        cp -R "$src/bancs" "$dst/bancs"
+        find "$dst/bancs" -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
+    fi
     # Lisez-moi utilisateur : racine du paquet, ou installer/linux/ quand le
     # script est lancé depuis le dépôt (jamais celui de Windows).
     for f in "$src/LISEZMOI.txt" "$src/installer/linux/LISEZMOI.txt"; do

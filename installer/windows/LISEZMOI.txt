@@ -1,4 +1,4 @@
-AVAStack — Live stacking
+﻿AVAStack — Live stacking
 ========================
 
 Merci d'avoir installé AVAStack !
@@ -34,27 +34,36 @@ copie-la simplement dans CE dossier (ou définis une variable
 d'environnement pointant vers le dossier qui la contient, par exemple
 AVASTACK_PLAYERONE_DIR=C:\chemin\vers\SDK\PlayerOne).
 
-BANCS DE DIAGNOSTIC CAMÉRA
---------------------------
-Quatre outils autonomes sont installés avec AVAStack :
+BANCS CAMÉRA INSTALLÉS (sous-dossier bancs\cameras)
+--------------------------------------------------
+Les outils autonomes de diagnostic caméra sont installés avec AVAStack, dans
+le sous-dossier bancs\cameras :
   - _diag_camera_qhy.py        (caméras QHY / QHYCCD)
   - _diag_camera_playerone.py  (caméras Player One, ex. Uranus-C Pro)
   - _diag_camera_svbony.py     (caméras SVBONY, ex. SV305C de guidage)
   - _diag_camera_touptek.py    (caméras Touptek/Altair et clones ToupCam)
+  - _diag_qhy_sdk.py           (le SDK QHYCCD seul, sans caméra branchée)
 
 Ils réutilisent le MÊME code caméra que l'application, mais hors
 application : idéal pour comprendre un problème de caméra sans toucher au
-live stacking.
+live stacking. Les bancs de régression de la couche caméra
+(_test_camera_*.py, _test_capacites*.py, _test_tec*.py…) y sont aussi : ils
+tournent SANS matériel (SDK factices).
 
 Pour en lancer un :
   1. ouvre une invite de commandes dans ce dossier ;
-  2. tape :  venv\Scripts\python.exe _diag_camera_playerone.py
-     (ou      venv\Scripts\python.exe _diag_camera_svbony.py
-      ou      venv\Scripts\python.exe _diag_camera_qhy.py
-      ou      venv\Scripts\python.exe _diag_camera_touptek.py)
+  2. tape :  venv\Scripts\python.exe bancs\cameras\_diag_camera_playerone.py
+     (ou      venv\Scripts\python.exe bancs\cameras\_diag_camera_svbony.py
+      ou      venv\Scripts\python.exe bancs\cameras\_diag_camera_qhy.py
+      ou      venv\Scripts\python.exe bancs\cameras\_diag_camera_touptek.py)
 
 ⚠ UN SEUL programme à la fois peut ouvrir une caméra : fermer le banc
   avant de lancer AVAStack, et inversement.
+
+Les AUTRES bancs (solveur, couleurs, chromatisme, sauvegardes, gradient,
+alignement…) ne sont PAS installés : ce sont des outils de développement. Ils
+vivent dans le dépôt du projet, sous bancs\, et se lancent depuis la racine du
+dépôt avec l'environnement Python du dépôt.
 
 Le banc PLAYER ONE permet de :
   - DÉTECTER les caméras Player One et lire leur fiche (modèle, capteur,
@@ -71,7 +80,7 @@ Le banc PLAYER ONE permet de :
   - enregistrer un RAPPORT complet dans %TEMP% (bouton « 💾 Sauver le
     rapport »).
   Mode console (détection rapide, sans fenêtre) :
-     venv\Scripts\python.exe _diag_camera_playerone.py --console
+     venv\Scripts\python.exe bancs\cameras\_diag_camera_playerone.py --console
 
   ⚠ Le banc réutilise la sonde de l'application : si les fichiers
     avastack\cameras\playerone.py et avastack\cameras\capacites.py
@@ -94,7 +103,7 @@ Le banc SVBONY permet de (ex. SV305C de guidage) :
     (RAW8/RAW16/RGB24…), flip (UN seul contrôle 0-3) ;
   - AFFICHER le flux live avec les fps réels ;
   - enregistrer un RAPPORT complet dans %TEMP%.
-  Mode console : venv\Scripts\python.exe _diag_camera_svbony.py --console
+  Mode console : venv\Scripts\python.exe bancs\cameras\_diag_camera_svbony.py --console
   ⚠ Même contrôle de version que le banc Player One : si
     avastack\cameras\svbony.py ou avastack\cameras\capacites.py sont
     antérieurs au banc, celui-ci le signale (bandeau rouge) au lieu de
@@ -128,7 +137,7 @@ Le banc TOUPTEK permet de (Touptek/Altair et clones ToupCam) :
     versions firmware/hardware/FPGA, date de production, révision,
     formats de pixel supportés, binning supporté) ;
   - enregistrer un RAPPORT complet dans %TEMP%.
-  Mode console : venv\Scripts\python.exe _diag_camera_touptek.py --console
+  Mode console : venv\Scripts\python.exe bancs\cameras\_diag_camera_touptek.py --console
   ⚠ Même contrôle de version que les autres bancs : si
     avastack\cameras\touptek.py installée est ANTÉRIEURE à la correction
     API V2 (≥ 2.21.8), à la table de plage du niveau de noir du

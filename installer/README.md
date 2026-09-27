@@ -14,6 +14,19 @@ figé — `avastack.iss` refuse même de compiler sans `/DAppVersion`. Deux
 versions ne s'écrasent donc jamais (celle d'avant reste à côté et sert de
 repli). Détail : CLAUDE.md, section « Installateur et tests réels ».
 
+## Bancs embarqués : le thème CAMÉRA seulement
+
+Les deux installateurs n'embarquent que le thème caméra des bancs
+(`bancs/cameras/` dans le dépôt) : diagnostics matériels (`_diag_camera_*.py`,
+`_diag_qhy_sdk.py`) ET bancs de régression de la couche caméra
+(`_test_camera_*.py`, `_test_capacites*.py`, `_test_tec*.py`, …). Les autres
+bancs (solveur, couleurs, chromatisme, sauvegardes, gradient, alignement…) sont
+des outils de DÉVELOPPEMENT : ils vivent dans le dépôt, sous `bancs/`, et ne
+partent JAMAIS dans un installateur (décision d'Alain, 27/09/2026 : « seuls les
+bancs caméra seront dans les installateurs ; le reste n'a rien à y faire, c'est
+pour du dev »). Les deux installateurs pointent le DOSSIER, jamais une liste de
+fichiers : un banc caméra ajouté entre tout seul, un banc de dev ne part pas.
+
 ## Ce que fait l'installateur Windows (avastack-setup-<version>.exe)
 
 1. Vérifie/présente Python 3.10+ (le télécharge et l'installe silencieusement
@@ -45,8 +58,9 @@ bash et sans rien qui ressemble à une DLL :
    pip) ; en cas de manque il affiche la commande exacte pour Debian/Ubuntu,
    Fedora et Arch, puis s'arrête (option `--forcer` pour passer outre).
 2. Copie l'application dans `~/.local/share/AVAStack` (option `--prefix`),
-   avec les bancs et diagnostics autonomes, et note la version installée dans
-   `VERSION.txt`.
+   avec les bancs du THÈME CAMÉRA (`bancs/cameras/` — les autres bancs sont des
+   outils de développement et ne sont PAS installés, cf. ci-dessous), et note la
+   version installée dans `VERSION.txt`.
 3. Crée le venv et installe les dépendances via `common/avastack_setup.py` —
    le MÊME outil que l'installateur Windows (une seule route d'installation
    des dépendances à maintenir).
@@ -128,6 +142,14 @@ installer/
                           output/avastack-setup-<version>-linux.tar.gz
     LISEZMOI.txt          lisez-moi utilisateur Linux (dans le paquet)
     output/               artefact (gitignore)
+```
+
+Et, à la racine du DÉPÔT (c'est là que vivent les bancs désormais) :
+
+```
+bancs/
+  cameras/                SEUL thème embarqué par les deux installateurs
+  *.py                    outils de développement (jamais installés)
 ```
 
 ## Tests

@@ -72,115 +72,17 @@ Source: "{#RepoRoot}\ASICamera2.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}\PlayerOneCamera.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}\ToupCam.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}\SVBCameraSDK.dll"; DestDir: "{app}"; Flags: ignoreversion
-; Bancs de diagnostic camera autonomes : outils d'Alain pour deboguer hors
-; application (detection, controles SDK, TEC, flux, capacites dynamiques).
-Source: "{#RepoRoot}\_diag_camera_qhy.py"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#RepoRoot}\_diag_camera_playerone.py"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#RepoRoot}\_diag_camera_svbony.py"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#RepoRoot}\_diag_camera_touptek.py"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#RepoRoot}\_diag_solve_reel.py"; DestDir: "{app}"; Flags: ignoreversion
-; Banc de regression REEL du solveur (v2.27.0) : resout les vraies images
-; M31 (empilement composite + brute G) et confronte a ASTAP ; saute
-; proprement si les images de test sont absentes.
-Source: "{#RepoRoot}\_test_solveur_reel_m31.py"; DestDir: "{app}"; Flags: ignoreversion
-; Banc de regression REEL de l'echelle des sauvegardes (v2.27.1) : verifie que
-; l'empilement lineaire ecrit est borne a [0,1] (AVASCALE reversible) et que
-; ASTAP RESOUT le fichier M31 du disque ; saute proprement si absent.
-Source: "{#RepoRoot}\_test_save_lineaire_echelle.py"; DestDir: "{app}"; Flags: ignoreversion
-; Banc de branchement du solveur au worker (v2.28.0) : astrometrie de l'empilement
-; (indices -> resolution unique -> propagation mots-cles WCS).
-Source: "{#RepoRoot}\_test_astro_branchement_jalon56.py"; DestDir: "{app}"; Flags: ignoreversion
-; Banc de photometrie (v2.30.0, jalon 56 etape 4) : zero-point par bande
-; (appariements Gaia via le WCS, gains relatifs, worker reel).
-Source: "{#RepoRoot}\_test_photometrie_jalon56.py"; DestDir: "{app}"; Flags: ignoreversion
-; Diagnostic ASTAP en balayage (v2.29.0) : essaie plusieurs -fov, affiche
-; le verdict brut et liste les bases installees (D80 seule = balayage
-; impossible) ; confronte au resultat du solveur interne indice.
-Source: "{#RepoRoot}\_diag_astap_aveugle.py"; DestDir: "{app}"; Flags: ignoreversion
-; Diagnostic de resolution d'une COMPOSITION (v2.31.2) : compare chaque
-; couche separee et le composite (celui que l'appli analyse).
-Source: "{#RepoRoot}\_diag_solve_compo.py"; DestDir: "{app}"; Flags: ignoreversion
-; Diagnostic du VOTE RANSAC (v2.31.3) : instrumente le vote (echelle, angle) et
-; le raffinement, et compare au WCS vrai d'ASTAP (qui correspond a qui) —
-; c'est cet outil qui a identifie le bug d'appariement direct/croise.
-Source: "{#RepoRoot}\_diag_vote.py"; DestDir: "{app}"; Flags: ignoreversion
-; Diagnostic d'appariement (v2.31.3) : ecart de CHAQUE etoile detectee a
-; l'etoile de catalogue Gaia la plus proche, via le WCS vrai d'ASTAP.
-Source: "{#RepoRoot}\_diag_appariement.py"; DestDir: "{app}"; Flags: ignoreversion
-; Diagnostic d'ALIGNEMENT SOUS-PIXEL (v2.32.0) : verite terrain par appariement
-; mutuel d'etoiles (sans WCS), repartition SPATIALE du decalage, correlation de
-; phase comme second avis, ce que CHAQUE chemin de l'aligneur retourne (reste
-; mesure APRES application) et precision sur des decalages connus. C'est cet
-; outil qui a identifie le defaut ORB : le sous-pixel n'etait jamais corrige.
-Source: "{#RepoRoot}\_diag_align_precision.py"; DestDir: "{app}"; Flags: ignoreversion
-; Diagnostic des GAINS PHOTOMETRIQUES (v2.32.0) : etat des canaux, zero-points
-; Gaia et leur dispersion (fiabilite), effet REEL des gains sur la couleur du
-; fond, et decalage des etoiles ENTRE canaux (franges colorees).
-Source: "{#RepoRoot}\_diag_couleur_gains.py"; DestDir: "{app}"; Flags: ignoreversion
+; Bancs du theme CAMERA (bancs/cameras/ dans le depot) : outils de diagnostic
+; materiel d'Alain (detection, controles SDK, TEC, flux, capacites dynamiques)
+; ET bancs de regression de la couche camera (SDK factices, sans materiel).
+; Chacun trouve la racine du programme depuis son propre emplacement.
+;
+; Les AUTRES bancs ne sont PLUS installes (decision d'Alain, 27/09/2026 :
+; « seuls les bancs camera seront dans les installateurs ; le reste n'a rien
+; a y faire, c'est pour du dev ») : ils vivent dans le depot, sous bancs/, et
+; se lancent depuis la racine du depot (python bancs\_test_xxx.py).
+Source: "{#RepoRoot}\bancs\cameras\*.py"; DestDir: "{app}\bancs\cameras"; Flags: ignoreversion
 
-; Banc SPCC (v2.33.0, jalon 58) : calibration spectrophotométrique ABSOLUE
-; « à la Siril » sur des couches REELLES — spectres Gaia du champ, profils
-; capteur/filtres de la base Siril, reference de blanc, coefficients par
-; regression robuste, et comparaison objective des methodes (brut,
-; equilibrage du fond, Linear Fit, gains Gaia relatifs, SPCC) par l'erreur
-; des COULEURS D'ETOILES en magnitudes.
-Source: "{#RepoRoot}\_diag_spcc.py"; DestDir: "{app}"; Flags: ignoreversion
-
-; Outil : QUE CONTIENNENT les fichiers d'empilement (brut vs traité) ? Fond et
-; bruit par canal, contraste de fond R/G et B/G, rapport brut/traité, clés AVA*
-; de l'en-tête. C'est l'outil qui a identifié l'écrêtage [0..1] de la chaîne
-; live en v2.35.1 (voir aussi _test_save_brute_jalon59.py).
-Source: "{#RepoRoot}\_diag_empilement_couleur.py"; DestDir: "{app}"; Flags: ignoreversion
-
-; Banc SPCC (v2.34.0, jalon 58) : verifie le MODELE contre une VERITE
-; ANALYTIQUE — image fabriquee a partir des spectres et de reponses connues
-; (attenuations instrumentales x0,7 / x1,3) : les pentes de regression doivent
-; valoir exactement ces gains, la reference de blanc doit devenir NEUTRE,
-; plus les refus propres, le piege des unites (angstroms), la robustesse de la
-; regression, la session et tout le branchement UI (case opt-in, selecteurs
-; alimentes par la base Siril, config round-trip, gains par role).
-Source: "{#RepoRoot}\_test_spcc_jalon58.py"; DestDir: "{app}"; Flags: ignoreversion
-
-; Banc du CHANTIER v2.35.0 : LA SAUVEGARDE LINEAIRE EST BRUTE + LES
-; CORRECTIONS DE COULEUR SONT DANS LA CHAINE DE SORTIE. Preuve, au banc, que
-; le fichier enregistre est IDENTIQUE AU PIXEL PRES avec et sans SPCC / gains
-; Gaia / equilibrage / Linear Fit coches (alors que l'affichage change) ;
-; verifie aussi l'ordre des corrections (gains -> equilibrage -> recalage), le
-; transport de l'equilibrage au solveur live et la 3e sortie « empilement
-; traite (lineaire) » (bouton dedie, sans etirement, en-tete descriptif).
-Source: "{#RepoRoot}\_test_save_brute_jalon59.py"; DestDir: "{app}"; Flags: ignoreversion
-
-; Banc de l'OPTION v2.36.0 : NORMALISATION COMMUNE DES CANAUX (case decochee
-; par defaut). Montre, sur une scene synthetique, pourquoi le fond s'ameliore
-; enfin avec l'integration quand les trois roles partagent l'echelle du vert
-; (grain/fond x1,8 de 30 a 120 frames) alors qu'avec la normalisation par role
-; il reste inchange (x0,9) et COLORE -> c'est la cause du grain que voit Alain.
-Source: "{#RepoRoot}\_test_norm_commune_jalon61.py"; DestDir: "{app}"; Flags: ignoreversion
-
-; Banc des CORRECTIFS v2.36.1 (fond bleu, constats d'Alain du 25/09/2026) :
-; (1) les PNG/TIFF ne permutent plus R et B (verifie par DEUX lecteurs
-; independants : OpenCV brut et PIL) ; (2) neutralisation de la couleur du fond
-; avant l'etirement VeraLux (gains ~2 % mesures sur la mediane de la moitie
-; sombre : fond etire de R/G 0,36 B/G 1,61 -> 1,02 / 1,00) ; (3) branchement
-; UI/solveur/config. Accepte un fichier REEL en argument :
-;   python _test_fond_bleu_jalon62.py "mon_fichier_lineaire.fits"
-; -> fond lineaire, gains proposes, fond etire avant/apres, et controle du PNG ecrit.
-Source: "{#RepoRoot}\_test_fond_bleu_jalon62.py"; DestDir: "{app}"; Flags: ignoreversion
-
-; Banc de la REDUCTION DU BRUIT CHROMATIQUE (v2.37.0, demande d'Alain : « un
-; equivalent de SCNR pour le bleu », case DECOCHEE par defaut) : la primitive
-; (grain colore x(1-force) exactement, luminance intacte, couleur de l'objet
-; preservee), le cas REEL (gains de la SPCC : K_B/K_G = 1,318 -> grain B/G
-; mesure a 1,174 sur ses empilements M31), le transport au solveur VeraLux
-; (sortie identique a la chaine attendue) et le branchement UI/config (rendu
-; IMMEDIAT au clic, sans nouvelle frame).
-Source: "{#RepoRoot}\_test_chroma_halo_jalon65.py"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#RepoRoot}\_test_chroma_nr_jalon63.py"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#RepoRoot}\_test_chroma_structure_jalon67.py"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#RepoRoot}\_test_zoom_pleine_res_jalon68.py"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#RepoRoot}\_test_pleine_res_traitee_jalon69.py"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#RepoRoot}\_test_unflip_jalon69.py"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#RepoRoot}\_test_bxt_entete_jalon69.py"; DestDir: "{app}"; Flags: ignoreversion
 
 ; veralux_core_headless.py : code tiers GPL-3.0-or-later (Riccardo Paterniti),
 ; copie tel quel (sa licence exige de transmettre le source a cote du binaire).

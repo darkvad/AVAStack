@@ -8,9 +8,11 @@ même règle que l'installateur Windows, cf. CLAUDE.md) : le nom de l'artéfact
 PORTE la version, jamais un nom figé.
 
 Contenu du paquet : l'application (`AVAStack.py` + package `avastack/`), les
-bancs et diagnostics autonomes, `requirements.txt`, `veralux_core_headless.py`,
-et l'installateur (`installer/install_avastack.sh`, `installer/common/
-avastack_setup.py`, `LISEZMOI.txt`). Il ne contient AUCUN SDK constructeur
+bancs du THÈME CAMÉRA (`bancs/cameras/` — les SEULS embarqués, décision d'Alain
+du 27/09/2026 : « seuls les bancs camera seront dans les installateurs »),
+`requirements.txt`, `veralux_core_headless.py`, et l'installateur
+(`installer/install_avastack.sh`, `installer/common/avastack_setup.py`,
+`LISEZMOI.txt`). Il ne contient AUCUN SDK constructeur
 (`*.so`, `*.dll`, `*.dylib`, `*.rules`), ni venv, ni config : la version livrée
 est SANS caméras et travaille en mode dossier / composition / OpenCV / simulé.
 
@@ -32,7 +34,10 @@ import tarfile
 
 MOTIF_VERSION = re.compile(r'^AVASTACK_VERSION\s*=\s*"([^"]+)"', re.M)
 FICHIERS_RACINE = ("AVAStack.py", "requirements.txt", "veralux_core_headless.py")
-PREFIXES_OUTILS = ("_diag_", "_test_")
+# Thème CAMÉRA seulement : décision d'Alain du 27/09/2026 (« seuls les bancs
+# caméra seront dans les installateurs ; le reste n'a rien à y faire, c'est pour
+# du dev »). Les autres bancs vivent dans `bancs/` mais ne sont PAS embarqués.
+DOSSIER_CAMERAS = os.path.join("bancs", "cameras")
 EXTENSIONS_INTERDITES = (".so", ".dll", ".dylib", ".rules")
 # Fichiers dont les fins de ligne DOIVENT être UNIX dans le paquet : un script
 # shell en CRLF ne s'exécute pas sous Linux (« set -euo pipefail\r » = commande
@@ -77,9 +82,11 @@ def fichiers_a_embarquer(racine):
 
     for nom in FICHIERS_RACINE:
         ajouter(os.path.join(racine, nom))
-    for nom in sorted(os.listdir(racine)):
-        if nom.endswith(".py") and nom.startswith(PREFIXES_OUTILS):
-            ajouter(os.path.join(racine, nom))
+    dossier_cameras = os.path.join(racine, DOSSIER_CAMERAS)
+    for nom in sorted(os.listdir(dossier_cameras)):
+        if nom.endswith(".py"):
+            ajouter(os.path.join(dossier_cameras, nom),
+                    "bancs/cameras/" + nom)
     for dossier, sous, noms in os.walk(os.path.join(racine, "avastack")):
         sous[:] = [s for s in sous if s != "__pycache__"]
         for nom in sorted(noms):

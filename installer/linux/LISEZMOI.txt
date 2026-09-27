@@ -1,4 +1,4 @@
-AVAStack — live stacking : LISEZ-MOI LINUX
+﻿AVAStack — live stacking : LISEZ-MOI LINUX
 ==========================================
 
 Merci d'avoir installé AVAStack ! Ce fichier concerne l'installation sous
@@ -47,15 +47,23 @@ AVASTACK_<MARQUE>_DIR, par exemple AVASTACK_PLAYERONE_DIR=~/SDK/PlayerOne.)
   - Touptek/Altair : libtoupcam.so + ses règles.
   - SVBONY   : libSVBCameraSDK.so + ses règles.
 
-BANCS DE DIAGNOSTIC ET DE RÉGRESSION
-------------------------------------
-Les outils autonomes sont installés avec l'application (mêmes fichiers que
-sous Windows) :
-  - _diag_camera_qhy.py / _diag_camera_playerone.py /
-    _diag_camera_svbony.py / _diag_camera_touptek.py : diagnostic caméra ;
-  - _diag_solve_reel.py, _test_solveur_reel_m31.py : solveur astrométrique ;
-  - tous les `_test_*.py` : bancs de régression (à lancer avec
-    `./venv/bin/python _test_...py` depuis ce dossier).
+BANCS CAMÉRA INSTALLÉS (sous-dossier bancs/cameras)
+-----------------------------------------------
+Seuls les bancs du THÈME CAMÉRA sont installés avec l'application :
+  - bancs/cameras/_diag_camera_qhy.py, _diag_camera_playerone.py,
+    _diag_camera_svbony.py, _diag_camera_touptek.py : diagnostic d'une caméra
+    HORS de l'application (détection, contrôles SDK, TEC, flux) ;
+  - bancs/cameras/_diag_qhy_sdk.py : le SDK QHYCCD seul, sans caméra ;
+  - les bancs de régression de la couche caméra (_test_camera_*.py,
+    _test_capacites*.py, _test_tec*.py, _test_qhy_camera.py…) : ils tournent
+    SANS matériel (SDK factices).
+
+Lancement, depuis CE dossier (chaque banc trouve la racine du programme) :
+    ./venv/bin/python bancs/cameras/_diag_camera_qhy.py
+
+Les autres bancs (solveur, couleurs, chromatisme, sauvegardes, gradient…) sont
+des outils de DÉVELOPPEMENT : ils ne sont pas installés, ils vivent dans le
+dépôt, sous bancs/, et se lancent depuis la racine du dépôt.
 
 DÉPENDANCES SYSTÈME (si l'application refuse de démarrer)
 --------------------------------------------------------
