@@ -573,7 +573,15 @@ ce qui manquait n'était pas une correction mais une MESURE.
   et un échec sans trace reste SANS EXPLICATION (ici : aucune trace, le journal
   n'existait pas encore). Corollaire : quand une panne est irréproductible,
   proposer une expérience qui la rendrait observable (relancer par le menu et
-  comparer les lignes de journal) au lieu de conclure.
+  comparer les lignes de journal) au lieu de conclure. **Résultat de cette
+  expérience (27/09/2026, 23:02)** : la v2.38.7 relancée PAR LE MENU démarre ✔
+  (même venv, `Tk 8.6/8.6`, `cwd` = dossier d'installation, « arrêt — fenêtre
+  fermée (sortie normale) ») → panne **NON REPRODUITE**. On écrit alors « non
+  reproduite » + l'hypothèse la plus compatible avec TOUS les faits
+  (installation 2.38.6 à la copie/venv incomplet → plantage à l'import, muet car
+  `Terminal=false`), en la marquant **NON PROUVÉE** — jamais présentée comme la
+  cause. Ce que la panne a produit de durable : un test de démarrage à
+  l'installation ET un journal à chaque lancement.
 - **Ce qu'un journal apporte dès son premier jour** (preuve par les faits) : les
   5 lignes envoyées par Alain ont nommé l'interpréteur réel
   (`…/AVAStack/venv/bin/python`), `Tk 8.6/8.6`, le noyau, et le dossier de

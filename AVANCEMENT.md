@@ -35,11 +35,20 @@ dans le changelog du source et l'historique git.)
     (leçon : JAMAIS d'attribution de cause sans trace) ; banc
     `_test_journal_jalon73.py` section [6] — **33 vérifications** au total, dont
     « aucun conseil inventé pour une cause inconnue ».
-  - **PROCHAINE MESURE PROPOSÉE** : relancer **depuis le MENU Applications** avec
-    la v2.38.8, puis comparer dans le journal la ligne de ce lancement avec celle
-    du lancement réussi en terminal (`cwd=`, `exe=`, Tk, dossier de travail). Si
-    ça marche : panne non reproduite, mais tout futur échec par le menu laissera
-    une trace ; si ça échoue : la comparaison désignera la différence.
+  - **MESURE FAITE (ton essai, 27/09/2026 23:02) : relance PAR LE MENU
+    Applications → ✔ DÉMARRE** (journal : `exe=…/AVAStack/venv/bin/python`,
+    `Tk 8.6/8.6`, `cwd=/home/alain/.local/share/AVAStack` — le `Path=` du
+    `.desktop` —, puis « prêt » et « arrêt — fenêtre fermée (sortie normale) »).
+    **Conséquence** : la panne du 27/09 (v2.38.6 par le menu) **n'est plus
+    reproduite**. Hypothèse la plus compatible avec TOUS les faits — et NON
+    prouvée : l'installation 2.38.6 (premier usage de l'installateur Linux) avait
+    une copie ou un venv incomplet, donc un plantage **à l'import**, invisible
+    parce que le `.desktop` est en `Terminal=false` ; les validations
+    astrométrie/SPCC/GraXpert de la journée se faisaient, elles, depuis un autre
+    exemplaire (clone/terminal). Ce mode de panne est désormais attrapé DEUX
+    fois : à l'installation (test de démarrage réel, v2.38.7) et à tout lancement
+    (journal + message, v2.38.7/v2.38.8). Preuve a posteriori impossible : le
+    journal n'existait pas en 2.38.6.
   Artefacts reconstruits (v2.38.8) :
   `installer/linux/output/avastack-setup-2.38.8-linux.tar.gz` (509 Kio, SHA-256
   `71620f646fdbdf7363be24ef5f4be55ff8088fa9289107298d6a6cbda051d037`) et
@@ -322,18 +331,15 @@ dans le changelog du source et l'historique git.)
   **CONFIRMÉ PAR TON TEST RÉEL du 27/09/2026 (Linux)** : astrométrie ✔, SPCC ✔,
   GraXpert ✔ (« astrométrie, spcc OK / GraXpert OK ») → v2.38.4 et v2.38.5
   **validées sur ta machine**. **EN ATTENTE** :
-  - ✔ **v2.38.7/v2.38.8 — DÉMARRAGE SOUS LINUX : l'application DÉMARRE** (ton
-    retour : « l'appli fonctionne maintenant » ; journal reçu ✔ : interpréteur du
-    venv, Tk 8.6, `~/.cache/avastack` 115,3 Go libres → repli hors tmpfs de la
-    v2.38.6 VALIDÉ). **Reste à mesurer** :
-    ① **relancer depuis le MENU Applications** (v2.38.8) et m'envoyer la ligne de
-       journal de ce lancement : la comparer à celle du lancement en terminal
-       (`cwd=`, `exe=`, Tk, dossier de travail) est la seule manière de cerner la
-       panne du 27/09 (v2.38.6 par le menu, aucune trace à l'époque) ;
-    ② essayer le bouton « Journal » (il doit ouvrir le fichier) ;
-    ③ la chaîne BlurX (v2.38.6) doit passer sans « requested and written » et la
+  - ✔ **v2.38.7/v2.38.8 — DÉMARRAGE SOUS LINUX : VALIDÉ PAR TOI, PAR LE MENU
+    COMME EN TERMINAL** (journal reçu ✔ : interpréteur du venv, Tk 8.6,
+    `~/.cache/avastack` 113-115 Go libres → repli hors tmpfs de la v2.38.6
+    VALIDÉ ; panne du 27/09 non reproduite — cf. l'hypothèse non prouvée dans la
+    passe v2.38.8). **Reste à mesurer** :
+    ① essayer le bouton « Journal » (il doit ouvrir le fichier) ;
+    ② la chaîne BlurX (v2.38.6) doit passer sans « requested and written » et la
        ligne « dossier de travail » doit afficher le dossier + son espace libre ;
-    ④ si tu veux : rendu BXT avec `--sn 0.3` (cf. ci-dessous).
+    ③ si tu veux : rendu BXT avec `--sn 0.3` (cf. ci-dessous).
   - **v2.38.3 — rendu BXT** : ta commande MÉMORISÉE reste prioritaire ; ajoute
     `--sn 0.3` au champ pour profiter du réglage mesuré (moucheté bleu divisé
     par ~2,7). Ton essai du 27/09 n'a pas pu conclure (il a buté sur l'espace
