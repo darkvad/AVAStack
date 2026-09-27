@@ -5,6 +5,8 @@ Structure (refactoring v2.0.0, depuis le fichier unique AstroLiveStack.py /
 AVAStack.py) :
   avastack.compat       — constantes multiplateforme (Windows/Linux/macOS)
   avastack.config       — persistance config.json
+  avastack.travail      — dossier de travail, espace disque, écriture atomique
+  avastack.siril_ini    — lecture de l'ini de Siril (outils + catalogues Gaia)
   avastack.images       — E/S image, débayerisation, utilitaires outils externes
   avastack.cameras      — sources d'images (simulée, dossier, OpenCV, ZWO)
   avastack.processing   — calibration, alignement, empilement, affichage

@@ -37,10 +37,10 @@ dans le changelog du source et l'historique git.)
   lancer ; ⑤ doc ; banc `_test_outils_jalon71.py` (38 vérifs) ; installateurs
   = 5 diagnostics caméra seulement (`_diag_*`). Repli : v2.38.4.
 
-- **PASSE EN COURS — AVAStack v2.38.6 : L'ESPACE DISQUE SE DIT (FIN DE
-  L'ÉCRITURE PARTIELLE SILENCIEUSE)** (code + banc + doc + installateurs,
-  27/09/2026). Ton constat sous Linux : « Erreur : 24962352 requested and
-  10902832 written » pendant BlurX, outil pourtant détecté au vert. **Cause
+- **PASSE LIVRÉE ET POUSSÉE (commit `1cee330`, 27/09/2026) — AVAStack v2.38.6 :
+  L'ESPACE DISQUE SE DIT (FIN DE L'ÉCRITURE PARTIELLE SILENCIEUSE)** (code + banc
+  + doc + installateurs). Ton constat sous Linux : « Erreur : 24962352 requested
+  and 10902832 written » pendant BlurX, outil pourtant détecté au vert. **Cause
   trouvée et mesurée** (tes `df -h` + `du`) :
   - `numpy.ndarray.tofile()` (appelé par **astropy** pour écrire les données d'un
     FITS : `io/fits/util.py::_array_to_file` « delegates directly to
@@ -85,6 +85,32 @@ dans le changelog du source et l'historique git.)
     dépendances, consigné dans CLAUDE.md.
   - Reste à faire : ta réinstallation Linux puis ton essai (la ligne doit
     afficher le dossier de travail, son espace, et BXT doit passer).
+  - **Artefacts reconstruits** (à transférer vers ta machine Linux) :
+    `installer/windows/output/avastack-setup-2.38.6.exe` et
+    `installer/linux/output/avastack-setup-2.38.6-linux.tar.gz` (60 fichiers,
+    499 Kio, `SHA-256 59f21d2311be9bbbbacf78ec212170e76764357f2865276fbc5ca6ff971ac375`).
+    Repli si régression : v2.38.5.
+
+- **CLÔTURE DE SESSION (27/09/2026, soir)** — trois passes livrées et poussées le
+  même jour, dans l'ordre : v2.38.4 (astrométrie Linux : chemins par OS,
+  `chemin_catalogues` honorée, bouton ⬇ Gaia, arrêt/reprise des essais),
+  v2.38.5 (détection des outils externes : `GraXpert-linux`, ini de Siril,
+  état affiché, plus de commande figée + installateurs = 5 diagnostics caméra),
+  v2.38.6 (espace disque : dossier de travail, écriture atomique, plafond réel,
+  journal conservé). Commits : `712afa1`, `98c83eb`, `694ad3b`, `1cee330`
+  (tous sur `origin/master`, arbre propre).
+  - **VALIDÉ sur ta machine Linux** : astrométrie ✔, SPCC ✔, GraXpert ✔
+    (v2.38.4 et v2.38.5 confirmées par l'effet, pas par le code).
+  - **EN ATTENTE** : ton essai de la v2.38.6 (dossier de travail affiché,
+    BXT qui passe) et, si tu veux, le rendu BXT avec `--sn 0.3`.
+  - **Bancs** : 22 verts sur cette session (dont le neuf
+    `_test_espace_jalon72.py`, 25 vérifs, et `_test_outils_jalon71.py`, 38) ;
+    deux bancs RÉPARÉS au passage (assistant `_gx_factice.py` resté à la racine,
+    et échec silencieux du contrôle d'espace du jalon 24) — les deux causes sont
+    consignées dans CLAUDE.md.
+  - **Prochaine étape naturelle** : ton retour d'essai Linux ; ensuite
+    `--cameras` (quand les `.so` constructeurs seront récupérés) et la reprise
+    éventuelle des sujets ouverts (cf. « En attente » ci-dessous).
 - **PASSES TERMINÉES ET POUSSÉES (27/09/2026, hors code applicatif) — BANCS
   RÉORGANISÉS, INSTALLATEURS NOMMÉS PAR VERSION, INSTALLATEUR LINUX** : 109
   bancs déplacés dans `bancs/` (`bancs/cameras/` : 16 — seuls installés) avec
@@ -165,6 +191,11 @@ dans le changelog du source et l'historique git.)
     VRAIE chaîne de sauvegarde, libellé d'aide) ; non-régression : 11 bancs
     rejoués, TOUS PASSENT. Repli si régression : v2.38.0.
 
+- **Version stable VALIDÉE sur ta machine (27/09/2026) : AVAStack v2.38.5** —
+  ton retour : « pour linux : astrométrie, spcc OK / GraXpert OK » (v2.38.4 et
+  v2.38.5 confirmées par l'EFFET). BXT restait à confirmer — non par un défaut
+  du code, mais par saturation de `/tmp` (traité en v2.38.6). Les successeurs
+  immédiats à tester : v2.38.6.
 - **Version stable VALIDÉE précédente : AVAStack v2.38.0** — l'anneau de couleur
   des étoiles dans les FICHIERS (fabriqué par la réduction du bruit chromatique,
   corrigé par un poids de structure en v2.37.5 : anneau mesuré 4,63 → 2,00), le
@@ -386,6 +417,15 @@ dans le changelog du source et l'historique git.)
   d'ANCRE ; deux normalisations distinctes rendent une SSD aveugle —
   partager les bornes) ; jalon 24 (valider les placeholders d'un gabarit
   AVANT la substitution). Plus AUCUNE leçon en attente.
+- Leçons ÉCRITES le 27/09/2026 (3e passe, v2.38.6) — section « Espace disque et
+  fichiers de travail » : le message « N requested and M written » est celui de
+  `numpy.ndarray.tofile()`, appelé par astropy pour écrire un FITS (donc =
+  écriture partielle = volume plein, jamais un chemin invalide) ; `/tmp` sous
+  Linux est souvent un tmpfs rempli par l'application elle-même ; toute écriture
+  passe par `images.ecrire_fichier` (espace vérifié avant, `.part` renommé) et
+  tout `mkdtemp` par `travail.creer_dossier` ; un plafond de taille se calcule
+  sur l'espace RÉEL ; un contrôle ajouté dans un `try` large doit venir APRÈS
+  ses dépendances (sinon `NameError` avalé = échec silencieux).
 - Leçons ÉCRITES le 27/09/2026 (2e passe, v2.38.5) — section « Doc outils
   externes (CLI) → Détection de l'exécutable » : le nom du binaire d'un outil
   tiers CHANGE d'un OS à l'autre (`GraXpert-linux` sous Linux, bundle macOS) et
