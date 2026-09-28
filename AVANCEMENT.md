@@ -75,10 +75,13 @@ dans le changelog du source et l'historique git.)
     NGC 7023 sur brutes réelles.
   - **Reste ouvert** : le diagnostic jetable de la session a été retiré de la
     racine (les mesures utiles sont dans le changelog et le diag
-    `bancs/_diag_osc_ngc7023.py`, conservé). **Installateur v2.40.0 CONSTRUIT à
-    la clôture** (`installer/windows/output/avastack-setup-2.40.0.exe`, 11,5 Mo,
-    ISCC en 9 s) : la règle « rebuilder dès que la passe touche plus d'un ou deux
-    fichiers » est respectée sans que tu aies eu à le demander.
+    `bancs/_diag_osc_ngc7023.py`, conservé). **Les DEUX installateurs v2.40.0 ont
+    été construits** — Windows (`installer/windows/output/avastack-setup-2.40.0.exe`,
+    11,5 Mo, ISCC en 9 s) et Linux
+    (`installer/linux/output/avastack-setup-2.40.0-linux.tar.gz`, 552 Kio, 62
+    fichiers) — comme l'exige la règle « rebuilder dès que la passe touche plus
+    d'un ou deux fichiers ». **Ils sont publiés dans la PREMIÈRE release GitHub**
+    du dépôt (`v2.40.0`), avec la nouvelle documentation d'installation.
 
 
 - **PASSE PRÉCÉDENTE DU MÊME JOUR (28/09/2026, soir) — v2.39.0** : trois barres de
@@ -352,10 +355,14 @@ dans le changelog du source et l'historique git.)
   bon »** — session dossier OSC NGC 7023, ~40 brutes (détails en tête de
   fichier). Bancs NEUFS/rejoués : `_test_spcc_osc.py` (NEUF, 6 sections),
   `_test_spcc_jalon58.py`, `_test_solveur_reel_m31.py`, diag
-  `bancs/_diag_osc_ngc7023.py` sur brutes réelles. **Installateur v2.40.0
-  CONSTRUIT à la clôture** (`installer/windows/output/avastack-setup-2.40.0.exe`,
-  11 463 956 o) ; l'installateur v2.39.0 n'a pas été construit (version dépassée,
-  rien à en tirer) — **repli si régression : v2.38.11** (celui-ci existe).
+  `bancs/_diag_osc_ngc7023.py` sur brutes réelles. **RELEASE GITHUB `v2.40.0`
+  publiée** (`https://github.com/darkvad/AVAStack/releases/tag/v2.40.0`) : les
+  **DEUX** installateurs (Windows 11 463 956 o, Linux 564 997 o) **ET** la
+  nouvelle documentation `INSTALLATION.md` (installation rapide Windows/Linux,
+  puis la préparation des données Siril/Gaia : catalogue astrométrique, 48
+  morceaux de spectres, base de profils SPCC). Le dépôt étant privé, la release
+  l'est aussi. L'installateur v2.39.0 n'a pas été construit (version dépassée) —
+  **repli si régression : v2.38.11**.
 - **PRÉCÉDENT (28/09/2026) — v2.39.0 VALIDÉE PAR TON ESSAI (« points 1, 2 et 3
   testés et validés »)** : les **trois barres de niveaux** de l'histogramme
   (Noir / Médian / Blanc), le **⏹/▶ geler-reprendre** de l'étirement auto (STF
@@ -641,6 +648,21 @@ dans le changelog du source et l'historique git.)
   Un `Test-Path` sur `Program Files` seul ne prouve donc RIEN — leçon du
   28/09/2026 : l'absence d'ISCC a été annoncée à tort AVANT de lancer le script
   (il se construit en 9 s, l'artefact fait ~11,5 Mo).
+- **RELEASES GITHUB : `gh release create vX.Y.Z --title <titre> --notes-file <fichier>
+  --target master <les 2 installateurs> INSTALLATION.md`** — `gh` est installé et
+  authentifié sur ce poste (compte `darkvad`, portée `repo`, dépôt PRIVÉ : la
+  release l'est donc aussi). **Les notes de la release SONT la doc
+  d'installation** (`INSTALLATION.md` précédé d'un court résumé « ce qui
+  change ») : elle se lit directement sur la page de la release, et le même
+  fichier est joint en pièce. Les installateurs des versions précédentes ne
+  sont PAS dans la release (dossier `output/` ignoré par git) : le repli reste
+  sur la machine.
+- **LA LIGNE DE COMMANDE WINDOWS EST TRONQUÉE au-delà d'environ 1 000
+  caractères** (constaté le 28/09/2026, deux fois) : un `git commit -m "…"`
+  de plusieurs milliers de caractères part TRONQUÉ et, avec une chaîne non
+  fermée, sème le doute sur l'état du dépôt. Pour tout message long, passer par
+  un FICHIER (`git commit -F`, `gh release create --notes-file`) — et vérifier
+  après coup (`git log -1`, `git status`) qu'aucun commit partiel n'est né.
 
 ## Clôtures précédentes
 
