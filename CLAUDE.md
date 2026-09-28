@@ -74,6 +74,9 @@ C:\Astro\astrolivestack\venv\Scripts\Activate.ps1
 # Vérifier la syntaxe avant toute livraison (TOUJOURS)
 python -c "import ast; ast.parse(open('AVAStack.py', encoding='utf-8').read())"
 
+# Lancer un BANC : TOUJOURS l'interpréteur du venv (cf. piège ci-dessous)
+.\venv\Scripts\python.exe bancs\_test_histo_jalon75.py
+
 # Lancer l application
 python AVAStack.py
 
@@ -89,6 +92,12 @@ AVAStack.py`. Symptôme si mauvais interpréteur : l'appli démarre mais
 comportements incohérents (dark « illisible », empilement sans effet) —
 vérifier `python -c "import sys; print(sys.executable)"` avant de
 soupçonner le code.
+
+**PIÈGE BANCS (constat réel du 28/09/2026)** : `python` NU (sans venv activé)
+lance le Python du SYSTÈME (`C:\Python314`) — **sans numpy** : un banc meurt
+alors sur `ModuleNotFoundError: No module named 'numpy'`, ce qui n'est PAS une
+panne du banc. Lancer les bancs par l'interpréteur du venv, en clair :
+`.\venv\Scripts\python.exe bancs\_test_histo_jalon75.py`.
 
 `requirements.txt` = dépendances de `AVAStack.py`. Toute nouvelle
 dépendance ajoutée au script doit y être ajoutée — cf. Conventions
@@ -661,6 +670,73 @@ ce qui manquait n'était pas une correction mais une MESURE.
   LONGS pour le réveiller.
 
 ## Pièges (leçons du projet AVAStack)
+
+- **LES BARRES DE NIVEAUX VIVENT APRÈS LE MOTEUR D'ÉTIREMENT** (conception du
+  28/09/2026, jalon 75 — v2.39.0) : ce que SharpCap appelle le **mini**
+  histogramme trace « the image that comes out of live stacking (with live stack
+  stretch applied) » et **n'agit que sur l'affichage** (« the stretch in the mini
+  histogram affects the display only ») ; son **grand** histogramme trace le brut
+  en ADU, et ses colonnes R/V/B sont une BALANCE appliquée **avant** l'étirement
+  (chez nous cette balance existe déjà : SPCC/Gaia, équilibrage, Linear Fit).
+  Le modèle le plus direct — « les barres = les points de l'étirement » lus dans
+  l'histogramme — est **IMPOSSIBLE dans les deux moteurs** :
+  `veralux_core_headless` n'a **ni point noir ni point blanc** (une ancre + un
+  `logD`) alors que le STF a bien les trois. Les barres agissent donc sur la
+  **SORTIE DU MOTEUR**, en **décalage sur l'auto qui continue** de s'ajuster :
+  mêmes gestes, même lecture et effet instantané en STF comme en VeraLux, sans
+  jamais relancer le solveur. Corollaire : la position d'une barre EST le niveau
+  (`display.niveaux`, MTF — `MTF(m, m) = 0,5` place le gris moyen), et l'identité
+  0 / 0,5 / 1 est **exacte en binaire**, donc **court-circuitée** plutôt
+  qu'approchée (zéro régression possible sur les rendus existants). Banc :
+  `_test_histo_jalon75.py` [1]/[2].
+- **UN CURSEUR DE SATURATION PAR COULEUR DOIT VISER UNE TEINTE** (constat réel
+  d'Alain, 28/09/2026, v2.39.0) : la première écriture appliquait
+  `c_c = Y + k_c · (c − Y)` canal par canal. Elle change le canal **PARTOUT**,
+  quelle que soit la teinte du pixel : mesuré sur un pixel vert franc
+  (0,20 · 0,60 · 0,20), le curseur « Saturation rouge » à 2,00 faisait **CHUTER
+  le rouge** (0,20 → 0,00) — donc le pixel devenait **plus vert**. Son constat
+  (« quand je pousse l'un, c'est l'autre couleur qui semble se renforcer ») était
+  donc exact, et **ce n'était PAS une inversion d'indice**. Correctif : saturation
+  par **SECTEURS DE TEINTE** (poids triangulaires sur 0° / 120° / 240°, qui
+  somment à 1 partout — transition douce), en teintes OpenCV float32 (H sur
+  0..360). Vérifié au banc : pousser « rouge » sature les rouges et laisse les
+  verts **intacts**, un gris (S = 0) ne bouge jamais. **Leçon transposable : un
+  réglage qui porte un nom de COULEUR doit être testé sur un pixel de CETTE
+  couleur** — un test sur du gris, du bruit ou une image factice quelconque passe
+  quelle que soit la formule. Banc : `_test_histo_jalon75.py` [6].
+- **UN PANNEAU RAFRAÎCHI SEULEMENT PAR LES DONNÉES NE SUIT PAS LES GESTES**
+  (constat réel d'Alain, 28/09/2026, v2.39.0) : « quand l'empilement est fini, si
+  on touche aux barres, l'image change alors que la position de la barre ne change
+  pas, ou pas complètement, comme si le bas n'était pas rafraîchi ». **Cause
+  exacte** : `_draw_hist()` n'était appelé QUE par la mise à jour des données
+  (une fois par frame) et par le sélecteur de bandes — le geste appliquait la
+  valeur et re-rendait l'IMAGE, mais ne retraçait jamais le PANNEAU : **sans
+  frame, il restait figé sur la position de départ** ; à 0,2 fps, une frame venait
+  le rattraper par sauts, d'où la barre « à moitié » déplacée. Le même défaut
+  latent existait pour ↺ Auto, la saisie chiffrée et la remise à zéro de session
+  tant qu'aucune image n'était affichée. **Deux règles** : (1) **tout geste
+  retrace immédiatement** (glissement à chaque pixel, relâchement, double-clic,
+  champs, boutons) ; (2) si le geste **ne change pas la donnée** tracée, **NE PAS
+  la recalculer** — `_draw_hist()` retrace des bacs déjà en mémoire, mesuré
+  **3,1 ms** contre ~80 ms pour l'image, et c'est ce qui lui permet de suivre
+  chaque pixel de souris. Banc : `_test_histo_jalon75.py` [8], avec
+  **contre-épreuve faite sur l'ancien code** (le contrôle échoue dessus : 464 px
+  tracé contre 628,5 px attendu).
+- **UNE ÉCHELLE D'AXE NON DITE EST UN PIÈGE — ET ELLE SE MESURE AVANT DE SE
+  CHOISIR** (décision d'Alain, 28/09/2026, v2.39.0 : case « Échelle y linéaire
+  (bande basse) ») : la même courbe ne raconte pas la même chose en log et en
+  linéaire, or l'axe X (valeurs, barres, repères) ne bouge pas — seul le REGARD
+  change. **Mesuré sur ses frames réelles** (20 frames moyennées, aperçu 1600 px,
+  STF auto) : la largeur à mi-hauteur du fond passe de **66 % de l'axe en log**
+  (la « colline ») à **10,5 % en linéaire** (un vrai **pic**, ×6,3 plus étroit) ;
+  en échange la queue tombe de 34 px à 0,65 px (p99 des pixels) et les bacs
+  visibles de 251/256 à 151/256. Sur la bande « brut (linéaire) », le linéaire en
+  y ne laissait que **10 bacs visibles sur 256** (une aiguille) : la case ne
+  s'applique donc **qu'à la bande basse**. Elle est **persistée** (défaut = log,
+  donc une config.json d'avant garde le rendu d'avant), basculer **ne recalcule
+  rien et ne re-rend pas l'image**, et l'échelle est **DITE dans la ligne d'état**
+  — une échelle muette serait un piège. Banc : `_test_histo_jalon75.py` [11] ;
+  chiffres et choix : `AVANCEMENT.md`, passe v2.39.0.
 
 - **`cv2.imencode` ATTEND DU BGR** (constat réel du 25/09/2026, v2.36.1) :
   toute l'appli travaille en **RGB** et `load_image` convertit à la lecture

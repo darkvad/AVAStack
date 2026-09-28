@@ -183,7 +183,7 @@ dans le changelog du source et l'historique git.)
   du moteur, gel/reprise de l'auto en STF **et** VeraLux, saturation par couleur
   R/V/B, échelle y réglable). Commits (v2.38.7 → v2.38.11) : `bd04f20`,
   `59d07e3`, `07f0c34`, `6642c4a`, `c8ffcf6`, `1acd3f6`, `9a01674`, `15cb6b7`,
-  `2ec4d67` ; plus le commit **v2.39.0** (voir `git log`).
+  `2ec4d67` ; plus le commit **v2.39.0** : **`07b511b`** (poussé).
   - **VALIDÉ par tes essais réels** : v2.38.7/2.38.8 (démarrage par le MENU et en
     terminal ✔, journal reçu ✔) ; v2.38.9/2.38.10 (vérification à l'écran ✔) ;
     **v2.38.11 : « c'est tout bon » — avec `nftables` ACTIF, l'application
