@@ -581,6 +581,26 @@ dans le changelog du source et l'historique git.)
   qui a révélé le fond cible non transmis. Reste PROPOSÉE (25/09/2026, sans
   urgence, ne bloque rien) : la
   parité des corrections pré-étirement entre chaîne LIVE et chaîne EXTERNE.
+- Leçons ÉCRITES le 28/09/2026 (jalon 75, v2.39.0) — section « Pièges », 4 entrées :
+  ① **les barres de niveaux vivent APRÈS le moteur d'étirement** (comme le mini de
+  SharpCap, elles n'agissent que sur l'affichage ; « les barres = les points de
+  l'étirement » est IMPOSSIBLE, VeraLux n'a ni point noir ni point blanc) ;
+  ② **un curseur de saturation par couleur doit viser une TEINTE** (la première
+  formule, par canal, verdissait l'image) ; ③ **un panneau rafraîchi seulement par
+  les données ne suit pas les gestes** (corollaire de la leçon « les mesures sont
+  relancées par le WORKER ») ; ④ **une échelle d'axe non dite est un piège**
+  (log/linéaire, choisie par MESURE et DITE dans la ligne d'état).
+- Leçons ÉCRITES le 28/09/2026 (2ᵉ passe, v2.40.0) — section « Pièges », 2 entrées :
+  ① **la zone de catalogue de l'astrométrie est un DISQUE, pas un rectangle — et
+  `N_CAT_MAX` passe APRÈS la sélection** (le rectangle suppose que l'axe X de la
+  caméra suit les AD : sur une caméra tournée il ne gardait que 43 % des étoiles
+  de l'image et gardait une bande HORS image ; le juge d'un champ large est le rms
+  sur les MÊMES étoiles, jamais l'écart point par point des deux WCS) ; ② **la
+  SPCC n'est PAS réservée au mono multi-bandes** (un capteur couleur = trois
+  entrées + un filtre LPF COMMUN ; le nom du capteur est AMBIGU — « Sony IMX585 »
+  est dans les deux listes — c'est l'interface qui tranche ; et le défaut d'un
+  filtre OSC est la référence « sans filtre », jamais un vrai LPF en silence).
+  Plus AUCUNE leçon en attente.
 
 ## Setup d'Alain
 
