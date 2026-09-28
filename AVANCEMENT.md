@@ -73,7 +73,8 @@ dans le changelog du source et l'historique git.)
     LUMINANCE sont intacts), solveur 56, propagation 56, catalogues 56 et 70,
     branchement astro 56, photométrie 56, **solveur RÉEL M31**, + diag OSC
     NGC 7023 sur brutes réelles.
-  - **Reste ouvert** : le diagnostic jetable de la session a été retiré de la
+  - **CLOS à la clôture (28/09/2026, soir)** : le diagnostic jetable de la
+    session a été retiré de la
     racine (les mesures utiles sont dans le changelog et le diag
     `bancs/_diag_osc_ngc7023.py`, conservé). **Les DEUX installateurs v2.40.0 ont
     été construits** — Windows (`installer/windows/output/avastack-setup-2.40.0.exe`,
@@ -82,6 +83,33 @@ dans le changelog du source et l'historique git.)
     fichiers) — comme l'exige la règle « rebuilder dès que la passe touche plus
     d'un ou deux fichiers ». **Ils sont publiés dans la PREMIÈRE release GitHub**
     du dépôt (`v2.40.0`), avec la nouvelle documentation d'installation.
+
+- **CLÔTURE DE SESSION (28/09/2026, soir — 2ᵉ clôture du jour)** — v2.40.0 livrée,
+  poussée et **publiée** : **release GitHub `v2.40.0`**, la **première du dépôt**
+  (`https://github.com/darkvad/AVAStack/releases/tag/v2.40.0`, tag sur le commit
+  `4314c6e`), avec les **DEUX** installateurs (Windows 11 463 956 o, Linux
+  564 997 o) et **les RELEASE NOTES = la doc d'installation** `INSTALLATION.md`
+  (259 lignes : les deux plateformes, la préparation des données Siril/Gaia —
+  catalogue astrométrique, 48 morceaux de spectres, base de profils SPCC —, les
+  caméras, la check-list de première séance, les limites de la version et le
+  repli v2.38.11), ce même fichier étant **aussi joint en pièce**. Commits de la
+  session : `28b123c` (code v2.40.0), `304948d`, `164f753`, `4314c6e` (doc +
+  renvoi depuis `installer/README.md`), `3027c0e` (mémoire) — **arbre propre**,
+  `master` synchronisé avec `origin`, tag `v2.40.0` présent en local et sur
+  `origin`.
+  - **Prochaine étape : RIEN en attente de ton côté.** Deux propositions t'ont
+    été faites à la clôture — **bouton « ⬇ spectres »** (les 48 morceaux Gaia XP
+    de la SPCC : la fonction `telecharger_chunk_xpsamp` existe déjà dans le code
+    mais n'est branchée à **aucune** interface) et **`INSTALLATION.md` embarqué
+    dans les deux paquets** (cela imposerait de reconstruire les installateurs et
+    donc de refaire les SHA-256 de la release) — **tu as répondu « non, c'est
+    bon » le 28/09 : ne pas les reproposer spontanément**, elles restent
+    disponibles sur ta demande.
+  - **Aucune leçon durable en attente pour CLAUDE.md** : les deux pièges de la
+    session sont consignés dans « Pièges récents » ci-dessous (workflow
+    `gh release create` dont les notes SONT la doc ; **ligne de commande Windows
+    tronquée au-delà d'environ 1 000 caractères** → message long = FICHIER), ce
+    qui suffit à l'usage. À ne remonter vers CLAUDE.md que si tu le demandes.
 
 
 - **PASSE PRÉCÉDENTE DU MÊME JOUR (28/09/2026, soir) — v2.39.0** : trois barres de
@@ -362,7 +390,10 @@ dans le changelog du source et l'historique git.)
   puis la préparation des données Siril/Gaia : catalogue astrométrique, 48
   morceaux de spectres, base de profils SPCC). Le dépôt étant privé, la release
   l'est aussi. L'installateur v2.39.0 n'a pas été construit (version dépassée) —
-  **repli si régression : v2.38.11**.
+  **repli si régression : v2.38.11**. **CLÔTURE DU 28/09/2026 : rien en attente de
+  ton côté** — les deux propositions de fin de session (bouton « ⬇ spectres » des
+  48 morceaux Gaia XP, `INSTALLATION.md` embarqué dans les paquets) ont été
+  **déclinées par toi** (« non, c'est bon ») : à ne pas reproposer spontanément.
 - **PRÉCÉDENT (28/09/2026) — v2.39.0 VALIDÉE PAR TON ESSAI (« points 1, 2 et 3
   testés et validés »)** : les **trois barres de niveaux** de l'histogramme
   (Noir / Médian / Blanc), le **⏹/▶ geler-reprendre** de l'étirement auto (STF
