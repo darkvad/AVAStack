@@ -31,6 +31,10 @@ from ..cameras.base import FILTRES_ROUE
 from ..cameras.qhy import lister_via_sous_processus, tracer_evt
 from ..processing import Calibrator, StarAligner, LiveStacker, DisplayProcessor
 from ..processing import alignment as align_mod
+# Jalon 75 : étage de « niveaux » de l'écran (barres Noir/Médian/Blanc de
+# l'histogramme) et saturation par couleur — fonctions pures du module
+# d'affichage, appelées par l'UI pour le tracé et la validation des saisies.
+from ..processing import display as display_mod
 from ..processing.composition import (COMPOSITIONS, MODES_L, ROLES,
                                       CompositeStacker, extraire_canal,
                                       composition_pour_roles, role_de_filtre,
@@ -118,7 +122,35 @@ from ..external.detection import (
 
 
 class App:
+    # H_HIST reste la hauteur de RÉFÉRENCE du panneau d'histogramme ; depuis le
+    # jalon 75 la hauteur réellement utilisée est `_hauteur_hist()` (deux
+    # bandes, ou une seule — voir HIST_MODES).
     W_IMG, H_IMG, W_HIST, H_HIST = 840, 560, 840, 110
+
+    # Jalon 75 : le panneau d'histogramme porte désormais DEUX bandes —
+    # « Brut (linéaire) » (diagnostic : fond, clipping, dominante — c'est
+    # l'axe du GRAND histogramme de SharpCap) et « Sortie du moteur » (l'image
+    # telle que l'étirement la rend, AVANT les barres : c'est là que vivent
+    # les 3 barres Noir/Médian/Blanc, comme dans le MINI-histogramme de
+    # SharpCap, qui agit « on the display only »). Le sélecteur permet de
+    # n'afficher qu'une bande : l'image regagne alors la place, et une bande
+    # unique est plus confortable à régler.
+    HIST_MODES = (("Les deux", "les_deux"),
+                  ("Brut (linéaire)", "brut"),
+                  ("Sortie du moteur", "sortie"))
+    HIST_CODES = tuple(code for _, code in HIST_MODES)
+    HIST_LABELS = dict((code, lib) for lib, code in HIST_MODES)
+    HIST_POINTS = 400000     # échantillon des histogrammes : le COÛT ne dépend
+                             # donc pas de la résolution (mesuré ~10 ms en
+                             # aperçu comme en pleine résolution, contre ~55 ms
+                             # pour l'ancien calcul sur toute l'image)
+    HIST_MARGE = 7           # marge de l'axe « sortie » (px) : une barre à
+                             # 0 % ou 100 % reste attrapable à la souris
+    HIST_PRISE = 7           # rayon de prise d'une barre (px)
+    HIST_RANG_PX = 16        # pas vertical entre deux RANGS d'étiquettes —
+                             # mesuré : le texte fait 15 px de haut, un pas de
+                             # 11 px faisait donc chevaucher deux rangs voisins
+                             # (défaut trouvé par le banc, pas à l'œil)
 
     # Débruitage live (jalon 9, remis le 16/09/2026) : libellés UI ↔ codes
     # internes (module avastack/processing/denoise.py, algorithmes locaux
@@ -386,6 +418,19 @@ class App:
         self.zoom = 1.0                # 1.0 = image ajustée à la fenêtre
         self.view_cx = self.view_cy = None   # centre de vue (coords image), None = centre
         self._last_disp = None         # dernière image déjà étirée (pour re-rendu)
+        # --- Jalon 75 : histogramme à deux bandes et barres de niveaux ------
+        self.hist_mode = "les_deux"     # « Histogramme » : les_deux/brut/sortie
+        # Échelle VERTICALE de la bande BASSE uniquement (décision d'Alain,
+        # 28/09/2026) : False = logarithmique (défaut historique — la queue
+        # des valeurs brillantes reste lisible), True = LINÉAIRE (le fond
+        # devient un vrai PIC). La bande HAUTE garde toujours le log : mesurée
+        # en linéaire, elle tombait à 10 bacs visibles sur 256 (une aiguille
+        # sans usage). Voir `_courbes_pts`.
+        self.hist_lineaire = False
+        self._hist_brut = None          # (canaux, axe_max) des données linéaires
+        self._hist_sortie = None        # canaux de la SORTIE DU MOTEUR
+        self._hist_drag = None          # barre en cours de glissement
+        self._vl_mode_avant_fige = None  # mode logD avant ⏹ (VeraLux)
         self._drag = None              # point de départ du glisser-déplacer
 
         # --- traitement externe (instantané de l'empilement)
@@ -565,12 +610,30 @@ class App:
                 ("sigk", self.var_sigk, 0.5, 5.0),
                 ("target", self.var_target, 0.10, 0.45),
                 ("gamma", self.var_gamma, 0.2, 4.0),
-                ("saturation", self.var_saturation, 0.0, 3.0)):
+                ("saturation", self.var_saturation, 0.0, 3.0),
+                # Jalon 75 : saturation par couleur (R/V/B).
+                ("sat_r", self.var_sat_r, 0.0, 3.0),
+                ("sat_g", self.var_sat_g, 0.0, 3.0),
+                ("sat_b", self.var_sat_b, 0.0, 3.0)):
             v = c.get(cle)
             if isinstance(v, (int, float)) and mini <= v <= maxi:
                 var.set(float(v))
         self.disp.sigma_k = self.var_sigk.get()
         self.disp.target = self.var_target.get()
+        # Jalon 75 : saturation par couleur + bandes d'histogramme affichées.
+        # Les BARRES de niveaux et l'état « figé », eux, ne sont pas restaurés
+        # (comme `auto` et black/white) : ils appartiennent à la session.
+        self._on_sat_canaux()
+        if c.get("hist_mode") in self.HIST_CODES:
+            self.hist_mode = c.get("hist_mode")
+            self.var_hist_mode.set(self.HIST_LABELS[self.hist_mode])
+            self.cv_hist.config(height=self._hauteur_hist())
+        # Jalon 75 (échelle y, décision d'Alain du 28/09/2026) : case persistée,
+        # DÉFAUT = logarithmique — une config.json d'avant la case n'a pas la
+        # clé et garde donc exactement le rendu d'avant.
+        if "hist_lineaire" in c:
+            self.hist_lineaire = bool(c.get("hist_lineaire"))
+            self.var_hist_lineaire.set(self.hist_lineaire)
         # --- Jalon 6 : réglages d'empilement (kappa, méthode/fenêtre rejet)
         if "kappa" in c:
             v = c.get("kappa")
@@ -856,6 +919,15 @@ class App:
         c["target"] = self.var_target.get()
         c["gamma"] = self.var_gamma.get()
         c["saturation"] = self.var_saturation.get()
+        # Jalon 75 : saturation par couleur (R/V/B) et bandes d'histogramme
+        # affichées. Les barres de niveaux et l'état figé ne sont PAS persistés.
+        c["sat_r"] = float(self.var_sat_r.get())
+        c["sat_g"] = float(self.var_sat_g.get())
+        c["sat_b"] = float(self.var_sat_b.get())
+        c["hist_mode"] = self.hist_mode
+        # Jalon 75 : échelle y de la bande basse (log par défaut) — c'est un
+        # réglage de LECTURE, pas de session : il se retrouve au lancement.
+        c["hist_lineaire"] = bool(getattr(self, "hist_lineaire", False))
         # Jalon 6 : réglages d'empilement et VeraLux. Les booléens sont
         # stockés EXPLICITEMENT (True comme False) : une case décochée ne
         # doit pas hériter d'un True d'une session précédente.
@@ -1721,8 +1793,7 @@ class App:
         self.var_target = tk.DoubleVar(value=0.25)
         self._add_slider(self.frm_stf, "Luminosité du fond du ciel",
                          self.var_target, 0.10, 0.45, 0.01,
-                         lambda: (setattr(self.disp, "target", self.var_target.get()),
-                                  self._refresh_preview()), "{:.2f}")
+                         self._on_target_auto, "{:.2f}")
         ttk.Separator(self.frm_stf).pack(fill="x", pady=4)
         ttk.Label(self.frm_stf, text="Manuel (si auto décoché) :").pack(anchor="w")
         self.var_black = tk.DoubleVar(value=0.0)
@@ -1735,6 +1806,14 @@ class App:
                                                                                                       self._refresh_preview()), "{:.3f}")
         # Gamma / saturation : COMMUNS aux deux moteurs (toujours visibles,
         # appliqués après l'étirement quel que soit le mode).
+        # NON REDONDANT AVEC LA BARRE « MÉDIAN » de l'histogramme — décision
+        # d'Alain, 28/09/2026 : « on laisse comme c'est, à savoir les deux ».
+        # À NE PAS « NETTOYER » : la barre médian place le gris moyen PAR LA MTF
+        # (MTF(m, m) = 0,5 : la valeur de la barre DEVIENT le gris moyen, c'est
+        # elle qui découpe l'histogramme à l'écran), le gamma est une courbe de
+        # PUISSANCE appliquée APRÈS l'étage de niveaux — deux courbes
+        # différentes : à m = 0,25 la MTF envoie 0,5 sur 0,75, là où γ = 4
+        # l'envoie sur 0,06.
         self.frm_communs = ttk.Frame(box)
         self.frm_communs.pack(fill="x")
         vg = tk.DoubleVar(value=1.0)
@@ -1744,9 +1823,33 @@ class App:
                                   self._refresh_preview()), "{:.2f}")
         vs = tk.DoubleVar(value=1.0)
         self.var_saturation = vs
-        self._add_slider(self.frm_communs, "Saturation", vs, 0.0, 3.0, 0.05,
+        self._add_slider(self.frm_communs, "Saturation (globale)", vs, 0.0, 3.0,
+                         0.05,
                          lambda: (setattr(self.disp, "saturation", vs.get()),
                                   self._refresh_preview()), "{:.2f}")
+        # --- Jalon 75 : saturation PAR COULEUR (R/V/B), demande d'Alain du
+        # 28/09/2026 (les colonnes de couleur du grand histogramme de SharpCap).
+        # Précision VÉRIFIÉE dans la doc et chez l'auteur : chez SharpCap ces
+        # colonnes sont une BALANCE DES CANAUX appliquée AVANT l'étirement
+        # (« colour adjustments happen before the stretch ») — or cette
+        # correction existe DÉJÀ chez nous, et à sa place photométrique (gains
+        # SPCC/Gaia, équilibrage des canaux, Linear Fit) : la rejouer à
+        # l'affichage la dupliquerait. Ici c'est donc une VRAIE saturation par
+        # couleur : le secteur de TEINTE visé seulement (poids triangulaires
+        # sur R/V/B, cf. display.saturation_canaux), après la saturation
+        # globale, 1,00 = neutre. La 1re écriture (« c_c = Y + k_c·(c − Y) »)
+        # a été REJETÉE après l'essai réel d'Alain : elle changeait le canal
+        # partout, si bien que pousser « rouge » verdissait les pixels verts
+        # (constat : « quand je pousse l'un, c'est l'autre couleur qui semble
+        # se renforcer »).
+        self.var_sat_r = tk.DoubleVar(value=1.0)
+        self.var_sat_g = tk.DoubleVar(value=1.0)
+        self.var_sat_b = tk.DoubleVar(value=1.0)
+        for lib, var in (("Saturation rouge", self.var_sat_r),
+                         ("Saturation verte", self.var_sat_g),
+                         ("Saturation bleue", self.var_sat_b)):
+            self._add_slider(self.frm_communs, lib, var, 0.0, 3.0, 0.05,
+                             self._on_sat_canaux, "{:.2f}")
 
         # --- VeraLux (moteur tiers) — caché tant que « STF » est sélectionné
         self.frm_veralux = ttk.Frame(box)
@@ -1766,9 +1869,7 @@ class App:
         self.var_vl_target = tk.DoubleVar(value=veralux_moteur.TARGET_BG_PAR_DEFAUT)
         self._add_slider(self.frm_veralux, "Luminosité du fond visée (VeraLux)",
                          self.var_vl_target, 0.10, 0.45, 0.01,
-                         lambda: (setattr(self.disp, "vl_target_bg",
-                                          self.var_vl_target.get()),
-                                  self._refresh_preview()), "{:.2f}")
+                         self._on_vl_target, "{:.2f}")
         self.var_vl_logd = tk.DoubleVar(value=veralux_moteur.LOG_D_PAR_DEFAUT)
         self.scl_vl_logd = self._add_slider(
             self.frm_veralux, "logD forcé",
@@ -2160,9 +2261,17 @@ class App:
         self.cv_img = tk.Canvas(right, width=self.W_IMG, height=self.H_IMG,
                                 bg="black", highlightthickness=0)
         self.cv_img.pack(fill="both", expand=True)
-        self.cv_hist = tk.Canvas(right, width=self.W_HIST, height=self.H_HIST,
+        # --- Jalon 75 : histogramme (2 bandes) + barres Noir/Médian/Blanc ----
+        self.cv_hist = tk.Canvas(right, width=self.W_HIST,
+                                 height=self._hauteur_hist(),
                                  bg="#101010", highlightthickness=0)
         self.cv_hist.pack(fill="x")
+        self.cv_hist.bind("<Button-1>", self._hist_press)
+        self.cv_hist.bind("<B1-Motion>", self._hist_drag_move)
+        self.cv_hist.bind("<ButtonRelease-1>", self._hist_release)
+        self.cv_hist.bind("<Double-Button-1>", self._hist_dblclick)
+        self.cv_hist.bind("<Motion>", self._hist_survol)
+        self._poser_panneau_hist(right)
         self.lbl_status = ttk.Label(right, text="Prêt. Choisissez une source puis cliquez Démarrer.\n"
                                                "Molette sur l'image : zoom · glisser : déplacer · "
                                                "double-clic : ajuster",
@@ -2919,6 +3028,26 @@ class App:
             self.scl_white.set(self.var_white.get())
         self._refresh_preview()
 
+    def _on_target_auto(self):
+        """Cible de fond du STF : miroir thread-sûr + aperçu + ligne d'état.
+
+        La cible est ÉCRITE dans le panneau d'histogramme (« cible du fond
+        25 % ») : bouger le curseur doit donc mettre la ligne à jour, sinon
+        l'état mentirait sur ce que le moteur vise (constat à l'écran du
+        28/09/2026)."""
+        self.disp.target = float(self.var_target.get())
+        if hasattr(self, "lbl_hist_etat"):
+            self._maj_niveaux_vue()
+        self._refresh_preview()
+
+    def _on_vl_target(self):
+        """Fond visé de VeraLux : même logique que `_on_target_auto` (c'est le
+        réglage d'Alain, 0,16 sur son M31 — il doit être celui qui s'affiche)."""
+        self.disp.vl_target_bg = float(self.var_vl_target.get())
+        if hasattr(self, "lbl_hist_etat"):
+            self._maj_niveaux_vue()
+        self._refresh_preview()
+
     def _on_moteur(self):
         """Bascule du moteur d'étirement : STF intégré ou VeraLux (tiers).
         VeraLux est opt-in et n'écrit JAMAIS dans black/white/gamma : il
@@ -2942,6 +3071,11 @@ class App:
             self.frm_veralux.pack_forget()
             self.frm_stf.pack(fill="x", after=self.rowm)  # position d'origine
             self._lbl_vl_texte("—", "#888888")
+        # Jalon 75 : la ligne d'état des niveaux nomme le moteur — elle doit
+        # suivre le changement de moteur (le panneau d'histogramme n'existe pas
+        # encore au tout début de la construction de la fenêtre).
+        if hasattr(self, "lbl_hist_etat"):
+            self._maj_niveaux_vue()
         self._refresh_preview()
 
     def _sync_vl_mode(self):
@@ -3359,23 +3493,42 @@ class App:
         if self.var_view.get() == "traitée":
             if self.proc_show is not None:
                 self.last_show = self.proc_show
-                self._show_image(self.disp.process(
-                    self._src_rendu(self.last_show), live=False))
+                self._rendre_et_afficher(self.last_show, live=False)
             else:
                 self._set_ext_msg("Aucun résultat traité — cliquez « ⚡ Traiter » d'abord.")
         else:
             if self.show_stack is not None:
                 self.last_show = self.show_stack
-                self._show_image(self.disp.process(
-                    self._src_rendu(self.last_show), live=False))
+                self._rendre_et_afficher(self.last_show, live=False)
 
-    def _refresh_preview(self):
+    def _rendre_et_afficher(self, lineaire, live=True, hist=True):
+        """Chaîne d'affichage COMPLÈTE et UNIQUE (jalon 75) : source linéaire →
+        étirement (STF / manuel / VeraLux) → étage de niveaux → gamma et
+        saturations → écran, ET mise à jour des deux histogrammes.
+
+        Un seul point de passage pour les endroits qui affichaient une image :
+        c'est ce qui garantit que l'histogramme décrit toujours ce qui est à
+        l'écran (avant le jalon 75 le calcul vivait dans le thread
+        d'acquisition, sur l'aperçu de l'empilement — donc jamais sur l'image
+        d'une vue « traitée », et à ~55 ms par frame de CPU).
+        """
+        src = self._src_rendu(lineaire)
+        img8 = self.disp.process(src, live=live)
+        if hist:
+            self._maj_histogrammes(src,
+                                   getattr(self.disp, "dernier_brut_niveaux",
+                                           None))
+        self._show_image(img8)
+
+    def _refresh_preview(self, hist=True):
         """Re-rend l'aperçu immédiatement après un réglage (indispensable en mode
         dossier : pas de frame régulière pour rafraîchir l'écran).
-        live=False : ne fait pas avancer le lissage temporel des stats."""
+        live=False : ne fait pas avancer le lissage temporel des stats.
+        hist=False : le glissement d'une BARRE DE NIVEAUX ne recalcule pas
+        l'histogramme (la donnée du moteur ne change pas — seules les barres
+        bougent) : sans cela, chaque pixel de souris coûterait un histogramme."""
         if self.last_show is not None:
-            self._show_image(self.disp.process(
-                self._src_rendu(self.last_show), live=False))
+            self._rendre_et_afficher(self.last_show, live=False, hist=hist)
 
     def _push_settings(self):
         # Instantanés « thread-safe » (attributs simples lus par le worker) :
@@ -4343,7 +4496,17 @@ class App:
             # RÉSOLUTION — le rendu pleine résolution l'utilise TEL QUEL (l'écran,
             # lui, le ramène à l'échelle de l'aperçu : `_poser_rayon_chroma`).
             vl_chroma_rayon_ref=float(self.rayon_chroma_ref),
-            vl_sharp=d.vl_sharp, vl_sharp_iterations=d.vl_sharp_iterations)
+            vl_sharp=d.vl_sharp, vl_sharp_iterations=d.vl_sharp_iterations,
+            # Jalon 75 : étage de niveaux (barres de l'histogramme) et
+            # saturation par couleur — SANS ces clés, « tel que vu » ne serait
+            # pas ce qui est à l'écran (règle du projet : le fichier = l'écran).
+            bar_noir=float(d.bar_noir), bar_median=float(d.bar_median),
+            bar_blanc=float(d.bar_blanc),
+            sat_canaux=tuple(float(v) for v in d.sat_canaux),
+            # Étirement GELÉ (⏹) : le rendu pleine résolution recalcule les
+            # stats sur l'image complète — il doit utiliser les MÊMES stats
+            # gelées que l'affichage, sinon le fichier dériverait de l'écran.
+            stats_gelees=(d._stats if d.fige else None))
         st = self.stacker
         if st is not None:
             # NB : en MONO, l'empilement porte AUSSI des corrections (équilibrage
@@ -7263,7 +7426,10 @@ class App:
                 # le solveur. (Affectation atomique : le solveur lit la
                 # référence, il ne la modifie jamais.)
                 self.disp.vl_seeing = self.seeing
-            hist = self._compute_hist(show)
+            # Jalon 75 : plus d'histogramme ici — il est calculé par le thread
+            # d'affichage, sur l'image réellement montrée (l'aperçu 1600 px
+            # d'ici ne décrit pas forcément ce qui est à l'écran : vue
+            # « traitée », rendu pleine résolution).
 
             # Jalon 24 : couches + paramètres de recomposition poussés vers le
             # solveur live (remplacement ENTIER de la référence — jamais de
@@ -7342,7 +7508,7 @@ class App:
                 st["crop_w"], st["crop_h"] = x1 - x0, y1 - y0
             self._dernier_st = st           # jalon 55 : réutilisé par
             try:                            # _pousser_rendu (sans brute)
-                self.q.put_nowait((show, hist, st))
+                self.q.put_nowait((show, st))
             except queue.Full:
                 pass
             # Jalon 42 : quand TOUTES les brutes détectées ont été lues, la
@@ -7407,8 +7573,7 @@ class App:
                                     spcc=self.spcc_info,
                                     restack=self.restack_info)
         try:
-            self.q.put_nowait((show, self._compute_hist(show),
-                               self._dernier_st))
+            self.q.put_nowait((show, self._dernier_st))
         except queue.Full:
             pass
 
@@ -7444,10 +7609,10 @@ class App:
             self._pousser_rendu()              # le texte de mesure part à l'UI
 
     @staticmethod
-    def _compute_hist(img):
-        hi = float(np.percentile(img, 99.9)) * 1.15 + 1e-6
-        chans = [img] if img.ndim == 2 else [img[..., i] for i in range(3)]
-        return [np.histogram(c, bins=256, range=(0.0, hi))[0].astype(np.float64) for c in chans]
+    def _histogrammes(img, plage=None):
+        """(conservé pour les bancs et les diagnostics) Histogrammes R/V/B
+        d'une image — relais de `App._hist_canaux`, jalon 75."""
+        return App._hist_canaux(img, plage)
 
     # ------------------------------------------------------------ rafraîchissement UI
     def _tick(self):
@@ -7666,7 +7831,10 @@ class App:
                 self.lbl_tec.config(text=txt, foreground=coul)
         try:
             while True:
-                show, hist, st = self.q.get_nowait()
+                # Jalon 75 : le tuple ne porte plus d'histogramme — il est
+                # calculé dans le thread d'affichage, sur ce qui est
+                # RÉELLEMENT affiché (vue « empilement » comme vue « traitée »).
+                show, st = self.q.get_nowait()
                 self.show_stack = show
                 if st["frames"] != self._vl_frames:
                     # Jalon 3 : un NOUVEL empilement vient d'être produit —
@@ -7676,12 +7844,24 @@ class App:
                     self._vl_frames = st["frames"]
                     self.disp.notify_new_stack()
                 self._update_status(st)
-                self._draw_hist(hist)
                 if self.var_view.get() == "pile":     # la vue traitée garde son instantané
                     self.last_show = show
-                    self._show_image(self.disp.process(self._src_rendu(show)))
+                    self._rendre_et_afficher(show)
         except queue.Empty:
             pass
+        # Jalon 75 : une remise à zéro de l'affichage (nouvelle session) a pu
+        # avoir lieu dans le worker — les barres doivent revenir à l'auto À
+        # L'ÉCRAN aussi (sinon l'utilisateur croirait son réglage conservé).
+        if getattr(self.disp, "niveaux_new", False):
+            self.disp.niveaux_new = False
+            self._maj_niveaux_vue()
+            # …ET le tracé : une réinitialisation peut tomber sans aucune frame
+            # en cours, auquel cas le panneau resterait sur les barres de la
+            # session précédente (même défaut que le glissement, cf.
+            # `_hist_drag_move`).
+            self._draw_hist()
+            if not self.disp.fige:
+                self.btn_figer.config(text="⏹ Figer l'auto")
         if self.disp.vl_graxpert:      # jalon 4 : la commande GraXpert peut
                                        # être éditée pendant la session →
                                        # synchro permanente (thread UI seul)
@@ -7941,18 +8121,610 @@ class App:
                                     text=f"zoom ×{self.zoom:.1f}   ({info})   "
                                          f"double-clic : ajuster")
 
-    def _draw_hist(self, chans):
+    def _hist_taille(self):
+        """(largeur, hauteur) à utiliser pour le tracé et les gestes : les
+        dimensions RÉELLES du Canvas, avec repli sur les dimensions demandées
+        tant que la fenêtre n'est pas encore dessinée — `winfo_width()` rend 1
+        pour un widget non affiché, et un histogramme tracé sur 1 px ne serait
+        pas « approximatif » mais INVISIBLE (constat du banc : les gestes et le
+        tracé étaient tous décalés au démarrage)."""
+        w = self.cv_hist.winfo_width()
+        h = self.cv_hist.winfo_height()
+        return (w if w >= 40 else self.W_HIST,
+                h if h >= 40 else self._hauteur_hist())
+
+    # ============================= jalon 75 : histogramme 2 bandes + niveaux
+    def _hauteur_hist(self):
+        """Hauteur du Canvas d'histogramme : deux bandes, ou une seule (plus
+        haute) — l'image regagne alors 58 px, utile sur une fenêtre réduite."""
+        return 176 if self.hist_mode == "les_deux" else 118
+
+    def _poser_panneau_hist(self, parent):
+        """Panneau du jalon 75 sous l'histogramme : choix des bandes, les trois
+        niveaux en CHAMPS DE SAISIE (motif du jalon 27 : on doit pouvoir viser
+        une valeur précise), ⏹ Figer / ▶ Reprendre et « ↺ Auto », plus la ligne
+        d'état qui dit TOUJOURS dans quel mode on est — un étirement figé sans
+        avertissement serait une chute silencieuse, et c'est le seul vrai
+        danger de cette fonction.
+
+        La barre MÉDIAN est CONSERVÉE en même temps que le curseur « Gamma »
+        (décision d'Alain, 28/09/2026 : les deux restent) — cf. le commentaire
+        du curseur Gamma : deux courbes différentes, aucun doublon à retirer."""
+        row = ttk.Frame(parent)
+        row.pack(fill="x")
+        ttk.Label(row, text="Histogramme :").pack(side="left")
+        self.var_hist_mode = tk.StringVar(
+            value=self.HIST_LABELS.get(self.hist_mode, "Les deux"))
+        self.cb_hist_mode = ttk.Combobox(
+            row, textvariable=self.var_hist_mode, state="readonly", width=16,
+            values=[lib for lib, _ in self.HIST_MODES])
+        self.cb_hist_mode.pack(side="left", padx=(2, 8))
+        self.cb_hist_mode.bind("<<ComboboxSelected>>",
+                               lambda e: self._on_hist_mode())
+        self.btn_figer = ttk.Button(row, text="⏹ Figer l'auto",
+                                    command=self._on_figer)
+        self.btn_figer.pack(side="left", padx=2)
+        ttk.Button(row, text="↺ Auto", command=self._on_niveaux_auto).pack(
+            side="left", padx=2)
+        self.lbl_hist_etat = ttk.Label(row, text="", foreground="#888888",
+                                       wraplength=250)
+        self.lbl_hist_etat.pack(side="left", padx=6)
+
+        row2 = ttk.Frame(parent)
+        row2.pack(fill="x")
+        self.var_bar_noir = tk.DoubleVar(value=0.0)
+        self.var_bar_median = tk.DoubleVar(value=0.5)
+        self.var_bar_blanc = tk.DoubleVar(value=1.0)
+        self.ent_bar = {}
+        for cle, lib, var in (("noir", "Noir %", self.var_bar_noir),
+                              ("median", "Médian %", self.var_bar_median),
+                              ("blanc", "Blanc %", self.var_bar_blanc)):
+            ttk.Label(row2, text=lib).pack(side="left", padx=(6, 2))
+            ent = ttk.Entry(row2, textvariable=var, width=7, justify="right")
+            ent.pack(side="left")
+            ent.bind("<Return>", lambda e: self._on_niveaux_saisie())
+            ent.bind("<FocusOut>", lambda e: self._on_niveaux_saisie())
+            self.ent_bar[cle] = ent
+        # Échelle VERTICALE de la bande basse (décision d'Alain, 28/09/2026 :
+        # « linéaire » sur la SEULE bande basse — celle où l'on pose les
+        # barres —, la bande haute gardant son log). Posée ICI et pas dans la
+        # ligne du dessus : cette ligne-ci restait plus étroite que la
+        # précédente, donc la géométrie de la fenêtre ne bouge pas (leçon du
+        # jalon 72 : `pack` abandonne SILENCIEUSEMENT un widget qui ne tient
+        # plus).
+        self.var_hist_lineaire = tk.BooleanVar(value=bool(self.hist_lineaire))
+        self.chk_hist_lineaire = ttk.Checkbutton(
+            row2, text="Échelle y linéaire (bande basse)",
+            variable=self.var_hist_lineaire, command=self._on_hist_lineaire)
+        self.chk_hist_lineaire.pack(side="left", padx=(12, 4))
+        ttk.Label(row2, text="(barres = bande basse « sortie du moteur » · "
+                             "double-clic = défaut)",
+                  foreground="#888888").pack(side="left", padx=8)
+        self._maj_niveaux_vue()
+
+    def _maj_niveaux_vue(self):
+        """Resynchronise les champs de saisie et la ligne d'état sur l'état
+        RÉEL de l'affichage (barres et gel) — appelée après tout changement venu
+        de l'affichage lui-même (glissement d'une barre, ↺, nouvelle session) :
+        une seule source de vérité, jamais deux affichages qui divergent."""
+        d = self.disp
+        for var, val in ((self.var_bar_noir, d.bar_noir),
+                         (self.var_bar_median, d.bar_median),
+                         (self.var_bar_blanc, d.bar_blanc)):
+            if abs(float(var.get()) - float(val) * 100.0) > 0.05:
+                var.set(round(float(val) * 100.0, 1))
+        texte, coul = self._texte_etat_niveaux()
+        self.lbl_hist_etat.config(text=texte, foreground=coul)
+
+    def _texte_etat_niveaux(self):
+        """Phrase d'état des niveaux + couleur : dit ce qui AGIT — l'auto du
+        moteur (les barres sont un décalage PAR-DESSUS) ou l'utilisateur seul
+        (étirement figé) — ET la cible de fond du moteur, parce que c'est elle
+        qui décide où tombe la « colline » de la bande basse (demande d'Alain,
+        28/09/2026 : « c'est quoi les 25 % ? » — c'est le défaut du STF ; en
+        VeraLux c'est SON curseur, 0,16 sur son M31)."""
+        d = self.disp
+        av = self.var_moteur.get() if hasattr(self, "var_moteur") else "STF"
+        if av == "VeraLux":
+            cible = "fond visé %.0f %%" % (100 * float(d.vl_target_bg))
+            # Tant que le solveur n'a pas rendu son résultat, l'écran (et donc
+            # la bande basse, et donc la marque « fond ») montre l'image
+            # d'ATTENTE du STF : la ligne doit le dire, sinon elle annonce un
+            # fond visé que la marque ne peut pas encore refléter.
+            if d.vl_en_cours():
+                cible += ", calcul en cours"
+        else:
+            cible = "cible du fond %.0f %%" % (100 * float(d.target))
+        if d.fige:
+            texte, coul = ("auto FIGÉ (%s, %s) — tes barres seules agissent"
+                           % (av, cible), "#c98a00")
+        else:
+            texte, coul = ("Niveaux : décalage sur l'auto (%s, %s, le moteur "
+                           "continue)" % (av, cible), "#888888")
+        # Échelle de la bande basse : DITE ici, parce qu'une échelle muette est
+        # un piège (la même courbe ne raconte pas la même chose en log et en
+        # linéaire — mesuré : le fond fait 66 % de l'axe en log, 10,5 % en
+        # linéaire). Elle ne concerne QUE cette bande.
+        if getattr(self, "hist_lineaire", False):
+            texte += " · échelle y LINÉAIRE (bande basse)"
+        return texte, coul
+
+
+    def _niveaux_pose(self):
+        """Reporte les 3 valeurs dans l'intervalle licite et dans l'ordre
+        attendu (noir < médian < blanc, écart mini) : des barres croisées
+        donnent un rendu absurde, on ne le laisse pas faire."""
+        d = self.disp
+        noir = min(max(float(d.bar_noir), 0.0), 0.98)
+        blanc = min(max(float(d.bar_blanc), noir + 0.02), 1.0)
+        median = min(max(float(d.bar_median), noir + 0.01), blanc - 0.01)
+        d.bar_noir, d.bar_median, d.bar_blanc = noir, median, blanc
+
+    def _on_hist_lineaire(self):
+        """Case « Échelle y linéaire (bande basse) » — décision d'Alain du
+        28/09/2026, prise sur MESURE (ses frames, 20 moyennées, STF auto) :
+        la largeur à mi-hauteur du fond passe de **170 bacs (66 % de l'axe)**
+        à **27 bacs (10,5 %)** — la « colline » devient un vrai PIC — au prix
+        de la queue, qui tombe de 34 px à 0,65 px (p99 des pixels) : les
+        étoiles et la nébuleuse quittent alors la courbe. La bande HAUTE n'est
+        PAS concernée : en linéaire elle ne montrait plus que 10 bacs sur 256.
+
+        Ni rendu d'image (l'échelle ne touche QUE le tracé) ni recalcul
+        d'histogramme (les bacs sont déjà en mémoire) : tracé immédiat, règle
+        du défaut ③ du 28/09/2026."""
+        self.hist_lineaire = bool(self.var_hist_lineaire.get())
+        self._maj_niveaux_vue()   # l'échelle est DITE dans la ligne d'état
+        self._draw_hist()
+
+    def _on_hist_mode(self):
+        """Choix des bandes affichées (les deux / brut / sortie)."""
+        lib = self.var_hist_mode.get()
+        for etiquette, code in self.HIST_MODES:
+            if etiquette == lib:
+                self.hist_mode = code
+                break
+        self.cv_hist.config(height=self._hauteur_hist())
+        self._draw_hist()
+
+    def _on_niveaux_saisie(self, *_a):
+        """Saisie chiffrée d'un niveau, en % de l'axe de sortie : borne,
+        ordonne, applique et redessine immédiatement."""
+        d = self.disp
+        for cle, attr in (("noir", "bar_noir"), ("median", "bar_median"),
+                          ("blanc", "bar_blanc")):
+            try:
+                v = float(self.ent_bar[cle].get().replace(",", ".")) / 100.0
+            except (ValueError, tk.TclError):
+                v = getattr(d, attr)
+            setattr(d, attr, v)
+        self._niveaux_pose()
+        self._maj_niveaux_vue()
+        # Règle des barres (défaut du 28/09/2026) : le tracé suit IMMÉDIATEMENT,
+        # et sans recalcul — une barre ne change pas la courbe (elle est tracée
+        # sur la sortie du moteur, AVANT l'étage de niveaux).
+        self._draw_hist()
+        self._refresh_preview(hist=False)
+
+    def _on_niveaux_auto(self):
+        """« ↺ Auto » : les trois barres reviennent à l'identité
+        (0 / 50 / 100 %), c'est-à-dire au rendu du moteur — sans rien figer ni
+        défiger (le gel est un autre bouton)."""
+        d = self.disp
+        d.bar_noir, d.bar_median, d.bar_blanc = 0.0, 0.5, 1.0
+        self._maj_niveaux_vue()
+        self._draw_hist()
+        self._refresh_preview(hist=False)
+
+    def _on_figer(self):
+        """⏹ Figer / ▶ Reprendre l'étirement AUTOMATIQUE du moteur (jalon 75).
+
+        STF : les stats lissées sont gelées (elles ne se recalculent plus ET
+        n'avancent plus) → l'image ne bouge plus toute seule et les barres
+        deviennent le seul levier.
+        VeraLux : le moteur n'a pas de stats mais un logD RÉSOLU — le gel le
+        VERROUILLE (mode « logD forcé », mécanisme du jalon 3), et Reprendre
+        rend la main au fond cible. C'est ce qui rend la fonction disponible
+        DANS LES DEUX MOTEURS (demande d'Alain, 28/09/2026)."""
+        d = self.disp
+        gel = not d.fige
+        d.fige = gel
+        veralux = self.var_moteur.get() == "VeraLux"
+        if veralux and gel:
+            self._vl_mode_avant_fige = self.var_vl_mode_res.get()
+            resolu = d.vl_log_d_resolu
+            if resolu is not None:
+                self.var_vl_logd.set(round(float(resolu), 4))
+            self.var_vl_mode_res.set("logD forcé")
+            self._sync_vl_mode()
+        elif veralux and not gel:
+            self.var_vl_mode_res.set(self._vl_mode_avant_fige
+                                     or "fond cible (auto)")
+            self._sync_vl_mode()
+        elif not gel:
+            d.reprendre_auto()          # STF : stats oubliées → recalage net
+        self.btn_figer.config(text=("▶ Reprendre l'auto" if gel
+                                    else "⏹ Figer l'auto"))
+        self._maj_niveaux_vue()
+        self._refresh_preview()
+
+    def _on_sat_canaux(self):
+        """Saturation par couleur (R/V/B) : les trois gains sont posés
+        ENSEMBLE, en un tuple (jamais muté en place — le solveur live lit une
+        référence cohérente), puis l'aperçu est re-rendu."""
+        self.disp.sat_canaux = (float(self.var_sat_r.get()),
+                                float(self.var_sat_g.get()),
+                                float(self.var_sat_b.get()))
+        self._refresh_preview()
+
+
+    # --- calcul des histogrammes ---------------------------------------------
+    @staticmethod
+    def _hist_canaux(img, plage=None, bins=256, points=None):
+        """Histogrammes PAR CANAL d'une image, ÉCHANTILLONNÉE pour que le coût
+        ne dépende pas de la résolution (jalon 75 : le calcul quitte le thread
+        d'acquisition — où il coûtait ~55 ms par frame sur 1600 px, et jusqu'à
+        ~60 ms en pleine résolution — pour le thread d'affichage).
+
+        plage : (lo, hi) imposé — bande « sortie du moteur », 0..1 ; None =
+        axe AUTOMATIQUE sur p99,9 × 1,15, comme depuis toujours (bande « brut »,
+        c'est le seul choix qui rende un empilement linéaire lisible : mesuré
+        sur NGC 7331, le fond tombe à 52 % de cet axe, les p99/p99,9 à 57/87 %).
+        Retourne (liste des 256 comptes, valeur haute de l'axe).
+        """
+        img = np.asarray(img, np.float32)
+        pas = max(1, int(round(math.sqrt(
+            img.shape[0] * img.shape[1] / float(points or App.HIST_POINTS)))))
+        ech = img[::pas, ::pas]
+        chans = [ech] if ech.ndim == 2 else [ech[..., i] for i in range(3)]
+        if plage is None:
+            lo, hi = 0.0, float(np.percentile(ech, 99.9)) * 1.15 + 1e-6
+        else:
+            lo, hi = float(plage[0]), float(plage[1])
+        return ([np.histogram(c, bins=bins, range=(lo, hi))[0].astype(np.float64)
+                 for c in chans], hi)
+
+    def _maj_histogrammes(self, src_lin, brut=None):
+        """Recalcule les DEUX bandes et redessine : « Brut (linéaire) » (la
+        source donnée à la chaîne d'affichage) et « Sortie du moteur » (l'image
+        AVANT les barres — c'est elle que les barres découpent).
+
+        Un échec ici ne doit JAMAIS emporter la boucle d'interface (un
+        historique de panne muette dans ce projet) : il est journalisé et se
+        voit à l'écran.
+        """
+        try:
+            self._hist_brut = (None if src_lin is None
+                               else self._hist_canaux(src_lin))
+            self._hist_sortie = (None if brut is None
+                                 else self._hist_canaux(brut, plage=(0.0, 1.0)))
+            self._hist_erreur = ""
+        except Exception as exc:                    # noqa: BLE001 (journalisé)
+            self._hist_brut = self._hist_sortie = None
+            self._hist_erreur = str(exc)
+            journal.erreur("histogramme", exc)
+        self._draw_hist()
+
+    # --- barres : glisser / double-clic --------------------------------------
+    def _hist_zone_sortie(self):
+        """(y0, y1) de la bande « Sortie du moteur », ou None si elle n'est
+        pas affichée (le mode « brut » ne porte pas les barres)."""
+        h = self._hist_taille()[1]
+        if self.hist_mode == "brut":
+            return None
+        if self.hist_mode == "sortie":
+            return (4, h - 18)
+        haut = (h - 30) // 2
+        return (h - haut - 18, h - 18)
+
+    def _hist_x(self, valeur, w=None):
+        """Position en pixels d'une valeur [0..1] sur l'axe de sortie."""
+        w = w or self._hist_taille()[0]
+        m = self.HIST_MARGE
+        return m + float(valeur) * (w - 2 * m)
+
+    def _hist_valeur(self, x, w=None):
+        """Valeur [0..1] sous une abscisse de l'axe de sortie."""
+        w = w or self._hist_taille()[0]
+        m = self.HIST_MARGE
+        return min(max((x - m) / float(max(w - 2 * m, 1)), 0.0), 1.0)
+
+    def _hist_hit(self, x, w=None):
+        """Barre sous le curseur ('noir' / 'median' / 'blanc') ou None."""
+        if self._hist_zone_sortie() is None:
+            return None
+        best, dmin = None, self.HIST_PRISE + 1
+        for cle, val in (("noir", self.disp.bar_noir),
+                         ("median", self.disp.bar_median),
+                         ("blanc", self.disp.bar_blanc)):
+            d = abs(self._hist_x(val, w) - x)
+            if d < dmin:
+                best, dmin = cle, d
+        return best
+
+    def _hist_press(self, e):
+        self._hist_drag = self._hist_hit(e.x)
+        if self._hist_drag:
+            self.cv_hist.config(cursor="sb_h_double_arrow")
+
+    def _hist_drag_move(self, e):
+        """Glissement : la valeur suit le doigt, le TRACÉ aussi, puis le RENDU.
+
+        `_draw_hist()` est appelé ICI, et il ne RECALCULE rien : il ne fait que
+        retracer les canaux DÉJÀ en mémoire (`_hist_brut` / `_hist_sortie`) —
+        c'est légitime, la donnée du moteur ne change pas quand une barre bouge,
+        seule la découpe change (la bande basse est la sortie du moteur AVANT
+        les barres). L'oublier était un DÉFAUT RÉEL (constat d'Alain après son
+        essai du 28/09/2026) : « quand l'empilement est fini, si on touche aux
+        barres, l'image change alors que la position de la barre ne change pas,
+        ou pas complètement, comme si le bas n'était pas rafraîchi ». Exactement
+        cela : sans frame qui arrive, plus rien n'appelait `_draw_hist()` (il ne
+        vivait que dans `_maj_histogrammes`), donc le panneau restait figé sur
+        la position de DÉPART ; et à 0,2 fps une frame venait le rattraper par
+        sauts, d'où la barre « à moitié » déplacée. Le tracé est posé AVANT le
+        rendu (il est ~20 fois moins cher, quelques ms contre ~80) pour que la
+        poignée suive le doigt sans attendre la fin de l'image."""
+        if not self._hist_drag:
+            return
+        v = self._hist_valeur(e.x)
+        d = self.disp
+        if self._hist_drag == "noir":
+            d.bar_noir = min(v, d.bar_blanc - 0.02)
+        elif self._hist_drag == "blanc":
+            d.bar_blanc = max(v, d.bar_noir + 0.02)
+        else:
+            d.bar_median = v
+        self._niveaux_pose()
+        self._maj_niveaux_vue()
+        self._draw_hist()
+        self._refresh_preview(hist=False)
+
+    def _hist_release(self, _e=None):
+        self._hist_drag = None
+        self.cv_hist.config(cursor="")
+        # Le DERNIER mouvement peut manquer (relâchement hors du Canvas, ou
+        # évènement perdu) : on retrace une fois pour que le panneau montre la
+        # valeur RÉELLEMENT appliquée et non l'avant-dernière (même défaut que
+        # celui corrigé dans `_hist_drag_move`).
+        self._draw_hist()
+
+    def _hist_dblclick(self, e):
+        """Double-clic sur une barre : elle revient à sa valeur d'origine
+        (0 / 50 / 100 %), c'est-à-dire au rendu du moteur."""
+        cle = self._hist_hit(e.x)
+        if not cle:
+            return
+        setattr(self.disp, "bar_" + cle,
+                {"noir": 0.0, "median": 0.5, "blanc": 1.0}[cle])
+        self._niveaux_pose()
+        self._maj_niveaux_vue()
+        # Même règle que le glissement : le tracé suit tout de suite, et
+        # `hist=False` parce qu'une barre ne change PAS la courbe (elle est
+        # tracée sur la sortie du moteur, avant l'étage de niveaux).
+        self._draw_hist()
+        self._refresh_preview(hist=False)
+
+    def _hist_survol(self, e):
+        """Curseur « ⇔ » au survol d'une barre : elle est attrapable."""
+        if self._hist_drag:
+            return
+        self.cv_hist.config(cursor=("sb_h_double_arrow"
+                                    if self._hist_hit(e.x) else ""))
+
+
+    def _draw_hist(self):
+        """Trace l'histogramme (jalon 75) : deux bandes possibles —
+        « Brut (linéaire) » (diagnostic : fond, piqué, clipping, dominante) et
+        « Sortie du moteur » (l'image étirée AVANT les barres, que les trois
+        barres Noir/Médian/Blanc découpent)."""
         self.cv_hist.delete("all")
-        w = self.cv_hist.winfo_width() or self.W_HIST
-        h = self.cv_hist.winfo_height() or self.H_HIST
-        colors = ["#ff5555", "#55ff55", "#5599ff"] if len(chans) == 3 else ["#bbbbbb"]
+        w, h = self._hist_taille()
+        if getattr(self, "_hist_erreur", ""):
+            self.cv_hist.create_text(w / 2.0, h / 2.0, fill="#d04040",
+                                     text="histogramme indisponible : %s"
+                                          % self._hist_erreur)
+            return
+        if self.hist_mode == "les_deux":
+            haut = max(40, (h - 26) // 2 - 6)
+            self._bande_brut(w, 2, 2 + haut)
+            # Séparateur fin entre les deux bandes : sans lui, la queue basse de
+            # la bande « brut » et les étiquettes des barres se lisent comme un
+            # seul fouillis (constat sur une capture réelle de NGC 7331).
+            yb = h - haut - 14
+            self.cv_hist.create_line(0, yb - 3, w, yb - 3, fill="#3a3a3a")
+            self._bande_sortie(w, yb, h - 14)
+        elif self.hist_mode == "brut":
+            self._bande_brut(w, 2, h - 16)
+        else:
+            self._bande_sortie(w, 2, h - 16)
+
+    @staticmethod
+    def _courbes_pts(chans, w, y0, y1, lineaire=False):
+        """Points des polylignes R/V/B d'une bande, ÉCHELLE LOGARITHMIQUE en y
+        par défaut (les queues d'un empilement sont invisibles en linéaire) et
+        NORMALISATION COMMUNE : le maximum est pris sur les TROIS canaux.
+
+        Fonction PURE (le tracé s'en sert, et le banc vérifie ainsi la
+        propriété qui compte) : avant le jalon 75 chaque courbe était ramenée à
+        SON propre maximum, donc trois canaux très inégaux se dessinaient à la
+        même hauteur — l'histogramme ne disait plus rien de l'équilibre des
+        couleurs, ce qui est justement l'usage qu'en fait Alain.
+
+        `lineaire=True` (jalon 75, case « Échelle y linéaire », bande BASSE
+        seulement) : la hauteur d'un bac est PROPORTIONNELLE À SON NOMBRE DE
+        PIXELS — le rapport des hauteurs de deux bacs est alors exactement le
+        rapport de leurs comptes (mesuré au banc : ×100 pour des comptes
+        1000 / 10, là où le log le compresse à ×2,9). C'est ce qui fait
+        apparaître le fond comme un PIC au lieu d'une colline (mesuré sur les
+        frames d'Alain : 170 bacs à mi-hauteur → 27), au prix de la queue.
+        """
+        if not chans:
+            return []
         mx = max(float(c.max()) for c in chans) or 1.0
-        for arr, col in zip(chans, colors):
+        lg = max(1.0, float(np.log1p(mx)))
+        polylignes = []
+        for arr in chans:
+            n = len(arr)
             pts = []
-            for i in range(256):
-                v = float(np.log1p(arr[i]) / np.log1p(mx))
-                pts += [i / 255.0 * w, h - v * (h - 4) - 2]
+            for i in range(n):
+                if lineaire:
+                    haut = float(arr[i]) / mx          # proportion DIRECTE
+                else:
+                    haut = float(np.log1p(arr[i])) / lg
+                pts += [i / float(n - 1) * w,
+                        y1 - haut * (y1 - y0) - 1]
+            polylignes.append(pts)
+        return polylignes
+
+    @staticmethod
+    def _rangs_etiquettes(xs, largs):
+        """Rang d'affichage de chaque étiquette (0, 1, 2…) : le PREMIER rang où
+        elle ne chevauche aucune étiquette déjà posée dans ce rang.
+
+        Les étiquettes serrées (trois barres au même endroit, ou trois repères
+        du moteur dans les 5 % de l'axe) montent alors d'un rang au lieu de se
+        superposer — leçon des jalons 72/74 : un texte qui en cache un autre
+        est un défaut, et il ne se réveille qu'avec des valeurs groupées.
+        """
+        rangs, places = [], []
+        for x, larg in zip(xs, largs):
+            boite = (x - larg / 2.0, x + larg / 2.0)
+            choisi = None
+            for i, occupe in enumerate(rangs):
+                if all(boite[1] < a or b < boite[0] for a, b in occupe):
+                    choisi = i
+                    break
+            if choisi is None:
+                rangs.append([])
+                choisi = len(rangs) - 1
+            rangs[choisi].append(boite)
+            places.append(choisi)
+        return places
+
+    def _courbes(self, w, y0, y1, chans, lineaire=False):
+        """Trace les courbes R/V/B d'une bande (cf. `_courbes_pts`)."""
+        if not chans:
+            # Message d'attente EN BAS À GAUCHE : le haut de la bande porte les
+            # barres et leurs étiquettes, le bas à droite la légende — à cet
+            # endroit il ne peut chevaucher ni l'une ni l'autre.
+            self.cv_hist.create_text(4, y1 - 1, anchor="sw", fill="#777777",
+                                     text="en attente de données")
+            return
+        couleurs = (["#ff5555", "#55ff55", "#5599ff"] if len(chans) == 3
+                    else ["#bbbbbb"])
+        for pts, col in zip(self._courbes_pts(chans, w, y0, y1, lineaire),
+                            couleurs):
             self.cv_hist.create_line(*pts, fill=col, width=1)
+
+    def _bande_brut(self, w, y0, y1):
+        """Bande HAUTE : les données LINÉAIRES — c'est l'axe du « GRAND »
+        histogramme de SharpCap (valeurs brutes + repères du niveau de
+        l'étirement). Les repères ne sont dessinés qu'en STF et en auto :
+        VeraLux n'a NI point noir NI point blanc (ancre + logD), et en mode
+        manuel il n'y a plus d'auto à montrer — on n'invente pas un repère."""
+        chans, hi = (self._hist_brut or (None, 0.0))
+        # TOUJOURS en log, ici : la case « Échelle y linéaire » ne concerne que
+        # la bande basse. Mesuré sur les frames d'Alain : cette bande, en
+        # linéaire, ne laissait plus que 10 bacs visibles sur 256 (une
+        # aiguille) — elle perdait son rôle de diagnostic (piqué, clipping,
+        # dominante), d'où la décision du 28/09/2026.
+        self._courbes(w, y0, y1, chans)
+        self.cv_hist.create_text(4, y0 + 1, anchor="nw", fill="#999999",
+                                 text="Brut (linéaire) — axe 0 à %.5f" % hi)
+        d = self.disp
+        # Sans données, aucun repère : un repère de niveau posé sur une bande
+        # vide n'apprend rien et irait se superposer au message d'attente.
+        if not chans or self.var_moteur.get() != "STF" or not d.auto or hi <= 0:
+            return
+        if not (d.last_hi > d.last_lo > 0):
+            return
+        milieu = d.last_lo + float(getattr(d, "last_m", 0.5)) \
+            * (d.last_hi - d.last_lo)
+        repere = [(val, lib, col) for val, lib, col
+                  in ((d.last_lo, "Noir", "#bbbbbb"),
+                      (milieu, "Médian", "#ffd75e"),
+                      (d.last_hi, "Blanc", "#ffffff"))
+                  if 0.0 < val < hi]
+        # Étiquettes courtes (« Noir 46,5 % » — l'axe est dans la légende) et
+        # posées sur des rangs distincts : sur une vraie image les trois repères
+        # vivent dans la moitié gauche de l'axe et se chevaucheraient.
+        textes = ["%s %.1f %%" % (lib, 100.0 * val / hi)
+                  for val, lib, _c in repere]
+        xs = [val / hi * w for val, _lib, _c in repere]
+        rangs = self._rangs_etiquettes(xs, [7.0 * len(t) + 4.0
+                                            for t in textes])
+        for (val, _lib, col), x, txt, rang in zip(repere, xs, textes, rangs):
+            self.cv_hist.create_line(x, y0 + 11, x, y1, fill=col, dash=(3, 3))
+            anc = "n" if 60 < x < w - 60 else ("nw" if x <= 60 else "ne")
+            self.cv_hist.create_text(min(max(x, 3), w - 3),
+                                     y1 - 13 - self.HIST_RANG_PX * rang,
+                                     anchor=anc, fill=col, text=txt)
+
+    def _bande_sortie(self, w, y0, y1):
+        """Bande BASSE : l'image telle que LE MOTEUR l'étire, AVANT les barres.
+        Les repères intrinsèques (0 / 50 / 100 % — les valeurs d'origine des
+        barres) sont en pointillé ; la COURBE JAUNE est le transfert des niveaux
+        (ce que chaque valeur de sortie devient après les barres), la même que
+        chez SharpCap."""
+        chans = (self._hist_sortie or (None,))[0]
+        # Échelle y de CETTE bande : log par défaut, linéaire si la case est
+        # cochée (décision du 28/09/2026) — les barres, les repères et la
+        # courbe jaune, eux, sont en x et ne bougent donc pas d'un pixel.
+        self._courbes(w, y0, y1, chans, lineaire=self.hist_lineaire)
+        d = self.disp
+        for v in (0.0, 0.5, 1.0):
+            x = self._hist_x(v, w)
+            self.cv_hist.create_line(x, y0 + 8, x, y1, fill="#4a4a4a",
+                                     dash=(2, 3))
+        pts = []
+        for i in range(0, 101):
+            v = i / 100.0
+            y = float(display_mod.niveaux(np.float32(v), d.bar_noir,
+                                          d.bar_median, d.bar_blanc))
+            pts += [self._hist_x(v, w), y1 - y * (y1 - y0) - 1]
+        self.cv_hist.create_line(*pts, fill="#8a7a20", width=1)
+        # Repère du PIC DU FOND : c'est LA question que se pose l'œil devant
+        # cette bande (« où est le pic ? »). Il est MESURÉ sur la somme des
+        # trois canaux (la donnée affichée, pas une valeur supposée) — et il
+        # n'a pas de poignée : il n'est pas déplaçable.
+        pic = None
+        if chans:
+            cum = np.sum(chans, axis=0)
+            if float(cum.max()) > 0.0:
+                pic = (float(np.argmax(cum)) + 0.5) / float(len(cum))
+        # Les trois barres : ligne + poignée (attrapable) + valeur, PLUS le
+        # repère du pic. Les étiquettes sont posées sur le premier RANG libre
+        # (largeur estimée à ~7 px par caractère) : quatre textes serrés
+        # tiennent alors sur quatre rangs au lieu de se superposer — un texte
+        # qui en chevauche un autre est un DÉFAUT (leçon des jalons 72/74).
+        pos = sorted((("noir", d.bar_noir), ("median", d.bar_median),
+                      ("blanc", d.bar_blanc)), key=lambda p: p[1])
+        marques = [(x, {"noir": "#ffffff", "median": "#ffd75e",
+                        "blanc": "#ffffff"}[cle],
+                    "%s %.1f %%" % ({"noir": "Noir", "median": "Médian",
+                                     "blanc": "Blanc"}[cle], val * 100), True)
+                   for cle, val in pos
+                   for x in [self._hist_x(val, w)]]
+        if pic is not None:
+            marques.append((self._hist_x(pic, w), "#7fb2d8",
+                            "fond %.1f %%" % (100.0 * pic), False))
+        marques.sort(key=lambda m: m[0])
+        rangs = self._rangs_etiquettes([m[0] for m in marques],
+                                       [7.0 * len(m[2]) + 4.0 for m in marques])
+        for (x, col, lib, poignee), rang in zip(marques, rangs):
+            if poignee:
+                self.cv_hist.create_line(x, y0 + 8, x, y1, fill=col, width=2)
+                self.cv_hist.create_rectangle(x - 4, y0 + 1, x + 4, y0 + 8,
+                                              fill=col, outline="#101010")
+            else:
+                self.cv_hist.create_line(x, y0 + 8, x, y1, fill=col, width=1,
+                                         dash=(4, 3))
+            anc = "n" if 46 < x < w - 46 else ("nw" if x <= 46 else "ne")
+            self.cv_hist.create_text(min(max(x, 3), w - 3),
+                                     y0 + 10 + self.HIST_RANG_PX * rang,
+                                     anchor=anc, fill=col, text=lib)
+        # NB (constat sur capture réelle) : plus de légende DANS la bande basse
+        # — celle-ci se posait sur la queue du tracé ; le sélecteur au-dessus et
+        # la ligne d'état disent déjà ce que chaque bande contient.
 
     def _update_status(self, st):
         arc = f"Archive (re-stack) : {st.get('archive', 0)}"

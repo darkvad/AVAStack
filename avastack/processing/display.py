@@ -14,6 +14,108 @@ from . import sharpness as _sharpness
 from . import veralux as _veralux
 
 
+# ============================================================== jalon 75
+# ÉTAGE « NIVEAUX » DE L'ÉCRAN (les 3 barres de l'histogramme : Noir /
+# Médian / Blanc) et SATURATION PAR COULEUR.
+#
+# POURQUOI UN ÉTAGE APRÈS L'ÉTIREMENT (et pas « les points de l'étirement ») :
+# le modèle du « mini-histogramme » de SharpCap — « the stretch in the mini
+# histogram affects the display only » — est le SEUL qui puisse servir LES
+# DEUX moteurs d'étirement du projet :
+#   - le STF a bien un point noir, un médian et un point blanc ;
+#   - VeraLux n'en a AUCUN (le moteur tiers n'a qu'une ANCRE et un logD,
+#     cf. veralux_core_headless.calculate_anchor_adaptive/solve_log_d) : une
+#     barre « blanc » n'aurait rien à piloter, et une barre « noir » ne
+#     pourrait viser que l'ancre — recalculée à chaque passe.
+# Les barres agissent donc sur la SORTIE du moteur (image étirée [0..1]) :
+# même geste, même lecture, effet INSTANTANÉ (aucun recalcul du solveur),
+# quel que soit le moteur. Le comportement est celui demandé par Alain
+# (28/09/2026) : « travailler en delta » — l'étirement automatique continue
+# de s'ajuster à chaque frame, les barres s'appliquent PAR-DESSUS.
+#
+# La loi est celle d'un HistogramTransformation : noir/blanc recadrent
+# l'intervalle, le médian place le gris moyen (MTF(m, m) = 0,5 par
+# construction : la position de la barre EST le niveau affiché en gris moyen —
+# c'est la définition même de SharpCap : « these three lines represent the
+# histogram levels that will be displayed as black, mid grey and white »).
+#
+# DÉFAUT = 0 / 0,5 / 1 = IDENTITÉ EXACTE (et court-circuitée : l'étage n'est
+# même pas exécuté) → aucun changement du rendu tant qu'on ne touche à rien.
+
+
+def mtf(x, m):
+    """Midtones Transfer Function : x, m ∈ [0,1] (MTF de PixInsight/STF)."""
+    m = min(max(m, 0.001), 0.98)
+    return np.clip(((m - 1.0) * x) / ((2.0 * m - 1.0) * x - m), 0.0, 1.0)
+
+
+def niveaux_actifs(noir=0.0, median=0.5, blanc=1.0):
+    """True si l'étage de niveaux CHANGE quelque chose (sinon on l'ignore :
+    le rendu par défaut est alors strictement celui d'avant le jalon 75)."""
+    return (abs(float(noir)) > 1e-6
+            or abs(float(median) - 0.5) > 1e-6
+            or abs(float(blanc) - 1.0) > 1e-6)
+
+
+def niveaux(x, noir=0.0, median=0.5, blanc=1.0):
+    """Étage « niveaux » : recadrage [noir, blanc] puis MTF médian.
+
+    x : image [0..1] (étirée), noir/blanc dans [0,1] avec noir < blanc.
+    Fonction PURE. À l'identité (0 / 0,5 / 1) elle rend x au BIT près
+    (MTF(x, 0,5) = x : -0,5·x / -0,5, les deux opérations étant exactes en
+    binaire) — c'est ce qui garantit l'absence de régression.
+    """
+    noir = min(max(float(noir), 0.0), 0.999)
+    blanc = min(max(float(blanc), noir + 1e-3), 1.0)
+    if not niveaux_actifs(noir, median, blanc):
+        return x
+    y = np.clip((np.asarray(x, np.float32) - noir) / (blanc - noir), 0.0, 1.0)
+    return mtf(y, float(median))
+
+
+def saturation_actifs(gains):
+    """True si la saturation par canal change quelque chose (1,0 = neutre)."""
+    if gains is None:
+        return False
+    return any(abs(float(v) - 1.0) > 1e-3 for v in gains)
+
+
+def saturation_canaux(x, gains):
+    """Saturation PAR COULEUR (R/V/B) — par SECTEUR DE TEINTE.
+
+    POURQUOI CE N'EST PAS « c_c = Y + k_c·(c − Y) » (1re écriture, rejetée le
+    28/09/2026 après TON essai réel) : cette formule changeait le canal
+    PARTOUT, quelle que soit la couleur du pixel. Mesuré sur un pixel vert
+    franc (0,20 · 0,60 · 0,20) : le curseur « Saturation rouge » à 2,00 faisait
+    TOMBER le rouge (0,20 → 0,00) — le pixel devenait donc PLUS VERT. Ton
+    constat : « quand je pousse l'un, c'est l'autre couleur qui semble se
+    renforcer ». Un curseur « rouge » qui renforce les verts n'est pas une
+    saturation par couleur.
+
+    ICI on ne touche QUE les teintes du secteur visé. Chez OpenCV en float32 la
+    teinte va de 0 à 360 (MESURÉ : rouge 0, jaune 60, vert 120, cyan 180,
+    bleu 240, magenta 300) ; les trois secteurs reçoivent des poids
+    TRIANGULAIRES centrés sur 0 / 120 / 240 qui somment à 1 partout (transition
+    douce entre secteurs, aucun bord arbitraire), et la saturation du pixel est
+    multipliée par w_R·k_R + w_G·k_G + w_B·k_B. Conséquences vérifiées :
+    pousser « rouge » sature les rouges, **laisse les verts intacts**, et un
+    pixel gris (S = 0) ne bouge jamais. 1,0 = neutre (chemin rapide, aucun
+    calcul).
+    """
+    x = np.clip(np.asarray(x, np.float32), 0.0, 1.0)
+    hsv = cv2.cvtColor(x, cv2.COLOR_RGB2HSV)      # H sur 0..360 (float32)
+    h = hsv[..., 0]
+    facteur = np.zeros_like(h)
+    for centre, k in ((0.0, float(gains[0])),        # rouge
+                      (120.0, float(gains[1])),      # vert
+                      (240.0, float(gains[2]))):     # bleu
+        d = np.abs(h - centre)
+        poids = np.clip(1.0 - np.minimum(d, 360.0 - d) / 120.0, 0.0, 1.0)
+        facteur += poids * k
+    hsv[..., 1] = np.clip(hsv[..., 1] * facteur, 0.0, 1.0)
+    return cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+
+
 class DisplayProcessor:
     """Étirement temps réel.
 
@@ -93,7 +195,26 @@ class DisplayProcessor:
         self.target = 0.25            # luminosité cible du fond du ciel après MTF
         self.black, self.white = 0.0, 1.0
         self.gamma, self.saturation = 1.0, 1.0
+        # --- Jalon 75 : étage « niveaux » de l'écran (3 barres de l'histogramme)
+        # Noir / Médian / Blanc, appliqués à la SORTIE du moteur (STF OU
+        # VeraLux) — modèle du mini-histogramme SharpCap, cf. le commentaire
+        # en tête de module. Défaut = identité exacte (aucun effet).
+        # `fige` : l'étirement automatique du moteur est GELÉ (⏹) — STF : les
+        # stats ne se recalculent plus ; VeraLux : l'UI passe le logD en mode
+        # forcé (verrou existant du jalon 3).
+        self.bar_noir, self.bar_median, self.bar_blanc = 0.0, 0.5, 1.0
+        self.fige = False
+        self.sat_canaux = (1.0, 1.0, 1.0)   # saturation par couleur R/V/B
+        # Image de SORTIE DU MOTEUR (avant l'étage de niveaux) : c'est elle que
+        # la bande basse de l'histogramme affiche, pour que les barres
+        # découpent bien la donnée qu'elles reçoivent. Écrite par `process()`,
+        # lue par l'UI juste après (même thread).
+        self.dernier_brut_niveaux = None
+        self.niveaux_new = False      # l'UI doit resynchroniser ses champs
         self.last_lo, self.last_hi = 0.0, 1.0
+        # Jalon 75 : médian résolu du dernier rendu auto (repère de la bande
+        # « brut » de l'histogramme : lo + m·(hi − lo)).
+        self.last_m = 0.5
         self._stats = None            # (médiane, σ, p99.9) lissées — anti-pompage
         self._ema = 0.25              # réactivité : 0 = figé, 1 = instantané
 
@@ -248,15 +369,31 @@ class DisplayProcessor:
             self._sh_soumis = None    # doit jamais réutiliser un résultat
         self.sh_msg = ""
         self.sh_new = True
+        # Jalon 75 : les barres de l'histogramme et l'état « figé » sont
+        # propres à UNE session (comme `auto` et black/white) : un étirement
+        # retouché à la main sur une cible ne doit jamais s'appliquer
+        # silencieusement à la suivante. `niveaux_new` prévient l'UI qu'elle
+        # doit resynchroniser ses champs (barres + valeurs).
+        self.bar_noir, self.bar_median, self.bar_blanc = 0.0, 0.5, 1.0
+        self.fige = False
+        self.dernier_brut_niveaux = None
+        self.niveaux_new = True
         with self._vl_lock:
             self._vl_result = None
             self._vl_force = True
 
+    def reprendre_auto(self):
+        """▶ « Reprendre » (jalon 75) : l'étirement automatique repart. Les
+        stats lissées sont OUBLIÉES pour que le prochain rendu reparte de
+        l'image courante (saut visible, assumé et annoncé à l'écran) — sinon
+        un fond figé depuis longtemps reviendrait par petites touches."""
+        self.fige = False
+        self._stats = None
+
     @staticmethod
     def _mtf(x, m):
-        """Midtones Transfer Function : x, m ∈ [0,1]."""
-        m = min(max(m, 0.001), 0.98)
-        return np.clip(((m - 1.0) * x) / ((2.0 * m - 1.0) * x - m), 0.0, 1.0)
+        """Midtones Transfer Function : x, m ∈ [0,1] (alias de `mtf`, jalon 75)."""
+        return mtf(x, m)
 
     @staticmethod
     def _solve_m(x, t):
@@ -277,6 +414,19 @@ class DisplayProcessor:
         return med, sigma, float(np.percentile(s, 99.9))
 
     def _auto_params(self, img, live=True):
+        # Jalon 75 : étirement GELÉ (bouton ⏹ « Figer ») — les stats ne se
+        # recalculent plus ET n'avancent plus : l'image ne « respire » plus du
+        # tout, et les barres de l'histogramme deviennent les seules à agir.
+        # Sans ce garde-fou le gel serait un leurre (les paramètres
+        # continueraient de suivre l'empilement). ▶ « Reprendre » appelle
+        # `reprendre_auto()` : les stats oubliées repartent de l'image
+        # courante, donc le fond se recale immédiatement.
+        if self.fige and self._stats is not None:
+            med, sigma, p999 = self._stats
+            lo = med - self.sigma_k * sigma
+            hi = max(p999, med + 10.0 * sigma, lo + 1e-8)
+            return lo, hi, self._solve_m((med - lo) / (hi - lo), self.target)
+
         med, sigma, p999 = self._calc_stats(img)
 
         # Lissage temporel des STATS (pas des paramètres) : les curseurs restent
@@ -780,13 +930,25 @@ class DisplayProcessor:
         """Gamma et saturation COMMUNS — appliqués après l'étirement, quel que
         soit le mode (STF, manuel, VeraLux). Factorisés pour que le rendu
         « tel que vu » de la sauvegarde (jalon 5) soit strictement identique
-        à l'affichage."""
+        à l'affichage. (Simple relais de `_finition` depuis le jalon 75 : la
+        signature d'origine est conservée pour les appelants et les bancs.)"""
+        return DisplayProcessor._finition(x, rgb, gamma, saturation, None)
+
+    @staticmethod
+    def _finition(x, rgb, gamma, saturation, sat_canaux=None):
+        """Dernières retouches d'écran, dans un ordre FIXE : gamma →
+        saturation globale → saturation PAR COULEUR (jalon 75).
+        Appliquées après l'étirement ET après l'étage de niveaux, quel que
+        soit le mode ; factorisées pour que « tel que vu » soit identique à
+        l'affichage au pixel près (jalon 5)."""
         if abs(gamma - 1.0) > 1e-3:
             x = np.power(x, 1.0 / max(gamma, 0.05))
         if rgb and abs(saturation - 1.0) > 1e-3:
             hsv = cv2.cvtColor(np.clip(x, 0.0, 1.0), cv2.COLOR_RGB2HSV)
             hsv[..., 1] = np.clip(hsv[..., 1] * saturation, 0.0, 1.0)
             x = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+        if rgb and saturation_actifs(sat_canaux):
+            x = saturation_canaux(x, sat_canaux)
         return np.clip(x, 0.0, 1.0)
 
     def _veralux_actif(self):
@@ -821,13 +983,27 @@ class DisplayProcessor:
             if self.auto:
                 lo, hi, m = self._auto_params(img, live=live)
                 self.last_lo, self.last_hi = lo, hi
+                # Jalon 75 : le médian résolu est conservé pour que la bande
+                # « brut » de l'histogramme puisse placer son repère de médian
+                # (lo + m·(hi − lo)) — sinon l'utilisateur verrait deux repères
+                # sur trois et croirait à un oubli.
+                self.last_m = m
                 x = self._mtf(np.clip((img - lo) / (hi - lo), 0.0, 1.0), m)
             else:
                 lo, hi = self.black, self.white
                 if hi - lo < 1e-6:
                     hi = lo + 1e-6
                 x = np.clip((img - lo) / (hi - lo), 0.0, 1.0)
-        x = self._gamma_saturation(x, img.ndim == 3, self.gamma, self.saturation)
+        # Jalon 75 : l'image de SORTIE DU MOTEUR est mémorisée AVANT l'étage
+        # de niveaux — c'est elle qu'affiche la bande basse de l'histogramme,
+        # pour que les barres découpent bien la donnée qu'elles reçoivent (et
+        # que la courbe ne bouge pas sous les doigts). Relue par l'UI juste
+        # après cet appel, dans le MÊME thread ; jamais modifiée ici.
+        self.dernier_brut_niveaux = x
+        if niveaux_actifs(self.bar_noir, self.bar_median, self.bar_blanc):
+            x = niveaux(x, self.bar_noir, self.bar_median, self.bar_blanc)
+        x = self._finition(x, img.ndim == 3, self.gamma, self.saturation,
+                           self.sat_canaux)
         return (x * 255).astype(np.uint8)
 
     # ------------------------------------------------------------- jalon 5
@@ -884,7 +1060,16 @@ class DisplayProcessor:
                 params.update(mode=_veralux.MODE_LOG_D, log_d=log_d)
             x, _, _ = _veralux.etirer(img, **params)
         elif r("auto", self.auto):
-            med, sigma, p999 = self._calc_stats(img)
+            # Jalon 75 : étirement GELÉ (⏹) → le fichier doit reproduire
+            # l'écran, donc utiliser les MÊMES stats gelées que l'affichage
+            # (dict capturé côté UI) ; sinon « tel que vu » serait calculé sur
+            # les stats du moment et ne correspondrait plus à ce qu'on voit.
+            gelees = r("stats_gelees",
+                       self._stats if self.fige else None)
+            if gelees is not None:
+                med, sigma, p999 = gelees
+            else:
+                med, sigma, p999 = self._calc_stats(img)
             lo = med - r("sigma_k", self.sigma_k) * sigma
             hi = max(p999, med + 10.0 * sigma, lo + 1e-8)
             m = self._solve_m((med - lo) / (hi - lo), r("target", self.target))
@@ -894,6 +1079,16 @@ class DisplayProcessor:
             if hi - lo < 1e-6:
                 hi = lo + 1e-6
             x = np.clip((img - lo) / (hi - lo), 0.0, 1.0)
-        return self._gamma_saturation(x, img.ndim == 3,
-                                      r("gamma", self.gamma),
-                                      r("saturation", self.saturation))
+        # Jalon 75 : étage de NIVEAUX (les 3 barres de l'histogramme) puis
+        # finition (gamma, saturation globale, saturation par couleur) —
+        # exactement la même chaîne que `process()`, au même endroit, pour que
+        # le fichier « tel que vu » soit l'écran au pixel près.
+        noir = float(r("bar_noir", self.bar_noir))
+        median = float(r("bar_median", self.bar_median))
+        blanc = float(r("bar_blanc", self.bar_blanc))
+        if niveaux_actifs(noir, median, blanc):
+            x = niveaux(x, noir, median, blanc)
+        return self._finition(x, img.ndim == 3,
+                              r("gamma", self.gamma),
+                              r("saturation", self.saturation),
+                              r("sat_canaux", self.sat_canaux))

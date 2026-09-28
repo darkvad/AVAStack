@@ -138,9 +138,15 @@ app.var_source.set("Simulée (démo)")
 app._on_source_choisie()
 root.update_idletasks()
 ordre_apres = ordre_colonne(app)
+# NB : le cadre « Fichiers de travail et journal » est EN HAUT de la colonne
+# depuis la v2.38.9 (décision d'Alain : « ce qui répond à où est-ce écrit ? va
+# en haut », leçon des jalons 72/74) — il précède donc Caméra, qui reste
+# suivie de Calibration (ancre). Cette attente avait été oubliée par ce banc ;
+# mesuré au jalon 75.
 verifie(ordre_avant == ordre_apres
-        and ordre_apres[0].cget("text") == "Caméra"
-        and ordre_apres[1].cget("text") == "Calibration",
+        and ordre_apres[0].cget("text") == "Fichiers de travail et journal"
+        and ordre_apres[1].cget("text") == "Caméra"
+        and ordre_apres[2].cget("text") == "Calibration",
         "l'ordre des cadres visibles est inchangé après les allers-retours "
         f"({[c.cget('text') for c in ordre_apres]})")
 

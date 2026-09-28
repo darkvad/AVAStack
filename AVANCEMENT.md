@@ -10,205 +10,189 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **DERNIÈRE PASSE LIVRÉE (27/09/2026) — AVAStack v2.38.11 : LE DÉMARRAGE NE PEUT
-  PLUS SE BLOQUER (NAS, montage réseau, pare-feu)**. Ton constat : « cette version
-  ne se lance pas — pas d'enregistrement dans le journal ; en ligne de commande ça
-  affiche juste la version ». **CAUSE MESURÉE, avec ta contre-épreuve** (`nftables`
-  arrêté → la même version démarre) : tes **dossiers de couches R/G/B sont sur un
-  NAS** (et dans config.json) ; un `stat`/`listdir` sur un montage réseau
-  INJOIGNABLE **attend le montage indéfiniment** (autofs sans délai par défaut), et
-  l'application les inspectait **AVANT d'afficher** (détection des outils à
-  l'import, dossier de travail, catalogues — dont `_on_astro`, appelée par la
-  restauration de la config). Pire : la 1re ligne du journal était écrite APRÈS la
-  mesure d'environnement → **aucune trace**. L'audit du code ne montrait rien : il
-  n'y avait pas de bug, seulement des mesures de disque NON BORNÉES.
-  - Corrigé : `avastack/delais.py` (mesure bornée en fil démon → `(valeur,
-    abouti)`), `journal.etape()` (« miette de pain » qui NOMME l'étape bloquée),
-    1re ligne de journal SANS accès disque, mesures d'interface DIFFÉRÉES et
-    bornées (dossier de travail, outils, catalogues, nettoyage) avec libellés
-    honnêtes (« NON MESURÉ », « ILLISIBLE »), `external.detection` qui ne touche
-    plus le disque à l'IMPORT, MONTAGES RÉSEAU écartés des balayages (racines +
-    PATH), `travail.type_systeme()`/`sur_montage_reseau()`.
-  - **Banc NEUF 74** (17 vérifs) : `App(root)` construit en **0,78 s malgré trois
-    sondes qui dorment 30 s**, `delais.borne` chronométré, miette de pain, et
-    « import = zéro `which`/`glob` » mesuré en sous-processus. **Bancs RÉPARÉS** :
-    72 (dialog `showinfo` jamais intercepté — préexistant, PROUVÉ au `faulthandler`
-    sur la version intacte), 70 et 71 (ils attendaient les sondes synchrones : ils
-    POMPENT la boucle d'événements).
-  - Non-régression : **10 bancs rejoués VERTS** (74, 73, 72, 70, 71, 56, 42, 19,
-    20, 12) + `compileall` ; relance réelle de l'application OK (journal avec les
-    étapes).
-  - Artefacts reconstruits (v2.38.11) :
-    `installer/linux/output/avastack-setup-2.38.11-linux.tar.gz` (521 Kio, SHA-256
-    `9f60919b7ee6eebcc9ec8bcd8541ae52bbab7e91c38e45ca8703bb6bbce6cbda`) et
-    `installer/windows/output/avastack-setup-2.38.11.exe` (10,9 Mo).
-    Repli si régression : v2.38.10.
-  - **✔ VALIDÉ PAR TON ESSAI (28/09/2026) : « c'est tout bon »** — avec `nftables`
-    ACTIF (NAS injoignable pour l'application), elle **s'ouvre**, écrit son
-    journal, et dit « NON MESURÉ » pour ce qui est sur le NAS. La contre-épreuve
-    du banc (App(root) en 0,78 s malgré trois sondes bloquées 30 s) est donc
-    confirmée en réel.
+- **DERNIÈRE PASSE LIVRÉE ET VALIDÉE PAR TOI (28/09/2026) — AVAStack v2.39.0 :
+  TROIS BARRES DE NIVEAUX SUR L'HISTOGRAMME (modèle du MINI SharpCap, place du
+  GRAND), ÉTIREMENT GELABLE DANS LES DEUX MOTEURS, SATURATION PAR COULEUR,
+  ÉCHELLE Y RÉGLABLE**. **Ton verdict (28/09/2026) : « points 1, 2 et 3 testés
+  et validés ».** Ta demande :
+  « 3 barres de réglages de l'histogramme, un peu comme le grand histogramme de
+  SharpCap », puis tes deux précisions : c'est le **grand** (celui sous l'image),
+  et « si on passe en mode manuel avec figer, il faut que ce soit dispo **aussi
+  en VeraLux** qui étire bien mieux que STF pour dégrossir ».
+  - **Ce qui a décidé l'architecture** (et évité une mauvaise piste) :
+    `veralux_core_headless` n'a **ni point noir ni point blanc** (une ancre +
+    un logD) → « les barres = les points de l'étirement » ne peut pas marcher
+    dans les deux moteurs. Les barres agissent donc sur la **SORTIE DU MOTEUR**
+    (modèle du mini historique : « the stretch in the mini histogram affects the
+    display only »), **en décalage sur l'auto qui continue** de s'ajuster à
+    chaque frame. Effet instantané, jamais de recalcul du solveur.
+  - **Livré** : `display.niveaux()` (étage pur, identité **au bit** à
+    0/0,5/1 → zéro régression, court-circuité) ; barres Noir/Médian/Blanc
+    déplaçables sur l'histogramme (+ champs de saisie en %, double-clic =
+    défaut, « ↺ Auto ») ; **⏹/▶ geler-reprendre l'auto du moteur** (STF : stats
+    gelées ; **VeraLux : logD verrouillé**) avec état DIT en clair ; histogramme
+    à **deux bandes** (brut linéaire + sortie du moteur) avec sélecteur
+    « Les deux / Brut / Sortie » ; **saturation par couleur R/V/B** ; et un
+    **défaut corrigé au passage** : les 3 courbes étaient normalisées chacune à
+    son propre maximum (une dominante de couleur était donc invisible).
+  - **CORRIGÉ APRÈS TES ESSAIS (28/09/2026)** — tes trois observations, toutes
+    trois fondées :
+    ① **saturation par couleur** : tu soupçonnais une inversion bleu/vert. Ce
+    n'était **pas** une inversion d'indice (vérifié : le curseur « rouge » agit
+    bien sur R) mais une **formule fausse** : `c_c = Y + k_c·(c − Y)` changeait
+    le canal *partout* → mesuré sur un pixel vert, le curseur « rouge » à 2,00
+    faisait chuter le rouge (0,20 → 0,00), donc **verdissait** l'image — ton
+    constat mot pour mot. Remplacée par une **saturation par secteur de teinte**
+    (poids triangulaires sur 0°/120°/240°, qui somment à 1) : pousser « rouge »
+    sature les rouges et **laisse les verts intacts** (vérifié au banc).
+    ② **la « colline »** de la bande basse n'est pas une échelle bizarre :
+    **mesuré** — l'axe brut est étiré par les étoiles brillantes (σ du fond =
+    1,95 % de l'axe → une aiguille), alors que la bande « sortie » travaille
+    dans `[lo, hi]` (2,5× plus serré) où la MTF a une pente locale de **×1,60**
+    → le même fond y occupe **7,7 %** de l'axe, soit une colline de ~29 %.
+    C'est l'étirement lui-même (il ouvre les ombres). Un repère **« fond x % »**,
+    mesuré sur la somme des trois canaux, marque la pointe de la colline.
+    **Rectification d'une formulation trop vague** (« la cible du moteur =
+    25 % ») : il n'y a **pas** de cible universelle — le STF vise `target`
+    (défaut **0,25**) et **VeraLux vise ton curseur** « Luminosité du fond visée
+    (VeraLux) » (défaut 0,20 ; **0,16 chez toi sur M31**). Mesuré sur NGC 7331
+    (VeraLux) : 0,12 → pic **12,3 %** ; **0,16 → pic 16,6 %** ; 0,20 → 21,7 % ;
+    STF 0,25 → 23,6 %. La marque suit donc TON réglage à ~1 % près, et la cible
+    du moteur est maintenant **écrite dans la ligne d'état** du panneau
+    (« fond visé 16 % (VeraLux) » / « cible du fond 25 % (STF) »), rafraîchie
+    par les deux curseurs de cible, avec « , calcul en cours » tant que le
+    solveur VeraLux n'a pas rendu (l'écran montre alors l'image d'attente STF,
+    dont le fond est à 25 % : la marque ne peut pas encore suivre le fond visé).
+    ③ **LES BARRES NE SUIVAIENT PAS LE GESTE quand l'empilement était fini** :
+    ton constat (« l'image change alors que la position de la barre ne change
+    pas, ou pas complètement, comme si le bas n'était pas rafraîchi ») est
+    **reproduit au banc**. **Cause trouvée** : `_draw_hist()` n'était appelé que
+    par la mise à jour des **données** (une fois par frame) et par le sélecteur
+    de bandes — le glissement appliquait la valeur et re-rendait l'**image**,
+    mais ne retraçait **jamais le panneau** : sans frame il restait figé sur la
+    position de **départ**, et à 0,2 fps une frame venait le rattraper par
+    sauts (ta barre « à moitié déplacée »). Même défaut latent pour **↺ Auto**,
+    la **saisie chiffrée** et la **nouvelle session** tant qu'aucune image
+    n'était affichée. **Corrigé** : ces six gestes retracent **immédiatement**
+    (le glissement à **chaque pixel**) — et **sans recalculer l'histogramme**,
+    la courbe étant tracée sur la sortie du moteur **avant** l'étage de niveaux
+    (une barre ne la change pas). **Mesuré** : tracé complet = **3,1 ms** contre
+    ~80 ms pour l'image. **Contre-épreuve faite** sur l'ancien code : le nouveau
+    contrôle **échoue** (poignée tracée restée à la position de départ alors que
+    la valeur valait 0,68) — donc il sert.
+  - **Mesuré sur ton NGC 7331 réel** (11 880 s, aperçu 1600 px) : axe brut
+    0..0,0331, fond à 52 %, p99/p99,9 à 57/87 % ; auto lo 0,01518 (46,3 %) ·
+    hi 0,02868 (86,6 %) · m 0,3636 ; fond affiché 65/255 (≈ la cible 25 %) ;
+    rendu complet = 82 ms d'étirement + 36 ms pour les deux histogrammes + 3 ms
+    de tracé (le calcul quitte le thread d'acquisition : ~55 ms de CPU gagnés là).
+  - **Banc NEUF `bancs/_test_histo_jalon75.py`** (11 sections) : identité au bit,
+    MTF(m,m) = 0,5, **parité écran/fichier AU BIT avec barres et étirement gelé**,
+    gel/reprise, saturation par couleur, coût indépendant de la résolution,
+    échelle commune des courbes, géométrie (étiquettes bornées **et** sans
+    chevauchement — deux défauts réels attrapés là), **la poignée réellement
+    TRACÉE = la position de la valeur et zéro recalcul pendant le geste** (③),
+    **l'échelle y log/linéaire : hauteur PROPORTIONNELLE aux comptes (×100 pour
+    1000/10 contre ×2,9 en log), bande haute intacte, aucun recalcul, retour au
+    log AU BIT** (④), UI réelle, chaîne linéaire intacte. **Bancs RÉPARÉS** :
+    jalon 47 (attente périmée depuis la v2.38.9) et jalons 19 (ils lisaient
+    l'histogramme dans la file de l'UI). **+45 bancs rejoués VERTS** (5, 6, 19,
+    20, 22, 39, 41, 42, 47, 54, 56, 58, 59, 61, 62, 63, 65, 67, 68, 69, 72, 73,
+    74, 75, VeraLux 1/2/3, démarr. non bloquant…), **dont 26 après la correction
+    ③** et **8 après l'ajout de la case ④** — **dont l'audit de GÉOMÉTRIE du
+    jalon 72**, qui vérifie que la case n'a rien fait abandonner par `pack`.
+  - **À FAIRE À TON PROCHAIN ESSAI** : poser tes 3 barres sur une vraie cible
+    (STF **et** VeraLux), essayer ⏹/▶, **re-vérifier que la barre SUIT le doigt
+    quand l'empilement est fini** (③ : plus de « bas » figé, le champ de saisie
+    et la barre doivent dire la même chose à tout instant), **re-essayer les
+    trois curseurs de saturation par couleur** (chacun ne doit plus toucher que
+    sa couleur).
+  - **TES DÉCISIONS (28/09/2026)** : **barre MÉDIAN et curseur GAMMA : les DEUX
+    restent** (« on laisse comme c'est ») — consigné **dans le code** pour qu'un
+    futur nettoyage ne retire rien : ce ne sont pas les mêmes courbes (la barre
+    place le gris moyen par la MTF, `MTF(m, m) = 0,5`, et c'est elle qui découpe
+    l'histogramme à l'écran ; le gamma est une puissance appliquée après, qui
+    envoie 0,5 sur 0,06 à γ = 4 quand la MTF l'envoie sur 0,75 avec m = 0,25).
+    Reste **une** question ouverte : la place prise par l'histogramme à deux
+    bandes (176 px → l'image perd ~53 px ; le sélecteur la rend).
+  - **④ ÉCHELLE EN Y — DÉCISION PRISE ET LIVRÉE (28/09/2026)** : tu as choisi
+    **① « linéaire sur la seule bande basse »**. Livré — case **« Échelle y
+    linéaire (bande basse) »** sous l'histogramme (défaut = log, donc une
+    ancienne config garde le rendu d'avant ; case persistée). **Mesures** (tes
+    frames, 20 de ta session de 15 h 37 moyennées, aperçu 1600 px, STF auto) :
+    largeur à mi-hauteur du fond **170 bacs = 66 % de l'axe en log → 27 bacs =
+    10,5 % en linéaire** (la colline devient un **PIC**) ; en échange la queue
+    tombe de **34 px à 0,65 px** (p99) et les bacs visibles passent de 251/256 à
+    151/256. **VÉRIFIÉ SUR LE CANVAS RÉEL** (validation bout en bout sur tes
+    frames, hist_mode « les deux », bande de 69 px) : la polyligne DESSINÉE passe
+    de **66,4 % de l'axe à mi-hauteur à 10,5 %** (×6,3 plus étroit), bacs non
+    plats 251/256 → 151/256 — les chiffres annoncés sont ceux de l'écran.
+    La **bande haute garde le log** (mesurée en linéaire : **2 bacs à
+    mi-hauteur, 10/256 bacs visibles** → une aiguille sans usage). Rien d'autre
+    ne bouge : barres, repères, « fond x % » et courbe jaune sont **en x** ;
+    basculer **ne recalcule aucun histogramme** et **ne re-rend pas l'image**
+    (les bacs sont en mémoire) ; l'échelle est **dite** dans la ligne d'état.
+    Banc **section [11]** (hauteur ∝ comptes ×100 contre ×2,9 en log, bande
+    haute intacte, 0 recalcul, état dit, case persistée, **retour au log AU
+    BIT**) ; **jalon 72 (géométrie de la fenêtre) rejoué vert** — la case n'a
+    rien fait abandonner par `pack` — plus 5, 6 ×2, 19, 39, 47 : **tous verts**.
+    **VALIDÉ par ton essai réel du 28/09 (soir) : « points 1, 2 et 3 testés et
+    validés ».** Repli si régression : v2.38.11. **Installateurs non reconstruits**
+    (v2.39.0 a été validée sur le code vivant ; à reconstruire sur ta demande).
 
-- **PASSE PRÉCÉDENTE (27/09/2026) — AVAStack v2.38.10 : LES LIGNES À TEXTE LIBRE
-  NE PERDENT PLUS RIEN (astrométrie, catalogues, re-stack)**. Ton constat : « le
-  champ et le bouton pour récupérer les coordonnées depuis les brutes ne sont pas
-  visibles sans agrandir la colonne ». **MESURE** : **CINQ widgets étaient
-  abandonnés par `pack`** (champ « champ° » + 📷, 📂 + ⬇ Gaia dès que le chemin
-  est long, ⓘ du re-stack) et QUATRE lignes d'état étaient ROGNÉES (jusqu'à 740 px
-  requis pour 318 px). Corrigé : boutons posés AVANT le texte libre, largeurs
-  BORNÉES (`wraplength` pour une phrase, `width` pour un chemin), astrométrie sur
-  3 lignes, catalogues sur 2, lignes d'état qui se replient ; banc 72 étendu à un
-  AUDIT DE GÉOMÉTRIE de toute la fenêtre (31 vérifs).
+- **PASSES PRÉCÉDENTES DU MÊME JOUR (28/09/2026, nuit) — v2.38.9, v2.38.10,
+  v2.38.11** : lignes à texte libre visibles (astrométrie, catalogues, re-stack),
+  cadre « Fichiers de travail et journal » en tête, et surtout **le démarrage ne
+  peut plus se BLOQUER** (mesures de disque différées et bornées, NAS
+  injoignable DIT au lieu d'attendre). Résumé complet et commits : bloc de
+  **CLÔTURE DE SESSION (28/09/2026)** ci-dessous ; détails : changelog de
+  `avastack/__init__.py` + historique git.
 
-- **PASSE PRÉCÉDENTE (27/09/2026) — AVAStack v2.38.9 : LA LIGNE « FICHIERS
-  DE TRAVAIL » ET LE BOUTON « JOURNAL » SONT ENFIN VISIBLES.** Ton constat,
-  capture d'écran à l'appui : « pas de chemin pour temp et pas de bouton
-  journal ». **MESURE** (géométrie Tk réelle) : les deux reproches étaient FONDÉS,
-  pour deux causes DISTINCTES — ① le bouton « Journal » n'était **jamais
-  affiché** (`pack` abandonne SILENCIEUSEMENT le widget qui ne tient plus : cadre
-  de 318 px = texte 243 + « Ouvrir » 43 + « 📂 » 28 → `winfo_ismapped()` = 0) ;
-  ② la ligne était à **y≈2421 px sur les 3218 px** de la colonne DÉFILANTE de
-  gauche, donc invisible sans défilement (« pas de chemin pour temp »).
-  - Corrigé : ligne et boutons sur **DEUX lignes** (le texte, puis les boutons),
-    dans un cadre dédié « **Fichiers de travail et journal** » placé **tout en
-    haut de la colonne** ; le cadre « Traitement externe (long) » garde son rôle
-    (renvoi commenté) ; libellé `wraplength=300`.
-  - Banc 72 étendu à la géométrie, docs à jour — le tout repris et généralisé par
-    la v2.38.10 ci-dessus (audit de toute la fenêtre).
-
-- **PASSE PRÉCÉDENTE (27/09/2026) — AVAStack v2.38.8 : LES ÉCHECS DE
-  DÉMARRAGE CONNUS SONT EXPLIQUÉS (session sans bureau, Tkinter absent)**.
-  **FAITS, à ne pas confondre** (ton message du soir — j'avais lu trop vite) :
-  ① la v2.38.7 lancée par **SSH, donc sans bureau**, est morte sur `tk.Tk()`
-  (`no display name and no $DISPLAY`) : échec d'USAGE normal, rien d'actionnable
-  affiché ; ② relancée **depuis le bureau** : ✔ (les 5 lignes du journal :
-  `exe=…/AVAStack/venv/bin/python`, `Tk 8.6/8.6`, `travail=~/.cache/avastack
-  (115,3 Go libres)`) ; ③ la panne de la **v2.38.6 lancée par le MENU
-  Applications** (aucune fenêtre, aucun message) reste **SANS EXPLICATION** — le
-  journal n'existait pas, il n'en existe aucune trace. Mon hypothèse « c'était le
-  SSH » était FAUSSE : corrigée partout (code, docs).
-  - `journal.conseil_installation()`, `sans_affichage()`, `rapport_echec()` :
-    conseil ACTIONNABLE pour les deux échecs CONNUS (session sans bureau ;
-    `tkinter` absent — paquet SYSTÈME apt/dnf/pacman), détection à DEUX indices
-    (message de Tk + `DISPLAY` vide, ce dernier sous Linux seulement), message
-    mis en forme UNE fois pour les deux points d'entrée — et `""` pour toute
-    autre cause : **jamais de conseil inventé**.
-  - **Le journal a servi dès son premier jour** : il a nommé l'environnement réel
-    sans rien demander — soit la **validation sur ta machine du repli hors tmpfs
-    de la v2.38.6** (ton `/tmp` est bien un tmpfs).
-  - Doc : LISEZMOI Linux/Windows (« deux échecs déjà rencontrés »), CLAUDE.md
-    (leçon : JAMAIS d'attribution de cause sans trace) ; banc 73 section [6] —
-    **33 vérifications** au total, dont « aucun conseil inventé ».
-  - **MESURE FAITE (ton essai, 27/09/2026 23:02) : relance PAR LE MENU
-    Applications → ✔ DÉMARRE** (journal : `exe=…/AVAStack/venv/bin/python`,
-    `Tk 8.6/8.6`, `cwd=/home/alain/.local/share/AVAStack` — le `Path=` du
-    `.desktop` —, puis « prêt » et « arrêt — fenêtre fermée (sortie normale) »).
-    **Conséquence** : la panne du 27/09 (v2.38.6 par le menu) **n'est plus
-    reproduite**. Hypothèse la plus compatible avec TOUS les faits — et NON
-    prouvée : l'installation 2.38.6 (premier usage de l'installateur Linux) avait
-    une copie ou un venv incomplet, donc un plantage **à l'import**, invisible
-    parce que le `.desktop` est en `Terminal=false` ; les validations
-    astrométrie/SPCC/GraXpert de la journée se faisaient, elles, depuis un autre
-    exemplaire (clone/terminal). Ce mode de panne est désormais attrapé DEUX
-    fois : à l'installation (test de démarrage réel, v2.38.7) et à tout lancement
-    (journal + message, v2.38.7/v2.38.8). Preuve a posteriori impossible : le
-    journal n'existait pas en 2.38.6.
-  Artefacts reconstruits (v2.38.8) :
-  `installer/linux/output/avastack-setup-2.38.8-linux.tar.gz` (509 Kio, SHA-256
-  `71620f646fdbdf7363be24ef5f4be55ff8088fa9289107298d6a6cbda051d037`) et
-  `installer/windows/output/avastack-setup-2.38.8.exe` (10,9 Mo). Repli si
-  régression : v2.38.7.
-
-- **PASSE PRÉCÉDENTE (27/09/2026) — AVAStack v2.38.7 : SI L'APPLICATION NE
-  DÉMARRE PAS, ELLE LE DIT (journal + filet de démarrage)**. Ton constat : « l'appli
-  ne se lance pas sous linux », puis, relancé par le menu : « rien du tout : aucune
-  fenêtre, aucun message ». **Audit d'abord** (diffs de la v2.38.6, archive Linux,
-  installateur, chaîne d'imports) : AUCUNE cause statique certaine — ce qui manquait
-  n'était pas une correction mais une **mesure**. Cause de méthode : l'application
-  n'a **aucun journal** (même défaut que le silence de l'astrométrie en v2.38.4) et
-  son seul canal est `stderr`, que personne ne lit pour un lancement par entrée de
-  menu (`.desktop` en `Terminal=false`) ou par `~/.local/bin/avastack` : tout échec
-  AVANT l'affichage (paquet absent du venv, `tkinter` manquant, exception dans la
-  construction de l'interface) était invisible ET sans trace.
-  - En un mot : `avastack/journal.py` (journal `<config>/journal.txt`, rotation
-    1 Mio, jamais d'exception ; `note()`, `erreur()`, `trace_env()`, `montrer()`,
-    `ouvrir()`), filet dans les DEUX points d'entrée (journal ouvert AVANT les
-    imports ; `python -m avastack` = même script via `runpy`), étapes de démarrage
-    journalisées + `Tk.report_callback_exception` remplacé, bouton « Journal »,
-    test de démarrage RÉEL à l'installation Linux, `AVASTACK_SANS_DIALOGUE=1`.
-  Banc NEUF `bancs/_test_journal_jalon73.py` (**27 vérifs**, dont un VRAI
-  sous-processus dont l'import d'interface est cassé : code 1 + traceback dans
-  `journal.txt`). Test de lancement réel sur Windows refait ✔ (journal écrit :
-  environnement, import, interface, configuration, « prêt »).
-  **Non-régression** : 13 bancs rejoués + le neuf, TOUS VERTS — dont un banc
-  RÉPARÉ, `_test_catalogues_jalon70.py` [4] (« la progression est affichée
-  pendant le transfert ») : mesuré d'abord qu'il échouait AUSSI sur la v2.38.6
-  intacte (worktree propre sur HEAD), donc pas une régression ; cause = `_tick`
-  VIDE la file d'un coup, et le faux transfert du banc posait ses deux paliers
-  en 0,3 s → aucun texte intermédiaire à voir ; réparé par un RENDEZ-VOUS (le
-  faux transfert attend que l'UI ait consommé chaque palier).
-  **✔ VALIDÉ PAR TON ESSAI (27/09/2026, soir) : l'application DÉMARRE sous
-  Linux.** Ce qui est PROUVÉ : le filet n'a pas gêné le démarrage, et le journal
-  nomme l'environnement exact (python du venv, Tk, dossier de travail).
-  **Ce qui reste NON EXPLIQUÉ** : la panne de la v2.38.6 lancée par le MENU
-  Applications (aucune fenêtre, aucun message) — le journal n'existait pas
-  encore, aucune trace n'en subsiste. Cf. la passe v2.38.8 ci-dessus : ne plus
-  attribuer de cause sans trace, et la prochaine mesure proposée.
-  **Artefacts reconstruits** :
-  `installer/linux/output/avastack-setup-2.38.7-linux.tar.gz` (61 fichiers,
-  506 Kio, SHA-256 `09e1f724afb22111fe9a847fae2bfce6a64d088a8db5f275326a84d237df2191`)
-  et `installer/windows/output/avastack-setup-2.38.7.exe` (10,9 Mo).
-  Repli si régression : v2.38.6.
+- **PASSES ANTÉRIEURES (27/09/2026) — v2.38.7 et v2.38.8** : **si l'application
+  ne démarre pas, elle le DIT** (`avastack/journal.py` : `journal.txt` en
+  rotation, jamais d'exception ; journal ouvert AVANT les imports ; filet dans
+  les deux points d'entrée ; `Tk.report_callback_exception` remplacé ; bouton
+  « Journal » ; test de démarrage réel à l'installation) puis, en v2.38.8, les
+  DEUX échecs de démarrage connus sont EXPLIQUÉS (session sans bureau, `tkinter`
+  absent — conseil actionnable, jamais inventé). Ces deux passes sont résumées
+  dans le bloc de CLÔTURE ci-dessous ; détails : changelog + git. **La panne du
+  27/09 (v2.38.6 lancée par le menu) reste SANS EXPLICATION** : le journal
+  n'existait pas, il n'en subsiste aucune trace — ne jamais attribuer de cause
+  sans trace.
 
 - **Jalons antérieurs immédiats** (détails dans le changelog de
   `avastack/__init__.py` et l'historique git) : **v2.38.6** espace disque (dossier
   de travail effectif + alerte tmpfs, écriture atomique `.part`, plafond
-  `min(20 Go, 50 % du libre)`, fichiers de travail CONSERVÉS à l'échec) — ton essai
-  restait EN ATTENTE, il est désormais couvert par l'essai de la v2.38.7 ;
-  **v2.38.5** détection des outils externes (`GraXpert-linux`, ini de Siril,
-  état ✔/⚠ affiché) ✔ ; **v2.38.4** astrométrie Linux (dossiers Siril par OS,
-  `chemin_catalogues` honorée, bouton ⬇ Gaia, « DONNÉES MANQUANTES » dit au lieu
-  d'un silence) ✔.
+  `min(20 Go, 50 % du libre)`, fichiers de travail CONSERVÉS à l'échec — la cause
+  était une écriture PARTIELLE de FITS sur un `/tmp` **tmpfs de 4,6 Go** :
+  « Erreur : 24962352 requested and 10902832 written ») — ton essai restait EN
+  ATTENTE, il est désormais couvert par l'essai de la v2.38.7 ; **v2.38.5**
+  détection des outils externes (`GraXpert-linux` — casse sensible ! — ini de
+  Siril, état ✔/⚠ affiché, re-détection qui CONSERVE les options) ✔ ; **v2.38.4**
+  astrométrie Linux (dossiers Siril par OS, `chemin_catalogues` honorée, bouton
+  ⬇ Gaia, « DONNÉES MANQUANTES » dit au lieu d'un silence) ✔.
 
-- **PASSES TERMINÉES (27/09/2026) — v2.38.5 et v2.38.6** (détails dans le
-  changelog de `avastack/__init__.py` et l'historique git : commits `98c83eb`,
-  `694ad3b`, `1cee330`) :
-  - **v2.38.5 — détection des outils externes** : sous Linux le binaire officiel
-    s'appelle `GraXpert-linux` alors que le code ne cherchait que
-    `graxpert`/`GraXpert` (casse sensible, archive hors PATH) ; aggravant, la
-    commande de REPLI (« graxpert … », binaire nu) était PERSISTÉE dans
-    config.json sans re-test, donc une détection ratée restait figée à vie.
-    Corrigé : noms et racines PAR OS, ini de Siril comme source de détection
-    (`avastack/siril_ini.py`), `outil_manquant()` + re-détection qui CONSERVE les
-    options, ligne d'état « ✔ / ⚠ » sous chaque commande, refus AVANT de lancer.
-    Banc `_test_outils_jalon71.py`.
-  - **v2.38.6 — l'espace disque se dit** : « Erreur : 24962352 requested and
-    10902832 written » pendant BlurX = écriture PARTIELLE par
-    `numpy.ndarray.tofile()` (appelé par astropy pour un FITS) sur un `/tmp`
-    **tmpfs de 4,6 Go** que l'application remplissait elle-même (2,8 Go de
-    dossiers `avastack_frames_*`, frames de 32 Mio) pendant que 116 Go dormaient
-    sur le disque. Corrigé : module NEUF `avastack/travail.py` (dossier de
-    travail EFFECTIF, alerte « en RAM (tmpfs) », messages chiffrés), réglage +
-    bouton « dossier de travail », écriture ATOMIQUE (`.part` renommé, partiel
-    supprimé), contrôle d'espace AVANT la chaîne externe, plafond d'archivage
-    `min(20 Go, 50 % de l'espace libre)`, fichiers de travail CONSERVÉS en cas
-    d'échec. Banc `_test_espace_jalon72.py` (25 vérifs).
-
-- **CLÔTURE DE SESSION (28/09/2026, nuit)** — cinq passes livrées et poussées
-  d'affilée sur `origin/master` (arbre propre) : **v2.38.7** (le démarrage ne peut
+- **CLÔTURE DE SESSION (28/09/2026)** — SIX passes livrées et poussées d'affilée
+  sur `origin/master` (arbre propre) : **v2.38.7** (le démarrage ne peut
   plus être muet : journal + message + bouton « Journal »), **v2.38.8** (les
   échecs de démarrage CONNUS sont expliqués), **v2.38.9** (ligne « Fichiers de
   travail et journal » visible et bouton « Journal » réellement affiché),
   **v2.38.10** (les lignes à texte libre ne perdent plus rien : astrométrie,
-  catalogues, re-stack) et **v2.38.11** (**le démarrage ne peut plus se BLOQUER** :
-  mesures différées + bornées, miettes de pain au journal). Commits : `bd04f20`,
+  catalogues, re-stack), **v2.38.11** (**le démarrage ne peut plus se BLOQUER** :
+  mesures différées + bornées, miettes de pain au journal) et **v2.39.0**
+  (**histogramme à deux bandes + trois barres de niveaux** agissant sur la SORTIE
+  du moteur, gel/reprise de l'auto en STF **et** VeraLux, saturation par couleur
+  R/V/B, échelle y réglable). Commits (v2.38.7 → v2.38.11) : `bd04f20`,
   `59d07e3`, `07f0c34`, `6642c4a`, `c8ffcf6`, `1acd3f6`, `9a01674`, `15cb6b7`,
-  `2ec4d67`.
+  `2ec4d67` ; plus le commit **v2.39.0** (voir `git log`).
   - **VALIDÉ par tes essais réels** : v2.38.7/2.38.8 (démarrage par le MENU et en
     terminal ✔, journal reçu ✔) ; v2.38.9/2.38.10 (vérification à l'écran ✔) ;
     **v2.38.11 : « c'est tout bon » — avec `nftables` ACTIF, l'application
     s'ouvre, le journal s'écrit, et le NAS injoignable est DIT au lieu de
-    bloquer.**
+    bloquer.** ; **v2.39.0 (28/09, soir) : « points 1, 2 et 3 testés et
+    validés »** — la barre suit le doigt **empilement fini** (③), ⏹/▶ marche en
+    STF **et** en VeraLux, les trois curseurs de saturation par couleur ne
+    touchent que leur couleur (①) — et ta décision est tombée : **la barre
+    MÉDIAN et le curseur GAMMA restent tous les deux** (consigné dans le code).
   - **LA PANNE DU 27/09 EST CLOSE** : tes dossiers de couches R/G/B sont sur le
     NAS ; `nftables` le filtre ; un `stat`/`listdir` sur ce montage attendait
     INDÉFINIMENT, et l'application le faisait AVANT d'afficher — et même avant sa
@@ -218,11 +202,15 @@ dans le changelog du source et l'historique git.)
     qui dorment 30 s).
   - **Bancs** : 10 rejoués VERTS + 1 NEUF (`_test_demarrage_non_bloquant_jalon74`,
     17 vérifs) ; 3 RÉPARÉS (72 : dialog `showinfo` jamais intercepté — prouvé
-    préexistant au `faulthandler` ; 70 et 71 : sondes devenues différées).
+    préexistant au `faulthandler` ; 70 et 71 : sondes devenues différées). Pour
+    v2.39.0 : banc NEUF `_test_histo_jalon75.py` (**11 sections**) + **~45 bancs
+    rejoués verts**, dont l'audit de géométrie du 72.
   - **Prochaine étape** : ① `nftables` — ouvrir le NAS (ton côté) ; ② essai de la
     chaîne BlurX avec le dossier de travail (plus de « requested and written ») ;
     ③ rendu BXT avec `--sn 0.3` ; ④ `--cameras` quand les `.so` constructeurs
-    seront là. Rien d'autre n'est ouvert.
+    seront là. Le seul point laissé ouvert par v2.39.0 : la **place** prise par
+    l'histogramme à deux bandes (176 px, l'image perd ~53 px ; le sélecteur la
+    rend) — à trancher à l'usage.
 - **PASSES TERMINÉES ET POUSSÉES (27/09/2026, hors code applicatif) — BANCS
   RÉORGANISÉS, INSTALLATEURS NOMMÉS PAR VERSION, INSTALLATEUR LINUX** : 109
   bancs déplacés dans `bancs/` (`bancs/cameras/` : 16 — seuls installés) avec
@@ -398,7 +386,29 @@ dans le changelog du source et l'historique git.)
 
 ## En attente / prochaine session
 
-- **AUCUN DÉFAUT CONNU OUVERT** sur les v2.38.3 à v2.38.11 (livrées).
+- **NOUVEAU (28/09/2026) — v2.39.0 VALIDÉE PAR TON ESSAI (« points 1, 2 et 3
+  testés et validés »)** : les **trois barres de niveaux** de l'histogramme
+  (Noir / Médian / Blanc), le **⏹/▶ geler-reprendre** de l'étirement auto (STF
+  **et** VeraLux), le **sélecteur de bandes**, la **saturation par couleur R/V/B**
+  et la **case « Échelle y linéaire (bande basse) »**. Reste, à l'usage, **le seul
+  point ouvert** : la **place** de l'histogramme à deux bandes (176 px au lieu de
+  110 → l'image perd ~53 px ; le sélecteur « Sortie » ou « Brut » la rend) — à
+  trancher quand tu auras vécu avec. **Installateurs v2.39.0 non reconstruits** (à
+  faire sur ta demande).
+- **LEÇONS DU JALON 75 ÉCRITES DANS CLAUDE.md (28/09/2026, sur ta demande
+  « mettre à jour les .md nécessaires (y compris claude) »)** — quatre leçons
+  durables, section « Pièges (leçons du projet AVAStack) » : **① les barres de
+  niveaux vivent APRÈS le moteur** (mini vs grand histogramme de SharpCap, et
+  pourquoi : VeraLux n'a ni point noir ni point blanc → « les barres = les points
+  de l'étirement » n'est possible que dans un seul moteur) ; **② une saturation
+  par couleur doit viser une TEINTE** (la formule `c = Y + k·(c−Y)` change le
+  canal PARTOUT et verdissait l'image quand on poussait « rouge ») ; **③ un
+  panneau rafraîchi SEULEMENT par les données ne suit pas les gestes** (et la
+  règle inverse : si le geste ne change pas la donnée, NE PAS recalculer —
+  3,1 ms contre ~80 ms) ; **④ une échelle d'axe muette est un piège** (mesures
+  log/linéaire consignées). Plus une note opérationnelle : les bancs se lancent
+  avec l'interpréteur du VENV (`python` seul, sur ta machine, n'a pas numpy).
+- **AUCUN DÉFAUT CONNU OUVERT** sur les v2.38.3 à v2.39.0 (livrées).
   **CONFIRMÉ PAR TES ESSAIS RÉELS (27-28/09/2026, Linux)** : astrométrie ✔, SPCC ✔,
   GraXpert ✔ (« astrométrie, spcc OK / GraXpert OK ») ; démarrage par le MENU et
   en terminal ✔ ; **v2.38.11 sous `nftables` actif : « c'est tout bon »** (elle

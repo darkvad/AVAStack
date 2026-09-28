@@ -17,9 +17,180 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.38.11"
+AVASTACK_VERSION = "2.39.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.39.0 : TROIS BARRES DE NIVEAUX SUR L'HISTOGRAMME (modèle du MINI de
+#   SharpCap, place du GRAND), ÉTIREMENT GELABLE DANS LES DEUX MOTEURS, et
+#   SATURATION PAR COULEUR.
+#   Demande d'Alain (28/09/2026) : « mettre à disposition dans l'histogramme en
+#   bas de l'UI 3 barres de réglages, un peu comme le grand histogramme de
+#   SharpCap… Forcément lorsqu'on touche à cela, il faut réfléchir à l'étirement
+#   existant VeraLux ou STF qui va (ou pas) se refaire à la frame suivante »,
+#   puis ses deux précisions : c'est le GRAND histogramme (celui sous l'image),
+#   et « si on passe en mode manuel avec figer, il faut que ce soit dispo AUSSI
+#   en VeraLux qui étire bien mieux que STF pour dégrossir ».
+#   CE QUE DIT SHARPCAP (doc + auteur, vérifié) : le MINI histogramme trace
+#   « the image that comes out of live stacking (with live stack stretch
+#   applied) » et son étirement n'agit que sur l'affichage (« the stretch in the
+#   mini histogram affects the display only — there is no upstream effect ») ;
+#   le GRAND (panneau Live Stack) trace la distribution NON étirée en ADU avec
+#   les trois lignes « black, mid grey and white » ET des réglages R/V/B qui
+#   sont une BALANCE appliquée AVANT l'étirement (« colour adjustments happen
+#   before the stretch ») ; il existe un « Lock Stretch » pour geler l'auto.
+#   DÉCISION MESURÉE, pas de goût : le STF a bien un point noir, un médian et un
+#   point blanc, mais VeraLux n'en a AUCUN (`veralux_core_headless` : une ANCRE
+#   + un logD) — « les barres = les points de l'étirement » ne peut donc PAS
+#   marcher dans les deux moteurs. Les barres agissent sur la SORTIE DU MOTEUR
+#   (modèle du mini), EN DÉCALAGE sur l'auto qui continue de s'ajuster à chaque
+#   frame : mêmes gestes, même lecture et effet INSTANTANÉ en STF comme en
+#   VeraLux, sans jamais relancer le solveur.
+#   (1) `display.niveaux(x, noir, median, blanc)` — étage PUR appliqué après
+#       l'étirement et AVANT gamma/saturation, court-circuité à l'identité
+#       (0 / 0,5 / 1 = x AU BIT PRÈS : MTF(x, 0,5) = x, les deux opérations
+#       étant exactes en binaire) → aucun rendu existant ne bouge tant qu'on ne
+#       touche à rien. La position d'une barre EST le niveau : MTF(m, m) = 0,5
+#       (le médian place le gris moyen), définition même de SharpCap.
+#   (2) gel / reprise (bouton ⏹ / ▶) de l'AUTO DU MOTEUR : STF = stats lissées
+#       gelées (elles ne se recalculent plus ET n'avancent plus — sans ça le gel
+#       serait un leurre) ; VeraLux = logD RÉSOLU verrouillé (mode « logD forcé »
+#       du jalon 3), la reprise rendant la main au fond cible. L'état est DIT en
+#       clair sous l'histogramme (« auto FIGÉ (VeraLux) — tes barres seules
+#       agissent ») : un étirement figé sans avertissement serait une chute
+#       silencieuse.
+#   (3) histogramme à DEUX BANDES, avec sélecteur « Les deux / Brut (linéaire) /
+#       Sortie du moteur » (une seule bande rend 58 px à l'image) : en haut la
+#       distribution LINÉAIRE (axe p99,9 × 1,15 comme avant + repères du moteur
+#       « Noir 46,5 % · Médian 59,5 % · Blanc 87,0 % », exacts en STF auto), en
+#       bas la SORTIE DU MOTEUR avant les barres, avec les trois barres
+#       déplaçables (poignée, prise ±7 px, double-clic = valeur d'origine), la
+#       COURBE JAUNE du transfert des niveaux et les repères intrinsèques
+#       0 / 50 / 100 %. Champs de saisie chiffrés en % (motif du jalon 27) et
+#       « ↺ Auto ». Les étiquettes sont placées par RANG LIBRE et espacées de la
+#       hauteur réelle d'un texte (défaut trouvé par le banc : 11 px de pas pour
+#       15 px de texte se chevauchaient).
+#   (4) DÉFAUT CORRIGÉ AU PASSAGE : les trois courbes étaient normalisées CHACUNE
+#       à son propre maximum — trois canaux inégaux se dessinaient à la même
+#       hauteur, donc l'histogramme ne disait RIEN de l'équilibre des couleurs
+#       (c'est justement l'usage qu'en fait Alain). Normalisation COMMUNE
+#       (`App._courbes_pts`, fonction pure, vérifiée par le banc).
+#   (5) saturation PAR COULEUR (R/V/B) dans la partie Saturation : SATURATION
+#       PAR SECTEUR DE TEINTE — poids triangulaires sur 0° / 120° / 240° (rouge,
+#       vert, bleu ; teintes OpenCV en float32, mesurées), qui somment à 1
+#       partout (transition douce), appliqués APRÈS la saturation globale ;
+#       1,00 = neutre, persistée, reprise par « tel que vu ». NB : les colonnes
+#       R/V/B de SharpCap, elles, sont une balance des canaux AVANT l'étirement
+#       — elle existe DÉJÀ chez nous (SPCC/Gaia, équilibrage, Linear Fit) et
+#       n'est donc pas dupliquée à l'affichage.
+#   (6) le calcul de l'histogramme quitte le thread d'ACQUISITION (où il coûtait
+#       ~55 ms par frame) pour le thread d'affichage, sur l'image RÉELLEMENT
+#       montrée (vue « empilement » comme vue « traitée »), échantillonné à
+#       ~400 000 points pour que le coût ne dépende PAS de la résolution.
+#   (7) CORRIGÉ APRÈS TES ESSAIS (28/09/2026), quatre points (①② = ton 1er
+#       essai, ③ = ton 2e, ④ = ta décision après la mesure) :
+#       ① SATURATION PAR COULEUR, 1re écriture REJETÉE : « c_c = Y + k_c·(c−Y) »
+#          changeait le canal PARTOUT, quelle que soit la teinte du pixel —
+#          mesuré sur un pixel vert franc (0,20 · 0,60 · 0,20), le curseur
+#          « Saturation rouge » à 2,00 faisait TOMBER le rouge (0,20 → 0,00),
+#          donc le pixel devenait PLUS VERT. Ton constat : « quand je pousse
+#          l'un, c'est l'autre couleur qui semble se renforcer ». Ce n'était PAS
+#          une inversion d'indice (vérifié : le curseur R agit bien sur le
+#          rouge) mais une formule qui n'est pas une saturation par couleur.
+#          Remplacée par les secteurs de teinte (5) ; vérifié : pousser « rouge »
+#          sature les rouges et laisse les verts INTACTS, un gris ne bouge
+#          jamais, un jaune (entre deux secteurs) réagit identiquement aux deux
+#          curseurs voisins.
+#       ② LA « COLLINE » DE LA BANDE « SORTIE DU MOTEUR » n'est pas une échelle
+#          bizarre, et c'est MESURÉ sur ton NGC 7331 : l'axe BRUT est étiré par
+#          les étoiles les plus brillantes (p99,9 × 1,15), si bien que le fond
+#          n'y occupe que ~1,95 % de l'axe en σ — d'où une AIGUILLE ; la bande
+#          « sortie » travaille dans [lo, hi], une plage 2,5 fois plus serrée,
+#          et la MTF y a une pente locale de ×1,60 → le même fond y fait 7,7 %
+#          de l'axe en σ, donc une colline de ~29 % de large. C'est exactement
+#          ce que fait l'étirement : ouvrir les ombres. Pour lever le doute,
+#          un repère « fond x % » (MESURÉ sur la somme des trois canaux) est
+#          désormais tracé à la pointe de la colline. ATTENTION À LA CIBLE, et
+#          c'est une rectification d'une formulation trop vague de la 1re
+#          livraison (« la cible du moteur = 25 % ») : il n'y a PAS de cible
+#          universelle — le STF vise `display.target` (curseur « Luminosité du
+#          fond du ciel », DÉFAUT 0,25) et VeraLux vise `vl_target_bg` (curseur
+#          « Luminosité du fond visée (VeraLux) », défaut 0,20, et 0,16 chez
+#          Alain sur son M31). MESURÉ sur un empilement réel (NGC 7331, VeraLux
+#          mode fond cible, marque = pic de l'histogramme de sortie) :
+#          0,12 → médiane 11,9 % / pic 12,3 % ; 0,16 → 15,8 % / 16,6 % ;
+#          0,20 → 19,8 % / 21,7 % ; STF 0,25 → 24,9 % / 23,6 %. Autrement dit la
+#          marque SUIT le réglage de l'utilisateur à ~1 % près (pic ≠ médiane :
+#          la distribution est asymétrique), et la cible est maintenant écrite
+#          dans la ligne d'état du panneau (« fond visé 16 % (VeraLux) », ou
+#          « cible du fond 25 % (STF) ») — les deux curseurs de cible la
+#          rafraîchissent, et « , calcul en cours » s'ajoute quand le solveur
+#          VeraLux n'a pas encore rendu (l'écran montre alors l'image d'attente
+#          STF, dont le fond est à 25 % : la ligne ne doit pas annoncer un fond
+#          visé que la marque ne peut pas encore refléter).
+#       ③ LES BARRES NE SUIVAIENT PAS LE GESTE QUAND L'EMPILEMENT ÉTAIT FINI
+#          (ton 2e constat, 28/09/2026 — reproduit et MESURÉ au banc) : « si on
+#          touche aux barres quand l'empilement est fini, l'image change alors
+#          que la position de la barre ne change pas, ou pas complètement, comme
+#          si le bas n'était pas rafraîchi ». Cause : `_draw_hist()` n'était
+#          appelé QUE par la mise à jour des DONNÉES (`_maj_histogrammes`, une
+#          fois par frame) et par le sélecteur de bandes — le glissement
+#          appliquait bien la valeur et re-rendait l'IMAGE, mais ne retraçait
+#          jamais le PANNEAU : sans frame, il restait figé sur la position de
+#          DÉPART (et à 0,2 fps une frame venait le rattraper par sauts, d'où la
+#          barre « à moitié » déplacée). Le même défaut latent existait pour
+#          « ↺ Auto », la saisie chiffrée et la remise à zéro de session quand
+#          aucune image n'était encore affichée. Corrigé : glissement (chaque
+#          pixel), relâchement, double-clic, ↺, saisie et nouvelle session
+#          RETRACENT immédiatement — et SANS recalculer l'histogramme, la courbe
+#          étant tracée sur la sortie du moteur AVANT l'étage de niveaux (une
+#          barre ne la change pas). Coût MESURÉ d'un tracé complet : 3,1 ms
+#          contre ~80 ms pour l'image, il peut donc suivre chaque pixel de
+#          souris. Banc étendu : poignée réellement TRACÉE = position de la
+#          valeur, zéro recalcul pendant le geste, et contre-épreuve faite sur
+#          l'ancien code (contrôle qui échoue, donc contrôle qui sert).
+#       ④ ÉCHELLE EN Y DE LA BANDE BASSE, RÉGLABLE (ton choix, 28/09/2026,
+#          pris après mesure) : case « Échelle y linéaire (bande basse) ». En
+#          LINÉAIRE, la hauteur d'un bac est PROPORTIONNELLE à son nombre de
+#          pixels — le fond devient un vrai PIC au lieu de la colline, et les
+#          rapports entre canaux deviennent les vrais rapports de comptes
+#          (vérifié au banc : ×100 pour des comptes 1000/10, là où le log
+#          comprime à ×2,9). MESURÉ SUR TES FRAMES (20 de ta session de
+#          15 h 37, moyennées, aperçu 1600 px, STF auto) : la largeur à
+#          mi-hauteur du fond passe de 170 bacs (66 % de l'axe) en LOG à
+#          27 bacs (10,5 %) en LINÉAIRE ; en échange la queue tombe de 34 px à
+#          0,65 px (p99 des pixels) — nébuleuse et étoiles quittent la courbe —
+#          et les bacs visibles passent de 251/256 à 151/256. La bande HAUTE
+#          garde TOUJOURS le log : mesurée en linéaire, elle ne laissait que
+#          10 bacs visibles sur 256 (une aiguille) — plus aucun diagnostic
+#          (piqué, clipping, dominante). DÉFAUT = LOG (une config.json d'avant
+#          la case garde donc le rendu d'avant), case persistée ; les BARRES,
+#          les repères, le « fond x % » et la courbe jaune (transfert, échelle
+#          propre) sont en x : ils ne bougent pas d'un pixel. Basculer ne
+#          recalcule AUCUN histogramme et ne re-rend PAS l'image (les bacs
+#          sont en mémoire — règle du défaut ③), et l'échelle est DITE dans la
+#          ligne d'état : une échelle muette serait un piège, la même courbe
+#          ne raconte pas la même chose en log et en linéaire.
+#   MESURES (son empilement réel NGC 7331, 11 880 s, aperçu 1600 px) : axe brut
+#   0..0,0331 avec le fond à 52 % et p99/p99,9 à 57/87 % ; auto lo 0,01518
+#   (46,3 %) · hi 0,02868 (86,6 %) · m 0,3636 ; fond affiché 65/255 (≈ la cible
+#   25 %) ; un rendu complet = 82 ms d'étirement + 36 ms pour les DEUX
+#   histogrammes + 3 ms de tracé. Non-régression : 40+ bancs rejoués verts.
+#   Banc NEUF `bancs/_test_histo_jalon75.py` (11 sections) : identité au bit,
+#   MTF(m,m) = 0,5, parité écran/fichier AU BIT avec barres + gel, gel/reprise,
+#   saturation par couleur, coût indépendant de la résolution, échelle commune
+#   des courbes, géométrie (positions, prise, glissement, LE TRACÉ QUI SUIT LE
+#   GESTE sans aucune frame ni recalcul, étiquettes bornées ET sans
+#   chevauchement), l'ÉCHELLE Y log/linéaire de la bande basse (hauteur
+#   proportionnelle aux comptes, bande haute INTACTE, retour au log AU BIT, case
+#   persistée), UI réelle, chaîne linéaire intacte. Bancs RÉPARÉS :
+#   jalon 47 (il attendait « Caméra » en 1er alors que le cadre « Fichiers de
+#   travail et journal » est en tête depuis la v2.38.9) et jalons 19 (ils
+#   lisaient l'histogramme dans la file de l'UI).
+#   Doc : CLAUDE.md — leçon PROPOSÉE (en attente d'accord) : ce que SharpCap
+#   nomme mini vs grand histogramme, et POURQUOI les barres de niveaux vivent
+#   après le moteur (VeraLux n'a ni point noir ni point blanc). Repli si
+#   régression : v2.38.11.
+#
 # v2.38.11 : LE DÉMARRAGE NE PEUT PLUS SE BLOQUER (NAS, montage réseau, pare-feu).
 #   Constat RÉEL d'Alain (27/09/2026, Linux, v2.38.10) : « cette version ne se
 #   lance pas (ni depuis application, ni depuis ligne de commande) — pas

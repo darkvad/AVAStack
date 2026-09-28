@@ -271,13 +271,15 @@ while time.time() - t0 < 60:
     if app.stacker is not None and app.stacker.n >= 6:
         break
     try:
-        _show, _hist, st = app.q.get(timeout=0.5)
+        _msg = app.q.get(timeout=0.5)
+        st = _msg[-1]               # jalon 75 : (image, état) — plus d'histogramme
     except Exception:
         pass
 time.sleep(0.5)
 try:
     while True:
-        _show, _hist, st = app.q.get_nowait()
+        _msg = app.q.get_nowait()
+        st = _msg[-1]
 except Exception:
     pass
 
