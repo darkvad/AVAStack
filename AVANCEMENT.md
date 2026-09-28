@@ -112,8 +112,9 @@ dans le changelog du source et l'historique git.)
     place le gris moyen par la MTF, `MTF(m, m) = 0,5`, et c'est elle qui découpe
     l'histogramme à l'écran ; le gamma est une puissance appliquée après, qui
     envoie 0,5 sur 0,06 à γ = 4 quand la MTF l'envoie sur 0,75 avec m = 0,25).
-    Reste **une** question ouverte : la place prise par l'histogramme à deux
-    bandes (176 px → l'image perd ~53 px ; le sélecteur la rend).
+    **Décision du 28/09/2026 : l'histogramme à deux bandes reste TEL QUEL**
+    (176 px) — le sélecteur « Sortie » ou « Brut » rend la place à l'image quand
+    on le souhaite, le point est CLOS.
   - **④ ÉCHELLE EN Y — DÉCISION PRISE ET LIVRÉE (28/09/2026)** : tu as choisi
     **① « linéaire sur la seule bande basse »**. Livré — case **« Échelle y
     linéaire (bande basse) »** sous l'histogramme (défaut = log, donc une
@@ -205,12 +206,13 @@ dans le changelog du source et l'historique git.)
     préexistant au `faulthandler` ; 70 et 71 : sondes devenues différées). Pour
     v2.39.0 : banc NEUF `_test_histo_jalon75.py` (**11 sections**) + **~45 bancs
     rejoués verts**, dont l'audit de géométrie du 72.
-  - **Prochaine étape** : ① `nftables` — ouvrir le NAS (ton côté) ; ② essai de la
-    chaîne BlurX avec le dossier de travail (plus de « requested and written ») ;
-    ③ rendu BXT avec `--sn 0.3` ; ④ `--cameras` quand les `.so` constructeurs
-    seront là. Le seul point laissé ouvert par v2.39.0 : la **place** prise par
-    l'histogramme à deux bandes (176 px, l'image perd ~53 px ; le sélecteur la
-    rend) — à trancher à l'usage.
+  - **Prochaine étape** : **RIEN en attente de ton côté** — les quatre essais qui
+    restaient ouverts (`nftables`/NAS, chaîne BlurX avec le dossier de travail,
+    rendu BXT `--sn 0.3`, `--cameras`) sont **VALIDÉS par toi le 28/09/2026** (cf.
+    § « En attente / prochaine session »). Aucun point ouvert non plus sur
+    v2.39.0 : **l'histogramme à deux bandes reste tel quel** (ta décision du
+    28/09 — 176 px, le sélecteur « Sortie »/« Brut » rend la place quand on en a
+    besoin). Une nouvelle session part donc d'une ardoise propre.
 - **PASSES TERMINÉES ET POUSSÉES (27/09/2026, hors code applicatif) — BANCS
   RÉORGANISÉS, INSTALLATEURS NOMMÉS PAR VERSION, INSTALLATEUR LINUX** : 109
   bancs déplacés dans `bancs/` (`bancs/cameras/` : 16 — seuls installés) avec
@@ -219,12 +221,13 @@ dans le changelog du source et l'historique git.)
   Linux `installer/linux/install_avastack.sh` (venv, prérequis vérifiés, SANS
   caméras par défaut, option `--cameras`). Détails durables : changelog de
   `avastack/__init__.py`, `installer/README.md`, section CLAUDE.md « Bancs et
-  diagnostics — emplacement ». Reste à faire : `--cameras` quand les `.so`
-  constructeurs arriveront.
+  diagnostics — emplacement ». **`--cameras` : VALIDÉ par toi (28/09/2026)** —
+  plus rien à faire de ce côté.
 
-- **PASSE LIVRÉE, EN ATTENTE DE TON TEST — AVAStack v2.38.3 : PARAMÈTRES BXT
+- **PASSE LIVRÉE ET VALIDÉE — AVAStack v2.38.3 : PARAMÈTRES BXT
   EXPLICITES, TRAÇABILITÉ DES OUTILS EXTERNES, LISEZMOI** (code + banc livrés le
-  27/09/2026 ; installateur 2.38.3 reconstruit). Les trois finitions demandées
+  27/09/2026 ; installateur 2.38.3 reconstruit ; **essai BXT `--sn 0.3` validé par
+  toi le 28/09/2026**). Les trois finitions demandées
   après ton essai BXT (`--sn 0.3`, « image magnifique ») :
   - **① commande BXT par défaut EXPLICITE** : `--ss 0.5 --ash -0.3 --sn 0.3`
     (`external/detection._BXT_OPTIONS`). « Ne rien passer » laissait le volet
@@ -390,11 +393,12 @@ dans le changelog du source et l'historique git.)
   testés et validés »)** : les **trois barres de niveaux** de l'histogramme
   (Noir / Médian / Blanc), le **⏹/▶ geler-reprendre** de l'étirement auto (STF
   **et** VeraLux), le **sélecteur de bandes**, la **saturation par couleur R/V/B**
-  et la **case « Échelle y linéaire (bande basse) »**. Reste, à l'usage, **le seul
-  point ouvert** : la **place** de l'histogramme à deux bandes (176 px au lieu de
-  110 → l'image perd ~53 px ; le sélecteur « Sortie » ou « Brut » la rend) — à
-  trancher quand tu auras vécu avec. **Installateurs v2.39.0 non reconstruits** (à
-  faire sur ta demande).
+  et la **case « Échelle y linéaire (bande basse) »**. **Plus aucun point
+  ouvert** : l'histogramme à deux bandes reste **tel quel** (ta décision du
+  28/09, 176 px), et les quatre essais qui restaient en attente (`nftables`/NAS,
+  chaîne BlurX, rendu BXT `--sn 0.3`, `--cameras`) sont **VALIDÉS par toi** — plus
+  à reproposer. **Installateurs v2.39.0 non reconstruits** (à faire sur ta
+  demande).
 - **LEÇONS DU JALON 75 ÉCRITES DANS CLAUDE.md (28/09/2026, sur ta demande
   « mettre à jour les .md nécessaires (y compris claude) »)** — quatre leçons
   durables, section « Pièges (leçons du projet AVAStack) » : **① les barres de
@@ -413,18 +417,13 @@ dans le changelog du source et l'historique git.)
   GraXpert ✔ (« astrométrie, spcc OK / GraXpert OK ») ; démarrage par le MENU et
   en terminal ✔ ; **v2.38.11 sous `nftables` actif : « c'est tout bon »** (elle
   s'ouvre, journalise, et DIT le NAS injoignable au lieu de bloquer).
-  **EN ATTENTE (ton côté / prochains essais)** :
-  - `nftables` : ouvrir le NAS (tu t'en occupes) — ensuite les couches R/G/B
-    seront mesurées et lues normalement ;
-  - **chaîne BlurX** : doit passer sans « requested and written » (dossier de
-    travail affiché, plafond d'archivage calculé sur l'espace RÉEL) ;
-  - **rendu BXT avec `--sn 0.3`** : moucheté bleu ÷ ~2,7 — jamais conclu en réel
-    (cf. v2.38.3 ci-dessous) ;
-  - `--cameras` quand les `.so` constructeurs seront récupérés.
-  - **v2.38.3 — rendu BXT** : ta commande MÉMORISÉE reste prioritaire ; ajoute
-    `--sn 0.3` au champ pour profiter du réglage mesuré (moucheté bleu divisé
-    par ~2,7). Ton essai du 27/09 n'a pas pu conclure (il a buté sur l'espace
-    disque, cf. v2.38.6).
+  **VALIDÉS PAR TOI (28/09/2026) — À NE PLUS TE REPROPROPOSER** : les quatre
+  essais que la clôture de la nuit laissait « en attente » sont **VALIDÉS** —
+  `nftables`/NAS (les couches R/G/B sont lues normalement), **chaîne BlurX** avec
+  le dossier de travail, **rendu BXT `--sn 0.3`**, et `--cameras`. **Plus RIEN
+  n'est en attente de ton côté**, et il n'y a plus aucun point ouvert sur v2.39.0
+  (ta décision du 28/09 : on GARDE l'histogramme à deux bandes **tel quel**,
+  176 px — le point est clos, plus à trancher).
 
 - Sujets OUVERTS (analyse close, décisions livrées), par ordre d'intérêt :
   - **CLOS PAR LA v2.38.3 — MOUCHETÉ BLEU DU FICHIER TRAITÉ** (piste BXT d'Alain,
@@ -583,7 +582,8 @@ dans le changelog du source et l'historique git.)
   amplifie le bruit du canal qu'il monte (le grain bleu vient de la SPCC) ; les
   mesures astro/photométrie/SPCC sont relancées par le WORKER (une case qui
   déco/recoche pose une DEMANDE servie même sans frame).
-- Leçon EN ATTENTE d'accord d'Alain (25/09/2026, une ligne, proposition) : toute
+- Leçon PROPOSÉE le 25/09/2026, **sans urgence — à trancher quand tu le voudras,
+  et elle ne bloque RIEN** : toute
   correction PRÉ-ÉTIREMENT ajoutée à la chaîne LIVE doit être vérifiée/mirrorée
   dans la chaîne de TRAITEMENT EXTERNE (et réciproquement) — les deux chaînes
   doivent produire le même rendu (constat : la SPCC y était déjà via les
@@ -611,7 +611,8 @@ dans le changelog du source et l'historique git.)
   imposé affichent une ancre 0,000000 : artefact** (et la comparaison bit à bit
   exige le même `target_bg`) ; ⑤ **une option « l'écran = le fichier » doit être
   verrouillée par une égalité exigée, pas une tolérance** — c'est cette assertion
-  qui a révélé le fond cible non transmis. Reste EN ATTENTE (25/09/2026) : la
+  qui a révélé le fond cible non transmis. Reste PROPOSÉE (25/09/2026, sans
+  urgence, ne bloque rien) : la
   parité des corrections pré-étirement entre chaîne LIVE et chaîne EXTERNE.
 
 ## Setup d'Alain

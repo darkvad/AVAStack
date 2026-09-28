@@ -721,7 +721,10 @@ ce qui manquait n'était pas une correction mais une MESURE.
   **3,1 ms** contre ~80 ms pour l'image, et c'est ce qui lui permet de suivre
   chaque pixel de souris. Banc : `_test_histo_jalon75.py` [8], avec
   **contre-épreuve faite sur l'ancien code** (le contrôle échoue dessus : 464 px
-  tracé contre 628,5 px attendu).
+  tracé contre 628,5 px attendu). **MÊME FAMILLE que la leçon « LES MESURES
+  ASTRO/PHOTOMÉTRIE/SPCC SONT RELANCÉES PAR LE WORKER, PAS PAR L'UI » (v2.37.0,
+  plus bas) : en fin de source, il n'y a plus de frame — un rafraîchissement qui
+  passe par la voie des données ne vient JAMAIS.**
 - **UNE ÉCHELLE D'AXE NON DITE EST UN PIÈGE — ET ELLE SE MESURE AVANT DE SE
   CHOISIR** (décision d'Alain, 28/09/2026, v2.39.0 : case « Échelle y linéaire
   (bande basse) ») : la même courbe ne raconte pas la même chose en log et en
