@@ -43,9 +43,11 @@ dans le changelog du source et l'historique git.)
     `9f60919b7ee6eebcc9ec8bcd8541ae52bbab7e91c38e45ca8703bb6bbce6cbda`) et
     `installer/windows/output/avastack-setup-2.38.11.exe` (10,9 Mo).
     Repli si régression : v2.38.10.
-  - **Reste à voir : ton essai avec `nftables` ACTIF** — l'application doit
-    s'ouvrir, écrire son journal, et dire « NON MESURÉ » pour ce qui est sur le NAS
-    (si un accès bloque encore, la dernière ligne « étape — … » le NOMMERA).
+  - **✔ VALIDÉ PAR TON ESSAI (28/09/2026) : « c'est tout bon »** — avec `nftables`
+    ACTIF (NAS injoignable pour l'application), elle **s'ouvre**, écrit son
+    journal, et dit « NON MESURÉ » pour ce qui est sur le NAS. La contre-épreuve
+    du banc (App(root) en 0,78 s malgré trois sondes bloquées 30 s) est donc
+    confirmée en réel.
 
 - **PASSE PRÉCÉDENTE (27/09/2026) — AVAStack v2.38.10 : LES LIGNES À TEXTE LIBRE
   NE PERDENT PLUS RIEN (astrométrie, catalogues, re-stack)**. Ton constat : « le
@@ -192,28 +194,35 @@ dans le changelog du source et l'historique git.)
     `min(20 Go, 50 % de l'espace libre)`, fichiers de travail CONSERVÉS en cas
     d'échec. Banc `_test_espace_jalon72.py` (25 vérifs).
 
-- **CLÔTURE DE SESSION (27/09/2026, soir)** — trois passes livrées et poussées le
-  même jour, dans l'ordre : v2.38.4 (astrométrie Linux : chemins par OS,
-  `chemin_catalogues` honorée, bouton ⬇ Gaia, arrêt/reprise des essais),
-  v2.38.5 (détection des outils externes : `GraXpert-linux`, ini de Siril,
-  état affiché, plus de commande figée + installateurs = 5 diagnostics caméra),
-  v2.38.6 (espace disque : dossier de travail, écriture atomique, plafond réel,
-  journal conservé). Commits : `712afa1`, `98c83eb`, `694ad3b`, `1cee330`
-  (tous sur `origin/master`, arbre propre).
-  - **VALIDÉ sur ta machine Linux** : astrométrie ✔, SPCC ✔, GraXpert ✔
-    (v2.38.4 et v2.38.5 confirmées par l'effet, pas par le code).
-  - **TON ESSAI v2.38.7 (Linux) : l'application DÉMARRE** ✔ (« l'appli fonctionne
-    maintenant »). Prochaine mesure attendue : les 2 premières lignes de
-    `~/.config/AVAStack/journal.txt` (interpréteur, Tk, dossier de travail) — et,
-    si tu veux, le rendu BXT avec `--sn 0.3`.
-  - **Bancs** : 22 verts sur cette session (dont le neuf
-    `_test_espace_jalon72.py`, 25 vérifs, et `_test_outils_jalon71.py`, 38) ;
-    deux bancs RÉPARÉS au passage (assistant `_gx_factice.py` resté à la racine,
-    et échec silencieux du contrôle d'espace du jalon 24) — les deux causes sont
-    consignées dans CLAUDE.md.
-  - **Prochaine étape naturelle** : ton retour d'essai Linux ; ensuite
-    `--cameras` (quand les `.so` constructeurs seront récupérés) et la reprise
-    éventuelle des sujets ouverts (cf. « En attente » ci-dessous).
+- **CLÔTURE DE SESSION (28/09/2026, nuit)** — cinq passes livrées et poussées
+  d'affilée sur `origin/master` (arbre propre) : **v2.38.7** (le démarrage ne peut
+  plus être muet : journal + message + bouton « Journal »), **v2.38.8** (les
+  échecs de démarrage CONNUS sont expliqués), **v2.38.9** (ligne « Fichiers de
+  travail et journal » visible et bouton « Journal » réellement affiché),
+  **v2.38.10** (les lignes à texte libre ne perdent plus rien : astrométrie,
+  catalogues, re-stack) et **v2.38.11** (**le démarrage ne peut plus se BLOQUER** :
+  mesures différées + bornées, miettes de pain au journal). Commits : `bd04f20`,
+  `59d07e3`, `07f0c34`, `6642c4a`, `c8ffcf6`, `1acd3f6`, `9a01674`, `15cb6b7`,
+  `2ec4d67`.
+  - **VALIDÉ par tes essais réels** : v2.38.7/2.38.8 (démarrage par le MENU et en
+    terminal ✔, journal reçu ✔) ; v2.38.9/2.38.10 (vérification à l'écran ✔) ;
+    **v2.38.11 : « c'est tout bon » — avec `nftables` ACTIF, l'application
+    s'ouvre, le journal s'écrit, et le NAS injoignable est DIT au lieu de
+    bloquer.**
+  - **LA PANNE DU 27/09 EST CLOSE** : tes dossiers de couches R/G/B sont sur le
+    NAS ; `nftables` le filtre ; un `stat`/`listdir` sur ce montage attendait
+    INDÉFINIMENT, et l'application le faisait AVANT d'afficher — et même avant sa
+    première ligne de journal (donc panne muette). Ce n'était pas un bug mais des
+    mesures de disque NON BORNÉES : elles le sont désormais (règle écrite dans
+    CLAUDE.md, avec sa contre-épreuve : `App(root)` en 0,8 s malgré trois sondes
+    qui dorment 30 s).
+  - **Bancs** : 10 rejoués VERTS + 1 NEUF (`_test_demarrage_non_bloquant_jalon74`,
+    17 vérifs) ; 3 RÉPARÉS (72 : dialog `showinfo` jamais intercepté — prouvé
+    préexistant au `faulthandler` ; 70 et 71 : sondes devenues différées).
+  - **Prochaine étape** : ① `nftables` — ouvrir le NAS (ton côté) ; ② essai de la
+    chaîne BlurX avec le dossier de travail (plus de « requested and written ») ;
+    ③ rendu BXT avec `--sn 0.3` ; ④ `--cameras` quand les `.so` constructeurs
+    seront là. Rien d'autre n'est ouvert.
 - **PASSES TERMINÉES ET POUSSÉES (27/09/2026, hors code applicatif) — BANCS
   RÉORGANISÉS, INSTALLATEURS NOMMÉS PAR VERSION, INSTALLATEUR LINUX** : 109
   bancs déplacés dans `bancs/` (`bancs/cameras/` : 16 — seuls installés) avec
@@ -389,19 +398,19 @@ dans le changelog du source et l'historique git.)
 
 ## En attente / prochaine session
 
-- **AUCUN DÉFAUT CONNU OUVERT** sur les v2.38.3 à v2.38.8 (livrées).
-  **CONFIRMÉ PAR TON TEST RÉEL du 27/09/2026 (Linux)** : astrométrie ✔, SPCC ✔,
-  GraXpert ✔ (« astrométrie, spcc OK / GraXpert OK ») → v2.38.4 et v2.38.5
-  **validées sur ta machine**. **EN ATTENTE** :
-  - ✔ **v2.38.7/v2.38.8 — DÉMARRAGE SOUS LINUX : VALIDÉ PAR TOI, PAR LE MENU
-    COMME EN TERMINAL** (journal reçu ✔ : interpréteur du venv, Tk 8.6,
-    `~/.cache/avastack` 113-115 Go libres → repli hors tmpfs de la v2.38.6
-    VALIDÉ ; panne du 27/09 non reproduite — cf. l'hypothèse non prouvée dans la
-    passe v2.38.8). **Reste à mesurer** :
-    ① essayer le bouton « Journal » (il doit ouvrir le fichier) ;
-    ② la chaîne BlurX (v2.38.6) doit passer sans « requested and written » et la
-       ligne « dossier de travail » doit afficher le dossier + son espace libre ;
-    ③ si tu veux : rendu BXT avec `--sn 0.3` (cf. ci-dessous).
+- **AUCUN DÉFAUT CONNU OUVERT** sur les v2.38.3 à v2.38.11 (livrées).
+  **CONFIRMÉ PAR TES ESSAIS RÉELS (27-28/09/2026, Linux)** : astrométrie ✔, SPCC ✔,
+  GraXpert ✔ (« astrométrie, spcc OK / GraXpert OK ») ; démarrage par le MENU et
+  en terminal ✔ ; **v2.38.11 sous `nftables` actif : « c'est tout bon »** (elle
+  s'ouvre, journalise, et DIT le NAS injoignable au lieu de bloquer).
+  **EN ATTENTE (ton côté / prochains essais)** :
+  - `nftables` : ouvrir le NAS (tu t'en occupes) — ensuite les couches R/G/B
+    seront mesurées et lues normalement ;
+  - **chaîne BlurX** : doit passer sans « requested and written » (dossier de
+    travail affiché, plafond d'archivage calculé sur l'espace RÉEL) ;
+  - **rendu BXT avec `--sn 0.3`** : moucheté bleu ÷ ~2,7 — jamais conclu en réel
+    (cf. v2.38.3 ci-dessous) ;
+  - `--cameras` quand les `.so` constructeurs seront récupérés.
   - **v2.38.3 — rendu BXT** : ta commande MÉMORISÉE reste prioritaire ; ajoute
     `--sn 0.3` au champ pour profiter du réglage mesuré (moucheté bleu divisé
     par ~2,7). Ton essai du 27/09 n'a pas pu conclure (il a buté sur l'espace

@@ -595,7 +595,17 @@ ce qui manquait n'était pas une correction mais une MESURE.
   dossiers réseau avant `shutil.which`) ; ⑥ la détection des outils externes n'est
   plus faite à l'IMPORT du module (elle est bornée, après l'affichage).
   Contre-épreuve : `App(root)` se construit en **0,8 s malgré trois sondes qui
-  dorment 30 s** (banc jalon 74).
+  dorment 30 s** (banc jalon 74). **VALIDÉ en RÉEL (28/09/2026)** : avec
+  `nftables` actif — donc NAS injoignable pour l'application — elle s'ouvre, écrit
+  son journal et dit « NON MESURÉ » ; la règle n'est plus théorique.
+- **Pour NOMMER la ligne où un programme Python se BLOQUE** (technique, utilisée
+  deux fois le 27/09/2026) : `faulthandler.dump_traceback_later(N, exit=True)`
+  puis lancer le programme — au bout de N secondes, la pile de TOUS les fils est
+  écrite et le processus s'arrête. C'est ce qui a désigné précisément le banc 72
+  bloqué dans `messagebox.showinfo` et `App(root)` bloqué dans
+  `_sonder_catalogues` via `_on_astro` — sans cette mesure, on aurait deviné.
+  Même esprit pour un blocage d'IMPORT : `python -X importtime -c "import …"`
+  (la dernière ligne nomme le module en cours).
 - **Un banc qui bloque n'accuse pas forcément le code (bis)** : le banc 72
   s'arrêtait sur un `messagebox.showinfo` JAMAIS intercepté — un dialog modal
   attend un clic indéfiniment. Reproduit sur la version INTACTE (worktree sur
