@@ -17,9 +17,67 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.40.0"
+AVASTACK_VERSION = "2.41.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.41.0 : « RÉINITIALISER L'EMPILEMENT » RÉINITIALISE VRAIMENT, ET LA SOURCE DE
+#   FICHIERS SUIT L'INTERFACE (enchaîner deux cibles, mode dossier).
+#   Constat réel d'Alain (28/09/2026, session « dossier surveillé ») : « quand
+#   j'ai fini avec une cible, je ne peux pas enchaîner avec une autre en
+#   choisissant 1 ou des nouveaux dossiers et en cliquant sur Réinitialiser
+#   l'empilement — quand je clique sur Démarrer ça empile toujours la cible
+#   précédente » / « il faudrait que le bouton réinitialiser réinitialise
+#   vraiment » / « Démarrer, quand c'est accessible, ce qui n'est pas toujours le
+#   cas ». MESURÉ sur le code d'AVANT (worktree HEAD, flux d'Alain rejoué) :
+#   après « Réinitialiser », l'empilement restait ENTIER (3 frames), l'écran
+#   gardait l'image de l'ancienne cible, et « ▶ Démarrer » relisait le dossier de
+#   la cible PRÉCÉDENTE (aucune frame de la nouvelle) — avec DEUX puis TROIS
+#   threads de worker en vie.
+#   (1) RÉINITIALISATION — le drapeau `reset_request` n'était lu par le worker
+#       qu'en TRAITANT une frame : à l'arrêt (pause, ou aucune brute qui arrive),
+#       cliquer ne réinitialisait RIEN. Il est désormais servi en TÊTE de boucle
+#       (donc MÊME EN PAUSE) et emprunte EXACTEMENT le chemin de « ▶ Démarrer »
+#       (bloc de remise à zéro partagé ; `demarrer` distingue les deux : la
+#       réinitialisation ne relance pas l'empilement). La remise à zéro visible
+#       (compteurs, archive, écran, lignes d'état) est faite côté Tk
+#       (`_reinit_etat_session`, extraite de `_start`) : elle a lieu même si le
+#       worker ne tourne pas. Le chemin « une frame arrive » ne consomme plus le
+#       drapeau (sinon la remise à zéro complète n'aurait jamais lieu).
+#   (2) SOURCE DE FICHIERS — la caméra d'un dossier garde SON dossier et la
+#       mémoire des brutes déjà lues : un autre dossier choisi dans l'interface
+#       n'était donc jamais ouvert. `_start` compare la source connectée à la
+#       configuration affichée (`_source_fichiers_obsolete`, comparaison
+#       ABSOLUE et normalisée) et la REFERME si elle ne correspond plus
+#       (`_refermer_source_fichiers` — jamais une caméra SDK, dont la
+#       réouverture est impossible dans le même process) : le prochain
+#       « ▶ Démarrer » la rouvre sur le dossier AFFICHÉ. Le bouton
+#       « Réinitialiser » referme aussi la source (une vraie remise à zéro repart
+#       des dossiers choisis), vide l'écran avec un message, rend « ▶ Démarrer »
+#       accessible et DIT ce qui sera lu (`_resume_source_fichiers`).
+#   (3) UN SEUL WORKER — `_start` lançait un SECOND thread `_worker` de façon
+#       INCONDITIONNELLE (en plus du bloc « relancer s'il est mort ») : deux
+#       threads lisaient la même source et écrivaient le même empilement
+#       (mesuré : 2 workers dès le premier « Démarrer », 3 après le suivant).
+#   (4) PAUSE ≠ PERTE — une source FICHIERS était LUE pendant la pause puis
+#       JETÉE, le fichier restant marqué « traité » (donc impossible à empiler
+#       ensuite, même après une nouvelle remise à zéro — exactement la fenêtre
+#       « je finis une cible, je prépare la suivante »). Elle n'est plus lue tant
+#       que l'empilement est en pause (le dossier est seulement SCANNÉ, pour que
+#       « brutes en attente » reste juste) ; une caméra live, elle, continue
+#       d'être lue et jetée (c'est ce qui vide la file du SDK).
+#   (5) ROBUSTESSE — le worker SURVIT à une source refermée (garde
+#       `self.camera is None` en tête de boucle, `read()` protégé, `name`
+#       relu sans présumer) : avant, il mourait EN SILENCE sur un `None.read()`
+#       et plus aucune frame n'arrivait — sans que rien ne le dise.
+#   (6) « ▶ Démarrer » redevient ACCESSIBLE au changement de source non-SDK :
+#       la déconnexion le grisait et, pour ces sources (simulée, dossier,
+#       composition), aucune connexion automatique ne venait le réactiver.
+#   Banc NEUF `bancs/_test_reset_empilement_jalon76.py` (7 sections : worker réel
+#   et VRAIES brutes FITS sur disque — enchaînement cible A → cible B, drapeau
+#   servi en pause, pause sans perte de brute, caméra jamais refermée, bouton
+#   réactivé, comparaison des sources) + TÉMOIN « avant » mesuré sur worktree
+#   HEAD ; 14 bancs rejoués verts (jalon 15, 16, 17, 18, 19 worker/UI/compo, 20,
+#   21, 42, 47, 53, 69, 72, 75).
 # v2.40.0 : DEUX CORRECTIONS DU TRAVAIL OSC (capteur COULEUR, mode dossier) —
 #   L'ASTROMÉTRIE INTERNE SUR CAMÉRA TOURNÉE, ET LA SPCC OUVERTE AUX CAPTEURS
 #   COULEUR.

@@ -10,7 +10,60 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **DERNIÈRE PASSE LIVRÉE (28/09/2026, soir) — AVAStack v2.40.0 : ASTROMÉTRIE SUR TA CAMÉRA
+- **DERNIÈRE PASSE LIVRÉE (28/09/2026, session en cours) — AVAStack v2.41.0 :
+  « RÉINITIALISER L'EMPILEMENT » RÉINITIALISE VRAIMENT, ET LA SOURCE DE FICHIERS
+  SUIT L'INTERFACE (enchaîner deux cibles en mode dossier).** Ton constat :
+  « quand j'ai fini avec une cible, je ne peux pas enchaîner avec une autre en
+  choisissant 1 ou des nouveaux dossiers et en cliquant sur Réinitialiser
+  l'empilement — quand je clique sur Démarrer ça empile toujours la cible
+  précédente », « il faudrait que le bouton réinitialiser réinitialise
+  vraiment », et « quand c'est accessible, ce qui n'est pas toujours le cas ».
+  **Jalon 76.** Quatre causes, quatre corrections :
+  - **MESURE « AVANT » (témoin du banc, worktree sur HEAD, ton flux rejoué de bout
+    en bout)** : après « Réinitialiser », l'empilement restait **ENTIER**
+    (3 frames), l'écran gardait l'image de l'ancienne cible, et « ▶ Démarrer »
+    **relisait le dossier de la cible PRÉCÉDENTE** (0 frame de la nouvelle) —
+    avec **2 threads de worker** dès le premier démarrage, **3** ensuite.
+  - **① Le bouton ne réinitialisait RIEN à l'arrêt** : le drapeau de remise à
+    zéro n'était lu par le worker qu'en **TRAITANT une frame**. Il est servi en
+    **tête de boucle** (donc **même en pause**) et emprunte le **chemin exact** de
+    « ▶ Démarrer » (bloc partagé) ; la remise à zéro visible est faite côté
+    interface → elle a lieu **même si le worker ne tourne pas**.
+  - **② La source de fichiers gardait SON dossier** (et la mémoire des brutes
+    déjà lues) : un autre dossier choisi dans l'interface n'était **jamais**
+    ouvert. `_start` compare la source connectée à la configuration affichée et la
+    **referme** si elle ne correspond plus (jamais une caméra SDK) → le prochain
+    « ▶ Démarrer » la rouvre **sur le dossier affiché**. Le bouton referme aussi
+    la source (une vraie remise à zéro repart des dossiers choisis), **vide
+    l'écran** avec un message, rend « ▶ Démarrer » accessible et **dit ce qui sera
+    lu**.
+  - **③ UN SEUL worker** : `_start` lançait un **second** thread `_worker`
+    inconditionnel (deux threads lisaient la même source et écrivaient le même
+    empilement).
+  - **④ PAUSE ≠ PERTE** : une source dossier était **lue pendant la pause puis
+    jetée** (le fichier restait marqué « traité », donc jamais empilable — même
+    après une nouvelle remise à zéro). Elle n'est plus lue en pause (le dossier
+    est seulement **scanné** : « brutes en attente » reste juste) ; une caméra
+    live, elle, continue d'être lue et jetée (c'est ce qui vide le SDK).
+  - **⑤ Robustesse** : le worker **survit** à une source refermée (avant : mort
+    **silencieuse** sur `None.read()`, plus aucune frame ensuite) ; « ▶ Démarrer »
+    redevient **accessible** au changement de source non-SDK.
+  - **Banc NEUF `bancs/_test_reset_empilement_jalon76.py`** (7 sections, **worker
+    réel + vraies brutes FITS sur disque**, témoin « avant » ci-dessus) :
+    **TOUT PASSE**. **14 bancs rejoués verts** : 15, 16, 17, 18, 19 (worker, UI,
+    compo), 20, 21, 42, 47, 53, 69, 72, 75. Repli si régression : v2.40.0.
+  - **Installateurs v2.41.0 reconstruits** :
+    `installer/windows/output/avastack-setup-2.41.0.exe` (11 467 772 o, ISCC 7 s)
+    et `installer/linux/output/avastack-setup-2.41.0-linux.tar.gz` (571 386 o,
+    SHA-256 `3eb68634…83afe`). `INSTALLATION.md` documente encore la release
+    publiée v2.40.0 (c'est sa doc) — à mettre à jour seulement si tu publies une
+    release v2.41.0.
+  - **PROCHAINE ÉTAPE : ton test en séance réelle** — fin de cible → choix du
+    nouveau dossier → « Réinitialiser l'empilement » → « ▶ Démarrer » : l'écran
+    doit se vider, la ligne d'état annoncer le nouveau dossier, et l'empilement ne
+    contenir que la nouvelle cible.
+
+- **PASSE PRÉCÉDENTE (28/09/2026, soir) — AVAStack v2.40.0 : ASTROMÉTRIE SUR TA CAMÉRA
   OSC (NGC 7023 RÉSOLU) ET SPCC OUVERTE AU CAPTEUR COULEUR.** Tes deux constats
   du 28/09 sur tes brutes OSC (Uranus-C Pro, **mode dossier**, C8 @ 1280 mm →
   0,5005° / 0,4714″/px, caméra tournée à −94°) :
@@ -18,72 +71,34 @@ dans le changelog du source et l'historique git.)
   que pour du mono multibande, alors que SPCC fonctionne en images couleurs
   dans Siril — il faut juste lui dire que c'est un capteur couleur et le
   choisir ». **Les deux sont fondés, les deux sont corrigés.**
-  - **① ASTROMÉTRIE — la zone de catalogue était un RECTANGLE** (`CLIP_MARGE`
-    = 1,6 : largeur = champ en ξ, hauteur en η), ce qui **suppose que l'axe X
-    de la caméra suit les AD** — faux dès qu'on tourne la caméra : il ne
-    gardait que **43 % des étoiles** de l'image **et gardait une bande HORS
-    image** où sont justement les plus brillantes du secteur. Remplacé par le
-    **DISQUE DU CHAMP RÉEL** (`masque_champ`, rayon = demi-diagonale), invariant
-    en rotation, **sans aucune marge** (mesuré : ×1,3 **échoue**, le disque
-    gardant alors trop d'étoiles hors image). **Deuxième cause cumulée** : le
-    plafond `N_CAT_MAX` (400) tombait **avant** la sélection → sur un champ
-    étroit il ne gardait que les plus brillantes d'une zone **2,6× plus large
-    que l'image** (il ne restait que **9 étoiles de catalogue dans l'image**) ;
-    il passe désormais **après**.
-    **Mesuré sur TES brutes** (`bancs/_diag_osc_ngc7023.py`, ASTAP en référence
-    croisée) : **NGC 7023 résolu** — 68 à 80 appariements, **rms 0,43-0,46 px**,
-    **0,4716″/px contre 0,4714″/px pour ASTAP**, et toujours résolu avec des
-    indices faux de ±0,2° ou un champ faux de ×0,8 à ×1,1 (robustesse) ;
-    **M31 NON régressé** (112 et 115 appariements contre 86 et 70 avant) —
-    `bancs/_test_solveur_reel_m31.py` vert (rms 0,87 px contre 0,87 px pour
-    ASTAP sur les mêmes étoiles : le juge est le rms, pas l'écart de WCS — un
-    champ large a de la distorsion).
-  - **② SPCC COULEUR (OSC)** — la SPCC n'était câblée que pour le **mono
-    multi-bandes** (trois filtres R/G/B distincts). Or la base de Siril décrit
-    aussi les capteurs couleur par **trois entrées (RED/GREEN/BLUE)** avec un
-    **filtre LPF COMMUN** : c'est le calcul même de Siril sur une image OSC.
-    Livré : `reponses_osc` (QE des trois canaux × le même filtre),
-    `coherence_osc`, `capteur_osc` / `filtre_osc` (**correspondance exacte
-    d'abord**), un paramètre **`mode`** (« osc »/« mono » ; `None` = décidé par
-    les FILTRES via `mode_bandes` — le nom du capteur est **ambigu**,
-    « Sony IMX585 » figure dans les **deux** listes de la base) ; côté
-    interface un **sélecteur « Type de capteur »** persisté (`spcc_type`),
-    restauré **avant** les profils, avec les lignes **G/B grisées** en OSC (un
-    seul filtre) et un défaut **« No filter »** (jamais un vrai LPF appliqué en
-    silence à une brute sans filtre) ; et pour une **source couleur** les gains
-    par canal s'appliquent par le nouveau **`LiveStacker.gains`** (avant
-    l'équilibrage et le Linear Fit, **jamais** sur l'empilement BRUT
-    `corrections=False`), y compris après un re-stack.
-    **Banc NEUF `bancs/_test_spcc_osc.py`** (6 sections) : bout en bout sur une
-    image couleur synthétique bâtie avec les réponses OSC réelles → pentes
-    **R/G 0,6999** et **B/G 1,2981** retrouvées pour des gains vrais de
-    **0,70 / 1,30** (41 étoiles) ; `_test_spcc_jalon58.py` **vert** (le chemin
-    mono et ses avertissements LUMINANCE/filtres répétés sont intacts).
-  - **TON VERDICT EN SÉANCE RÉELLE (28/09/2026, soir) : « tout à l'air bon »** —
-    session **dossier OSC** NGC 7023 (Uranus-C Pro), ~40 brutes : empilement
-    couleur propre, **étoiles bien colorées** (les bleues restent bleues, pas de
-    dominante verte), recadrage 3729×2046 après la rotation, **36 frames
-    empilées**. Les deux contrôles formels de la passe (① étoile verte + ″/px de
-    l'astrométrie ; ② en-tête **`AVASPCC`** d'une sauvegarde) ne sont pas
-    visibles sur ta capture : **à confirmer quand tu voudras une trace écrite** —
-    la mécanique des deux est mesurée au banc, et l'astrométrie est résolue sur
-    TES brutes (diag NGC 7023).
-  - **Bancs rejoués VERTS pour cette passe** : **SPCC 58 bis** (banc NEUF,
-    rejoué à la clôture), **SPCC 58** (le chemin mono et ses avertissements
-    LUMINANCE sont intacts), solveur 56, propagation 56, catalogues 56 et 70,
-    branchement astro 56, photométrie 56, **solveur RÉEL M31**, + diag OSC
-    NGC 7023 sur brutes réelles.
-  - **CLOS à la clôture (28/09/2026, soir)** : le diagnostic jetable de la session
-    a été retiré de la racine (les mesures utiles sont dans le changelog et le
-    diag `bancs/_diag_osc_ngc7023.py`, conservé). **Les DEUX installateurs v2.40.0
-    ont été construits** — Windows
-    (`installer/windows/output/avastack-setup-2.40.0.exe`, 11,5 Mo, ISCC en 9 s) et
-    Linux (`installer/linux/output/avastack-setup-2.40.0-linux.tar.gz`, 552 Kio, 62
-    fichiers) — comme l'exige la règle « rebuilder dès que la passe touche plus
-    d'un ou deux fichiers ». **Ils sont publiés dans la PREMIÈRE release GitHub**
-    du dépôt (`v2.40.0`), avec la nouvelle documentation d'installation.
+  - **① ASTROMÉTRIE** : la zone de catalogue était un **RECTANGLE** — elle
+    suppose que l'axe X de la caméra suit les AD (faux dès qu'on tourne la
+    caméra) : **43 % des étoiles** étaient gardées en trop peu, **et une bande
+    HORS image** était conservée ; de plus le plafond `N_CAT_MAX` tombait
+    **avant** la sélection. Remplacés par le **DISQUE DU CHAMP RÉEL**
+    (`masque_champ`, sans aucune marge) et un plafond appliqué **après**.
+    **Mesuré sur TES brutes** (`bancs/_diag_osc_ngc7023.py`) : **NGC 7023
+    résolu** (68-80 appariements, rms 0,43-0,46 px, **0,4716″/px contre
+    0,4714″/px pour ASTAP**, robuste à des indices faux de ±0,2° et à un champ
+    faux de ×0,8 à ×1,1), **M31 NON régressé** (`_test_solveur_reel_m31.py`).
+  - **② SPCC COULEUR (OSC)** : la SPCC n'était câblée que pour le **mono
+    multi-bandes** ; elle accepte désormais les **capteurs couleur** de la base
+    Siril (trois canaux + **filtre LPF commun**), avec un **sélecteur « Type de
+    capteur »** persisté (lignes G/B grisées en OSC, défaut « No filter ») et les
+    gains par canal appliqués par le nouveau `LiveStacker.gains` (jamais sur
+    l'empilement BRUT). **Banc NEUF `_test_spcc_osc.py`** : pentes **R/G 0,6999**
+    et **B/G 1,2981** retrouvées pour des gains vrais de 0,70 / 1,30 ; chemin
+    mono intact (`_test_spcc_jalon58.py` vert).
+  - **TON VERDICT EN SÉANCE RÉELLE : « tout à l'air bon »** (session dossier OSC
+    NGC 7023, ~40 brutes, 36 empilées, étoiles bien colorées). Les deux contrôles
+    formels (étoile verte + ″/px ; en-tête `AVASPCC`) restent **à confirmer sur
+    une trace écrite** quand tu voudras — la mécanique des deux est mesurée au
+    banc.
+  - **CLOS** : diag jetable retiré de la racine (`bancs/_diag_osc_ngc7023.py`
+    conservé) ; **les DEUX installateurs v2.40.0 construits et publiés** dans la
+    **première release GitHub** du dépôt (voir le bloc de clôture ci-dessous).
 
-- **CLÔTURE DE SESSION (28/09/2026, soir — 2ᵉ clôture du jour)** — v2.40.0 livrée,
+- **CLÔTURE DE SESSION PRÉCÉDENTE (28/09/2026, soir — 2ᵉ clôture du jour)** — v2.40.0 livrée,
   poussée et **publiée** : **release GitHub `v2.40.0`**, la **première du dépôt**
   (`https://github.com/darkvad/AVAStack/releases/tag/v2.40.0`, tag sur le commit
   `4314c6e`), avec les **DEUX** installateurs (Windows 11 463 956 o, Linux
@@ -96,14 +111,14 @@ dans le changelog du source et l'historique git.)
   renvoi depuis `installer/README.md`), `3027c0e` (mémoire) — **arbre propre**,
   `master` synchronisé avec `origin`, tag `v2.40.0` présent en local et sur
   `origin`.
-  - **Prochaine étape : RIEN en attente de ton côté.** Deux propositions t'ont
-    été faites à la clôture — **bouton « ⬇ spectres »** (les 48 morceaux Gaia XP
-    de la SPCC : la fonction `telecharger_chunk_xpsamp` existe déjà dans le code
-    mais n'est branchée à **aucune** interface) et **`INSTALLATION.md` embarqué
-    dans les deux paquets** (cela imposerait de reconstruire les installateurs et
-    donc de refaire les SHA-256 de la release) — **tu as répondu « non, c'est
-    bon » le 28/09 : ne pas les reproposer spontanément**, elles restent
-    disponibles sur ta demande.
+  - **Rappel de clôture, toujours valable** : deux propositions t'ont été faites
+    (et **tu as répondu « non, c'est bon » le 28/09 — ne pas les reproposer
+    spontanément**, elles restent disponibles sur ta demande) — **bouton
+    « ⬇ spectres »** (les 48 morceaux Gaia XP de la SPCC : la fonction
+    `telecharger_chunk_xpsamp` existe dans le code mais n'est branchée à
+    **aucune** interface) et **`INSTALLATION.md` embarqué dans les deux paquets**
+    (cela impose de reconstruire les installateurs et donc de refaire les SHA-256
+    de la release).
   - **Aucune leçon durable en attente pour CLAUDE.md** : les deux pièges de la
     session sont consignés dans « Pièges récents » ci-dessous (workflow
     `gh release create` dont les notes SONT la doc ; **ligne de commande Windows
@@ -661,6 +676,38 @@ dans le changelog du source et l'historique git.)
 
 ## Pièges récents (rappels opérationnels)
 
+- **v2.41.0 — UN BOUTON NE DOIT JAMAIS ATTENDRE UNE FRAME** : le drapeau de
+  « Réinitialiser l'empilement » n'était lu que dans le chemin « une frame vient
+  d'arriver » → à l'arrêt il ne réinitialisait RIEN. Règle générale : une demande
+  posée par l'interface est servie **en tête de boucle du worker** (comme
+  `empilement_start_request`), JAMAIS dans un chemin conditionné par l'arrivée
+  d'une donnée — et la partie VISIBLE de la remise à zéro est faite côté Tk, pour
+  fonctionner même si le worker est arrêté.
+- **v2.41.0 — UN OBJET DE SOURCE GARDE SON ÉTAT** : la caméra d'un dossier porte
+  son dossier ET la mémoire des brutes déjà lues ; changer le dossier dans
+  l'interface ne changeait donc rien (d'où « Démarrer empile encore la cible
+  précédente »). Avant d'utiliser une source connectée, **comparer la
+  configuration affichée à celle de l'objet** (chemins ABSOLUS et normalisés —
+  barres, casse sous Windows : sans normalisation, une retouche du texte
+  relancerait tout le dossier) et la **refermer** si elle a changé. Jamais pour
+  une caméra SDK (réouverture impossible dans le même process).
+- **v2.41.0 — DEUX `Thread(target=self._worker).start()` DANS LA MÊME MÉTHODE =
+  DEUX WORKERS** : le second était inconditionnel (`_start`), donc **2 threads**
+  dès le premier « Démarrer », **3** ensuite — invisibles à l'œil (ils se
+  partageaient les frames). Mesure : compter les threads dont la cible est
+  `App._worker` du MÊME objet ; relancer un worker se fait UNIQUEMENT sous
+  `if self.thread is None or not self.thread.is_alive()`.
+- **v2.41.0 — EN PAUSE, UNE SOURCE DE FICHIERS NE DOIT PAS ÊTRE LUE** : « lire
+  puis jeter » est le bon comportement pour un flux live (ça vide la file du
+  SDK) mais, pour un dossier, la brute est marquée « traitée » : elle n'est plus
+  jamais empilable. Le dossier est seulement **scanné** pendant la pause (l'état
+  « brutes en attente » reste juste, les fichiers restent sur le disque).
+- **v2.41.0 — PROUVER QU'UN BANC DISCRIMINE : mesurer « AVANT » sur un worktree
+  HEAD** (`git worktree add --detach <chemin> HEAD`, puis `git worktree remove
+  --force` + `git worktree prune` : ça ne touche PAS le travail en cours).
+  Mesure du 28/09/2026 : empilement resté entier, dossier de la cible précédente
+  relu, 2 puis 3 workers — le banc `_test_reset_empilement_jalon76.py` échoue
+  là où il doit échouer.
 - **LIMITE QHY (toujours valable)** : après « ■ Arrêter », relancer
   l'appli — le binding qhyccd n'expose AUCUNE libération du SDK (état
   irréinitialisable dans le process) ; le banc QHY l'annonce et conseille

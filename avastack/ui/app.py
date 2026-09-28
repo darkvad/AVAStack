@@ -1490,8 +1490,13 @@ class App:
         self.lbl_seeing.pack(anchor="w", pady=(0, 3))
         rowf = ttk.Frame(box)
         rowf.pack(fill="x", pady=2)
+        # v2.41.0 : ce bouton fait une VRAIE remise à zéro (cf.
+        # _reset_empilement) — il ne se contente plus de poser un drapeau que
+        # le worker ne lisait qu'en TRAITANT une frame (constat d'Alain,
+        # 28/09/2026 : « il faudrait que le bouton réinitialiser réinitialise
+        # vraiment »).
         ttk.Button(rowf, text="Réinitialiser l'empilement",
-                   command=lambda: setattr(self, "reset_request", True)
+                   command=self._reset_empilement
                    ).pack(side="left", expand=True, fill="x", padx=1)
         ttk.Button(rowf, text="Réf. = empilement",
                    command=lambda: setattr(self, "ref_request", True)
@@ -4036,6 +4041,14 @@ class App:
             self._detecter_camera()
         else:
             self.lbl_detect.config(text="")
+            # v2.41.0 : « ▶ Démarrer » doit redevenir ACCESSIBLE. La
+            # déconnexion ci-dessus le grise ; pour ces sources-là (simulée,
+            # dossier, composition), aucune connexion automatique ne viendra le
+            # réactiver — il restait grisé jusqu'à la fin de la session
+            # (constat d'Alain, 28/09/2026 : « quand c'est accessible, ce qui
+            # n'est pas toujours le cas »). Le worker, lui, démarre s'il ne
+            # tourne plus, au moment du « ▶ Démarrer ».
+            self.btn_start.config(state="normal")
 
     def _detecter_camera(self):
         """Lance la détection (thread : ne jamais bloquer l'UI)."""
@@ -4334,6 +4347,14 @@ class App:
         filtre, gain…) sont conservés."""
         if self.empilement_on:
             return
+        # v2.41.0 : la source de FICHIERS suit l'INTERFACE — un dossier (ou une
+        # composition) modifié APRÈS la connexion n'était jamais ouvert : la
+        # caméra garde son dossier ET la mémoire des brutes déjà lues, d'où
+        # « ▶ Démarrer » qui empilait encore la CIBLE PRÉCÉDENTE (constat
+        # d'Alain, 28/09/2026). Elle est refermée AVANT de choisir la source,
+        # puis rouverte juste après, sur la configuration AFFICHÉE.
+        if self._source_fichiers_obsolete():
+            self._refermer_source_fichiers()
         try:
             if self.camera is None:
                 cam = self._make_camera(self.var_source.get())
@@ -4377,7 +4398,15 @@ class App:
         # Jalon 54 : instantané du recalage Linear Fit pour le thread.
         self._fit_actif = bool(self.var_fit.get())
         self._fit_mode = self._code_fit_methode()
-        self.btn_save_proc.config(state="disabled")
+        # v2.41.0 : les remises à zéro de SESSION vivent désormais dans UNE
+        # méthode (`_reinit_etat_session`), partagée avec « Réinitialiser
+        # l'empilement », et elles sont posées AVANT d'armer la demande au
+        # worker (`empilement_start_request`) : c'est la DEMANDE qui fait foi
+        # (le worker les refait, dans son thread, sur les objets vivants).
+        # Avant, l'UI les reposait APRÈS le démarrage du worker : elle pouvait
+        # vider une archive que le worker venait d'écrire (archivage déclaré en
+        # erreur pour toute la session).
+        self._reinit_etat_session()
         self.empilement_on = False
         self.empilement_start_request = True          # reset + purge (worker)
         if self.thread is None or not self.thread.is_alive():
@@ -4398,6 +4427,49 @@ class App:
         self._norm_commune = bool(self.var_norm_commune.get())   # v2.36.0
         self._fit_actif = bool(self.var_fit.get())   # jalon 54 (thread)
         self._fit_mode = self._code_fit_methode()    # jalon 54b (méthode)
+        # v2.41.0 : les remises à zéro de session viennent d'être faites par
+        # `_reinit_etat_session()` (avant l'armement de la demande au worker),
+        # et le worker les refait de son côté : plus AUCUNE ici.
+        # Ce qui vivait à cet endroit — `self.running = True` + un
+        # `Thread(_worker).start()` INCONDITIONNEL — lançait un SECOND worker à
+        # CHAQUE « ▶ Démarrer » : deux threads lisaient la même source et
+        # écrivaient le même empilement. « ■ Arrêter » ne fait que mettre
+        # l'empilement en pause (le worker reste en vie, c'est lui qui pilote la
+        # caméra) ; la relance légitime est déjà assurée par le bloc
+        # `if self.thread is None or not self.thread.is_alive()` ci-dessus.
+        self.btn_save_proc.config(state="disabled")
+        self.btn_start.config(state="disabled")
+        self.btn_stop.config(state="normal")
+
+    def _stop(self):
+        """« ■ Arrêter » = PAUSE de l'empilement (jalon 26) : le worker
+        reste actif (il continue de piloter la caméra — TEC, filtre,
+        réglages) mais n'empile plus ; la caméra reste connectée et le
+        refroidissement continue (on peut repartir au « ▶ Démarrer » sans
+        rebrancher). Rappel limite SDK : le flux QHY ne redémarre pas dans
+        le même process — relancer l'application si plus aucune frame."""
+        self.empilement_on = False
+        self.btn_start.config(state="normal")
+        self.btn_stop.config(state="disabled")
+        self.btn_deconnect.config(state="normal")
+        self.lbl_status.config(
+            text="Empilement arrêté — caméra connectée, refroidissement "
+                 "maintenu.")
+
+    def _reinit_etat_session(self):
+        """Remises à zéro d'une SESSION NEUVE — communes à « ▶ Démarrer » et à
+        « Réinitialiser l'empilement » (v2.41.0 : extraites de `_start`).
+
+        Appelée depuis le thread Tk : elle ne touche NI la source (caméra), NI
+        les réglages (exposition, filtre, TEC, indices d'astrométrie saisis),
+        NI les variables Tk de l'empilement. Elle incrémente `_session` (ce qui
+        invalide tout traitement externe en vol) et vide l'archive de session.
+
+        Les MÊMES remises à zéro sont refaites dans le thread du worker (bloc
+        `empilement_start_request`/`reset_request` de `_worker`) : ici, elles
+        sont VISIBLES immédiatement, même si le worker ne tourne pas (source
+        fermée, thread arrêté) — c'est ce qu'exige un bouton « Réinitialiser ».
+        """
         self.aligner = StarAligner()
         self.stacker = None
         self.disp.reset()                      # stats d'affichage repartent de zéro
@@ -4473,26 +4545,174 @@ class App:
         self.zoom, self.view_cx, self.view_cy = 1.0, None, None
         self._last_disp = None
         self.q = queue.Queue(maxsize=2)
-        self.running = True
-        self.thread = threading.Thread(target=self._worker, daemon=True)
-        self.thread.start()
-        self.btn_start.config(state="disabled")
-        self.btn_stop.config(state="normal")
+        # Jalon 42/46 : une session neuve lit sa PREMIÈRE rafale tout de suite
+        # (fenêtre de cadence réarmée) — sinon, après une remise à zéro tombée
+        # au milieu d'une fenêtre, il faudrait attendre la cadence choisie
+        # avant de voir la première brute de la nouvelle cible.
+        self._prochaine_lecture = 0.0
+        self._rafale_reste = self.RAFALE_MAX
 
-    def _stop(self):
-        """« ■ Arrêter » = PAUSE de l'empilement (jalon 26) : le worker
-        reste actif (il continue de piloter la caméra — TEC, filtre,
-        réglages) mais n'empile plus ; la caméra reste connectée et le
-        refroidissement continue (on peut repartir au « ▶ Démarrer » sans
-        rebrancher). Rappel limite SDK : le flux QHY ne redémarre pas dans
-        le même process — relancer l'application si plus aucune frame."""
-        self.empilement_on = False
+    def _reset_empilement(self):
+        """« Réinitialiser l'empilement » — remise à zéro RÉELLE (v2.41.0).
+
+        Constat réel d'Alain (28/09/2026) : « quand j'ai fini avec une cible, je
+        ne peux pas enchaîner avec une autre en choisissant 1 ou des nouveaux
+        dossiers et en cliquant sur Réinitialiser l'empilement… quand je clique
+        sur Démarrer ça empile toujours la cible précédente » et « il faudrait
+        que le bouton réinitialiser réinitialise vraiment ». Trois causes, les
+        trois traitées ici :
+          ① le drapeau de remise à zéro n'était lu par le worker qu'en
+             TRAITANT une frame : à l'arrêt (empilement en pause, aucune brute
+             qui arrive), cliquer ne réinitialisait RIEN. Il est désormais
+             servi en TÊTE de boucle du worker, donc MÊME en pause ; et la
+             remise à zéro visible est faite ici, dans le thread Tk, donc elle
+             a lieu même si le worker ne tourne pas (source fermée, thread
+             arrêté) ;
+          ② la SOURCE de fichiers gardait son dossier ET la mémoire des brutes
+             déjà lues : le dossier choisi ensuite n'était jamais ouvert, d'où
+             une session suivante qui « empile encore la cible précédente ».
+             Elle est refermée ici → « ▶ Démarrer » la rouvre sur la
+             configuration AFFICHÉE (cf. `_refermer_source_fichiers`) ;
+          ③ rien ne disait ce qui venait d'être fait et l'écran restait sur
+             l'image de l'ancienne cible : l'écran est vidé (avec un message)
+             et la ligne d'état annonce la suite.
+
+        C'est une REMISE À ZÉRO, pas un démarrage : l'empilement reste en pause
+        et « ▶ Démarrer » redevient accessible.
+        """
+        self.empilement_on = False             # plus rien ne s'ajoute
+        self._reinit_etat_session()            # remises à zéro (thread Tk)
+        self.reset_request = True              # …et les mêmes, côté worker
+        self._refermer_source_fichiers()       # la source suivra l'interface
         self.btn_start.config(state="normal")
         self.btn_stop.config(state="disabled")
-        self.btn_deconnect.config(state="normal")
-        self.lbl_status.config(
-            text="Empilement arrêté — caméra connectée, refroidissement "
-                 "maintenu.")
+        self._vider_ecran("Empilement réinitialisé —\n« ▶ Démarrer » pour "
+                          "repartir sur la cible choisie.")
+        if self.camera is None:
+            self.lbl_status.config(
+                text=("Empilement réinitialisé — la source de fichiers a été "
+                      "refermée : « ▶ Démarrer » la rouvrira "
+                      + self._resume_source_fichiers() + "."))
+        else:
+            self.lbl_status.config(
+                text=("Empilement réinitialisé — cliquez « ▶ Démarrer » pour "
+                      "une session neuve (la caméra reste connectée)."))
+
+    def _resume_source_fichiers(self):
+        """Décrit, pour la ligne d'état, la source de FICHIERS qui sera ouverte
+        au prochain « ▶ Démarrer » — jamais un silence sur ce qui sera lu
+        (leçon du jalon 70 : une donnée absente ou une décision implicite doit
+        être DITE). « le dossier « X » » (avec le rappel de l'option « images
+        déjà présentes » quand elle est décochée), « les N dossiers (« Ha »,
+        « O3 ») », ou la source telle quelle pour une caméra."""
+        src = self.var_source.get()
+        if src.startswith("Composition"):
+            try:
+                paires = self._lire_roles_dossiers()
+            except RuntimeError:
+                return "sur les dossiers des lignes de composition"
+            return ("sur les %d dossiers (« %s »)"
+                    % (len(paires), " », « ".join(r for r, _ in paires)))
+        if src.startswith("Dossier"):
+            d = self.var_folder.get().strip()
+            if not d:
+                return "sur le dossier à choisir (bouton « … »)"
+            txt = ("sur le dossier « %s »"
+                   % (os.path.basename(d.rstrip("/\\")) or d))
+            if not self.var_process_existing.get():
+                txt += (" — les brutes DÉJÀ présentes ne seront pas reprises "
+                        "(case « Empiler aussi les images déjà présentes » "
+                        "décochée)")
+            return txt
+        return "sur la source « %s »" % src
+
+    def _source_fichiers_obsolete(self):
+        """True si la source de FICHIERS connectée ne correspond PLUS à ce que
+        montre l'interface (v2.41.0) : d'autres dossier(s), un autre rôle, ou
+        l'option « Empiler aussi les images déjà présentes » qui a changé.
+
+        POURQUOI COMPARER au lieu de refermer à chaque démarrage : la caméra
+        d'un dossier garde la mémoire des brutes déjà vues (`_processed`) et de
+        celles qui attendent ; la refermer la ferait repartir de ZÉRO (tout le
+        dossier serait relu et re-empilé). On ne la referme donc que si la
+        configuration a changé — c'est exactement le cas « nouvelle cible » —
+        ou si elle est devenue invalide (l'erreur claire sortira alors du
+        démarrage, au lieu d'être ignorée).
+        """
+        cam = self.camera
+        if not isinstance(cam, (FolderCamera, MultiFolderCamera)):
+            return False                       # caméra SDK : jamais touchée
+        attendu = bool(self.var_process_existing.get())
+        if isinstance(cam, MultiFolderCamera):
+            try:
+                paires = self._lire_roles_dossiers()
+            except RuntimeError:
+                return True                    # lignes incomplètes : à refaire
+            if len(paires) != len(cam.cams):
+                return True
+            for (role, dossier), role_cam, sous in zip(paires, cam.roles,
+                                                       cam.cams):
+                if (role != role_cam
+                        or not self._meme_dossier(dossier, sous.folder)
+                        or bool(sous.process_existing) != attendu):
+                    return True
+            return False
+        return (not self.var_source.get().startswith("Dossier")
+                or not self._meme_dossier(self.var_folder.get().strip(),
+                                          cam.folder)
+                or bool(cam.process_existing) != attendu)
+
+    @staticmethod
+    def _meme_dossier(a, b):
+        """Deux textes désignent-ils le même dossier ? Comparaison ABSOLUE et
+        normalisée pour la casse : « C:\\brutes\\cible1 », « c:/brutes/cible1 »
+        et « C:\\brutes\\cible1\\ » sont bien le même dossier — sans cela, une
+        simple retouche du texte relancerait la lecture de tout le dossier."""
+        if not a or not b:
+            return False
+        ka = os.path.normcase(os.path.abspath(os.path.expanduser(a)))
+        kb = os.path.normcase(os.path.abspath(os.path.expanduser(b)))
+        return ka == kb
+
+    def _refermer_source_fichiers(self):
+        """Referme la source de FICHIERS connectée (« Dossier surveillé » ou
+        « Composition ») — v2.41.0. Le prochain « ▶ Démarrer » la rouvrira avec
+        la configuration AFFICHÉE (nouveau dossier compris).
+
+        Une caméra SDK n'est JAMAIS touchée : elle reste connectée (sa
+        réouverture est impossible dans le même process — limite SDK connue,
+        cf. QHY). → True si une source de fichiers a été refermée.
+        """
+        if not isinstance(self.camera, (FolderCamera, MultiFolderCamera)):
+            return False
+        try:
+            self.camera.close()
+        except Exception:
+            pass                  # source déjà fermée / disparue : rien à faire
+        self.camera = None
+        self.cam_pilotee = None
+        self._mode_compo = False
+        self._compo_nom = None
+        self.btn_deconnect.config(state="disabled")
+        self.btn_start.config(state="normal")
+        self.lbl_detect.config(text="")
+        return True
+
+    def _vider_ecran(self, texte=""):
+        """Efface l'image affichée (v2.41.0) : après une remise à zéro, l'écran
+        ne doit plus montrer l'empilement de la cible précédente. `texte` est
+        posé au centre (jamais un écran muet — leçon des jalons 72/74)."""
+        self._last_disp = None
+        try:
+            self.cv_img.delete("all")
+            cw = self.cv_img.winfo_width() or self.W_IMG
+            ch = self.cv_img.winfo_height() or self.H_IMG
+            if texte:
+                self.cv_img.create_text(cw // 2, ch // 2, text=texte,
+                                        fill="#888888",
+                                        width=max(80, cw - 40))
+        except tk.TclError:           # fenêtre en cours de destruction
+            pass
 
     def _deconnecter_camera(self):
         """« ⏏ Déconnecter » (jalon 26) : referme la caméra — le TEC est
@@ -7022,8 +7242,18 @@ class App:
             # touche jamais aux objets vivants du worker. Purge d'abord des
             # frames restées dans la file du SDK (sessions précédentes /
             # attente caméra connectée).
-            if self.empilement_start_request:
-                self.empilement_start_request = False
+            # v2.41.0 : « Réinitialiser l'empilement » (reset_request) emprunte
+            # EXACTEMENT le même chemin — et il est servi ICI, en TÊTE de
+            # boucle, donc MÊME EMPILEMENT EN PAUSE. Avant, ce drapeau n'était lu
+            # qu'en TRAITANT une frame : cliquer « Réinitialiser » à l'arrêt ne
+            # réinitialisait RIEN (constat d'Alain, 28/09/2026 : « il faudrait
+            # que le bouton réinitialiser réinitialise vraiment ») et la session
+            # suivante repartait sur l'empilement de la cible précédente. Seule
+            # différence entre les deux : « Réinitialiser » ne RELANCE pas
+            # l'empilement (il reste en pause).
+            if self.empilement_start_request or self.reset_request:
+                demarrer = bool(self.empilement_start_request)
+                self.empilement_start_request = self.reset_request = False
                 self.empilement_on = False
                 self.aligner = StarAligner()
                 self.stacker = None
@@ -7095,7 +7325,19 @@ class App:
                     t_purge = time.monotonic()
                     while time.monotonic() - t_purge < 0.3:
                         self.camera.read()
-                self.empilement_on = True
+                self.empilement_on = demarrer   # « Réinitialiser » ne démarre pas
+
+            # v2.41.0 : la SOURCE peut avoir été REFERMÉE par l'interface
+            # (« Réinitialiser l'empilement » sur une source de fichiers,
+            # « ⏏ Déconnecter ») : le worker SURVIT au lieu de mourir sur un
+            # `None.read()` (une exception dans un thread tue le thread EN
+            # SILENCE — plus aucune frame n'arrivait ensuite, et rien ne le
+            # disait). Il attend ici la prochaine source ; c'est « ▶ Démarrer »
+            # qui la crée, et qui le relance s'il s'était arrêté.
+            if self.camera is None:
+                self._servir_demandes_sans_frame()
+                time.sleep(0.02)
+                continue
 
             # Traitement externe demandé → thread dédié, l'acquisition continue.
             # Placé AVANT la lecture d'une frame : doit fonctionner même si
@@ -7298,6 +7540,27 @@ class App:
                     if self.stacker.n > 0 and self._dernier_st is not None:
                         self._pousser_rendu()
 
+            # v2.41.0 : empilement EN PAUSE sur une source FICHIERS → on ne lit
+            # RIEN. Pourquoi : une brute lue pendant la pause était marquée
+            # « traitée » puis JETÉE (le `if not self.empilement_on` ci-dessous
+            # ne gardait que la lecture d'une caméra live) — elle ne pouvait
+            # plus JAMAIS être empilée, ni à la reprise, ni après une nouvelle
+            # remise à zéro. C'est exactement la fenêtre « je finis une cible,
+            # je prépare la suivante » (constat d'Alain, 28/09/2026). Le dossier
+            # est seulement SCANNÉ, pour que l'état « brutes en attente » reste
+            # juste ; les fichiers attendent sur le disque.
+            if not self.empilement_on and self._cadence_dossier():
+                maintenant = time.monotonic()
+                if maintenant >= self._prochain_scan:   # au plus toutes les 0,4 s
+                    try:
+                        self.camera.scanner()
+                    except Exception:
+                        pass
+                    self._prochain_scan = maintenant + 0.4
+                self._servir_demandes_sans_frame()
+                time.sleep(0.05)
+                continue
+
             # Jalon 42 : cadence d'empilement (sources dossier, cf.
             # _autoriser_lecture). Le scan SANS lecture ne tourne que si une
             # cadence est posée, au plus toutes les 0,4 s — il permet de
@@ -7312,7 +7575,16 @@ class App:
                     except Exception:
                         pass
                     self._prochain_scan = maintenant + 0.4
-            lu = (self.camera.read() if self._autoriser_lecture() else None)
+            lu = None
+            if self._autoriser_lecture():
+                try:
+                    lu = self.camera.read()
+                except AttributeError:
+                    # v2.41.0 : la source vient d'être refermée par
+                    # l'interface (réinitialisation d'une source de fichiers) —
+                    # le tour suivant la verra absente et attendra proprement,
+                    # au lieu de tuer ce thread en silence.
+                    continue
             if lu is None:
                 # v2.37.0 : aucune frame à lire (fin de source, lecture en
                 # pause) — les demandes qui ne dépendent PAS d'une frame sont
@@ -7320,9 +7592,11 @@ class App:
                 self._servir_demandes_sans_frame()
                 time.sleep(0.005)
                 continue
-            # Jalon 26 : empilement en pause (« ■ Arrêter ») → on maintient
-            # la lecture du flux (la caméra reste connectée, la file du SDK
-            # se vide) mais on n'empile rien.
+            # Jalon 26 : empilement en pause (« ■ Arrêter ») sur une CAMÉRA →
+            # on maintient la lecture du flux (la caméra reste connectée, la
+            # file du SDK se vide : elle s'accumulerait sinon en mémoire) mais
+            # on n'empile rien. (Les sources FICHIERS, elles, ne sont plus
+            # lues du tout en pause — cf. le garde ci-dessus.)
             if not self.empilement_on:
                 self._servir_demandes_sans_frame()   # idem : mesures sans frame
                 time.sleep(0.05)
@@ -7402,10 +7676,14 @@ class App:
                     and self.stacker is None and role != "Ha"):
                 self.align_info = ("en attente d'une brute Ha "
                                    "(référence d'alignement)…")
-            elif (self.reset_request or self.stacker is None
+            # v2.41.0 : `reset_request` n'est PLUS lu ici — la remise à zéro
+            # complète est servie en TÊTE de boucle (donc même en pause) ; la
+            # laisser ici la consommerait sans refaire le reste (archive,
+            # compteurs, mesures). Ne reste donc que le vrai changement de
+            # géométrie.
+            elif (self.stacker is None
                     or self.stacker.shape != img_travail.shape):
                 etait_vide = self.stacker is None
-                self.reset_request = False
                 if self._mode_compo:       # façade multi-rôles : un stacker
                     self.stacker = CompositeStacker(   # par rôle, mean() =
                         self._compo_nom,   # composite (cadre commun)
@@ -7653,7 +7931,7 @@ class App:
                       rejets=(self.stacker.rejected_total
                               if self.stacker is not None else 0),
                       bad=self.bad_frames, floues=self.floues_rejetees,
-                      fps=self.fps, cam=self.camera.name,
+                      fps=self.fps, cam=getattr(self.camera, "name", "—"),
                       file=getattr(self.camera, "last_file", ""),
                       pending=pend,
                       failed=getattr(self.camera, "failed", 0),
