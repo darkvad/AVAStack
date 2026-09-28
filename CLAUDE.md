@@ -779,6 +779,42 @@ ce qui manquait n'était pas une correction mais une MESURE.
   relève du débruitage/l'intégration. Mesurer le grain CHROMATIQUE sur les écarts
   de couleur (R−G, B−G), pas sur les canaux : le grain de luminance y est commun
   et s'annule. Banc : `_test_chroma_nr_jalon63.py`.
+- **LA ZONE DE CATALOGUE DE L'ASTROMÉTRIE EST UN DISQUE, PAS UN RECTANGLE — ET
+  LE PLAFOND N_CAT_MAX PASSE APRÈS** (constat réel d'Alain, 28/09/2026, v2.40.0 :
+  « l'astrométrie ne trouve pas de résultat » sur des brutes OSC NGC 7023, caméra
+  tournée à −94°). Le rectangle de sélection (`CLIP_MARGE`) supposait que l'axe X
+  de la caméra suit les AD : sur une caméra tournée il ne gardait que **43 %** des
+  étoiles de l'image **et gardait une bande HORS image** où sont justement les
+  plus brillantes. Remplacé par `masque_champ` = **disque du champ réel** (rayon =
+  demi-diagonale, invariant en rotation) **sans aucune marge** — mesuré : un
+  disque ×1,3 **échoue** (trop d'étoiles hors image). Second point, cumulé : la
+  troncature aux `N_CAT_MAX` plus brillantes doit venir **APRÈS** la sélection
+  (avant, sur un champ étroit, elle ne gardait que les brillantes d'une zone 2,6×
+  plus large que l'image : **9 étoiles dans l'image**). Vérifier une astrométrie
+  sur un champ large se fait par le **rms des appariements sur les MÊMES
+  étoiles** contre ASTAP, jamais par l'écart point par point des deux WCS (un
+  champ large a de la distorsion : 9,5″ d'écart de WCS pour un rms identique).
+  Bancs : `_diag_osc_ngc7023.py` (brutes réelles), `_test_solveur_reel_m31.py`.
+- **LA SPCC N'EST PAS RÉSERVÉE AU MONO MULTI-BANDES** (constat réel d'Alain,
+  28/09/2026, v2.40.0 : « la case SPCC dit que c'est que pour du mono multibande,
+  alors que SPCC fonctionne en images couleurs dans Siril — il faut juste lui
+  dire que c'est un capteur couleur »). La base de Siril décrit un capteur
+  COULEUR par **trois entrées** (`channel` RED/GREEN/BLUE, même `model`) plus un
+  filtre LPF **commun** : c'est le calcul de Siril sur une image OSC. Pièges de ce
+  chemin, tous mesurés : (1) un capteur s'appelle « Sony IMX585 » **dans les deux
+  listes** de la base → le nom du capteur ne dit PAS le type, c'est l'interface
+  qui le dit (`mode`), et pour un appelant qui l'ignore `mode_bandes` tranche sur
+  les **filtres** (le même filtre OSC sur trois canaux = capteur couleur ; trois
+  filtres mono = mono) ; (2) exiger « trois filtres distincts » (règle du mono,
+  `coherence_bandes`) est **faux en OSC** — d'où `coherence_osc` ; (3) la
+  correspondance des noms se fait **exactement d'abord** (« No filter » tombait
+  sur « Full spectrum (no filter) », qui le contient) ; (4) le **défaut** d'un
+  filtre OSC ne doit JAMAIS être le premier de la liste (c'est un vrai LPF,
+  « Antlia Quad Band… » : l'appliquer en silence fausserait toute la couleur) →
+  viser la référence « sans filtre » ; (5) les gains par canal d'une SOURCE
+  COULEUR s'appliquent par `LiveStacker.gains` (avant l'équilibrage et le Linear
+  Fit) et **jamais** sur l'empilement brut `corrections=False`. Banc :
+  `_test_spcc_osc.py` (bout en bout : gains vrais 0,70 / 1,30 retrouvés à 1 %).
 - **LES MESURES ASTRO/PHOTOMÉTRIE/SPCC SONT RELANCÉES PAR LE WORKER, PAS PAR
   L'UI** (constat réel d'Alain du 25/09/2026, v2.37.0 : « je voulais refaire
   calculer la SPCC mais étant en fin de stack, ben ça le fait pas en décochant et

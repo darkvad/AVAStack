@@ -152,6 +152,15 @@ class App:
                              # 11 px faisait donc chevaucher deux rangs voisins
                              # (défaut trouvé par le banc, pas à l'œil)
 
+    # Jalon 58 bis (v2.40.0) : SPCC COULEUR (capteur OSC). Le TYPE de capteur
+    # est un choix EXPLICITE : en mono, trois filtres R/G/B ; en couleur, UN
+    # capteur OSC et son filtre (LPF). Constat d'Alain (28/09/2026) : « la
+    # case SPCC dit que c'est que pour du mono multibande, alors que SPCC
+    # fonctionne en images couleurs dans Siril — il faut juste lui dire que
+    # c'est un capteur couleur et le choisir ».
+    SPCC_TYPE_MONO = "Mono (filtres R/G/B)"
+    SPCC_TYPE_OSC = "Couleur (OSC)"
+
     # Débruitage live (jalon 9, remis le 16/09/2026) : libellés UI ↔ codes
     # internes (module avastack/processing/denoise.py, algorithmes locaux
     # sans IA). NLM en premier = défaut (tests réels d'Alain : plus homogène
@@ -716,6 +725,13 @@ class App:
         categorie = {"spcc_capteur": "capteur", "spcc_fr": "filtres",
                      "spcc_fg": "filtres", "spcc_fb": "filtres",
                      "spcc_blanc": "blancs"}
+        # v2.40.0 : le TYPE de capteur (mono / couleur OSC) se restaure AVANT
+        # les profils — c'est lui qui décide de LA LISTE dans laquelle ils
+        # doivent exister (un capteur OSC n'est pas dans la liste mono, et
+        # réciproquement). Valeur inconnue : type d'usage (mono) conservé.
+        if c.get("spcc_type") in (self.SPCC_TYPE_MONO, self.SPCC_TYPE_OSC):
+            self.var_spcc_type.set(c.get("spcc_type"))
+            self._on_spcc_type()     # repeuple capteurs/filtres + libellés
         for cle, var in (("spcc_capteur", self._spcc_vars.get("capteur")),
                          ("spcc_fr", self._spcc_vars.get("fr")),
                          ("spcc_fg", self._spcc_vars.get("fg")),
@@ -966,6 +982,7 @@ class App:
         # Jalon 58 : SPCC absolue — case OPT-IN (décochée par défaut : une
         # calibration écrite dans l'image ne doit jamais être activée par
         # surprise) + profils choisis, persistés pour la prochaine session.
+        c["spcc_type"] = self.var_spcc_type.get()
         c["spcc_actif"] = bool(self.var_spcc.get())
         for cle, var in (("spcc_capteur", self._spcc_vars.get("capteur")),
                          ("spcc_fr", self._spcc_vars.get("fr")),
@@ -1651,12 +1668,30 @@ class App:
         self.chk_spcc.pack(side="left")
         if not self._spcc_dispo:
             self.chk_spcc.state(["disabled"])
-        self._spcc_noms = {"capteur": [], "filtres": [], "blancs": []}
+        self._spcc_noms = {"capteur": [], "filtres": [], "blancs": [],
+                           "osc_capteurs": [], "osc_filtres": []}
         try:
             self._spcc_noms = spcc_mod.noms_base()
         except Exception:
             pass
         self._spcc_vars = {}
+        self._spcc_lbls = {}
+        self._spcc_cbs = {}
+        # v2.40.0 : TYPE de capteur — la SPCC n'est PAS réservée au mono
+        # multi-bandes (constat d'Alain, 28/09/2026 : « la case SPCC dit que
+        # c'est que pour du mono multibande, alors que SPCC fonctionne en
+        # couleurs dans Siril — il faut juste lui dire que c'est un capteur
+        # couleur et le choisir »). Ligne AJOUTÉE au-dessus des cinq autres :
+        # aucune ligne ne disparaît (règle de mise en page v2.38.9).
+        ligne_t = ttk.Frame(box)
+        ligne_t.pack(fill="x")
+        ttk.Label(ligne_t, text="Type de capteur :", width=19).pack(side="left")
+        self.var_spcc_type = tk.StringVar(value=self.SPCC_TYPE_MONO)
+        cbt = ttk.Combobox(ligne_t, textvariable=self.var_spcc_type,
+                           state="readonly", width=26,
+                           values=[self.SPCC_TYPE_MONO, self.SPCC_TYPE_OSC])
+        cbt.pack(side="left", fill="x", expand=True)
+        cbt.bind("<<ComboboxSelected>>", lambda e: self._on_spcc_type())
         for cle, etiquette, defaut, largeur in (
                 ("capteur", "Capteur", "Sony IMX585", 26),
                 ("fr", "Filtre R", "QHYCCD MiniCam8M Red", 26),
@@ -1665,7 +1700,9 @@ class App:
                 ("blanc", "Référence de blanc", "Average Spiral Galaxy", 30)):
             ligne = ttk.Frame(box)
             ligne.pack(fill="x")
-            ttk.Label(ligne, text=f"{etiquette} :", width=19).pack(side="left")
+            lbl = ttk.Label(ligne, text=f"{etiquette} :", width=19)
+            lbl.pack(side="left")
+            self._spcc_lbls[cle] = lbl
             valeurs = self._spcc_noms.get(
                 {"capteur": "capteur", "fr": "filtres", "fg": "filtres",
                  "fb": "filtres", "blanc": "blancs"}[cle], [])
@@ -1677,6 +1714,7 @@ class App:
             if not valeurs:
                 cb.state(["disabled"])
             self._spcc_vars[cle] = v
+            self._spcc_cbs[cle] = cb
         self.lbl_spcc = ttk.Label(box, text="", foreground="#888888",
                                   wraplength=330, justify="left")
         self.lbl_spcc.pack(anchor="w")
@@ -2594,6 +2632,72 @@ class App:
         # simulée du banc jalon 74).
         self._demander_mesures()
 
+    def _spcc_osc(self):
+        """Le TYPE choisi désigne-t-il un capteur COULEUR (OSC) ?"""
+        try:
+            return self.var_spcc_type.get() == self.SPCC_TYPE_OSC
+        except Exception:
+            return False
+
+    @staticmethod
+    def _spcc_defaut(cle, liste, osc):
+        """Valeur posée quand la liste des profils change.
+
+        En OSC, JAMAIS un filtre « au hasard » : le premier nom de la liste est
+        un VRAI LPF (« Antlia Quad Band Anti-Light Pollution Filter »…) et
+        l'appliquer en silence à une brute sans filtre fausserait toute la
+        couleur — on préfère donc la référence « sans filtre » de la base
+        (« No filter », « Full spectrum (no filter) »), et seulement à défaut le
+        premier nom. Pour les capteurs, rien à choisir : « Sony IMX585 » est
+        dans les deux listes, la sélection suit le type (v2.40.0)."""
+        if osc and cle == "fr":
+            for n in liste:                     # la référence elle-même d'abord
+                if str(n).strip().lower() in ("no filter", "sans filtre"):
+                    return n
+            for n in liste:
+                b = str(n).lower()
+                if "no filter" in b or "sans filtre" in b or "full spectrum" in b:
+                    return n
+        return liste[0] if liste else ""
+
+    def _on_spcc_type(self):
+        """Jalon 58 bis : le type de capteur change (mono ↔ couleur OSC).
+
+        Les listes déroulantes suivent (capteurs, filtres) et — en OSC — c'est
+        UN SEUL filtre qui couvre les trois bandes : les lignes « Filtre G » et
+        « Filtre B » RESTENT (règle de mise en page v2.38.9 : on ne retire pas
+        de ligne, le pack abandonnerait silencieusement ce qui suit), mais elles
+        sont grisées et leur libellé le dit. Toute mesure en cours est
+        invalidée : des coefficients calculés pour d'autres bandes seraient
+        faux."""
+        osc = self._spcc_osc()
+        noms = getattr(self, "_spcc_noms", {}) or {}
+        vars_, cbs = getattr(self, "_spcc_vars", {}), getattr(self, "_spcc_cbs", {})
+        if not vars_ or not cbs:
+            return
+        for cle, categorie, cle_noms in (("capteur", "capteur", "osc_capteurs"),
+                                         ("fr", "filtres", "osc_filtres")):
+            liste = ((noms.get(cle_noms) if osc else noms.get(categorie)) or [""])
+            cbs[cle].config(values=liste)
+            cbs[cle].state(["!disabled"])
+            if vars_[cle].get() not in liste:
+                vars_[cle].set(self._spcc_defaut(cle, liste, osc))
+        for cle, b in (("fg", "G"), ("fb", "B")):
+            self._spcc_lbls[cle].config(
+                text=("Filtre (OSC) :" if osc else f"Filtre {b} :"))
+            if osc:
+                vars_[cle].set(vars_["fr"].get())
+                cbs[cle].state(["disabled"])
+            else:
+                cbs[cle].state(["!disabled"])
+                if not noms.get("filtres"):
+                    cbs[cle].state(["disabled"])
+        self._spcc_lbls["fr"].config(
+            text=("Filtre (OSC) :" if osc else "Filtre R :"))
+        self._spcc_lbls["capteur"].config(
+            text=("Capteur OSC :" if osc else "Capteur :"))
+        self._on_spcc()          # invalide la mesure et remet la vue à jour
+
     def _on_spcc(self):
         """Jalon 58 : case « SPCC (couleurs absolues) » — OPT-IN, décochée par
         défaut comme celle des gains Gaia. Cochée, elle fait ÉCRIRE dans le
@@ -2642,29 +2746,39 @@ class App:
                       "(%LOCALAPPDATA%\\siril-spcc-database) — installez Siril "
                       "et lancez une calibration SPCC une fois"), foreground="#c98a00")
             return
-        if not self._mode_compo:
+        if not (self._mode_compo or self._source_rgb(getattr(self, "stacker", None))):
             # v2.37.1 : au LANCEMENT, aucune source n'est encore choisie —
             # annoncer « sans effet en MONO » était FAUX (constat d'Alain du
             # 25/09/2026 : il rouvre l'appli, ses profils sont bons, la case est
             # cochée, et le libellé lui dit que ça ne sert à rien alors que
             # l'appli ne SAIT PAS encore ce que sera la source).
+            # v2.40.0 : la SPCC n'est PLUS réservée à la composition R/G/B —
+            # une source COULEUR (capteur OSC) suffit, comme dans Siril.
+            besoin = ("il faut une image COULEUR (capteur OSC) ou une "
+                      "composition multi-dossiers R/G/B")
             if self.camera is None:
                 self.lbl_spcc.config(
-                    text=("SPCC : en attente de la source (il faut une source "
-                          "« composition » multi-dossiers R/G/B)"),
+                    text=f"SPCC : en attente de la source ({besoin})",
                     foreground="#c98a00")
                 return
             self.lbl_spcc.config(
-                text=("SPCC : sans effet sur cette source (il faut une source "
-                      "« composition » multi-dossiers R/G/B)"),
+                text=f"SPCC : sans effet sur cette source ({besoin})",
                 foreground="#c98a00")
             return
         # Contrôle IMMÉDIAT des profils choisis (constat réel : « Filtre R =
         # … Luminance ») : un profil de luminance ou deux filtres identiques
         # donneraient des coefficients faux — on le dit AVANT toute mesure.
+        # En OSC, c'est `coherence_osc` qui juge (UN filtre couvre les trois
+        # bandes : exiger trois filtres distincts n'aurait aucun sens).
         _, filtres, _ = self._spcc_profils()
-        avis = spcc_mod.coherence_bandes([filtres.get("R"), filtres.get("G"),
-                                          filtres.get("B")])
+        if self._spcc_osc():
+            avis = spcc_mod.coherence_osc(
+                self._spcc_vars["capteur"].get(),
+                filtres.get("R"))
+        else:
+            avis = spcc_mod.coherence_bandes([filtres.get("R"),
+                                              filtres.get("G"),
+                                              filtres.get("B")])
         if avis:
             self.lbl_spcc.config(text="SPCC : ⚠ " + " ; ".join(avis),
                                  foreground="#d04040")
@@ -6097,21 +6211,47 @@ class App:
             return
         self._maj_photo_etat()
 
+    @staticmethod
+    def _source_rgb(stacker):
+        """L'empilement porte-t-il les trois canaux R/G/B ? VRAI en composition
+        multi-rôles (le composite est recoloré) ET pour une source COULEUR
+        (capteur OSC en mode dossier) ; FAUX en mono. Purement géométrique (la
+        forme d'UNE frame), donc GRATUIT : aucune image à moyenner pour le
+        savoir — la SPCC a besoin des trois canaux, et le dire vaut mieux que
+        d'échouer."""
+        shp = getattr(stacker, "shape", None) or getattr(stacker, "_shape", None)
+        try:
+            return shp is not None and len(tuple(shp)) == 3
+        except TypeError:
+            return False
+
     def _photo_canaux(self, stacker):
         """Canaux (bandes) + WCS de la MÊME grille pour la photométrie.
 
         Grille RECADRÉE (celle de la vue et des sauvegardes) — en composition,
-        les cartes PAR RÔLE (`moyennes`) sont les bandes ; en mono, il n'y a
-        qu'une bande « L ». Le WCS est celui de cette grille exacte (recadrage
-        d'intersection inclus) : les deux DOIVENT décrire la même grille, sinon
-        l'appariement au catalogue serait faux. → (canaux, WCS, forme)."""
+        les cartes PAR RÔLE (`moyennes`) sont les bandes ; pour une source
+        COULEUR (capteur OSC en mode dossier), les trois canaux R/G/B de
+        l'empilement BRUT (`corrections=False`) sont les bandes — c'est sur
+        cette image-là que la SPCC doit mesurer : un équilibrage ou un
+        recalage déjà appliqué fausserait les ratios de couleur (et les gains
+        se cumuleraient). En mono, une seule bande « L ». Le WCS est celui de
+        cette grille exacte (recadrage d'intersection inclus) : les deux
+        DOIVENT décrire la même grille, sinon l'appariement au catalogue
+        serait faux. → (canaux, WCS, forme)."""
         cadre = getattr(stacker, "cadre", None)
         try:
             if hasattr(stacker, "moyennes"):
                 canaux = stacker.moyennes(recadre=True) or {}
             else:
-                img = stacker.mean()
-                canaux = {"L": img} if img is not None else {}
+                img = stacker.mean(corrections=False)
+                if img is None:
+                    canaux = {}
+                elif getattr(img, "ndim", 2) == 3:
+                    a = (img if img.shape[-1] == 3
+                         else np.transpose(img, (1, 2, 0)))
+                    canaux = {"R": a[..., 0], "G": a[..., 1], "B": a[..., 2]}
+                else:
+                    canaux = {"L": img}
         except Exception as exc:
             self.photo_info = f"Photométrie : canaux indisponibles ({exc})"
             self.photo_couleur = "#c98a00"
@@ -6154,8 +6294,8 @@ class App:
             return                     # déjà calibré : rien à refaire
         if not self._spcc_actif or not getattr(self, "_spcc_dispo", False):
             return
-        if not self._mode_compo:
-            return                     # il faut un composite R/G/B
+        if not (self._mode_compo or self._source_rgb(stacker)):
+            return                     # il faut une image COULEUR (R, G et B)
         if self.suivi_astro is None or not self.suivi_astro.resolu:
             return
         if stacker.n < astro_mod.ASTRO_MIN_FRAMES:
@@ -6180,7 +6320,9 @@ class App:
         self.spcc_couleur = "#888888"
         try:
             res, msg = self.spcc.mesurer(canaux, wcs, capteur, filtres, blanc,
-                                         forme=forme)
+                                         forme=forme,
+                                         mode=("osc" if self._spcc_osc()
+                                               else "mono"))
         except Exception as exc:       # une mesure ne tue jamais le worker
             res, msg = None, f"exception ({exc})"
         if res is None:
@@ -6533,6 +6675,11 @@ class App:
                          window=ancien.window)
         st.wb_auto = ancien.wb_auto
         st.wb_force = ancien.wb_force
+        # v2.40.0 : les gains de canaux (SPCC d'une source COULEUR) survivent au
+        # re-stack — le worker les repose de toute façon, mais l'empilement ne
+        # doit pas repasser une frame en couleurs fausses.
+        st.gains = (dict(ancien.gains) if getattr(ancien, "gains", None)
+                    else None)
         # Jalon 54 : le recalage « Linear Fit » survit au re-stack.
         st.linear_fit = ancien.linear_fit
         st.linear_fit_mode = ancien.linear_fit_mode
@@ -7124,6 +7271,22 @@ class App:
                         nouveaux = {}
                     if nouveaux != (self.stacker.gains_roles or {}):
                         self.stacker.gains_roles = nouveaux
+                        self._photo_gains_pose = dict(nouveaux)
+                        self._rafraichir_rendu = True
+                elif (self._source_rgb(self.stacker)
+                      and hasattr(self.stacker, "gains")):
+                    # v2.40.0 : source COULEUR (capteur OSC en mode dossier) —
+                    # la SPCC y corrige DIRECTEMENT les canaux R/G/B de
+                    # l'empilement (`LiveStacker.gains`, appliqués avant
+                    # l'équilibrage et le recalage, comme la chaîne de sortie).
+                    # Les gains Gaia RELATIFS restent, eux, réservés à la
+                    # composition : ils sont mesurés par RÔLE, et une source
+                    # couleur simple n'a pas de rôles.
+                    nouveaux = (dict(self.spcc.gains())
+                                if (self._spcc_actif and self.spcc is not None
+                                    and self.spcc.valide) else {})
+                    if nouveaux != (self.stacker.gains or {}):
+                        self.stacker.gains = nouveaux
                         self._photo_gains_pose = dict(nouveaux)
                         self._rafraichir_rendu = True
                 # Aucune brute à lire (mode dossier consommé, pause…) : si

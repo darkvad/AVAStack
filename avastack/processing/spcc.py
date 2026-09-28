@@ -250,6 +250,176 @@ def coherence_bandes(noms_fil):
     return avis
 
 
+def mode_bandes(capteur, filtres):
+    """« osc » (capteur couleur) ou « mono » (trois filtres R/G/B) — pour un
+    appelant qui ne le SAIT pas (l'interface, elle, le sait : type choisi).
+
+    La décision se fait sur les FILTRES, le signal le plus sûr : en OSC, le nom
+    du MÊME filtre est donné aux trois canaux et il appartient à la liste
+    couleur (« osc_filters ») ; en mono, ce sont trois noms de la liste mono —
+    et un capteur s'appelle « Sony IMX585 » DANS LES DEUX listes (la base
+    décrit les deux versions du même capteur), donc le nom du capteur seul est
+    ambigu. Capteur couleur connu + aucun filtre nommé = capteur nu (OSC)."""
+    uniques = {str(v).strip() for v in (filtres or {}).values()
+               if str(v or "").strip()}
+    if capteur_osc(capteur)[0] is not None:
+        if not uniques or all(filtre_osc(n)[0] is not None for n in uniques):
+            return "osc"
+    return "mono"
+
+
+def coherence_osc(capteur, filtre):
+    """Contrôle de COHÉRENCE d'un couple capteur COULEUR / filtre LPF → list
+    d'avertissements (vide = rien à dire).
+
+    Pendant couleur de `coherence_bandes` : en OSC, c'est UN filtre qui couvre
+    les trois bandes, donc exiger « trois filtres distincts » n'a aucun sens ;
+    ce qu'il faut vérifier, c'est que le capteur est bien un capteur OSC dont
+    les TROIS canaux (RED/GREEN/BLUE) sont connus de la base."""
+    avis = []
+    if capteur_osc(capteur)[0] is None:
+        avis.append("capteur OSC inconnu de la base : ses trois canaux "
+                    "(RED/GREEN/BLUE) sont nécessaires")
+    elif filtre and filtre_osc(filtre)[0] is None:
+        avis.append("filtre OSC inconnu de la base")
+    return avis
+
+
+def _type_ok(entree, *types):
+    """L'entrée est-elle du TYPE attendu ? `type` absent : accepté (base plus
+    ancienne). Utile car dossier et `type` du JSON ne concordent pas toujours :
+    la base de Siril range quelques objets `OSC_FILTER` dans le dossier
+    `osc_sensors` (« Antila RGB_ultra_ii »), et un filtre proposé comme capteur
+    ferait échouer la mesure — mieux vaut ne pas le proposer."""
+    t = str(entree.get("type") or "").upper()
+    return (not t) or t in types
+
+
+def _sans_canal(nom):
+    """« sony imx585 red » → « sony imx585 » (suffixe de canal retiré). La base
+    nomme les trois entrées d'un capteur couleur « … R/G/B » : choisir le
+    capteur par son MODÈLE doit réunir ses trois canaux, quelle que soit la
+    graphie du canal."""
+    for suf in (" red", " green", " blue", " r", " g", " b"):
+        if nom.endswith(suf) and len(nom) > len(suf):
+            return nom[:-len(suf)].rstrip(" _-")
+    return nom
+
+
+# --- Capteurs COULEUR (OSC) : trois canaux dans un seul fichier --------------
+def capteur_osc(nom):
+    """Capteur COULEUR de la base (« Sony IMX585 ») → (nom du modèle,
+    {canal: entrée}) ou (None, None) si le nom ne désigne pas un capteur OSC.
+
+    La base range les réponses d'un capteur couleur en TROIS objets (canaux
+    RED / GREEN / BLUE) : ce sont les réponses MESURÉES du capteur derrière sa
+    matrice de Bayer, exactement ce qu'il faut croiser avec la transmission du
+    filtre (LPF) pour prédire le flux de chaque canal.
+
+    Deux passes : correspondance EXACTE (le modèle, ou le nom du canal retiré)
+    avant toute correspondance PARTIELLE — « Sony IMX585 » ne doit pas se
+    confondre avec un autre capteur au nom plus long, et « Sony IMX585 Red »
+    doit ramener au même capteur (les trois canaux)."""
+    from ..catalogues import spcc_db as DB
+    if not nom:
+        return None, None
+    cible = str(nom).strip().lower()
+    base = _sans_canal(cible)
+    entrees = [e for e in DB.lister("osc_sensors") if _type_ok(e, "OSC_SENSOR")]
+    for exact in (True, False):
+        canaux, modele = {}, ""
+        for e in entrees:
+            noms = tuple(str(v or "").strip().lower()
+                         for v in (e.get("modele"), e.get("nom")))
+            if exact:
+                ok = cible in noms or base in noms
+            else:
+                ok = any(n and cible in n for n in noms)
+            if not ok:
+                continue
+            canaux.setdefault(str(e.get("canal") or "").upper(), e)
+            modele = modele or (e.get("modele") or e["nom"])
+        if modele:
+            break
+    manquants = [c for c in ("RED", "GREEN", "BLUE") if c not in canaux]
+    if not modele or len(manquants) >= 2:   # un seul canal trouvé ≠ OSC
+        return None, None
+    return modele, canaux
+
+
+def filtre_osc(nom):
+    """Filtre COULEUR de la base (LPF devant un capteur OSC) → (nom,
+    {canal: entrée}) — ou (None, None). Un filtre OSC est SOIT une courbe
+    unique (LPF, « No filter » : canal vide), SOIT un jeu par canal ; les deux
+    formes sont rendues pareil (dict, clé vide = toutes les bandes).
+
+    Correspondance EXACTE d'abord (« No filter » doit donner « No filter » et
+    non « Full spectrum (no filter) », qui le CONTIENT : choisir l'un des deux
+    revient au même physiquement, mais le nom affiché doit être celui qu'on a
+    choisi), puis partielle seulement si aucun nom exact n'existe."""
+    from ..catalogues import spcc_db as DB
+    if not nom:
+        return None, None
+    cible = str(nom).strip().lower()
+    entrees = [e for e in DB.lister("osc_filters")
+               if _type_ok(e, "OSC_FILTER", "OSC_LPF")]
+    for exact in (True, False):
+        canaux, trouve = {}, ""
+        for e in entrees:
+            n = str(e["nom"]).strip().lower()
+            ok = (cible == n) if exact else (cible in n or n in cible)
+            if not ok:
+                continue
+            trouve = trouve or e["nom"]
+            canaux.setdefault(str(e.get("canal") or "").upper(), e)
+        if trouve:
+            return trouve, canaux
+    return None, None
+
+
+def _courbe_de(entree):
+    """Courbe (wl, val) d'une entrée de `spcc_db.lister` (ou None)."""
+    from ..catalogues import spcc_db as DB
+    try:
+        return DB.courbe(entree)
+    except Exception:
+        return None
+
+
+def reponses_osc(capteur, filtre):
+    """Réponses R/G/B d'un capteur COULEUR : QE du canal × transmission du
+    filtre (LPF), sur la grille xp_sampled → ([3 courbes (343,)] en comptage de
+    photons, [3 noms], erreur "" ; (None, None, message) sinon).
+
+    `filtre` vide/None = capteur nu (transmission 1, comme le « No filter » de
+    Siril). La multiplication et le facteur λ sont ceux de `reponse_canal` :
+    mêmes formules que le chemin mono, seules les courbes changent (vérifié au
+    banc `_test_spcc_osc.py`)."""
+    modele, cap = capteur_osc(capteur)
+    if modele is None:
+        return None, None, (f"capteur couleur introuvable dans la base SPCC : "
+                            f"{capteur}")
+    nom_f, fil = (filtre_osc(filtre) if filtre else ("", {}))
+    if filtre and nom_f is None:
+        return None, None, (f"filtre couleur introuvable dans la base SPCC : "
+                            f"{filtre}")
+    commun = fil.get("") or (next(iter(fil.values())) if len(fil) == 1 else None)
+    reponses, noms = [], []
+    for canal, lettre in (("RED", "R"), ("GREEN", "G"), ("BLUE", "B")):
+        e_cap = cap.get(canal)
+        if e_cap is None:
+            return None, None, (f"capteur {modele} : canal {canal} absent de "
+                                f"la base SPCC")
+        courbe_cap = _courbe_de(e_cap)
+        if courbe_cap is None:
+            return None, None, f"courbe illisible (canal {canal} de {modele})"
+        e_fil = fil.get(canal) or commun
+        courbe_fil = _courbe_de(e_fil) if e_fil is not None else None
+        reponses.append(reponse_canal(courbe_cap, courbe_fil))
+        noms.append(f"{modele} {lettre} · {nom_f or 'sans filtre'}")
+    return reponses, noms, ""
+
+
 def base_presente():
     """La base SPCC de Siril est-elle installée (profils de capteurs, de
     filtres et références de blanc lisibles) ? L'UI s'en sert pour activer ou
@@ -262,16 +432,44 @@ def base_presente():
         return False
 
 
+def _uniques(valeurs):
+    """Liste SANS DOUBLON, ordre de première apparition (les capteurs OSC de
+    la base apparaissent 3 fois — un objet par canal)."""
+    vus, out = set(), []
+    for v in valeurs:
+        if v and v not in vus:
+            vus.add(v)
+            out.append(v)
+    return out
+
+
 def noms_base():
     """Noms des profils de la base Siril, pour peupler les sélecteurs de l'UI
-    → {"capteur": [...], "filtres": [...], "blancs": [...]} (listes vides si
-    la base est absente)."""
-    vide = {"capteur": [], "filtres": [], "blancs": []}
+    → {"capteur": [...], "filtres": [...], "blancs": [...],
+        "osc_capteurs": [...], "osc_filtres": [...]} (listes vides si la base
+    est absente). Les clés mono gardent leur nom (compatibilité).
+
+    VERSION COULEUR (v2.40.0) : la SPCC n'est PAS réservée au mono
+    multi-bandes — Siril la fait très bien sur une image OSC, il suffit de lui
+    désigner un CAPTEUR COULEUR (constat d'Alain, 28/09/2026). Un capteur OSC
+    est listé par son MODÈLE (« Sony IMX585 ») : la base contient trois entrées
+    par capteur (« … Red/Green/Blue ») et c'est le modèle qui décrit le
+    capteur, pas le canal."""
+    vide = {"capteur": [], "filtres": [], "blancs": [],
+            "osc_capteurs": [], "osc_filtres": []}
     try:
         from ..catalogues import spcc_db as DB
         return {"capteur": [e["nom"] for e in DB.lister("mono_sensors")],
                 "filtres": [e["nom"] for e in DB.lister("mono_filters")],
-                "blancs": [e["nom"] for e in DB.lister("wb_refs")]}
+                "blancs": [e["nom"] for e in DB.lister("wb_refs")],
+                "osc_capteurs": _uniques(
+                    [e["modele"] or e["nom"]
+                     for e in DB.lister("osc_sensors")
+                     if str(e.get("canal") or "").upper()
+                     in ("RED", "GREEN", "BLUE")]),
+                "osc_filtres": _uniques(
+                    [e["nom"] for e in DB.lister("osc_filters")
+                     if _type_ok(e, "OSC_FILTER", "OSC_LPF")])}
     except Exception:
         return vide
 
@@ -367,7 +565,8 @@ def _profil(entree, categorie, nom):
 def coefficients_spcc(canaux, wcs, capteur, filtres, blanc, dossier=None,
                       forme=None, rayon=RAYON_FLUX_PX, anneau=ANNEAU_FOND,
                       max_etoiles=MAX_ETOILES, ciel_pur=CIEL_PUR_SIGMA,
-                      catalogue=None, reponses=None, spectre_blanc=None):
+                      catalogue=None, reponses=None, spectre_blanc=None,
+                      mode=None):
     """SPCC de bout en bout sur l'empilement → (coefficients (3,), diag).
 
     `canaux` : {"R": image 2D, "G": …, "B": …} ; `wcs` : WCS résolu de la
@@ -397,21 +596,43 @@ def coefficients_spcc(canaux, wcs, capteur, filtres, blanc, dossier=None,
             diag.update({"capteur": nom_cap, "filtres": noms_fil,
                          "blanc": nom_bl})
         else:
-            nom_cap, curve_cap = _profil(capteur, "mono_sensors", str(capteur))
-            if curve_cap is None:
-                diag["erreur"] = (f"capteur introuvable dans la base SPCC : "
-                                  f"{capteur}")
-                return None, diag
-            reponses, noms_fil = [], []
-            for b in ("R", "G", "B"):
-                cle = (filtres or {}).get(b)
-                nom, curve = _profil(cle, "mono_filters", f"filtre {b}")
-                if curve is None and cle is not None:
-                    diag["erreur"] = (f"filtre {b} introuvable dans la base "
-                                      f"SPCC : {cle}")
+            # --- COULEUR (OSC) ou MONO : deux modèles de bandes -------------
+            # v2.40.0 : un CAPTEUR COULEUR est reconnu par son nom et porte
+            # lui-même ses trois réponses (canaux RED/GREEN/BLUE de la base) ;
+            # c'est alors le MÊME filtre (LPF) qui s'applique aux trois bandes.
+            # Constat d'Alain (28/09/2026) : « la case SPCC dit que c'est
+            # réservé au mono multi-bandes, alors que SPCC fonctionne en
+            # couleurs dans Siril — il faut juste lui dire que c'est un capteur
+            # couleur et le choisir ».
+            filtre_choisi = next((v for v in (filtres or {}).values()
+                                  if str(v or "").strip()), "")
+            osc = (mode == "osc") if mode in ("osc", "mono") \
+                else (mode_bandes(capteur, filtres) == "osc")
+            if osc:
+                reponses, noms_fil, err = reponses_osc(capteur, filtre_choisi)
+                if reponses is None:
+                    diag["erreur"] = err
                     return None, diag
-                reponses.append(reponse_canal(curve_cap, curve))
-                noms_fil.append(nom or f"(sans filtre {b})")
+                nom_cap = str(capteur)
+                diag["mode"] = "OSC"
+            else:
+                nom_cap, curve_cap = _profil(capteur, "mono_sensors",
+                                             str(capteur))
+                if curve_cap is None:
+                    diag["erreur"] = (f"capteur introuvable dans la base SPCC "
+                                      f"(ni capteur couleur, ni capteur mono) : "
+                                      f"{capteur}")
+                    return None, diag
+                reponses, noms_fil = [], []
+                for b in ("R", "G", "B"):
+                    cle = (filtres or {}).get(b)
+                    nom, curve = _profil(cle, "mono_filters", f"filtre {b}")
+                    if curve is None and cle is not None:
+                        diag["erreur"] = (f"filtre {b} introuvable dans la base "
+                                          f"SPCC : {cle}")
+                        return None, diag
+                    reponses.append(reponse_canal(curve_cap, curve))
+                    noms_fil.append(nom or f"(sans filtre {b})")
             nom_bl, curve_bl = _profil(blanc, "wb_refs", str(blanc))
             if curve_bl is None:
                 diag["erreur"] = f"référence de blanc introuvable : {blanc}"
@@ -420,8 +641,13 @@ def coefficients_spcc(canaux, wcs, capteur, filtres, blanc, dossier=None,
                          "blanc": nom_bl})
             # --- cohérence des BANDES : trois profils identiques, ou un profil
             # de LUMINANCE à la place d'une couleur, donnent des coefficients
-            # faux — on le dit AVANT de calculer (cf. `coherence_bandes`).
-            avis = coherence_bandes(noms_fil)
+            # faux — on le dit AVANT de calculer (cf. `coherence_bandes`). En
+            # OSC, c'est `coherence_osc` qui juge (un SEUL filtre couvre les
+            # trois bandes : exiger « trois filtres distincts » n'a pas de sens).
+            if osc:
+                avis = coherence_osc(capteur, filtre_choisi)
+            else:
+                avis = coherence_bandes(noms_fil)
             if avis:
                 diag["avertissement"] = " ; ".join(avis)
 
@@ -558,7 +784,7 @@ class SessionSpcc:
         return {r: float(c) for r, c in zip(roles, self.coefficients)}
 
     def mesurer(self, canaux, wcs, capteur, filtres, blanc, dossier=None,
-                forme=None, reponses=None, spectre_blanc=None):
+                forme=None, reponses=None, spectre_blanc=None, mode=None):
         """SPCC sur les canaux R/G/B courants → (résultat|None, message).
 
         `canaux` doit contenir les trois bandes R, G et B sur la MÊME grille
@@ -582,7 +808,8 @@ class SessionSpcc:
                                     dossier=dossier, forme=forme,
                                     catalogue=self._catalogue,
                                     reponses=reponses,
-                                    spectre_blanc=spectre_blanc)
+                                    spectre_blanc=spectre_blanc,
+                                    mode=mode)
         self.diag = diag
         if k is None:
             self.derniere_erreur = diag.get("erreur", "échec inconnu")

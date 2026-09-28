@@ -119,12 +119,25 @@ RANSAC_CAND_MAX = 400    # plafond des couples (paire image × paire catalogue)
 N_CAT_MAX = 400         # étoiles de catalogue gardées (les plus brillantes)
 MARGE_INDICES = 0.5     # marge fixe du rayon d'extraction (deg) — couvre
                         # l'erreur d'indication de la monture/cible
-CLIP_MARGE = 1.6        # rectangle indicatif × marge : le catalogue est
-                        # CLIPPÉ à la zone plausible de l'image AVANT la
-                        # sélection des plus brillantes (sinon le top-N du
-                        # cône d'extraction n'est pas le top-N de l'image
-                        # et les triangles corrects n'existent plus —
-                        # constat du banc étape 2, échec « mutuelles (3) »)
+# --- SÉLECTION DU CATALOGUE (v2.40.0, mesurée le 28/09/2026) ----------------
+# La zone gardée pour l'appariement est le DISQUE DU CHAMP RÉEL (rayon =
+# demi-diagonale de l'image), et non plus un rectangle : le rectangle était
+# calculé dans le plan tangent avec la LARGEUR sur ξ et la HAUTEUR sur η, ce
+# qui suppose que l'axe X de la caméra suit les AD — FAUX dès qu'on tourne la
+# caméra (constat réel d'Alain sur NGC 7023, caméra à −94° : le rectangle ×1,6
+# ne laissait que 43 % des étoiles de l'image dans la zone gardée, et gardait
+# une BANDE HORS IMAGE où se trouvent justement les étoiles les plus
+# brillantes du secteur). Le disque, lui, est invariant en rotation : le vrai
+# champ est toujours dedans. Mesures (bancs/_diag_osc_ngc7023.py, [8] et [9]) :
+#   • NGC 7023 (0,50°, OSC) : résolu — 68 appariements, rms 0,46 px,
+#     0,4716″/px contre 0,4714″/px pour ASTAP (indices justes ou faux de
+#     0,2°, champ faux de ×0,8 à ×1,1) ; échec avec l'ancien rectangle ;
+#   • M31 (2,6°) : 112 et 115 appariements (contre 86 et 70 avant) — non
+#     régressé ;
+#   • un disque PLUS GRAND est PIRE (×1,3 échoue sur NGC 7023 : la sélection
+#     garde alors trop d'étoiles hors image) : la zone doit être AU PLUS le
+#     champ réel. D'où AUCUNE marge sur ce disque (l'ancien CLIP_MARGE = 1,6
+#     a disparu avec le rectangle).
 
 # ============================================================ projection TAN
 def projection_tan(ra, dec, ra0, dec0):
@@ -609,7 +622,18 @@ def _ajuster_tan(xy, ra, dec, wcs0, iterations=30):
 # ============================================================== solveur
 def _extraire_catalogue(ra0, dec0, champ_deg, forme, dossier=None,
                         limmag=None):
-    """Étoiles Gaia couvrant le champ indicé, les plus brillantes d'abord.
+    """Étoiles Gaia couvrant le cône indicé — TOUTES, les plus brillantes
+    d'abord. AUCUN plafond ici (cf. correctif mesuré du 28/09/2026).
+
+    POURQUOI AUCUN PLAFOND ICI : le cône d'extraction est dilaté de
+    MARGE_INDICES (0,5°) pour absorber l'erreur de pointage ; sur un champ
+    ÉTROIT (0,5°), il est donc ~2,6 fois plus large que l'image. Plafonner ICI
+    aux N_CAT_MAX plus brillantes revient à sélectionner les étoiles les plus
+    brillantes d'une zone où l'image n'occupe que 7 % — MESURÉ sur NGC 7023 :
+    il ne restait que 9 étoiles de catalogue DANS l'image, et l'appariement ne
+    pouvait pas aboutir (échec du solveur interne alors qu'ASTAP résolvait la
+    même image en 0,2 s). La sélection se fait donc dans la zone RÉELLEMENT
+    couverte par l'image, dans `resoudre` (cf. « SÉLECTION DU CATALOGUE »).
     → (dict numpy du catalogue, message) — (None, message) si absent."""
     from . import dossier_catalogues
     from .telechargeur import etat_local
@@ -628,8 +652,20 @@ def _extraire_catalogue(ra0, dec0, champ_deg, forme, dossier=None,
     if len(et["ra"]) < 3:
         return None, (f"catalogue trop pauvre autour de "
                       f"({ra0:.4f}, {dec0:.4f}) ({len(et['ra'])} étoiles)")
-    ordre = np.argsort(et["g"])[:N_CAT_MAX]   # les plus brillantes d'abord
+    ordre = np.argsort(et["g"])               # les plus brillantes d'abord
     return {k: v[ordre] for k, v in et.items()}, ""
+
+
+def masque_champ(xi, eta, champ_deg, forme):
+    """Masque (booléen) des étoiles de catalogue situées DANS le champ de
+    l'image — disque du cercle CIRCONSCRIT, seule zone invariante en rotation.
+
+    `xi`/`eta` : projection TAN (deg) autour du centre INDICÉ ; `champ_deg` :
+    LARGEUR du champ (deg) ; `forme` : (h, w) de l'image. Aucune marge : un
+    disque plus grand est PIRE (mesuré, cf. tête du module)."""
+    h_img, w_img = int(forme[0]), int(forme[1])
+    rayon = 0.5 * math.hypot(w_img, h_img) * float(champ_deg) / w_img
+    return (xi * xi + eta * eta) <= rayon * rayon
 
 
 def resoudre(img, ra0, dec0, champ_deg, dossier=None, limmag=None):
@@ -667,13 +703,12 @@ def resoudre(img, ra0, dec0, champ_deg, dossier=None, limmag=None):
         return None, info, msg
     info["n_etoiles_cat"] = int(len(et["ra"]))
     xi, eta = projection_tan(et["ra"], et["dec"], ra0, dec0)
-    # CLIP au rectangle indicatif (× marge) AVANT la sélection des plus
-    # brillantes : le top-N doit être celui de la ZONE DE L'IMAGE, pas celui
-    # du cône d'extraction (sinon les triangles corrects n'existent plus —
-    # constat du banc étape 2).
-    demi_xi = 0.5 * champ_deg * CLIP_MARGE
-    demi_eta = 0.5 * champ_deg * (h_img / w_img) * CLIP_MARGE
-    dans = (np.abs(xi) <= demi_xi) & (np.abs(eta) <= demi_eta)
+    # --- SÉLECTION DU CATALOGUE (v2.40.0) : le DISQUE DU CHAMP RÉEL ---------
+    # La zone gardée est invariante en rotation (cf. tête du module et
+    # `masque_champ`) et la troncature aux N_CAT_MAX plus brillantes vient
+    # APRÈS elle : le top-N doit être celui de la ZONE DE L'IMAGE, pas celui
+    # du cône d'extraction (dilaté de 0,5° pour l'erreur de pointage).
+    dans = masque_champ(xi, eta, champ_deg, (h_img, w_img))
     if int(dans.sum()) < TRI_INLIERS_MIN:
         return None, info, (f"catalogue trop pauvre dans le champ indicé "
                             f"({int(dans.sum())} étoiles)")

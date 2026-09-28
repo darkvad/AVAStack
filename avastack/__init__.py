@@ -17,9 +17,64 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.39.0"
+AVASTACK_VERSION = "2.40.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.40.0 : DEUX CORRECTIONS DU TRAVAIL OSC (capteur COULEUR, mode dossier) —
+#   L'ASTROMÉTRIE INTERNE SUR CAMÉRA TOURNÉE, ET LA SPCC OUVERTE AUX CAPTEURS
+#   COULEUR.
+#   Constats d'Alain (28/09/2026, brutes OSC Uranus-C Pro sous N.I.N.A.,
+#   NGC 7023, C8 @ 1280 mm → champ 0,5005°, 0,4714″/px) : « l'astrométrie ne
+#   trouve pas de résultat » et « la case SPCC dit que c'est que pour du mono
+#   multibande, alors que SPCC fonctionne en images couleurs dans Siril — il
+#   faut juste lui dire que c'est un capteur couleur et le choisir ».
+#   (1) ASTROMÉTRIE — LA ZONE DE SÉLECTION DU CATALOGUE ÉTAIT UN RECTANGLE :
+#       `CLIP_MARGE = 1,6` gardait un rectangle (largeur = champ en ξ, hauteur
+#       en η), ce qui suppose que l'axe X de la caméra suit les AD — FAUX dès
+#       qu'on tourne la caméra (NGC 7023 : −94°). Il ne gardait que 43 % des
+#       étoiles de l'image, ET gardait une BANDE HORS IMAGE où se trouvent
+#       justement les plus brillantes du secteur. Remplacé par le DISQUE DU
+#       CHAMP RÉEL (`masque_champ` : rayon = demi-diagonale de l'image), qui
+#       est invariant en rotation — et SANS AUCUNE MARGE (mesuré : ×1,3 échoue
+#       sur NGC 7023, le disque gardant alors trop d'étoiles hors image).
+#       Deuxième cause, cumulée : le plafond `N_CAT_MAX` (400) était appliqué
+#       AVANT la sélection → sur un champ étroit il ne gardait que les plus
+#       brillantes d'une zone 2,6× plus large que l'image (9 étoiles dans
+#       l'image, appariement impossible) ; il passe maintenant APRÈS.
+#       Mesuré (`bancs/_diag_osc_ngc7023.py` sur les brutes RÉELLES + ASTAP en
+#       référence croisée) : NGC 7023 RÉSOLU — 68 à 80 appariements, rms 0,43
+#       à 0,46 px, 0,4716″/px (ASTAP : 0,4714″/px), et toujours résolu avec des
+#       indices faux de ±0,2° / un champ faux de ×0,8 à ×1,1. M31 NON régressé :
+#       112 et 115 appariements (contre 86 et 70 avant), écart max 9,5″ avec
+#       ASTAP sur 2,6° de champ (distorsion : le juge est le rms sur les MÊMES
+#       étoiles, 0,87 px contre 0,87 px pour ASTAP) — banc
+#       `_test_solveur_reel_m31.py`.
+#   (2) SPCC COULEUR — la SPCC n'était câblée que pour le mono multi-bandes
+#       (trois filtres R/G/B distincts). Or la base de Siril décrit aussi les
+#       capteurs couleur par TROIS entrées (canaux RED/GREEN/BLUE) et un filtre
+#       LPF COMMUN : c'est exactement ce que Siril calcule sur une image OSC.
+#       `processing/spcc.py` acquiert `noms_base()` couleur, `capteur_osc`,
+#       `filtre_osc` (correspondance EXACTE d'abord : « No filter » ne doit pas
+#       devenir « Full spectrum (no filter) », qui le contient), `reponses_osc`
+#       (QE des trois canaux × le même filtre), `coherence_osc` (l'exigence
+#       « trois filtres distincts » de `coherence_bandes` n'a aucun sens ici) et
+#       un paramètre `mode` (« osc » / « mono » ; `None` = décidé par les
+#       FILTRES via `mode_bandes`, car le nom du capteur est ambigu — « Sony
+#       IMX585 » figure dans les DEUX listes de la base).
+#       Côté interface : sélecteur « Type de capteur » (mono / couleur),
+#       persisté (`spcc_type`) et restauré AVANT les profils (c'est lui qui
+#       décide de la liste) ; en OSC les lignes « Filtre G » et « Filtre B »
+#       restent mais sont GRISÉES (un seul filtre couvre les trois bandes) et
+#       le défaut est la référence « sans filtre » — jamais un vrai LPF
+#       appliqué en silence à une brute sans filtre. Changer de type invalide
+#       la mesure (des coefficients d'autres bandes seraient faux).
+#       Empilement d'une source COULEUR : nouveau `LiveStacker.gains` (gains
+#       R/G/B appliqués avant l'équilibrage et le Linear Fit, jamais sur
+#       l'empilement BRUT `corrections=False`), survit au re-stack.
+#       Banc NEUF `bancs/_test_spcc_osc.py` (6 sections ; bout en bout sur une
+#       image couleur synthétique : pentes R/G 0,6999 et B/G 1,2981 retrouvées
+#       pour des gains vrais de 0,70 / 1,30, 41 étoiles) ; `_test_spcc_jalon58`
+#       vert (non-régression du chemin mono, y compris ses avertissements).
 # v2.39.0 : TROIS BARRES DE NIVEAUX SUR L'HISTOGRAMME (modèle du MINI de
 #   SharpCap, place du GRAND), ÉTIREMENT GELABLE DANS LES DEUX MOTEURS, et
 #   SATURATION PAR COULEUR.

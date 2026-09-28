@@ -31,6 +31,35 @@ CAS = [
     (r"c:\Astro\test\m31_brute_G.fits", 2.645,
      "brute G N.I.N.A. (3856×2180)"),
 ]
+
+
+def appariements_gaia(img_, wcs_, champ_):
+    """Appariements MUTUELS étoiles d'image ↔ catalogue Gaia SOUS UN WCS donné
+    → {indice d'étoile d'image: distance (px)}. C'est le JUGEMENT qui compte :
+    deux ajustements TAN d'un champ large peuvent être d'accord ailleurs et
+    différer de plusieurs ″ aux coins (distorsion) — comparer les deux WCS sur
+    les MÊMES étoiles dit lequel colle le mieux aux données."""
+    from avastack.catalogues import solveur as _S
+    h_, w_ = img_.shape[:2]
+    pos_, _m = _S._detecter(img_, _S.MAX_ETOILES_DETECTION)
+    cat_, _m2 = _S._extraire_catalogue(RA0, DEC0, champ_, (h_, w_))
+    if cat_ is None:
+        return {}
+    pred_ = wcs_.vers_pixels(cat_["ra"], cat_["dec"])
+    ia_, ib_, _d = _S._appariements_mutuels(pos_, pred_, 3.0)
+    return {int(i): float(np.hypot(*(pred_[j] - pos_[i])))
+            for i, j in zip(ia_, ib_)}
+
+
+def bilan_commun(p1, p2):
+    """→ (n commun, rms1, rms2) sur les étoiles appariées par les DEUX WCS."""
+    commun = sorted(set(p1) & set(p2))
+    if not commun:
+        return 0, float("nan"), float("nan")
+    r1 = np.array([p1[i] for i in commun])
+    r2 = np.array([p2[i] for i in commun])
+    return (len(commun), float(np.sqrt((r1 ** 2).mean())),
+            float(np.sqrt((r2 ** 2).mean())))
 ok = True
 for chemin, champ, nom in CAS:
     print(f"=== {nom} ===")
@@ -110,9 +139,26 @@ for chemin, champ, nom in CAS:
             (rB[1] - rB[0]) * math.cos(math.radians(dB[0]))))
         print(f"  orientation locale au centre : {angA:+.3f}° vs "
               f"{angB:+.3f}° (Δ {abs(angA - angB):.3f}°)")
-        if sep.max() > 5.0 or d_ech > 0.01 or abs(angA - angB) > 0.05:
+        # --- JUGES (revus le 28/09/2026) -----------------------------------
+        # L'écart point par point avec ASTAP n'est PAS un juge fiable sur un
+        # champ LARGE : la distorsion de l'optique fait divergerc deux
+        # ajustements TAN également bons dès qu'on s'approche des coins.
+        # MESURÉ sur le composite M31 : 9,5″ d'écart au coin alors que les deux
+        # WCS collent aux données AUSSI BIEN (rms 0,87 px sur les 115 mêmes
+        # étoiles, max 2,69 contre 2,46 px). Le vrai juge est donc le RÉSIDU
+        # AUX MÊMES ÉTOILES, l'écart point par point restant un garde-fou LARGE.
+        p_nous = appariements_gaia(img, wcs, champ)
+        p_astap = appariements_gaia(img, wcs_a, champ)
+        n_c, r_nous, r_astap = bilan_commun(p_nous, p_astap)
+        if n_c:
+            print(f"  mêmes {n_c} étoiles : rms nous {r_nous:.2f} px vs ASTAP "
+                  f"{r_astap:.2f} px (rapport {r_nous / max(r_astap, 1e-9):.2f})")
+        if d_ech > 0.01 or abs(angA - angB) > 0.05 or sep.max() > 15.0:
             ok = False
             print("  ÉCHEC : divergence avec la référence ASTAP")
+        elif n_c and r_nous > 1.15 * r_astap:
+            ok = False
+            print("  ÉCHEC : moins bon qu'ASTAP sur les mêmes étoiles")
 print()
 print("BANC RÉEL : TOUT AU VERT" if ok else "BANC RÉEL : ÉCHEC")
 sys.exit(0 if ok else 1)

@@ -241,6 +241,24 @@ def cadre_intersection(poly, marge=_MARGE_CROP, min_cote=_CROP_MIN_COTE):
     return (y0, x0, y1, x1)
 
 
+def _gains_canaux(img, gains):
+    """Gains R/G/B (dict « R »/« G »/« B ») sur une image couleur, quel que soit
+    l'ordre des axes — (H, W, 3) comme (3, H, W). Délégation à
+    `composition.appliquer_gains` par import LOCAL (composition importe ce
+    module : un import en tête ferait un cycle). → l'image telle quelle si rien
+    à faire (mono, pas de gains)."""
+    if not gains or img is None or img.ndim != 3:
+        return img
+    from .composition import appliquer_gains
+    if img.shape[-1] == 3:
+        return appliquer_gains(img, gains)
+    if img.shape[0] == 3:
+        return np.ascontiguousarray(
+            np.transpose(appliquer_gains(np.transpose(img, (1, 2, 0)), gains),
+                         (2, 0, 1)))
+    return img
+
+
 class LiveStacker:
     """Moyenne glissante + rejet kappa-sigma ou Winsorized (fenêtre glissante)."""
 
@@ -266,6 +284,14 @@ class LiveStacker:
         self.linear_fit = False
         self.linear_fit_mode = "offset"
         self.fit_diag = None              # gains/offsets mesurés (UI)
+        # Jalon 58 bis (v2.40.0) : gains R/G/B par CANAL du composite — c'est
+        # ici que la SPCC (capteur couleur/OSC) corrige une source COULEUR
+        # (« mode dossier » d'une caméra OSC) : en composition, ces gains sont
+        # portés par la façade (`CompositeStacker.gains_roles`) ; en source
+        # couleur simple, il n'y avait AUCUN chemin pour les appliquer, d'où
+        # l'ajout. Appliqués AVANT l'équilibrage et le recalage, comme
+        # `corrections_couleur` (gains → équilibrage → Linear Fit).
+        self.gains = None
         self.reset()
 
     def reset(self):
@@ -348,6 +374,7 @@ class LiveStacker:
             return None
         img = (self.sum / np.maximum(self.wsum, 1e-9)).astype(np.float32)
         if corrections:
+            img = _gains_canaux(img, self.gains)   # gains R/G/B (SPCC, OSC)
             img = self._equilibrer(img)
         if not recadre or self.cadre is None:  # pas de recadrage (dégénéré)
             return img

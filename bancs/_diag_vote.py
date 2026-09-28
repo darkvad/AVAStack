@@ -38,9 +38,7 @@ def entrees_du_vote(img, ra, dec, champ):
     pos, _m = S._detecter(img, S.MAX_ETOILES_DETECTION)
     et, _m2 = S._extraire_catalogue(ra, dec, champ, (h, w))
     xi, eta = S.projection_tan(et["ra"], et["dec"], ra, dec)
-    demi_xi = 0.5 * champ * S.CLIP_MARGE
-    demi_eta = 0.5 * champ * (h / w) * S.CLIP_MARGE
-    dans = (np.abs(xi) <= demi_xi) & (np.abs(eta) <= demi_eta)
+    dans = S.masque_champ(xi, eta, champ, (h, w))
     xi, eta = xi[dans], eta[dans]
     ra_c, dec_c = et["ra"][dans], et["dec"][dans]
     ordre = np.argsort(et["g"][dans])[:S.N_CAT_MAX]
