@@ -8,6 +8,11 @@ administrateur requis (tout s'installe dans le profil de l'utilisateur) :
 | Windows | `windows/output/avastack-setup-<version>.exe` | `windows/build_avastack.ps1` (Inno Setup 6) |
 | Linux | `linux/output/avastack-setup-<version>-linux.tar.gz` | `linux/build_avastack.py` |
 
+Installation pas à pas (les deux plateformes, **et la préparation des données
+Siril/Gaia** — catalogue astrométrique, 48 morceaux de spectres, base de profils
+SPCC) : **`INSTALLATION.md`**, à la racine du dépôt ; il est joint à chaque
+release comme document d'accompagnement.
+
 **Le nom de l'artéfact PORTE LA VERSION** (consigne d'Alain, 27/09/2026) : elle
 vient toujours de `AVASTACK_VERSION` (`avastack/__init__.py`), jamais d'un nom
 figé — `avastack.iss` refuse même de compiler sans `/DAppVersion`. Deux
