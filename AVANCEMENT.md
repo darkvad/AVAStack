@@ -10,135 +10,89 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **DERNIÈRE PASSE LIVRÉE ET VALIDÉE PAR TOI (28/09/2026) — AVAStack v2.39.0 :
-  TROIS BARRES DE NIVEAUX SUR L'HISTOGRAMME (modèle du MINI SharpCap, place du
-  GRAND), ÉTIREMENT GELABLE DANS LES DEUX MOTEURS, SATURATION PAR COULEUR,
-  ÉCHELLE Y RÉGLABLE**. **Ton verdict (28/09/2026) : « points 1, 2 et 3 testés
-  et validés ».** Ta demande :
-  « 3 barres de réglages de l'histogramme, un peu comme le grand histogramme de
-  SharpCap », puis tes deux précisions : c'est le **grand** (celui sous l'image),
-  et « si on passe en mode manuel avec figer, il faut que ce soit dispo **aussi
-  en VeraLux** qui étire bien mieux que STF pour dégrossir ».
-  - **Ce qui a décidé l'architecture** (et évité une mauvaise piste) :
-    `veralux_core_headless` n'a **ni point noir ni point blanc** (une ancre +
-    un logD) → « les barres = les points de l'étirement » ne peut pas marcher
-    dans les deux moteurs. Les barres agissent donc sur la **SORTIE DU MOTEUR**
-    (modèle du mini historique : « the stretch in the mini histogram affects the
-    display only »), **en décalage sur l'auto qui continue** de s'ajuster à
-    chaque frame. Effet instantané, jamais de recalcul du solveur.
-  - **Livré** : `display.niveaux()` (étage pur, identité **au bit** à
-    0/0,5/1 → zéro régression, court-circuité) ; barres Noir/Médian/Blanc
-    déplaçables sur l'histogramme (+ champs de saisie en %, double-clic =
-    défaut, « ↺ Auto ») ; **⏹/▶ geler-reprendre l'auto du moteur** (STF : stats
-    gelées ; **VeraLux : logD verrouillé**) avec état DIT en clair ; histogramme
-    à **deux bandes** (brut linéaire + sortie du moteur) avec sélecteur
-    « Les deux / Brut / Sortie » ; **saturation par couleur R/V/B** ; et un
-    **défaut corrigé au passage** : les 3 courbes étaient normalisées chacune à
-    son propre maximum (une dominante de couleur était donc invisible).
-  - **CORRIGÉ APRÈS TES ESSAIS (28/09/2026)** — tes trois observations, toutes
-    trois fondées :
-    ① **saturation par couleur** : tu soupçonnais une inversion bleu/vert. Ce
-    n'était **pas** une inversion d'indice (vérifié : le curseur « rouge » agit
-    bien sur R) mais une **formule fausse** : `c_c = Y + k_c·(c − Y)` changeait
-    le canal *partout* → mesuré sur un pixel vert, le curseur « rouge » à 2,00
-    faisait chuter le rouge (0,20 → 0,00), donc **verdissait** l'image — ton
-    constat mot pour mot. Remplacée par une **saturation par secteur de teinte**
-    (poids triangulaires sur 0°/120°/240°, qui somment à 1) : pousser « rouge »
-    sature les rouges et **laisse les verts intacts** (vérifié au banc).
-    ② **la « colline »** de la bande basse n'est pas une échelle bizarre :
-    **mesuré** — l'axe brut est étiré par les étoiles brillantes (σ du fond =
-    1,95 % de l'axe → une aiguille), alors que la bande « sortie » travaille
-    dans `[lo, hi]` (2,5× plus serré) où la MTF a une pente locale de **×1,60**
-    → le même fond y occupe **7,7 %** de l'axe, soit une colline de ~29 %.
-    C'est l'étirement lui-même (il ouvre les ombres). Un repère **« fond x % »**,
-    mesuré sur la somme des trois canaux, marque la pointe de la colline.
-    **Rectification d'une formulation trop vague** (« la cible du moteur =
-    25 % ») : il n'y a **pas** de cible universelle — le STF vise `target`
-    (défaut **0,25**) et **VeraLux vise ton curseur** « Luminosité du fond visée
-    (VeraLux) » (défaut 0,20 ; **0,16 chez toi sur M31**). Mesuré sur NGC 7331
-    (VeraLux) : 0,12 → pic **12,3 %** ; **0,16 → pic 16,6 %** ; 0,20 → 21,7 % ;
-    STF 0,25 → 23,6 %. La marque suit donc TON réglage à ~1 % près, et la cible
-    du moteur est maintenant **écrite dans la ligne d'état** du panneau
-    (« fond visé 16 % (VeraLux) » / « cible du fond 25 % (STF) »), rafraîchie
-    par les deux curseurs de cible, avec « , calcul en cours » tant que le
-    solveur VeraLux n'a pas rendu (l'écran montre alors l'image d'attente STF,
-    dont le fond est à 25 % : la marque ne peut pas encore suivre le fond visé).
-    ③ **LES BARRES NE SUIVAIENT PAS LE GESTE quand l'empilement était fini** :
-    ton constat (« l'image change alors que la position de la barre ne change
-    pas, ou pas complètement, comme si le bas n'était pas rafraîchi ») est
-    **reproduit au banc**. **Cause trouvée** : `_draw_hist()` n'était appelé que
-    par la mise à jour des **données** (une fois par frame) et par le sélecteur
-    de bandes — le glissement appliquait la valeur et re-rendait l'**image**,
-    mais ne retraçait **jamais le panneau** : sans frame il restait figé sur la
-    position de **départ**, et à 0,2 fps une frame venait le rattraper par
-    sauts (ta barre « à moitié déplacée »). Même défaut latent pour **↺ Auto**,
-    la **saisie chiffrée** et la **nouvelle session** tant qu'aucune image
-    n'était affichée. **Corrigé** : ces six gestes retracent **immédiatement**
-    (le glissement à **chaque pixel**) — et **sans recalculer l'histogramme**,
-    la courbe étant tracée sur la sortie du moteur **avant** l'étage de niveaux
-    (une barre ne la change pas). **Mesuré** : tracé complet = **3,1 ms** contre
-    ~80 ms pour l'image. **Contre-épreuve faite** sur l'ancien code : le nouveau
-    contrôle **échoue** (poignée tracée restée à la position de départ alors que
-    la valeur valait 0,68) — donc il sert.
-  - **Mesuré sur ton NGC 7331 réel** (11 880 s, aperçu 1600 px) : axe brut
-    0..0,0331, fond à 52 %, p99/p99,9 à 57/87 % ; auto lo 0,01518 (46,3 %) ·
-    hi 0,02868 (86,6 %) · m 0,3636 ; fond affiché 65/255 (≈ la cible 25 %) ;
-    rendu complet = 82 ms d'étirement + 36 ms pour les deux histogrammes + 3 ms
-    de tracé (le calcul quitte le thread d'acquisition : ~55 ms de CPU gagnés là).
-  - **Banc NEUF `bancs/_test_histo_jalon75.py`** (11 sections) : identité au bit,
-    MTF(m,m) = 0,5, **parité écran/fichier AU BIT avec barres et étirement gelé**,
-    gel/reprise, saturation par couleur, coût indépendant de la résolution,
-    échelle commune des courbes, géométrie (étiquettes bornées **et** sans
-    chevauchement — deux défauts réels attrapés là), **la poignée réellement
-    TRACÉE = la position de la valeur et zéro recalcul pendant le geste** (③),
-    **l'échelle y log/linéaire : hauteur PROPORTIONNELLE aux comptes (×100 pour
-    1000/10 contre ×2,9 en log), bande haute intacte, aucun recalcul, retour au
-    log AU BIT** (④), UI réelle, chaîne linéaire intacte. **Bancs RÉPARÉS** :
-    jalon 47 (attente périmée depuis la v2.38.9) et jalons 19 (ils lisaient
-    l'histogramme dans la file de l'UI). **+45 bancs rejoués VERTS** (5, 6, 19,
-    20, 22, 39, 41, 42, 47, 54, 56, 58, 59, 61, 62, 63, 65, 67, 68, 69, 72, 73,
-    74, 75, VeraLux 1/2/3, démarr. non bloquant…), **dont 26 après la correction
-    ③** et **8 après l'ajout de la case ④** — **dont l'audit de GÉOMÉTRIE du
-    jalon 72**, qui vérifie que la case n'a rien fait abandonner par `pack`.
-  - **À FAIRE À TON PROCHAIN ESSAI** : poser tes 3 barres sur une vraie cible
-    (STF **et** VeraLux), essayer ⏹/▶, **re-vérifier que la barre SUIT le doigt
-    quand l'empilement est fini** (③ : plus de « bas » figé, le champ de saisie
-    et la barre doivent dire la même chose à tout instant), **re-essayer les
-    trois curseurs de saturation par couleur** (chacun ne doit plus toucher que
-    sa couleur).
-  - **TES DÉCISIONS (28/09/2026)** : **barre MÉDIAN et curseur GAMMA : les DEUX
-    restent** (« on laisse comme c'est ») — consigné **dans le code** pour qu'un
-    futur nettoyage ne retire rien : ce ne sont pas les mêmes courbes (la barre
-    place le gris moyen par la MTF, `MTF(m, m) = 0,5`, et c'est elle qui découpe
-    l'histogramme à l'écran ; le gamma est une puissance appliquée après, qui
-    envoie 0,5 sur 0,06 à γ = 4 quand la MTF l'envoie sur 0,75 avec m = 0,25).
-    **Décision du 28/09/2026 : l'histogramme à deux bandes reste TEL QUEL**
-    (176 px) — le sélecteur « Sortie » ou « Brut » rend la place à l'image quand
-    on le souhaite, le point est CLOS.
-  - **④ ÉCHELLE EN Y — DÉCISION PRISE ET LIVRÉE (28/09/2026)** : tu as choisi
-    **① « linéaire sur la seule bande basse »**. Livré — case **« Échelle y
-    linéaire (bande basse) »** sous l'histogramme (défaut = log, donc une
-    ancienne config garde le rendu d'avant ; case persistée). **Mesures** (tes
-    frames, 20 de ta session de 15 h 37 moyennées, aperçu 1600 px, STF auto) :
-    largeur à mi-hauteur du fond **170 bacs = 66 % de l'axe en log → 27 bacs =
-    10,5 % en linéaire** (la colline devient un **PIC**) ; en échange la queue
-    tombe de **34 px à 0,65 px** (p99) et les bacs visibles passent de 251/256 à
-    151/256. **VÉRIFIÉ SUR LE CANVAS RÉEL** (validation bout en bout sur tes
-    frames, hist_mode « les deux », bande de 69 px) : la polyligne DESSINÉE passe
-    de **66,4 % de l'axe à mi-hauteur à 10,5 %** (×6,3 plus étroit), bacs non
-    plats 251/256 → 151/256 — les chiffres annoncés sont ceux de l'écran.
-    La **bande haute garde le log** (mesurée en linéaire : **2 bacs à
-    mi-hauteur, 10/256 bacs visibles** → une aiguille sans usage). Rien d'autre
-    ne bouge : barres, repères, « fond x % » et courbe jaune sont **en x** ;
-    basculer **ne recalcule aucun histogramme** et **ne re-rend pas l'image**
-    (les bacs sont en mémoire) ; l'échelle est **dite** dans la ligne d'état.
-    Banc **section [11]** (hauteur ∝ comptes ×100 contre ×2,9 en log, bande
-    haute intacte, 0 recalcul, état dit, case persistée, **retour au log AU
-    BIT**) ; **jalon 72 (géométrie de la fenêtre) rejoué vert** — la case n'a
-    rien fait abandonner par `pack` — plus 5, 6 ×2, 19, 39, 47 : **tous verts**.
-    **VALIDÉ par ton essai réel du 28/09 (soir) : « points 1, 2 et 3 testés et
-    validés ».** Repli si régression : v2.38.11. **Installateurs non reconstruits**
-    (v2.39.0 a été validée sur le code vivant ; à reconstruire sur ta demande).
+- **DERNIÈRE PASSE LIVRÉE (28/09/2026, soir) — AVAStack v2.40.0 : ASTROMÉTRIE SUR TA CAMÉRA
+  OSC (NGC 7023 RÉSOLU) ET SPCC OUVERTE AU CAPTEUR COULEUR.** Tes deux constats
+  du 28/09 sur tes brutes OSC (Uranus-C Pro, **mode dossier**, C8 @ 1280 mm →
+  0,5005° / 0,4714″/px, caméra tournée à −94°) :
+  « l'astrométrie ne trouve pas de résultat » et « la case SPCC dit que c'est
+  que pour du mono multibande, alors que SPCC fonctionne en images couleurs
+  dans Siril — il faut juste lui dire que c'est un capteur couleur et le
+  choisir ». **Les deux sont fondés, les deux sont corrigés.**
+  - **① ASTROMÉTRIE — la zone de catalogue était un RECTANGLE** (`CLIP_MARGE`
+    = 1,6 : largeur = champ en ξ, hauteur en η), ce qui **suppose que l'axe X
+    de la caméra suit les AD** — faux dès qu'on tourne la caméra : il ne
+    gardait que **43 % des étoiles** de l'image **et gardait une bande HORS
+    image** où sont justement les plus brillantes du secteur. Remplacé par le
+    **DISQUE DU CHAMP RÉEL** (`masque_champ`, rayon = demi-diagonale), invariant
+    en rotation, **sans aucune marge** (mesuré : ×1,3 **échoue**, le disque
+    gardant alors trop d'étoiles hors image). **Deuxième cause cumulée** : le
+    plafond `N_CAT_MAX` (400) tombait **avant** la sélection → sur un champ
+    étroit il ne gardait que les plus brillantes d'une zone **2,6× plus large
+    que l'image** (il ne restait que **9 étoiles de catalogue dans l'image**) ;
+    il passe désormais **après**.
+    **Mesuré sur TES brutes** (`bancs/_diag_osc_ngc7023.py`, ASTAP en référence
+    croisée) : **NGC 7023 résolu** — 68 à 80 appariements, **rms 0,43-0,46 px**,
+    **0,4716″/px contre 0,4714″/px pour ASTAP**, et toujours résolu avec des
+    indices faux de ±0,2° ou un champ faux de ×0,8 à ×1,1 (robustesse) ;
+    **M31 NON régressé** (112 et 115 appariements contre 86 et 70 avant) —
+    `bancs/_test_solveur_reel_m31.py` vert (rms 0,87 px contre 0,87 px pour
+    ASTAP sur les mêmes étoiles : le juge est le rms, pas l'écart de WCS — un
+    champ large a de la distorsion).
+  - **② SPCC COULEUR (OSC)** — la SPCC n'était câblée que pour le **mono
+    multi-bandes** (trois filtres R/G/B distincts). Or la base de Siril décrit
+    aussi les capteurs couleur par **trois entrées (RED/GREEN/BLUE)** avec un
+    **filtre LPF COMMUN** : c'est le calcul même de Siril sur une image OSC.
+    Livré : `reponses_osc` (QE des trois canaux × le même filtre),
+    `coherence_osc`, `capteur_osc` / `filtre_osc` (**correspondance exacte
+    d'abord**), un paramètre **`mode`** (« osc »/« mono » ; `None` = décidé par
+    les FILTRES via `mode_bandes` — le nom du capteur est **ambigu**,
+    « Sony IMX585 » figure dans les **deux** listes de la base) ; côté
+    interface un **sélecteur « Type de capteur »** persisté (`spcc_type`),
+    restauré **avant** les profils, avec les lignes **G/B grisées** en OSC (un
+    seul filtre) et un défaut **« No filter »** (jamais un vrai LPF appliqué en
+    silence à une brute sans filtre) ; et pour une **source couleur** les gains
+    par canal s'appliquent par le nouveau **`LiveStacker.gains`** (avant
+    l'équilibrage et le Linear Fit, **jamais** sur l'empilement BRUT
+    `corrections=False`), y compris après un re-stack.
+    **Banc NEUF `bancs/_test_spcc_osc.py`** (6 sections) : bout en bout sur une
+    image couleur synthétique bâtie avec les réponses OSC réelles → pentes
+    **R/G 0,6999** et **B/G 1,2981** retrouvées pour des gains vrais de
+    **0,70 / 1,30** (41 étoiles) ; `_test_spcc_jalon58.py` **vert** (le chemin
+    mono et ses avertissements LUMINANCE/filtres répétés sont intacts).
+  - **TON VERDICT EN SÉANCE RÉELLE (28/09/2026, soir) : « tout à l'air bon »** —
+    session **dossier OSC** NGC 7023 (Uranus-C Pro), ~40 brutes : empilement
+    couleur propre, **étoiles bien colorées** (les bleues restent bleues, pas de
+    dominante verte), recadrage 3729×2046 après la rotation, **36 frames
+    empilées**. Les deux contrôles formels de la passe (① étoile verte + ″/px de
+    l'astrométrie ; ② en-tête **`AVASPCC`** d'une sauvegarde) ne sont pas
+    visibles sur ta capture : **à confirmer quand tu voudras une trace écrite** —
+    la mécanique des deux est mesurée au banc, et l'astrométrie est résolue sur
+    TES brutes (diag NGC 7023).
+  - **Bancs rejoués VERTS pour cette passe** : **SPCC 58 bis** (banc NEUF,
+    rejoué à la clôture), **SPCC 58** (le chemin mono et ses avertissements
+    LUMINANCE sont intacts), solveur 56, propagation 56, catalogues 56 et 70,
+    branchement astro 56, photométrie 56, **solveur RÉEL M31**, + diag OSC
+    NGC 7023 sur brutes réelles.
+  - **Reste ouvert** : le diagnostic jetable de la session a été retiré de la
+    racine (les mesures utiles sont dans le changelog et le diag
+    `bancs/_diag_osc_ngc7023.py`, conservé). **Installateur v2.40.0 CONSTRUIT à
+    la clôture** (`installer/windows/output/avastack-setup-2.40.0.exe`, 11,5 Mo,
+    ISCC en 9 s) : la règle « rebuilder dès que la passe touche plus d'un ou deux
+    fichiers » est respectée sans que tu aies eu à le demander.
+
+
+- **PASSE PRÉCÉDENTE DU MÊME JOUR (28/09/2026, soir) — v2.39.0** : trois barres de
+  niveaux sur l'histogramme (Noir / Médian / Blanc) agissant sur la **sortie du
+  moteur**, ⏹/▶ gel-reprise de l'étirement auto (STF **et** VeraLux), bandes R/V/B,
+  saturation par couleur, échelle y réglable. **VALIDÉE par ton essai réel
+  (« points 1, 2 et 3 testés et validés »)** ; tes deux décisions : **la barre
+  MÉDIAN et le curseur GAMMA restent tous les deux** (« on laisse comme c'est »)
+  et **l'histogramme à deux bandes reste TEL QUEL** (176 px) — toutes deux
+  consignées **dans le code** pour qu'un futur nettoyage ne retire rien. Repli si
+  régression : v2.38.11. Commit `07b511b`. Quatre leçons durables écrites dans
+  CLAUDE.md (barres APRÈS le moteur, saturation par TEINTE, panneau rafraîchi par
+  les données, échelle d'axe muette). **Installateurs v2.39.0 non reconstruits**
+  (à faire sur ta demande).
 
 - **PASSES PRÉCÉDENTES DU MÊME JOUR (28/09/2026, nuit) — v2.38.9, v2.38.10,
   v2.38.11** : lignes à texte libre visibles (astrométrie, catalogues, re-stack),
@@ -389,7 +343,20 @@ dans le changelog du source et l'historique git.)
 
 ## En attente / prochaine session
 
-- **NOUVEAU (28/09/2026) — v2.39.0 VALIDÉE PAR TON ESSAI (« points 1, 2 et 3
+- **NOUVEAU (28/09/2026, soir) — v2.40.0 : ASTROMÉTRIE SUR CAMÉRA TOURNÉE (OSC) ET
+  SPCC COULEUR.** NGC 7023 **résolu sur tes brutes** (68-80 appariements, rms
+  0,43-0,46 px, 0,4716″/px contre 0,4714″/px pour ASTAP), M31 non régressé ; la
+  SPCC accepte un **capteur couleur (OSC)** avec son filtre LPF commun
+  (`mode`, `reponses_osc`), et les gains par canal d'une source couleur passent
+  par `LiveStacker.gains`. **Ton essai réel du 28/09 (soir) : « tout à l'air
+  bon »** — session dossier OSC NGC 7023, ~40 brutes (détails en tête de
+  fichier). Bancs NEUFS/rejoués : `_test_spcc_osc.py` (NEUF, 6 sections),
+  `_test_spcc_jalon58.py`, `_test_solveur_reel_m31.py`, diag
+  `bancs/_diag_osc_ngc7023.py` sur brutes réelles. **Installateur v2.40.0
+  CONSTRUIT à la clôture** (`installer/windows/output/avastack-setup-2.40.0.exe`,
+  11 463 956 o) ; l'installateur v2.39.0 n'a pas été construit (version dépassée,
+  rien à en tirer) — **repli si régression : v2.38.11** (celui-ci existe).
+- **PRÉCÉDENT (28/09/2026) — v2.39.0 VALIDÉE PAR TON ESSAI (« points 1, 2 et 3
   testés et validés »)** : les **trois barres de niveaux** de l'histogramme
   (Noir / Médian / Blanc), le **⏹/▶ geler-reprendre** de l'étirement auto (STF
   **et** VeraLux), le **sélecteur de bandes**, la **saturation par couleur R/V/B**
@@ -412,7 +379,7 @@ dans le changelog du source et l'historique git.)
   3,1 ms contre ~80 ms) ; **④ une échelle d'axe muette est un piège** (mesures
   log/linéaire consignées). Plus une note opérationnelle : les bancs se lancent
   avec l'interpréteur du VENV (`python` seul, sur ta machine, n'a pas numpy).
-- **AUCUN DÉFAUT CONNU OUVERT** sur les v2.38.3 à v2.39.0 (livrées).
+- **AUCUN DÉFAUT CONNU OUVERT** sur les v2.38.3 à v2.40.0 (livrées).
   **CONFIRMÉ PAR TES ESSAIS RÉELS (27-28/09/2026, Linux)** : astrométrie ✔, SPCC ✔,
   GraXpert ✔ (« astrométrie, spcc OK / GraXpert OK ») ; démarrage par le MENU et
   en terminal ✔ ; **v2.38.11 sous `nftables` actif : « c'est tout bon »** (elle
@@ -649,9 +616,28 @@ dans le changelog du source et l'historique git.)
   touche PLUS d'un ou deux fichiers** (`powershell -NoProfile
   -ExecutionPolicy Bypass -File installer\windows\build_avastack.ps1`) —
   à la charge de l'agent, sans qu'Alain ait à le demander.
+- **Inno Setup 6 est dans `%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe`** (PAS
+  dans `Program Files`) : `build_avastack.ps1` y cherche en premier et le trouve.
+  Un `Test-Path` sur `Program Files` seul ne prouve donc RIEN — leçon du
+  28/09/2026 : l'absence d'ISCC a été annoncée à tort AVANT de lancer le script
+  (il se construit en 9 s, l'artefact fait ~11,5 Mo).
 
 ## Clôtures précédentes
 
+- 28/09/2026 (v2.40.0) : SESSION « ASTROMÉTRIE SUR CAMÉRA TOURNÉE (NGC 7023
+  RÉSOLU) ET SPCC OUVERTE AU CAPTEUR COULEUR » — tes deux constats OSC du jour,
+  **tous deux fondés** : ① la zone de catalogue du solveur était un RECTANGLE
+  (faux dès que la caméra est tournée : il ne gardait que 43 % des étoiles de
+  l'image ET gardait une bande HORS image, là où sont les plus brillantes) →
+  **disque du champ réel**, et `N_CAT_MAX` appliqué **après** la sélection :
+  **NGC 7023 résolu sur tes brutes** (68-80 appariements, rms 0,43-0,46 px,
+  0,4716″/px contre 0,4714″/px pour ASTAP) et **M31 non régressé** (112/115
+  appariements contre 86/70 avant) ; ② la SPCC accepte un **capteur COULEUR
+  (OSC)** — trois canaux + un filtre LPF COMMUN de la base Siril, `mode`,
+  `reponses_osc`, gains par canal appliqués par `LiveStacker.gains` — banc NEUF
+  `_test_spcc_osc.py` (6 sections, tout au vert). **Verdict réel (ton essai du
+  soir) : « tout à l'air bon »** (session dossier OSC NGC 7023, ~40 brutes).
+  **Installateur v2.40.0 construit à la clôture.** Repli si régression : v2.38.11.
 - 27/09/2026 (v2.38.2 puis v2.38.3) : SESSION « LE FICHIER DU ⚡ ÉTAIT À
   L'ENVERS, ET LE MOUCHETÉ BLEU VIENT DE BXT », **mesures validées par Alain**
   (« image magnifique avec -sn 0.3 ») : ① son test de la v2.38.1 (« le fichier
