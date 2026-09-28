@@ -73,10 +73,10 @@ dans le changelog du source et l'historique git.)
     LUMINANCE sont intacts), solveur 56, propagation 56, catalogues 56 et 70,
     branchement astro 56, photométrie 56, **solveur RÉEL M31**, + diag OSC
     NGC 7023 sur brutes réelles.
-  - **CLOS à la clôture (28/09/2026, soir)** : le diagnostic jetable de la
-    session a été retiré de la
-    racine (les mesures utiles sont dans le changelog et le diag
-    `bancs/_diag_osc_ngc7023.py`, conservé). **Les DEUX installateurs v2.40.0 ont
+  - **CLOS à la clôture (28/09/2026, soir)** : le diagnostic jetable de la session
+    a été retiré de la racine (les mesures utiles sont dans le changelog et le
+    diag `bancs/_diag_osc_ngc7023.py`, conservé). **Les DEUX installateurs v2.40.0
+    ont
     été construits** — Windows (`installer/windows/output/avastack-setup-2.40.0.exe`,
     11,5 Mo, ISCC en 9 s) et Linux
     (`installer/linux/output/avastack-setup-2.40.0-linux.tar.gz`, 552 Kio, 62
