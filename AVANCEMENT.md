@@ -123,8 +123,39 @@ dans le changelog du source et l'historique git.)
     case **SCNR / chroma / démagenta** en mode HOO/SHO → plus d'attente d'un
     demi-seconde ; en mono/OSC simple, rien ne change (c'est normal, ces chemins
     n'étaient pas concernés). Précédent essai (première version) : « déjà pas de
-    régression », différence non flagrante — **c'est cohérent avec des poses
-    longues** et c'est consigné tel quel.
+  - **⑫ DIAGNOSTIC DE L'ÉTAT DES CALCULS (29/09/2026, soir) — la chaîne LIVE
+    mesurée sur TES données et TES réglages** (composition RGB 3 rôles, GraXpert
+    live + NLM + netteté + chroma + neutralisation + VeraLux) :
+    **~30 s par passe en pleine résolution** (GraXpert 16,8 s — 3 sous-processus,
+    5,6 s chacun — NLM 7,1 s, VeraLux 2,5-3,1, netteté 0,6, chroma 0,5,
+    neutralisation 0,4, corrections ~1-2) et **~12 s en aperçu 1600 px**
+    (GraXpert 9,7 s, NLM 1,0, VeraLux 0,39, le reste < 0,2). **GraXpert domine
+    même en aperçu : ~2,5 s FIXES par appel** (rechargement du modèle IA du
+    sous-processus) — d'où 9,7 s pour 3 couches.
+    - **Pourquoi le panneau reste occupé** : une passe (30 s) ≈ le cycle de
+      rafale (33 s) et le solveur ne s'arrête jamais (il n'y a AUCUN travail
+      perdu : il relance dès qu'il est libre, une seule passe en attente). Le
+      temps occupé est de l'**arithmétique**, pas un défaut.
+    - **Idées ÉCARTÉES (décisions prises avec Alain, consignées pour ne pas les
+      reproposer)** : ① **décimation de la chaîne lourde** (« GraXpert/NLM une
+      fois sur N ») — **son objection est décisive** : un débruitage ou un
+      retrait de gradient n'est pas un modèle réutilisable ; ne pas le refaire
+      sur la pile suivante montrerait la pile NON corrigée, donc l'image
+      sauterait d'une passe à l'autre. Abandonné. ② **Cooldown seul** (ⓐ) —
+      invisible : le solveur ne gaspille rien aujourd'hui, il enchaîne. Non
+      implémenté.
+    - **TON USAGE EST DÉJÀ POSSIBLE** : « Rendu pleine résolution » se bascule à
+      tout moment (décochée = chaîne sur l'aperçu, 12 s/passe ; cochée = pleine
+      résolution, 30 s/passe ; cochée à la fin = UNE passe puis plus rien, la
+      laisser cochée ne coûte donc rien sans nouvelle brute). **Correction
+      consignée** : le `config.json` ne dit QUE l'état au dernier
+      enregistrement (écrit à la fermeture) — il ne prouve pas l'état pendant
+      la session.
+    - **RESTE À TRANCHER** : GraXpert live **une fois sur le composite** au lieu
+      d'une fois par couche → ~3-4 s au lieu de 9,7 (aperçu), passe ~6 s au lieu
+      de 12 — MAIS le gradient serait retiré après recomposition (le jalon 24
+      avait choisi l'avant). Décision d'Alain, sur comparaison visuelle (à
+      préparer sur ses images M31 si tu le veux).
   - **⑦ bis LEÇONS DU JALON REMONTÉES DANS CLAUDE.md (ton accord explicite,
     29/09/2026)** — section « Pièges », trois leçons : ① un **fichier de mémoire
     ne passe JAMAIS par un aller-retour PowerShell** (UTF-8 sans BOM lu en
