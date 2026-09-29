@@ -139,13 +139,16 @@ dans le changelog du source et l'historique git.)
     `d8ec4f5` (code + doc + banc), `cf65e8f` (mémoire), `9fb8a71`
     (INSTALLATION.md en v2.42.0 : artéfacts, tailles, SHA-256, repli v2.41.0) —
     **arbre propre**.
-  - **À SAVOIR (traçabilité du tag)** : le tag `v2.42.0` désigne le commit
-    `9fb8a71` (code + doc de l'application), comme pour la v2.41.0 — l'installateur
-    macOS vit dans les commits `4ec3ccd`/`ca59086`, **après** le tag, et la
-    release publiée porte bien les **trois** paquets. Qui clone le tag n'a donc
-    pas `installer/macos/`. Deux options si tu veux que le tag le contienne :
-    déplacer le tag (réécriture d'un tag publié) ou publier une **v2.43.0** au
-    prochain changement — à ton choix, rien n'est fait dans ce sens.
+  - **TRAÇABILITÉ DU TAG — TON CHOIX (29/09/2026) : NE PAS DÉPLACER LE TAG.** Le
+    tag `v2.42.0` reste sur le commit `9fb8a71` (code + doc de l'application) ;
+    l'installateur macOS, ajouté après, vit dans les commits `4ec3ccd`/`ca59086`/
+    `d4dbdbb` et la release publiée porte bien les **trois** paquets.
+    **La prochaine évolution de code prendra donc la version `v2.43.0`** (règle
+    écrite dans CLAUDE.md, section « Installateur et tests réels » : on ne
+    réécrit JAMAIS un tag publié — c'est le prochain changement de code qui porte
+    la version suivante). Conséquence pratique pour la prochaine passe : dès
+    qu'un fichier de code change, bump `AVASTACK_VERSION` à **2.43.0** +
+    changelog, rebuild des **trois** packers, release `v2.43.0`.
 
 
 - **PASSE PRÉCÉDENTE (28/09/2026) — AVAStack v2.41.0 :

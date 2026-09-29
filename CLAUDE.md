@@ -119,6 +119,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File installer\windows\build_avas
 
 # Rebuild du paquet Linux (même version, lue dans le même source)
 python installer\linux\build_avastack.py
+
+# Rebuild du paquet macOS (même règle)
+python installer\macos\build_avastack.py
 ```
 
 **NOM DES INSTALLATEURS : toujours le numéro de version (consigne d'Alain,
@@ -129,17 +132,27 @@ versions ne doivent JAMAIS s'écraser. Registre :
 | --- | --- | --- |
 | Windows | `installer/windows/output/avastack-setup-<version>.exe` | `build_avastack.ps1` (ISCC + `/DAppVersion`) |
 | Linux | `installer/linux/output/avastack-setup-<version>-linux.tar.gz` | `installer/linux/build_avastack.py` |
+| macOS | `installer/macos/output/avastack-setup-<version>-macos.tar.gz` | `installer/macos/build_avastack.py` |
 
 Règles qui vont avec :
 - la version vient TOUJOURS de `AVASTACK_VERSION` (`avastack/__init__.py`) —
   jamais recopiée à la main dans un nom de fichier ; `avastack.iss` **refuse**
-  de compiler sans `/DAppVersion` (`#error`) et le packer Linux la lit dans le
-  source ;
+  de compiler sans `/DAppVersion` (`#error`) et les packers Linux et macOS la
+  lisent dans le source ;
 - on ne renomme jamais un artefact après coup, et on ne remplace pas un
   artefact d'une version antérieure (l'ancien reste à côté : c'est lui qui sert
   de repli en cas de régression) ;
 - après toute passe de code, annoncer en fin de réponse le CHEMIN EXACT de
-  l'artefact reconstruit (version comprise).
+  l'artefact reconstruit (version comprise) ;
+- **TAG ET ARTEFACT AJOUTÉ APRÈS COUP : on ne DÉPLACE jamais un tag publié
+  (décision d'Alain, 29/09/2026)** — un paquet de distribution ajouté après la
+  release (cas réel : l'installateur macOS joint à `v2.42.0` le 29/09/2026, dont
+  le tag reste sur le commit de code + doc) est simplement **ajouté à la release**
+  (`gh release upload`, aucun écrasement), la doc de release rééditée
+  (`INSTALLATION.md`) est réuploadée avec `--clobber`, et c'est le **prochain
+  changement de code** qui porte la version suivante (**v2.43.0** en l'occurrence).
+  Le tag marque le CODE + la DOC d'une version, pas les ajouts de distribution
+  qui l'ont suivie — et c'est dit tel quel dans les mémoires.
 
 - **Données astronomiques exigées (jalon 70, constat réel d'Alain du
   27/09/2026 : « l'astrométrie ne trouve pas de résultat… et ça échoue en
