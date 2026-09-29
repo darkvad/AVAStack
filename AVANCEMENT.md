@@ -76,13 +76,21 @@ dans le changelog du source et l'historique git.)
     `array_equal(sum/wsum)` avec l'ancien algorithme. Prix dit : les tampons
     sont persistants (+240 Mo en mono, +725 Mo en RGB par stacker, libérés par
     `reset()`). Changelog détaillé dans `avastack/__init__.py`.
-  - **⑥ PROCHAINE ÉTAPE — RIEN À CODER EN ATTENTE DE TA PAROLE : on
-    reconstruit les trois installateurs v2.43.0 puis TU ESSAIES EN RÉEL**
-    (session live : fluidité, gestes gamma/saturation, empilement identique à
-    avant). Ce qui resterait à optimiser, si tu le veux (mesuré, non fait) :
-    `composite_mean_avec_canaux` 296 ms (percentiles par rôle), `mean()` 44 ms,
-    chemin ORB 377 ms (les triangles, 39 ms, restent le chemin recommandé),
-    winsorized 570 ms (mur du médian), geste de saturation 74 ms.
+  - **⑥ INSTALLATEURS v2.43.0 RECONSTRUITS (29/09/2026, à la charge de l'agent
+    avant tout essai réel)** — les trois, mêmes sources que le code testé :
+    `avastack-setup-2.43.0.exe` (11 492 708 o, SHA-256 `FF3565BE…8457B4`),
+    `avastack-setup-2.43.0-linux.tar.gz` (589 243 o, `392E6AD9…BCDE2C`),
+    `avastack-setup-2.43.0-macos.tar.gz` (586 837 o, `B3ECD82E…EB08BB9`). Le
+    `.gitignore` a été complété : le dossier de sortie **macOS** n'était pas
+    ignoré (le paquet apparaissait comme « non suivi ») — c'est réparé, et les
+    artefacts ne partent jamais dans le dépôt. **Aucun tag, aucune release :
+    la v2.43.0 n'est pas publiée** (elle attend ton essai réel).
+  - **⑦ PROCHAINE ÉTAPE — RIEN À CODER EN ATTENTE DE TA PAROLE : TU ESSAIES EN
+    RÉEL** (session live : fluidité, gestes gamma/saturation, empilement
+    identique à avant). Ce qui resterait à optimiser, si tu le veux (mesuré,
+    non fait) : `composite_mean_avec_canaux` 296 ms (percentiles par rôle),
+    `mean()` 44 ms, chemin ORB 377 ms (les triangles, 39 ms, restent le chemin
+    recommandé), winsorized 570 ms (mur du médian), geste de saturation 74 ms.
 
 
 - **PASSE DE CLÔTURE (29/09/2026, soir) — v2.42.0 : INSTALLATEUR macOS, TES
