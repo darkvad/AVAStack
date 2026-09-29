@@ -17,9 +17,53 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.44.0"
+AVASTACK_VERSION = "2.45.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.45.0 : OUTILS EXTERNES PAR COUCHE EN PARALLÈLE (jalon 81) — décision
+#   d'Alain du 29/09/2026, après avoir demandé la MESURE de la mémoire avant de
+#   coder (et après l'essai de faisabilité de la piste « inférence ONNX en
+#   processus », ÉCARTÉE — chiffres en fin d'entrée).
+#   POURQUOI : le coût de GraXpert est FIXE par appel — démarrage de son binaire
+#   figé puis chargement des 217 Mo du modèle IA, ~2,8 s MESURÉS à chaque
+#   invocation — et la chaîne par couche (jalon 24) l'appelait TROIS fois de
+#   suite, une par couche de composition : 8,3 s de pur démarrage par passe. Or
+#   les couches sont INDÉPENDANTES (fichiers distincts, aucun état partagé) :
+#   lancer les trois EN MÊME TEMPS chevauche leurs démarrages.
+#   MESURÉ (3 vraies couches d'aperçu, machine de dev) : 13,70 s → 5,58 s
+#   (59 %), fichiers produits IDENTIQUES OCTET À OCTET (SHA-256 égaux) ; en
+#   pleine résolution 11,88 s → 5,74 s. MÉMOIRE mesurée : ~680 Mo par appel,
+#   1,22 Go pour trois (pages du modèle partagées), tout rendu à la sortie.
+#   - avastack/compat.py : `memoire_libre()` — octets physiques disponibles,
+#     sans AUCUNE dépendance (Windows GlobalMemoryStatusEx, Linux
+#     /proc/meminfo, macOS sysconf).
+#   - avastack/external/live.py : `MAX_PARALLELE` (3), `parallele_max(nb)` —
+#     borné par la mémoire libre (~800 Mo réservés par appel simultané, 1 Go
+#     toujours laissé à la machine) — et `appliquer_lot(items)`, qui rend des
+#     valeurs IDENTIQUES à des appels en série, avec REPLI SÉRIE automatique
+#     (lot d'un élément, mémoire insuffisante, pool de fils en échec, élément
+#     sans résultat) : jamais d'image perdue, jamais de trou silencieux.
+#   - avastack/processing/display.py (solveur live) et avastack/ui/app.py
+#     (`_couches_pleine_resolution`, export pleine résolution) : le GRADIENT par
+#     couche part en UN lot ; le DÉBRUITAGE garde son ordre (gradient PUIS
+#     débruitage, couche par couche) et les CACHES PAR RÔLE sont intacts.
+#   Test _test_gx_parallele_jalon81 (9 cas : bornes de concurrence, chevauchement
+#   prouvé par journal, égalité AU BIT avec et sans parallélisme sur le solveur
+#   live ET sur l'export, caches par rôle, échec isolé, repli mémoire) ;
+#   régression : graxpert_live_jalon4, couleurs_jalon22, denoise_live_jalon9,
+#   etat_calcul_jalon40, sharp_live_jalon12, save_brute_jalon59,
+#   fond_bleu_jalon62, chroma_nr_jalon63, compo_ui_jalon19, veralux_jalon3,
+#   cadence_jalon42, ui_jalon5, multifolder_jalon19, rafale_fin_rendu_jalon80.
+#   - PISTE « NOTRE INFÉRENCE ONNX » ÉCARTÉE (même session, essai demandé) :
+#     le modèle est tuilable (256×256×3, lot dynamique) et se charge en 0,65 s
+#     dans notre processus, MAIS ① l'inférence CPU coûte 119 ms/tuile (3,2 s
+#     pour un aperçu : AUCUN gain face à l'appel CLI complet), ② DirectML donne
+#     48 ms/tuile (1,36 s) mais épuise la mémoire PARTAGÉE de l'iGPU en pleine
+#     résolution, ③ GraXpert reste plus rapide (~20 ms/tuile) et ④ surtout la
+#     FIDÉLITÉ est mauvaise : corrélation **0,24** avec son propre modèle de fond
+#     (`-bg`) — le prétraitement, le recollement et le lissage de GraXpert font
+#     l'essentiel du résultat. L'environnement de l'essai a été restauré
+#     (onnxruntime désinstallé, `pip check` propre).
 # v2.44.0 : RENDU DÉCLENCHÉ EN FIN DE RAFALE (jalon 80, demande d'Alain,
 #   29/09/2026) — « je lance sur des dossiers avec 50 brutes par couche : on en
 #   lit 10, on les stacke, et seulement là on lance un rendu ? ».

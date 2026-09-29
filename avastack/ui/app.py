@@ -5312,27 +5312,42 @@ class App:
         → (composite corrigé, message) ; jamais d'exception (les erreurs d'outil
         sont remontées en message et l'appelant décide)."""
         traites, msgs = {}, []
-        for role, couche in canaux.items():
-            c = np.asarray(couche, dtype=np.float32)
-            if reglages.get("vl_graxpert"):
+        couches = {role: np.asarray(couche, dtype=np.float32)
+                   for role, couche in canaux.items()}
+        # --- ① GRADIENT par couche, EN PARALLÈLE (jalon 81) : à l'export, TOUS
+        # les appels sont à faire — c'est là que le gain est maximal (chaque
+        # appel paie ~2,8 s fixes de démarrage + chargement du modèle de 217 Mo,
+        # et les trois couches sont indépendantes : cf. `appliquer_lot`).
+        if reglages.get("vl_graxpert"):
+            a_lancer = []                    # (role, image)
+            for role, c in couches.items():
                 if float(np.max(np.abs(c))) < 1e-9:
                     msgs.append(f"GraXpert live ({role}) : couche vide — "
                                 "ignorée")
                 else:
-                    c2, err = gx_live.appliquer(c, reglages["vl_graxpert_cmd"])
-                    if err:
-                        msgs.append(f"GraXpert live ({role}) : {err}")
+                    a_lancer.append((role, c))
+            if a_lancer:
+                lot = gx_live.appliquer_lot(
+                    [(role, c, reglages["vl_graxpert_cmd"])
+                     for role, c in a_lancer])
+                for role, _c in a_lancer:
+                    c2, err = lot.get(role, (None, "appel non exécuté"))
+                    if err or c2 is None:
+                        msgs.append(f"GraXpert live ({role}) : "
+                                    f"{err or 'aucun résultat'}")
                     else:
-                        c = c2
-            if reglages.get("vl_denoise"):
+                        couches[role] = c2
+        # --- ② DÉBRUITAGE par couche : même ordre qu'avant, inchangé.
+        if reglages.get("vl_denoise"):
+            for role, c in couches.items():
                 c2, err = denoiser_local.denoiser(
                     c, reglages.get("vl_denoise_methode", "nlm"),
                     reglages.get("vl_denoise_force", 0.5))
                 if err:
                     msgs.append(f"Débruitage live ({role}) : {err}")
                 else:
-                    c = c2
-            traites[role] = c
+                    couches[role] = c2
+        traites = couches
         try:
             comp = composition_mod.composer(
                 traites, self.stacker.composition,

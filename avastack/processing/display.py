@@ -641,42 +641,63 @@ class DisplayProcessor:
                                               # le recalage Linear Fit, déjà
                                               # déballé dans `fit` ci-dessus)
                 msgs, traites = [], {}
-                for role, couche in canaux.items():
-                    c = np.asarray(couche, dtype=np.float32)
-                    if gx_actif:
+                couches = {role: np.asarray(couche, dtype=np.float32)
+                           for role, couche in canaux.items()}
+                # --- ① GRADIENT par couche, EN PARALLÈLE (jalon 81) : les
+                # couches sont INDÉPENDANTES et chaque appel GraXpert paie
+                # ~2,8 s FIXES (démarrage du binaire + chargement des 217 Mo
+                # du modèle). On prépare donc TOUS les appels à faire — les
+                # caches par rôle évitent toujours ceux qui n'ont pas changé —
+                # on les lance ENSEMBLE (mémoire bornée : cf. appliquer_lot),
+                # puis on range les résultats par rôle. Les valeurs obtenues
+                # sont celles de la série : mêmes commandes, mêmes fichiers,
+                # aucune dépendance entre couches (vérifié : fichiers produits
+                # identiques OCTET À OCTET, banc _test_gx_parallele_jalon81).
+                if gx_actif:
+                    a_lancer = []                # (role, cle, image)
+                    for role, c in couches.items():
                         if float(np.max(np.abs(c))) < 1e-9:
                             # Équivalent par couche du garde-fou jalon 23b :
                             # une couche sans données n'est pas envoyée à
                             # l'outil (comportement imprévisible).
                             msgs.append(f"GraXpert live ({role}) : couche vide"
                                         " — ignorée")
-                        else:
-                            cle = ("gx", role, _gx_live.cle_image(c), gx_cmd)
-                            cache = self._gx_couches.get(role)
-                            if cache is not None and cache[0] == cle:
-                                c = cache[1]     # autre rôle seulement : cette
-                            else:                # couche n'est PAS relancée
-                                c2, err = _gx_live.appliquer(c, gx_cmd)
-                                if err:
-                                    msgs.append(f"GraXpert live ({role}) : "
-                                                f"{err}")
-                                else:
-                                    c = c2
-                                    self._gx_couches[role] = (cle, c2)
-                    if dn_actif:
+                            continue
+                        cle = ("gx", role, _gx_live.cle_image(c), gx_cmd)
+                        cache = self._gx_couches.get(role)
+                        if cache is not None and cache[0] == cle:
+                            couches[role] = cache[1]   # cette couche n'est PAS
+                        else:                          # relancée — les autres
+                            a_lancer.append((role, cle, c))   # seulement
+                    if a_lancer:
+                        lot = _gx_live.appliquer_lot(
+                            [(role, c, gx_cmd) for role, _cle, c in a_lancer])
+                        for role, cle, _c in a_lancer:
+                            c2, err = lot.get(role,
+                                              (None, "appel non exécuté"))
+                            if err or c2 is None:
+                                msgs.append(f"GraXpert live ({role}) : "
+                                            f"{err or 'aucun résultat'}")
+                            else:
+                                couches[role] = c2
+                                self._gx_couches[role] = (cle, c2)
+                # --- ② DÉBRUITAGE par couche : même ordre qu'avant (gradient
+                # PUIS débruitage sur la couche), mêmes caches par rôle.
+                if dn_actif:
+                    for role, c in couches.items():
                         cle = ("dn", role, _gx_live.cle_image(c), dn_methode,
                                round(dn_force, 2))
                         cache = self._dn_couches.get(role)
                         if cache is not None and cache[0] == cle:
-                            c = cache[1]
+                            couches[role] = cache[1]
                         else:
                             c2, err = _denoise.denoiser(c, dn_methode, dn_force)
                             if err:
                                 msgs.append(f"Débruitage live ({role}) : {err}")
                             else:
-                                c = c2
+                                couches[role] = c2
                                 self._dn_couches[role] = (cle, c2)
-                    traites[role] = c
+                traites = couches
                 try:
                     # composer() NE porte AUCUNE correction de couleur : le
                     # composite re-fait depuis les couches traitées est BRUT,

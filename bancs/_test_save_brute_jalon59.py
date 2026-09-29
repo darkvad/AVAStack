@@ -303,7 +303,10 @@ d.stretch = "veralux"
 d.vl_log_d = 2.0
 # Outils remplacés par des IDENTITÉS : on mesure la chaîne de RECOMPOSITION +
 # CORRECTIONS, pas GraXpert ni l'étirement (déjà couverts par leurs bancs).
-dp._gx_live.appliquer = lambda img, cmd: (np.asarray(img, np.float32).copy(), "")
+dp._gx_live.appliquer = (
+    # MÊME SIGNATURE que la vraie fonction (`appliquer(img, cmd, timeout=…)`) :
+    # le lot parallèle du jalon 81 passe le délai, comme la série.
+    lambda img, cmd, timeout=None: (np.asarray(img, np.float32).copy(), ""))
 dp._veralux.etirer = lambda img, **kw: (img, 2.0, {})
 params = dict(mode=d.vl_mode_res, target_bg=0.25, log_d=2.0, profil=d.vl_profil)
 gx = (True, 'copy /Y "{input}" "{output}"')      # gx actif → chemin PAR COUCHE
@@ -402,7 +405,9 @@ app.disp.vl_denoise_force = 0.5
 vus = []
 
 
-def _gx_factice(img, cmd):
+def _gx_factice(img, cmd, timeout=None):
+    """Outil factice : identité. Accepte le DÉLAI (signature de `appliquer`) —
+    le lot parallèle du jalon 81 le passe, comme la série."""
     vus.append(img.shape)
     return np.asarray(img, np.float32).copy(), ""
 

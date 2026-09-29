@@ -314,6 +314,31 @@ dans le changelog du source et l'historique git.)
       Sur sa machine (32 Go, ~16 Go libres avec l'application ouverte) ce coût
       est négligeable ; sur une petite machine, **borner la concurrence** (2-3
       selon la mémoire libre) est le garde-fou à prévoir.
+  - **⑰ JALON 81 — OUTILS EXTERNES PAR COUCHE EN PARALLÈLE (v2.45.0) : LIVRÉ,
+    BANCS VERTS.** Décision d'Alain (29/09/2026), après avoir demandé la MESURE
+    de la mémoire avant de coder. Implémentation : `compat.memoire_libre()`
+    (Windows/Linux/macOS, aucune dépendance), `external/live.py` →
+    `MAX_PARALLELE = 3`, `parallele_max(nb)` (borné par la mémoire : ~800 Mo
+    réservés par appel simultané, 1 Go laissé à la machine) et
+    `appliquer_lot(items)` (mêmes valeurs qu'en série, repli SÉRIE automatique) ;
+    le **GRADIENT par couche** part en UN lot dans le solveur live
+    (`display.py`) et dans l'export pleine résolution (`app.py`), le DÉBRUITAGE
+    garde son ordre et les CACHES PAR RÔLE sont intacts.
+    Banc NEUF `_test_gx_parallele_jalon81` (9 cas) : bornes de concurrence,
+    chevauchement prouvé par journal d'entrées/sorties, **égalité AU BIT** avec
+    et sans parallélisme sur le solveur live ET sur l'export, caches, échec
+    isolé, repli mémoire. Gain sur le banc : 3 appels factices de 0,8 s →
+    4,10 s en série contre **1,47 s** en lot (64 %).
+    LEÇON DE BANC À RETENIR : un banc qui REMPLACE une fonction (`appliquer`)
+    doit lui donner la MÊME SIGNATURE — le bouchon à 2 arguments du banc 59 a
+    cassé dès que le lot a passé le délai (3 arguments) ; corrigé, et les autres
+    bancs (jalon 9/12/22/40) étaient déjà tolérants.
+    Régressions relancées, **toutes vertes** : graxpert_live_jalon4,
+    couleurs_jalon22, denoise_live_jalon9, etat_calcul_jalon40,
+    sharp_live_jalon12, save_brute_jalon59, fond_bleu_jalon62,
+    chroma_nr_jalon63, compo_ui_jalon19, veralux_jalon3, cadence_jalon42,
+    ui_jalon5, multifolder_jalon19, rafale_fin_rendu_jalon80.
+    **PROCHAINE ÉTAPE : rebuild des trois installateurs v2.45.0 + release.**
 
 
   - **⑦ bis LEÇONS DU JALON REMONTÉES DANS CLAUDE.md (ton accord explicite,

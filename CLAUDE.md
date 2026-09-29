@@ -753,6 +753,23 @@ ce qui manquait n'était pas une correction mais une MESURE.
 
 ## Pièges (leçons du projet AVAStack)
 
+- **LES OUTILS EXTERNES PAR COUCHE PARTENT EN UN SEUL LOT** (jalon 81, v2.45.0,
+  décision d'Alain du 29/09/2026). Le coût de GraXpert est **FIXE par appel**
+  (démarrage de son binaire figé + chargement des **217 Mo** du modèle IA :
+  ~2,8 s MESURÉS à chaque invocation) et la chaîne par couche (jalon 24)
+  l'appelait **trois fois de suite**. Les couches étant INDÉPENDANTES,
+  `external.live.appliquer_lot()` les lance ENSEMBLE : **13,70 s → 5,58 s** pour
+  3 couches d'aperçu, sorties **identiques octet à octet** (mêmes commandes,
+  entrées indépendantes : le parallélisme ne peut pas changer un pixel, il ne
+  change que l'instant de départ). Garde-fous : `MAX_PARALLELE = 3`,
+  `parallele_max()` borné par la MÉMOIRE LIBRE (`compat.memoire_libre()` —
+  ~800 Mo réservés par appel simultané, mesuré 1,22 Go pour trois, tout rendu à
+  la sortie) et **REPLI SÉRIE automatique** (lot d'un élément, mémoire
+  insuffisante, pool en échec) : le comportement d'avant reste le filet.
+  Corollaire pour les bancs : un bouchon qui remplace `appliquer` doit accepter
+  la MÊME signature (`img, cmd, timeout=…`) — un lambda à 2 arguments casse dès
+  que le lot passe le délai (constat réel sur `_test_save_brute_jalon59`).
+
 - **LE RENDU (chaîne lourde) PART EN FIN DE RAFALE, JAMAIS SUR LA PREMIÈRE BRUTE**
   (jalon 80, v2.44.0, demande d'Alain du 29/09/2026 : « on en lit 10, on les
   stacke, et seulement là on lance un rendu »). Le solveur était relancé à

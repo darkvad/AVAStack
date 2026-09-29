@@ -20,10 +20,12 @@ import hashlib
 import os
 import shutil
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
 from .. import travail
+from ..compat import memoire_libre
 from ..images import auto_unflip, ecrire_fits, find_output, load_image
 
 TIMEOUT_S = 300        # au-delà, l'outil est considéré bloqué (1er lancement
@@ -244,3 +246,81 @@ def appliquer(img, cmd, timeout=TIMEOUT_S):
         # v2.38.6 : le dossier n'est supprimé QUE si tout s'est bien passé.
         if tmp is not None and not garder:
             shutil.rmtree(tmp, ignore_errors=True)
+
+
+# ============ Jalon 81 : PLUSIEURS APPELS EN PARALLÈLE (une passe par couche)
+# POURQUOI : le coût de GraXpert est FIXE par appel — le démarrage de son
+# binaire figé (Python + imports) puis le chargement des 217 Mo du modèle IA, à
+# CHAQUE invocation. La chaîne par couche (jalon 24) l'appelle donc trois fois
+# de SUITE, une par couche de composition : ~8,3 s de pur démarrage par passe.
+# Or les couches sont INDÉPENDANTES (fichiers d'entrée et de sortie distincts,
+# aucun état partagé : `appliquer` crée SON dossier temporaire) — lancer les
+# appels EN MÊME TEMPS chevauche leurs démarrages.
+# MESURÉ (29/09/2026, machine de dev, 3 couches d'aperçu) : 13,70 s en série →
+# 5,58 s en parallèle, et les fichiers produits sont IDENTIQUES OCTET À OCTET
+# (SHA-256 égaux) : même binaire, mêmes arguments, entrées indépendantes — le
+# parallélisme ne peut PAS changer un pixel, il ne change que l'instant où
+# chaque appel démarre.
+# MÉMOIRE (mesurée) : ~680 Mo par appel, 1,22 Go pour trois (les pages du
+# modèle sont partagées) — et tout est rendu dès que les processus sortent.
+MAX_PARALLELE = 3                # au plus trois appels simultanés (une passe)
+PAR_APPEL_OCTETS = 800 << 20     # mémoire à réserver par appel simultané
+MARGE_MACHINE_OCTETS = 1 << 30   # ce qu'on ne prend JAMAIS à l'application
+
+
+def parallele_max(nb):
+    """Nombre d'appels simultanés AUTORISÉS pour `nb` éléments (jalon 81).
+
+    Plafonné par `MAX_PARALLELE`, par le nombre d'éléments, et par la MÉMOIRE
+    LIBRE mesurée (chaque appel simultané réserve ~800 Mo ; on laisse toujours
+    1 Go à la machine). Rend au moins 1 — un résultat de 1 veut dire « en
+    série », c'est-à-dire le comportement d'avant, jamais une erreur ; une
+    sonde muette laisse simplement le plafond nominal."""
+    n = max(1, min(int(MAX_PARALLELE), int(nb)))
+    if n <= 1:
+        return 1
+    libre = memoire_libre()
+    if libre is None:                 # sonde muette : plafond nominal
+        return n
+    dispo = int(max(0, libre - MARGE_MACHINE_OCTETS) // PAR_APPEL_OCTETS)
+    return max(1, min(n, dispo))
+
+
+def appliquer_lot(items, timeout=TIMEOUT_S):
+    """Applique l'outil à PLUSIEURS images, `parallele_max` à la fois.
+
+    `items` : liste de (cle, image, commande) — `cle` identifie l'élément (le
+    RÔLE de la couche), UNIQUE dans le lot. Renvoie {cle: (image, err)} avec
+    EXACTEMENT les valeurs d'appels `appliquer()` en série.
+
+    Repli SÉRIE — jamais d'image perdue : lot d'un seul élément, mémoire libre
+    insuffisante (`parallele_max` = 1), ou lancement concurrent en échec (le
+    pool de fils indisponible, un élément sans résultat)."""
+    items = list(items or [])
+    res = {}
+    if not items:
+        return res
+    if parallele_max(len(items)) <= 1:
+        for cle, img, cmd in items:
+            res[cle] = appliquer(img, cmd, timeout)
+        return res
+    n = parallele_max(len(items))
+    try:
+        with ThreadPoolExecutor(max_workers=n) as ex:
+            futurs = {cle: ex.submit(appliquer, img, cmd, timeout)
+                      for cle, img, cmd in items}
+            for cle, futur in futurs.items():
+                try:
+                    res[cle] = futur.result()
+                except Exception as exc:   # ne doit pas arriver (repli série)
+                    res[cle] = (None, f"{exc}")
+    except Exception:                      # pool indisponible
+        pass
+    # Un élément SANS image (pool en échec) est refait EN SÉRIE : le lot rend
+    # toujours une entrée par élément, jamais un trou silencieux. Un échec
+    # NORMAL de l'outil (img + message) n'est PAS refait : son message est
+    # celui, exact, de l'appel.
+    for cle, img, cmd in items:
+        if cle not in res or res[cle][0] is None:
+            res[cle] = appliquer(img, cmd, timeout)
+    return res
