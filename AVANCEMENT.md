@@ -88,6 +88,16 @@ dans le changelog du source et l'historique git.)
     ~1 000 caractères). Commits de la session : `69d715e` (le correctif),
     `467d83b` (indices d'astrométrie + CLAUDE.md), `4b7efe8` (doc) — **arbre
     propre**, `master` synchronisé avec `origin`.
+  - **CORRECTION DE DOC (29/09/2026, signalée par toi)** : « l'installateur Linux a
+    été testé plusieurs fois sur ma config Ubuntu 26.04 LTS, contrairement à ce qui
+    est dit dans la doc ». `INSTALLATION.md` (§ 3 « état de cet installateur », § 8
+    limites) et `installer/README.md` (§ Tests) affirmaient **« pas encore exécuté
+    sur une vraie machine Linux »** : **c'était FAUX** — corrigé partout (+ les
+    dates/tailles des artefacts du README, restées en v2.38.3), et la **release
+    `v2.41.0` a été remise à jour** : notes rééditées (`gh release edit
+    --notes-file`) et `INSTALLATION.md` remplacé en pièce jointe (`gh release
+    upload --clobber`, 14 930 o). **Aucun code touché** : version toujours 2.41.0,
+    installateurs **non reconstruits** (SHA-256 inchangés).
 
 - **PASSE PRÉCÉDENTE (28/09/2026, soir) — AVAStack v2.40.0 : ASTROMÉTRIE SUR TA CAMÉRA
   OSC (NGC 7023 RÉSOLU) ET SPCC OUVERTE AU CAPTEUR COULEUR.** Tes deux constats
@@ -708,6 +718,15 @@ dans le changelog du source et l'historique git.)
   base SPCC capteurs/filtres dans `siril-spcc-database`) ; ASTAP
   (`C:\Program Files\astap`, astap_cli.exe + base D80 Gaia DR3 1,24 Go)
   ; PAS d'astrometry.net/ANSVR.
+- **Machine LINUX d'Alain (fait du 29/09/2026, à sa demande)** : **Ubuntu 26.04
+  LTS** — l'**installateur Linux d'AVAStack y a été exécuté PLUSIEURS FOIS**
+  (installation, prérequis, venv, dépendances, lancement) et l'application y est
+  employée : l'astrométrie, la SPCC et GraXpert y sont validés (constats des 27 et
+  28/09/2026). **La documentation disait le contraire** (« pas encore exécuté sur
+  une vraie machine Linux ») : corrigé dans `INSTALLATION.md` (§ 3 et § 8),
+  `installer/README.md` et dans la release `v2.41.0` (notes + pièce jointe).
+  Restent à faire : machine **vierge** (sans Python) et **test matériel caméras**
+  sous Linux (`--cameras`).
 
 
 ## Pièges récents (rappels opérationnels)
