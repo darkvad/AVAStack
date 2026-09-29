@@ -1,4 +1,4 @@
-# AVAStack — installation rapide (v2.41.0)
+# AVAStack — installation rapide (v2.42.0)
 
 AVAStack est un **live stacking** : il empile tes brutes **en temps réel**
 pendant l'acquisition (calibration dark/flat, alignement, rejet kappa-sigma,
@@ -8,7 +8,7 @@ passage aux **outils externes** (GraXpert, BlurXTerminator) sur un instantané.
 Il tourne sur **Windows, Linux et macOS**, et s'installe **dans ton profil** :
 aucun droit administrateur n'est nécessaire.
 
-Ce document accompagne la **release v2.41.0** (les deux installateurs y sont
+Ce document accompagne la **release v2.42.0** (les deux installateurs y sont
 attachés). Il ne remplace pas le `LISEZMOI.txt` que l'installateur copie à côté
 de l'application — celui-ci détaille **tous les réglages** de l'interface.
 
@@ -18,8 +18,8 @@ de l'application — celui-ci détaille **tous les réglages** de l'interface.
 
 | Plateforme | Fichier | Taille | SHA-256 |
 | --- | --- | --- | --- |
-| Windows (10/11, 64 bits) | `avastack-setup-2.41.0.exe` | 11,5 Mo | `FC81DD442E85F2EAE6D0A9560A41BC4D5A3F3A9B97E163DCF12787BC07253BA9` |
-| Linux (x86_64) | `avastack-setup-2.41.0-linux.tar.gz` | 560 Kio | `16017928AE3587DFF4696B0E3F6005F738849F7BB8C32DD164C614660B055738` |
+| Windows (10/11, 64 bits) | `avastack-setup-2.42.0.exe` | 11,5 Mo | `848E770DA86138E4888BE41B26D1325C78DB9D535E1CBB45336DFBBBA981905F` |
+| Linux (x86_64) | `avastack-setup-2.42.0-linux.tar.gz` | 569 Kio | `7016471BAEDCDB0BBD31BEB287C3D91C462253A55DFC64E9011010504D83E4C1` |
 | Documentation | `INSTALLATION.md` | ce fichier | — |
 
 Les artéfacts portent leur **numéro de version** : deux versions ne s'écrasent
@@ -31,7 +31,7 @@ jamais, et un installateur plus ancien peut rester à côté comme repli.
 
 ---
 
-## 2. Windows — `avastack-setup-2.41.0.exe`
+## 2. Windows — `avastack-setup-2.42.0.exe`
 
 1. **Lancer l'exécutable.** Windows peut afficher un avertissement
    SmartScreen (l'exécutable n'est pas signé) : « Informations
@@ -59,11 +59,11 @@ L'application fonctionne **sans aucune caméra** (mode « Dossier surveillé »,
 
 ---
 
-## 3. Linux — `avastack-setup-2.41.0-linux.tar.gz`
+## 3. Linux — `avastack-setup-2.42.0-linux.tar.gz`
 
 ```bash
-tar xzf avastack-setup-2.41.0-linux.tar.gz
-cd avastack-2.41.0-linux
+tar xzf avastack-setup-2.42.0-linux.tar.gz
+cd avastack-2.42.0-linux
 bash installer/install_avastack.sh
 ```
 
@@ -105,7 +105,7 @@ sources (`python3 AVAStack.py` dans le dossier de l'application).
 > **État de cet installateur (à jour le 29/09/2026)** : le paquet Linux est
 > construit, son contenu est vérifié (62 fichiers, aucun `.so`/`.dll`, script
 > `install_avastack.sh` exécutable, fins de ligne UNIX, racine unique
-> `avastack-2.41.0-linux/`) **et il a été exécuté plusieurs fois EN RÉEL sur une
+> `avastack-2.42.0-linux/`) **et il a été exécuté plusieurs fois EN RÉEL sur une
 > machine Ubuntu 26.04 LTS** : installation, prérequis système, création du venv,
 > dépendances et lancement de l'application y sont validés. Restent à faire : le
 > test sur une machine **vierge** (sans Python ni paquets prérequis) et le
@@ -240,7 +240,7 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
 
 ---
 
-## 8. Limites connues de la v2.41.0 (dites franchement)
+## 8. Limites connues de la v2.42.0 (dites franchement)
 
 - **Installateur Linux : TESTÉ EN RÉEL** — exécuté **plusieurs fois** sur une
   machine **Ubuntu 26.04 LTS** (installation, prérequis, venv, dépendances,
