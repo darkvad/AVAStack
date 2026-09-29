@@ -46,9 +46,17 @@ dans le changelog du source et l'historique git.)
     0/1 px ; une donnée téléchargeable doit devenir utilisable dans la même
     session) ; la section « Portage Linux / macOS » décrit l'installateur macOS
     et la route commune aux deux packers.
-  - **RELEASE à compléter** : le paquet macOS est **à joindre à la release
-    `v2.42.0`** (déjà publiée) — ajout d'une pièce, **aucun écrasement** — et le
-    `INSTALLATION.md` joint est réédité (§ 1 et nouveau § 3 bis macOS).
+  - **RELEASE v2.42.0 COMPLÉTÉE (29/09/2026, soir)** : le paquet macOS a été
+    **AJOUTÉ** (aucun écrasement) à la release déjà publiée, et son
+    `INSTALLATION.md` **réédité** (§ 1 avec la 3e ligne, **nouveau § 3 bis
+    macOS**). État final vérifié sur l'API : 4 pièces — `avastack-setup-2.42.0.exe`
+    (11 485 284 o), `avastack-setup-2.42.0-linux.tar.gz` (582 385 o),
+    `avastack-setup-2.42.0-macos.tar.gz` (580 015 o,
+    SHA-256 `8F070116B4744BA8AE75DD8A6170604ADE5A8E69C3B58C0CFEE141D738CDAA23`) et
+    `INSTALLATION.md` (18 467 o) ; notes réécrites (résumé « sans Siril **et un
+    installateur macOS** » + doc, 20 295 octets, UTF-8 intact). Commits de la
+    passe : `4ec3ccd` (installateur macOS + banc 78 + leçons dans CLAUDE.md +
+    docs) puis le commit de clôture mémoire — **arbre propre**, `master = origin`.
 
 - **PASSE PRÉCÉDENTE (29/09/2026, matin) — AVAStack v2.42.0 : AVAStack SANS SIRIL
   — LES SPECTRES GAIA XP ET LA BASE DE PROFILS SPCC SE TÉLÉCHARGENT DEPUIS
