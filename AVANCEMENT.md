@@ -113,6 +113,16 @@ dans le changelog du source et l'historique git.)
     `INSTALLATION.md` joint) pour retirer la mention « privé » ; les **artefacts
     binaires ne sont PAS reconstruits** (seuls des commentaires ont changé — leurs
     SHA-256 restent ceux publiés).
+  - **LICENCE ET README (29/09/2026, tes décisions)** : `LICENSE` porte désormais
+    le titulaire **identifiant GitHub** (`darkvad`) — il affichait un prénom, et il
+    était en **UTF-16** : réécrit en **UTF-8** (les diffs et les outils texte
+    redeviennent lisibles, git le voyait comme binaire) ; et un **`README.md`** de
+    présentation a été écrit à la racine (français, **aucun nom propre** :
+    pipeline, sources d'images, installation, première séance, données
+    Gaia/Siril, traçabilité des en-têtes, **78 bancs** de non-régression, limites,
+    licence MIT + mention **GPL-3.0-or-later** du moteur VeraLux). **Les
+    commentaires du code, des bancs et des mémoires gardent le style d'origine**
+    (ta décision) : la règle de CLAUDE.md les excepte explicitement.
 
 - **PASSE PRÉCÉDENTE (28/09/2026, soir) — AVAStack v2.40.0 : ASTROMÉTRIE SUR TA CAMÉRA
   OSC (NGC 7023 RÉSOLU) ET SPCC OUVERTE AU CAPTEUR COULEUR.** Tes deux constats
@@ -439,6 +449,14 @@ dans le changelog du source et l'historique git.)
 
 ## En attente / prochaine session
 
+- **ÉTAT COMPACT POUR UNE NOUVELLE SESSION (29/09/2026)** : **rien en attente de
+  l'agent**. Le dépôt est **public** (licence MIT, titulaire = identifiant
+  GitHub), un **`README.md`** de présentation a été ajouté à la racine, les
+  documents publiés ne citent plus le mainteneur (règle écrite dans CLAUDE.md) et
+  **les commentaires du code/garde-fous internes restent tels quels** (décision
+  explicite). La release `v2.41.0` est publiée. **Le prochain geste est un test
+  réel** (ci-dessous) ; en cas de doute, tout est en tête de ce fichier et dans
+  le changelog de `avastack/__init__.py`.
 - **EN ATTENTE (28/09/2026) — v2.41.0 : TON TEST RÉEL DU BOUTON « RÉINITIALISER »**
   (publiée : release GitHub `v2.41.0`, tag `4b7efe8`, les deux installateurs + la
   doc). À valider en **mode dossier** : fin de cible → **nouveau dossier** →
