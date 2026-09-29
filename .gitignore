@@ -27,6 +27,10 @@ _gx_jalon4_compteur.txt
 *.rules
 
 # Artefacts d'installateur (le NOM porte la version : avastack-setup-<version>.exe,
-# avastack-setup-<version>-linux.tar.gz — cf. CLAUDE.md)
+# avastack-setup-<version>-linux.tar.gz, avastack-setup-<version>-macos.tar.gz —
+# cf. CLAUDE.md). Les TROIS dossiers de sortie sont ignorés : celui de macOS
+# manquait, si bien que le paquet macOS apparaissait comme « non suivi » dans
+# `git status` (relevé le 29/09/2026 en reconstruisant les installateurs v2.43.0).
 installer/windows/output/
 installer/linux/output/
+installer/macos/output/
