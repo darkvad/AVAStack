@@ -10,7 +10,15 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **CHANTIER PERFORMANCE ET RÉACTIVITÉ (jalon 79, EN COURS) — décisions d'Alain
+- **JALON 80 (v2.44.0) — RENDU DÉCLENCHÉ EN FIN DE RAFALE : LIVRÉ, BANCS VERTS
+  (détail en ⑬, plus bas).** Vérification demandée par Alain au même moment
+  (« utilises-tu bien le modèle GraXpert 1.0.1 ? ») : OUI, c'est en ⑭.
+  **PROCHAINE ÉTAPE : rebuild des trois installateurs v2.44.0 + release.**
+  Ce jalon fait suite au **CHANTIER PERFORMANCE ET RÉACTIVITÉ (jalon 79, LIVRÉ en
+  v2.43.0 — installeur Windows `avastack-setup-2.43.0.exe`, 11 481 938 o, SHA
+  `17646C4B…`)**, dont le détail (①…⑫ ci-dessous) reste jusqu'au prochain
+  nettoyage du fichier.
+- **CHANTIER PERFORMANCE ET RÉACTIVITÉ (jalon 79) — décisions d'Alain
   du 29/09/2026.** But : le live plus rapide **sans qu'un seul pixel change.**
   Ordre tranché par Alain : **A (instrument) → C-bis (réactivité des réglages
   d'après-étirement) → B (cœur d'empilement)**, C (chaîne d'images) plus tard ;
@@ -156,6 +164,43 @@ dans le changelog du source et l'historique git.)
       de 12 — MAIS le gradient serait retiré après recomposition (le jalon 24
       avait choisi l'avant). Décision d'Alain, sur comparaison visuelle (à
       préparer sur ses images M31 si tu le veux).
+  - **⑬ JALON 80 — RENDU EN FIN DE RAFALE (v2.44.0) : IMPLÉMENTÉ, BANCS VERTS.**
+    Décision d'Alain (29/09/2026, juste après le diagnostic ⑫) : « code le rendu
+    en fin de rafale ». `_tick` ne relance plus la chaîne lourde à la PREMIÈRE
+    brute d'une rafale : il note le dernier empilement (`_rendu_differ`) et le
+    rend au SILENCE (`RAFALE_QUIET_S = 0,35 s`), avec la borne `RAFALE_MAX` pour
+    qu'un dossier pré-rempli ne retarde jamais l'affichage. Mesuré bout en bout
+    sur une rafale de 6 brutes : **1 rendu au lieu de 5** (les deux runs sont
+    dans le même banc, `RAFALE_QUIET_S = 0` reproduisant l'ancien comportement)
+    → sur son réglage le panneau passe de ~70 % à ~35 % d'occupation, et l'image
+    affichée est toujours la plus PROFONDE (plus de passe entière sur une pile à
+    1 brute). Zéro pixel changé : même chaîne, même pile, seule la DATE du
+    déclenchement change. Sources NON-dossier (caméras) : strictement inchangées.
+    Bancs : `_test_rafale_fin_rendu_jalon80` (6 cas) + régression cadence42,
+    reset76, veralux3, graxpert_live4, ui5, etat_calcul40, multifolder19,
+    config6, save_brute59 — **tous verts**. ⚠ Le banc 76 ÉCHOUE quand il tourne
+    juste après les autres (mesures de scan sensibles à la charge du disque) :
+    le relancer SEUL.
+    PIÈGE TROUVÉ PAR LE BANC (et corrigé) : `_vl_frames` vaut `None` en début de
+    session → `st["frames"] - self._vl_frames` plantait `_tick` à la 2e brute
+    d'une rafale ; la borne compte désormais depuis 0 (`(self._vl_frames or 0)`).
+  - **⑭ VÉRIFICATION DEMANDÉE PAR ALAIN : le modèle GraXpert EST bien 1.0.1.**
+    La commande de l'application ne passe aucun `-ai_version` → c'est la version
+    STOCKÉE des préférences GraXpert
+    (`%LOCALAPPDATA%\GraXpert\GraXpert\preferences.json`,
+    `"bge_ai_version": "1.0.1"`) qui s'applique — confirmé par SON journal
+    (« Using AI version 1.0.1 … bge-ai-models\1.0.1\model.onnx »).
+    Son étonnement (« dans Siril c'est très rapide ») est expliqué : chaque appel
+    CLI RECHARGE le modèle (217 Mo) → **~2,8 s FIXES par appel** (5,6 s sur
+    8,4 Mpx contre 3,25 s sur 1,45 Mpx à l'aperçu), donc ≥ 8 s pour ses 3 couches
+    quel que soit le travail ; Siril garde le modèle en mémoire entre les appels.
+    → PISTE (gros levier, à proposer comme jalon) : faire l'inférence ONNX **en
+    processus** dans notre venv (le modèle est un `.onnx` lisible) → le modèle
+    serait chargé UNE fois, quelques centaines de ms par couche au lieu de
+    3,25 s. Et RESTE À PROPOSER, gratuit : épingler `-ai_version 1.0.1` dans sa
+    commande (aujourd'hui elle suit les préférences de GraXpert, qui peuvent
+    changer silencieusement et modifier le rendu).
+
   - **⑦ bis LEÇONS DU JALON REMONTÉES DANS CLAUDE.md (ton accord explicite,
     29/09/2026)** — section « Pièges », trois leçons : ① un **fichier de mémoire
     ne passe JAMAIS par un aller-retour PowerShell** (UTF-8 sans BOM lu en

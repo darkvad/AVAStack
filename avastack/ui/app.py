@@ -192,6 +192,15 @@ class App:
     # rafales suivantes (aucune perte — les fichiers restent sur le disque).
     RAFALE_MAX = 10
 
+    # Jalon 80 (demande d'Alain, 29/09/2026) : rendu déclenché en FIN de
+    # rafale, pas sur sa PREMIÈRE brute. `RAFALE_QUIET_S` = silence à partir
+    # duquel la rafale est considérée terminée : une rafale de dossier lit ses
+    # brutes en continu (le temps d'aligner et d'empiler entre deux fichiers,
+    # jamais un creux de plusieurs dixièmes de seconde), puis le worker repart
+    # au scan ou à la fenêtre de cadence. 0,35 s couvre le pas de `_tick`
+    # (30 ms) sans retarder perceptiblement une session à une brute par minute.
+    RAFALE_QUIET_S = 0.35
+
     # Débruitage du TRAITEMENT EXTERNE (jalon 8, remis le 16/09/2026) :
     # mêmes algorithmes locaux que le live (ondelettes/NLM) ET le débruitage
     # GraXpert IA (lent) — au choix, force commune 0..1. En externe, les
@@ -478,6 +487,14 @@ class App:
         self._rafale_reste = self.RAFALE_MAX   # jalon 46 : budget de la
                                                # rafale en cours (décrémenté
                                                # à chaque brute lue)
+        # Jalon 80 : rendu DIFFÉRÉ en fin de rafale (sources dossier /
+        # composition SEULEMENT — cf. `_cadence_dossier`). `_rendu_differ` =
+        # nombre de frames du dernier empilement non encore rendu (None = rien
+        # en attente), `_rendu_differ_t` = instant de cet empilement. Le rendu
+        # part quand la rafale se tait (`RAFALE_QUIET_S`) ou que `RAFALE_MAX`
+        # brutes se sont empilées depuis le dernier rendu.
+        self._rendu_differ = None
+        self._rendu_differ_t = 0.0
         self._cadence_lbl_txt = None    # mémo du texte affiché dans lbl_cadence
         self._cadence_cbs = []          # combobox « Empiler les brutes » —
         self._cadence_lbls = []         # jalon 47 : UN SEUL exemplaire (cadre
@@ -4768,6 +4785,7 @@ class App:
         self.stacker = None
         self.disp.reset()                      # stats d'affichage repartent de zéro
         self._vl_frames = None                 # le 1er empilement relancera le solveur
+        self._rendu_differ = None              # jalon 80 : aucun rendu en attente
         self.bad_frames, self.fps = 0, 0.0
         self.floues_rejetees = 0              # jalon 17 : compteur de session
         self._fwhm_hist = []                  # jalon 17 : mesures de session neuve
@@ -7610,6 +7628,7 @@ class App:
                 self.stacker = None
                 self.disp.reset()          # stats d'affichage repartent de zéro
                 self._vl_frames = None     # le 1er empilement relancera le solveur
+                self._rendu_differ = None  # jalon 80 : aucun rendu en attente
                 self.bad_frames, self.fps = 0, 0.0
                 self.floues_rejetees = 0   # jalon 17 : compteur de session
                 self._fwhm_hist = []       # jalon 17 : mesures de session neuve
@@ -8647,14 +8666,53 @@ class App:
                     # le solveur VeraLux relance la résolution (le rythme des
                     # frames est le cooldown ; aucun calcul entre deux frames,
                     # et le solveur ne garde que le DERNIER empilement).
-                    self._vl_frames = st["frames"]
-                    self.disp.notify_new_stack()
+                    # JALON 80 (demande d'Alain, 29/09/2026) : EN RAFALE DE
+                    # DOSSIER ce déclenchement tombait sur la PREMIÈRE brute —
+                    # une passe ENTIÈRE de la chaîne lourde (GraXpert live par
+                    # couche, ~10 s chez lui) calculée sur une pile à 1 brute,
+                    # puis une SECONDE passe sur la pile de fin de rafale : le
+                    # panneau restait occupé ~70 % du temps, dont une passe
+                    # entière perdue. Le rendu est donc DIFFÉRÉ à la fin de la
+                    # rafale (aucun empilement nouveau pendant `RAFALE_QUIET_S`,
+                    # contrôle ci-dessous), avec une BORNE (`RAFALE_MAX` brutes
+                    # empilées depuis le dernier rendu) pour qu'un dossier
+                    # pré-rempli ne le retarde jamais indéfiniment. Les sources
+                    # NON-dossier (caméras, webcam, simulée) ne changent pas :
+                    # leur file ne s'accumule pas et le rythme des frames y est
+                    # déjà le cooldown.
+                    if not self._cadence_dossier():
+                        self._vl_frames = st["frames"]
+                        self._rendu_differ = None
+                        self.disp.notify_new_stack()
+                    # `_vl_frames` peut être None (aucun rendu encore dans cette
+                    # session) : la borne compte alors depuis le début de session.
+                    elif (self._rendu_differ is None
+                          or st["frames"] - (self._vl_frames or 0)
+                          < self.RAFALE_MAX):
+                        self._rendu_differ = st["frames"]    # dernier gagnant
+                        self._rendu_differ_t = time.perf_counter()
+                    else:
+                        self._vl_frames = st["frames"]       # borne atteinte
+                        self._rendu_differ = None
+                        self.disp.notify_new_stack()
                 self._update_status(st)
                 if self.var_view.get() == "pile":     # la vue traitée garde son instantané
                     self.last_show = show
                     self._rendre_et_afficher(show)
         except queue.Empty:
             pass
+        # Jalon 80 : la rafale s'est TUE (plus aucun empilement depuis
+        # `RAFALE_QUIET_S`) → le rendu différé part MAINTENANT, une seule fois,
+        # sur la pile la plus PROFONDE. Ce contrôle est ICI (et pas seulement à
+        # la réception d'un empilement) pour qu'un rendu différé ne puisse
+        # JAMAIS être perdu : la dernière brute de la rafale peut être suivie
+        # d'un long silence (fenêtre de cadence, scan) sans nouveau message.
+        if (self._rendu_differ is not None
+                and time.perf_counter() - self._rendu_differ_t
+                >= self.RAFALE_QUIET_S):
+            self._vl_frames = self._rendu_differ
+            self._rendu_differ = None
+            self.disp.notify_new_stack()
         # Jalon 75 : une remise à zéro de l'affichage (nouvelle session) a pu
         # avoir lieu dans le worker — les barres doivent revenir à l'auto À
         # L'ÉCRAN aussi (sinon l'utilisateur croirait son réglage conservé).

@@ -489,6 +489,28 @@ Pièges :
 - Les modèles IA sont téléchargés au premier usage de chaque fonction
   (`-ai_version` sélectionne la version) — un premier lancement peut être
   long et nécessiter Internet.
+- **VERSION DU MODÈLE SANS `-ai_version` (vérifié le 29/09/2026, GraXpert
+  3.1.0rc2)** : GraXpert prend alors la version **STOCKÉE dans SES préférences**
+  (`%LOCALAPPDATA%\GraXpert\GraXpert\preferences.json`, clé `bge_ai_version` —
+  ici `1.0.1`), pas forcément la plus récente du disque. Comme nos commandes par
+  défaut ne passent pas `-ai_version`, le rendu dépend d'un réglage EXTERNE au
+  projet : **épingler `-ai_version <v>` dans la commande** pour un rendu
+  reproductible (et le noter : changer de modèle change le fond retiré).
+  ⚠ Le CLI **RÉÉCRIT ce `preferences.json` à chaque appel** (il y « stocke » les
+  options reçues) : les réglages de l'interface GraXpert peuvent donc changer
+  après un run d'AVAStack — sans effet sur notre rendu, qui passe toujours ses
+  options explicitement.
+- **COÛT RÉEL D'UN APPEL (mesuré le 29/09/2026)** : le modèle de retrait de
+  gradient pèse **217 Mo** et est **RECHARGÉ À CHAQUE APPEL** — ~**2,8 s fixes
+  par appel** (5,6 s sur 8,4 Mpx, encore 3,25 s sur 1,45 Mpx à l'aperçu). D'où
+  9,7 s pour 3 couches à l'aperçu, et l'impression que Siril fait « instantané »
+  (il garde le modèle en mémoire). Pour aller plus vite un jour : inférence ONNX
+  **en processus** (le modèle est un `.onnx` lisible) plutôt qu'un sous-processus
+  par couche.
+- Les méthodes **classiques** (RBF / Splines / Kriging) existent mais exigent des
+  **points de fond fournis** (`-preferences_file`) : il n'y a pas de mode
+  automatique sans IA en ligne de commande (le mode IA est justement celui qui
+  n'en demande aucun).
 
 ### RC-Astro CLI (BlurXTerminator / StarXTerminator)
 
@@ -728,6 +750,24 @@ ce qui manquait n'était pas une correction mais une MESURE.
   LONGS pour le réveiller.
 
 ## Pièges (leçons du projet AVAStack)
+
+- **LE RENDU (chaîne lourde) PART EN FIN DE RAFALE, JAMAIS SUR LA PREMIÈRE BRUTE**
+  (jalon 80, v2.44.0, demande d'Alain du 29/09/2026 : « on en lit 10, on les
+  stacke, et seulement là on lance un rendu »). Le solveur était relancé à
+  CHAQUE nouvel empilement : en rafale de dossier il calculait donc une passe
+  ENTIÈRE de la chaîne lourde (GraXpert live par couche) sur une pile à **1
+  brute**, puis une SECONDE passe sur la pile complète — ~70 % de panneau occupé
+  et une image bruitée à l'écran pour rien. `App._tick` note désormais le
+  DERNIER empilement (`_rendu_differ` / `_rendu_differ_t`) et le rend quand la
+  rafale s'est **TUE** (`RAFALE_QUIET_S = 0,35 s`), avec la BORNE `RAFALE_MAX`
+  (un dossier pré-rempli ne doit jamais retarder l'affichage). INVARIANTS :
+  sources NON-dossier (caméras, webcam, simulée) = déclenchement immédiat
+  inchangé ; `_reinit_etat_session` vide l'attente (aucun rendu fantôme) ;
+  **aucun pixel ne change** (même chaîne, même pile — seule la DATE du
+  déclenchement change). ⚠ `_vl_frames` peut valoir `None` (début de session) :
+  la borne compte alors depuis 0. Banc : `_test_rafale_fin_rendu_jalon80.py`
+  (compare `RAFALE_QUIET_S = 0`, l'ancien comportement, au nouveau : **1 rendu
+  au lieu de 5** pour une rafale de 6 brutes).
 
 - **UNE DEMANDE DE L'INTERFACE SE SERT EN TÊTE DE BOUCLE DU WORKER, JAMAIS DANS
   LE CHEMIN D'UNE DONNÉE** (constat réel d'Alain, 28/09/2026, v2.41.0) : le bouton

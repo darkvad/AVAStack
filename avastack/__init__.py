@@ -17,9 +17,46 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.43.0"
+AVASTACK_VERSION = "2.44.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.44.0 : RENDU DÉCLENCHÉ EN FIN DE RAFALE (jalon 80, demande d'Alain,
+#   29/09/2026) — « je lance sur des dossiers avec 50 brutes par couche : on en
+#   lit 10, on les stacke, et seulement là on lance un rendu ? ».
+#   DIAGNOSTIC (mesuré sur SA configuration relevée dans son `config.json` et son
+#   journal GraXpert) : le solveur était relancé à CHAQUE nouvel empilement, donc
+#   dès la PREMIÈRE brute d'une rafale — une passe ENTIÈRE de la chaîne lourde
+#   (GraXpert live par couche) calculée sur une pile à 1 brute, puis une SECONDE
+#   passe sur la pile de fin de rafale. Sur son réglage (aperçu 1600 px, GraXpert
+#   live seul : 3 × 3,25 s = 9,7 s pour une passe de ~10,5 s), cela faisait ~21 s
+#   de calcul par cycle de cadence de 30 s (70 % du temps occupé), dont une passe
+#   entière perdue — et l'écran montrait pendant ce temps le STF d'une pile à une
+#   brute (bruitée, gradient non retiré).
+#   - avastack/ui/app.py : `_tick` ne déclenche plus le rendu à la réception d'un
+#     empilement en rafale de DOSSIER (et composition) : il note le DERNIER
+#     empilement (`_rendu_differ` / `_rendu_differ_t`) et le déclenche quand la
+#     rafale s'est TUE — plus aucun empilement pendant `RAFALE_QUIET_S` (0,35 s)
+#     — avec une BORNE (`RAFALE_MAX` brutes empilées depuis le dernier rendu)
+#     pour qu'un dossier pré-rempli ne retarde jamais l'affichage indéfiniment.
+#     Les sources NON-dossier (caméras, webcam, simulée) gardent le déclenchement
+#     immédiat : leur file ne s'accumule pas et le rythme des frames y est déjà
+#     le cooldown. `_reinit_etat_session` vide l'attente (aucun rendu fantôme de
+#     la session précédente). AUCUN PIXEL NE CHANGE : même chaîne, même pile —
+#     seule la DATE du déclenchement change.
+#     Test _test_rafale_fin_rendu_jalon80 (logique du déclenchement sur messages
+#     fabriqués + bout en bout avec le vrai worker : 1 rendu au lieu de 5 pour
+#     une rafale de 6 brutes) ; régression : _test_cadence_jalon42,
+#     _test_reset_empilement_jalon76, _test_veralux_jalon3,
+#     _test_graxpert_live_jalon4, _test_ui_jalon5, _test_etat_calcul_jalon40,
+#     _test_multifolder_jalon19, _test_config_jalon6, _test_save_brute_jalon59.
+#   - VÉRIFIÉ AU PASSAGE (question d'Alain : « vérifie que tu utilises bien le
+#     modèle 1.0.1 ») : la commande GraXpert de l'application ne passe AUCUN
+#     `-ai_version` → c'est la version STOCKÉE dans les préférences de GraXpert
+#     qui s'applique (`bge_ai_version` = 1.0.1, confirmé par son journal : « Using
+#     AI version 1.0.1 … bge-ai-models\1.0.1\model.onnx »). À savoir : chaque
+#     appel CLI RECHARGE ce modèle (217 Mo) — ~2,8 s FIXES par appel (5,6 s sur
+#     8,4 Mpx contre 3,25 s sur 1,45 Mpx à l'aperçu) : c'est pourquoi Siril, qui
+#     le garde en mémoire, paraît bien plus rapide.
 # v2.43.0 : CHANTIER PERFORMANCE ET RÉACTIVITÉ (jalon 79) — TOUT EST LIVRÉ.
 #   Demandes d'Alain (29/09/2026) : « optimiser les performances (surtout en
 #   live) … maintenant qu'on a une version stable, on pourrait comparer les
