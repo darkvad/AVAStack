@@ -72,12 +72,24 @@ AVASTACK_VERSION = "2.41.0"
 #   (6) « ▶ Démarrer » redevient ACCESSIBLE au changement de source non-SDK :
 #       la déconnexion le grisait et, pour ces sources (simulée, dossier,
 #       composition), aucune connexion automatique ne venait le réactiver.
+#   (7) INDICES D'ASTROMÉTRIE — décision d'Alain, suite du même constat : quand
+#       le DOSSIER de la cible change, les AD/Dec/champ° de l'ancienne cible sont
+#       EFFACÉS (`_effacer_indices_astro` côté interface + nouveau
+#       `SuiviAstrometrie.effacer_indices` : `reset()`, lui, CONSERVE les indices
+#       d'une session à l'autre — un changement de cible, non). De fausses
+#       coordonnées feraient chercher le solveur à l'ancien endroit du ciel, et
+#       l'échec serait mis sur le compte du solveur. La saisie repart vide, ce qui
+#       rouvre les deux chemins prévus : indices lus dans l'en-tête des brutes du
+#       nouveau dossier, puis repli ASTAP. Dossier INCHANGÉ = même cible = indices
+#       CONSERVÉS ; une caméra (pas un dossier) n'est jamais concernée. La ligne
+#       d'état DIT l'effacement.
 #   Banc NEUF `bancs/_test_reset_empilement_jalon76.py` (7 sections : worker réel
 #   et VRAIES brutes FITS sur disque — enchaînement cible A → cible B, drapeau
-#   servi en pause, pause sans perte de brute, caméra jamais refermée, bouton
+#   servi en pause, indices d'astrométrie effacés au changement de cible et
+#   CONSERVÉS sinon, pause sans perte de brute, caméra jamais refermée, bouton
 #   réactivé, comparaison des sources) + TÉMOIN « avant » mesuré sur worktree
-#   HEAD ; 14 bancs rejoués verts (jalon 15, 16, 17, 18, 19 worker/UI/compo, 20,
-#   21, 42, 47, 53, 69, 72, 75).
+#   HEAD ; 18 bancs rejoués verts (jalon 15, 16, 17, 18, 19 worker/UI/compo, 20,
+#   21, 42, 47, 53, 56 astro et photométrie, 59, 69, 72, 75).
 # v2.40.0 : DEUX CORRECTIONS DU TRAVAIL OSC (capteur COULEUR, mode dossier) —
 #   L'ASTROMÉTRIE INTERNE SUR CAMÉRA TOURNÉE, ET LA SPCC OUVERTE AUX CAPTEURS
 #   COULEUR.

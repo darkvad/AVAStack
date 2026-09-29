@@ -671,6 +671,51 @@ ce qui manquait n'était pas une correction mais une MESURE.
 
 ## Pièges (leçons du projet AVAStack)
 
+- **UNE DEMANDE DE L'INTERFACE SE SERT EN TÊTE DE BOUCLE DU WORKER, JAMAIS DANS
+  LE CHEMIN D'UNE DONNÉE** (constat réel d'Alain, 28/09/2026, v2.41.0) : le bouton
+  « Réinitialiser l'empilement » posait un drapeau que le worker ne lisait qu'en
+  **TRAITANT une frame** — à l'arrêt (pause, ou aucune brute qui arrive) il ne
+  réinitialisait donc **RIEN**, et la session suivante repartait sur l'empilement
+  de la cible précédente (« il faudrait que le bouton réinitialiser réinitialise
+  vraiment »). Toute demande posée par le thread Tk est désormais servie au même
+  endroit que `empilement_start_request` (**tête de boucle**, donc même en pause),
+  et sa partie **VISIBLE** est faite côté Tk (`_reinit_etat_session`) pour
+  fonctionner **même worker arrêté**. Corollaire : un bouton sans effet visible ne
+  prouve pas qu'il n'a rien fait — il peut n'avoir **jamais été lu**. Banc :
+  `_test_reset_empilement_jalon76.py` (témoin : le compteur de session avance
+  DEUX fois, interface puis worker).
+- **UN OBJET DE SOURCE PORTE L'ÉTAT DE SA CONFIGURATION** (constat réel d'Alain,
+  28/09/2026, v2.41.0) : la caméra d'un « dossier surveillé » garde SON dossier et
+  la mémoire des brutes déjà lues — changer le dossier dans l'interface ne
+  changeait donc **rien** à l'objet connecté, d'où un « ▶ Démarrer » qui empilait
+  encore la cible précédente. Règle : avant d'utiliser une source connectée,
+  **comparer la configuration AFFICHÉE à celle de l'objet** — chemins **absolus et
+  normalisés** (barres, casse sous Windows : sans normalisation, une simple
+  retouche du texte relancerait la lecture de tout le dossier) — et la
+  **refermer** si elle a changé. **Jamais** une caméra SDK (la réouverture est
+  impossible dans le même process, § QHY). Corollaire (décision d'Alain) : quand la
+  CIBLE change, les **indices d'astrométrie** de l'ancienne sont **EFFACÉS**
+  (`SuiviAstrometrie.effacer_indices`, distinct de `reset()` qui les CONSERVE) —
+  de fausses coordonnées feraient chercher le solveur à l'ancien endroit du ciel.
+  La saisie repart vide, ce qui rouvre la lecture d'en-tête des brutes du nouveau
+  dossier, puis le repli ASTAP.
+- **UNE SOURCE DE FICHIERS NE SE LIT PAS « POUR RIEN »** (constat réel d'Alain,
+  28/09/2026, v2.41.0) : lire pendant une pause est le bon comportement pour un
+  flux **live** (ça vide la file du SDK) mais, pour un **dossier**, la brute lue
+  est marquée « traitée » : elle n'est **plus jamais** empilable, même après une
+  nouvelle remise à zéro — exactement la fenêtre « je finis une cible, je prépare
+  la suivante ». En pause, le dossier est seulement **SCANNÉ** (l'état « brutes en
+  attente » reste juste, les fichiers restent sur le disque). Même passe : deux
+  `Thread(target=self._worker).start()` dans la même méthode = **DEUX workers**
+  (mesuré : 2 puis 3, invisibles à l'œil car ils se partagent les frames) —
+  relancer un worker se fait UNIQUEMENT sous `if self.thread is None or not
+  self.thread.is_alive()`.
+- **POUR PROUVER QU'UN BANC DISCRIMINE, MESURER « AVANT » SUR UN WORKTREE HEAD**
+  (méthode, 28/09/2026, v2.41.0) : `git worktree add --detach <chemin> HEAD`,
+  rejouer le MÊME flux avec les moyens d'avant, puis `git worktree remove --force`
+  + `git worktree prune` — sans jamais toucher au travail en cours. Mesure du
+  jalon 76 : empilement resté entier, dossier de l'ancienne cible relu, 2 puis 3
+  workers en vie — c'est le témoin du banc `_test_reset_empilement_jalon76.py`.
 - **LES BARRES DE NIVEAUX VIVENT APRÈS LE MOTEUR D'ÉTIREMENT** (conception du
   28/09/2026, jalon 75 — v2.39.0) : ce que SharpCap appelle le **mini**
   histogramme trace « the image that comes out of live stacking (with live stack

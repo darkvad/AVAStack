@@ -17,7 +17,8 @@ Vérifie, avec le VRAI worker et de VRAIES brutes FITS sur disque :
       empilement) ;
   [2] « ■ Arrêter » puis « Réinitialiser l'empilement » sur une NOUVELLE cible :
       remise à zéro immédiate côté interface (écran vidé, empilement vidé,
-      boutons justes, source de fichiers refermée), et le worker consomme sa
+      boutons justes, source de fichiers refermée, INDICES D'ASTROMÉTRIE de
+      l'ancienne cible effacés — le dossier a changé), et le worker consomme sa
       demande MÊME EN PAUSE — témoin : le compteur de session avance de 2
       (interface puis worker) sans que l'empilement reparte ;
   [3] « ▶ Démarrer » après la remise à zéro : c'est le dossier CHOISI ENSUITE
@@ -28,7 +29,10 @@ Vérifie, avec le VRAI worker et de VRAIES brutes FITS sur disque :
   [4] la PAUSE d'une source dossier ne consomme plus les brutes qui arrivent :
       elles restent sur le disque (« en attente ») et sont empilées à la
       reprise — avant, elles étaient lues puis jetées, marquées « traitées » ;
-  [5] une caméra (source live) n'est JAMAIS refermée par la réinitialisation ;
+      et un dossier INCHANGÉ ne fait PAS effacer les indices d'astrométrie ;
+  [5] une caméra (source live) n'est JAMAIS refermée par la réinitialisation,
+      et ses indices d'astrométrie ne sont pas effacés (pas de changement de
+      dossier) ;
   [6] changement de source : « ▶ Démarrer » redevient accessible (il restait
       grisé pour toute source sans connexion automatique) ;
   [7] `_source_fichiers_obsolete` : comparaison NORMALISÉE (barres obliques,
@@ -186,6 +190,16 @@ dossier_lu = os.path.dirname(app.camera.last_file or "")
 verifie(dossier_lu == dir_a,
         "la brute lue vient de « cible A » (%s)" % dossier_lu)
 
+# La cible A a SES indices d'astrométrie : ils doivent partir avec elle quand le
+# dossier change (décision d'Alain, 28/09/2026).
+app.var_astro_ra.set("10.68333")
+app.var_astro_dec.set("+41.26917")
+app.var_astro_champ.set("0.5005")
+app.var_astro.set(True)
+app._on_astro()
+verifie(app._astro_indices is not None and app.suivi_astro.pret,
+        "indices d'astrométrie posés pour « cible A » (instantané + suivi)")
+
 # ==================================== [2] « ■ Arrêter » + « Réinitialiser »
 print("[2] nouvelle cible choisie puis « Réinitialiser l'empilement »")
 app._stop()
@@ -208,6 +222,14 @@ verifie(app.camera is None and not app.btn_deconnect.instate(["!disabled"]),
         "vraiment ouvert au démarrage)")
 verifie(app._last_disp is None and app.show_stack is None,
         "l'écran ne montre plus l'image de « cible A »")
+verifie(app.var_astro_ra.get() == "" and app.var_astro_dec.get() == ""
+        and app.var_astro_champ.get() == "" and app._astro_indices is None
+        and not app.suivi_astro.pret,
+        "INDICES D'ASTROMÉTRIE effacés (le dossier a changé : garder les "
+        "coordonnées de l'ancienne cible ferait chercher le solveur à l'ancien "
+        "endroit du ciel)")
+verifie("indices effacés" in app.lbl_astro.cget("text"),
+        "et la ligne d'état le DIT (« %s »)" % app.lbl_astro.cget("text"))
 verifie("cible_B" in app.lbl_status.cget("text"),
         "la ligne d'état annonce ce qui sera lu (« %s »)"
         % app.lbl_status.cget("text"))
@@ -218,6 +240,10 @@ verifie(attendre(lambda: not app.reset_request, 10, "worker"),
 verifie(app._session >= session_avant + 2,
         "témoin de la DOUBLE remise à zéro (interface PUIS worker) : session "
         "%d → %d" % (session_avant, app._session))
+verifie("Indices d'astrométrie effacés" in app.lbl_status.cget("text"),
+        "la ligne d'état principale le dit AUSSI, et DURABLEMENT (le worker "
+        "remet la ligne d'astrométrie à zéro en consommant sa demande) — « %s »"
+        % app.lbl_status.cget("text").replace("\n", " | "))
 verifie(not app.empilement_on,
         "après le passage du worker, l'empilement est toujours en pause")
 
@@ -256,7 +282,17 @@ verifie(app.camera.count == count_avant,
 verifie(app._brutes_en_attente() >= 1,
         "elle est vue « en attente » sur le disque (%d) — l'état affiché reste "
         "juste pendant la pause" % app._brutes_en_attente())
+# MÊME dossier = MÊME cible : les indices NE doivent PAS être effacés.
+app.var_astro_ra.set("10.68333")
+app.var_astro_dec.set("+41.26917")
+app.var_astro_champ.set("0.5005")
+app._on_astro()
 app._start()                        # reprise
+verifie(app.var_astro_ra.get() == "10.68333"
+        and app.var_astro_champ.get() == "0.5005",
+        "dossier INCHANGÉ : les indices saisis sont CONSERVÉS "
+        "(« %s », « %s »)" % (app.var_astro_ra.get(),
+                              app.var_astro_champ.get()))
 verifie(attendre(lambda: app.stacker is not None and app.stacker.n >= 1, 90,
                  "brute de la pause"),
         "à la reprise, la brute de la pause EST empilée (n = %s)"
@@ -273,7 +309,14 @@ cam_sim = SimulatedCamera()
 app.camera = cam_sim
 app.cam_pilotee = None
 app.empilement_on = True
+app.var_astro_ra.set("22.00000")
+app.var_astro_dec.set("-10.50000")
+app.var_astro_champ.set("1.2000")
+app._on_astro()
 app._reset_empilement()
+verifie(app.var_astro_ra.get() == "22.00000",
+        "une caméra n'est pas un dossier : les indices sont CONSERVÉS "
+        "(« %s »)" % app.var_astro_ra.get())
 verifie(app.camera is cam_sim,
         "la caméra reste connectée (le SDK interdit une réouverture dans le "
         "même process)")

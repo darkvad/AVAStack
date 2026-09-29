@@ -381,6 +381,20 @@ class SuiviAstrometrie:
         self.ra0 = self.dec0 = self.champ = None
         self.reset()
 
+    def effacer_indices(self):
+        """Indices de la cible EFFACÉS — indices ET WCS oubliés.
+
+        Distinct de `reset()` : celui-ci CONSERVE les indices (même cible, on
+        repart sur un empilement neuf — la case reste cochée et les valeurs
+        saisies aussi). Ici, la CIBLE change (décision d'Alain du 28/09/2026 :
+        un autre dossier, donc un autre champ) : garder les coordonnées de
+        l'ancienne cible FERAIT ÉCHOUER la résolution de la nouvelle — le
+        solveur chercherait à l'ancien endroit du ciel. Le repli d'un `pret`
+        resté vrai serait exactement le piège que ce défaut a montré.
+        """
+        self.ra0 = self.dec0 = self.champ = None
+        self.reset()
+
     # -- cycle de vie ---------------------------------------------------------
     def reset(self):
         """Session neuve (ou case décochée) : indices CONSERVÉS, WCS oublié."""

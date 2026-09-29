@@ -4352,8 +4352,11 @@ class App:
         # caméra garde son dossier ET la mémoire des brutes déjà lues, d'où
         # « ▶ Démarrer » qui empilait encore la CIBLE PRÉCÉDENTE (constat
         # d'Alain, 28/09/2026). Elle est refermée AVANT de choisir la source,
-        # puis rouverte juste après, sur la configuration AFFICHÉE.
+        # puis rouverte juste après, sur la configuration AFFICHÉE — et, la
+        # CIBLE changeant, les indices d'astrométrie de l'ancienne sont effacés
+        # (ils feraient échouer la résolution de la nouvelle).
         if self._source_fichiers_obsolete():
+            self._effacer_indices_astro()
             self._refermer_source_fichiers()
         try:
             if self.camera is None:
@@ -4552,6 +4555,35 @@ class App:
         self._prochaine_lecture = 0.0
         self._rafale_reste = self.RAFALE_MAX
 
+    def _effacer_indices_astro(self):
+        """Efface les INDICES d'astrométrie (AD, Dec, champ°) — décision d'Alain
+        du 28/09/2026 : quand la source de FICHIERS change de CIBLE (autre
+        dossier, autres rôles), les coordonnées de l'ancienne cible sont de
+        FAUX indices et FONT ÉCHOUER la résolution de la nouvelle (le solveur
+        cherche à l'ancien endroit du ciel).
+
+        La saisie repart donc VIDE — ce qui rouvre au passage les deux chemins
+        prévus : les indices lus dans l'en-tête des brutes du nouveau dossier
+        (`_astro_indices_entete`), puis le repli ASTAP aveugle s'il est
+        disponible. La ligne d'état DIT l'effacement : une saisie qui disparaît
+        en silence serait un défaut de plus.
+        """
+        self.var_astro_ra.set("")
+        self.var_astro_dec.set("")
+        self.var_astro_champ.set("")
+        suivi = getattr(self, "suivi_astro", None)
+        if suivi is not None:
+            suivi.effacer_indices()      # indices ET WCS de l'ancienne cible
+        self._on_astro()                 # instantané (vide) + lignes d'état
+        # `_on_astro` vient de poser « indices refusés — AD : … » : ce n'est pas
+        # un refus de SAISIE mais un EFFACEMENT volontaire, on le dit ainsi.
+        self._astro_msg_indices = ""
+        self.astro_info = ("Astrométrie : indices effacés (nouvelle cible) — à "
+                           "saisir, lus dans les brutes du dossier, ou repli "
+                           "ASTAP")
+        self.astro_couleur = "#888888"
+        self._maj_astro_vue()
+
     def _reset_empilement(self):
         """« Réinitialiser l'empilement » — remise à zéro RÉELLE (v2.41.0).
 
@@ -4575,7 +4607,11 @@ class App:
              configuration AFFICHÉE (cf. `_refermer_source_fichiers`) ;
           ③ rien ne disait ce qui venait d'être fait et l'écran restait sur
              l'image de l'ancienne cible : l'écran est vidé (avec un message)
-             et la ligne d'état annonce la suite.
+             et la ligne d'état annonce la suite ;
+          ④ et, si le DOSSIER de la cible a changé, les INDICES d'astrométrie de
+             l'ancienne sont EFFACÉS (décision d'Alain du 28/09/2026) : ils
+             feraient chercher le solveur à l'ancien endroit du ciel. Même
+             dossier = même cible : les indices sont GARDÉS.
 
         C'est une REMISE À ZÉRO, pas un démarrage : l'empilement reste en pause
         et « ▶ Démarrer » redevient accessible.
@@ -4583,20 +4619,34 @@ class App:
         self.empilement_on = False             # plus rien ne s'ajoute
         self._reinit_etat_session()            # remises à zéro (thread Tk)
         self.reset_request = True              # …et les mêmes, côté worker
+        # La CIBLE change-t-elle de dossier ? À évaluer AVANT de refermer la
+        # source (après, il n'y a plus rien à comparer) : les indices
+        # d'astrométrie de l'ancienne cible sont alors EFFACÉS — décision
+        # d'Alain du 28/09/2026 — car ils feraient chercher le solveur à
+        # l'ancien endroit du ciel. Même dossier = même cible : on les GARDE.
+        cible_changee = self._source_fichiers_obsolete()
+        if cible_changee:
+            self._effacer_indices_astro()
         self._refermer_source_fichiers()       # la source suivra l'interface
         self.btn_start.config(state="normal")
         self.btn_stop.config(state="disabled")
         self._vider_ecran("Empilement réinitialisé —\n« ▶ Démarrer » pour "
                           "repartir sur la cible choisie.")
         if self.camera is None:
-            self.lbl_status.config(
-                text=("Empilement réinitialisé — la source de fichiers a été "
-                      "refermée : « ▶ Démarrer » la rouvrira "
-                      + self._resume_source_fichiers() + "."))
+            texte = ("Empilement réinitialisé — la source de fichiers a été "
+                     "refermée : « ▶ Démarrer » la rouvrira "
+                     + self._resume_source_fichiers() + ".")
         else:
-            self.lbl_status.config(
-                text=("Empilement réinitialisé — cliquez « ▶ Démarrer » pour "
-                      "une session neuve (la caméra reste connectée)."))
+            texte = ("Empilement réinitialisé — cliquez « ▶ Démarrer » pour "
+                     "une session neuve (la caméra reste connectée).")
+        if cible_changee:
+            # Dit ICI aussi (et pas seulement sur la ligne d'astrométrie) : le
+            # worker remet cette ligne-là à zéro au tour suivant, en consommant
+            # sa demande — l'utilisateur doit le voir DURABLEMENT. Message court
+            # (le libellé n'a pas de `wraplength` : une phrase à rallonge ferait
+            # élargir la fenêtre).
+            texte += "\nIndices d'astrométrie effacés (nouvelle cible)."
+        self.lbl_status.config(text=texte)
 
     def _resume_source_fichiers(self):
         """Décrit, pour la ligne d'état, la source de FICHIERS qui sera ouverte

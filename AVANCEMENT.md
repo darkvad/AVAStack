@@ -18,7 +18,7 @@ dans le changelog du source et l'historique git.)
   l'empilement — quand je clique sur Démarrer ça empile toujours la cible
   précédente », « il faudrait que le bouton réinitialiser réinitialise
   vraiment », et « quand c'est accessible, ce qui n'est pas toujours le cas ».
-  **Jalon 76.** Quatre causes, quatre corrections :
+  **Jalon 76.** Quatre causes corrigées, plus un ajout demandé en séance :
   - **MESURE « AVANT » (témoin du banc, worktree sur HEAD, ton flux rejoué de bout
     en bout)** : après « Réinitialiser », l'empilement restait **ENTIER**
     (3 frames), l'écran gardait l'image de l'ancienne cible, et « ▶ Démarrer »
@@ -48,20 +48,35 @@ dans le changelog du source et l'historique git.)
   - **⑤ Robustesse** : le worker **survit** à une source refermée (avant : mort
     **silencieuse** sur `None.read()`, plus aucune frame ensuite) ; « ▶ Démarrer »
     redevient **accessible** au changement de source non-SDK.
+  - **⑥ INDICES D'ASTROMÉTRIE** (ta décision en séance : « oui, on réinitialise les
+    indices si le dossier change ») : les AD/Dec/champ° de l'ancienne cible sont
+    **effacés** quand le DOSSIER change — de fausses coordonnées feraient chercher
+    le solveur à l'ancien endroit du ciel (et l'échec serait mis sur son compte).
+    La saisie repart vide, ce qui rouvre la lecture d'en-tête des brutes du
+    nouveau dossier, puis le repli ASTAP ; **dossier inchangé = indices
+    conservés**, une caméra n'est jamais concernée, et la ligne d'état **dit**
+    l'effacement. Nouveau `SuiviAstrometrie.effacer_indices` (distinct de
+    `reset()`, qui CONSERVE les indices d'une session à l'autre).
   - **Banc NEUF `bancs/_test_reset_empilement_jalon76.py`** (7 sections, **worker
     réel + vraies brutes FITS sur disque**, témoin « avant » ci-dessus) :
-    **TOUT PASSE**. **14 bancs rejoués verts** : 15, 16, 17, 18, 19 (worker, UI,
-    compo), 20, 21, 42, 47, 53, 69, 72, 75. Repli si régression : v2.40.0.
-  - **Installateurs v2.41.0 reconstruits** :
-    `installer/windows/output/avastack-setup-2.41.0.exe` (11 467 772 o, ISCC 7 s)
-    et `installer/linux/output/avastack-setup-2.41.0-linux.tar.gz` (571 386 o,
-    SHA-256 `3eb68634…83afe`). `INSTALLATION.md` documente encore la release
+    **TOUT PASSE**. **18 bancs rejoués verts** : 15, 16, 17, 18, 19 (worker, UI,
+    compo), 20, 21, 42, 47, 53, 56 (astro, photométrie), 59, 69, 72, 75. Repli si
+    régression : v2.40.0.
+  - **MÉMOIRES (ta demande : « mets à jour claude avec ceci »)** : les 4 leçons du
+    jalon sont **écrites dans CLAUDE.md** (section « Pièges », en tête) et
+    **retirées** de « Pièges récents » ci-dessous (une seule place par leçon).
+  - **Installateurs v2.41.0 reconstruits** (après l'ajout des indices) :
+    `installer/windows/output/avastack-setup-2.41.0.exe` (11 468 655 o,
+    SHA-256 `FC81DD44…53BA9`) et
+    `installer/linux/output/avastack-setup-2.41.0-linux.tar.gz` (572 903 o,
+    SHA-256 `16017928…55738`). `INSTALLATION.md` documente encore la release
     publiée v2.40.0 (c'est sa doc) — à mettre à jour seulement si tu publies une
     release v2.41.0.
   - **PROCHAINE ÉTAPE : ton test en séance réelle** — fin de cible → choix du
     nouveau dossier → « Réinitialiser l'empilement » → « ▶ Démarrer » : l'écran
-    doit se vider, la ligne d'état annoncer le nouveau dossier, et l'empilement ne
-    contenir que la nouvelle cible.
+    doit se vider, la ligne d'état annoncer le nouveau dossier, les indices
+    d'astrométrie repartir vides, et l'empilement ne contenir que la nouvelle
+    cible.
 
 - **PASSE PRÉCÉDENTE (28/09/2026, soir) — AVAStack v2.40.0 : ASTROMÉTRIE SUR TA CAMÉRA
   OSC (NGC 7023 RÉSOLU) ET SPCC OUVERTE AU CAPTEUR COULEUR.** Tes deux constats
@@ -676,38 +691,14 @@ dans le changelog du source et l'historique git.)
 
 ## Pièges récents (rappels opérationnels)
 
-- **v2.41.0 — UN BOUTON NE DOIT JAMAIS ATTENDRE UNE FRAME** : le drapeau de
-  « Réinitialiser l'empilement » n'était lu que dans le chemin « une frame vient
-  d'arriver » → à l'arrêt il ne réinitialisait RIEN. Règle générale : une demande
-  posée par l'interface est servie **en tête de boucle du worker** (comme
-  `empilement_start_request`), JAMAIS dans un chemin conditionné par l'arrivée
-  d'une donnée — et la partie VISIBLE de la remise à zéro est faite côté Tk, pour
-  fonctionner même si le worker est arrêté.
-- **v2.41.0 — UN OBJET DE SOURCE GARDE SON ÉTAT** : la caméra d'un dossier porte
-  son dossier ET la mémoire des brutes déjà lues ; changer le dossier dans
-  l'interface ne changeait donc rien (d'où « Démarrer empile encore la cible
-  précédente »). Avant d'utiliser une source connectée, **comparer la
-  configuration affichée à celle de l'objet** (chemins ABSOLUS et normalisés —
-  barres, casse sous Windows : sans normalisation, une retouche du texte
-  relancerait tout le dossier) et la **refermer** si elle a changé. Jamais pour
-  une caméra SDK (réouverture impossible dans le même process).
-- **v2.41.0 — DEUX `Thread(target=self._worker).start()` DANS LA MÊME MÉTHODE =
-  DEUX WORKERS** : le second était inconditionnel (`_start`), donc **2 threads**
-  dès le premier « Démarrer », **3** ensuite — invisibles à l'œil (ils se
-  partageaient les frames). Mesure : compter les threads dont la cible est
-  `App._worker` du MÊME objet ; relancer un worker se fait UNIQUEMENT sous
-  `if self.thread is None or not self.thread.is_alive()`.
-- **v2.41.0 — EN PAUSE, UNE SOURCE DE FICHIERS NE DOIT PAS ÊTRE LUE** : « lire
-  puis jeter » est le bon comportement pour un flux live (ça vide la file du
-  SDK) mais, pour un dossier, la brute est marquée « traitée » : elle n'est plus
-  jamais empilable. Le dossier est seulement **scanné** pendant la pause (l'état
-  « brutes en attente » reste juste, les fichiers restent sur le disque).
-- **v2.41.0 — PROUVER QU'UN BANC DISCRIMINE : mesurer « AVANT » sur un worktree
-  HEAD** (`git worktree add --detach <chemin> HEAD`, puis `git worktree remove
-  --force` + `git worktree prune` : ça ne touche PAS le travail en cours).
-  Mesure du 28/09/2026 : empilement resté entier, dossier de la cible précédente
-  relu, 2 puis 3 workers — le banc `_test_reset_empilement_jalon76.py` échoue
-  là où il doit échouer.
+- **Leçons du jalon 76 (v2.41.0) REMONTÉES dans CLAUDE.md** (accord d'Alain,
+  28/09/2026) — section « Pièges », 4 entrées : ① une demande de l'interface se
+  sert en TÊTE de boucle du worker (jamais dans le chemin d'une donnée) ; ② un
+  objet de source porte l'état de sa configuration (comparer/refermer ; indices
+  d'astrométrie EFFACÉS quand la cible change, `effacer_indices`) ; ③ une source
+  de fichiers ne se lit pas « pour rien » en pause (+ deux
+  `Thread(_worker).start()` dans la même méthode = deux workers) ; ④ mesurer
+  « AVANT » sur un `git worktree` HEAD pour prouver qu'un banc discrimine.
 - **LIMITE QHY (toujours valable)** : après « ■ Arrêter », relancer
   l'appli — le binding qhyccd n'expose AUCUNE libération du SDK (état
   irréinitialisable dans le process) ; le banc QHY l'annonce et conseille
