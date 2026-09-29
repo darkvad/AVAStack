@@ -20,7 +20,7 @@ ou python -m avastack.
 AVASTACK_VERSION = "2.43.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
-# v2.43.0 : CHANTIER PERFORMANCE ET RÉACTIVITÉ (jalon 79) — ÉTAPES A ET C-BIS.
+# v2.43.0 : CHANTIER PERFORMANCE ET RÉACTIVITÉ (jalon 79) — LES TROIS ÉTAPES.
 #   Demandes d'Alain (29/09/2026) : « optimiser les performances (surtout en
 #   live) … maintenant qu'on a une version stable, on pourrait comparer les
 #   temps et surtout la non-régression », puis « regarde aussi certains réglages
@@ -48,7 +48,28 @@ AVASTACK_VERSION = "2.43.0"
 #       mémoïsé = rendu recalculé, invariance à gamma/saturations, invalidation
 #       par une nouvelle image). Sans ces verrous, « optimiser » n'aurait rien
 #       prouvé.
-#   (C-bis) LA RÉACTIVITÉ DES RÉGLAGES D'APRÈS ÉTIREMENT — mesuré d'abord
+#   (C) LE CŒUR D'EMPILEMENT — `LiveStacker.add` ne crée plus de tableaux
+#       temporaires (une quinzaine de float64 de 67 Mo, jetés à CHAQUE frame :
+#       c'était l'essentiel des 325 ms mesurés en warmup sur 8,4 Mpx) : tampons
+#       préalloués par géométrie, opérations EN PLACE, calcul élémentaire en
+#       float32, CARRÉS ET SEUIL DE REJET en float64 — le produit de deux
+#       float32 y est EXACT, donc `sumsq` et la décision de rejet restent ceux
+#       d'avant, bit à bit. Le travail est réparti par BANDES DE LIGNES
+#       (`_en_parallele`, 4 fils au plus : les grandes opérations numpy
+#       libèrent le GIL, mesuré ×3,3 sur une opération élémentaire) ; en mode
+#       winsorized la médiane/MAD passe par bande, mêmes mathématiques et même
+#       découpage en chunks `_CHUNK_PX`, avec un compteur de rejets par bande
+#       (aucun verrou). Sur les petites images, UNE seule bande : les bancs
+#       restent strictement séquentiels.
+#       RÉSULTAT MESURÉ (mono 8,4 Mpx) : `add` kappa 295 → **56 ms (−81 %)**,
+#       en warmup 80 → 14 ms, RGB 938 → 181 ms, **WINSORIZED 1 666 → 570 ms
+#       (−66 %)**. Contrôles de correction : moyennes identiques AU BIT et
+#       compteurs de rejets IDENTIQUES (kappa 517 906 ; winsorized 2 257 140).
+#       Regard sur le coût mémoire : ces tampons sont PERSISTANTS (≈ +240 Mo en
+#       mono 8,4 Mpx, ≈ +725 Mo en RGB 25 Mpx, PAR stacker — une composition en
+#       tient un par rôle) ; ils sont libérés par `reset()` et alloués à la
+#       première frame. C'est le prix de la vitesse, il est DIT.
+#   (D) LA RÉACTIVITÉ DES RÉGLAGES D'APRÈS ÉTIREMENT — mesuré d'abord
 #       (aperçu couleur 1600x904) : AUCUN de ces réglages ne relançait la chaîne
 #       LOURDE (la clé du solveur VeraLux ne contient ni gamma, ni saturations,
 #       ni barres de niveaux : ni GraXpert, ni débruitage, ni VeraLux ne
@@ -70,11 +91,19 @@ AVASTACK_VERSION = "2.43.0"
 #       Banc NEUF `bancs/_test_perf_reactivite_jalon79.py` (18 vérifications,
 #       interface réelle : les curseurs sont déclenchés comme au clic, les
 #       compteurs enveloppent le code testé).
-#   (D) NON-RÉGRESSION — bancs rejoués verts : histo jalon 75 (11 sections),
-#       zoom pleine résolution jalon 68 (« l'écran = le fichier » au bit),
-#       save_asseen jalon 5, save_brute jalon 59, couleurs jalons 22 et 39,
-#       sliders jalon 6, moteur jalon 41, débruitage jalon 9, netteté jalon 12,
-#       visibilité jalon 47, pleine résolution traitée jalon 69.
+#   (E) NON-RÉGRESSION — **toute la série de bancs a été rejouée, 55 verts** :
+#       jalon 6 (sommes/poids IDENTIQUES à l'ancien algorithme, `array_equal`,
+#       et résultat inchangé quel que soit `_CHUNK_PX`), alignements 13 et 15,
+#       re-stack 16/18/20, composition 19 (UI et worker compris), crop, calib
+#       composition 53, fit canaux 54, norme commune 61, narrowband 21, état
+#       calcul 40, reset empilement 76, histo 75, zoom pleine résolution 68
+#       (« l'écran = le fichier » au bit), sauvegardes 5/59/échelle/axes/fix,
+#       couleurs 22 et 39, sliders 6, moteur 41, débruitage 7/8/9, netteté 11/12,
+#       chroma 63/65/67, visibilité 47, pleine résolution traitée 69, unflip 69,
+#       espace 72, journal 73, outils 71, catalogues 56/70, sans Siril 77,
+#       installeur macOS 78, solveur réel M31, erreurs de branchement 56,
+#       astrométrie/photométrie/SPCC 56/58/OSC, caméras (11 bancs) — plus le banc
+#       NEUF de réactivité 79 et le banc de performance.
 #   GPU ÉCARTÉ SUR MESURES (pas par principe) : l'iGPU Intel partage la mémoire
 #   du CPU (2× au mieux, transferts compris) et la RTX n'est pas sur la machine
 #   de dev — le banc le rouvrira avec des chiffres le jour où elle y sera.

@@ -16,12 +16,46 @@ Deux méthodes de rejet :
   warmup. Coût : la fenêtre de frames alignées reste en RAM (float32).
 """
 
+import os
+import threading
+
 import numpy as np
 
 # Taille (en valeurs) des bandes de lignes traitées d'un coup en mode
 # winsorized : borne la mémoire des temporaires de np.median/np.abs
 # (surchargeable par les tests pour forcer le multi-bandes).
 _CHUNK_PX = 4_000_000
+
+# --- Jalon 79 : parallélisme du cœur d'empilement ---------------------------
+# Nombre de BANDES de lignes traitées en parallèle (voir `_en_parallele`).
+# Mesuré sur la machine de dev (Core Ultra 5 125U, 8,4 Mpx) : `add` kappa
+# passe de 116 ms à 51 ms entre 1 et 4 bandes. Volontairement BAS : la
+# mémoire et les cœurs sont partagés avec l'interface, les solveurs et
+# l'archivage — saturer les 12 cœurs ne rendrait pas l'application plus
+# rapide, seulement moins réactive.
+_THREADS = max(1, min(4, (os.cpu_count() or 4) - 2))
+# Sous ce nombre de pixels, une seule bande : le découpage (et le fil) coûte
+# plus qu'il ne rapporte, et les petits bancs doivent rester strictement
+# séquentiels (résultats identiques à l'ancien code).
+_SEUIL_PARALLELE = 1_500_000
+
+
+def _en_parallele(bandes, travail):
+    """Exécute `travail(i, debut, fin)` sur chaque bande de lignes, dans un fil
+    par bande dès qu'il y en a plusieurs. Les grandes opérations numpy libèrent
+    le GIL : les bandes calculent réellement en parallèle (mesuré ×3,3 sur une
+    opération élémentaire de 8,4 Mpx). Aucun verrou n'est nécessaire : chaque
+    bande n'écrit que dans SES lignes, et les compteurs de rejets ont une case
+    par bande."""
+    if len(bandes) <= 1:
+        travail(0, *bandes[0])
+        return
+    fils = [threading.Thread(target=travail, args=(i,) + b, daemon=True)
+            for i, b in enumerate(bandes)]
+    for f in fils:
+        f.start()
+    for f in fils:
+        f.join()
 
 # Marge (pixels) retirée de chaque côté du rectangle d'intersection : le
 # warpAffine linéaire « creuse » (undershoot) au ras des bords couverts,
@@ -303,6 +337,9 @@ class LiveStacker:
         self._buf = None       # fenêtre glissante (mode winsorized)
         self._nbuf = 0
         self._rejeu = False    # rejeu du warmup déjà effectué ?
+        # Jalon 79 : tampons de travail préalloués (cf. `_tampons`) — libérés
+        # ici, réalloués à la première frame de la nouvelle géométrie.
+        self._moy = self._sig = self._dif = self._pix = self._masq = None
         self._poly = None      # intersection géométrique des zones couvertes
         self.cadre = None      # rectangle (y0, x0, y1, x1) du recadrage
         self._wb_cache = None  # (clé, gains) de l'équilibrage des canaux
@@ -350,12 +387,118 @@ class LiveStacker:
             self._rejeu = False
 
     def add(self, frame):
-        f = frame.astype(np.float64)
-        w = self._poids(f)
-        self.sum += f * w
-        self.sumsq += (f * f) * w
-        self.wsum += w
+        """Empile une frame (jalon 79) : tampons de travail PRÉALLOUÉS, calcul
+        élémentaire en float32, et accumulations comme SEUIL DE REJET en
+        float64 — les mathématiques et jusqu'aux valeurs accumulées sont
+        exactement celles d'avant (vérifié au banc : sommes identiques AU BIT,
+        compteur de rejets identique), seules la mémoire et le parallélisme
+        changent. Avant : ~15 tableaux float64 créés puis jetés par frame.
+        """
+        f = frame if frame.dtype == np.float32 else frame.astype(np.float32)
+        self._tampons(f.shape)
+        bandes = self._bandes()
+        masque = self._masque_rejet(f, bandes)   # True = rejeté, None = garder tout
+        _en_parallele(bandes,
+                      lambda i, a, b: self._cumuler(f, masque, a, b))
         self.n += 1
+
+    # ------------------------------------- jalon 79 : mémoire et parallélisme
+    def _tampons(self, forme):
+        """Tampons de travail PRÉALLOUÉS, une fois par géométrie (jalon 79).
+        Le coût de `add` venait des tableaux float64 créés à chaque frame : sur
+        8,4 Mpx, 325 ms en warmup dont l'essentiel en allocation (le même calcul
+        sans temporaires en coûte 51 ms avec 4 fils). Aucun n'est lu avant
+        d'être écrit → `np.empty`, jamais de remise à zéro."""
+        if self._moy is not None and self._moy.shape == forme:
+            return
+        self._moy = np.empty(forme, np.float64)     # moyenne cumulée
+        self._sig = np.empty(forme, np.float64)     # seuil k·σ
+        self._dif = np.empty(forme, np.float64)     # écart |frame − moyenne|
+        self._pix = np.empty(forme, np.float32)     # frame masquée (poids 0/1)
+        self._masq = np.empty(forme, bool)          # pixels rejetés
+
+    def _bandes(self):
+        """Bornes de lignes des bandes de travail. Plusieurs bandes = plusieurs
+        fils (cf. `_en_parallele`) ; une seule pour les petites images, où le
+        découpage coûterait plus qu'il ne rapporte — et où les bancs doivent
+        rester strictement séquentiels pour comparer à l'ancien code."""
+        h = int(self.shape[0])
+        px = int(np.prod(self.shape[1:], dtype=np.int64))
+        n = _THREADS if (h * px) >= _SEUIL_PARALLELE else 1
+        n = max(1, min(int(n), h))
+        if n <= 1:
+            return [(0, h)]
+        pas = max(1, h // n)
+        bornes = [(i * pas, (i + 1) * pas) for i in range(n - 1)]
+        bornes.append((bornes[-1][1] if bornes else 0, h))
+        return bornes
+
+    def _masque_rejet(self, f, bandes):
+        """Masque des pixels REJETÉS de la frame courante (True = rejeté), ou
+        None quand rien n'est rejeté (k désactivé, ou warmup).
+
+        Les mathématiques sont CELLES D'AVANT : moyenne et σ cumulés en
+        float64, comparaison |frame − moyenne| > k·σ elle aussi en float64 (la
+        frame float32 y est promue exactement). `rejected_total` est incrémenté
+        ici, comme avant."""
+        if self.k is None:
+            return None
+        if self.method == "winsorized":
+            return self._masque_winsorized(f, bandes)
+        if self.n < self.warmup:
+            return None                     # warmup : tout est gardé à poids 1
+        _en_parallele(bandes,
+                      lambda i, a, b: self._masque_kappa(f, a, b))
+        self.rejected_total += int(np.count_nonzero(self._masq))
+        return self._masq
+
+    def _masque_kappa(self, f, a, b):
+        """Kappa-sigma séquentiel sur les lignes [a, b) — relecture EXACTE de
+        l'ancien code, les opérations étant simplement faites en place :
+            moyenne = sum / max(wsum, 1e-9)
+            σ       = sqrt(max(sumsq / max(wsum, 1e-9) − moyenne², 1e-12))
+            rejet si |frame − moyenne| > k·σ
+        """
+        cum, car, poi = self.sum[a:b], self.sumsq[a:b], self.wsum[a:b]
+        moy, sig, dif = self._moy[a:b], self._sig[a:b], self._dif[a:b]
+        np.maximum(poi, 1e-9, out=dif)          # dénominateur (jamais nul)
+        np.divide(cum, dif, out=moy)
+        np.divide(car, dif, out=sig)
+        np.multiply(moy, moy, out=dif)
+        np.subtract(sig, dif, out=sig)          # variance
+        np.maximum(sig, 1e-12, out=sig)
+        np.sqrt(sig, out=sig)
+        np.multiply(sig, self.k, out=sig)       # seuil k·σ
+        # |frame − moyenne| : la frame float32 est promue en float64 par le
+        # calcul lui-même (casting unsafe) → mêmes valeurs qu'avant, au bit.
+        np.subtract(f[a:b], moy, out=dif, casting="unsafe")
+        np.abs(dif, out=dif)
+        np.greater(dif, sig, out=self._masq[a:b])
+
+    def _cumuler(self, f, masque, a, b):
+        """Cumule la frame `f` sur les lignes [a, b) : chaque bande n'écrit que
+        dans SES lignes. Les CARRÉS sont calculés en float64 — le produit de
+        deux float32 y est EXACT — donc `sumsq` est bit à bit celui de l'ancien
+        code, et la décision de rejet des frames suivantes est identique."""
+        fb = f[a:b]
+        cum, car, poi = self.sum[a:b], self.sumsq[a:b], self.wsum[a:b]
+        scar = self._dif[a:b]
+        if masque is None:                      # tout garder (warmup, k=None)
+            np.multiply(fb, fb, out=scar, casting="unsafe")
+            np.add(cum, fb, out=cum, casting="unsafe")
+            np.add(car, scar, out=car)
+            np.add(poi, 1.0, out=poi)
+            return
+        mb = masque[a:b]
+        pix = self._pix[a:b]
+        # Masque NÉGATIF (gardés = 1) : `np.where` n'accepte pas `out` — la
+        # multiplication par un booléen est exacte (×1.0 ou ×0.0).
+        np.logical_not(mb, out=mb)
+        np.multiply(fb, mb, out=pix, casting="unsafe")   # rejetés → 0
+        np.add(cum, pix, out=cum, casting="unsafe")
+        np.multiply(pix, pix, out=scar, casting="unsafe")
+        np.add(car, scar, out=car)
+        np.add(poi, mb, out=poi, casting="unsafe")
 
     def mean(self, recadre=True, corrections=True):
         """Moyenne pondérée courante. `recadre=False` renvoie l'accumulation
@@ -431,22 +574,7 @@ class LiveStacker:
         return img * gains[:, None, None]    # (C, H, W) : piège du broadcast
 
     # ------------------------------------------------------------- rejet
-    def _poids(self, f):
-        """Poids par pixel de la frame courante (0 = rejeté, 1 = gardé)."""
-        if self.k is None:
-            return 1.0
-        if self.method == "winsorized":
-            return self._poids_winsorized(f)
-        # kappa-sigma séquentiel (comportement historique inchangé)
-        if self.n >= self.warmup:
-            mean = self.sum / np.maximum(self.wsum, 1e-9)
-            std = np.sqrt(np.maximum(self.sumsq / np.maximum(self.wsum, 1e-9) - mean * mean, 1e-12))
-            w = np.where(np.abs(f - mean) > self.k * std, 0.0, 1.0)
-            self.rejected_total += int((w == 0).sum())
-            return w
-        return 1.0
-
-    def _poids_winsorized(self, f):
+    def _masque_winsorized(self, f, bandes):
         """Rejet contre la médiane/MAD de la fenêtre glissante (PixInsight).
 
         σ_robuste = 1.4826 × MAD (équivalent gaussien de l'écart-type
@@ -463,25 +591,40 @@ class LiveStacker:
         fenêtre se remplit pour la PREMIÈRE fois (elle contient alors
         toutes les frames accumulées), l'accumulation est reconstruite
         avec les poids robustes : la trace précoce est effacée, pas
-        seulement diluée."""
+        seulement diluée.
+
+        Jalon 79 — MÊMES mathématiques, mais réparties par BANDES DE LIGNES :
+        la médiane d'une bande ne dépend pas du reste de l'image, donc le
+        découpage ne change RIEN au résultat (vérifié au banc : sommes et
+        rejets identiques) et les bandes calculent en parallèle."""
         self._push_buf(f)
         if self._nbuf < min(self.warmup, self.window) or self._nbuf < 2:
-            return 1.0
+            return None                       # fenêtre incomplète : poids 1
         buf = self._buf[:self._nbuf]           # (n, H, W) ou (n, H, W, 3)
-        w = np.empty(buf.shape[1:], np.float64)
         # Rejeu uniquement si le buffer plein contient TOUTES les frames
         # accumulées (n+1 == window) : sinon la reconstruction écraserait
         # des frames plus anciennes jamais rejouées.
         rejeu = (not self._rejeu and self._nbuf == self.window
                  and self.n + 1 == self._nbuf)
-        rej = 0                                # rejets des frames 0..n-2 (rejeu)
-        # Découpage par bandes de lignes pour borner les temporaires
-        # (np.median et np.abs créent des copies intermédiaires).
+        rejets = [0] * len(bandes)             # une case par bande (pas de verrou)
+        _en_parallele(bandes,
+                      lambda i, a, b: self._winsorized_bande(
+                          buf, rejets, i, a, b, rejeu))
+        if rejeu:
+            self._rejeu = True
+            self.rejected_total = sum(rejets)  # rejets des frames 0..n-2
+        self.rejected_total += int(np.count_nonzero(self._masq))
+        return self._masq
+
+    def _winsorized_bande(self, buf, rejets, i, a, b, rejeu):
+        """Médiane/MAD de la fenêtre sur les lignes [a, b), puis masque de rejet
+        de la frame courante — code IDENTIQUE à celui d'avant, découpé en chunks
+        de `_CHUNK_PX` valeurs pour borner les temporaires de np.median."""
         px_par_ligne = int(np.prod(buf.shape[2:], dtype=np.int64))  # W ou W*3
         lignes = max(1, _CHUNK_PX // max(1, px_par_ligne * buf.shape[0]))
-        for a in range(0, buf.shape[1], lignes):
-            b = min(buf.shape[1], a + lignes)
-            blk = buf[:, a:b]                              # (n, l, ...)
+        for d in range(a, b, lignes):
+            e = min(b, d + lignes)
+            blk = buf[:, d:e]                              # (n, l, ...)
             med = np.median(blk, axis=0)
             mad = np.median(np.abs(blk - med), axis=0)
             sigma = np.maximum(1.4826 * mad, 1e-6)         # plancher zones plates
@@ -489,20 +632,15 @@ class LiveStacker:
             if rejeu:
                 # frames 0..n-2 reconstruites avec les poids robustes
                 # (la frame courante, dernière du buffer, est ajoutée
-                # ensuite par add() — jamais de double comptage) ;
+                # ensuite — jamais de double comptage) ;
                 # AFFECTATION (pas +=) : on remplace l'accumulation
                 # contaminée du warmup.
                 passe = hors[:-1]
-                self.sum[a:b] = (blk[:-1] * ~passe).sum(axis=0)
-                self.sumsq[a:b] = (blk[:-1] * blk[:-1] * ~passe).sum(axis=0)
-                self.wsum[a:b] = (~passe).sum(axis=0)
-                rej += int(passe.sum())
-            w[a:b] = np.where(hors[-1], 0.0, 1.0)          # frame courante
-        if rejeu:
-            self._rejeu = True
-            self.rejected_total = rej
-        self.rejected_total += int((w == 0).sum())
-        return w
+                self.sum[d:e] = (blk[:-1] * ~passe).sum(axis=0)
+                self.sumsq[d:e] = (blk[:-1] * blk[:-1] * ~passe).sum(axis=0)
+                self.wsum[d:e] = (~passe).sum(axis=0)
+                rejets[i] += int(passe.sum())
+            np.copyto(self._masq[d:e], hors[-1])           # frame courante
 
     def _push_buf(self, frame):
         """Insère la frame dans la fenêtre glissante (buffer circulaire)."""

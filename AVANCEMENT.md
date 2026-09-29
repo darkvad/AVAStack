@@ -62,11 +62,27 @@ dans le changelog du source et l'historique git.)
     réelle) + **11 bancs d'affichage rejoués verts**, dont « l'écran = le
     fichier » AU BIT du jalon 68. Version passée à **v2.43.0** (changelog
     détaillé dans `avastack/__init__.py`).
-  - **⑤ PROCHAINE ÉTAPE : l'étape B** — cœur d'empilement (float32 préalloué et
-    parallélisé par bandes de lignes, cache de `mean()`, winsorized par
-    `np.partition` in-place — **mathématiques INCHANGÉES**, décision d'Alain).
-    Aucun essai réel demandé avant la fin de la passe ; **l'installateur sera
-    reconstruit avant ton test** (règle du projet).
+  - **⑤ ÉTAPE B FAITE ET VALIDÉE (29/09/2026) — LE CŒUR D'EMPILEMENT.** `add`
+    ne crée plus de tableaux temporaires (ils étaient jetés à chaque frame :
+    c'était l'essentiel des 325 ms du warmup) : tampons préalloués, opérations
+    en place, élémentaire en float32, **carrés et seuil de rejet en float64**
+    (le produit de deux float32 y est exact → `sumsq` et la décision de rejet
+    restent **bit à bit** ceux d'avant), travail réparti par **bandes de
+    lignes** (4 fils au plus ; une seule bande sous 1,5 Mpx, donc les bancs
+    restent séquentiels). **MESURÉ (mono 8,4 Mpx) : add kappa 295 → 56 ms
+    (−81 %), warmup 80 → 14 ms, RGB 938 → 181 ms, winsorized 1 666 → 570 ms
+    (−66 %)** ; contrôles à **écart ZÉRO** (moyennes au bit, rejets identiques :
+    517 906 et 2 257 140). **55 bancs rejoués verts**, dont le jalon 6 qui exige
+    `array_equal(sum/wsum)` avec l'ancien algorithme. Prix dit : les tampons
+    sont persistants (+240 Mo en mono, +725 Mo en RGB par stacker, libérés par
+    `reset()`). Changelog détaillé dans `avastack/__init__.py`.
+  - **⑥ PROCHAINE ÉTAPE — RIEN À CODER EN ATTENTE DE TA PAROLE : on
+    reconstruit les trois installateurs v2.43.0 puis TU ESSAIES EN RÉEL**
+    (session live : fluidité, gestes gamma/saturation, empilement identique à
+    avant). Ce qui resterait à optimiser, si tu le veux (mesuré, non fait) :
+    `composite_mean_avec_canaux` 296 ms (percentiles par rôle), `mean()` 44 ms,
+    chemin ORB 377 ms (les triangles, 39 ms, restent le chemin recommandé),
+    winsorized 570 ms (mur du médian), geste de saturation 74 ms.
 
 
 - **PASSE DE CLÔTURE (29/09/2026, soir) — v2.42.0 : INSTALLATEUR macOS, TES
