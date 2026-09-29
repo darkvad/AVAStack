@@ -101,11 +101,15 @@ n'est visible **qu'en root**.
 **macOS** : il n'y a pas encore d'installateur. AVAStack se lance depuis les
 sources (`python3 AVAStack.py` dans le dossier de l'application).
 
-> **Honnêteté sur l'état de cet installateur** : le paquet Linux est construit
-> et son contenu est vérifié (62 fichiers, aucun `.so`/`.dll`, script
-> `install_avastack.sh` exécutable, fins de ligne UNIX), mais **il n'a pas
-> encore été exécuté sur une vraie machine Linux**. Le premier essai reste à
-> faire : détection de `python3-tk`, création du venv, lancement par le menu.
+> **État de cet installateur (à jour le 29/09/2026)** : le paquet Linux est
+> construit, son contenu est vérifié (62 fichiers, aucun `.so`/`.dll`, script
+> `install_avastack.sh` exécutable, fins de ligne UNIX, racine unique
+> `avastack-2.41.0-linux/`) **et il a été exécuté plusieurs fois EN RÉEL sur la
+> machine d'Alain (Ubuntu 26.04 LTS)** : installation, prérequis système,
+> création du venv, dépendances et lancement de l'application y sont validés.
+> Restent à faire : le test sur une machine **vierge** (sans Python ni paquets
+> prérequis) et le **test matériel caméras** sous Linux (option `--cameras`,
+> quand les `*.so` constructeurs y seront déposés).
 
 ---
 
@@ -233,9 +237,13 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
 
 ## 8. Limites connues de la v2.41.0 (dites franchement)
 
-- L'**installateur Linux n'a pas encore été exécuté sur une vraie machine
-  Linux** : sa rédaction et son contenu sont vérifiés, le premier essai reste à
-  faire.
+- **Installateur Linux : TESTÉ EN RÉEL** — exécuté **plusieurs fois** par Alain
+  sur sa machine **Ubuntu 26.04 LTS** (installation, prérequis, venv, dépendances,
+  lancement) ; l'application y est employée, et ses mesures y sont validées
+  (astrométrie, SPCC, GraXpert — constats des 27 et 28/09/2026).
+- Restent à faire : l'installateur Linux sur une machine **vierge** (sans Python
+  ni paquets prérequis) et le **test matériel caméras** sous Linux (option
+  `--cameras`, quand les `*.so` constructeurs y seront déposés).
 - Pas d'installateur **macOS** : lancement depuis les sources.
 - **Aucune caméra** n'est embarquée (SDK constructeurs, licences).
 - Pas de bouton pour les **48 morceaux de spectres Gaia** : téléchargement via

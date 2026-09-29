@@ -187,20 +187,22 @@ bancs/
 ## Tests
 
 - **Compilation Windows** : OK (Inno Setup 6.7.3) — dernière refaite le
-  27/09/2026 sur la passe v2.38.3 → `windows/output/avastack-setup-2.38.3.exe`.
-  Le garde-fou de nommage est vérifié : compilation sans `/DAppVersion`
-  REFUSÉE avec le message « AppVersion non defini… » (aucun artefact produit).
-- **Paquet Linux** : construit le 27/09/2026 →
-  `linux/output/avastack-setup-2.38.3-linux.tar.gz` (162 fichiers, 773 Kio,
+  29/09/2026 (passe v2.41.0) → `windows/output/avastack-setup-2.41.0.exe`
+  (11 468 655 o). Le garde-fou de nommage est vérifié : compilation sans
+  `/DAppVersion` REFUSÉE avec le message « AppVersion non defini… » (aucun
+  artefact produit).
+- **Paquet Linux** : construit le 29/09/2026 (passe v2.41.0) →
+  `linux/output/avastack-setup-2.41.0-linux.tar.gz` (62 fichiers, 572 903 o,
   `install_avastack.sh` en 0755, zéro `*.so`/`*.dll`/`*.rules`, dossier racine
-  unique `avastack-2.38.3-linux/`).
-- **Exécution réelle de l'installateur Linux : À FAIRE par Alain** — le script
-  n'a PAS pu être exécuté sur la machine de développement (Windows, sans bash
-  ni WSL) : ce qui est validé ici est sa rédaction (garde-fous, options,
-  inventaire du paquet) et la présence de tous les fichiers dont il dépend.
-  À vérifier au premier essai : détection de `python3-tk`, création du venv via
-  `common/avastack_setup.py`, lancement par le raccourci/`.desktop`, ouverture
-  d'un dossier de brutes, message clair quand une source caméra est choisie.
+  unique `avastack-2.41.0-linux/`).
+- **Exécution réelle de l'installateur Linux : FAITE, plusieurs fois** — Alain
+  l'a exécuté sur sa machine **Ubuntu 26.04 LTS** (constat du 29/09/2026) :
+  détection de `python3-tk`, création du venv via `common/avastack_setup.py`,
+  installation des dépendances et lancement par le raccourci/`.desktop` sont
+  donc exercés en réel (l'application y est employée : astrométrie, SPCC et
+  GraXpert validés côté Linux les 27-28/09/2026). Restent à faire : machine
+  **vierge** (sans Python) et **test matériel caméras** (option `--cameras`,
+  quand les `*.so` constructeurs y seront déposés).
 - **Exécution réelle sur machine vierge (Windows)** : à faire — installer sur
   une machine Windows sans Python ni caméra pour valider le chemin
   "téléchargement silencieux de Python" (jamais déclenché sur la machine de
