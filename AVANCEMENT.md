@@ -302,6 +302,19 @@ dans le changelog du source et l'historique git.)
       ET dans la chaîne externe (⚡) : GraXpert par couche en parallèle, puis le
       débruitage. ⚠ À prévoir : mémoire (3 × ~500 Mo : ~1,5-2 Go), arrêt des
       trois enfants au délai, concurrence bornée si la machine est petite.
+    - **★★ MÉMOIRE MESURÉE (29/09/2026, demandée par Alain AVANT de coder)** :
+      un processus GraXpert consomme **~680 Mo** (les 217 Mo du modèle + son
+      runtime Python) ; **3 simultanés = pic cumulé ~1,22 Go** mesuré en direct
+      (2 simultanés : 950 Mo), et **tout est rendu à la sortie** des processus
+      (RAM libre de la machine revenue exactement à son niveau d'avant : aucun
+      résidu). Durées sur les 3 couches d'aperçu : **5 s à 2 comme à 3
+      processus simultanés** (contre 13,7 s en série) — et un PREMIER appel
+      après une longue inactivité coûte 13 s (disque froid : les 217 Mo du
+      modèle à relire), autre raison de ne pas multiplier les appels.
+      Sur sa machine (32 Go, ~16 Go libres avec l'application ouverte) ce coût
+      est négligeable ; sur une petite machine, **borner la concurrence** (2-3
+      selon la mémoire libre) est le garde-fou à prévoir.
+
 
   - **⑦ bis LEÇONS DU JALON REMONTÉES DANS CLAUDE.md (ton accord explicite,
     29/09/2026)** — section « Pièges », trois leçons : ① un **fichier de mémoire
