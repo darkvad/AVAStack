@@ -100,12 +100,15 @@ dans le changelog du source et l'historique git.)
     nouvelle frame). **55 bancs rejoués verts** + 11 bancs caméras.
   - **⑨ INSTALLATEURS v2.43.0 RECONSTRUITS UNE SECONDE FOIS** après ce
     chantier (le code a changé : la règle « rebuilder avant tout essai réel »
-    s'applique à nouveau — mêmes noms de fichiers, aucune release publiée).
-    **TON ESSAI DE LA v2.43.0 (première version) : « déjà pas de régression »**
-    ✔, avec ton constat honnête : **la différence n'est pas flagrante** — normal
-    sur des poses longues (le processeur n'était pas le facteur limitant) ;
-    les gains se voient sur les gestes (~137 → ~30 ms), sur le winsorized
-    (1,7 → 0,5 s) et sur les sources rapides (~1,6 → 5 images/s).
+    s'applique à nouveau — mêmes noms de fichiers, aucune release publiée) :
+    `avastack-setup-2.43.0.exe` (11 481 938 o, SHA-256 `17646C4B…52E16`),
+    `…-linux.tar.gz` (591 174 o, `1462834C…630DD`), `…-macos.tar.gz`
+    (588 841 o, `037FDD49…2371A`). **TON ESSAI DE LA v2.43.0 (première
+    version) : « déjà pas de régression »** ✔, avec ton constat honnête : **la
+    différence n'est pas flagrante** — normal sur des poses longues (le
+    processeur n'était pas le facteur limitant) ; les gains se voient sur les
+    gestes (~137 → ~30 ms), sur le winsorized (1,7 → 0,5 s) et sur les sources
+    rapides (~1,6 → 5 images/s).
   - **⑩ PROCHAINE ÉTAPE — RIEN À CODER EN ATTENTE DE TA PAROLE.** Si un jour tu
     veux aller plus loin (mesuré, non fait) : chemin ORB 378 ms (les triangles,
     40 ms, restent recommandés), médian winsorized 493 ms (le mur
