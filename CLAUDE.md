@@ -1325,6 +1325,55 @@ ce qui manquait n'était pas une correction mais une MESURE.
   relit donc la base et rafraîchit l'interface (case, listes, ligne d'état).
   Règle générale : après un téléchargement, l'état affiché est RECALCULÉ, et le
   banc le vérifie point par point (banc du jalon 77).
+- **UN FICHIER DE MÉMOIRE NE PASSE JAMAIS PAR UN ALLER-RETOUR POWERSHELL**
+  (constat réel du 29/09/2026, jalon 79) : `Get-Content -Raw` lit un fichier
+  **UTF-8 SANS BOM** avec l'encodage ANSI de Windows (1252) ; réécrit ensuite en
+  UTF-8, il **DOUBLE-ENCODE tous les accents** (« mémoire » → « mÃ©moire ») et
+  ajoute un BOM — `AVANCEMENT.md` a été corrompu en une seule commande (restauré
+  par `git checkout -- AVANCEMENT.md`, puis réédité). Règle : ces documents
+  s'éditent avec l'OUTIL D'ÉDITION (il préserve les fins de ligne du fichier et
+  écrit l'UTF-8 correct) ; si un script est indispensable, forcer l'UTF-8 en
+  LECTURE **et** en écriture. **Contrôle après toute retouche documentaire** :
+  `git diff --numstat` doit rester PETIT (sinon c'est le fichier entier qui a
+  été réécrit) et l'on cherche les motifs de mojibake (`Ã©`, `Â«`, `â€`) ;
+  `git ls-files --eol <fichier>` dit les fins de ligne réelles du dépôt
+  (`i/lf w/crlf` pour `AVANCEMENT.md` et `app.py`, `w/lf` pour `stacking.py`).
+- **UN BANC DE PERFORMANCE DOIT ÊTRE ÉTALONNÉ — ET VÉRIFIER LA CORRECTION**
+  (constat réel du 29/09/2026, jalon 79) : sur un portable, **deux runs
+  STRICTEMENT identiques** du même banc diffèrent de **10 à 20 %** (le premier,
+  machine au repos, est le plus rapide) ; un seuil de régression à 15 % a produit
+  **six fausses alertes** sur un run à blanc. Les deux remèdes, mesurés : retenir
+  le **MINIMUM** d'un nombre d'itérations (la moyenne est polluée par la chaleur,
+  le reste du système et le ramasse-miettes) et **normaliser** les écarts par une
+  **calibration machine** prise **au DÉBUT et à la FIN** (`a + a` float32 sur une
+  taille fixe) ; seuil tenable : **25 %** — un vrai gain du chantier se compte en
+  dizaines de pourcents. Deux corollaires appris le même jour : ① un banc de
+  performance ne vaut que par son **garde-fou de correction** — celui du jalon 79
+  compare l'empilement produit à une réimplémentation numpy ÉCRITE DANS LE BANC,
+  écart ZÉRO exigé ; ② **mesurer AVAStack FERMÉ** : les premiers chiffres du
+  jalon ont été pris pendant que l'application empilait en parallèle, ils étaient
+  **1,5 à 2× trop lents** — la référence a été refaite au repos (`--verifier`
+  n'écrit rien, c'est le mode de contrôle).
+- **LE COÛT D'UN CHEMIN PAR FRAME EST SOUVENT L'ALLOCATION, PAS LE CALCUL**
+  (constat réel du 29/09/2026, jalon 79) : `LiveStacker.add` coûtait **325 ms**
+  sur 8,4 Mpx là où le même calcul sans temporaires en coûte **14 ms** — l'écart
+  tenait aux ~15 tableaux float64 de 67 Mo créés puis jetés à CHAQUE frame.
+  Recette appliquée (mesurée ×5 à ×6) : tampons **préalloués** une fois par
+  géométrie, opérations **en place** (`out=`), calcul élémentaire en **float32**,
+  et **bandes de lignes en parallèle** (les grandes opérations numpy libèrent le
+  GIL — ×3,3 mesuré sur une opération élémentaire ; 4 fils suffisent, en garder
+  pour l'interface et les solveurs). TROIS RÈGLES QUI VONT AVEC : ①
+  **l'exactitude se gagne avec le dtype, pas avec la vitesse** — carrés et seuil
+  de rejet restent en **float64**, où le produit de deux float32 est EXACT, donc
+  l'accumulation reste **bit à bit** celle d'avant (prouvé : `array_equal` des
+  sommes et des poids sur l'ancien algorithme, compteurs de rejets identiques) ;
+  ② un **seuil de parallélisme** (une seule bande sous 1,5 Mpx) garde les petits
+  cas SÉQUENTIELS, donc comparables à l'ancien code ; ③ **dire le prix** — ces
+  tampons sont PERSISTANTS (+240 Mo en mono 8,4 Mpx, +725 Mo en RGB 25 Mpx, par
+  stacker ; une composition en tient un par rôle), libérés par `reset()`.
+  Bancs : `_bench_performance.py` (mesures + contrôles) et
+  `_test_rejet_satellites_jalon6.py` [1]/[6] (exactitude et invariance au
+  découpage).
 
 ## Leçons générales transposables (projet pipeline siril)
 - **Toute fonction opérant sur des données image : vérifier si elle suppose

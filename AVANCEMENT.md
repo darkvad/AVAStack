@@ -91,6 +91,18 @@ dans le changelog du source et l'historique git.)
     non fait) : `composite_mean_avec_canaux` 296 ms (percentiles par rôle),
     `mean()` 44 ms, chemin ORB 377 ms (les triangles, 39 ms, restent le chemin
     recommandé), winsorized 570 ms (mur du médian), geste de saturation 74 ms.
+  - **⑦ bis LEÇONS DU JALON REMONTÉES DANS CLAUDE.md (ton accord explicite,
+    29/09/2026)** — section « Pièges », trois leçons : ① un **fichier de mémoire
+    ne passe JAMAIS par un aller-retour PowerShell** (UTF-8 sans BOM lu en
+    ANSI → accents double-encodés : AVANCEMENT.md corrompu puis restauré par
+    git, avec les contrôles à refaire) ; ② un **banc de performance doit être
+    étalonné** (minimum de N itérations, calibration machine au début ET à la
+    fin, seuil à 25 %, et mesurer AVAStack FERMÉ) **et vérifier la correction**
+    (écart 0 exigé contre une référence écrite dans le banc) ; ③ le **coût d'un
+    chemin par frame est souvent l'allocation, pas le calcul** (tampons
+    préalloués, opérations en place, float32 élémentaire, float64 pour les
+    carrés et le seuil → exactitude AU BIT, bandes de lignes parallèles, prix
+    mémoire DIT). Commit de la passe : `8e98031` (+ le présent commit mémoire).
 
 
 - **PASSE DE CLÔTURE (29/09/2026, soir) — v2.42.0 : INSTALLATEUR macOS, TES
