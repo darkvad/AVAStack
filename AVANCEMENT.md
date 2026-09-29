@@ -77,6 +77,9 @@ dans le changelog du source et l'historique git.)
     `installer/linux/output/avastack-setup-2.42.0-linux.tar.gz` (582 385 o,
     SHA-256 `7016471b…3e4c1`). **Aucune release publiée** pour cette passe (à
     faire sur ta demande, avec `gh release create --notes-file`).
+  - **COMMIT** : `d8ec4f5` (code + doc + banc, arbre propre) sur `master` —
+    **NON poussé** au moment de la clôture de la passe (`origin/master` reste sur
+    `b7cb76a`) : `git push` quand tu le veux.
 
 
 - **PASSE PRÉCÉDENTE (28/09/2026) — AVAStack v2.41.0 :
