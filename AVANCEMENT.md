@@ -254,12 +254,54 @@ dans le changelog du source et l'historique git.)
       assumé mais ponctuel : `veralux_core_headless.py`), et dépendances
       lourdes (onnxruntime, scipy, astropy) à installer et maintenir.
       → **DÉCONSEILLÉ par l'agent**, décision d'Alain à prendre.
-      ③ **ALTERNATIVE LA MOINS CHÈRE (aucune réimplémentation)** : passer de
-      **3 appels à 1** — retirer le gradient sur l'image **composée** (usage
-      standard, ce que font la plupart des logiciels) au lieu d'une fois par
-      couche → coût fixe 8,3 s → 2,8 s, GraXpert ~4 s au lieu de 9,7 s, passe
-      ~5 s au lieu de 10,5 s. Seule question : **visuelle** (équilibre des
-      canaux) — comparaison à préparer sur ses images.
+      ③ **ALTERNATIVE ÉCARTÉE PAR ALAIN (29/09/2026) — NE PAS LA REPROPOSER** :
+      retirer le gradient **sur l'image composée** (1 appel au lieu de 3) a été
+      refusé, argument à l'appui : **le retrait PAR COUCHE est une décision
+      argumentée des jalons 24/54** (en SHO/HOO, chaque filtre à bande étroite a
+      SON propre gradient — ce qui marche sur M31 ne doit pas être adopté avant
+      d'être validé sur des nébuleuses SHO). Il ne veut pas d'aller-retours.
+      → La seule voie restante pour raccourcir la passe est de réduire le coût
+      FIXE par appel : piste B (essai de faisabilité demandé le 29/09/2026).
+    - **ESSAI DE FAISABILITÉ PISTE B — EN COURS (29/09/2026)** : Alain a des
+      doutes sur la fidélité (« je doute d'arriver au même résultat
+      rapidement ») mais demande l'essai. Points à mesurer, dans cet ordre :
+      ① `onnxruntime` s'installe-t-il dans notre venv **Python 3.14** (les roues
+      cp314 sont récentes : si non, la piste B exige un environnement séparé) ;
+      ② contrat du modèle (`onxx` inputs/outputs : taille, dtype, plage) ;
+      ③ **vitesse** d'une inférence chez nous vs le « travail » mesuré de
+      GraXpert (0,5 s à l'aperçu, 2,8 s en pleine résolution) ;
+      ④ **fidélité** : comparer notre fond à celui du CLI — le CLI sait SORTIR
+      son modèle de fond (`-bg`), c'est le juge de paix chiffré.
+    - **VERDICT DE L'ESSAI (29/09/2026) — PISTE B ÉCARTÉE, chiffres à l'appui** :
+      ① notre inférence **CPU** (onnxruntime 1.30, 12 fils) : **119 ms/tuile** →
+      aperçu 3,2 s (**aucun gain** vs l'appel CLI complet de 3,25 s !), pleine
+      résolution 17 s/couche (3× PIRE que 5,6 s) ; ② avec **DirectML** (l'iGPU,
+      comme GraXpert) : **48 ms/tuile** → aperçu **1,36 s** ✔ mais
+      **E_OUTOFMEMORY** en envoyant les 135 tuiles de la pleine résolution d'un
+      seul lot (iGPU à mémoire PARTAGÉE → il faut découper) ; GraXpert lui-même
+      tourne à **~20 ms/tuile** (il réduit probablement l'image avant
+      inférence — paramètre `downscale_factor` de son API) ; ③ **FIDÉLITÉ :
+      corrélation 0,24** entre notre fond et le sien (`-bg`) — **le modèle seul
+      ne suffit PAS** : leur prétraitement, leur recollement et leur lissage
+      font l'essentiel du résultat. Le reproduire fidèlement = ingénierie
+      inverse lourde, sans garantie. → **ON ARRÊTE LÀ** (décision attendue
+      d'Alain). Environnement de l'essai **entièrement restauré** :
+      `onnxruntime`/`onnxruntime-directml` + leurs dépendances désinstallés,
+      `pip check` = aucune dépendance cassée ; aucun code d'AVAStack n'importe
+      onnxruntime.
+    - **★ TROUVÉ AU PASSAGE — LE VRAI GAIN EST LÀ (mesuré, ZÉRO pixel)** : le coût
+      de GraXpert est **FIXE par appel** (~2,8 s de démarrage + chargement des
+      217 Mo) et la chaîne live l'appelle **3 fois EN SÉRIE** (une par couche).
+      Or les couches sont **INDÉPENDANTES** : lancer les **3 sous-processus EN
+      PARALLÈLE** chevauche leurs démarrages. Mesuré sur 3 vraies couches
+      d'aperçu : **13,70 s → 5,58 s** (gain **8,12 s, 59 %**) ; en pleine
+      résolution : **11,88 s → 5,74 s** (gain 6,14 s) ; et les fichiers produits
+      sont **identiques OCTET À OCTET** (SHA-256 égaux) — même binaire, mêmes
+      arguments, entrées indépendantes ⇒ **aucun pixel ne change par
+      CONSTRUCTION**. Piste à implémenter (**jalon 81**) dans le solveur live
+      ET dans la chaîne externe (⚡) : GraXpert par couche en parallèle, puis le
+      débruitage. ⚠ À prévoir : mémoire (3 × ~500 Mo : ~1,5-2 Go), arrêt des
+      trois enfants au délai, concurrence bornée si la machine est petite.
 
   - **⑦ bis LEÇONS DU JALON REMONTÉES DANS CLAUDE.md (ton accord explicite,
     29/09/2026)** — section « Pièges », trois leçons : ① un **fichier de mémoire
