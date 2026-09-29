@@ -12,7 +12,7 @@ l'utilisateur**, sans droits administrateur.
 
 | | |
 |---|---|
-| **Plateformes** | Windows 10/11 · Linux · macOS (depuis les sources) |
+| **Plateformes** | Windows 10/11 · Linux · macOS 11+ |
 | **Installation** | [dernière release](https://github.com/darkvad/AVAStack/releases/latest) · guide [`INSTALLATION.md`](INSTALLATION.md) |
 | **Licence** | MIT — les SDK constructeurs de caméras ne sont **pas** redistribués |
 | **Version** | `AVASTACK_VERSION` dans `avastack/__init__.py` (affichée dans la barre de titre) |
@@ -67,13 +67,16 @@ l'utilisateur**, sans droits administrateur.
 |---|---|---|
 | **Windows 10/11** | `avastack-setup-<version>.exe` | lancer l'exécutable (il installe Python si besoin, crée l'environnement et les raccourcis) |
 | **Linux x86_64** | `avastack-setup-<version>-linux.tar.gz` | `tar xzf …` puis `bash installer/install_avastack.sh` |
-| **macOS** | — | depuis les sources : `python3 AVAStack.py` |
+| **macOS 11+** | `avastack-setup-<version>-macos.tar.gz` | `tar xzf …` puis `bash installer/install_avastack.sh` (Python **avec Tkinter** requis : python.org, ou Homebrew + `python-tk`) |
 
-Les deux installateurs sont joints à la
+Les **trois** installateurs sont joints à la
 [dernière release](https://github.com/darkvad/AVAStack/releases/latest) ; le
 détail (prérequis système, dossiers, caméras, dépannage) est dans
 [`INSTALLATION.md`](INSTALLATION.md), et un `LISEZMOI.txt` complet est installé
-à côté de l'application.
+à côté de l'application. Sous macOS, l'installateur écrit un bundle
+`~/Applications/AVAStack.app` (double-clic) — **écrit et vérifié au banc, pas
+encore exécuté sur un Mac** (état daté du 29/09/2026 ; les paquets Windows et
+Linux, eux, sont exécutés en réel).
 
 ## Première séance
 
@@ -113,7 +116,7 @@ des mois plus tard, et comparée à ce qui était affiché.
 
 ## Qualité : bancs de non-régression
 
-Le dépôt contient **79 bancs de non-régression** (`bancs/_test_*.py`) qui
+Le dépôt contient **80 bancs de non-régression** (`bancs/_test_*.py`) qui
 mesurent réellement ce qu'ils vérifient : chaînes de traitement sur images
 synthétiques, worker d'acquisition réel sur de vraies brutes FITS, solveurs
 factices pour l'astrométrie et la photométrie, mise en page de l'interface…
@@ -123,7 +126,9 @@ parlent aux vraies DLL constructeurs).
 
 ## Limites connues
 
-- Pas d'installateur **macOS** : lancement depuis les sources.
+- L'**installateur macOS** n'a pas encore été **exécuté sur un Mac** (29/09/2026) :
+  paquet et garde-fous vérifiés au banc, reste le test réel. Son bundle n'est pas
+  signé (pas de compte Apple) — clic droit → « Ouvrir » la première fois.
 - **Aucune caméra** n'est embarquée (SDK constructeurs, licences) : les `.so`/`.dll`
   sont à déposer à côté de l'application ou désignés par variable
   d'environnement.

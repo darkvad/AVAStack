@@ -226,13 +226,33 @@ installé, documentations et pages constructeurs) :
   `GraXpert.app`) ; le CLI rc-astro (BlurXTerminator) existe pour Windows,
   macOS ET Linux. Détection détaillée : section « Détection de l'exécutable »
   plus bas (v2.38.5).
-- **macOS** : Python de python.org (Tk inclus) ou `brew install python-tk@3.14`,
+- **macOS** : Python de python.org (Tk inclus) ou `brew install python-tk@3.13`,
   puis bundle `.app` + signature/notarisation Apple (sinon Gatekeeper bloque).
+  **INSTALLATEUR ÉCRIT LE 29/09/2026** (`installer/macos/install_avastack.sh`,
+  distribué par `installer/macos/build_avastack.py` en
+  `avastack-setup-<version>-macos.tar.gz`) : app + venv dans
+  `~/Library/Application Support/AVAStack/app`, lanceur `~/.local/bin/avastack`
+  et bundle **minimal** `~/Applications/AVAStack.app` (Info.plist + lanceur qui
+  pointe sur le venv — pas de Python embarqué, donc mise à jour sans retoucher le
+  bundle) ; **bundle non signé** (pas de compte Apple) → clic droit « Ouvrir » ou
+  `xattr -dr com.apple.quarantine`. Prérequis : un Python **avec Tkinter**
+  (python.org, ou Homebrew + `python-tk@3.13`) ; le Python système n'en a pas.
+  Il **refuse** de s'installer hors macOS et fait le MÊME test de démarrage que
+  Linux (`import avastack.ui.app` dans le venv). **ÉTAT DATÉ : écrit et vérifié
+  au banc (`_test_installeur_macos_jalon78.py`) et par exécution réelle de ses
+  garde-fous, mais PAS ENCORE EXÉCUTÉ SUR UN MAC** — c'est le prochain test.
 - **Route LINUX RETENUE (décision d'Alain, 27/09/2026) : ① script + venv**,
   implémentée le même jour — `installer/linux/install_avastack.sh` (copie dans
   `~/.local/share/AVAStack`, venv + `pip install`, lanceur
   `~/.local/bin/avastack`, entrée `.desktop`), distribué en
   `avastack-setup-<version>-linux.tar.gz` par `installer/linux/build_avastack.py`.
+  **macOS suit la MÊME route** (décision d'Alain, 29/09/2026 : « si tu peux
+  facilement faire l'installateur pour macOS ») : `installer/macos/` reprend le
+  script et le packer Linux avec les seules différences de plateforme (dossiers
+  `~/Library/...`, bundle `.app`, `*.dylib`, prérequis Tkinter par Homebrew ou
+  python.org) — les deux packers partagent les mêmes règles de contenu (version
+  lue dans le source, aucun binaire constructeur, `.sh`/`.txt` convertis en LF,
+  seuls les `bancs/cameras/_diag_*.py` embarqués).
   Le `.deb`, l'AppImage et le Flatpak restent des options NON retenues.
   **Version livrée SANS CAMÉRAS** : les paquets `qhyccd`/`zwoasi` sont retirés de
   l'installation et aucun `*.so` n'est embarqué → l'application démarre et
@@ -1261,6 +1281,37 @@ ce qui manquait n'était pas une correction mais une MESURE.
   réel : 2,95 à `--sn 0,50`, 1,49 à 0,3). Le calculer sur des blocs de fond
   COMMUNS aux deux images (le masque se choisit une fois, pas par image), sinon
   deux ciels différents sont comparés.
+- **DEUX CONVENTIONS DE RAPPEL `progression` COHABITENT DANS `telechargeur.py`**
+  (v2.42.0, mesuré) : `verifier_ou_telecharger` et `telecharger_chunks` appellent
+  `progression(nom, fraction)`, mais le téléchargement de BAS NIVEAU
+  (`telecharger`) appelle `progression(fraction)`. Les enchaîner sans adaptation
+  INVERSE les deux arguments — constaté au premier essai du chemin complet : le
+  nom du fichier arrivait comme `float` et la fraction comme chaîne. Rien ne le
+  voit à l'œil : c'est le banc du jalon 77 qui l'a attrapé. Règle : une fonction
+  neuve qui annonce une progression DIT laquelle des deux formes elle prend, et
+  l'adaptation se fait à UN seul endroit.
+- **UN BANC QUI ISOLE L'ENVIRONNEMENT DOIT AUSSI BASCULER LES CONSTANTES D'OS**
+  (v2.42.0, mesuré) : poser `HOME`/`XDG_*`/`LOCALAPPDATA` ne suffit PAS sous
+  Windows — `config.dossier_config()` lit `%APPDATA%` tant que `IS_WINDOWS` est
+  vrai, donc le banc lisait le **VRAI** `config.json` (et la case SPCC cochée de
+  la machine de dev faisait échouer un test d'interface qui n'avait rien à voir
+  avec le code testé). Règle : basculer `IS_WINDOWS`/`IS_MACOS` des modules
+  concernés (et de `config`), retirer `APPDATA` en plus de `LOCALAPPDATA`, et
+  restaurer les deux en sortie de banc.
+- **UN AUDIT DE GÉOMÉTRIE DOIT IGNORER LES PARENTS DE TAILLE 0/1 px** (v2.42.0 ;
+  mesuré, puis vérifié sur un `git worktree` de HEAD) : avec une configuration
+  VIDE (premier lancement), un **sas de panedwindow reste à 1 px** → 29 widgets
+  « gérés mais non affichés » **dès la construction**, identiques AVANT et APRÈS
+  les changements testés (donc préexistants). Le contrôle de référence reste le
+  banc du jalon 72 (vraie configuration) ; un banc qui part d'une configuration
+  neuve vérifie NOMMÉMENT les widgets qu'il ajoute, et laisse la mise en page se
+  terminer (plusieurs `update()`) avant de mesurer quoi que ce soit.
+- **UNE DONNÉE TÉLÉCHARGEABLE DOIT DEVENIR UTILISABLE DANS LA MÊME SESSION**
+  (v2.42.0) : télécharger la base de profils SPCC sans rendre sa case cochable ni
+  remplir ses listes ne sert à rien avant un redémarrage — la fin du transfert
+  relit donc la base et rafraîchit l'interface (case, listes, ligne d'état).
+  Règle générale : après un téléchargement, l'état affiché est RECALCULÉ, et le
+  banc le vérifie point par point (banc du jalon 77).
 
 ## Leçons générales transposables (projet pipeline siril)
 - **Toute fonction opérant sur des données image : vérifier si elle suppose

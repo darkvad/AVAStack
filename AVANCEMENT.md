@@ -10,9 +10,49 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **DERNIÈRE PASSE LIVRÉE (29/09/2026, session en cours) — AVAStack v2.42.0 :
-  AVAStack SANS SIRIL — LES SPECTRES GAIA XP ET LA BASE DE PROFILS SPCC SE
-  TÉLÉCHARGENT DEPUIS L'INTERFACE.** Ta question : « si tu traites ce point
+- **PASSE DE CLÔTURE (29/09/2026, soir) — v2.42.0 : INSTALLATEUR macOS, TES
+  VALIDATIONS CONSIGNÉES ET LEÇONS REMONTÉES.** Trois choses, sans toucher au
+  code de l'application (donc **même version 2.42.0**) :
+  - **① INSTALLATEUR macOS (jalon 78)** — `installer/macos/` : script
+    `install_avastack.sh` (app + venv dans
+    `~/Library/Application Support/AVAStack/app`, lanceur `~/.local/bin/avastack`,
+    **bundle minimal** `~/Applications/AVAStack.app` = Info.plist + lanceur qui
+    pointe sur le venv, donc **pas de Python embarqué** et mise à jour sans
+    retoucher le bundle) et packer `build_avastack.py` →
+    `installer/macos/output/avastack-setup-2.42.0-macos.tar.gz` (**62 fichiers,
+    566 Kio**, SHA-256 `8f070116…cdaa23`). Prérequis dit et testé : un Python
+    **avec Tkinter** (python.org, ou Homebrew + `python-tk@3.13`) — le Python du
+    système n'en a pas ; le script **refuse** de s'installer hors macOS, fait le
+    **test de démarrage réel** (`import avastack.ui.app` dans le venv) et écrit un
+    `LISEZMOI.txt` dédié (lancement, ⬇ des données Gaia, caméras `*.dylib`,
+    dépannage, Gatekeeper, désinstallation). **ÉTAT DATÉ, sans exagération :
+    écrit, vérifié au banc et par exécution réelle de ses garde-fous (refus hors
+    macOS, `--aide`), mais PAS ENCORE EXÉCUTÉ SUR UN MAC** — banc NEUF
+    `bancs/_test_installeur_macos_jalon78.py` (26 vérifications : contenu du
+    paquet, fins de ligne UNIX, modes, aucun binaire, garde-fous présents,
+    exécution réelle sous le bash de Git Bash).
+  - **② TES VALIDATIONS** — le **point 2 est TESTÉ ET VALIDÉ par ton essai**
+    (« Réinitialiser l'empilement » puis nouvelle cible en mode dossier : le
+    bloc « EN ATTENTE » de la v2.41.0 est donc clos et peut être supprimé) ; le
+    **point 1 (les boutons de données sans Siril) n'est PAS testable chez toi** —
+    tu n'as pas de configuration sans Siril : le test est **délégué aux
+    utilisateurs** qui voudront bien l'essayer (c'est écrit dans la doc comme un
+    état daté, pas comme une promesse).
+  - **③ LEÇONS REMONTÉES DANS CLAUDE.md** (ton accord explicite : « tu peux
+    remonter les leçons dans claude.md ») : les **quatre leçons du jalon 77**
+    sont écrites dans la section « Pièges » (deux conventions de `progression`
+    dans `telechargeur.py` ; un banc qui isole l'environnement doit basculer les
+    constantes d'OS ; un audit de géométrie doit ignorer les parents de taille
+    0/1 px ; une donnée téléchargeable doit devenir utilisable dans la même
+    session) ; la section « Portage Linux / macOS » décrit l'installateur macOS
+    et la route commune aux deux packers.
+  - **RELEASE à compléter** : le paquet macOS est **à joindre à la release
+    `v2.42.0`** (déjà publiée) — ajout d'une pièce, **aucun écrasement** — et le
+    `INSTALLATION.md` joint est réédité (§ 1 et nouveau § 3 bis macOS).
+
+- **PASSE PRÉCÉDENTE (29/09/2026, matin) — AVAStack v2.42.0 : AVAStack SANS SIRIL
+  — LES SPECTRES GAIA XP ET LA BASE DE PROFILS SPCC SE TÉLÉCHARGENT DEPUIS
+  L'INTERFACE.** Ta question : « si tu traites ce point
   (bouton pour les 48 morceaux de spectres Gaia XP), AVAStack pourra fonctionner
   sans Siril, y compris pour l'astrométrie et les capteurs et filtres SPCC ? »
   **Jalon 77.** Réponse mesurée : **NON, ce point SEUL ne suffisait pas** — il
@@ -535,36 +575,35 @@ dans le changelog du source et l'historique git.)
 
 ## En attente / prochaine session
 
-- **ÉTAT COMPACT POUR UNE NOUVELLE SESSION (29/09/2026, clôture)** : **rien en
-  attente de l'agent**. Dernière passe livrée et **PUBLIÉE** : **v2.42.0**
-  (jalon 77 — spectres Gaia XP et base de profils SPCC téléchargeables :
-  **AVAStack ne dépend plus de Siril**), release GitHub `v2.42.0` avec ses deux
-  installateurs et `INSTALLATION.md`. Le dépôt est **public** (licence MIT,
-  titulaire = identifiant GitHub), un **`README.md`** de présentation existe à la
-  racine, les documents publiés ne citent plus le mainteneur (règle écrite dans
-  CLAUDE.md) et **les commentaires du code/garde-fous internes restent tels
-  quels** (décision explicite). **Le prochain geste est un test réel** (les deux
-  ci-dessous) ; en cas de doute, tout est en tête de ce fichier et dans le
-  changelog de `avastack/__init__.py`.
-- **EN ATTENTE (29/09/2026) — v2.42.0 : TON TEST DES BOUTONS DE DONNÉES**
-  (catalogues + spectres + base SPCC). À valider : ① « ⬇ Gaia » toujours bon ;
+- **ÉTAT COMPACT POUR UNE NOUVELLE SESSION (29/09/2026, clôture de soirée)** :
+  **rien en attente de l'agent**. Dernière passe : **v2.42.0** — AVAStack ne
+  dépend plus de Siril (spectres Gaia XP + base de profils SPCC téléchargeables,
+  jalons 77) **et un installateur macOS existe** (jalon 78, écrit le 29/09/2026,
+  **pas encore exécuté sur un Mac**). Release GitHub `v2.42.0` publiée (deux
+  installateurs + la doc ; le paquet macOS y est ajouté). Le dépôt est **public**
+  (licence MIT, titulaire = identifiant GitHub), un **`README.md`** de
+  présentation existe à la racine, les documents publiés ne citent plus le
+  mainteneur (règle écrite dans CLAUDE.md) et **les commentaires du
+  code/garde-fous internes restent tels quels** (décision explicite). **Les deux
+  tests réels restants ne sont pas chez toi** : voir les deux blocs ci-dessous.
+- **DÉLÉGUÉ AUX UTILISATEURS (29/09/2026) — v2.42.0 : LES BOUTONS DE DONNÉES**
+  (catalogues + spectres + base SPCC). **Ton retour : « les boutons sont là mais
+  je n'ai aucune configuration sans Siril pour tester »** — normal : tes machines
+  ont Siril, et c'est justement le cas « sans Siril » qu'il faut éprouver. À
+  valider par quiconque a une machine **sans Siril** : ① « ⬇ Gaia » ;
   ② **« ⬇ Spectres (champ) »** avec AD/Dec/champ° saisis (attendu : la ligne
   d'état nomme les morceaux du champ, ≈ 100-300 Mo, et la ligne « Catalogues »
-  passe à `n/48 morceaux`) ; ③ **« ⬇ les 48 »** seulement si tu veux tout le ciel
-  (≈ 10,6 Go, reprise automatique) ; ④ **« ⬇ Base SPCC »** (quelques Mo) puis la
-  **case SPCC** : elle doit devenir cochable **sans redémarrer** et ses listes se
-  remplir. Le plus probant : le faire sur une machine **sans Siril installé**.
-  Repli si régression : **installateur v2.41.0** (à côté des nouveaux).
-- **EN ATTENTE (28/09/2026) — v2.41.0 : TON TEST RÉEL DU BOUTON « RÉINITIALISER »**
-  (publiée : release GitHub `v2.41.0`, tag `4b7efe8`, les deux installateurs + la
-  doc). À valider en **mode dossier** : fin de cible → **nouveau dossier** →
-  « Réinitialiser l'empilement » → « ▶ Démarrer ». Attendu : l'écran se vide, la
-  ligne d'état annonce le nouveau dossier **et l'effacement des indices
-  d'astrométrie**, l'empilement ne contient QUE la nouvelle cible, et un seul
-  thread de worker tourne. Repli si régression : **v2.40.0** (installateur à côté).
-  Restent aussi à confirmer sur une trace écrite, hérités de la passe précédente :
-  l'étoile verte + le ″/px de l'astrométrie, et l'en-tête `AVASPCC` d'une
-  sauvegarde.
+  passe à `n/48 morceaux`) ; ③ **« ⬇ les 48 »** (≈ 10,6 Go, reprise
+  automatique) ; ④ **« ⬇ Base SPCC »** (quelques Mo) puis la **case SPCC** : elle
+  doit devenir cochable **sans redémarrer** et ses listes se remplir. La
+  mécanique est mesurée au banc (jalon 77) ; ce qui reste à voir, c'est le monde
+  réel (réseau, dossiers, droits). Repli si régression : **installateur v2.41.0**.
+- **VALIDÉ PAR TON ESSAI (29/09/2026) — v2.41.0 : bouton « RÉINITIALISER »**
+  (release GitHub `v2.41.0`, tag `4b7efe8`). Tu as testé et validé : fin de cible
+  → nouveau dossier → « Réinitialiser l'empilement » → « ▶ Démarrer » se comporte
+  comme prévu (nouvelle cible uniquement). **Ce bloc est clos** — reste seulement,
+  hérité des passes précédentes, à confirmer sur une trace écrite : l'étoile
+  verte + le ″/px de l'astrométrie, et l'en-tête `AVASPCC` d'une sauvegarde.
 - **NOUVEAU (28/09/2026, soir) — v2.40.0 : ASTROMÉTRIE SUR CAMÉRA TOURNÉE (OSC) ET
   SPCC COULEUR.** NGC 7023 **résolu sur tes brutes** (68-80 appariements, rms
   0,43-0,46 px, 0,4716″/px contre 0,4714″/px pour ASTAP), M31 non régressé ; la
@@ -831,11 +870,11 @@ dans le changelog du source et l'historique git.)
   est dans les deux listes — c'est l'interface qui tranche ; et le défaut d'un
   filtre OSC est la référence « sans filtre », jamais un vrai LPF en silence).
   Plus AUCUNE leçon en attente.
-- **Leçons du 29/09/2026 (jalon 77, v2.42.0) — EN ATTENTE DE TON ACCORD, elles ne
-  bloquent rien** (elles sont consignées dans « Pièges récents » ci-dessous, donc
-  utilisables dès maintenant) : ① deux conventions de rappel `progression`
+- **Leçons du 29/09/2026 (jalon 77, v2.42.0) — ÉCRITES dans CLAUDE.md le même
+  jour, sur ton accord explicite** (« tu peux remonter les leçons dans
+  claude.md »), section « Pièges » : ① deux conventions de rappel `progression`
   cohabitent dans `telechargeur.py` (`(nom, fraction)` et `(fraction)`) — dire
-  laquelle on prend, et l'inversion des arguments n'a été vue que par le banc ;
+  laquelle on prend, l'inversion des arguments n'ayant été vue que par le banc ;
   ② **un banc qui isole l'environnement doit aussi basculer les constantes d'OS**
   (`%APPDATA%` reste sinon dans le vrai dossier de configuration — le banc lisait
   le VRAI `config.json`) ; ③ **l'audit de géométrie doit ignorer les parents de
@@ -843,7 +882,9 @@ dans le changelog du source et l'historique git.)
   29 widgets « écrasés » dès la construction, **préexistant**, vérifié sur un
   worktree de HEAD) ; ④ **une donnée téléchargeable doit devenir utilisable dans
   la session** (case/combos rafraîchis à la fin du transfert), sinon le
-  téléchargement ne sert à rien avant un redémarrage.
+  téléchargement ne sert à rien avant un redémarrage. La section « Portage
+  Linux / macOS » y décrit désormais l'installateur macOS et la route commune aux
+  deux packers.
 
 ## Setup d'Alain
 
@@ -875,6 +916,28 @@ dans le changelog du source et l'historique git.)
 
 
 ## Pièges récents (rappels opérationnels)
+
+- **Leçons du jalon 78 (installateur macOS, v2.42.0)** :
+  - **Un installateur d'un OS qu'on ne peut PAS exécuter se vérifie par ce qui
+    est vérifiable** : ① `bash -n` (analyse syntaxique — le bash de Git Bash
+    suffit) ; ② **exécution réelle des garde-fous** (le script doit REFUSER de
+    s'installer hors macOS et `--aide` doit répondre : deux tests lancés depuis
+    Windows) ; ③ un banc qui contrôle le CONTENU du paquet (racine unique,
+    fichiers indispensables, modes, fins de ligne, aucun binaire). Et l'état est
+    écrit **daté** partout (« écrit le 29/09/2026, pas encore exécuté sur un
+    Mac »), jamais déguisé en test réussi.
+  - **Charger un script pour tester ses fonctions sans exécuter son `main`** :
+    `grep -v '^main "\$@"' script.sh > copie.sh` puis `. copie.sh` — un simple
+    `sed '$d'` ne suffit pas quand le fichier se termine par une ligne vide (le
+    `main` s'exécute et le test s'arrête). Et **le script chargé active
+    `set -euo pipefail`** : remettre `set +e` juste après, sinon la première
+    vérification « qui doit échouer » (le refus hors macOS) arrête tout.
+  - **Sous macOS, l'application doit être CLIQUABLE sans droits administrateur** :
+    un bundle minimal `~/Applications/AVAStack.app` (Info.plist + exécutable
+    shell qui lance le venv) suffit — **ne pas embarquer Python ni le venv** dans
+    le bundle, sinon chaque mise à jour exige de refaire le paquet. Le bundle
+    n'étant pas signé, prévenir : clic droit → « Ouvrir », ou
+    `xattr -dr com.apple.quarantine`.
 
 - **Leçons du jalon 77 (v2.42.0)** :
   - **DEUX conventions de `progression` cohabitent dans `telechargeur.py`** :

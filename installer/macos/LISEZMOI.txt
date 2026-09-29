@@ -1,0 +1,121 @@
+AVAStack — live stacking : LISEZ-MOI macOS
+==========================================
+
+Merci d'avoir installé AVAStack ! Ce fichier concerne l'installation sous macOS
+(le paquet est `avastack-setup-<version>-macos.tar.gz`). Le détail de TOUS les
+réglages de l'interface est dans `INSTALLATION.md` et dans le `README` du dépôt
+(les réglages sont les mêmes que sous Windows et Linux).
+
+OÙ EST L'APPLICATION
+--------------------
+  Application    : ~/Library/Application Support/AVAStack/app
+  Interpréteur   : ~/Library/Application Support/AVAStack/app/venv/bin/python
+  Double-clic    : ~/Applications/AVAStack.app
+  Terminal       : ~/.local/bin/avastack
+  Réglages       : ~/Library/Application Support/AVAStack/config.json
+  Journal        : ~/Library/Application Support/AVAStack/journal.txt
+
+Le bundle `.app` ne contient PAS Python : il lance le venv de l'installation.
+C'est ce qui permet de mettre à jour l'application sans toucher au bundle.
+
+CE QUI FONCTIONNE DANS CETTE VERSION
+------------------------------------
+Les sources d'images « sans caméra » sont prêtes et opérationnelles :
+  - Simulée (démo)             : ciel de démonstration, sans matériel ;
+  - Dossier surveillé          : empile les FITS/PNG/TIFF que ton logiciel
+                                 d'acquisition (N.I.N.A., APT, SGP, KStars…)
+                                 écrit dans un dossier ;
+  - Composition multi-dossiers : RGB / HOO / SHO / LRGB (une couche par
+                                 dossier) ;
+  - OpenCV 0 et 1              : webcams et cartes d'acquisition génériques.
+Tout le traitement est là : calibration (dark/flat), alignement, empilement avec
+rejet, étirement VeraLux, histogramme, sauvegardes FITS/TIFF/PNG, astrométrie,
+photométrie, SPCC, outils externes (GraXpert / BlurXTerminator).
+
+CAMÉRAS : PAS ENCORE INSTALLÉES (c'est volontaire)
+--------------------------------------------------
+Les caméras astronomiques (QHY, ZWO, Player One, ToupTek, SVBONY) ont besoin
+d'un SDK binaire du constructeur — sous macOS ce sont des fichiers `*.dylib`.
+Ce paquet n'en embarque aucun : l'application démarre sans eux et l'ouverture
+d'une source caméra dira simplement que le SDK est introuvable.
+
+Quand tu auras récupéré les bibliothèques constructeurs, dépose-les dans le
+dossier EXTRAIT du paquet (à côté de `AVAStack.py`, ou dans un sous-dossier
+`sdk/`) puis relance l'installateur depuis ce dossier :
+
+    bash installer/install_avastack.sh --cameras
+
+Il copie les `*.dylib` présentes et TENTE les paquets pip caméras (facultatif :
+ils n'existent pas pour toutes les marques sous macOS). Tu peux aussi pointer un
+dossier existant avec `AVASTACK_<MARQUE>_DIR`, par exemple
+`AVASTACK_PLAYERONE_DIR=~/SDK/PlayerOne`.
+
+DONNÉES ASTRONOMIQUES : LES BOUTONS ⬇ (Siril NON requis)
+--------------------------------------------------------
+L'astrométrie, la photométrie et la SPCC s'appuient sur des FICHIERS d'étoiles,
+pas sur des bibliothèques. AVAStack les télécharge lui-même, dans la fenêtre
+« Astrométrie » (reprise automatique après une coupure, empreintes vérifiées) :
+
+  - « ⬇ Gaia »            : catalogue astrométrique Gaia DR3 (≈ 1,1 Go) ;
+  - « ⬇ Spectres (champ) » : les 1 à 4 morceaux de spectres Gaia XP qui couvrent
+                            la cible saisie (AD/Dec/champ°) — ≈ 100-300 Mo ;
+  - « ⬇ les 48 »          : tout le ciel (≈ 10,6 Go, pour un usage itinérant) ;
+  - « ⬇ Base SPCC »       : profils de capteurs et de filtres (quelques Mo) —
+                            sans elle, la SPCC ne peut pas calculer ;
+  - « 📂 Dossier SPCC »   : désigne une base déjà présente (celle de Siril, par
+                            exemple) au lieu d'en télécharger une.
+
+Un seul téléchargement à la fois : les boutons sont grisés pendant le transfert
+et la ligne d'état annonce le fichier et son pourcentage.
+
+PREMIÈRE SESSION, EN CINQ GESTES
+--------------------------------
+  1. Ouvre AVAStack (double-clic sur ~/Applications/AVAStack.app).
+  2. Source : « Dossier surveillé » → choisis le dossier où ton logiciel
+     d'acquisition écrit ses brutes.
+  3. Données : clique sur les boutons ⬇ utiles (au minimum « ⬇ Gaia » pour
+     l'astrométrie, et « ⬇ Spectres (champ) » + « ⬇ Base SPCC » pour la SPCC).
+  4. Astrométrie : lance-la sur une brute — l'étoile passe au vert et l'échelle
+     s'affiche en ″/pixel.
+  5. Empile, puis sauvegarde : les fichiers portent les en-têtes de traçabilité
+     (`AVASPCC`, `AVAGAIA`…) qui disent ce qui a été appliqué.
+
+DÉPANNAGE
+---------
+- L'application ne s'ouvre pas, ou se ferme aussitôt : ouvre le journal
+  `~/Library/Application Support/AVAStack/journal.txt` — les étapes du
+  démarrage y sont écrites avant même que la fenêtre n'existe.
+- « Tkinter est absent » : le Python utilisé n'a pas Tkinter. Installe Python
+  depuis python.org (Tk inclus) ou `brew install python@3.13 python-tk@3.13`,
+  puis relance l'installateur.
+- macOS refuse d'ouvrir le bundle : clic droit → « Ouvrir » (une fois), ou
+  `xattr -dr com.apple.quarantine ~/Applications/AVAStack.app`.
+- « avastack : commande introuvable » : `~/.local/bin` n'est pas dans le PATH.
+  Ajoute à `~/.zshrc` : `export PATH="$HOME/.local/bin:$PATH"`.
+- Les caméras ne sont pas détectées : c'est normal sans les `*.dylib` du
+  constructeur (voir plus haut) ; le mode « Dossier surveillé » reste complet.
+- Erreur au démarrage mentionnant numpy/OpenCV : relance l'installateur — il
+  réinstalle les dépendances dans le venv et REFAIT le test de démarrage.
+
+MISE À JOUR
+-----------
+Extrais le nouveau paquet et relance `bash installer/install_avastack.sh` : la
+même commande remplace l'application et ses dépendances. Les réglages
+(`config.json`), le journal et les données Gaia téléchargées sont CONSERVÉS.
+
+DÉSINSTALLATION
+---------------
+    bash installer/install_avastack.sh --desinstaller              # garde les réglages
+    bash installer/install_avastack.sh --desinstaller --purger     # supprime tout
+Le premier supprime l'application, le bundle et le lanceur, en gardant
+`config.json`, le journal, les catalogues et la base SPCC (utiles à une
+réinstallation).
+
+ÉTAT DE CET INSTALLATEUR (à dater, règle du projet)
+---------------------------------------------------
+Installateur macOS écrit le 29/09/2026 à partir de l'installateur Linux (éprouvé
+en réel sur Ubuntu) : il a été VÉRIFIÉ par analyse syntaxique (`bash -n`) et par
+construction du paquet, mais il n'a PAS encore été exécuté sur une machine
+macOS. Si quelque chose bloque, c'est un manque d'information précieuse :
+note le message exact du Terminal et le contenu du journal.
+

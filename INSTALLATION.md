@@ -20,6 +20,7 @@ de l'application — celui-ci détaille **tous les réglages** de l'interface.
 | --- | --- | --- | --- |
 | Windows (10/11, 64 bits) | `avastack-setup-2.42.0.exe` | 11,5 Mo | `848E770DA86138E4888BE41B26D1325C78DB9D535E1CBB45336DFBBBA981905F` |
 | Linux (x86_64) | `avastack-setup-2.42.0-linux.tar.gz` | 569 Kio | `7016471BAEDCDB0BBD31BEB287C3D91C462253A55DFC64E9011010504D83E4C1` |
+| macOS (11 et plus) | `avastack-setup-2.42.0-macos.tar.gz` | 566 Kio | `8F070116B4744BA8AE75DD8A6170604ADE5A8E69C3B58C0CFEE141D738CDAA23` |
 | Documentation | `INSTALLATION.md` | ce fichier | — |
 
 Les artéfacts portent leur **numéro de version** : deux versions ne s'écrasent
@@ -99,8 +100,7 @@ relance `bash installer/install_avastack.sh --cameras` ; l'installateur copie
 les `.so` et pose les règles `udev` (avec `sudo`). Sans les règles, la caméra
 n'est visible **qu'en root**.
 
-**macOS** : il n'y a pas encore d'installateur. AVAStack se lance depuis les
-sources (`python3 AVAStack.py` dans le dossier de l'application).
+**macOS** : l'installateur macOS existe depuis le **29/09/2026** — voir le § 3 bis.
 
 > **État de cet installateur (à jour le 29/09/2026)** : le paquet Linux est
 > construit, son contenu est vérifié (62 fichiers, aucun `.so`/`.dll`, script
@@ -111,6 +111,56 @@ sources (`python3 AVAStack.py` dans le dossier de l'application).
 > test sur une machine **vierge** (sans Python ni paquets prérequis) et le
 > **test matériel caméras** sous Linux (option `--cameras`, quand les `*.so`
 > constructeurs y seront déposés).
+
+---
+
+## 3 bis. macOS — `avastack-setup-2.42.0-macos.tar.gz`
+
+```bash
+tar xzf avastack-setup-2.42.0-macos.tar.gz
+cd avastack-2.42.0-macos
+bash installer/install_avastack.sh
+```
+
+**Prérequis : un Python AVEC Tkinter** (Tkinter n'est pas installable par pip) :
+
+- Python de **python.org** (Tk inclus) — le plus simple : télécharger 3.12/3.13,
+  installer le `.pkg`, puis lancer ce script ;
+- ou **Homebrew** : `brew install python@3.13 python-tk@3.13`.
+
+Vérification en une commande : `python3 -c 'import tkinter; print(tkinter.TkVersion)'`.
+Le Python livré par macOS (`/usr/bin/python3`) **n'a pas** de Tkinter utilisable :
+le script le dit et refuse d'installer sans Tkinter (sauf `--forcer`).
+
+Ce que le script écrit (tout dans ton profil, **aucun droit administrateur**) :
+
+| Élément | Emplacement |
+| --- | --- |
+| Application (code + venv) | `~/Library/Application Support/AVAStack/app` (modifiable : `--prefix`) |
+| Double-clic (bundle `.app`) | `~/Applications/AVAStack.app` |
+| Lanceur Terminal | `~/.local/bin/avastack` |
+| Réglages / journal | `~/Library/Application Support/AVAStack/` |
+
+Le bundle est **minimal** (Info.plist + lanceur) : il ne contient ni Python ni
+venv, il pointe sur l'installation — d'où la mise à jour sans le retoucher. Il
+n'est **pas signé ni notarisé** (pas de compte Apple) : si macOS refuse de
+l'ouvrir, faire un **clic droit → « Ouvrir »** (une fois), ou lever la
+quarantaine :
+
+```bash
+xattr -dr com.apple.quarantine ~/Applications/AVAStack.app
+```
+
+Désinstallation : `bash installer/install_avastack.sh --desinstaller` (garde les
+réglages et les données téléchargées) ; `--purger` supprime aussi les réglages.
+
+> **État de cet installateur (29/09/2026) — daté et sans exagération** : écrit à
+> partir de l'installateur **Linux** (éprouvé en réel), vérifié par analyse
+> syntaxique (`bash -n`), par **exécution réelle** de ses garde-fous (il refuse
+> de s'installer hors macOS, `--aide` répond) et par un banc qui contrôle le
+> contenu du paquet (`bancs/_test_installeur_macos_jalon78.py`). Il n'a **pas
+> encore été exécuté sur une machine macOS** : c'est le prochain test à faire,
+> et le premier retour d'un utilisateur macOS vaut de l'or.
 
 ---
 
@@ -249,7 +299,10 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
 - Restent à faire : l'installateur Linux sur une machine **vierge** (sans Python
   ni paquets prérequis) et le **test matériel caméras** sous Linux (option
   `--cameras`, quand les `*.so` constructeurs y seront déposés).
-- Pas d'installateur **macOS** : lancement depuis les sources.
+- **Installateur macOS : ÉCRIT mais PAS ENCORE EXÉCUTÉ sur un Mac** (29/09/2026) —
+  contenu du paquet vérifié au banc et garde-fous essayés en réel (refus hors
+  macOS, `--aide`), mais c'est le prochain test à faire sur une vraie machine ;
+  la signature/notarisation Apple n'est pas faite (bundle local non signé).
 - **Aucune caméra** n'est embarquée (SDK constructeurs, licences).
 - Les **données Gaia** ne sont pas embarquées : ≈ 1,1 Go (catalogue astro),
   ≈ 10,6 Go (les 48 morceaux de spectres — le bouton « ⬇ les 48 ») et quelques
@@ -263,9 +316,9 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
 ## 9. Repli si régression
 
 Le repli de référence est la **v2.41.0**. Les installateurs des versions
-antérieures restent à côté des nouveaux, dans `installer/windows/output/` et
-`installer/linux/output/` : aucun nouveau installateur n'écrase une version
-précédente.
+antérieures restent à côté des nouveaux, dans `installer/windows/output/`,
+`installer/linux/output/` et `installer/macos/output/` : aucun nouveau
+installateur n'écrase une version précédente.
 
 ## 10. Liens utiles
 

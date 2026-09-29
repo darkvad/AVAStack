@@ -7,13 +7,21 @@ administrateur requis (tout s'installe dans le profil de l'utilisateur) :
 | --- | --- | --- |
 | Windows | `windows/output/avastack-setup-<version>.exe` | `windows/build_avastack.ps1` (Inno Setup 6) |
 | Linux | `linux/output/avastack-setup-<version>-linux.tar.gz` | `linux/build_avastack.py` |
+| macOS | `macos/output/avastack-setup-<version>-macos.tar.gz` | `macos/build_avastack.py` |
 
-Installation pas à pas (les deux plateformes, **et la préparation des données
+Installation pas à pas (les trois plateformes, **et la préparation des données
 Gaia** — catalogue astrométrique, morceaux de spectres, base de profils SPCC) :
 **`INSTALLATION.md`**, à la racine du dépôt ; il est joint à chaque release comme
 document d'accompagnement. AVAStack télécharge lui-même ces trois données
 (boutons ⬇ de la fenêtre) : **Siril est facultatif** (utile seulement si l'on
 préfère le laisser préparer ses catalogues).
+
+**macOS** : le paquet est un `tar.gz` (pas de `.dmg`) dont l'installateur écrit
+un bundle `~/Applications/AVAStack.app` (double-clic) et un lanceur
+`~/.local/bin/avastack` ; il exige un Python AVEC Tkinter (python.org, ou
+Homebrew + `python-tk`). État au 29/09/2026 : **écrit et vérifié au banc, pas
+encore exécuté sur un Mac** (le paquet Windows et le paquet Linux, eux, sont
+exécutés en réel).
 
 **Le nom de l'artéfact PORTE LA VERSION** (règle du 27/09/2026) : elle
 vient toujours de `AVASTACK_VERSION` (`avastack/__init__.py`), jamais d'un nom
