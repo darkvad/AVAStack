@@ -49,10 +49,24 @@ dans le changelog du source et l'historique git.)
     4 fils sur des bandes de lignes donnent ×3,3 sur un simple `a + a`) ;
     prototype `add` kappa préalloué/float32/4 fils : **325 → 51 ms, bit à bit
     identique**.
-  - **④ PROCHAINE ÉTAPE : C-bis** (gamma/saturation/niveaux ne doivent plus
-    recalculer ni la chaîne d'étirement ni les histogrammes — mesuré : ~250 ms
-    par geste de souris aujourd'hui), **puis B**. Aucun essai réel demandé
-    avant la fin de la passe ; l'installateur sera reconstruit avant ton test.
+  - **④ ÉTAPE C-BIS FAITE ET VALIDÉE (29/09/2026)** — gamma, saturation globale
+    et saturation par couleur ne recalculent plus RIEN pour rien (`hist=False`,
+    même règle que les barres de niveaux depuis le jalon 75) et l'étirement
+    lui-même est MÉMOÏSÉ (`DisplayProcessor._moteur_stf`) : **geste gamma
+    103 → 41 ms, saturation 147 → 74 ms, geste mono 29 → 3 ms, et 137 → 28 ms
+    mesurés dans l'interface réelle**. `_auto_params` ne calcule plus
+    `_calc_stats` en `live=False` (son résultat était JETÉ). Témoin inversé
+    vérifié : un réglage qui change vraiment la donnée (« Coupure du bruit »)
+    recalcule toujours les histogrammes. Banc NEUF
+    `bancs/_test_perf_reactivite_jalon79.py` (18 vérifications, interface
+    réelle) + **11 bancs d'affichage rejoués verts**, dont « l'écran = le
+    fichier » AU BIT du jalon 68. Version passée à **v2.43.0** (changelog
+    détaillé dans `avastack/__init__.py`).
+  - **⑤ PROCHAINE ÉTAPE : l'étape B** — cœur d'empilement (float32 préalloué et
+    parallélisé par bandes de lignes, cache de `mean()`, winsorized par
+    `np.partition` in-place — **mathématiques INCHANGÉES**, décision d'Alain).
+    Aucun essai réel demandé avant la fin de la passe ; **l'installateur sera
+    reconstruit avant ton test** (règle du projet).
 
 
 - **PASSE DE CLÔTURE (29/09/2026, soir) — v2.42.0 : INSTALLATEUR macOS, TES

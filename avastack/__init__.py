@@ -17,9 +17,67 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.42.0"
+AVASTACK_VERSION = "2.43.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.43.0 : CHANTIER PERFORMANCE ET RÉACTIVITÉ (jalon 79) — ÉTAPES A ET C-BIS.
+#   Demandes d'Alain (29/09/2026) : « optimiser les performances (surtout en
+#   live) … maintenant qu'on a une version stable, on pourrait comparer les
+#   temps et surtout la non-régression », puis « regarde aussi certains réglages
+#   qui s'appliquent après étirement (comme la saturation, mais peut-être
+#   d'autres aussi) pour vérifier qu'ils ne relancent pas toute la chaîne, ça
+#   donnera de la réactivité visuelle ».
+#   RÈGLE DE TOUT LE CHANTIER : **aucun pixel ne change.** Chaque étape est
+#   mesurée avant/après par un banc dédié, et les accumulations sont comparées à
+#   une référence INDÉPENDANTE (écart 0 exigé).
+#   (A) L'INSTRUMENT — banc NEUF `bancs/_bench_performance.py` : 24 étapes du
+#       pipeline chronométrées sur une séquence SYNTHÉTIQUE déterministe de
+#       8,4 Mpx (la taille de la brute réelle), `--reel <dossier>` pour ajouter
+#       une vraie image, référence machine écrite dans
+#       `bancs/_bench_performance_ref.json` et comparaison automatique au run
+#       précédent. DEUX PRÉCAUTIONS APPRISES EN LE FAISANT : mesures retenues au
+#       MINIMUM de N itérations, et écarts NORMALISÉS par une calibration machine
+#       (`a + a` float32 8,4 Mpx, au début ET à la fin) — deux runs STRICTEMENT
+#       identiques différaient de 10 à 20 % (le premier, machine au repos, est le
+#       plus rapide), ce qui faisait crier six fausses « régressions » avec un
+#       seuil à 15 % (il est à 25 %).
+#   (B) LES VERROUS — l'empilement produit par l'application est comparé à une
+#       réimplémentation numpy ÉCRITE DANS LE BANC (kappa et winsorized, rejeu
+#       du warmup compris) : **moyennes identiques AU BIT et rejets identiques**,
+#       plus trois contrôles sur la mémoire du moteur d'étirement (rendu
+#       mémoïsé = rendu recalculé, invariance à gamma/saturations, invalidation
+#       par une nouvelle image). Sans ces verrous, « optimiser » n'aurait rien
+#       prouvé.
+#   (C-bis) LA RÉACTIVITÉ DES RÉGLAGES D'APRÈS ÉTIREMENT — mesuré d'abord
+#       (aperçu couleur 1600x904) : AUCUN de ces réglages ne relançait la chaîne
+#       LOURDE (la clé du solveur VeraLux ne contient ni gamma, ni saturations,
+#       ni barres de niveaux : ni GraXpert, ni débruitage, ni VeraLux ne
+#       repartaient). MAIS chaque geste de souris recalculait pour rien ① les
+#       DEUX histogrammes (31 ms) — leurs deux bandes sont tracées AVANT ces
+#       étages — et ② tout l'ÉTIREMENT (médiane/σ/p99,9 puis MTF, ~69 ms).
+#       Livré : `hist=False` sur gamma, saturation globale et saturation par
+#       couleur (même règle que les barres de niveaux depuis le jalon 75),
+#       MÉMOIRE de la sortie du moteur (`DisplayProcessor._moteur_stf` ; clé =
+#       image source comparée par IDENTITÉ + réglages + stats ; invalidée par
+#       `reset()`, `reprendre_auto()` et toute nouvelle frame ; jamais active en
+#       `live=True`, où le lissage temporel des stats avance), et `_auto_params`
+#       ne calcule plus `_calc_stats` en `live=False` (son résultat était JETÉ).
+#       RÉSULTAT MESURÉ : geste gamma 103 → 41 ms, saturation globale 147 →
+#       74 ms, geste mono 29 → 3 ms ; dans l'interface réelle, un geste gamma
+#       passe de ~137 ms à **28 ms**. TÉMOIN INVERSÉ vérifié : un réglage qui
+#       change réellement la donnée (« Coupure du bruit ») recalcule toujours
+#       les histogrammes — le drapeau n'est pas figé à False.
+#       Banc NEUF `bancs/_test_perf_reactivite_jalon79.py` (18 vérifications,
+#       interface réelle : les curseurs sont déclenchés comme au clic, les
+#       compteurs enveloppent le code testé).
+#   (D) NON-RÉGRESSION — bancs rejoués verts : histo jalon 75 (11 sections),
+#       zoom pleine résolution jalon 68 (« l'écran = le fichier » au bit),
+#       save_asseen jalon 5, save_brute jalon 59, couleurs jalons 22 et 39,
+#       sliders jalon 6, moteur jalon 41, débruitage jalon 9, netteté jalon 12,
+#       visibilité jalon 47, pleine résolution traitée jalon 69.
+#   GPU ÉCARTÉ SUR MESURES (pas par principe) : l'iGPU Intel partage la mémoire
+#   du CPU (2× au mieux, transferts compris) et la RTX n'est pas sur la machine
+#   de dev — le banc le rouvrira avec des chiffres le jour où elle y sera.
 # v2.42.0 : SANS SIRIL — LES TROIS DONNÉES SE TÉLÉCHARGENT DEPUIS L'INTERFACE
 #   (SPECTRES GAIA XP ET BASE DE PROFILS SPCC).
 #   Question d'Alain (29/09/2026) : « si tu traites ce point (bouton pour les 48

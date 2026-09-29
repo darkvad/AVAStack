@@ -1889,15 +1889,24 @@ class App:
         self.frm_communs.pack(fill="x")
         vg = tk.DoubleVar(value=1.0)
         self.var_gamma = vg
+        # Jalon 79 — `hist=False` sur gamma ET saturation (même règle que les
+        # barres de niveaux depuis le jalon 75) : les DEUX bandes de
+        # l'histogramme sont calculées AVANT ces étages — bande « brut » =
+        # source linéaire, bande « sortie » = sortie du moteur d'étirement —
+        # donc un geste sur ces curseurs ne change AUCUNE des deux courbes.
+        # Sans cela, chaque pixel de souris payait en plus les deux
+        # histogrammes (34 ms mesurés sur l'aperçu couleur) pour un tracé
+        # identique. Le moteur d'étirement lui-même n'est plus recalculé non
+        # plus (mémoire `DisplayProcessor._moteur_stf`, même jalon).
         self._add_slider(self.frm_communs, "Gamma (les 2 moteurs)", vg, 0.2, 4.0, 0.05,
                          lambda: (setattr(self.disp, "gamma", vg.get()),
-                                  self._refresh_preview()), "{:.2f}")
+                                  self._refresh_preview(hist=False)), "{:.2f}")
         vs = tk.DoubleVar(value=1.0)
         self.var_saturation = vs
         self._add_slider(self.frm_communs, "Saturation (globale)", vs, 0.0, 3.0,
                          0.05,
                          lambda: (setattr(self.disp, "saturation", vs.get()),
-                                  self._refresh_preview()), "{:.2f}")
+                                  self._refresh_preview(hist=False)), "{:.2f}")
         # --- Jalon 75 : saturation PAR COULEUR (R/V/B), demande d'Alain du
         # 28/09/2026 (les colonnes de couleur du grand histogramme de SharpCap).
         # Précision VÉRIFIÉE dans la doc et chez l'auteur : chez SharpCap ces
@@ -9147,11 +9156,17 @@ class App:
     def _on_sat_canaux(self):
         """Saturation par couleur (R/V/B) : les trois gains sont posés
         ENSEMBLE, en un tuple (jamais muté en place — le solveur live lit une
-        référence cohérente), puis l'aperçu est re-rendu."""
+        référence cohérente), puis l'aperçu est re-rendu.
+
+        Jalon 79 : `hist=False` (même règle que gamma, saturation globale et
+        barres de niveaux) — la saturation par couleur s'applique APRÈS la
+        sortie du moteur d'étirement, donc AUCUNE des deux bandes de
+        l'histogramme ne change : la recalculer coûtait les deux histogrammes
+        (34 ms sur l'aperçu couleur) pour un tracé identique."""
         self.disp.sat_canaux = (float(self.var_sat_r.get()),
                                 float(self.var_sat_g.get()),
                                 float(self.var_sat_b.get()))
-        self._refresh_preview()
+        self._refresh_preview(hist=False)
 
 
     # --- calcul des histogrammes ---------------------------------------------

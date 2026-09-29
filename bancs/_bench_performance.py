@@ -467,7 +467,12 @@ def _sec_affichage(frames, apercu, it):
     d = DisplayProcessor()
     p_rgb = _rbg(apercu)
     d.process(p_rgb, live=False)
-    chrono("process_stf_rgb", lambda: d.process(p_rgb, live=False), it)
+    # `live=True` = ARRIVÉE D'UNE FRAME : le lissage temporel des stats avance,
+    # donc rien n'est mémoïsable — c'est le coût du rendu COMPLET.
+    chrono("process_stf_rgb_complet", lambda: d.process(p_rgb, live=True), it)
+    # `live=False` = GESTE sur un réglage (rafraîchissement de l'aperçu) :
+    # c'est le chemin que le jalon 79 rend instantané.
+    chrono("process_stf_rgb_geste", lambda: d.process(p_rgb, live=False), it)
     d.gamma = 1.5                              # réglage APRÈS étirement
     chrono("process_gamma_rgb", lambda: d.process(p_rgb, live=False), it)
     d.gamma = 1.0
@@ -552,6 +557,46 @@ def _sec_controles(frames):
     ok &= _verdict("mean() appelée deux fois : résultat identique", identique,
                    "aucun pompage possible entre deux appels sans nouvelle "
                    "frame")
+    return ok
+
+
+def _sec_memoire(apercu):
+    """CONTRÔLES DE LA MÉMOIRE DU MOTEUR (jalon 79) : elle ne doit RIEN changer
+    au rendu, et elle doit être invalidée par tout ce qui change l'image."""
+    print("\n[7 bis] MÉMOIRE DU MOTEUR D'ÉTIREMENT (elle ne change rien)")
+    d = DisplayProcessor()
+    img_a = _rbg(apercu)
+    ok = True
+
+    d._memo_moteur = None                    # mémo froide → recalcul complet
+    r_calcul = d.process(img_a, live=False)
+    r_memo = d.process(img_a, live=False)    # servi par la mémo
+    ecart = int(np.max(np.abs(r_calcul.astype(np.int16)
+                              - r_memo.astype(np.int16))))
+    CONTROLES["memo_rendu_ecart"] = ecart
+    ok &= _verdict("rendu mémoïsé identique au rendu recalculé", ecart == 0,
+                   f"écart max {ecart} niveau(x) sur 255")
+
+    brut1 = None if d.dernier_brut_niveaux is None \
+        else d.dernier_brut_niveaux.copy()
+    d.gamma, d.saturation = 1.6, 1.4         # réglages d'APRÈS étirement
+    d.sat_canaux = (1.2, 1.0, 0.9)
+    d.process(img_a, live=False)
+    brut2 = d.dernier_brut_niveaux
+    identique = (brut1 is not None and brut2 is not None
+                 and np.array_equal(brut1, brut2))
+    CONTROLES["memo_moteur_invariance_apres_etirement"] = 0 if identique else 1
+    ok &= _verdict("gamma/saturations ne changent PAS la sortie du moteur",
+                   identique,
+                   "c'est la propriété qui justifie toute la passe C-bis")
+    d.gamma, d.saturation, d.sat_canaux = 1.0, 1.0, (1.0, 1.0, 1.0)
+
+    img_b = np.ascontiguousarray(_rbg(apercu) * 0.6 + 0.05)   # NOUVELLE image
+    r_b = d.process(img_b, live=False)
+    invalide = not np.array_equal(r_memo, r_b)
+    CONTROLES["memo_invalidee_par_nouvelle_image"] = 0 if invalide else 1
+    ok &= _verdict("une nouvelle image invalide la mémo", invalide,
+                   "aucun rendu périmé ne peut être resservi")
     return ok
 
 
@@ -640,6 +685,7 @@ def main():
     _sec_etoiles(frames, apercu, it)
     _sec_affichage(frames, apercu, it)
     ok = _sec_controles(frames)
+    ok &= _sec_memoire(apercu)
     if dossier_reel:
         _sec_reel(dossier_reel, it)
     cal2 = _calibrer()

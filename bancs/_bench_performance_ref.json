@@ -1,16 +1,19 @@
 {
   "calibration": [
-    7.802,
-    7.748
+    7.496,
+    7.51
   ],
   "controles": {
     "kappa_ecart_max": 0.0,
     "kappa_rejets_ecart": 0,
     "mean_appels_successifs_identiques": 0.0,
+    "memo_invalidee_par_nouvelle_image": 0,
+    "memo_moteur_invariance_apres_etirement": 0,
+    "memo_rendu_ecart": 0,
     "winsorized_ecart_max": 0.0,
     "winsorized_rejets_ecart": 0
   },
-  "date": "2026-09-29T18:07:41",
+  "date": "2026-09-29T18:24:45",
   "empreinte": {
     "avastack": "2.42.0",
     "numpy": "2.5.3",
@@ -24,27 +27,28 @@
     ]
   },
   "mesures": {
-    "add_kappa_etabli": 349.051,
-    "add_kappa_rgb": 989.609,
-    "add_kappa_warmup": 80.78,
-    "add_winsorized_etabli": 1835.592,
-    "align_orb": 413.903,
-    "align_triangles_seuls": 47.972,
-    "composite_mean_avec_canaux": 326.287,
-    "composite_moyennes": 94.136,
-    "detecter_etoiles_apercu": 15.028,
-    "detecter_etoiles_pleine_res": 27.73,
-    "histogrammes_deux_bandes_rgb": 34.3,
-    "mean_kappa_etabli": 58.816,
-    "mean_winsorized": 42.914,
-    "mesurer_seeing_apercu": 28.395,
-    "process_gamma_rgb": 103.125,
-    "process_saturation_rgb": 146.641,
-    "process_stf_mono": 29.247,
-    "process_stf_rgb": 72.148,
-    "resize_mono_pleine_res": 2.412,
-    "resize_rgb_pleine_res": 5.544,
-    "veralux_logd_apercu": 159.229
+    "add_kappa_etabli": 295.027,
+    "add_kappa_rgb": 937.551,
+    "add_kappa_warmup": 79.567,
+    "add_winsorized_etabli": 1666.102,
+    "align_orb": 383.116,
+    "align_triangles_seuls": 41.337,
+    "composite_mean_avec_canaux": 286.086,
+    "composite_moyennes": 81.831,
+    "detecter_etoiles_apercu": 13.68,
+    "detecter_etoiles_pleine_res": 26.345,
+    "histogrammes_deux_bandes_rgb": 31.21,
+    "mean_kappa_etabli": 41.261,
+    "mean_winsorized": 41.303,
+    "mesurer_seeing_apercu": 27.773,
+    "process_gamma_rgb": 41.179,
+    "process_saturation_rgb": 74.096,
+    "process_stf_mono": 3.286,
+    "process_stf_rgb_complet": 68.752,
+    "process_stf_rgb_geste": 10.679,
+    "resize_mono_pleine_res": 2.232,
+    "resize_rgb_pleine_res": 4.348,
+    "veralux_logd_apercu": 149.544
   },
   "note": "référence du jalon 79 (banc de performance)"
 }

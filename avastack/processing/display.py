@@ -217,6 +217,13 @@ class DisplayProcessor:
         self.last_m = 0.5
         self._stats = None            # (médiane, σ, p99.9) lissées — anti-pompage
         self._ema = 0.25              # réactivité : 0 = figé, 1 = instantané
+        # Jalon 79 : mémoire de la SORTIE DU MOTEUR d'étirement STF/manuel
+        # (image avant niveaux/gamma/saturation), cf. `_moteur_stf`. Évite de
+        # recalculer tout l'étirement à chaque geste sur un réglage d'APRÈS
+        # étirement. Tuple : (image source, clé des réglages, image étirée,
+        # last_lo, last_hi, last_m) — la source est GARDÉE, donc son identité
+        # ne peut pas être confondue avec celle d'un autre tableau.
+        self._memo_moteur = None
 
         # --- VeraLux (moteur tiers) -----------------------------------------
         self.stretch = "stf"          # "stf" (défaut, inchangé) | "veralux"
@@ -377,6 +384,7 @@ class DisplayProcessor:
         self.bar_noir, self.bar_median, self.bar_blanc = 0.0, 0.5, 1.0
         self.fige = False
         self.dernier_brut_niveaux = None
+        self._memo_moteur = None      # jalon 79 : rien à réutiliser d'une autre vue
         self.niveaux_new = True
         with self._vl_lock:
             self._vl_result = None
@@ -389,6 +397,7 @@ class DisplayProcessor:
         un fond figé depuis longtemps reviendrait par petites touches."""
         self.fige = False
         self._stats = None
+        self._memo_moteur = None      # jalon 79 : la clé contient les stats
 
     @staticmethod
     def _mtf(x, m):
@@ -427,22 +436,82 @@ class DisplayProcessor:
             hi = max(p999, med + 10.0 * sigma, lo + 1e-8)
             return lo, hi, self._solve_m((med - lo) / (hi - lo), self.target)
 
-        med, sigma, p999 = self._calc_stats(img)
-
-        # Lissage temporel des STATS (pas des paramètres) : les curseurs restent
-        # réactifs, mais l'image ne « pompe » pas entre deux frames.
-        if self._stats is None:
-            self._stats = (med, sigma, p999)
-        elif live:
-            a = self._ema
-            self._stats = tuple(v0 + a * (v1 - v0)
-                                for v0, v1 in zip(self._stats, (med, sigma, p999)))
-        med, sigma, p999 = self._stats
+        # Jalon 79 — `live=False` (rafraîchissement d'un réglage, c'est-à-dire un
+        # geste de souris) RÉUTILISE les stats déjà en mémoire : `_calc_stats`
+        # était calculé puis JETÉ (seule la branche `live=True` lisait son
+        # résultat), soit ~30 ms d'aperçu couleur par événement pour rien.
+        if not live and self._stats is not None:
+            med, sigma, p999 = self._stats
+        else:
+            med, sigma, p999 = self._calc_stats(img)
+            # Lissage temporel des STATS (pas des paramètres) : les curseurs
+            # restent réactifs, mais l'image ne « pompe » pas entre deux frames.
+            if self._stats is None:
+                self._stats = (med, sigma, p999)
+            elif live:
+                a = self._ema
+                self._stats = tuple(v0 + a * (v1 - v0)
+                                    for v0, v1 in zip(self._stats,
+                                                      (med, sigma, p999)))
+            med, sigma, p999 = self._stats
 
         lo = med - self.sigma_k * sigma                     # ombres : bruit coupé
         hi = max(p999, med + 10.0 * sigma, lo + 1e-8)        # hautes lumières réelles
         m = self._solve_m((med - lo) / (hi - lo), self.target)
         return lo, hi, m
+
+    # ------------------------------------ jalon 79 : mémoire du moteur d'étirement
+    def _cle_moteur(self, img):
+        """Clé des réglages qui déterminent la SORTIE DU MOTEUR STF/manuel :
+        dimensions, mode auto/manuel, points noir et blanc, gel, k des ombres,
+        cible de fond et STATS courantes. Tout ce qui n'y figure pas — gamma,
+        saturation globale et par couleur, barres de niveaux — s'applique APRÈS
+        le moteur : bouger l'un d'eux ne doit donc rien recalculer ici."""
+        return (img.shape, img.ndim, bool(self.auto), float(self.black),
+                float(self.white), bool(self.fige), self.sigma_k, self.target,
+                None if self._stats is None else tuple(self._stats))
+
+    def _moteur_stf(self, img, live=True):
+        """Sortie du moteur d'étirement STF ou manuel, MÉMOÏSÉE quand rien n'a
+        changé (jalon 79).
+
+        POURQUOI : les réglages d'APRÈS étirement — gamma, saturation globale,
+        saturation par couleur, barres de niveaux — ne modifient PAS cette
+        image. Sans mémoire, chaque pixel de souris la recalculait entièrement
+        (médiane/σ/p99,9 puis MTF : 78 ms mesurés sur l'aperçu couleur
+        1600x904, soit la moitié du coût d'un geste). La mémo ne PEUT PAS
+        changer un rendu : elle rend l'image que le même appel aurait
+        recalculée à l'identique, car TOUTES ses entrées sont dans la clé —
+        image source comparée par IDENTITÉ (l'UI remplace son aperçu à chaque
+        nouvelle frame, elle ne le modifie jamais en place), réglages et stats.
+        `live=True` (arrivée d'une frame : le lissage temporel des stats
+        avance) ne mémoïse jamais. Oubliée par `reset()` et
+        `reprendre_auto()`."""
+        memo = self._memo_moteur
+        cle = None if live else self._cle_moteur(img)
+        if (cle is not None and memo is not None and memo[0] is img
+                and memo[1] == cle):
+            self.last_lo, self.last_hi = memo[3], memo[4]
+            self.last_m = memo[5]
+            return memo[2]
+        if self.auto:
+            lo, hi, m = self._auto_params(img, live=live)
+            self.last_lo, self.last_hi = lo, hi
+            # Jalon 75 : le médian résolu est conservé pour que la bande
+            # « brut » de l'histogramme puisse placer son repère de médian
+            # (lo + m·(hi − lo)) — sinon l'utilisateur verrait deux repères
+            # sur trois et croirait à un oubli.
+            self.last_m = m
+            x = self._mtf(np.clip((img - lo) / (hi - lo), 0.0, 1.0), m)
+        else:
+            lo, hi = self.black, self.white
+            if hi - lo < 1e-6:
+                hi = lo + 1e-6
+            x = np.clip((img - lo) / (hi - lo), 0.0, 1.0)
+        if cle is not None:
+            self._memo_moteur = (img, cle, x, self.last_lo, self.last_hi,
+                                 self.last_m)
+        return x
 
     def notify_new_stack(self):
         """Signale qu'un NOUVEL empilement vient d'être produit (une frame de
@@ -980,20 +1049,10 @@ class DisplayProcessor:
                 self.vl_error = ("VeraLux : moteur tiers veralux_core_headless.py "
                                  "introuvable — affichage STF en attendant.")
                 self.vl_new = True
-            if self.auto:
-                lo, hi, m = self._auto_params(img, live=live)
-                self.last_lo, self.last_hi = lo, hi
-                # Jalon 75 : le médian résolu est conservé pour que la bande
-                # « brut » de l'histogramme puisse placer son repère de médian
-                # (lo + m·(hi − lo)) — sinon l'utilisateur verrait deux repères
-                # sur trois et croirait à un oubli.
-                self.last_m = m
-                x = self._mtf(np.clip((img - lo) / (hi - lo), 0.0, 1.0), m)
-            else:
-                lo, hi = self.black, self.white
-                if hi - lo < 1e-6:
-                    hi = lo + 1e-6
-                x = np.clip((img - lo) / (hi - lo), 0.0, 1.0)
+            # Jalon 79 : l'étirement passe par une MÉMOIRE (`_moteur_stf`) —
+            # un réglage d'APRÈS étirement (gamma, saturations, barres de
+            # niveaux) retrouve l'image déjà étirée au lieu de la recalculer.
+            x = self._moteur_stf(img, live=live)
         # Jalon 75 : l'image de SORTIE DU MOTEUR est mémorisée AVANT l'étage
         # de niveaux — c'est elle qu'affiche la bande basse de l'histogramme,
         # pour que les barres découpent bien la donnée qu'elles reçoivent (et
