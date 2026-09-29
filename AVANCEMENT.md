@@ -77,6 +77,17 @@ dans le changelog du source et l'historique git.)
     doit se vider, la ligne d'état annoncer le nouveau dossier, les indices
     d'astrométrie repartir vides, et l'empilement ne contenir que la nouvelle
     cible.
+  - **RELEASE ET CLÔTURE DE LA PASSE (28/09/2026)** — v2.41.0 **poussée et
+    publiée** : **release GitHub `v2.41.0`**
+    (`https://github.com/darkvad/AVAStack/releases/tag/v2.41.0`, tag sur le commit
+    `4b7efe8`, présent en local et sur `origin`) avec les **DEUX** installateurs
+    **+ `INSTALLATION.md`** (remis à jour en v2.41.0 : artefacts, tailles,
+    SHA-256, repli v2.40.0) ; les **notes de la release** = court résumé « ce qui
+    change » suivi de la doc d'installation (méthode `gh release create
+    --notes-file`, jamais un message en ligne de commande : troncature au-delà de
+    ~1 000 caractères). Commits de la session : `69d715e` (le correctif),
+    `467d83b` (indices d'astrométrie + CLAUDE.md), `4b7efe8` (doc) — **arbre
+    propre**, `master` synchronisé avec `origin`.
 
 - **PASSE PRÉCÉDENTE (28/09/2026, soir) — AVAStack v2.40.0 : ASTROMÉTRIE SUR TA CAMÉRA
   OSC (NGC 7023 RÉSOLU) ET SPCC OUVERTE AU CAPTEUR COULEUR.** Tes deux constats
@@ -403,6 +414,16 @@ dans le changelog du source et l'historique git.)
 
 ## En attente / prochaine session
 
+- **EN ATTENTE (28/09/2026) — v2.41.0 : TON TEST RÉEL DU BOUTON « RÉINITIALISER »**
+  (publiée : release GitHub `v2.41.0`, tag `4b7efe8`, les deux installateurs + la
+  doc). À valider en **mode dossier** : fin de cible → **nouveau dossier** →
+  « Réinitialiser l'empilement » → « ▶ Démarrer ». Attendu : l'écran se vide, la
+  ligne d'état annonce le nouveau dossier **et l'effacement des indices
+  d'astrométrie**, l'empilement ne contient QUE la nouvelle cible, et un seul
+  thread de worker tourne. Repli si régression : **v2.40.0** (installateur à côté).
+  Restent aussi à confirmer sur une trace écrite, hérités de la passe précédente :
+  l'étoile verte + le ″/px de l'astrométrie, et l'en-tête `AVASPCC` d'une
+  sauvegarde.
 - **NOUVEAU (28/09/2026, soir) — v2.40.0 : ASTROMÉTRIE SUR CAMÉRA TOURNÉE (OSC) ET
   SPCC COULEUR.** NGC 7023 **résolu sur tes brutes** (68-80 appariements, rms
   0,43-0,46 px, 0,4716″/px contre 0,4714″/px pour ASTAP), M31 non régressé ; la
