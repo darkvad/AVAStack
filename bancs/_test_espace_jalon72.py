@@ -364,7 +364,12 @@ verifie(not _defauts,
         % (_defauts[:3] if _defauts else "0 défaut"))
 
 # Les cas RÉELS du 27/09/2026, nommés — pour qu'un échec dise OÙ regarder.
-_a_trouver = {"📷": None, "📂 Dossier": None, "⬇ Gaia": None, "ⓘ": None}
+# Jalon 77 : les QUATRE boutons de données ajoutés (spectres Gaia XP et base
+# SPCC) entrent dans ce contrôle nommé — la leçon du bouton « Journal » vaut
+# pour tout widget ajouté à une ligne chargée.
+_a_trouver = {"📷": None, "📂 Dossier": None, "⬇ Gaia": None, "ⓘ": None,
+              "⬇ Spectres (champ)": None, "⬇ les 48": None,
+              "⬇ Base SPCC": None, "📂 Dossier SPCC": None}
 
 
 def _chercher_boutons(widget, trouves):

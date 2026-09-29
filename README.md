@@ -79,9 +79,13 @@ détail (prérequis système, dossiers, caméras, dépannage) est dans
 
 1. **Source** : « Dossier surveillé » → choisir le dossier où le logiciel
    d'acquisition écrit ses brutes (FITS/PNG/TIFF).
-2. **Catalogues** : vérifier la ligne « Catalogues » — c'est ce qui débloque
-   l'astrométrie, la photométrie et la SPCC (bouton « ⬇ Gaia » pour le catalogue
-   astrométrique, ≈ 1,1 Go, reprise et empreinte vérifiées).
+2. **Données astronomiques** : vérifier la ligne « Catalogues » — c'est ce qui
+   débloque l'astrométrie, la photométrie et la SPCC. Les boutons de la fenêtre
+   les téléchargent : « ⬇ Gaia » (catalogue astrométrique, ≈ 1,1 Go),
+   « ⬇ Spectres (champ) » (les morceaux de spectres Gaia XP qui couvrent la
+   cible, ≈ 100–300 Mo ; « ⬇ les 48 » pour tout le ciel, ≈ 10,6 Go) et
+   « ⬇ Base SPCC » (profils de capteurs et de filtres, quelques Mo). Reprise
+   après coupure et empreintes vérifiées ; **Siril n'est pas requis**.
 3. **Astrométrie** : la lancer sur une brute ; l'étoile passe au vert et
    l'échelle s'affiche en ″/pixel.
 4. **SPCC** (option) : cocher la case, choisir le **Type de capteur**
@@ -92,10 +96,12 @@ détail (prérequis système, dossiers, caméras, dépannage) est dans
 ## Données astronomiques (astrométrie, photométrie, SPCC)
 
 Ces trois mesures s'appuient sur des **fichiers d'étoiles**, pas sur des DLL :
-la base de **Siril** (catalogue astrométrique Gaia DR3, 48 morceaux de spectres
-Gaia XP, base de profils SPCC capteurs/filtres). AVAStack les cherche aux
-emplacements habituels de Siril, accepte un dossier choisi dans l'interface et
-télécharge le catalogue astrométrique lui-même. Préparation détaillée :
+le catalogue astrométrique Gaia DR3 de Siril, les 48 morceaux de spectres Gaia XP
+et la base de profils SPCC (capteurs, filtres, références de blanc). AVAStack les
+**télécharge lui-même** (boutons « ⬇ Gaia », « ⬇ Spectres (champ) » — seulement
+les morceaux qui couvrent la cible —, « ⬇ les 48 » et « ⬇ Base SPCC »), les
+cherche aussi aux emplacements habituels de Siril, et accepte un dossier choisi
+dans l'interface : **Siril n'est pas nécessaire**. Préparation détaillée :
 [`INSTALLATION.md`](INSTALLATION.md) § 4.
 
 ## Sauvegardes et traçabilité
@@ -107,7 +113,7 @@ des mois plus tard, et comparée à ce qui était affiché.
 
 ## Qualité : bancs de non-régression
 
-Le dépôt contient **78 bancs de non-régression** (`bancs/_test_*.py`) qui
+Le dépôt contient **79 bancs de non-régression** (`bancs/_test_*.py`) qui
 mesurent réellement ce qu'ils vérifient : chaînes de traitement sur images
 synthétiques, worker d'acquisition réel sur de vraies brutes FITS, solveurs
 factices pour l'astrométrie et la photométrie, mise en page de l'interface…
@@ -121,8 +127,10 @@ parlent aux vraies DLL constructeurs).
 - **Aucune caméra** n'est embarquée (SDK constructeurs, licences) : les `.so`/`.dll`
   sont à déposer à côté de l'application ou désignés par variable
   d'environnement.
-- Pas de bouton pour les **48 morceaux de spectres Gaia XP** : à récupérer via
-  Siril ou à la main pour la SPCC.
+- Les **données Gaia** ne sont pas embarquées (≈ 1,1 Go de catalogue
+  astrométrique, ≈ 10,6 Go si l'on prend les 48 morceaux de spectres, quelques Mo
+  de base SPCC) : les boutons ⬇ d'AVAStack les téléchargent, avec reprise après
+  coupure et empreintes vérifiées.
 - Les limites de la version courante sont listées franchement à la fin de
   [`INSTALLATION.md`](INSTALLATION.md) § 8.
 

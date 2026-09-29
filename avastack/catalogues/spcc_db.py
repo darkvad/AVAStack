@@ -14,8 +14,22 @@ Siril calcule sa calibration spectrophotométrique avec deux bases :
          la couleur « réelle » visée.
 
 Ce module ne fait QUE lire et exposer ces courbes : aucun calcul ici (le
-modèle est dans `processing/spcc.py`). Il lit la base installée par Siril
-(`%LOCALAPPDATA%\\siril-spcc-database` sous Windows), sans la modifier.
+modèle est dans `processing/spcc.py`). Il lit la base SANS la modifier.
+
+OÙ EST LA BASE (jalon 77 — « AVAStack sans Siril »). Trois emplacements, dans
+cet ordre :
+  1. la clé de config `chemin_spcc` (choix EXPLICITE de l'utilisateur, champ
+     « 📂 Dossier SPCC » de l'interface) ;
+  2. la copie d'AVAStack (`spcc-database` du dossier de configuration de
+     l'application) — c'est là que le bouton « ⬇ Base SPCC » écrit : le dépôt
+     `siril-spcc-database` de GitLab (GPLv3) est téléchargeable sans compte,
+     donc la SPCC ne demande plus d'avoir installé Siril ;
+  3. les emplacements de Siril, par OS (comportement d'origine, inchangé :
+     `%LOCALAPPDATA%\\siril-spcc-database` puis `%LOCALAPPDATA%\\Siril\\
+     spcc-database` sous Windows, `~/.local/share/siril-spcc-database` sous
+     Linux, `~/Library/Application Support/...` sous macOS).
+Un dossier n'est retenu que s'il contient VRAIMENT des profils (`_a_des_profils`)
+— un dossier vide ne doit pas masquer une base utilisable ailleurs.
 
 FORMAT d'un objet (schéma `spcc-database-schema.json`) : dictionnaire JSON
 `model`, `name`, `type` (MONO_SENSOR / OSC_SENSOR / MONO_FILTER /
@@ -30,6 +44,11 @@ import os
 
 import numpy as np
 
+from ..compat import IS_MACOS
+
+# Clé de configuration du dossier choisi par l'utilisateur (interface).
+CLE_CONFIG = "chemin_spcc"
+
 # Dossiers de la base, dans l'ordre d'essai (mêmes emplacements que Siril).
 SOUS_DOSSIERS = {
     "mono_sensors": ("MONO_SENSOR",),
@@ -40,20 +59,108 @@ SOUS_DOSSIERS = {
 }
 
 
-def dossier_base():
-    """Dossier de la base SPCC de Siril, ou None si elle n'est pas
-    installée (l'appli doit alors le DIRE, jamais deviner des courbes)."""
+def _candidats_siril():
+    """Emplacements de la base installée par Siril, par OS (ordre d'essai).
+
+    Les constantes d'OS sont lues à l'APPEL (convention des modules de
+    détection : un banc peut simuler un autre OS sans recharger le module)."""
+    out = []
     local = os.environ.get("LOCALAPPDATA")
-    candidats = []
     if local:
-        candidats.append(os.path.join(local, "siril-spcc-database"))
-        candidats.append(os.path.join(local, "Siril", "spcc-database"))
-    candidats.append(os.path.join(os.path.expanduser("~"), ".local", "share",
-                                  "siril-spcc-database"))
+        out.append(os.path.join(local, "siril-spcc-database"))
+        out.append(os.path.join(local, "Siril", "spcc-database"))
+    if IS_MACOS:
+        out.append(os.path.expanduser(
+            "~/Library/Application Support/siril-spcc-database"))
+    data = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+    out.append(os.path.join(data, "siril-spcc-database"))
+    out.append(os.path.join(os.path.expanduser("~"), ".local", "share",
+                            "siril-spcc-database"))
+    return out
+
+
+def dossier_avastack():
+    """Dossier où AVAStack garde SA copie de la base (config de l'APPLICATION,
+    donc multiplateforme) : `spcc-database` à côté de config.json."""
+    from ..config import dossier_config
+    return os.path.join(dossier_config(), "spcc-database")
+
+
+def _a_des_profils(dossier):
+    """`dossier` contient-il au moins UN profil lisible (n'importe quelle
+    catégorie) ? Ne lève jamais : un dossier absent ou illisible rend False."""
+    if not dossier or not os.path.isdir(dossier):
+        return False
+    for categorie in SOUS_DOSSIERS:
+        d = os.path.join(dossier, categorie)
+        try:
+            if any(n.lower().endswith(".json") for n in os.listdir(d)):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def base_complete(dossier):
+    """Les CINQ catégories sont-elles présentes ET non vides ? C'est le critère
+    d'une base TÉLÉCHARGÉE (le téléchargeur ne retélécharge rien si oui)."""
+    if not dossier or not os.path.isdir(dossier):
+        return False
+    for categorie in SOUS_DOSSIERS:
+        try:
+            if not any(n.lower().endswith(".json")
+                       for n in os.listdir(os.path.join(dossier, categorie))):
+                return False
+        except OSError:
+            return False
+    return True
+
+
+def dossier_ecriture():
+    """Dossier où ÉCRIRE la base : celui choisi par l'utilisateur s'il peut être
+    créé, sinon la copie d'AVAStack. → "" si aucun n'est utilisable."""
+    from ..config import CONFIG
+    surcharge = (CONFIG.get(CLE_CONFIG) or "").strip()
+    for c in ([surcharge] if surcharge else []) + [dossier_avastack()]:
+        try:
+            os.makedirs(c, exist_ok=True)
+            return c
+        except OSError:
+            continue
+    return ""
+
+
+def dossier_base():
+    """Dossier de la base SPCC retenu, ou None si aucune base n'est installée
+    (l'appli doit alors le DIRE, jamais deviner des courbes).
+
+    Ordre : `chemin_spcc` de la config → copie d'AVAStack → emplacements de
+    Siril. Seul un dossier qui contient RÉELLEMENT des profils est retenu."""
+    from ..config import CONFIG
+    surcharge = (CONFIG.get(CLE_CONFIG) or "").strip()
+    candidats = ([surcharge] if surcharge else []) + [dossier_avastack()] \
+        + _candidats_siril()
     for c in candidats:
-        if os.path.isdir(os.path.join(c, "mono_filters")):
+        if _a_des_profils(c):
             return c
     return None
+
+
+def resume_base(dossier=None):
+    """{catégorie: nombre de fichiers .json} de la base retenue (ou de
+    `dossier`) — pour l'affichage. Dict vide si aucune base."""
+    base = dossier or dossier_base()
+    out = {}
+    if not base:
+        return out
+    for categorie in SOUS_DOSSIERS:
+        try:
+            out[categorie] = sum(
+                1 for n in os.listdir(os.path.join(base, categorie))
+                if n.lower().endswith(".json"))
+        except OSError:
+            out[categorie] = 0
+    return out
 
 
 def _objets(chemin):

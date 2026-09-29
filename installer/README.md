@@ -9,9 +9,11 @@ administrateur requis (tout s'installe dans le profil de l'utilisateur) :
 | Linux | `linux/output/avastack-setup-<version>-linux.tar.gz` | `linux/build_avastack.py` |
 
 Installation pas à pas (les deux plateformes, **et la préparation des données
-Siril/Gaia** — catalogue astrométrique, 48 morceaux de spectres, base de profils
-SPCC) : **`INSTALLATION.md`**, à la racine du dépôt ; il est joint à chaque
-release comme document d'accompagnement.
+Gaia** — catalogue astrométrique, morceaux de spectres, base de profils SPCC) :
+**`INSTALLATION.md`**, à la racine du dépôt ; il est joint à chaque release comme
+document d'accompagnement. AVAStack télécharge lui-même ces trois données
+(boutons ⬇ de la fenêtre) : **Siril est facultatif** (utile seulement si l'on
+préfère le laisser préparer ses catalogues).
 
 **Le nom de l'artéfact PORTE LA VERSION** (règle du 27/09/2026) : elle
 vient toujours de `AVASTACK_VERSION` (`avastack/__init__.py`), jamais d'un nom

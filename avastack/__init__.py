@@ -17,9 +17,66 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.41.0"
+AVASTACK_VERSION = "2.42.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.42.0 : SANS SIRIL — LES TROIS DONNÉES SE TÉLÉCHARGENT DEPUIS L'INTERFACE
+#   (SPECTRES GAIA XP ET BASE DE PROFILS SPCC).
+#   Question d'Alain (29/09/2026) : « si tu traites ce point (bouton pour les 48
+#   morceaux de spectres Gaia XP), AVAStack pourra fonctionner sans Siril, y
+#   compris pour l'astrométrie et les capteurs et filtres SPCC ? »
+#   RÉPONSE MESURÉE : NON — ce point SEUL ne suffisait pas. Il manquait DEUX
+#   jeux de données : les 48 morceaux de spectres Gaia XP (leur fonction de
+#   téléchargement existait mais n'était branchée à AUCUNE interface) ET la base
+#   de profils SPCC (capteurs, filtres, références de blanc), qui n'était LUE
+#   que chez Siril (`%LOCALAPPDATA%\siril-spcc-database`) : sans elle, la SPCC
+#   exigeait Siril installé ET une calibration lancée une fois. Les deux sont
+#   désormais téléchargeables : l'application ne dépend plus de Siril pour
+#   l'astrométrie (bouton « ⬇ Gaia », déjà là), la photométrie et la SPCC.
+#   (1) SPECTRES GAIA XP — « ⬇ Spectres (champ) » ne prend QUE les 1 à 4
+#       morceaux qui couvrent la cible (AD/Dec/champ°), comme le script de
+#       Siril : ≈ 100-300 Mo au lieu des 10,6 Go des 48 morceaux. Le calcul
+#       réutilise la géométrie HEALpix du projet (`pixels_cone` →
+#       `pixel_vers_chunk`) — une seule implémentation, confrontée au banc à
+#       astropy-healpix (niveau 8) ; « ⬇ les 48 » couvre tout le ciel pour un
+#       usage itinérant. Chaîne du téléchargeur inchangée : reprise (Range/206),
+#       `.sha256sum` de Zenodo VÉRIFIÉE morceau par morceau, jamais de
+#       re-téléchargement d'un fichier conforme.
+#   (2) BASE SPCC — « ⬇ Base SPCC » télécharge l'archive ZIP du dépôt public
+#       `siril-spcc-database` (GPLv3 ; API GitLab, sans compte et sans nom de
+#       branche figé dans le code), vérifie l'archive (ZIP lisible, taille
+#       bornée, entrée piégée `..` refusée), l'extrait dans un dossier
+#       TEMPORAIRE puis ne pose que les cinq catégories lues (`mono_sensors`,
+#       `mono_filters`, `osc_sensors`, `osc_filters`, `wb_refs`) et les .json de
+#       référence. Une base complète n'est jamais retéléchargée ; une archive
+#       incomplète est REFUSÉE (aucun profil à moitié posé).
+#   (3) OÙ EST LA BASE — `spcc_db.dossier_base()` suit désormais : dossier
+#       `chemin_spcc` CHOISI (📂 Dossier SPCC) → copie d'AVAStack
+#       (`<config>/spcc-database`, cible du bouton) → emplacements de Siril par
+#       OS (comportement d'origine conservé). Un dossier VIDE ne masque jamais
+#       une base utilisable ailleurs.
+#   (4) LA SPCC DEVIENT UTILISABLE SANS REDÉMARRER — à la fin du transfert, la
+#       case SPCC est rendue cochable, ses cinq listes remplies et sa sélection
+#       par défaut posée (renfort mesuré au banc : sans lui, une base
+#       téléchargée n'aurait servi à rien dans la session où on la télécharge).
+#   (5) MISE EN PAGE (règle v2.38.9) — DEUX lignes nouvelles de DEUX boutons
+#       chacune (jamais trois sur une ligne : `pack` ABANDONNE en silence le
+#       widget qui ne tient plus), une ligne d'état « Base SPCC » bornée
+#       (`wraplength`) qui DIT le dossier et le contenu, et les quatre boutons
+#       entrent dans le contrôle de géométrie NOMMÉ du banc du jalon 72. Un
+#       SEUL transfert à la fois : les quatre boutons sont neutralisés ensemble,
+#       donc l'état affiché ne peut pas mentir.
+#   (6) MESURES — banc NEUF `bancs/_test_sans_siril_jalon77.py`, SANS réseau
+#       (serveur HTTP local) et sans Siril : morceaux d'un champ confrontés à
+#       astropy-healpix, reprise/206 après effacement, sha256 non conforme
+#       refusée, archive piégée et archive incomplète refusées, ordre des
+#       dossiers de la base, puis UI réelle (transferts suivis, messages,
+#       SPCC utilisable sans redémarrage, géométrie des quatre boutons). Bancs
+#       jalon 70 (données de l'astrométrie) et jalon 72 (géométrie) REJOUÉS
+#       sans modification. Fichiers touchés : `catalogues/telechargeur.py`,
+#       `catalogues/spcc_db.py`, `catalogues/__init__.py`, `ui/app.py`,
+#       `README.md`, `INSTALLATION.md`, `installer/README.md`.
+#   Repli si régression : v2.41.0.
 # v2.41.0 : « RÉINITIALISER L'EMPILEMENT » RÉINITIALISE VRAIMENT, ET LA SOURCE DE
 #   FICHIERS SUIT L'INTERFACE (enchaîner deux cibles, mode dossier).
 #   Constat réel d'Alain (28/09/2026, session « dossier surveillé ») : « quand

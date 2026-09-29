@@ -10,7 +10,76 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **DERNIÈRE PASSE LIVRÉE (28/09/2026, session en cours) — AVAStack v2.41.0 :
+- **DERNIÈRE PASSE LIVRÉE (29/09/2026, session en cours) — AVAStack v2.42.0 :
+  AVAStack SANS SIRIL — LES SPECTRES GAIA XP ET LA BASE DE PROFILS SPCC SE
+  TÉLÉCHARGENT DEPUIS L'INTERFACE.** Ta question : « si tu traites ce point
+  (bouton pour les 48 morceaux de spectres Gaia XP), AVAStack pourra fonctionner
+  sans Siril, y compris pour l'astrométrie et les capteurs et filtres SPCC ? »
+  **Jalon 77.** Réponse mesurée : **NON, ce point SEUL ne suffisait pas** — il
+  manquait DEUX jeux de données (les spectres Gaia XP **et** la base de profils
+  SPCC), et la passe les prend tous les deux :
+  - **① SPECTRES GAIA XP** : la fonction de téléchargement existait
+    (`telecharger_chunk_xpsamp`) mais n'était branchée à **AUCUNE** interface, et
+    elle ne savait prendre qu'**un** morceau sans savoir lequel. Deux boutons :
+    **« ⬇ Spectres (champ) »** ne prend QUE les 1 à 4 morceaux qui couvrent la
+    cible (AD/Dec/champ° **saisis**, mêmes règles que l'astrométrie ; calcul par
+    la géométrie HEALpix du projet, `pixels_cone` → `pixel_vers_chunk`) —
+    **≈ 100-300 Mo au lieu des 10,6 Go** — et **« ⬇ les 48 »** couvre tout le
+    ciel (usage itinérant). sha256 de Zenodo vérifiée **morceau par morceau**,
+    reprise (Range/206) après coupure, jamais de re-téléchargement d'un fichier
+    conforme.
+  - **② BASE DE PROFILS SPCC** : elle n'était **LUE que chez Siril**
+    (`%LOCALAPPDATA%\siril-spcc-database`) — la SPCC exigeait donc Siril installé
+    ET une calibration lancée une fois. Bouton **« ⬇ Base SPCC »** : archive ZIP
+    du dépôt public `siril-spcc-database` (GPLv3 ; API GitLab, sans compte et
+    **sans nom de branche figé** dans le code — vérifié : 200, application/zip),
+    ZIP vérifié (lisible, taille bornée, entrée piégée `../` **refusée**) puis
+    extrait dans un dossier **temporaire**, et seules les cinq catégories lues
+    (`mono_sensors`, `mono_filters`, `osc_sensors`, `osc_filters`, `wb_refs`) +
+    les .json de référence sont posées : ce qui n'est pas une base n'entre pas.
+    Base complète = rien à retélécharger ; archive incomplète = **refusée**
+    (aucun profil à moitié posé).
+  - **③ OÙ EST LA BASE** : `spcc_db.dossier_base()` suit désormais dossier choisi
+    (`chemin_spcc`, bouton **📂 Dossier SPCC**) → copie d'AVAStack
+    (`<config>/spcc-database`, cible du bouton) → emplacements de Siril par OS
+    (ordre d'origine conservé : aucun utilisateur de Siril ne perd sa base). Un
+    dossier VIDE ne masque jamais une base utilisable ailleurs.
+  - **④ LA SPCC EST UTILISABLE DANS LA SESSION** : à la fin du transfert, la case
+    SPCC redevient **cochable**, ses **cinq listes sont remplies** et sa sélection
+    et sa sélection par défaut posée — sans ce renfort, une base téléchargée
+    n'aurait servi à rien avant un redémarrage (vérifié au banc, c'est un des
+    points testés).
+  - **⑤ MISE EN PAGE** (règle v2.38.9) : **deux lignes de deux boutons** (jamais
+    trois sur une ligne : `pack` abandonne en silence), une ligne d'état
+    « Base SPCC » **bornée** (`wraplength`) qui DIT le dossier et le contenu, et
+    les **quatre** boutons entrent dans le contrôle de géométrie **nommé** du
+    banc du jalon 72. Un **seul** transfert à la fois : les quatre boutons sont
+    neutralisés ensemble (l'état affiché ne peut pas mentir).
+  - **⑥ Banc NEUF `bancs/_test_sans_siril_jalon77.py`** — **sans réseau** (serveur
+    HTTP local qui sert fichiers et archives factices) et **sans Siril** :
+    champ → morceaux confrontés à une référence **indépendante**
+    (astropy-healpix, niveau 8), reprise/206 après effacement, sha256 non
+    conforme refusée, archive piégée et archive incomplète refusées, ordre des
+    dossiers de la base, puis **UI réelle** (transferts suivis, messages, SPCC
+    utilisable sans redémarrage, géométrie des quatre boutons avec textes
+    longs). **Rejoués sans modification : jalons 70 (données astro), 72
+    (géométrie), 56 (astrométrie/catalogues/photométrie), 58 et 58 bis (SPCC),
+    71, 73, 75, 76 — tous verts.**
+  - **PROCHAINE ÉTAPE : ton test en séance réelle** — un clic sur chaque bouton
+    (les trois ⬇ et 📂 Dossier SPCC), idéalement sur une machine **où Siril n'est
+    pas installé** : attendu = la ligne d'état qui annonce chaque téléchargement
+    et sa fin, la case SPCC qui devient cochable **sans redémarrer**, et une SPCC
+    calculée sans Siril. **Repli si régression : v2.41.0.**
+  - **INSTALLATEURS RECONSTRUITS EN v2.42.0** (règle : toute passe qui touche
+    plus d'un fichier → rebuild AVANT le test réel) :
+    `installer/windows/output/avastack-setup-2.42.0.exe` (11 485 284 o,
+    SHA-256 `848E770D…1905F`) et
+    `installer/linux/output/avastack-setup-2.42.0-linux.tar.gz` (582 385 o,
+    SHA-256 `7016471b…3e4c1`). **Aucune release publiée** pour cette passe (à
+    faire sur ta demande, avec `gh release create --notes-file`).
+
+
+- **PASSE PRÉCÉDENTE (28/09/2026) — AVAStack v2.41.0 :
   « RÉINITIALISER L'EMPILEMENT » RÉINITIALISE VRAIMENT, ET LA SOURCE DE FICHIERS
   SUIT L'INTERFACE (enchaîner deux cibles en mode dossier).** Ton constat :
   « quand j'ai fini avec une cible, je ne peux pas enchaîner avec une autre en
@@ -72,7 +141,7 @@ dans le changelog du source et l'historique git.)
     SHA-256 `16017928…55738`). `INSTALLATION.md` documente encore la release
     publiée v2.40.0 (c'est sa doc) — à mettre à jour seulement si tu publies une
     release v2.41.0.
-  - **PROCHAINE ÉTAPE : ton test en séance réelle** — fin de cible → choix du
+  - **TEST RÉEL TOUJOURS EN ATTENTE (v2.41.0)** — fin de cible → choix du
     nouveau dossier → « Réinitialiser l'empilement » → « ▶ Démarrer » : l'écran
     doit se vider, la ligne d'état annoncer le nouveau dossier, les indices
     d'astrométrie repartir vides, et l'empilement ne contenir que la nouvelle
@@ -172,14 +241,14 @@ dans le changelog du source et l'historique git.)
   renvoi depuis `installer/README.md`), `3027c0e` (mémoire) — **arbre propre**,
   `master` synchronisé avec `origin`, tag `v2.40.0` présent en local et sur
   `origin`.
-  - **Rappel de clôture, toujours valable** : deux propositions t'ont été faites
-    (et **tu as répondu « non, c'est bon » le 28/09 — ne pas les reproposer
-    spontanément**, elles restent disponibles sur ta demande) — **bouton
-    « ⬇ spectres »** (les 48 morceaux Gaia XP de la SPCC : la fonction
-    `telecharger_chunk_xpsamp` existe dans le code mais n'est branchée à
-    **aucune** interface) et **`INSTALLATION.md` embarqué dans les deux paquets**
-    (cela impose de reconstruire les installateurs et donc de refaire les SHA-256
-    de la release).
+  - **Rappel de clôture (mis à jour le 29/09/2026)** : deux propositions t'ont
+    été faites le 28/09 et tu les avais déclinées (« non, c'est bon ») — **le
+    bouton « ⬇ spectres » des 48 morceaux Gaia XP a finalement été DEMANDÉ par
+    toi le 29/09 et il est LIVRÉ en v2.42.0** (avec la base de profils SPCC,
+    jalon 77 — voir le bloc en tête de fichier) ; reste disponible « sur ta
+    demande » : **`INSTALLATION.md` embarqué dans les deux paquets** (cela impose
+    de reconstruire les installateurs et donc de refaire les SHA-256 de la
+    release).
   - **Aucune leçon durable en attente pour CLAUDE.md** : les deux pièges de la
     session sont consignés dans « Pièges récents » ci-dessous (workflow
     `gh release create` dont les notes SONT la doc ; **ligne de commande Windows
@@ -450,13 +519,23 @@ dans le changelog du source et l'historique git.)
 ## En attente / prochaine session
 
 - **ÉTAT COMPACT POUR UNE NOUVELLE SESSION (29/09/2026)** : **rien en attente de
-  l'agent**. Le dépôt est **public** (licence MIT, titulaire = identifiant
-  GitHub), un **`README.md`** de présentation a été ajouté à la racine, les
-  documents publiés ne citent plus le mainteneur (règle écrite dans CLAUDE.md) et
-  **les commentaires du code/garde-fous internes restent tels quels** (décision
-  explicite). La release `v2.41.0` est publiée. **Le prochain geste est un test
-  réel** (ci-dessous) ; en cas de doute, tout est en tête de ce fichier et dans
-  le changelog de `avastack/__init__.py`.
+  l'agent**. Dernière passe livrée : **v2.42.0** (jalon 77 — spectres Gaia XP et
+  base de profils SPCC téléchargeables : **AVAStack ne dépend plus de Siril**).
+  Le dépôt est **public** (licence MIT, titulaire = identifiant GitHub), un
+  **`README.md`** de présentation existe à la racine, les documents publiés ne
+  citent plus le mainteneur (règle écrite dans CLAUDE.md) et **les commentaires
+  du code/garde-fous internes restent tels quels** (décision explicite). **Le
+  prochain geste est un test réel** (les deux ci-dessous) ; en cas de doute, tout
+  est en tête de ce fichier et dans le changelog de `avastack/__init__.py`.
+- **EN ATTENTE (29/09/2026) — v2.42.0 : TON TEST DES BOUTONS DE DONNÉES**
+  (catalogues + spectres + base SPCC). À valider : ① « ⬇ Gaia » toujours bon ;
+  ② **« ⬇ Spectres (champ) »** avec AD/Dec/champ° saisis (attendu : la ligne
+  d'état nomme les morceaux du champ, ≈ 100-300 Mo, et la ligne « Catalogues »
+  passe à `n/48 morceaux`) ; ③ **« ⬇ les 48 »** seulement si tu veux tout le ciel
+  (≈ 10,6 Go, reprise automatique) ; ④ **« ⬇ Base SPCC »** (quelques Mo) puis la
+  **case SPCC** : elle doit devenir cochable **sans redémarrer** et ses listes se
+  remplir. Le plus probant : le faire sur une machine **sans Siril installé**.
+  Repli si régression : **installateur v2.41.0** (à côté des nouveaux).
 - **EN ATTENTE (28/09/2026) — v2.41.0 : TON TEST RÉEL DU BOUTON « RÉINITIALISER »**
   (publiée : release GitHub `v2.41.0`, tag `4b7efe8`, les deux installateurs + la
   doc). À valider en **mode dossier** : fin de cible → **nouveau dossier** →
@@ -733,6 +812,19 @@ dans le changelog du source et l'historique git.)
   est dans les deux listes — c'est l'interface qui tranche ; et le défaut d'un
   filtre OSC est la référence « sans filtre », jamais un vrai LPF en silence).
   Plus AUCUNE leçon en attente.
+- **Leçons du 29/09/2026 (jalon 77, v2.42.0) — EN ATTENTE DE TON ACCORD, elles ne
+  bloquent rien** (elles sont consignées dans « Pièges récents » ci-dessous, donc
+  utilisables dès maintenant) : ① deux conventions de rappel `progression`
+  cohabitent dans `telechargeur.py` (`(nom, fraction)` et `(fraction)`) — dire
+  laquelle on prend, et l'inversion des arguments n'a été vue que par le banc ;
+  ② **un banc qui isole l'environnement doit aussi basculer les constantes d'OS**
+  (`%APPDATA%` reste sinon dans le vrai dossier de configuration — le banc lisait
+  le VRAI `config.json`) ; ③ **l'audit de géométrie doit ignorer les parents de
+  taille 0/1 px** (une configuration VIDE laisse un sas de panedwindow à 1 px :
+  29 widgets « écrasés » dès la construction, **préexistant**, vérifié sur un
+  worktree de HEAD) ; ④ **une donnée téléchargeable doit devenir utilisable dans
+  la session** (case/combos rafraîchis à la fin du transfert), sinon le
+  téléchargement ne sert à rien avant un redémarrage.
 
 ## Setup d'Alain
 
@@ -764,6 +856,33 @@ dans le changelog du source et l'historique git.)
 
 
 ## Pièges récents (rappels opérationnels)
+
+- **Leçons du jalon 77 (v2.42.0)** :
+  - **DEUX conventions de `progression` cohabitent dans `telechargeur.py`** :
+    `progression(nom, fraction)` pour `verifier_ou_telecharger`/`chunks` et
+    `progression(fraction)` pour `telecharger` (bas niveau) — l'adaptation se fait
+    à UN SEUL endroit, et l'inversion des deux arguments a été attrapée par le
+    banc du jalon 77 (le « nom » arrivait comme `float`, la « fraction » comme
+    chaîne). Toute nouvelle fonction qui annonce une progression doit dire
+    laquelle des deux elle prend.
+  - **Un banc qui isole l'environnement ne peut pas se contenter d'`os.environ`
+    sous Windows** : `config.dossier_config()` lit `%APPDATA%` quand
+    `IS_WINDOWS` est vrai — le banc du jalon 77 lisait donc le **VRAI**
+    `config.json` (et la case SPCC d'Alain, cochée, faisait échouer un test
+    d'interface). Il faut basculer les constantes d'OS comme le fait le banc du
+    jalon 70 (`simule_linux()`), et **retirer `APPDATA` de l'environnement du
+    banc**.
+  - **`winfo_ismapped()` n'a de sens que sur une fenêtre DÉJÀ dimensionnée** :
+    avec une configuration VIDE (départ après effacement du `config.json`), un
+    **sas du panedwindow interne reste à 1 px** → 29 widgets « gérés mais non
+    affichés » **dès la construction**, et c'est **préexistant** (mesuré sur un
+    `git worktree` de HEAD, avant les changements du jalon 77). Un audit de
+    géométrie doit donc ignorer les parents de taille 0/1 px (et le contrôle de
+    référence reste le banc du jalon 72, qui tourne avec la vraie configuration).
+  - **Un parent de widget peut être MAPPÉ et 1×1 pendant quelques centaines de
+    millisecondes** après un `deiconify()` : laisser la mise en page se terminer
+    (plusieurs `update()`) avant de mesurer la géométrie, sinon on mesure du
+    bruit.
 
 - **Leçons du jalon 76 (v2.41.0) REMONTÉES dans CLAUDE.md** (accord d'Alain,
   28/09/2026) — section « Pièges », 4 entrées : ① une demande de l'interface se

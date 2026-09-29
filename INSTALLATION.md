@@ -114,65 +114,69 @@ sources (`python3 AVAStack.py` dans le dossier de l'application).
 
 ---
 
-## 4. Siril et ses catalogues (à faire UNE fois)
+## 4. Données astronomiques (catalogues Gaia et base SPCC) — une seule fois
 
 L'**astrométrie**, la **photométrie** et la **SPCC** s'appuient sur les
 **données Gaia DR3 de Siril** — des **fichiers d'étoiles**, pas des DLL — et,
-pour la SPCC, sur la **base de profils de Siril** (réponses de capteurs,
+pour la SPCC, sur la **base de profils SPCC** (réponses de capteurs,
 transmissions de filtres, références de blanc). Rien de tout cela n'est
-embarqué dans les installateurs (≈ 1,1 Go, licence CC-BY) : c'est la seule
-étape à préparer soi-même.
+embarqué dans les installateurs (≈ 11,7 Go au total, licences CC-BY et GPLv3) :
+c'est la seule étape à préparer soi-même — **mais AVAStack sait désormais tout
+télécharger lui-même** (boutons ⬇, § 4.1), donc **Siril n'est plus nécessaire**.
 
 | Donnée | Sert à | Fichier / dossier | Où AVAStack le cherche (Windows) | (Linux) |
 | --- | --- | --- | --- | --- |
 | Catalogue astrométrique Gaia DR3 de Siril | astrométrie, photométrie | `siril_cat_healpix8_astro.dat` (ou `.bz2`), ≈ 1,1 Go | dossier choisi (📂) → clés `catalogue_gaia_astro` / `catalogue_gaia_photo` de l'INI de Siril → `%LOCALAPPDATA%\Siril` → `%APPDATA%\AVAStack\catalogues` | dossier choisi → INI de Siril → `~/.local/share/siril` → `~/.local/share/kstars` |
-| Spectres Gaia XP (« spectro ») | SPCC, photométrie | `siril_cat1_healpix8_xpsamp_<N>.dat` — **48 morceaux** | le **même** dossier de catalogues (y compris un sous-dossier `siril_cat1_healpix8_xpsamp/`) | idem |
-| Base de profils SPCC de Siril | SPCC : capteurs, filtres, références de blanc | dossier `siril-spcc-database` contenant `mono_filters/`, `osc_filters/`, `osc_sensors/`, `wb_refs/` | `%LOCALAPPDATA%\siril-spcc-database` (aussi `%LOCALAPPDATA%\Siril\spcc-database`) | `~/.local/share/siril-spcc-database` |
+| Spectres Gaia XP (« spectro ») | SPCC, photométrie | `siril_cat1_healpix8_xpsamp_<N>.dat` — **48 morceaux** (0–47), ≈ 10,6 Go au complet | le **même** dossier de catalogues (y compris un sous-dossier `siril_cat1_healpix8_xpsamp/`) | idem |
+| Base de profils SPCC (capteurs, filtres, références de blanc) | SPCC | dossier contenant `mono_filters/`, `mono_sensors/`, `osc_filters/`, `osc_sensors/`, `wb_refs/` | `chemin_spcc` choisi (📂 Dossier SPCC) → `%APPDATA%\AVAStack\spcc-database` (copie téléchargée par AVAStack) → `%LOCALAPPDATA%\siril-spcc-database` (aussi `%LOCALAPPDATA%\Siril\spcc-database`) | dossier choisi → `~/.config/AVAStack/spcc-database` → `~/.local/share/siril-spcc-database` |
 
-### 4.1 Le plus simple : installer Siril une fois
+### 4.1 Le plus simple : tout faire depuis AVAStack (Siril **non** requis)
 
-1. Installer **Siril 1.4 ou plus récent** (siril.org) — Windows, macOS, Linux.
-2. Lancer **une fois** une calibration SPCC dans Siril (`Ctrl + Shift + C`) :
-   c'est ce geste qui met en place la **base de profils** dans le dossier
-   attendu ci-dessus. AVAStack la lit ensuite, sans jamais y écrire.
-3. Siril sait aussi télécharger les **catalogues Gaia** (astrométrique **et**
-   SPCC/spectro) avec ses **scripts officiels** (dépôt `siril-scripts`,
-   accessibles depuis le menu « Scripts » de Siril). Le dossier de destination
-   est celui de ses préférences → onglet **Astrométrie**.
+Les trois données se téléchargent depuis la fenêtre, panneau « Astrométrie »
+(cadres « Catalogues » puis « Spectres / Base SPCC ») — **reprise automatique**
+si la connexion coupe, **empreintes vérifiées** (Zenodo : sha256 officielles) :
 
-### 4.2 Ou tout faire depuis AVAStack
+- **catalogue astrométrique** : bouton **« ⬇ Gaia »** → ≈ 1,1 Go (Zenodo
+  `14692304`) ;
+- **spectres Gaia XP** : bouton **« ⬇ Spectres (champ) »** → seulement les 1 à 4
+  morceaux qui couvrent la cible des champs AD/Dec/champ° (≈ 100–300 Mo au lieu
+  de 10,6 Go — c'est ce qui suffit à la SPCC et à la photométrie sur ce champ) ;
+  **« ⬇ les 48 »** télécharge tout le ciel (≈ 10,6 Go) pour un usage itinérant
+  (Zenodo `14738271`) ;
+- **base de profils SPCC** : bouton **« ⬇ Base SPCC »** → quelques Mo, tirés de
+  l'archive du dépôt public `siril-spcc-database` (GPLv3), extraite dans le
+  dossier SPCC (copie propre à AVAStack, sans rien modifier chez Siril).
 
-- **Catalogue astrométrique** : panneau « Astrométrie » → bouton **« ⬇ Gaia »**
-  → téléchargement (≈ 1,1 Go) dans le dossier affiché, avec **reprise
-  automatique** si la connexion coupe et **sha256 vérifiée** (Zenodo,
-  enregistrement `14692304`). Tu peux aussi déposer toi-même le fichier
-  `siril_cat_healpix8_astro.dat` (ou `.bz2`) dans le dossier affiché.
-- **Spectres Gaia XP (48 morceaux)** : AVAStack **n'a pas encore de bouton pour
-  eux** (v2.41.0) — c'est le seul point qui demande Siril ou un téléchargement
-  manuel :
-  - laisser **Siril** installer son catalogue SPCC local (scripts officiels) —
-    il écrit les `siril_cat1_healpix8_xpsamp_<N>.dat` dans le dossier des
-    catalogues ;
-  - ou les prendre à la main : Zenodo, enregistrement **14738271**, 48 fichiers
-    `siril_cat1_healpix8_xpsamp_<N>.dat.bz2`, à poser dans le dossier affiché
-    (à la racine ou dans un sous-dossier — les deux sont lus).
-- **Base de profils SPCC sans installer Siril** : son contenu est publié dans
-  le dépôt `siril-spcc-database` ; copie-le dans le dossier attendu du tableau
-  ci-dessus. AVAStack considère la base « présente » dès qu'il y trouve un
-  dossier `mono_filters`.
+Un **seul transfert à la fois** : pendant qu'il travaille, les quatre boutons
+sont grisés et la ligne d'état annonce le fichier et son pourcentage.
+
+### 4.2 Variantes : Siril installé, ou dépôt manuel
+
+- **Siril 1.4 ou plus récent** (siril.org) : lancer **une fois** une calibration
+  SPCC (`Ctrl + Shift + C`) → Siril met en place sa base de profils, qu'AVAStack
+  lit ensuite (sans jamais y écrire) ; ses **scripts officiels** (dépôt
+  `siril-scripts`) téléchargent aussi les catalogues Gaia, dans le dossier de ses
+  préférences (onglet **Astrométrie**).
+- **Dépôt manuel** : les fichiers du tableau ci-dessus peuvent être posés à la
+  main dans le dossier affiché par AVAStack (catalogue astro `.dat`/`.bz2`,
+  morceaux `siril_cat1_healpix8_xpsamp_<N>.dat.bz2` à la racine ou dans un
+  sous-dossier — les deux sont lus) ; pour la base SPCC, recopier le contenu du
+  dépôt `siril-spcc-database` dans le dossier affiché par « 📂 Dossier SPCC ».
 
 ### 4.3 Vérifier en cinq secondes, dans AVAStack
 
 - La ligne **« Catalogues »** (panneau « Astrométrie ») dit le dossier utilisé,
   si le catalogue astro est présent et **combien de morceaux spectro** sont
   installés :
-  - `catalogue astro : présent (siril_cat_healpix8_astro.dat) — spectres Gaia : 48 chunk(s)` → tout est là ;
+  - `catalogue astro : présent (siril_cat_healpix8_astro.dat) — spectres Gaia : 48/48 morceaux` → tout est là ;
   - `catalogue astro : ABSENT — l'astrométrie interne ne peut pas aboutir (bouton ⬇ Gaia, ou déposer le fichier ici)` → il manque le fichier astro.
-- La case **SPCC** : si elle est grisée, la ligne du dessous dit pourquoi —
-  `SPCC : base de profils de Siril introuvable (%LOCALAPPDATA%\siril-spcc-database) — installez Siril et lancez une calibration SPCC une fois`.
+- La ligne **« Base SPCC »** dit le dossier des profils et son contenu
+  (`Base SPCC : …\spcc-database — mono 15, mono 13, osc 48, osc 46, wb 144`) ;
+  si elle annonce `ABSENTE`, le bouton **« ⬇ Base SPCC »** la télécharge — la
+  case **SPCC** devient alors cochable **sans redémarrer** l'application.
   AVAStack **n'invente jamais** de courbes : sans base, il refuse et l'explique.
-- Les boutons **📂 Dossier** (choisir un autre dossier de catalogues, choix
-  mémorisé entre deux sessions) et **⬇ Gaia** sont sur la même ligne.
+- Les boutons **📂 Dossier** (catalogues) et **📂 Dossier SPCC** mémorisent leur
+  choix entre deux sessions.
 - Autre voie, indépendante de Siril : **ASTAP** (`astap_cli` + une base
   d'étoiles G18/H18) est détecté automatiquement (PATH, `C:\Program Files\astap`,
   emplacements Linux/macOS) et sert de solutionneur de secours.
@@ -247,12 +251,18 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
   `--cameras`, quand les `*.so` constructeurs y seront déposés).
 - Pas d'installateur **macOS** : lancement depuis les sources.
 - **Aucune caméra** n'est embarquée (SDK constructeurs, licences).
-- Pas de bouton pour les **48 morceaux de spectres Gaia** : téléchargement via
-  Siril ou à la main (Zenodo `14738271`).
+- Les **données Gaia** ne sont pas embarquées : ≈ 1,1 Go (catalogue astro),
+  ≈ 10,6 Go (les 48 morceaux de spectres — le bouton « ⬇ les 48 ») et quelques
+  Mo de base SPCC. Les boutons ⬇ d'AVAStack les récupèrent, mais un
+  téléchargement interrompu **reprend** à l'endroit où il s'est arrêté (relancer
+  le bouton), et un fichier déjà conforme n'est jamais retéléchargé.
+- La base de profils SPCC est publiée sous **GPLv3** : elle est téléchargée à la
+  demande dans un dossier propre à AVAStack (elle n'est **pas** redistribuée par
+  ses installateurs).
 
 ## 9. Repli si régression
 
-Le repli de référence est la **v2.40.0**. Les installateurs des versions
+Le repli de référence est la **v2.41.0**. Les installateurs des versions
 antérieures restent à côté des nouveaux, dans `installer/windows/output/` et
 `installer/linux/output/` : aucun nouveau installateur n'écrase une version
 précédente.

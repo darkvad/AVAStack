@@ -1621,6 +1621,34 @@ class App:
         self.lbl_cat_etat = ttk.Label(box, text="", foreground="#888888",
                                       wraplength=310)
         self.lbl_cat_etat.pack(anchor="w")
+        # Jalon 77 — LES DONNÉES DE LA SPCC SANS SIRIL. Mesure d'un besoin : il
+        # manquait DEUX jeux de données (les 48 morceaux de spectres Gaia XP,
+        # dont la fonction de téléchargement n'était branchée nulle part, et la
+        # base de profils de capteurs/filtres, qui n'était LUE que chez Siril) :
+        # sans eux, la SPCC exigeait Siril installé. Chacun a SA ligne, avec
+        # DEUX boutons au plus (règle de mise en page v2.38.9 : `pack` abandonne
+        # silencieusement le widget qui ne tient plus) et un état qui DIT ce qui
+        # est présent — jamais de bouton muet.
+        row_sp = ttk.Frame(box)
+        row_sp.pack(fill="x", pady=(4, 0))
+        self.btn_spectres = ttk.Button(row_sp, text="⬇ Spectres (champ)",
+                                       width=17,
+                                       command=self._telecharger_spectres)
+        self.btn_spectres.pack(side="left", padx=(6, 0))
+        self.btn_spectres_tous = ttk.Button(row_sp, text="⬇ les 48", width=9,
+                                            command=self._telecharger_spectres_tous)
+        self.btn_spectres_tous.pack(side="left", padx=(4, 0))
+        row_sp2 = ttk.Frame(box)
+        row_sp2.pack(fill="x", pady=(2, 0))
+        self.btn_spcc_base = ttk.Button(row_sp2, text="⬇ Base SPCC", width=13,
+                                        command=self._telecharger_base_spcc)
+        self.btn_spcc_base.pack(side="left", padx=(6, 0))
+        self.btn_spcc_dos = ttk.Button(row_sp2, text="📂 Dossier SPCC", width=15,
+                                       command=self._choisir_dossier_spcc)
+        self.btn_spcc_dos.pack(side="left", padx=(4, 0))
+        self.lbl_base_spcc = ttk.Label(box, text="", foreground="#888888",
+                                       wraplength=310)
+        self.lbl_base_spcc.pack(anchor="w")
         # File de la conversation réseau → UI (le thread de téléchargement n'a
         # PAS le droit de toucher un widget : il ne pose que des messages ici).
         self._cat_q = queue.Queue()
@@ -1665,7 +1693,13 @@ class App:
         # une valeur inventée.
         row_sx = ttk.Frame(box)
         row_sx.pack(fill="x", pady=(4, 0))
-        self._spcc_dispo = bool(spcc_mod.base_presente())
+        # Jalon 77 : la base de profils peut vivre AILLEURS que chez Siril (copie
+        # d'AVAStack téléchargée, dossier choisi) — et ce dossier peut être sur
+        # un NAS. La lecture qui remplit les sélecteurs est donc BORNÉE
+        # (v2.38.11 : aucune mesure de disque ne doit retenir l'ouverture) ; la
+        # sonde différée `_sonder_spcc_base` corrige l'affichage quand elle a
+        # répondu, et la fin d'un téléchargement relit tout.
+        self._spcc_dispo, self._spcc_noms, _mesure = self._spcc_base_bornee()
         self.var_spcc = tk.BooleanVar(value=False)
         self.chk_spcc = ttk.Checkbutton(
             row_sx, text="SPCC (couleurs absolues)",
@@ -1673,12 +1707,6 @@ class App:
         self.chk_spcc.pack(side="left")
         if not self._spcc_dispo:
             self.chk_spcc.state(["disabled"])
-        self._spcc_noms = {"capteur": [], "filtres": [], "blancs": [],
-                           "osc_capteurs": [], "osc_filtres": []}
-        try:
-            self._spcc_noms = spcc_mod.noms_base()
-        except Exception:
-            pass
         self._spcc_vars = {}
         self._spcc_lbls = {}
         self._spcc_cbs = {}
@@ -2747,9 +2775,10 @@ class App:
             return
         if not self._spcc_dispo:
             self.lbl_spcc.config(
-                text=("SPCC : base de profils de Siril introuvable "
-                      "(%LOCALAPPDATA%\\siril-spcc-database) — installez Siril "
-                      "et lancez une calibration SPCC une fois"), foreground="#c98a00")
+                text=("SPCC : base de profils (capteurs/filtres) introuvable — "
+                      "le bouton « ⬇ Base SPCC » la télécharge (quelques Mo), "
+                      "ou « 📂 Dossier SPCC » désigne une base existante"),
+                foreground="#c98a00")
             return
         if not (self._mode_compo or self._source_rgb(getattr(self, "stacker", None))):
             # v2.37.1 : au LANCEMENT, aucune source n'est encore choisie —
@@ -2984,7 +3013,260 @@ class App:
                    "pas aboutir (bouton ⬇ Gaia, ou déposer le fichier ici)")
             col = "#c98a00"
         self.lbl_cat_etat.config(
-            text=f"{txt} — spectres Gaia : {n_ch} chunk(s)", foreground=col)
+            text=f"{txt} — spectres Gaia : {n_ch}/{cat_mod.TOTAL_CHUNKS} morceaux",
+            foreground=col)
+
+    # ----------------------------------------------------------------- base SPCC
+    def _spcc_base_bornee(self):
+        """Lecture de la base SPCC pour construire les sélecteurs (jalon 58),
+        BORNÉE (v2.38.11) → (dispo, noms, mesuré).
+
+        `mesuré` = False quand le délai a été dépassé : l'affichage le dit et la
+        sonde différée tranchera, au lieu de faire croire à une base absente."""
+        vide = {"capteur": [], "filtres": [], "blancs": [],
+                "osc_capteurs": [], "osc_filtres": []}
+
+        def _lire():
+            return (bool(spcc_mod.base_presente()), spcc_mod.noms_base(), True)
+
+        dispo, noms, mesure = delais.borne(_lire, (False, vide, False),
+                                           delais.DELAI_DEFAUT)[0] \
+            or (False, vide, False)
+        return bool(dispo), (noms or vide), bool(mesure)
+
+    def _sonder_spcc_base(self):
+        """SONDE la base de profils SPCC (accès disque) → (dossier, noms, dispo).
+        Séparée de l'affichage pour tourner HORS du fil d'interface, bornée
+        comme les autres sondes de disque."""
+        try:
+            base = cat_mod.spcc_db.dossier_base()
+            return (base or "", spcc_mod.noms_base(), bool(spcc_mod.base_presente()))
+        except Exception:
+            return ("", None, False)
+
+    def _maj_base_spcc_vue(self):
+        """Sonde ET affiche (geste de l'utilisateur : fin de téléchargement)."""
+        self._appliquer_spcc_base_vue(*self._sonder_spcc_base())
+
+    def _appliquer_spcc_base_vue(self, dossier, noms, dispo):
+        """Ligne « Base SPCC » + SÉLECTEURS de la SPCC : dit où sont les profils
+        et ce qu'ils contiennent, et (re)remplit les listes.
+
+        RENFORT MESURÉ (jalon 77) : une base arrivée APRÈS le démarrage (elle
+        vient d'être téléchargée) doit rendre sa case cochable et ses listes
+        utilisables SANS redémarrer l'application — sinon le téléchargement
+        n'aurait servi à rien dans la session où on le fait."""
+        if getattr(self, "lbl_base_spcc", None) is not None:
+            if not dossier:
+                self.lbl_base_spcc.config(
+                    text=("Base SPCC : ABSENTE — la SPCC ne peut pas aboutir "
+                          "(⬇ Base SPCC la télécharge, quelques Mo)"),
+                    foreground="#c98a00")
+            else:
+                court = dossier if len(dossier) <= 30 else "…" + dossier[-29:]
+                n = cat_mod.etat_base_spcc(dossier)
+                detail = ", ".join(f"{k.split('_')[0]} {v}"
+                                   for k, v in n.items() if v)
+                self.lbl_base_spcc.config(
+                    text=(f"Base SPCC : {court} — {detail}"
+                          if detail else f"Base SPCC : {court} — vide"),
+                    foreground="#1d7f1d" if dispo else "#c98a00")
+        nouveau = bool(dispo) and not self._spcc_dispo
+        if dispo:
+            self._spcc_dispo = True
+            self.chk_spcc.state(["!disabled"])
+        elif not noms:
+            self._spcc_dispo = False
+        if noms:
+            self._spcc_noms = noms
+            # Peuplement des cinq listes, puis application du TYPE choisi (qui
+            # pose les valeurs par défaut et remet la vue à jour).
+            for cle, cle_noms in (("capteur", "osc_capteurs"),
+                                  ("fr", "osc_filtres"),
+                                  ("fg", "filtres"),
+                                  ("fb", "filtres"),
+                                  ("blanc", "blancs")):
+                cb = self._spcc_cbs.get(cle)
+                valeurs = self._spcc_noms.get(cle_noms) or []
+                if cb is None or not valeurs:
+                    continue
+                cb.config(values=valeurs)
+        if nouveau:
+            self._on_spcc_type()
+        else:
+            self._maj_spcc_vue()
+
+    # --------------------------------------------- téléchargements (réseau)
+    def _boutons_dl(self):
+        """Les boutons de TÉLÉCHARGEMENT : un SEUL transfert à la fois, donc
+        tous neutralisés ensemble puis rendus ensemble (un bouton qui resterait
+        gris, ou actif pendant un transfert, mentirait sur l'état réel)."""
+        return [b for b in (getattr(self, "btn_cat_dl", None),
+                            getattr(self, "btn_spectres", None),
+                            getattr(self, "btn_spectres_tous", None),
+                            getattr(self, "btn_spcc_base", None))
+                if b is not None]
+
+    def _regler_boutons_dl(self, actif):
+        for b in self._boutons_dl():
+            b.state(["disabled"] if actif else ["!disabled"])
+
+    def _lancer_telechargement(self, quoi, dossier, fonction, quoi_texte,
+                               fin_texte):
+        """Lance un transfert dans un THREAD dédié, suivi par la file `_cat_q`
+        (le fil réseau ne touche JAMAIS un widget).
+
+        `quoi` : « spectres » ou « spcc » — l'astrométrie garde son chemin
+        historique `_telecharger_catalogue`. `fonction(dossier, progression)`
+        fait le travail ; `quoi_texte` nomme le transfert (affiché pendant) ;
+        `fin_texte(resultat)` compose la phrase finale — appelé DANS LE FIL
+        RÉSEAU, donc sans le moindre accès à un widget."""
+        if self._cat_dl_actif:
+            return
+        try:
+            os.makedirs(dossier, exist_ok=True)
+        except OSError as exc:
+            self.lbl_cat_etat.config(text=f"téléchargement impossible : {exc}",
+                                     foreground="#d04040")
+            return
+        self._cat_dl_actif = True
+        self._regler_boutons_dl(True)
+        self.lbl_cat_etat.config(text=f"téléchargement {quoi_texte}…",
+                                 foreground="#c98a00")
+
+        def travail():
+            try:
+                res = fonction(dossier, lambda nom, frac: self._cat_q.put(
+                    ("progres", nom, float(frac), quoi)))
+                self._cat_q.put(("fini", fin_texte(res), quoi))
+            except Exception as exc:          # réseau, disque, sha256…
+                self._cat_q.put(("erreur", str(exc), quoi))
+
+        threading.Thread(target=travail, daemon=True).start()
+
+    def _champ_spectres(self):
+        """Champ visé pour les spectres : les TROIS indices de la cible, tels
+        qu'ils sont SAISIS (mêmes règles que l'astrométrie : rien n'est deviné).
+        → (ra, dec, rayon_deg, message) ; rayon = demi-diagonale MAJORÉE
+        (0,8 × champ) pour couvrir un capteur non carré et l'orientation — la
+        sélection ajoute déjà une marge d'un pixel."""
+        ra, dec, champ, msg = astro_mod.analyser_indices(
+            self.var_astro_ra.get().strip(),
+            self.var_astro_dec.get().strip(),
+            self.var_astro_champ.get().strip())
+        if msg:
+            return None, None, None, msg
+        return ra, dec, 0.8 * float(champ), ""
+
+    def _telecharger_spectres(self):
+        """⬇ Spectres (champ) : seulement les morceaux du catalogue Gaia XP qui
+        couvrent le champ visé (100–300 Mo au lieu de 10,6 Go)."""
+        ra, dec, rayon, msg = self._champ_spectres()
+        if msg:
+            self.lbl_cat_etat.config(
+                text=("spectres : AD/Dec/champ nécessaires pour ne prendre que "
+                      f"les morceaux du champ ({msg}) — ou « ⬇ les 48 » pour "
+                      "tout le ciel (≈ 10,6 Go)"),
+                foreground="#c98a00")
+            return
+        chunks = cat_mod.chunks_du_champ(ra, dec, rayon)
+        if not chunks:
+            self.lbl_cat_etat.config(
+                text="spectres : aucun morceau trouvé pour ce champ (champ trop "
+                     "petit ?)", foreground="#d04040")
+            return
+        try:
+            dossier = cat_mod.dossier_catalogues()
+        except Exception as exc:
+            self.lbl_cat_etat.config(
+                text=f"spectres : dossier des catalogues illisible ({exc})",
+                foreground="#d04040")
+            return
+        texte = (f"spectres Gaia XP du champ (AD {ra:.3f}°, Dec {dec:+.3f}°, "
+                 f"rayon {rayon:.2f}°) : morceau(x) "
+                 f"{', '.join(str(c) for c in chunks)} — les 343 flux "
+                 f"336-1020 nm de la SPCC dans {dossier}")
+
+        def fin(res):
+            n = sum(1 for _c, _p, tele in res if tele)
+            return (f"spectres téléchargés : {len(res)} morceau(x) du champ "
+                    f"({n} transféré(s)) — « ⬇ les 48 » aurait pris ≈ 10,6 Go")
+
+        self._lancer_telechargement(
+            "spectres", dossier,
+            lambda d, prog: cat_mod.telecharger_chunks(d, chunks, prog),
+            texte, fin)
+
+    def _telecharger_spectres_tous(self):
+        """⬇ les 48 : tout le catalogue spectral (≈ 10,6 Go) — pour un usage
+        itinérant, sans savoir à l'avance ce qu'on visera."""
+        try:
+            dossier = cat_mod.dossier_catalogues()
+        except Exception as exc:
+            self.lbl_cat_etat.config(
+                text=f"spectres : dossier des catalogues illisible ({exc})",
+                foreground="#d04040")
+            return
+
+        def fin(res):
+            n = sum(1 for _c, _p, tele in res if tele)
+            return (f"spectres : {len(res)}/48 morceaux présents dans {dossier} "
+                    f"({n} transféré(s)) — la SPCC peut travailler sur tout le "
+                    "ciel")
+
+        self._lancer_telechargement(
+            "spectres", dossier,
+            lambda d, prog: cat_mod.telecharger_tous_les_chunks(d, prog),
+            "les 48 morceaux de spectres Gaia XP (≈ 10,6 Go — la reprise est "
+            "automatique)", fin)
+
+    def _choisir_dossier_spcc(self):
+        """📂 Dossier SPCC : choisit et PERSISTE (config `chemin_spcc`) le dossier
+        de la base de profils (capteurs, filtres, références de blanc)."""
+        depart = delais.borne(cat_mod.spcc_db.dossier_ecriture,
+                              os.path.expanduser("~"), delais.DELAI_DEFAUT)[0]
+        d = filedialog.askdirectory(title="Dossier de la base SPCC",
+                                    initialdir=depart or os.path.expanduser("~"))
+        if not d:
+            return
+        CONFIG[cat_mod.spcc_db.CLE_CONFIG] = d
+        sauver_config(dict(CONFIG))
+        # La mesure est BORNÉE : le dossier choisi peut être sur un NAS.
+        self._appliquer_spcc_base_vue(*delais.borne(
+            self._sonder_spcc_base, ("", None, False), delais.DELAI_DEFAUT)[0])
+
+    def _telecharger_base_spcc(self):
+        """⬇ Base SPCC : télécharge la base de profils du dépôt GitLab
+        `siril-spcc-database` (quelques Mo, GPLv3) et l'installe dans le dossier
+        SPCC — la SPCC n'exige alors plus ni Siril ni une calibration faite
+        dans Siril."""
+        try:
+            dossier = cat_mod.spcc_db.dossier_ecriture()
+        except Exception as exc:
+            self.lbl_base_spcc.config(
+                text=f"Base SPCC : dossier inutilisable ({exc})",
+                foreground="#d04040")
+            return
+        if not dossier:
+            self.lbl_base_spcc.config(
+                text="Base SPCC : aucun dossier utilisable — en choisir un (📂)",
+                foreground="#d04040")
+            return
+        texte = ("la base de profils SPCC (capteurs, filtres, références de "
+                 f"blanc) dans {dossier}")
+
+        def fin(res):
+            _d, n, tele = res
+            if not tele:
+                return (f"base SPCC : déjà complète dans {dossier} — rien à "
+                        "télécharger")
+            return (f"base SPCC téléchargée : {n} fichiers dans {dossier} — la "
+                    "SPCC fonctionne désormais sans Siril")
+
+        self._lancer_telechargement(
+            "spcc", dossier,
+            lambda d, prog: cat_mod.telecharger_base_spcc(d, prog),
+            texte, fin)
 
     def _choisir_dossier_catalogues(self):
         """Choisit le dossier des catalogues et le PERSISTE (config
@@ -3025,7 +3307,7 @@ class App:
                                      foreground="#d04040")
             return
         self._cat_dl_actif = True
-        self.btn_cat_dl.state(["disabled"])
+        self._regler_boutons_dl(True)
         self.lbl_cat_etat.config(
             text=f"téléchargement du catalogue Gaia (≈ 1,1 Go) dans {d}…",
             foreground="#c98a00")
@@ -5361,6 +5643,13 @@ class App:
                 journal.etape("dossiers des catalogues")
                 msg["catalogues"] = delais.borne(self._sonder_catalogues,
                                                  ("", None, ""), delais.DELAI_DEFAUT)[0]
+                # Jalon 77 : la base de profils SPCC suit le même chemin (elle
+                # peut être dans la configuration d'AVAStack, dans un dossier
+                # choisi — donc sur un NAS — ou chez Siril).
+                journal.etape("base de profils SPCC")
+                msg["spcc"] = delais.borne(self._sonder_spcc_base,
+                                           ("", None, False),
+                                           delais.DELAI_DEFAUT)[0]
             except Exception:
                 journal.erreur("mesures de démarrage")
             finally:
@@ -5412,6 +5701,9 @@ class App:
         cat = msg.get("catalogues")
         if cat:
             self._appliquer_cat_vue(*cat)
+        spcc_base = msg.get("spcc")
+        if spcc_base:
+            self._appliquer_spcc_base_vue(*spcc_base)
 
     def _sonder_travail(self):
         """SONDE le dossier de travail (accès disque) → (dossier, libre, ram).
@@ -8124,19 +8416,31 @@ class App:
             except queue.Empty:
                 break
             genre = msg[0]
+            # Jalon 77 : les transferts des spectres et de la base SPCC passent
+            # par la MÊME file ; leur nature est le DERNIER élément (les
+            # messages de l'astrométrie, historiques, n'en ont pas).
+            quoi = msg[-1] if len(msg) >= 3 and msg[-1] in ("spectres", "spcc") \
+                else "astro"
             if genre == "progres":
-                _, nom, frac = msg
+                _, nom, frac = msg[0], msg[1], msg[2]
                 self.lbl_cat_etat.config(
                     text=(f"téléchargement {nom} : {frac * 100:.0f} % "
                           "(la reprise est automatique si la connexion coupe)"),
                     foreground="#c98a00")
             elif genre == "fini":
-                _, chemin, telecharge = msg
                 self._cat_dl_actif = False
-                self.btn_cat_dl.state(["!disabled"])
+                self._regler_boutons_dl(False)
+                if quoi == "spcc":
+                    self._maj_base_spcc_vue()
+                    self.lbl_cat_etat.config(text=msg[1], foreground="#1d7f1d")
+                    continue
+                _, chemin, telecharge = msg[0], msg[1], msg[2]
                 self.astro_info = ""        # les essais d'astrométrie repartent
                 self._rafraichir_rendu = True
                 self._maj_cat_vue()
+                if quoi == "spectres":
+                    self.lbl_cat_etat.config(text=msg[1], foreground="#1d7f1d")
+                    continue
                 self._maj_astro_vue()
                 self.lbl_cat_etat.config(
                     text=(("catalogue astro téléchargé : " if telecharge
@@ -8144,12 +8448,14 @@ class App:
                           + os.path.basename(chemin)),
                     foreground="#1d7f1d")
             else:
-                _, texte = msg
                 self._cat_dl_actif = False
-                self.btn_cat_dl.state(["!disabled"])
-                self._maj_cat_vue()
+                self._regler_boutons_dl(False)
+                if quoi == "spcc":
+                    self._maj_base_spcc_vue()
+                else:
+                    self._maj_cat_vue()
                 self.lbl_cat_etat.config(
-                    text=(f"téléchargement : ÉCHEC — {texte} "
+                    text=(f"téléchargement : ÉCHEC — {msg[1]} "
                           "(le fichier .part reste : relancer reprend où on "
                           "s'est arrêté)"),
                     foreground="#d04040")
