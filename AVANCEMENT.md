@@ -77,9 +77,23 @@ dans le changelog du source et l'historique git.)
     `installer/linux/output/avastack-setup-2.42.0-linux.tar.gz` (582 385 o,
     SHA-256 `7016471b…3e4c1`). **Aucune release publiée** pour cette passe (à
     faire sur ta demande, avec `gh release create --notes-file`).
-  - **COMMIT** : `d8ec4f5` (code + doc + banc, arbre propre) sur `master` —
-    **NON poussé** au moment de la clôture de la passe (`origin/master` reste sur
-    `b7cb76a`) : `git push` quand tu le veux.
+  - **CLÔTURE DE LA PASSE (29/09/2026) — v2.42.0 PUBLIÉE** : `git push`
+    (`b7cb76a..9fb8a71`, `master` synchronisé), **release GitHub `v2.42.0`**
+    (`https://github.com/darkvad/AVAStack/releases/tag/v2.42.0`, tag `v2.42.0`
+    sur le commit `9fb8a71` — présent en local ET sur `origin`, marquée
+    « Latest ») avec **trois pièces** : `avastack-setup-2.42.0.exe`
+    (11 485 284 o), `avastack-setup-2.42.0-linux.tar.gz` (582 385 o) et
+    `INSTALLATION.md` (15 804 o). **Les notes de la release = un court résumé
+    « ce qui change » suivi de la doc d'installation complète** (méthode
+    `gh release create --notes-file`, **jamais** un message en ligne de commande :
+    au-delà de ~1 000 caractères la ligne est tronquée sous Windows — le fichier
+    de notes est fabriqué hors dépôt en UTF-8 sans BOM). Commits de la session :
+    `d8ec4f5` (code + doc + banc), `cf65e8f` (mémoire), `9fb8a71`
+    (INSTALLATION.md en v2.42.0 : artéfacts, tailles, SHA-256, repli v2.41.0) —
+    **arbre propre**.
+  - **Aucune leçon à remonter dans CLAUDE.md sans ton accord** : les quatre
+    leçons du jalon 77 sont listées dans « Statuts CLAUDE.md » (en attente) et
+    consignées dans « Pièges récents », donc **utilisables telles quelles**.
 
 
 - **PASSE PRÉCÉDENTE (28/09/2026) — AVAStack v2.41.0 :
@@ -521,15 +535,17 @@ dans le changelog du source et l'historique git.)
 
 ## En attente / prochaine session
 
-- **ÉTAT COMPACT POUR UNE NOUVELLE SESSION (29/09/2026)** : **rien en attente de
-  l'agent**. Dernière passe livrée : **v2.42.0** (jalon 77 — spectres Gaia XP et
-  base de profils SPCC téléchargeables : **AVAStack ne dépend plus de Siril**).
-  Le dépôt est **public** (licence MIT, titulaire = identifiant GitHub), un
-  **`README.md`** de présentation existe à la racine, les documents publiés ne
-  citent plus le mainteneur (règle écrite dans CLAUDE.md) et **les commentaires
-  du code/garde-fous internes restent tels quels** (décision explicite). **Le
-  prochain geste est un test réel** (les deux ci-dessous) ; en cas de doute, tout
-  est en tête de ce fichier et dans le changelog de `avastack/__init__.py`.
+- **ÉTAT COMPACT POUR UNE NOUVELLE SESSION (29/09/2026, clôture)** : **rien en
+  attente de l'agent**. Dernière passe livrée et **PUBLIÉE** : **v2.42.0**
+  (jalon 77 — spectres Gaia XP et base de profils SPCC téléchargeables :
+  **AVAStack ne dépend plus de Siril**), release GitHub `v2.42.0` avec ses deux
+  installateurs et `INSTALLATION.md`. Le dépôt est **public** (licence MIT,
+  titulaire = identifiant GitHub), un **`README.md`** de présentation existe à la
+  racine, les documents publiés ne citent plus le mainteneur (règle écrite dans
+  CLAUDE.md) et **les commentaires du code/garde-fous internes restent tels
+  quels** (décision explicite). **Le prochain geste est un test réel** (les deux
+  ci-dessous) ; en cas de doute, tout est en tête de ce fichier et dans le
+  changelog de `avastack/__init__.py`.
 - **EN ATTENTE (29/09/2026) — v2.42.0 : TON TEST DES BOUTONS DE DONNÉES**
   (catalogues + spectres + base SPCC). À valider : ① « ⬇ Gaia » toujours bon ;
   ② **« ⬇ Spectres (champ) »** avec AD/Dec/champ° saisis (attendu : la ligne
