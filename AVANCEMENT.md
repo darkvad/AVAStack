@@ -339,6 +339,17 @@ dans le changelog du source et l'historique git.)
     chroma_nr_jalon63, compo_ui_jalon19, veralux_jalon3, cadence_jalon42,
     ui_jalon5, multifolder_jalon19, rafale_fin_rendu_jalon80.
     **PROCHAINE ÉTAPE : rebuild des trois installateurs v2.45.0 + release.**
+  - **⑱ PAQUETS v2.45.0 RECONSTRUITS (29/09/2026, trois packers lancés)** :
+    - Windows `installer/windows/output/avastack-setup-2.45.0.exe` — **11 486 570 o**,
+      SHA-256 `CC0F742EA1A8DE90E337D3031FC3A8A8DEF71203C15E779AAF7A8F748180EB32`
+    - Linux `installer/linux/output/avastack-setup-2.45.0-linux.tar.gz` — 598 080 o,
+      SHA-256 `880BD83E24AF837F292CE4877397EB1F887ED36FE5D9A272A60FE29004A0E1B4`
+    - macOS `installer/macos/output/avastack-setup-2.45.0-macos.tar.gz` — 595 750 o,
+      SHA-256 `5DFB85E3DF79B4E8185009EC556CB32A1D06F6287DF09C0DF418F114672DF3E5`
+    `INSTALLATION.md` mis à jour en v2.45.0 (artéfacts, SHA, repli v2.44.0).
+    Commit de la passe : `79d55d8`. **Aucun tag, aucune release** (à décider —
+    Alain a demandé celle de v2.44.0 le 29/09, celle-ci reste à valider).
+
 
 
   - **⑦ bis LEÇONS DU JALON REMONTÉES DANS CLAUDE.md (ton accord explicite,

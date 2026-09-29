@@ -1,4 +1,4 @@
-# AVAStack — installation rapide (v2.44.0)
+# AVAStack — installation rapide (v2.45.0)
 
 AVAStack est un **live stacking** : il empile tes brutes **en temps réel**
 pendant l'acquisition (calibration dark/flat, alignement, rejet kappa-sigma,
@@ -8,7 +8,7 @@ passage aux **outils externes** (GraXpert, BlurXTerminator) sur un instantané.
 Il tourne sur **Windows, Linux et macOS**, et s'installe **dans ton profil** :
 aucun droit administrateur n'est nécessaire.
 
-Ce document accompagne la **release v2.44.0** (les trois installateurs y sont
+Ce document accompagne la **release v2.45.0** (les trois installateurs y sont
 attachés). Il ne remplace pas le `LISEZMOI.txt` que l'installateur copie à côté
 de l'application — celui-ci détaille **tous les réglages** de l'interface.
 
@@ -18,9 +18,9 @@ de l'application — celui-ci détaille **tous les réglages** de l'interface.
 
 | Plateforme | Fichier | Taille | SHA-256 |
 | --- | --- | --- | --- |
-| Windows (10/11, 64 bits) | `avastack-setup-2.44.0.exe` | 11,5 Mo | `D064D5AEE0AD3BFBF1448FF31D14E0D0719709E4CFFB34681C4F1FAED9CAE186` |
-| Linux (x86_64) | `avastack-setup-2.44.0-linux.tar.gz` | 580 Kio | `1EC90CC9177F86802DD6C82D7A25AAC6A33E959FCB1718AA3B3DA717803334BC` |
-| macOS (11 et plus) | `avastack-setup-2.44.0-macos.tar.gz` | 577 Kio | `ABA1E04FE814E088BE68B5397E32B4BFB79522F2197A1500975EDF47317A372C` |
+| Windows (10/11, 64 bits) | `avastack-setup-2.45.0.exe` | 11,5 Mo | `CC0F742EA1A8DE90E337D3031FC3A8A8DEF71203C15E779AAF7A8F748180EB32` |
+| Linux (x86_64) | `avastack-setup-2.45.0-linux.tar.gz` | 584 Kio | `880BD83E24AF837F292CE4877397EB1F887ED36FE5D9A272A60FE29004A0E1B4` |
+| macOS (11 et plus) | `avastack-setup-2.45.0-macos.tar.gz` | 582 Kio | `5DFB85E3DF79B4E8185009EC556CB32A1D06F6287DF09C0DF418F114672DF3E5` |
 | Documentation | `INSTALLATION.md` | ce fichier | — |
 
 Les artéfacts portent leur **numéro de version** : deux versions ne s'écrasent
@@ -32,7 +32,7 @@ jamais, et un installateur plus ancien peut rester à côté comme repli.
 
 ---
 
-## 2. Windows — `avastack-setup-2.44.0.exe`
+## 2. Windows — `avastack-setup-2.45.0.exe`
 
 1. **Lancer l'exécutable.** Windows peut afficher un avertissement
    SmartScreen (l'exécutable n'est pas signé) : « Informations
@@ -60,11 +60,11 @@ L'application fonctionne **sans aucune caméra** (mode « Dossier surveillé »,
 
 ---
 
-## 3. Linux — `avastack-setup-2.44.0-linux.tar.gz`
+## 3. Linux — `avastack-setup-2.45.0-linux.tar.gz`
 
 ```bash
-tar xzf avastack-setup-2.44.0-linux.tar.gz
-cd avastack-2.44.0-linux
+tar xzf avastack-setup-2.45.0-linux.tar.gz
+cd avastack-2.45.0-linux
 bash installer/install_avastack.sh
 ```
 
@@ -105,7 +105,7 @@ n'est visible **qu'en root**.
 > **État de cet installateur (à jour le 29/09/2026)** : le paquet Linux est
 > construit, son contenu est vérifié (62 fichiers, aucun `.so`/`.dll`, script
 > `install_avastack.sh` exécutable, fins de ligne UNIX, racine unique
-> `avastack-2.44.0-linux/`) **et il a été exécuté plusieurs fois EN RÉEL sur une
+> `avastack-2.45.0-linux/`) **et il a été exécuté plusieurs fois EN RÉEL sur une
 > machine Ubuntu 26.04 LTS** : installation, prérequis système, création du venv,
 > dépendances et lancement de l'application y sont validés. Restent à faire : le
 > test sur une machine **vierge** (sans Python ni paquets prérequis) et le
@@ -114,11 +114,11 @@ n'est visible **qu'en root**.
 
 ---
 
-## 3 bis. macOS — `avastack-setup-2.44.0-macos.tar.gz`
+## 3 bis. macOS — `avastack-setup-2.45.0-macos.tar.gz`
 
 ```bash
-tar xzf avastack-setup-2.44.0-macos.tar.gz
-cd avastack-2.44.0-macos
+tar xzf avastack-setup-2.45.0-macos.tar.gz
+cd avastack-2.45.0-macos
 bash installer/install_avastack.sh
 ```
 
@@ -290,7 +290,7 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
 
 ---
 
-## 8. Limites connues de la v2.44.0 (dites franchement)
+## 8. Limites connues de la v2.45.0 (dites franchement)
 
 - **Installateur Linux : TESTÉ EN RÉEL** — exécuté **plusieurs fois** sur une
   machine **Ubuntu 26.04 LTS** (installation, prérequis, venv, dépendances,
@@ -315,7 +315,7 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
 
 ## 9. Repli si régression
 
-Le repli de référence est la **v2.43.0**. Les installateurs des versions
+Le repli de référence est la **v2.44.0**. Les installateurs des versions
 antérieures restent à côté des nouveaux, dans `installer/windows/output/`,
 `installer/linux/output/` et `installer/macos/output/` : aucun nouveau
 installateur n'écrase une version précédente.
