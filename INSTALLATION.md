@@ -1,4 +1,4 @@
-# AVAStack — installation rapide (v2.40.0)
+# AVAStack — installation rapide (v2.41.0)
 
 AVAStack est un **live stacking** : il empile tes brutes **en temps réel**
 pendant l'acquisition (calibration dark/flat, alignement, rejet kappa-sigma,
@@ -8,7 +8,7 @@ passage aux **outils externes** (GraXpert, BlurXTerminator) sur un instantané.
 Il tourne sur **Windows, Linux et macOS**, et s'installe **dans ton profil** :
 aucun droit administrateur n'est nécessaire.
 
-Ce document accompagne la **release v2.40.0** (les deux installateurs y sont
+Ce document accompagne la **release v2.41.0** (les deux installateurs y sont
 attachés). Il ne remplace pas le `LISEZMOI.txt` que l'installateur copie à côté
 de l'application — celui-ci détaille **tous les réglages** de l'interface.
 
@@ -18,8 +18,8 @@ de l'application — celui-ci détaille **tous les réglages** de l'interface.
 
 | Plateforme | Fichier | Taille | SHA-256 |
 | --- | --- | --- | --- |
-| Windows (10/11, 64 bits) | `avastack-setup-2.40.0.exe` | 11,5 Mo | `39812D23DBB5D23E4314621C3CB9E30166C0969A15BE46017141630DDD0B1227` |
-| Linux (x86_64) | `avastack-setup-2.40.0-linux.tar.gz` | 552 Kio | `E89DF68B265F84E773DF441D9016A2EFD02963AC41EBBB9DB019D93CEE146EAC` |
+| Windows (10/11, 64 bits) | `avastack-setup-2.41.0.exe` | 11,5 Mo | `FC81DD442E85F2EAE6D0A9560A41BC4D5A3F3A9B97E163DCF12787BC07253BA9` |
+| Linux (x86_64) | `avastack-setup-2.41.0-linux.tar.gz` | 560 Kio | `16017928AE3587DFF4696B0E3F6005F738849F7BB8C32DD164C614660B055738` |
 | Documentation | `INSTALLATION.md` | ce fichier | — |
 
 Les artéfacts portent leur **numéro de version** : deux versions ne s'écrasent
@@ -30,7 +30,7 @@ jamais, et un installateur plus ancien peut rester à côté comme repli.
 
 ---
 
-## 2. Windows — `avastack-setup-2.40.0.exe`
+## 2. Windows — `avastack-setup-2.41.0.exe`
 
 1. **Lancer l'exécutable.** Windows peut afficher un avertissement
    SmartScreen (l'exécutable n'est pas signé) : « Informations
@@ -58,11 +58,11 @@ L'application fonctionne **sans aucune caméra** (mode « Dossier surveillé »,
 
 ---
 
-## 3. Linux — `avastack-setup-2.40.0-linux.tar.gz`
+## 3. Linux — `avastack-setup-2.41.0-linux.tar.gz`
 
 ```bash
-tar xzf avastack-setup-2.40.0-linux.tar.gz
-cd avastack-2.40.0-linux
+tar xzf avastack-setup-2.41.0-linux.tar.gz
+cd avastack-2.41.0-linux
 bash installer/install_avastack.sh
 ```
 
@@ -143,7 +143,7 @@ embarqué dans les installateurs (≈ 1,1 Go, licence CC-BY) : c'est la seule
   enregistrement `14692304`). Tu peux aussi déposer toi-même le fichier
   `siril_cat_healpix8_astro.dat` (ou `.bz2`) dans le dossier affiché.
 - **Spectres Gaia XP (48 morceaux)** : AVAStack **n'a pas encore de bouton pour
-  eux** (v2.40.0) — c'est le seul point qui demande Siril ou un téléchargement
+  eux** (v2.41.0) — c'est le seul point qui demande Siril ou un téléchargement
   manuel :
   - laisser **Siril** installer son catalogue SPCC local (scripts officiels) —
     il écrit les `siril_cat1_healpix8_xpsamp_<N>.dat` dans le dossier des
@@ -231,7 +231,7 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
 
 ---
 
-## 8. Limites connues de la v2.40.0 (dites franchement)
+## 8. Limites connues de la v2.41.0 (dites franchement)
 
 - L'**installateur Linux n'a pas encore été exécuté sur une vraie machine
   Linux** : sa rédaction et son contenu sont vérifiés, le premier essai reste à
@@ -244,7 +244,7 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
 
 ## 9. Repli si régression
 
-Le repli de référence est la **v2.38.11**. Sur la machine de développement, les
+Le repli de référence est la **v2.40.0**. Sur la machine de développement, les
 installateurs des versions antérieures restent à côté des nouveaux, dans
 `installer/windows/output/` et `installer/linux/output/` (dossier ignoré par
 git) : aucun nouveau installateur n'écrase une version précédente.
