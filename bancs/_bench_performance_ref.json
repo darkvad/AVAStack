@@ -1,0 +1,50 @@
+{
+  "calibration": [
+    7.802,
+    7.748
+  ],
+  "controles": {
+    "kappa_ecart_max": 0.0,
+    "kappa_rejets_ecart": 0,
+    "mean_appels_successifs_identiques": 0.0,
+    "winsorized_ecart_max": 0.0,
+    "winsorized_rejets_ecart": 0
+  },
+  "date": "2026-09-29T18:07:41",
+  "empreinte": {
+    "avastack": "2.42.0",
+    "numpy": "2.5.3",
+    "opencv": "5.0.0",
+    "plateforme": "Windows-11-10.0.26200-SP0",
+    "processeur": "Intel64 Family 6 Model 170 Stepping 4, GenuineIntel",
+    "python": "3.14.7",
+    "taille": [
+      2180,
+      3856
+    ]
+  },
+  "mesures": {
+    "add_kappa_etabli": 349.051,
+    "add_kappa_rgb": 989.609,
+    "add_kappa_warmup": 80.78,
+    "add_winsorized_etabli": 1835.592,
+    "align_orb": 413.903,
+    "align_triangles_seuls": 47.972,
+    "composite_mean_avec_canaux": 326.287,
+    "composite_moyennes": 94.136,
+    "detecter_etoiles_apercu": 15.028,
+    "detecter_etoiles_pleine_res": 27.73,
+    "histogrammes_deux_bandes_rgb": 34.3,
+    "mean_kappa_etabli": 58.816,
+    "mean_winsorized": 42.914,
+    "mesurer_seeing_apercu": 28.395,
+    "process_gamma_rgb": 103.125,
+    "process_saturation_rgb": 146.641,
+    "process_stf_mono": 29.247,
+    "process_stf_rgb": 72.148,
+    "resize_mono_pleine_res": 2.412,
+    "resize_rgb_pleine_res": 5.544,
+    "veralux_logd_apercu": 159.229
+  },
+  "note": "référence du jalon 79 (banc de performance)"
+}

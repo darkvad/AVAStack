@@ -10,27 +10,61 @@ dans le changelog du source et l'historique git.)
 ---
 
 
+- **CHANTIER PERFORMANCE ET RÉACTIVITÉ (jalon 79, EN COURS) — décisions d'Alain
+  du 29/09/2026.** But : le live plus rapide **sans qu'un seul pixel change.**
+  Ordre tranché par Alain : **A (instrument) → C-bis (réactivité des réglages
+  d'après-étirement) → B (cœur d'empilement)**, C (chaîne d'images) plus tard ;
+  **B4 garde les maths EXACTEMENT telles quelles** (médiane = moyenne des 2
+  valeurs centrales, MAD exact : seuls le tampon, la mise en place et le
+  parallélisme changent). GPU **clos** : mesuré, l'iGPU Intel partage la même
+  mémoire (2× au mieux, transfert compris) et la RTX n'est pas sur cette
+  machine.
+  - **① ÉTAPE A FAITE ET VALIDÉE (29/09/2026)** — banc NEUF
+    `bancs/_bench_performance.py` + référence machine
+    `bancs/_bench_performance_ref.json` (portable de dev). Il chronomètre
+    24 étapes du pipeline sur une séquence SYNTHÉTIQUE déterministe de 8,4 Mpx
+    (la taille de ta brute ; `--reel <dossier>` ajoute une vraie image de ton
+    dossier de test) : empilement kappa et winsorized, moyenne, composite HOO,
+    alignement ORB et triangles, étoiles/seeing, redimensionnement, chaîne
+    d'affichage (STF, gamma, saturation), les deux histogrammes. **Surtout, il
+    VÉRIFIE l'empilement** : les deux accumulations (kappa et winsorized, rejeu
+    du warmup compris) sont comparées à une réimplémentation numpy ÉCRITE DANS
+    LE BANC → **trois contrôles passent à l'écart ZÉRO** (moyennes identiques
+    au bit, rejets identiques). C'est ce garde-fou qui autorise à optimiser.
+  - **② LE BANC A DÛ ÊTRE ÉTALONNÉ — leçon à retenir : deux runs STRICTEMENT
+    identiques différaient de 10 à 20 %** (le premier, machine au repos, est le
+    plus rapide). D'où : mesures retenues au **MINIMUM** de N itérations (4 pour
+    les étapes lourdes, 10-20 pour les légères), écarts **NORMALISÉS par une
+    calibration machine** prise au début ET à la fin, et seuil d'alerte à
+    **25 %** (à 15 %, un run à blanc faisait crier six fausses « régressions »).
+    Contrôle repassé : « = » partout, ±10 %.
+  - **③ CE QU'IL DIT DÉJÀ (machine au repos, 8,4 Mpx) : `add` kappa 349 ms
+    installé (80 ms en warmup), `add` winsorized 1 836 ms, `mean` 59 ms, add
+    RGB 990 ms, composite HOO 326 ms, alignement ORB 414 ms / triangles 48 ms,
+    étoiles 28 ms (pleine rés.) et 15 ms (aperçu), aperçu d'affichage 72 ms
+    (STF RVB) / 113 ms (gamma) / 147 ms (saturation) / histogrammes 34 ms,
+    VeraLux 189 ms.** Diagnostic (mesuré, prototype à l'appui) : le coût n'est
+    pas dans les maths mais dans les **temporaires float64** (~15 tableaux de
+    67 Mo par frame) et dans l'absence de parallélisme (numpy est mono-thread :
+    4 fils sur des bandes de lignes donnent ×3,3 sur un simple `a + a`) ;
+    prototype `add` kappa préalloué/float32/4 fils : **325 → 51 ms, bit à bit
+    identique**.
+  - **④ PROCHAINE ÉTAPE : C-bis** (gamma/saturation/niveaux ne doivent plus
+    recalculer ni la chaîne d'étirement ni les histogrammes — mesuré : ~250 ms
+    par geste de souris aujourd'hui), **puis B**. Aucun essai réel demandé
+    avant la fin de la passe ; l'installateur sera reconstruit avant ton test.
+
+
 - **PASSE DE CLÔTURE (29/09/2026, soir) — v2.42.0 : INSTALLATEUR macOS, TES
   VALIDATIONS CONSIGNÉES ET LEÇONS REMONTÉES.** Trois choses, sans toucher au
   code de l'application (donc **même version 2.42.0**) :
-  - **① INSTALLATEUR macOS (jalon 78)** — `installer/macos/` : script
-    `install_avastack.sh` (app + venv dans
+  - **① INSTALLATEUR macOS (jalon 78)** — `installer/macos/` (script
+    `install_avastack.sh` + packer `build_avastack.py`) : app + venv dans
     `~/Library/Application Support/AVAStack/app`, lanceur `~/.local/bin/avastack`,
-    **bundle minimal** `~/Applications/AVAStack.app` = Info.plist + lanceur qui
-    pointe sur le venv, donc **pas de Python embarqué** et mise à jour sans
-    retoucher le bundle) et packer `build_avastack.py` →
-    `installer/macos/output/avastack-setup-2.42.0-macos.tar.gz` (**62 fichiers,
-    566 Kio**, SHA-256 `8f070116…cdaa23`). Prérequis dit et testé : un Python
-    **avec Tkinter** (python.org, ou Homebrew + `python-tk@3.13`) — le Python du
-    système n'en a pas ; le script **refuse** de s'installer hors macOS, fait le
-    **test de démarrage réel** (`import avastack.ui.app` dans le venv) et écrit un
-    `LISEZMOI.txt` dédié (lancement, ⬇ des données Gaia, caméras `*.dylib`,
-    dépannage, Gatekeeper, désinstallation). **ÉTAT DATÉ, sans exagération :
-    écrit, vérifié au banc et par exécution réelle de ses garde-fous (refus hors
-    macOS, `--aide`), mais PAS ENCORE EXÉCUTÉ SUR UN MAC** — banc NEUF
-    `bancs/_test_installeur_macos_jalon78.py` (26 vérifications : contenu du
-    paquet, fins de ligne UNIX, modes, aucun binaire, garde-fous présents,
-    exécution réelle sous le bash de Git Bash).
+    **bundle `.app` minimal** (Info.plist + lanceur, donc **pas de Python
+    embarqué**). Prérequis dit et testé : un Python **avec Tkinter**. **ÉTAT
+    DATÉ : écrit, vérifié par le banc `_test_installeur_macos_jalon78.py` et par
+    l'exécution réelle de ses garde-fous, mais PAS ENCORE EXÉCUTÉ SUR UN MAC.**
   - **② TES VALIDATIONS** — le **point 2 est TESTÉ ET VALIDÉ par ton essai**
     (« Réinitialiser l'empilement » puis nouvelle cible en mode dossier : le
     bloc « EN ATTENTE » de la v2.41.0 est donc clos et peut être supprimé) ; le
