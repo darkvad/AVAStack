@@ -113,6 +113,18 @@ dans le changelog du source et l'historique git.)
     veux aller plus loin (mesuré, non fait) : chemin ORB 378 ms (les triangles,
     40 ms, restent recommandés), médian winsorized 493 ms (le mur
     mathématique), geste de saturation 79 ms, `_hist_canaux` 35-50 ms.
+  - **⑪ ÉTAT DE FIN DE SESSION (29/09/2026, soir) — EN ATTENTE DE TON ESSAI.**
+    Tu réessaies **`installer/windows/output/avastack-setup-2.43.0.exe`**
+    (11 481 938 o, SHA-256 `17646C4B…52E16`) — soit par-dessus l'installation
+    existante, soit après désinstallation. **Aucun tag, aucune release** avant
+    ton retour ; la v2.43.0 reste non publiée. Dépôt : `origin/master` =
+    **`d053651`**, arbre propre, **8 commits** pour le jalon 79. Ce que tu peux
+    regarder (et qui ne concerne QUE la composition) : bouger un **gain**, une
+    case **SCNR / chroma / démagenta** en mode HOO/SHO → plus d'attente d'un
+    demi-seconde ; en mono/OSC simple, rien ne change (c'est normal, ces chemins
+    n'étaient pas concernés). Précédent essai (première version) : « déjà pas de
+    régression », différence non flagrante — **c'est cohérent avec des poses
+    longues** et c'est consigné tel quel.
   - **⑦ bis LEÇONS DU JALON REMONTÉES DANS CLAUDE.md (ton accord explicite,
     29/09/2026)** — section « Pièges », trois leçons : ① un **fichier de mémoire
     ne passe JAMAIS par un aller-retour PowerShell** (UTF-8 sans BOM lu en
