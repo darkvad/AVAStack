@@ -494,8 +494,10 @@ Pièges :
   (`%LOCALAPPDATA%\GraXpert\GraXpert\preferences.json`, clé `bge_ai_version` —
   ici `1.0.1`), pas forcément la plus récente du disque. Comme nos commandes par
   défaut ne passent pas `-ai_version`, le rendu dépend d'un réglage EXTERNE au
-  projet : **épingler `-ai_version <v>` dans la commande** pour un rendu
-  reproductible (et le noter : changer de modèle change le fond retiré).
+  projet. **DÉCISION D'ALAIN (29/09/2026) : ON N'ÉPINGLE PAS** — il veut
+  bénéficier **automatiquement des mises à jour de modèles** ; conséquence
+  assumée : si GraXpert change de modèle, le fond retiré peut changer sans qu'un
+  seul de nos fichiers ait bougé (c'est à SAVOIR, pas à corriger).
   ⚠ Le CLI **RÉÉCRIT ce `preferences.json` à chaque appel** (il y « stocke » les
   options reçues) : les réglages de l'interface GraXpert peuvent donc changer
   après un run d'AVAStack — sans effet sur notre rendu, qui passe toujours ses

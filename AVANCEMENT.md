@@ -219,6 +219,25 @@ dans le changelog du source et l'historique git.)
     résumé « ce qui change » + la doc d'installation complète, fichier de notes
     fabriqué HORS dépôt en UTF-8 sans BOM, `gh release create --notes-file` —
     procédure v2.42.0 respectée).
+  - **⑯ DÉCISIONS D'ALAIN APRÈS ESSAIS DE v2.44.0 (29/09/2026)** :
+    - **RAFALES DE 1 MINUTE** — ses essais montrent que c'est mieux ainsi
+      (cadence « toutes les 1 min ») : avec la v2.44.0 il n'y a plus qu'UNE passe
+      par rafale, le panneau est donc calme (10,5 s de calcul pour 60 s de
+      cycle). Rien à coder : c'est la combobox du jalon 42.
+    - **ON NE FIGE PAS `-ai_version`** : il préfère **suivre les mises à jour de
+      modèles GraXpert** (conséquence assumée : le fond retiré peut changer
+      silencieusement quand GraXpert change de modèle). Note CLAUDE.md corrigée.
+    - **PISTE À ÉTUDIER : l'inférence ONNX EN PROCESSUS** (point 2 de
+      l'explication donnée le 29/09/2026) — il l'a trouvée séduisante et demande
+      d'abord l'explication, puis éventuellement un **essai de faisabilité
+      borné** : charger `bge-ai-models/<v>/model.onnx` avec `onnxruntime` DANS
+      notre venv, mesurer l'inférence (CPU vs DirectML) et comparer le fond
+      obtenu à celui du CLI sur une de ses images. Enjeu mesuré : ~2,8 s FIXES
+      par appel × 3 couches = 8,3 s des 9,7 s que coûte GraXpert sur sa passe de
+      10,5 s (aperçu). ⚠ À dire franchement si on y va : ce n'est PAS « zéro
+      pixel changé » (réimplémentation, pas le même binaire) → comparaison
+      chiffrée + visuelle, REPLI automatique sur le CLI en cas d'échec, et le
+      modèle n'est JAMAIS redistribué (on lit celui de SON installation).
 
   - **⑦ bis LEÇONS DU JALON REMONTÉES DANS CLAUDE.md (ton accord explicite,
     29/09/2026)** — section « Pièges », trois leçons : ① un **fichier de mémoire
