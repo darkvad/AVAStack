@@ -13,8 +13,10 @@ dans le changelog du source et l'historique git.)
 - **JALON 80 (v2.44.0) — RENDU DÉCLENCHÉ EN FIN DE RAFALE : LIVRÉ, BANCS VERTS
   (détail en ⑬, plus bas).** Vérification demandée par Alain au même moment
   (« utilises-tu bien le modèle GraXpert 1.0.1 ? ») : OUI, c'est en ⑭.
-  **PROCHAINE ÉTAPE : tes essais réels sur v2.44.0 (paquets ci-dessous) ; la
-  release GitHub reste à publier si tu la veux.**
+  **RELEASE v2.44.0 PUBLIÉE (29/09/2026)** —
+  https://github.com/darkvad/AVAStack/releases/tag/v2.44.0 — tag annoté sur le
+  commit `f1193d7`, **trois** paquets + `INSTALLATION.md` attachés.
+  **PROCHAINE ÉTAPE : tes essais réels sur v2.44.0.**
   Ce jalon fait suite au **CHANTIER PERFORMANCE ET RÉACTIVITÉ (jalon 79, LIVRÉ en
   v2.43.0 — installeur Windows `avastack-setup-2.43.0.exe`, 11 481 938 o, SHA
   `17646C4B…`)**, dont le détail (①…⑫ ci-dessous) reste jusqu'au prochain
@@ -209,8 +211,14 @@ dans le changelog du source et l'historique git.)
       SHA-256 `1EC90CC9177F86802DD6C82D7A25AAC6A33E959FCB1718AA3B3DA717803334BC`
     - macOS `installer/macos/output/avastack-setup-2.44.0-macos.tar.gz` — 591 226 o,
       SHA-256 `ABA1E04FE814E088BE68B5397E32B4BFB79522F2197A1500975EDF47317A372C`
-    Commit de la passe : `4dfe57e` (code + banc + mémoires), poussé sur
-    `origin/master`. **Aucun tag, aucune release** (à décider).
+    Commit de la passe : `4dfe57e` (code + banc + mémoires) puis `0456607`
+    (paquets), `f1193d7` (INSTALLATION.md v2.44.0), poussés sur `origin/master`.
+    **TAG `v2.44.0`** (annoté, sur `f1193d7`) et **RELEASE PUBLIÉE** :
+    https://github.com/darkvad/AVAStack/releases/tag/v2.44.0 — assets :
+    les trois paquets ci-dessus **+ `INSTALLATION.md`** (notes de release =
+    résumé « ce qui change » + la doc d'installation complète, fichier de notes
+    fabriqué HORS dépôt en UTF-8 sans BOM, `gh release create --notes-file` —
+    procédure v2.42.0 respectée).
 
   - **⑦ bis LEÇONS DU JALON REMONTÉES DANS CLAUDE.md (ton accord explicite,
     29/09/2026)** — section « Pièges », trois leçons : ① un **fichier de mémoire
