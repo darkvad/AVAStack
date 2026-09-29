@@ -1347,7 +1347,12 @@ ce qui manquait n'était pas une correction mais une MESURE.
   le reste du système et le ramasse-miettes) et **normaliser** les écarts par une
   **calibration machine** prise **au DÉBUT et à la FIN** (`a + a` float32 sur une
   taille fixe) ; seuil tenable : **25 %** — un vrai gain du chantier se compte en
-  dizaines de pourcents. Deux corollaires appris le même jour : ① un banc de
+  dizaines de pourcents. LIMITE de cette calibration, mesurée le même jour : elle
+  ne couvre que les opérations **bornées par la mémoire** — sur un portable
+  freiné par la chaleur, une mesure de CALCUL dérive SEULE à calibration
+  identique (`align_orb` 409 → 607 ms, +48 %, calibration inchangée à 7,5 ms).
+  D'où : comparer deux passes prises dans le MÊME état (machine au repos quelques
+  minutes) et ne croire que les gros mouvements. Deux corollaires appris le même jour : ① un banc de
   performance ne vaut que par son **garde-fou de correction** — celui du jalon 79
   compare l'empilement produit à une réimplémentation numpy ÉCRITE DANS LE BANC,
   écart ZÉRO exigé ; ② **mesurer AVAStack FERMÉ** : les premiers chiffres du

@@ -46,6 +46,14 @@ calibration machine prise au début et à la fin (cf. `_calibrer`) : sans ces
 deux précautions, deux runs du même code montraient déjà ±25 % d'écart, donc de
 fausses régressions. Comparer deux passes : lancer le banc avant, puis après la
 modification.
+
+LIMITE CONNUE DE LA CALIBRATION (mesurée le 29/09/2026) : elle ne normalise que
+les opérations BORNÉES PAR LA MÉMOIRE. Sur un portable freiné par la chaleur,
+une mesure de CALCUL dérive toute seule à calibration identique — constaté :
+`align_orb` 409 → 607 ms (+48 %) et `mesurer_seeing_apercu` 31 → 49 ms avec la
+même calibration (7,5 ms). D'où la règle : comparer deux passes prises dans le
+MÊME état (machine au repos quelques minutes), et ne croire que les gros
+mouvements — les gains du jalon 79 se comptent en dizaines de pourcents.
 """
 # Racine du projet (celle qui porte AVAStack.py) dans sys.path : les bancs
 # vivent désormais dans bancs/ (ou bancs/cameras/) et non plus à côté de
@@ -407,6 +415,8 @@ def _ref_winsorized(frames, k=K_KAPPA, warmup=WARMUP, window=FENETRE):
 # --- Sections de mesure -----------------------------------------------------
 def _sec_coeur(frames, it):
     h, w = frames[0].shape
+    it = max(it, 6)                  # plus d'itérations : le minimum est plus
+                                     # stable (mesuré : ±25 % à 4 itérations)
     print(f"\n[2] CŒUR D'EMPILEMENT — mono {w}x{h} "
           f"({h * w / 1e6:.1f} Mpx), k={K_KAPPA}, fenêtre {FENETRE}")
     sk = LiveStacker((h, w), k=K_KAPPA, method="kappa", window=FENETRE)
@@ -435,8 +445,23 @@ def _sec_composite(frames, it):
     for role in ("Ha", "O3"):
         for f in frames[:WARMUP]:
             comp.add(f, role)
-    chrono("composite_mean_avec_canaux", lambda: comp.mean_avec_canaux(), it)
-    chrono("composite_moyennes", lambda: comp.moyennes(), it)
+
+    def _vider_memoires():
+        """Force le calcul COMPLET (mémo du composite, bornes figées, moyennes
+        de rôle). La mesure SANS vidage est celle d'un GESTE sur un réglage de
+        couleur : le composite brut est alors réutilisé au lieu d'être
+        réassemblé (c'est tout l'objet du jalon 79)."""
+        comp._memo_compo = None
+        comp._bornes_cache = None
+        for s in comp.stackers.values():
+            s._memo_moy = None
+
+    chrono("composite_mean_complet",
+           lambda: (_vider_memoires(), comp.mean_avec_canaux()), it)
+    chrono("composite_mean_geste", lambda: comp.mean_avec_canaux(), it)
+    chrono("composite_moyennes_complet",
+           lambda: (_vider_memoires(), comp.moyennes()), it)
+    chrono("composite_moyennes_geste", lambda: comp.moyennes(), it)
 
 
 def _sec_alignement(frames, it):
@@ -600,6 +625,50 @@ def _sec_memoire(apercu):
     return ok
 
 
+def _sec_memo_composite(frames):
+    """CONTRÔLES DE LA MÉMOIRE DU COMPOSITE (jalon 79) : le composite brut
+    mémoïsé doit être IDENTIQUE au composite recalculé, ne PAS dépendre des
+    corrections de couleur (c'est ce qui rend un geste instantané) et être
+    invalidé par toute nouvelle frame."""
+    print("\n[7 ter] MÉMOIRE DU COMPOSITE (mode composition)")
+    c = CompositeStacker("HOO", k=K_KAPPA, method="kappa", window=FENETRE)
+    for role in ("Ha", "O3"):
+        for f in frames[:3]:
+            c.add(f, role)
+    ok = True
+    comp1, canaux1 = c.mean_avec_canaux(corrections=False)
+    if comp1 is None:
+        return _verdict("composite disponible", False, "banc non concluant")
+    comp2, canaux2 = c.mean_avec_canaux(corrections=False)   # servi par la mémo
+    ecart = float(np.max(np.abs(comp1 - comp2)))
+    CONTROLES["compo_memo_ecart"] = ecart
+    ok &= _verdict("composite mémoïsé identique au composite calculé",
+                   ecart == 0.0, f"écart max {ecart:.3g}")
+
+    ec = float(np.max(np.abs(canaux1["Ha"] - canaux2["Ha"])))
+    meme = canaux1["Ha"] is canaux2["Ha"]
+    CONTROLES["compo_memo_couches_ecart"] = ec
+    ok &= _verdict("couches identiques ET réutilisées (moyenne mémoïsée)",
+                   ec == 0.0 and meme,
+                   f"écart max {ec:.3g}, même objet : {meme}")
+
+    c.gains = {"R": 1.1, "G": 1.0, "B": 0.9}       # réglage APRÈS composition
+    comp3, _ = c.mean_avec_canaux(corrections=False)
+    e3 = float(np.max(np.abs(comp1 - comp3)))
+    CONTROLES["compo_brut_independant_des_gains"] = e3
+    ok &= _verdict("le composite BRUT ne dépend pas des gains", e3 == 0.0,
+                   f"écart max {e3:.3g} — un geste de gain réutilise "
+                   "l'assemblage")
+
+    c.add(frames[3], "Ha")                        # NOUVELLE frame
+    comp4, _ = c.mean_avec_canaux(corrections=False)
+    invalide = not np.array_equal(comp3, comp4)
+    CONTROLES["compo_memo_invalidee_par_frame"] = 0 if invalide else 1
+    ok &= _verdict("une nouvelle frame invalide la mémoire du composite",
+                   invalide, "aucun composite périmé ne peut être affiché")
+    return ok
+
+
 def _sec_reel(dossier, it):
     """Mesures sur une VRAIE image du dossier (facultatif, `--reel`) : la
     densité d'étoiles et le rapport signal/bruit réels ne se devinent pas."""
@@ -686,6 +755,7 @@ def main():
     _sec_affichage(frames, apercu, it)
     ok = _sec_controles(frames)
     ok &= _sec_memoire(apercu)
+    ok &= _sec_memo_composite(frames)
     if dossier_reel:
         _sec_reel(dossier_reel, it)
     cal2 = _calibrer()

@@ -338,8 +338,10 @@ class LiveStacker:
         self._nbuf = 0
         self._rejeu = False    # rejeu du warmup déjà effectué ?
         # Jalon 79 : tampons de travail préalloués (cf. `_tampons`) — libérés
-        # ici, réalloués à la première frame de la nouvelle géométrie.
+        # ici, réalloués à la première frame de la nouvelle géométrie ; et la
+        # moyenne mémoïsée (cf. `_moyenne_brute`) n'a plus cours.
         self._moy = self._sig = self._dif = self._pix = self._masq = None
+        self._memo_moy = None
         self._poly = None      # intersection géométrique des zones couvertes
         self.cadre = None      # rectangle (y0, x0, y1, x1) du recadrage
         self._wb_cache = None  # (clé, gains) de l'équilibrage des canaux
@@ -515,7 +517,7 @@ class LiveStacker:
         en composition multi-rôles, les corrections sont portées par la façade."""
         if self.n == 0:
             return None
-        img = (self.sum / np.maximum(self.wsum, 1e-9)).astype(np.float32)
+        img = self._moyenne_brute()
         if corrections:
             img = _gains_canaux(img, self.gains)   # gains R/G/B (SPCC, OSC)
             img = self._equilibrer(img)
@@ -527,6 +529,26 @@ class LiveStacker:
         else:                                      # (H, W) ou (H, W, C)
             crop = img[y0:y1, x0:x1, ...]
         return self._recaler_fit(crop) if corrections else crop
+
+    def _moyenne_brute(self):
+        """Moyenne pondérée de l'accumulation (sum / wsum), en float32 —
+        MÉMOÏSÉE sur `n` (jalon 79).
+
+        POURQUOI : `mean()` est appelée plusieurs fois pour UNE MÊME frame (fin
+        de boucle du worker, couches du solveur, sauvegardes, gestes de
+        l'interface) et le résultat ne change qu'à l'arrivée d'une frame — `n`
+        est donc la clé exacte. Le recadrage reste une VUE (`y0:y1, x0:x1`) et
+        les corrections gardent leurs propres caches.
+
+        CONTRAT : l'image rendue peut être PARTAGÉE entre plusieurs appelants
+        (elle n'est jamais modifiée en place par aucun d'eux — elle est lue,
+        recadrée en vue, recopiée par `cv2.resize` ou transmise à `composer`).
+        Le cache est vidé par `reset()`."""
+        if self._memo_moy is not None and self._memo_moy[0] == self.n:
+            return self._memo_moy[1]
+        img = (self.sum / np.maximum(self.wsum, 1e-9)).astype(np.float32)
+        self._memo_moy = (self.n, img)
+        return img
 
     def _recaler_fit(self, img):
         """Recalage colorimétrique « Linear Fit » (jalon 54) : R et B

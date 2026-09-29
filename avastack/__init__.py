@@ -20,7 +20,7 @@ ou python -m avastack.
 AVASTACK_VERSION = "2.43.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
-# v2.43.0 : CHANTIER PERFORMANCE ET RÉACTIVITÉ (jalon 79) — LES TROIS ÉTAPES.
+# v2.43.0 : CHANTIER PERFORMANCE ET RÉACTIVITÉ (jalon 79) — TOUT EST LIVRÉ.
 #   Demandes d'Alain (29/09/2026) : « optimiser les performances (surtout en
 #   live) … maintenant qu'on a une version stable, on pourrait comparer les
 #   temps et surtout la non-régression », puis « regarde aussi certains réglages
@@ -69,7 +69,28 @@ AVASTACK_VERSION = "2.43.0"
 #       mono 8,4 Mpx, ≈ +725 Mo en RGB 25 Mpx, PAR stacker — une composition en
 #       tient un par rôle) ; ils sont libérés par `reset()` et alloués à la
 #       première frame. C'est le prix de la vitesse, il est DIT.
-#   (D) LA RÉACTIVITÉ DES RÉGLAGES D'APRÈS ÉTIREMENT — mesuré d'abord
+#   (D) LE COMPOSITE MULTI-RÔLES — même diagnostic, même méthode. Mesuré (HOO,
+#       2 rôles de 8,4 Mpx) : `composer()` 225 ms, `moyennes()` 107 ms,
+#       `mean_avec_canaux()` 342 ms et **522 ms avec les corrections de couleur**
+#       — appelé jusqu'à TROIS fois par frame (fin de boucle du worker, couches
+#       du solveur, sauvegardes) et à chaque geste « donnée » (gain, SCNR,
+#       chroma, cases live). CE QUI COÛTAIT N'ÉTAIT PAS LES MATHS mais des
+#       COPIES INUTILES : `.astype(np.float32)` sur des tableaux DÉJÀ en float32
+#       (numpy copie quand même), `np.mean` d'une liste d'UN SEUL rôle (une
+#       copie de plus), et des bornes de normalisation recalculées à chaque
+#       appel alors que le paramètre `bornes` existe pour les FIGER. Livré :
+#       copies supprimées (résultat identique AU BIT, mesuré), bornes figées par
+#       frame (`_bornes_par_role`), moyenne de rôle mémoïsée sur `n`
+#       (`LiveStacker._moyenne_brute`), composite BRUT mémoïsé
+#       (`CompositeStacker._memo_compo`) — clé = accumulation, cadre,
+#       composition et mode L, JAMAIS les corrections de couleur : un geste de
+#       gain RÉUTILISE donc l'assemblage au lieu de le refaire.
+#       RÉSULTAT MESURÉ : premier calcul 298 → **163 ms**, GESTE 298 → **0 ms**,
+#       `mean()` répété 43 → 0 ms. Contrôles : composite mémoïsé identique au
+#       composite recalculé (écart 0), couches identiques ET réutilisées,
+#       composite brut INDÉPENDANT des gains, invalidation par toute nouvelle
+#       frame.
+#   (E) LA RÉACTIVITÉ DES RÉGLAGES D'APRÈS ÉTIREMENT — mesuré d'abord
 #       (aperçu couleur 1600x904) : AUCUN de ces réglages ne relançait la chaîne
 #       LOURDE (la clé du solveur VeraLux ne contient ni gamma, ni saturations,
 #       ni barres de niveaux : ni GraXpert, ni débruitage, ni VeraLux ne
@@ -91,7 +112,7 @@ AVASTACK_VERSION = "2.43.0"
 #       Banc NEUF `bancs/_test_perf_reactivite_jalon79.py` (18 vérifications,
 #       interface réelle : les curseurs sont déclenchés comme au clic, les
 #       compteurs enveloppent le code testé).
-#   (E) NON-RÉGRESSION — **toute la série de bancs a été rejouée, 55 verts** :
+#   (F) NON-RÉGRESSION — **toute la série de bancs a été rejouée, 55 verts** :
 #       jalon 6 (sommes/poids IDENTIQUES à l'ancien algorithme, `array_equal`,
 #       et résultat inchangé quel que soit `_CHUNK_PX`), alignements 13 et 15,
 #       re-stack 16/18/20, composition 19 (UI et worker compris), crop, calib

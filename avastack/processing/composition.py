@@ -156,27 +156,39 @@ def bornes_normalisation(img, lo_pct=0.25, hi_pct=99.7):
 def normaliser(img, lo=None, hi=None, lo_pct=0.25, hi_pct=99.7):
     """Normalisation LINÉAIRE [lo..hi] → 0..1, SANS clip : les étoiles
     brillantes restent > 1 (l'empilement reste linéaire, convention du
-    projet). bornes figées = composite stable entre deux frames."""
+    projet). bornes figées = composite stable entre deux frames.
+
+    Jalon 79 : plus de `.astype(np.float32)` final — c'était une COPIE
+    INUTILE (numpy copie même quand le dtype est déjà le bon) : `a` est
+    float32 et lo/hi sont des scalaires Python, l'expression est donc DÉJÀ en
+    float32, valeur identique au bit (mesuré : `composer('HOO')` 225 → 82 ms)."""
     a = np.asarray(img, dtype=np.float32)
     if lo is None or hi is None:
         lo, hi = bornes_normalisation(a, lo_pct, hi_pct)
-    return ((a - lo) / (hi - lo)).astype(np.float32)
+    return (a - lo) / (hi - lo)
 
 
 # ------------------------------------------------------------- composer ---
 def _channel_de(norm, roles, forme):
     """Moyenne des rôles normalisés alimentant un canal ; absent → zéros
-    (canal neutre, la composition ne plante jamais sur un dossier vide)."""
+    (canal neutre, la composition ne plante jamais sur un dossier vide).
+
+    Jalon 79 : ① un SEUL rôle est rendu TEL QUEL (`np.mean` d'une liste d'un
+    élément ne faisait que copier) ; ② plus de `.astype` final (copie inutile :
+    le résultat est déjà float32). Le tableau rendu est partagé avec `norm` —
+    il n'est jamais modifié (`np.stack` recopie)."""
     dispo = [norm[r] for r in roles if norm.get(r) is not None]
     if not dispo:
         return np.zeros(forme, np.float32)
-    return np.mean(dispo, axis=0).astype(np.float32)
+    if len(dispo) == 1:
+        return dispo[0]
+    return np.mean(dispo, axis=0)
 
 
 def _luma(rgb):
     """Luminance pondérée d'un composite (H, W, 3)."""
     return (_POIDS_LUMA[0] * rgb[..., 0] + _POIDS_LUMA[1] * rgb[..., 1]
-            + _POIDS_LUMA[2] * rgb[..., 2]).astype(np.float32)
+            + _POIDS_LUMA[2] * rgb[..., 2])
 
 
 def _echelle_commune(canaux, spec, lo_pct, hi_pct):
@@ -492,6 +504,10 @@ class CompositeStacker:
         self._shape = None                # forme des canaux (posée au 1er add)
         self._poly = None                 # intersection GLOBALE des couvertures
         self.cadre = None                 # cadre commun (y0, x0, y1, x1)
+        # Jalon 79 : mémoire du COMPOSITE BRUT (avant corrections de couleur) et
+        # bornes de normalisation figées — cf. `mean_avec_canaux`.
+        self._memo_compo = None           # (clé, composite)
+        self._bornes_cache = None         # (n, {rôle: (lo, hi)})
 
     # -- attributs répercutés sur tous les stackers (existants ET futurs) ---
     @property
@@ -606,6 +622,9 @@ class CompositeStacker:
         self._wb_cache_comp = None        # équilibrage des canaux du composite
                                           # (v2.34.5 : la case n'agissait qu'en
                                           # mono — no-op sur un rôle 2D)
+        self._memo_compo = None           # jalon 79 : composite mémoïsé (clé → n,
+                                          # cadre, composition, mode L, option)
+        self._bornes_cache = None         # jalon 79 : bornes figées par frame
 
     # -- lecture du composite -------------------------------------------------
     def _recadrer(self, img):
@@ -692,11 +711,28 @@ class CompositeStacker:
         canaux = self.moyennes(recadre=recadre)
         if not canaux:
             return None, None
-        try:
-            comp = composer(canaux, self.composition, mode_l=self.mode_l,
-                            normalisation_commune=self.normalisation_commune)
-        except ValueError:
-            comp = None                   # formes hétérogènes (ne doit pas
+        # Jalon 79 : le composite BRUT (avant corrections de couleur) est
+        # MÉMOÏSÉ — il ne dépend que de l'accumulation des rôles et de la
+        # composition, JAMAIS des corrections (gains, équilibrage, recalage) :
+        # bouger un gain réutilise donc l'assemblage au lieu de le refaire
+        # (mesuré : 225 ms pour HOO sur 8,4 Mpx, et jusqu'à trois fois dans la
+        # même frame). Même raison pour les bornes de normalisation, FIGÉES
+        # pour la frame (`composer` les recalculerait à chaque appel — le
+        # paramètre `bornes` existe pour ça et n'était pas utilisé).
+        n = sum(s.n for s in self.stackers.values())
+        cle = (n, bool(recadre), self.composition, self.mode_l,
+               bool(self.normalisation_commune))
+        if self._memo_compo is not None and self._memo_compo[0] == cle:
+            comp = self._memo_compo[1]
+        else:
+            try:
+                comp = composer(canaux, self.composition,
+                                bornes=self._bornes_par_role(canaux, n),
+                                mode_l=self.mode_l,
+                                normalisation_commune=self.normalisation_commune)
+            except ValueError:
+                comp = None               # formes hétérogènes (ne doit pas
+            self._memo_compo = (cle, comp)
         # Jalon 58b/chantier 24-09 : ÉQUILIBRAGE DES CANAUX (auto, jalon 13)
         # sur le COMPOSITE, puis RECALAGE « Linear Fit » — et, en amont, les
         # GAINS (manuels × SPCC/Gaia). BUG CORRIGÉ (constat Alain, 24/09/2026) :
@@ -720,6 +756,20 @@ class CompositeStacker:
         if comp is not None and corrections and recadre:
             comp = self._appliquer_corrections(comp)
         return comp, canaux
+
+    def _bornes_par_role(self, canaux, n):
+        """Bornes (lo, hi) de normalisation de chaque rôle, FIGÉES pour la frame
+        courante (jalon 79) : `composer()` les recalcule sinon à chaque appel,
+        alors qu'elles ne dépendent que de l'accumulation (donc de `n`) — c'est
+        pour cela que le paramètre `bornes` existe. Les VALEURS sont celles
+        d'avant, au bit près : même fonction `bornes_normalisation`, appelée une
+        fois par frame au lieu de deux à quatre fois."""
+        if self._bornes_cache is not None and self._bornes_cache[0] == n:
+            return self._bornes_cache[1]
+        bornes = {r: bornes_normalisation(a) for r, a in canaux.items()
+                  if a is not None}
+        self._bornes_cache = (n, bornes)
+        return bornes
 
     def _appliquer_corrections(self, comp):
         """Chaîne des corrections de couleur du composite (chantier

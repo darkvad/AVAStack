@@ -85,12 +85,31 @@ dans le changelog du source et l'historique git.)
     ignoré (le paquet apparaissait comme « non suivi ») — c'est réparé, et les
     artefacts ne partent jamais dans le dépôt. **Aucun tag, aucune release :
     la v2.43.0 n'est pas publiée** (elle attend ton essai réel).
-  - **⑦ PROCHAINE ÉTAPE — RIEN À CODER EN ATTENTE DE TA PAROLE : TU ESSAIES EN
-    RÉEL** (session live : fluidité, gestes gamma/saturation, empilement
-    identique à avant). Ce qui resterait à optimiser, si tu le veux (mesuré,
-    non fait) : `composite_mean_avec_canaux` 296 ms (percentiles par rôle),
-    `mean()` 44 ms, chemin ORB 377 ms (les triangles, 39 ms, restent le chemin
-    recommandé), winsorized 570 ms (mur du médian), geste de saturation 74 ms.
+  - **⑧ LE COMPOSITE MULTI-RÔLES FAIT AUSSI (29/09/2026, ton accord)** — même
+    diagnostic, même méthode, **maths inchangées**. Ce qui coûtait n'était pas
+    l'assemblage mais des **copies inutiles** (`.astype(float32)` sur des
+    tableaux déjà float32, `np.mean` d'une liste d'un seul rôle, bornes de
+    normalisation recalculées à chaque appel). Livré : copies supprimées,
+    bornes **figées par frame**, **moyenne de rôle mémoïsée** sur `n`, et
+    **composite brut mémoïsé** (clé = accumulation/cadre/composition/mode L,
+    **jamais** les corrections de couleur → un geste de gain réutilise
+    l'assemblage). **MESURÉ (HOO, 2 rôles de 8,4 Mpx) : premier calcul
+    298 → 163 ms, geste 298 → 0 ms, `mean()` répété 43 → 0 ms.** Quatre
+    contrôles à écart 0 dans le banc (composite mémoïsé = recalculé, couches
+    réutilisées, composite brut indépendant des gains, invalidation par
+    nouvelle frame). **55 bancs rejoués verts** + 11 bancs caméras.
+  - **⑨ INSTALLATEURS v2.43.0 RECONSTRUITS UNE SECONDE FOIS** après ce
+    chantier (le code a changé : la règle « rebuilder avant tout essai réel »
+    s'applique à nouveau — mêmes noms de fichiers, aucune release publiée).
+    **TON ESSAI DE LA v2.43.0 (première version) : « déjà pas de régression »**
+    ✔, avec ton constat honnête : **la différence n'est pas flagrante** — normal
+    sur des poses longues (le processeur n'était pas le facteur limitant) ;
+    les gains se voient sur les gestes (~137 → ~30 ms), sur le winsorized
+    (1,7 → 0,5 s) et sur les sources rapides (~1,6 → 5 images/s).
+  - **⑩ PROCHAINE ÉTAPE — RIEN À CODER EN ATTENTE DE TA PAROLE.** Si un jour tu
+    veux aller plus loin (mesuré, non fait) : chemin ORB 378 ms (les triangles,
+    40 ms, restent recommandés), médian winsorized 493 ms (le mur
+    mathématique), geste de saturation 79 ms, `_hist_canaux` 35-50 ms.
   - **⑦ bis LEÇONS DU JALON REMONTÉES DANS CLAUDE.md (ton accord explicite,
     29/09/2026)** — section « Pièges », trois leçons : ① un **fichier de mémoire
     ne passe JAMAIS par un aller-retour PowerShell** (UTF-8 sans BOM lu en
