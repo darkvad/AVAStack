@@ -98,6 +98,21 @@ dans le changelog du source et l'historique git.)
     --notes-file`) et `INSTALLATION.md` remplacé en pièce jointe (`gh release
     upload --clobber`, 14 930 o). **Aucun code touché** : version toujours 2.41.0,
     installateurs **non reconstruits** (SHA-256 inchangés).
+  - **DÉPÔT PUBLIC + FIN DES CITATIONS NOMINATIVES (29/09/2026, à ta demande)** :
+    le dépôt est **public** (licence MIT) et la consigne est de **ne plus te citer
+    dans les publications** (« testé sur la machine d'Alain » est de trop). Fait :
+    les trois mentions « dépôt **privé** » (`INSTALLATION.md` § 1, § 8, § 10) sont
+    devenues « **public** (licence MIT) », et **12 citations nominatives** ont été
+    neutralisées dans les documents publics — `INSTALLATION.md` (« exécuté sur une
+    machine **Ubuntu 26.04 LTS** »), `installer/README.md`,
+    `installer/linux/install_avastack.sh`, `installer/linux/build_avastack.py`,
+    `installer/windows/avastack.iss`, `installer/windows/build_avastack.ps1`
+    (« décision/consigne **de projet** », « par l'utilisateur »). Règle écrite
+    dans **CLAUDE.md** (conventions) et entrée d'état faite dans « Portage Linux ».
+    Les releases `v2.41.0` **et** `v2.40.0` ont été **rééditées** (notes +
+    `INSTALLATION.md` joint) pour retirer la mention « privé » ; les **artefacts
+    binaires ne sont PAS reconstruits** (seuls des commentaires ont changé — leurs
+    SHA-256 restent ceux publiés).
 
 - **PASSE PRÉCÉDENTE (28/09/2026, soir) — AVAStack v2.40.0 : ASTROMÉTRIE SUR TA CAMÉRA
   OSC (NGC 7023 RÉSOLU) ET SPCC OUVERTE AU CAPTEUR COULEUR.** Tes deux constats
@@ -448,8 +463,9 @@ dans le changelog du source et l'historique git.)
   **DEUX** installateurs (Windows 11 463 956 o, Linux 564 997 o) **ET** la
   nouvelle documentation `INSTALLATION.md` (installation rapide Windows/Linux,
   puis la préparation des données Siril/Gaia : catalogue astrométrique, 48
-  morceaux de spectres, base de profils SPCC). Le dépôt étant privé, la release
-  l'est aussi. L'installateur v2.39.0 n'a pas été construit (version dépassée) —
+  morceaux de spectres, base de profils SPCC). Le dépôt étant **public** depuis
+  le 29/09/2026, la release l'est aussi. L'installateur v2.39.0 n'a pas été
+  construit (version dépassée) —
   **repli si régression : v2.38.11**. **CLÔTURE DU 28/09/2026 : rien en attente de
   ton côté** — les deux propositions de fin de session (bouton « ⬇ spectres » des
   48 morceaux Gaia XP, `INSTALLATION.md` embarqué dans les paquets) ont été
@@ -758,8 +774,8 @@ dans le changelog du source et l'historique git.)
   (il se construit en 9 s, l'artefact fait ~11,5 Mo).
 - **RELEASES GITHUB : `gh release create vX.Y.Z --title <titre> --notes-file <fichier>
   --target master <les 2 installateurs> INSTALLATION.md`** — `gh` est installé et
-  authentifié sur ce poste (compte `darkvad`, portée `repo`, dépôt PRIVÉ : la
-  release l'est donc aussi). **Les notes de la release SONT la doc
+  authentifié sur ce poste (compte `darkvad`, portée `repo` ; **dépôt PUBLIC
+  depuis le 29/09/2026** — la release l'est donc aussi). **Les notes de la release SONT la doc
   d'installation** (`INSTALLATION.md` précédé d'un court résumé « ce qui
   change ») : elle se lit directement sur la page de la release, et le même
   fichier est joint en pièce. Les installateurs des versions précédentes ne

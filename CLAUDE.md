@@ -31,10 +31,14 @@ le code sans repli — contrairement a la regle anterieure « Windows
 uniquement » qui n est plus valable.
 
 **Dépôt distant** : `origin` = https://github.com/darkvad/AVAStack.git
-(GitHub, créé le 15/09/2026). Branche unique `master`, poussée et en suivi
-(`git push` seul suffit, pas besoin de préciser origin/master). Aucun
-fichier sensible ou volumineux n'est suivi (ni config.json, ni venv, ni
-build/dist) — garder ainsi lors des futurs ajouts au `.gitignore`.
+(GitHub, créé le 15/09/2026, **PUBLIC depuis le 29/09/2026** — licence MIT).
+Branche unique `master`, poussée et en suivi (`git push` seul suffit, pas
+besoin de préciser origin/master). Aucun fichier sensible ou volumineux n'est
+suivi (ni config.json, ni venv, ni build/dist) — garder ainsi lors des futurs
+ajouts au `.gitignore` ; **conséquence du passage en PUBLIC** : rien de
+personnel ne doit entrer dans le dépôt non plus (les `.dll`/`.so` constructeurs
+de la racine ne sont PAS suivis : garder ainsi), et **les documents publics ne
+citent jamais le mainteneur** (cf. « Conventions non-négociables »).
 
 ## AVANCEMENT.md — mémoire de session (court terme)
 
@@ -192,6 +196,16 @@ code est DÉJÀ multiplateforme (chemins de config par OS, `compat.ZWO_DLL_NAME`
 le chantier restant est l'INSTALLATION. Éléments vérifiés le 27/09/2026 (CLI
 installé, documentations et pages constructeurs) :
 
+- **ÉTAT RÉEL (29/09/2026)** : l'**installateur Linux a été exécuté plusieurs
+  fois** sur une machine **Ubuntu 26.04 LTS** — installation, prérequis, venv,
+  dépendances et lancement validés en réel, l'application y étant employée en
+  séance (astrométrie, SPCC, GraXpert). La documentation affirmait le contraire
+  en **trois** endroits (`INSTALLATION.md` § 3 et § 8, `installer/README.md`) :
+  **une affirmation d'ÉTAT doit être DATÉE et corrigée dès qu'elle est démentie —
+  et vérifiée jusque dans les releases DÉJÀ PUBLIÉES** (notes et pièces jointes
+  ont dû être rééditées pour `v2.41.0` *et* `v2.40.0`). Restent à faire : machine
+  **vierge** (sans Python ni paquets prérequis) et **test matériel caméras** sous
+  Linux (option `--cameras`).
 - **Prérequis LINUX (ce ne sont PAS des DLL)** : `python3` ≥ 3.10 +
   `python3-venv` + **`python3-tk`** (Tkinter n'existe PAS sur pip : c'est LA
   différence de fond avec Windows), `libgl1` et `libglib2.0-0` (roues
@@ -248,6 +262,17 @@ installé, documentations et pages constructeurs) :
 
 ## Conventions non-négociables
 
+- **PUBLICATIONS : jamais de citation nominative du mainteneur** (consigne du
+  29/09/2026, dépôt passé en public). Tout document qui SORT de l'atelier —
+  `INSTALLATION.md`, `installer/**` (scripts et commentaires compris),
+  `LISEZMOI*`, notes de release, futur README — écrit les faits SANS nom propre :
+  « testé en réel sur une machine Ubuntu 26.04 LTS », « validation utilisateur »,
+  « décision de projet ». Les mémoires INTERNES (CLAUDE.md, AVANCEMENT.md) et les
+  commentaires du CODE gardent le style d'origine (constats datés, nom du
+  mainteneur) : la règle vise ce qui est PUBLIÉ, pas la mémoire.
+  Corollaire : une affirmation d'état (« pas encore testé ») est TOUJOURS DATÉE,
+  et une release **déjà publiée** se corrige aussi (notes + pièces jointes) quand
+  elle devient fausse — l'état publié ne doit jamais mentir.
 - Commentaires et docstrings **en français**, cohérents avec l existant.
 - Toute modification d `AVAStack.py` : bump `AVASTACK_VERSION`
   + entrée de changelog en tête de fichier expliquant le **constat réel** qui

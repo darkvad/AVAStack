@@ -9,8 +9,8 @@ PORTE la version, jamais un nom figé.
 
 Contenu du paquet : l'application (`AVAStack.py` + package `avastack/`), les
 OUTILS DE DIAGNOSTIC MATÉRIEL caméra (`bancs/cameras/_diag_*.py` — les SEULS
-bancs embarqués, décision d'Alain du 27/09/2026 : « l'installation ne contient
-que des outils réellement utilisables par moi » ; les bancs de RÉGRESSION
+bancs embarqués, décision de projet du 27/09/2026 : « l'installation ne contient
+que des outils réellement utilisables par l'utilisateur ; les bancs de RÉGRESSION
 `_test_*.py`, à SDK factices, sont des outils de DEV et restent au dépôt),
 `requirements.txt`, `veralux_core_headless.py`, et l'installateur
 (`installer/install_avastack.sh`, `installer/common/avastack_setup.py`,
@@ -37,7 +37,7 @@ import tarfile
 MOTIF_VERSION = re.compile(r'^AVASTACK_VERSION\s*=\s*"([^"]+)"', re.M)
 FICHIERS_RACINE = ("AVAStack.py", "requirements.txt", "veralux_core_headless.py")
 # Bancs embarqués : les OUTILS DE DIAGNOSTIC MATÉRIEL caméra seulement
-# (motif `_diag_*.py`), exactement comme `avastack.iss` — décision d'Alain du
+# (motif `_diag_*.py`), exactement comme `avastack.iss` — décision de projet du
 # 27/09/2026 : « l'installation ne contient que des outils réellement
 # utilisables par moi » (les diagnostics parlent aux VRAIES DLL et à SES
 # caméras). Les autres bancs — y compris les bancs de RÉGRESSION de la couche

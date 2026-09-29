@@ -25,8 +25,9 @@ de l'application — celui-ci détaille **tous les réglages** de l'interface.
 Les artéfacts portent leur **numéro de version** : deux versions ne s'écrasent
 jamais, et un installateur plus ancien peut rester à côté comme repli.
 
-> Le dépôt est **privé** : cette release l'est aussi. Les liens ci-dessus ne
-> fonctionnent que pour les comptes autorisés sur le dépôt.
+> Le dépôt est **public** (licence MIT) : la release et ses fichiers sont
+> accessibles à tous, et les empreintes **SHA-256** du tableau ci-dessus
+> permettent de vérifier un téléchargement.
 
 ---
 
@@ -104,12 +105,12 @@ sources (`python3 AVAStack.py` dans le dossier de l'application).
 > **État de cet installateur (à jour le 29/09/2026)** : le paquet Linux est
 > construit, son contenu est vérifié (62 fichiers, aucun `.so`/`.dll`, script
 > `install_avastack.sh` exécutable, fins de ligne UNIX, racine unique
-> `avastack-2.41.0-linux/`) **et il a été exécuté plusieurs fois EN RÉEL sur la
-> machine d'Alain (Ubuntu 26.04 LTS)** : installation, prérequis système,
-> création du venv, dépendances et lancement de l'application y sont validés.
-> Restent à faire : le test sur une machine **vierge** (sans Python ni paquets
-> prérequis) et le **test matériel caméras** sous Linux (option `--cameras`,
-> quand les `*.so` constructeurs y seront déposés).
+> `avastack-2.41.0-linux/`) **et il a été exécuté plusieurs fois EN RÉEL sur une
+> machine Ubuntu 26.04 LTS** : installation, prérequis système, création du venv,
+> dépendances et lancement de l'application y sont validés. Restent à faire : le
+> test sur une machine **vierge** (sans Python ni paquets prérequis) et le
+> **test matériel caméras** sous Linux (option `--cameras`, quand les `*.so`
+> constructeurs y seront déposés).
 
 ---
 
@@ -237,10 +238,10 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
 
 ## 8. Limites connues de la v2.41.0 (dites franchement)
 
-- **Installateur Linux : TESTÉ EN RÉEL** — exécuté **plusieurs fois** par Alain
-  sur sa machine **Ubuntu 26.04 LTS** (installation, prérequis, venv, dépendances,
-  lancement) ; l'application y est employée, et ses mesures y sont validées
-  (astrométrie, SPCC, GraXpert — constats des 27 et 28/09/2026).
+- **Installateur Linux : TESTÉ EN RÉEL** — exécuté **plusieurs fois** sur une
+  machine **Ubuntu 26.04 LTS** (installation, prérequis, venv, dépendances,
+  lancement) ; l'application y est employée en séance, astrométrie, SPCC et
+  GraXpert comprises.
 - Restent à faire : l'installateur Linux sur une machine **vierge** (sans Python
   ni paquets prérequis) et le **test matériel caméras** sous Linux (option
   `--cameras`, quand les `*.so` constructeurs y seront déposés).
@@ -248,18 +249,17 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
 - **Aucune caméra** n'est embarquée (SDK constructeurs, licences).
 - Pas de bouton pour les **48 morceaux de spectres Gaia** : téléchargement via
   Siril ou à la main (Zenodo `14738271`).
-- Le dépôt étant **privé**, la release et ses fichiers le sont aussi.
 
 ## 9. Repli si régression
 
-Le repli de référence est la **v2.40.0**. Sur la machine de développement, les
-installateurs des versions antérieures restent à côté des nouveaux, dans
-`installer/windows/output/` et `installer/linux/output/` (dossier ignoré par
-git) : aucun nouveau installateur n'écrase une version précédente.
+Le repli de référence est la **v2.40.0**. Les installateurs des versions
+antérieures restent à côté des nouveaux, dans `installer/windows/output/` et
+`installer/linux/output/` : aucun nouveau installateur n'écrase une version
+précédente.
 
 ## 10. Liens utiles
 
-- Dépôt AVAStack : `https://github.com/darkvad/AVAStack` (**privé**)
+- Dépôt AVAStack : `https://github.com/darkvad/AVAStack` (**public**, licence MIT)
 - Siril : `https://siril.org` — scripts officiels : `https://gitlab.com/free-astro/siril-scripts`
 - Base de profils SPCC : `https://gitlab.com/free-astro/siril-spcc-database`
 - Catalogue astrométrique Gaia DR3 de Siril (Zenodo) : enregistrement `14692304`

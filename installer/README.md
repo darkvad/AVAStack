@@ -13,7 +13,7 @@ Siril/Gaia** — catalogue astrométrique, 48 morceaux de spectres, base de prof
 SPCC) : **`INSTALLATION.md`**, à la racine du dépôt ; il est joint à chaque
 release comme document d'accompagnement.
 
-**Le nom de l'artéfact PORTE LA VERSION** (consigne d'Alain, 27/09/2026) : elle
+**Le nom de l'artéfact PORTE LA VERSION** (règle du 27/09/2026) : elle
 vient toujours de `AVASTACK_VERSION` (`avastack/__init__.py`), jamais d'un nom
 figé — `avastack.iss` refuse même de compiler sans `/DAppVersion`. Deux
 versions ne s'écrasent donc jamais (celle d'avant reste à côté et sert de
@@ -33,8 +33,8 @@ SDK factices, aucun matériel requis — `_test_qhy_camera.py`,
 `_test_camera_*.py`, `_test_capacites*.py`, `_test_tec*.py`, `_test_ui_*`,
 `_test_expo_*`, `_test_pilotage_*`, `_test_connexion_*`) sont des outils de
 DÉVELOPPEMENT : ils restent dans le dépôt et ne partent PAS dans les
-installateurs (décision d'Alain, 27/09/2026 : « l'installation ne contient que
-des outils réellement utilisables par moi »). Comme tous les autres bancs
+installateurs (décision de projet, 27/09/2026 : l'installation ne contient que
+des outils réellement utilisables par l'utilisateur). Comme tous les autres bancs
 (solveur, couleurs, chromatisme, sauvegardes, gradient, alignement…).
 
 Les deux installateurs filtrent par **MOTIF**, jamais par liste de fichiers :
@@ -79,7 +79,7 @@ un installateur (1,1 Go, licence CC-BY). Depuis la v2.38.4, l'application :
 - Exception QHY : le paquet `qhyccd` (PyPI, MIT/Apache) **inclut** le SDK
   natif QHYCCD — aucune manipulation pour l'utilisateur.
 
-## Installateur Linux (route ① retenue par Alain, 27/09/2026 : script + venv)
+## Installateur Linux (route ① retenue le 27/09/2026 : script + venv)
 
 `linux/install_avastack.sh` — même esprit que l'installateur Windows, mais en
 bash et sans rien qui ressemble à une DLL :
@@ -102,7 +102,8 @@ bash et sans rien qui ressemble à une DLL :
    numpy/OpenCV/Pillow (avec le rappel `libgl1`/`libglib2.0-0`), astropy et
    l'état des caméras.
 
-**CAMÉRAS : ABSENTES dans cette version** (livraison voulue par Alain) — aucun
+**CAMÉRAS : ABSENTES dans cette version** (livraison volontairement sans
+caméras) — aucun
 `*.so` constructeur n'est embarqué et les paquets pip `qhyccd`/`zwoasi` ne sont
 PAS installés (le script les retire de `requirements.txt`). L'application
 travaille donc en **mode dossier / composition multi-dossiers / OpenCV /
@@ -195,12 +196,12 @@ bancs/
   `linux/output/avastack-setup-2.41.0-linux.tar.gz` (62 fichiers, 572 903 o,
   `install_avastack.sh` en 0755, zéro `*.so`/`*.dll`/`*.rules`, dossier racine
   unique `avastack-2.41.0-linux/`).
-- **Exécution réelle de l'installateur Linux : FAITE, plusieurs fois** — Alain
-  l'a exécuté sur sa machine **Ubuntu 26.04 LTS** (constat du 29/09/2026) :
+- **Exécution réelle de l'installateur Linux : FAITE, plusieurs fois** —
+  exécuté en réel sur une machine **Ubuntu 26.04 LTS** (constat du 29/09/2026) :
   détection de `python3-tk`, création du venv via `common/avastack_setup.py`,
   installation des dépendances et lancement par le raccourci/`.desktop` sont
-  donc exercés en réel (l'application y est employée : astrométrie, SPCC et
-  GraXpert validés côté Linux les 27-28/09/2026). Restent à faire : machine
+  donc exercés en réel (l'application y est employée en séance : astrométrie,
+  SPCC et GraXpert fonctionnent côté Linux). Restent à faire : machine
   **vierge** (sans Python) et **test matériel caméras** (option `--cameras`,
   quand les `*.so` constructeurs y seront déposés).
 - **Exécution réelle sur machine vierge (Windows)** : à faire — installer sur
@@ -208,5 +209,6 @@ bancs/
   "téléchargement silencieux de Python" (jamais déclenché sur la machine de
   dev, Python y est déjà présent), et le lancement via raccourci.
 - **Test matériel caméras** : fait pour Windows (QHY Minicam8M, Player One
-  Uranus-C Pro, Touptek, SVBONY — verdicts d'Alain 19-20/09/2026) ; côté Linux,
-  à faire quand les `*.so` constructeurs seront récupérés (option `--cameras`).
+  Uranus-C Pro, Touptek, SVBONY — verdicts des tests des 19-20/09/2026) ; côté
+  Linux, à faire quand les `*.so` constructeurs seront récupérés (option
+  `--cameras`).

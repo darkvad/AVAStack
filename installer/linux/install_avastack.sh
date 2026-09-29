@@ -173,9 +173,9 @@ copier_application() {
     # Bancs installés : les OUTILS DE DIAGNOSTIC MATÉRIEL caméra
     # seulement (`bancs/cameras/_diag_*.py`). Le paquet ne contient QUE
     # ceux-là : les bancs de régression caméra et tous les autres bancs
-    # sont des outils de dev, jamais embarqués (décision d'Alain,
+    # sont des outils de dev, jamais embarqués (décision de projet,
     # 27/09/2026 : l'installation ne contient que des outils utilisables
-    # par lui). Arbre copié tel quel.
+    # par l'utilisateur). Arbre copié tel quel.
     if [ -d "$src/bancs" ]; then
         rm -rf "$dst/bancs"
         cp -R "$src/bancs" "$dst/bancs"

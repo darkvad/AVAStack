@@ -5,9 +5,9 @@
 ; pillow, astropy + les paquets cameras qhyccd et zwoasi), et cree un
 ; raccourci.
 ;
-; Les SDK binaires constructeurs poses par Alain a la racine du depot
+; Les SDK binaires constructeurs places a la racine du depot
 ; (ASICamera2.dll, PlayerOneCamera.dll, ToupCam.dll, SVBCameraSDK.dll) sont
-; EMBARQUES dans l'installateur depuis le 19/09/2026 (decision d'Alain :
+; EMBARQUES dans l'installateur depuis le 19/09/2026 (decision de projet :
 ; Â« j'ai mis dans le dossier principal toutes les dll des sdk, donc inclut
 ; les Â») - les paquet pip associes (zwoasi ; PlayerOne/Touptek/SVBONY en
 ; ctypes direct, pas de paquet) sont installes via requirements.txt.
@@ -21,7 +21,7 @@
 #define AppName "AVAStack"
 ; Version AVAStack : source unique de verite = AVASTACK_VERSION dans
 ; avastack/__init__.py (lue par build_avastack.ps1 et passee via
-; /DAppVersion=...). Depuis le 27/09/2026 (consigne d'Alain) le nom de
+; /DAppVersion=...). Depuis le 27/09/2026 (consigne de projet) le nom de
 ; l'artefact PORTE LA VERSION : compiler sans version produirait un
 ; installateur MAL NOMME, qui mentirait sur ce qu'il contient -> on refuse
 ; de compiler (plus aucun define de repli a maintenir).
@@ -41,7 +41,7 @@ DefaultDirName={localappdata}\AVAStack
 DefaultGroupName=AVAStack
 DisableProgramGroupPage=yes
 OutputDir=output
-; Le nom de l'artefact PORTE LA VERSION (consigne d'Alain, 27/09/2026) :
+; Le nom de l'artefact PORTE LA VERSION (consigne de projet, 27/09/2026) :
 ; c'est lui qui dit ce qu'on teste, et deux versions ne s'ecrasent JAMAIS
 ; (avastack-setup-2.38.3.exe a cote de avastack-setup-2.38.2.exe).
 OutputBaseFilename=avastack-setup-{#AppVersion}
@@ -66,14 +66,14 @@ Source: "{#RepoRoot}\avastack\catalogues\*.py"; DestDir: "{app}\avastack\catalog
 Source: "{#RepoRoot}\avastack\external\*.py"; DestDir: "{app}\avastack\external"; Flags: ignoreversion
 Source: "{#RepoRoot}\avastack\ui\*.py"; DestDir: "{app}\avastack\ui"; Flags: ignoreversion
 Source: "{#RepoRoot}\requirements.txt"; DestDir: "{app}"; Flags: ignoreversion
-; SDK binaires des cameras (poses par Alain a la racine du depot) : charges
+; SDK binaires des cameras (places a la racine du depot) : charges
 ; par avastack/cameras/sdk_loader.py dans le dossier du programme.
 Source: "{#RepoRoot}\ASICamera2.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}\PlayerOneCamera.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}\ToupCam.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}\SVBCameraSDK.dll"; DestDir: "{app}"; Flags: ignoreversion
 ; Bancs du theme CAMERA (bancs/cameras/ dans le depot) : seuls les OUTILS DE
-; DIAGNOSTIC MATERIEL sont embarques (motif _diag_*.py) - decision d'Alain du
+; DIAGNOSTIC MATERIEL sont embarques (motif _diag_*.py) - decision de projet du
 ; 27/09/2026 : l'installation ne contient QUE des outils qu'il peut lancer
 ; lui-meme (ils parlent aux VRAIES DLL et a SES cameras : detection, controles
 ; SDK, TEC, flux, capacites dynamiques). Le MOTIF (et non une liste) laisse

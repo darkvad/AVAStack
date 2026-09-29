@@ -5,7 +5,7 @@
 # dans l'installateur suit automatiquement le source, sans etre fige dans
 # avastack.iss.
 #
-# Depuis le 27/09/2026 (consigne d'Alain), le nom de l'artefact PORTE la
+# Depuis le 27/09/2026 (consigne de projet), le nom de l'artefact PORTE la
 # version : output\avastack-setup-<version>.exe (avastack.iss utilise
 # OutputBaseFilename=avastack-setup-{#AppVersion}). Deux versions ne
 # s'ecrasent donc jamais, et avastack.iss REFUSE de compiler sans version.
