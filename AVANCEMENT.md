@@ -238,6 +238,28 @@ dans le changelog du source et l'historique git.)
       pixel changé » (réimplémentation, pas le même binaire) → comparaison
       chiffrée + visuelle, REPLI automatique sur le CLI en cas d'échec, et le
       modèle n'est JAMAIS redistribué (on lit celui de SON installation).
+    - **FAITS VÉRIFIÉS LE 29/09/2026 POUR CETTE PISTE (ne pas les rechercher)** :
+      ① **un « processus GraXpert permanent » est IMPOSSIBLE tel quel** — leur CLI
+      traite **une image par invocation** (aucun mode serveur ni « lot
+      d'images » ; le `-batch_size` ne concerne que les TUILES du débruitage) et
+      l'installation est un bundle **PyInstaller figé** : modules en `.pyc`
+      compilés pour **Python 3.11** (le bundle porte `python311.dll`), donc
+      **inimportables** par notre venv en **Python 3.14**, et aucun
+      `python.exe` pilotable n'est livré. ② **leur paquet Python EXISTE sur
+      PyPI** (`graxpert`, versions alpha `3.2.0a0.dev4…3.2.0a3`,
+      `requires_python >= 3.11`, **licence GPL-3.0**) → charger LEUR code une
+      fois dans un worker permanent est donc *techniquement* possible (résultats
+      identiques, même modèle), mais : version **alpha** ≠ la 3.1.0rc2 utilisée,
+      **GPL-3.0** qui contaminerait la chaîne live (projet MIT ; précédent
+      assumé mais ponctuel : `veralux_core_headless.py`), et dépendances
+      lourdes (onnxruntime, scipy, astropy) à installer et maintenir.
+      → **DÉCONSEILLÉ par l'agent**, décision d'Alain à prendre.
+      ③ **ALTERNATIVE LA MOINS CHÈRE (aucune réimplémentation)** : passer de
+      **3 appels à 1** — retirer le gradient sur l'image **composée** (usage
+      standard, ce que font la plupart des logiciels) au lieu d'une fois par
+      couche → coût fixe 8,3 s → 2,8 s, GraXpert ~4 s au lieu de 9,7 s, passe
+      ~5 s au lieu de 10,5 s. Seule question : **visuelle** (équilibre des
+      canaux) — comparaison à préparer sur ses images.
 
   - **⑦ bis LEÇONS DU JALON REMONTÉES DANS CLAUDE.md (ton accord explicite,
     29/09/2026)** — section « Pièges », trois leçons : ① un **fichier de mémoire
