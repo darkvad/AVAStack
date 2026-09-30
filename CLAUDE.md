@@ -753,6 +753,30 @@ ce qui manquait n'était pas une correction mais une MESURE.
 
 ## Pièges (leçons du projet AVAStack)
 
+- **TROIS OPTIMISATIONS DE LA CHAÎNE LIVE SONT ÉCARTÉES — NE PAS LES
+  REPROPOSER** (décisions d'Alain des 29-30/09/2026, argumentées ET mesurées ;
+  elles reviennent naturellement dès qu'on cherche à raccourcir la chaîne) :
+  ① **Décimation** (« GraXpert/NLM une fois sur N ») — un débruitage ou un
+     retrait de gradient n'est **pas un modèle réutilisable** : ne pas le refaire
+     sur la pile suivante montrerait la pile NON corrigée, donc l'image sauterait
+     d'une passe à l'autre (objection d'Alain, décisive).
+  ② **Retrait du gradient sur l'image COMPOSÉE** (un seul appel au lieu de
+     trois) — refusé : la chaîne PAR COUCHE est une **décision argumentée des
+     jalons 24/54** (en SHO/HOO, chaque filtre à bande étroite a SON propre
+     gradient ; ce qui marche sur M31 ne se généralise pas).
+  ③ **Inférence ONNX en processus** (charger le modèle une fois plutôt que
+     relancer le CLI) — mesuré : CPU **119 ms/tuile** (aucun gain face à l'appel
+     complet, qui inclut pourtant son démarrage), DirectML **48 ms/tuile** mais
+     **mémoire GPU épuisée** en pleine résolution (iGPU à mémoire PARTAGÉE),
+     GraXpert restant plus rapide (~20 ms/tuile) ; et surtout **fidélité
+     mauvaise : corrélation 0,24** avec son propre modèle de fond (`-bg`) — leur
+     prétraitement, leur recollement et leur lissage font l'essentiel du
+     résultat. L'environnement de l'essai a été restauré (`onnxruntime`
+     désinstallé, `pip check` propre).
+  Le gain réel est venu ailleurs, **sans toucher aux maths** : le rendu part en
+  **fin de rafale** (jalon 80) et les appels externes par couche partent en
+  **un seul lot** (jalon 81).
+
 - **LES OUTILS EXTERNES PAR COUCHE PARTENT EN UN SEUL LOT** (jalon 81, v2.45.0,
   décision d'Alain du 29/09/2026). Le coût de GraXpert est **FIXE par appel**
   (démarrage de son binaire figé + chargement des **217 Mo** du modèle IA :

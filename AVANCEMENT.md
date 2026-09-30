@@ -10,6 +10,50 @@ dans le changelog du source et l'historique git.)
 ---
 
 
+- **ÉTAT À LA CLÔTURE DE SESSION (30/09/2026) — À LIRE EN PREMIER.**
+  **Version stable de référence : v2.45.0**, PUBLIÉE (tag + release GitHub, trois
+  paquets + `INSTALLATION.md` ; installeur Windows
+  `installer/windows/output/avastack-setup-2.45.0.exe`, 11 486 570 o, SHA-256
+  `CC0F742EA1A8DE90E337D3031FC3A8A8DEF71203C15E779AAF7A8F748180EB32`).
+  **Testée et validée par Alain : « testé et OK, il y a un petit mieux. »**
+  Repli : v2.44.0.
+  **Livré par cette session (29-30/09/2026)** : **v2.43.0** chantier performance
+  et réactivité (jalon 79, zéro pixel changé) ; **v2.44.0** le rendu de la chaîne
+  lourde part en **fin de rafale** (jalon 80) ; **v2.45.0** les outils externes
+  par couche partent en **un seul lot** (jalon 81).
+  **Coût de la chaîne live aujourd'hui** (ses réglages : aperçu 1600 px, GraXpert
+  live, chroma/neutralisation/démagenta, VeraLux ; débruitage et netteté live
+  DÉCOCHÉS) : GraXpert ~4,5-5 s (3 couches en parallèle) + le reste ~0,5 s →
+  **passe ~5 s**, UNE seule passe par rafale, rafales d'1 minute → panneau
+  occupé ~8 % du temps.
+  **IDÉES ÉCARTÉES — NE PAS LES REPROPOSER** (détail plus bas ; l'essentiel est
+  aussi dans CLAUDE.md) : ① **décimation** de la chaîne lourde (« GraXpert/NLM
+  une fois sur N ») — un débruitage ou un gradient n'est pas un modèle
+  réutilisable : ne pas le refaire montrerait la pile NON corrigée ; ② **retrait
+  du gradient sur l'image COMPOSÉE** — refus argumenté : en SHO/HOO chaque filtre
+  à bande étroite a SON gradient (décision des jalons 24/54) ; ③ **inférence ONNX
+  en processus** — mesurée : aucun gain en CPU, mémoire GPU épuisée en DirectML,
+  et surtout **fidélité 0,24** avec le fond de GraXpert.
+  **Pistes encore ouvertes, si un jour le besoin revient** : paralléliser aussi
+  le DÉBRUITAGE par couche (jamais mesuré) ; rien d'autre n'est en attente —
+  aucun défaut connu ouvert.
+  **NETTOYAGE À PRÉVOIR au prochain jalon** : les blocs « PASSE PRÉCÉDENTE » et
+  « PASSES ANTÉRIEURES » antérieurs au 29/09 peuvent être supprimés (leur trace
+  vit dans le changelog d'`avastack/__init__.py` et dans l'historique git) — à
+  faire par petites touches, JAMAIS par un aller-retour PowerShell (piège
+  d'encodage connu).
+- **CLÔTURE DE LA SESSION 29-30/09/2026 — RELEASE v2.45.0 PUBLIÉE** :
+  https://github.com/darkvad/AVAStack/releases/tag/v2.45.0 — tag annoté sur
+  `4af8621`, assets : `avastack-setup-2.45.0.exe`,
+  `avastack-setup-2.45.0-linux.tar.gz`, `avastack-setup-2.45.0-macos.tar.gz`,
+  `INSTALLATION.md` (notes de release = résumé « ce qui change » + la doc
+  d'installation complète, fichier de notes fabriqué hors dépôt en UTF-8 sans
+  BOM, `gh release create --notes-file` — procédure du projet respectée).
+  Commits de la session : `245200f` (v2.43.0) → `4dfe57e`/`0456607`/`f1193d7`
+  (v2.44.0) → `79d55d8`/`4af8621` (v2.45.0). **Arbre propre, `origin/master` à
+  jour.** Retour d'Alain : « testé et OK, il y a un petit mieux ».
+
+
 - **JALON 80 (v2.44.0) — RENDU DÉCLENCHÉ EN FIN DE RAFALE : LIVRÉ, BANCS VERTS
   (détail en ⑬, plus bas).** Vérification demandée par Alain au même moment
   (« utilises-tu bien le modèle GraXpert 1.0.1 ? ») : OUI, c'est en ⑭.
