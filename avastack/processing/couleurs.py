@@ -2,24 +2,40 @@
 """Retraits de couleur (jalon 22) : SCNR (vert) et démagenta.
 
 Décision d'Alain (19/09/2026) : appliqués APRÈS la composition — sur
-l'image COULEUR du composite (HOO, SHO, RGB…) — et JUSTE AVANT l'étirement,
-en LIVE et en TRAITEMENT EXTERNE, chacun derrière sa case à cocher. Sur un
-composite MONOCHROME (source Mono) il n'y a rien à neutraliser : no-op
+l'image COULEUR du composite (HOO, SHO, RGB…) — et JUSTE APRÈS l'ÉTIREMENT
+(v2.48.0, jalon 85 : ils étaient JUSTE AVANT depuis le jalon 22), en LIVE et
+en TRAITEMENT EXTERNE, chacun derrière sa case à cocher. Sur un composite
+MONOCHROME (source Mono) il n'y a rien à neutraliser : no-op
 (« pour retirer du vert, il faut de la couleur »).
 
+POURQUOI APRÈS l'étirement (jalon 85) : ① la luminosité d'un pixel n'a de
+sens PERCEPTUEL qu'après l'étirement — la préservation de L* du SCNR
+(`preserve_luminance`, ACTIVE par défaut) se calcule donc sur l'image
+étirée, comme chez Siril et PixInsight ; ② l'ordre des références est
+« égaliser le fond, PUIS retirer le vert » (sur un fond coloré, le retrait
+du vert détruit la chrominance) ; ③ la sortie LINÉAIRE sauvegardée
+(« empilement traité ») ne doit porter que l'empilement et les corrections :
+elle était ÉCRÊTÉE EN VERT par le jalon 22 — MESURÉ sur l'empilement M31
+d'Alain (`M31_traite_lineaire_2.38.0.fits`) : excès de vert max 5,9·10⁻⁸
+pour 100 % des pixels à |e| < 10⁻⁷ (médiane 0) contre 1,6·10⁻¹ sur le même
+empilement non écrêté — signature exacte de `min(G, (R+B)/2)` écrit dans le
+fichier.
+
 SCNR « moyenne neutre » (le standard PixInsight / Siril) :
-    G = min(G, (R + B) / 2)
+    G = min(G, (R + B) / 2)                       (amount = 1)
+    G = G − amount · max(0, G − (R + B)/2)        (0 ≤ amount ≤ 1)
 Le vert excédentaire (bruit vert du capteur couleur, pollution OIII dans
 un canal…) est ramené à la moyenne des deux autres canaux ; les pixels
 équilibrés (étoiles blanches, fond neutre) restent inchangés. Opération
-linéaire pixel à pixel : appliquée ici sur l'image LINÉAIRE, avant
-l'étirement.
+pixel à pixel, appliquée sur l'image ÉTIRÉE — elle retire du signal, donc
+de la LUMIÈRE : `preserve_luminance` (par défaut) rend au pixel sa L* CIE.
 
 Démagenta (recette d'Alain) : négatif → SCNR → retour au positif.
 Le magenta (excès de rouge + bleu — bruit de fond des capteurs CMOS, fonds
 des poses longues) devient un excès de VERT dans le négatif ; le SCNR le
 ramène à la moyenne des deux autres canaux, et le retour au positif
-restitue une image dont le magenta a été neutralisé.
+restitue une image dont le magenta a été neutralisé. Mêmes options que le
+SCNR (`amount`, `preserve_luminance`).
 """
 import numpy as np
 import cv2
@@ -27,8 +43,65 @@ import cv2
 from . import denoise as _denoise
 
 
-def scnr(img):
+# Seuil de RÉSOLUTION de la remise de L* (v2.48.0, jalon 85) : une correction de
+# G plus petite que 10⁻⁶ (≈ 0,00026 niveau 8 bits, très en dessous du pas
+# d'affichage) n'est pas une correction, c'est du bruit de calcul. Sans ce
+# garde-fou, un empilement DÉJÀ écrêté par un SCNR antérieur — dont l'excès
+# résiduel, MESURÉ sur l'empilement M31 d'Alain, vaut 6·10⁻⁸ (pur float32) —
+# verrait des millions de pixels retouchés par l'aller-retour Lab alors que le
+# SCNR ne les change pas de façon résolue : la remise de L* cesserait d'être
+# une non-régression pour devenir une retouche silencieuse.
+SEUIL_REMISE_LUMINANCE = 1e-6
+
+
+def _restaurer_luminance(avant, apres, masque):
+    """Rend à chaque pixel du masque sa L* CIE (Lab, D65) d'AVANT.
+
+    C'est la « préservation de la luminosité » de Siril / PixInsight
+    (`-nopreserve` l'annule) : un retrait de couleur retire du signal, donc de
+    la LUMIÈRE — et sur une palette où le vert est la DONNÉE (SHO, HOO), c'est
+    l'objet qui s'éteint. MESURÉ sur l'empilement SHO de NGC 2237 (jalon 85,
+    composite d'Alain) : L* de la nébuleuse 53,7 → 41,4 sans préservation.
+    La remise de L* ne change QUE la lumière : teinte et saturation restent
+    celles calculées par l'appelant.
+
+    Le masque est CELUI DES PIXELS RÉELLEMENT MODIFIÉS par l'appelant — les
+    autres sont rendus au BIT près (aucune conversion Lab sur eux). Sans cette
+    précaution, l'aller-retour Lab dégraderait des pixels que le retrait de
+    couleur n'a pas touchés : c'est la non-régression RGB verrouillée par le
+    banc (un M31 R>V>B sans excès de vert doit ressortir identique au bit).
+
+    Limites assumées : la L* n'est définie que dans [0, 1] (l'image est bornée
+    pour la conversion) et la remise peut porter un canal au-dessus de 1 —
+    l'écrêtage final appartient à l'affichage (comme chez Siril)."""
+    if not bool(np.any(masque)):
+        return apres
+    # Seuls les pixels du masque passent par Lab : l'aller-retour est donc
+    # exactement limité à ce que l'appelant a corrigé, et les autres pixels
+    # sont recopiés tels quels (identité au bit). L'extraction est faite AVANT
+    # le bornage : borner l'image entière coûtait plus cher que la conversion
+    # elle-même (mesuré au banc : 0,30 s → voir [5]).
+    sub_av = np.clip(avant[masque], 0.0, 1.0).astype(np.float32)
+    sub_ap = np.clip(apres[masque], 0.0, 1.0).astype(np.float32)
+    lab_av = cv2.cvtColor(sub_av.reshape(-1, 1, 3), cv2.COLOR_RGB2LAB)
+    lab_ap = cv2.cvtColor(sub_ap.reshape(-1, 1, 3), cv2.COLOR_RGB2LAB)
+    lab_ap[..., 0] = lab_av[..., 0]           # même lumière, chroma recalculée
+    corr = cv2.cvtColor(lab_ap, cv2.COLOR_Lab2RGB).reshape(-1, 3)
+    out = apres.copy()
+    out[masque] = np.maximum(corr, np.float32(0.0))
+    return out
+
+
+def scnr(img, amount=1.0, preserve_luminance=True):
     """Retrait du vert (SCNR « moyenne neutre ») : G = min(G, (R+B)/2).
+
+    amount             : 0..1 — part de l'excès de vert retirée
+                         (`G − amount · max(0, G − (R+B)/2)`). 1 (défaut) donne
+                         la formule historique AU BIT PRÈS ; 0 l'identité.
+    preserve_luminance : True (défaut) — la L* CIE du pixel est rendue après le
+                         retrait, comme Siril / PixInsight : l'objet n'est plus
+                         éteint, seule la chroma change. False — comportement
+                         des jalons 22/23 (aucune compensation).
 
     img : (H, W, 3) couleur — un composite (H, W) monochrome est renvoyé
     inchangé (copie). → copie float32 de mêmes dimensions ; l'entrée n'est
@@ -37,21 +110,121 @@ def scnr(img):
     if a.ndim != 3 or a.shape[-1] != 3:
         return a.copy()           # mono / forme inattendue : rien à faire
     out = a.copy()
+    if float(amount) <= 0.0:
+        return out                # force nulle : identité au bit près
     plafond = 0.5 * (out[..., 0] + out[..., 2])
-    out[..., 1] = np.minimum(out[..., 1], plafond)
+    if float(amount) >= 1.0:
+        out[..., 1] = np.minimum(out[..., 1], plafond)   # formule historique
+    else:
+        exces = np.maximum(out[..., 1] - plafond, np.float32(0.0))
+        out[..., 1] -= np.float32(amount) * exces
+    if preserve_luminance:
+        out = _restaurer_luminance(a, out,
+                                   (a[..., 1] - out[..., 1])
+                                   > SEUIL_REMISE_LUMINANCE)
     return out
 
 
-def demagenta(img):
+def demagenta(img, amount=1.0, preserve_luminance=True):
     """Suppression du magenta : négatif → SCNR → retour au positif.
 
     Le magenta (R et B > G) devient un excès de vert dans le négatif, que
     le SCNR ramène à la moyenne ; le retour au positif neutralise le
-    magenta. → copie float32, mono inchangé, entrée jamais modifiée."""
+    magenta. `amount` et `preserve_luminance` ont le même sens que dans
+    `scnr` — la préservation de L* est appliquée au résultat FINAL, dans le
+    positif (le négatif n'a pas de luminosité perceptuelle).
+    → copie float32, mono inchangé, entrée jamais modifiée ; à
+    `amount=1, preserve_luminance=False` le résultat est celui des jalons
+    22/23, au bit près."""
     a = np.asarray(img, dtype=np.float32)
     if a.ndim != 3 or a.shape[-1] != 3:
         return a.copy()
-    return (1.0 - scnr(1.0 - a)).astype(np.float32)
+    if float(amount) <= 0.0:
+        # Force nulle : identité AU BIT. Le raccourci est OBLIGATOIRE ici et
+        # pas seulement une optimisation : `1 − (1 − x)` n'est pas exact en
+        # float32 (double soustraction), donc la recette historique appliquée
+        # « pour rien » rendrait des pixels légèrement différents de l'entrée
+        # (défaut relevé par le banc jalon 85 [1]).
+        return a.copy()
+    out = (1.0 - scnr(1.0 - a, amount,
+                      preserve_luminance=False)).astype(np.float32)
+    if preserve_luminance:
+        ecart = np.abs(out - a).max(axis=2)
+        out = _restaurer_luminance(a, out, ecart > SEUIL_REMISE_LUMINANCE)
+    return out
+
+
+# --- Boost du ROUGE (SII) masqué à l'objet (v2.48.0, jalon 86) ----------------
+# Bornes du curseur : 1,00 = identité EXACTE (aucun pixel touché), 4,00 = le
+# maximum utile mesuré. Entre les deux, le doré arrive progressivement.
+BOOST_ROUGE_MIN, BOOST_ROUGE_MAX = 1.0, 4.0
+BOOST_ROUGE_DEFAUT = 3.0
+# Centiles de LUMINANCE qui définissent le masque : poids 0 (fond) sous le 40e
+# centile, poids 1 (objet) au-delà du 97e. Sur l'empilement SHO réel d'Alain
+# (NGC 2237, 55 frames) les 25 % de pixels les plus sombres — le fond — tombent
+# tous SOUS le 40e centile : leur poids est donc exactement nul et ils ressortent
+# identiques au pixel près, à ×1,5 comme à ×4,0.
+BOOST_ROUGE_CENTILE_BAS, BOOST_ROUGE_CENTILE_HAUT = 40.0, 97.0
+
+
+def boost_rouge(img, force=BOOST_ROUGE_DEFAUT, preserve_luminance=False):
+    """Boost du ROUGE pondéré par la luminance — le « boost SII » qui manquait
+    au SHO (v2.48.0, jalon 86).
+
+    POURQUOI UN MASQUE, ET PAS UN GAIN PAR CANAL : en SHO le rouge est alimenté
+    par le SII, PHYSIQUEMENT faible (MESURÉ sur les brutes de la session live
+    d'Alain : SII/Ha = 0,219 — il manque 4,6× de flux au rouge pour atteindre le
+    vert), alors que le vert est la DONNÉE. Un gain rouge GLOBAL fait bien
+    apparaître le doré, mais il teinte AUSSI le fond et les étoiles : mesuré sur
+    la même session, ×2,5 met 97 % des pixels de fond en R > V (fond brun) ;
+    quant au recalage « Linear Fit », il se cale sur le quart central — qui est
+    à 60,6 % d'OBJET sur cette image — et finit par choisir un gain rouge au
+    PLAFOND (×4,0) : la nébuleuse laisse tomber sa saturation de 0,72 à 0,31
+    (délavée) pendant que le fond se colore (saturation 0,08 → 0,34, mesuré sur
+    deux captures d'écran successives). Ici le poids suit la LUMINANCE : 0 dans
+    le fond, 1 sur l'objet — le doré arrive SANS toucher au ciel.
+
+    force              : 1,00 = identité AU BIT PRÈS (chemin rapide, le réglage
+                         peut rester en place sans rien changer) ; 3,00 (défaut)
+                         amène la nébuleuse au rapport R:G que le Linear Fit
+                         obtenait — mesuré 1,07 contre 1,05 — en gardant sa
+                         saturation (0,70 contre 0,31) ; 4,00 donne un doré franc
+                         (R > V sur 55,6 % des pixels de l'objet).
+    preserve_luminance : False (défaut) — le rouge AJOUTÉ compte : l'objet gagne
+                         un peu de lumière (L* 37,7 → 41,6 à ×3,0), comme le
+                         « boost SII » de Siril. True — la L* CIE d'AVANT est
+                         rendue (même mécanique que le SCNR du jalon 85) : le doré
+                         s'obtient alors SANS gagner de lumière (L* 38,0 à ×3,0),
+                         soit une saturation sélective du rouge.
+
+    img : (H, W, 3) ÉTIRÉE [0..1] — un composite monochrome (H, W) est rendu
+    inchangé (copie) : il n'a pas de rouge à dorer. → copie float32 de mêmes
+    dimensions ; l'entrée n'est JAMAIS modifiée ; aucune exception (numpy seul).
+    """
+    a = np.asarray(img, dtype=np.float32)
+    if a.ndim != 3 or a.shape[-1] != 3:
+        return a.copy()                # mono / forme inattendue : rien à faire
+    try:
+        force = float(force)
+    except (TypeError, ValueError):
+        force = BOOST_ROUGE_DEFAUT
+    if force <= BOOST_ROUGE_MIN:
+        return a.copy()                # 1,00 : identité au bit près
+    force = min(force, BOOST_ROUGE_MAX)
+    lum = 0.2126 * a[..., 0] + 0.7152 * a[..., 1] + 0.0722 * a[..., 2]
+    # Centiles sur un sous-échantillon /2 (une image pleine résolution fait
+    # 8 millions de pixels et cet étage vit dans le rendu live) : les bornes ne
+    # bougent que de quelques 10⁻⁴ (vérifié au banc jalon 86).
+    ech = lum[::2, ::2] if lum.shape[0] > 64 and lum.shape[1] > 64 else lum
+    bas, haut = np.percentile(
+        ech, (BOOST_ROUGE_CENTILE_BAS, BOOST_ROUGE_CENTILE_HAUT))
+    poids = np.clip((lum - bas) / max(1e-6, float(haut - bas)), 0.0, 1.0)
+    out = a.copy()
+    out[..., 0] = np.clip(a[..., 0] * (1.0 + (force - 1.0) * poids), 0.0, 1.0)
+    if preserve_luminance:
+        out = _restaurer_luminance(
+            a, out, np.abs(out - a).max(axis=2) > SEUIL_REMISE_LUMINANCE)
+    return out
 
 
 def gains_fond(img, garde=0.10):
@@ -363,7 +536,7 @@ def canal_mort(img):
     return None
 
 
-def scnr_doux(img, k=3.0):
+def scnr_doux(img, k=3.0, amount=1.0, preserve_luminance=True):
     """SCNR doux borné par le bruit (jalon 23) : ne retire que l'excès de
     vert DE L'ORDRE DU BRUIT, jamais la structure.
 
@@ -390,11 +563,25 @@ def scnr_doux(img, k=3.0):
                     du plancher de bruit) ;
       G' = (R+B)/2 + e'.
 
+    `amount` et `preserve_luminance` : mêmes sens que dans `scnr` (amount = 1
+    au défaut donne le résultat des jalons 22/23 AU BIT PRÈS, amount = 0
+    l'identité).
+
+    NOTE MESURÉE (jalon 85) — interaction avec le SCNR classique : après un
+    `scnr(amount=1)`, l'excès est ≤ 0 PARTOUT, donc cette fonction ne retire
+    plus rien (écart mesuré 4,8·10⁻⁷, soit quelques ULP float32). Les deux
+    cases ne se complètent donc QUE si la force du SCNR est < 1 (l'excès
+    résiduel redevient positif) — c'est ce que dit l'interface, mesure à
+    l'appui, et POURQUOI les deux restent indépendantes (décision d'Alain,
+    jalon 85 : en SHO la teinte magenta coexiste avec l'excès de vert).
+
     → copie float32, mono inchangé, entrée jamais modifiée, aucune
     exception (numpy seul)."""
     a = np.asarray(img, dtype=np.float32)
     if a.ndim != 3 or a.shape[-1] != 3:
         return a.copy()
+    if float(amount) <= 0.0:
+        return a.copy()                # force nulle : identité au bit près
     n = 0.5 * (a[..., 0] + a[..., 2])
     e = a[..., 1] - n
     sigma = _denoise.estimer_sigma(e)
@@ -402,6 +589,15 @@ def scnr_doux(img, k=3.0):
     ee = np.maximum(e, np.float32(1e-12))
     garotte = np.where(e > t, e - t * t / ee, np.float32(0.0))
     e_prime = np.where(e > 0, garotte, e)     # pas d'excès : inchangé
+    if float(amount) < 1.0:
+        # Force partielle : on ne retire que la part demandée de l'écart au
+        # résultat historique (à amount = 1, la branche n'est pas prise : le
+        # résultat reste celui des jalons 22/23, au bit près).
+        e_prime = e - np.float32(amount) * (e - e_prime)
     out = a.copy()
     out[..., 1] = n + e_prime
+    if preserve_luminance:
+        out = _restaurer_luminance(a, out,
+                                   (a[..., 1] - out[..., 1])
+                                   > SEUIL_REMISE_LUMINANCE)
     return out

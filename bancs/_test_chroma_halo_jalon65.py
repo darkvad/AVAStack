@@ -51,6 +51,12 @@ Trois mesures de CE banc ont été adaptées en conséquence, sans être affaibl
     plus — c'est le but du correctif. Le rayon garde son rôle (fond, objets
     lisses) et voyage toujours jusqu'au solveur, vérifié au [6].
 
+NOTE v2.48.0 (jalon 85) : la chaîne couleur (SCNR / SCNR doux / démagenta) a
+quitté la chaîne EXTERNE (elle suit l'étirement) — le job externe passe de 15 à
+12 éléments et le RAYON DE RÉFÉRENCE est désormais son 12e (indice 11) : seule
+l'assertion [6bis] qui le cherchait en 15e a été décalée d'autant, sans être
+affaiblie (même valeur exigée, même borne).
+
 Exécution : python bancs/_test_chroma_halo_jalon65.py
 """
 # Racine du projet (celle qui porte AVAStack.py) dans sys.path : les bancs
@@ -463,10 +469,10 @@ app.stacker = types.SimpleNamespace(n=5)
 app.var_ext_chroma.set(True)
 app._request_ext()
 j = app.ext_job
-verifie(isinstance(j, tuple) and len(j) == 15
-        and abs(float(j[14]) - 3.0) < 1e-9,
-        f"chaîne EXTERNE : le rayon de référence voyage en 15e élément "
-        f"({j[14] if isinstance(j, tuple) and len(j) > 14 else 'absent'})")
+verifie(isinstance(j, tuple) and len(j) == 12
+        and abs(float(j[11]) - 3.0) < 1e-9,
+        f"chaîne EXTERNE : le rayon de référence voyage en 12e élément "
+        f"({j[11] if isinstance(j, tuple) and len(j) > 11 else 'absent'})")
 app.ext_request = False
 app.ext_busy = False
 root.destroy()

@@ -8,8 +8,9 @@ Vérifie sur la fenêtre RÉELLE (Tkinter), SANS toucher au vrai config.json
   - commande_avec_strength : remplacement / ajout / casse / clamp [0,1] ;
   - UI : case « 2. Débruitage » + combobox de méthode (3 méthodes) + force ;
     BlurXTerminator renuméroté « 3. » ;
-  - _request_ext : ext_job 8-tuple, force injectée dans la commande
-    GraXpert, mode + force transportés pour les méthodes locales ;
+  - _request_ext : ext_job (12 éléments depuis le jalon 85 — cf. [4]),
+    force injectée dans la commande GraXpert, mode + force transportés pour
+    les méthodes locales ;
   - _run_external RÉEL : chaîne gradient → débruitage local → BXT ;
   - persistance + restauration tolérante (jamais de popup au démarrage).
 
@@ -116,7 +117,7 @@ verifie(len(app.cb_dn_methode["values"]) == 3,
 verifie(abs(app.var_dn_force.get() - 0.5) < 1e-9,
         "force externe par défaut 0.5")
 
-print("[4] _request_ext : ext_job 14-tuple, force injectée")
+print("[4] _request_ext : ext_job 12-tuple, force injectée")
 app.running = True                     # worker non lancé : aucun thread
 app.stacker = types.SimpleNamespace(n=5)
 app.var_dn_methode.set("Non-local means")
@@ -124,17 +125,22 @@ app.var_dn_force.set(0.4)
 app.var_ext_dn.set(True)
 app._request_ext()
 j = app.ext_job
-# v2.37.1 : 14-tuple — les 11 premiers éléments sont les jalons 22/23, puis la
-# neutralisation du fond, le bruit chromatique et la force de ce dernier.
-# v2.37.4 : 15e élément = le RAYON DE RÉFÉRENCE du flou de chroma (px PLEINE
-# RÉSOLUTION, curseur « Rayon de référence »).
-verifie(app.ext_request is True and isinstance(j, tuple) and len(j) == 15
-        and j[8] is False and j[9] is False and j[10] is False
-        and j[11] is True and j[12] is False and 0.0 <= j[13] <= 1.0
-        and 0.5 <= j[14] <= 8.0,
-        "ext_job est un 15-tuple (gx, cmd, dn, cmd_dn, bxt, cmd_bxt, mode, "
-        "force, scnr, scnr_doux, demagenta, neutre_fond, chroma, force_chroma, "
-        "rayon_chroma_ref) — jalons 22/23 + v2.37.1 + v2.37.4")
+# v2.48.0 (jalon 85) : la chaîne couleur (SCNR / SCNR doux / démagenta) a
+# QUITTÉ la chaîne externe — elle suit l'étirement (« Couleur de l'objet
+# (après étirement) ») et le résultat ⚡ reste LINÉAIRE, non écrêté en vert.
+# Le job passe donc de 15 à 12 éléments : les quatre derniers se décalent
+# d'autant.
+# v2.37.1 :  9e (indice 8) = neutralisation de la couleur du fond (cochée par
+#            défaut), 10e (9) = réduction du bruit chromatique (opt-in) et
+#            11e (10) = sa FORCE.
+# v2.37.4 :  12e (11) = le RAYON DE RÉFÉRENCE du flou de chroma, en pixels
+#            PLEINE RÉSOLUTION (curseur « Rayon de référence »).
+verifie(app.ext_request is True and isinstance(j, tuple) and len(j) == 12
+        and j[8] is True and j[9] is False and 0.0 <= j[10] <= 1.0
+        and 0.5 <= j[11] <= 8.0,
+        "ext_job est un 12-tuple (gx, cmd, dn, cmd_dn, bxt, cmd_bxt, mode, "
+        "force, neutre_fond, chroma, force_chroma, rayon_chroma_ref) — "
+        "jalons 7/8 + v2.37.1 + v2.37.4, plus AUCUNE case couleur (jalon 85)")
 verifie(j[2] is True and j[6] == "nlm" and abs(j[7] - 0.4) < 1e-9
         and j[3] == "",
         "mode local (nlm) + force transportés, commande vide (étape en mémoire)")

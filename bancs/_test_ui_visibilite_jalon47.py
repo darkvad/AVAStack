@@ -10,7 +10,12 @@ au choix courant :
   - le réglage de rafale (« Empiler les brutes ») sort des cadres dossier et
     composition où il était dupliqué (jalon 45) : UN SEUL cadre partagé ;
   - masquer ≠ détruire : les valeurs saisies survivent aux allers-retours ;
-  - l'ordre des cadres de la colonne ne change jamais (ancre Calibration).
+  - l'ordre des cadres de la colonne ne change jamais (ancre Calibration) ;
+  - [5bis] v2.48.0 : cet ordre SUIT la chaîne des traitements — « Fond et grain
+    (AVANT étirement) » et « Netteté live » précèdent « Affichage (temps réel) »,
+    qui précède « Couleur de l'objet (APRÈS étirement) » (demande d'Alain :
+    « l'UI doit respecter l'ordre des traitements »), et chaque étape porte SES
+    cases (la neutralisation et le bruit chromatique ont quitté le cadre couleur).
 
 Nécessite un affichage. Exécution : python bancs/_test_ui_visibilite_jalon47.py
 """
@@ -149,6 +154,43 @@ verifie(ordre_avant == ordre_apres
         and ordre_apres[2].cget("text") == "Calibration",
         "l'ordre des cadres visibles est inchangé après les allers-retours "
         f"({[c.cget('text') for c in ordre_apres]})")
+
+# ================== [5bis] v2.48.0 : l'ORDRE SUIT LA CHAÎNE DES TRAITEMENTS
+# Demande d'Alain (30/09/2026) : « l'UI doit respecter l'ordre des traitements ».
+# Le cadre couleur du jalon 22 mélangeait deux ÉTAPES de la chaîne (neutralisation
+# du fond et bruit chromatique sont appliqués AVANT l'étirement, SCNR/démagenta
+# APRÈS) ; il est scindé, et « Netteté live » (qui dit « avant étirement » depuis
+# le jalon 12) n'est plus affiché APRÈS le cadre qui porte l'étirement.
+print("[5bis] l'ordre des cadres suit l'ordre des traitements (jalon 85)")
+_titres = [c.cget("text") for c in ordre_apres]
+_attendus = ["Fond et grain (AVANT étirement)",
+             "Netteté live (Richardson-Lucy)",
+             "Affichage (temps réel)",
+             "Couleur de l'objet (APRÈS étirement)"]
+verifie(all(t in _titres for t in _attendus),
+        f"les quatre cadres de la chaîne sont présents ({_titres})")
+verifie([_titres.index(t) for t in _attendus] ==
+        sorted(_titres.index(t) for t in _attendus),
+        "« Fond et grain » → « Netteté live » → « Affichage » → « Couleur de "
+        "l'objet » : l'ordre affiché EST l'ordre appliqué")
+
+
+def _cases(cadre):
+    """Libellés des cases à cocher d'un cadre (ses enfants directs)."""
+    return [w.cget("text") for w in cadre.winfo_children()
+            if isinstance(w, ttk.Checkbutton)]
+
+
+_c_fond, _c_coul = _cases(app.frm_fond), _cases(app.frm_couleur)
+verifie(any("Neutraliser la couleur du fond" in t for t in _c_fond)
+        and any("Réduire le bruit chromatique" in t for t in _c_fond),
+        f"« Fond et grain (AVANT étirement) » porte la neutralisation ET le "
+        f"bruit chromatique ({_c_fond})")
+verifie(any("SCNR — retrait du vert" in t for t in _c_coul)
+        and any("Démagenta" in t for t in _c_coul)
+        and any("Préserver la luminosité" in t for t in _c_coul),
+        f"« Couleur de l'objet (APRÈS étirement) » porte la L*, le SCNR et le "
+        f"démagenta ({_c_coul})")
 
 # ==================================== [6] cadence : choix commun inchangé
 print("[6] cadence unique : la combobox pilote toujours le moteur (42/45)")

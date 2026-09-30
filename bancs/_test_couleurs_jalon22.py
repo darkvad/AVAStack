@@ -3,22 +3,35 @@
 démagenta.
 
 Décision d'Alain (19/09/2026) : appliqués APRÈS la composition (sur
-l'image COULEUR du composite) et JUSTE AVANT l'étirement, en LIVE et en
-TRAITEMENT EXTERNE, chacun derrière sa case à cocher. Vérifie :
+l'image COULEUR du composite), chacun derrière sa case à cocher.
+
+NOTE v2.48.0 (jalon 85) — LA CHAÎNE A CHANGÉ DE PLACE, et ce banc suit le
+contrat NOUVEAU : SCNR / SCNR doux / démagenta ne sont plus appliqués par la
+chaîne EXTERNE (le résultat ⚡ reste LINÉAIRE, non écrêté en vert) ; ils suivent
+l'ÉTIREMENT (section « Couleur de l'objet (après étirement) »), pour le live
+comme pour l'affichage du résultat externe. Les clés de configuration
+`ext_scnr*` ne sont plus écrites — et sont retirées d'une configuration
+antérieure. Vérifie :
 
   [1] module couleurs : SCNR « moyenne neutre » (G = min(G, (R+B)/2)),
       démagenta (négatif → SCNR → positif), SCNR doux (jalon 23 : retire
       le grésillement vert ≤ 3σ, préserve la structure — pensé pour les
       palettes narrowband où le vert est de la DONNÉE), mono no-op,
-      entrée intacte ;
+      entrée intacte. La recette HISTORIQUE (jalons 22/23) est vérifiée à
+      `preserve_luminance=False`, et la préservation de L* — ACTIVE par
+      défaut depuis le jalon 85, comme Siril / PixInsight — est vérifiée
+      au défaut : elle ne touche QUE les pixels corrigés ;
   [2] live : les cases font partie de la clé des réglages VeraLux ; en
       STF/manuel, process() applique le retrait (dominance verte réduite) ;
       vue « traitée » → désactivé ;
-  [3] traitement externe : les cases 4/5/6 (job 11-tuple) appliquent
-      SCNR → SCNR doux → démagenta EN FIN de chaîne — sur (H, W, 3),
-      no-op sur (H, W) mono ;
-  [4] persistance : clés vl_scnr / vl_scnr_doux / vl_demagenta / ext_scnr /
-      ext_scnr_doux / ext_demagenta écrites puis restaurées.
+  [3] traitement externe : AUCUNE case couleur dans cette chaîne — le
+      résultat est l'entrée AU PIXEL près et l'excès de vert la traverse
+      intact (aucun écrêtage en vert du fichier linéaire) ; déballage
+      tolérant des anciens formats de job ;
+  [3bis] chaîne externe : neutralisation de la couleur du fond (9e élément)
+      puis réduction du bruit chromatique (10e/11e, force transportée) ;
+  [4] persistance : clés vl_scnr / vl_scnr_doux / vl_demagenta / ext_chroma /
+      ext_neutre_fond écrites puis restaurées, clés `ext_scnr*` ABSENTES.
 
 Nécessite un affichage. Exécution : python bancs/_test_couleurs_jalon22.py
 """
@@ -59,6 +72,13 @@ def verifie(cond, msg):
     print(("  OK    " if cond else "  ÉCHEC ") + msg)
 
 
+def lab_l(img):
+    """L* CIE (Lab D65, échelle 0-100) : le canal que la PRÉSERVATION DE LA
+    LUMINOSITÉ (v2.48.0, jalon 85) doit rendre au pixel corrigé."""
+    return cv2.cvtColor(np.clip(img, 0.0, 1.0).astype(np.float32),
+                        cv2.COLOR_RGB2LAB)[..., 0]
+
+
 # Image COULEUR synthétique : fond vert excédentaire (bruit vert typique),
 # quelques étoiles BLANCHES (canaux équilibrés — doivent rester intactes)
 # et une tache MAGENTA (R et B > G).
@@ -87,9 +107,29 @@ verifie(out.shape == src.shape and out.dtype == np.float32
         "scnr : (H, W, 3) float32 finie")
 verifie(np.all(out[..., 1] <= 0.5 * (out[..., 0] + out[..., 2]) + 1e-6),
         "scnr : plus AUCUN pixel avec G > (R+B)/2 (moyenne neutre)")
-verifie(float(np.abs(src[..., 0] - out[..., 0]).max()) < 1e-7
-        and float(np.abs(src[..., 2] - out[..., 2]).max()) < 1e-7,
-        "scnr : R et B inchangés (seul le vert excédentaire est ramené)")
+# v2.48.0 (jalon 85) : `scnr` préserve désormais la L* CIE PAR DÉFAUT (comme
+# Siril / PixInsight) — R et B BOUGENT donc sur les pixels corrigés, et c'est
+# le but : l'objet n'est plus éteint. La formule HISTORIQUE des jalons 22/23
+# reste disponible telle quelle à `preserve_luminance=False` ; elle seule
+# laisse R et B intacts.
+hist = coul.scnr(src, preserve_luminance=False)
+verifie(float(np.abs(src[..., 0] - hist[..., 0]).max()) < 1e-7
+        and float(np.abs(src[..., 2] - hist[..., 2]).max()) < 1e-7,
+        "scnr(preserve_luminance=False) : R et B inchangés (seul le vert "
+        "excédentaire est ramené) — recette des jalons 22/23")
+# Au DÉFAUT, la L* des pixels corrigés est rendue (mesuré ~0,2 unité de Lab
+# ici, contre ~14 unités d'écart quand elle n'est pas rendue : TÉMOIN mesuré
+# sur le même masque, pour que l'assertion prouve qu'elle discrimine).
+modifies = np.abs(src - out).max(axis=2) > 1e-6
+dl = float(np.abs(lab_l(out)[modifies] - lab_l(src)[modifies]).max())
+dl_sans = float(np.abs(lab_l(hist)[modifies] - lab_l(src)[modifies]).max())
+verifie(bool(np.any(modifies)) and dl < 0.5 < dl_sans,
+        f"scnr(défaut) : L* des pixels corrigés RENDUE (écart max {dl:.4f} "
+        f"unité de Lab, contre {dl_sans:.2f} sans préservation)")
+# …et les pixels NON corrigés ressortent AU BIT près (aucun aller-retour Lab
+# sur eux) : c'est la non-régression RGB que le jalon 85 a verrouillée.
+verifie(np.array_equal(out[~modifies], src[~modifies]),
+        "scnr : les pixels non corrigés sont intacts AU BIT près")
 verifie(np.allclose(src[29:32, 39:42, 1], out[29:32, 39:42, 1]),
         "scnr : les étoiles blanches (G ≤ (R+B)/2) sont INTACTES")
 verifie(np.array_equal(src, src0) and not np.array_equal(src, out),
@@ -100,14 +140,26 @@ tache_ap = float(np.mean(dm[60:70, 20:30, 0] - dm[60:70, 20:30, 1]))
 verifie(tache_ap < 0.5 * tache_av,
         f"démagenta : la tache magenta est neutralisée "
         f"(R−G {tache_av:.3f} → {tache_ap:.3f})")
+modif_dm = np.abs(src - dm).max(axis=2) > 1e-6
+dl_dm = float(np.abs(lab_l(dm)[modif_dm] - lab_l(src)[modif_dm]).max())
+verifie(bool(np.any(modif_dm)) and dl_dm < 0.5,
+        f"démagenta(défaut) : L* des pixels corrigés RENDUE (écart max "
+        f"{dl_dm:.4f} unité de Lab sur {int(modif_dm.sum())} pixel(s))")
 mono = rng.normal(0.1, 0.01, (H, W)).astype(np.float32)
 verifie(np.array_equal(coul.scnr(mono), mono)
         and np.array_equal(coul.demagenta(mono), mono),
         "mono (H, W) : no-op (pour retirer du vert, il faut de la couleur)")
-# Démagenta = négatif → scnr → positif, cohérence exacte :
-dm_ref = 1.0 - coul.scnr(1.0 - src)
-verifie(np.allclose(dm, dm_ref),
-        "démagenta = négatif → SCNR → positif (recette exacte)")
+# Démagenta = négatif → scnr → positif, cohérence exacte. La préservation de
+# L* s'applique au résultat FINAL (le négatif n'a pas de luminosité
+# perceptuelle) : la recette exacte se vérifie donc à
+# `preserve_luminance=False`, et le défaut en DIFFÈRE (c'est le contrat neuf).
+dm_ref = 1.0 - coul.scnr(1.0 - src, preserve_luminance=False)
+verifie(np.allclose(coul.demagenta(src, preserve_luminance=False), dm_ref),
+        "démagenta(preserve_luminance=False) = négatif → SCNR → positif "
+        "(recette exacte des jalons 22/23)")
+verifie(not np.allclose(dm, dm_ref),
+        "…et au DÉFAUT le résultat en DIFFÈRE (la L* est rendue au pixel "
+        "corrigé) : les deux contrats sont bien distincts")
 
 # --- Jalon 23 : SCNR doux borné par le bruit -------------------------------
 # Image à grésillement vert seul : fond équilibré, bruit sur le vert seul.
@@ -115,7 +167,10 @@ img_grain = np.empty((H, W, 3), np.float32)
 img_grain[..., 0] = 0.10
 img_grain[..., 2] = 0.10
 img_grain[..., 1] = 0.10 + rng.normal(0, 0.008, (H, W)).astype(np.float32)
-sd = coul.scnr_doux(img_grain)
+# Recette HISTORIQUE (jalons 22/23), vérifiée à `preserve_luminance=False` :
+# c'est elle qui définit « le grésillement du fond est retiré » (le canal vert
+# seul est corrigé, sans compensation de lumière).
+sd = coul.scnr_doux(img_grain, preserve_luminance=False)
 exc_av = img_grain[..., 1] - 0.10
 exc_ap = sd[..., 1] - 0.10
 # Seul l'excès POSITIF (grésillement au-dessus de la moyenne neutre) est
@@ -130,6 +185,22 @@ verifie(len(pos_ap) < 0.05 * len(pos_av),
 verifie(float(exc_ap.max()) < 0.8 * float(exc_av.max()),
         f"scnr_doux : plus aucun excès de vert résiduel notable "
         f"(max {exc_ap.max():.4f} < 0,8 × {exc_av.max():.4f})")
+# Au DÉFAUT (préservation de L*) le grain vert est toujours réduit — la
+# préservation rend de la LUMIÈRE, pas du grain — et la L* des pixels corrigés
+# est rendue. Le σ du vert baisse donc moins qu'à la recette historique : c'est
+# le prix, assumé, de la préservation (l'écart de L* sans préservation est
+# mesuré ici comme TÉMOIN, sur le même masque).
+sd_def = coul.scnr_doux(img_grain)
+masque_sd = np.abs(img_grain - sd_def).max(axis=2) > 1e-6
+sigma_ap = float(sd_def[..., 1].std())
+dl_sd = float(np.abs(lab_l(sd_def)[masque_sd]
+                     - lab_l(img_grain)[masque_sd]).max())
+dl_sd_sans = float(np.abs(lab_l(sd)[masque_sd]
+                         - lab_l(img_grain)[masque_sd]).max())
+verifie(sigma_ap < 0.9 * float(exc_av.std()) and dl_sd < 0.5 < dl_sd_sans,
+        f"scnr_doux(défaut) : grain vert réduit (σ {exc_av.std():.5f} → "
+        f"{sigma_ap:.5f}) ET L* des pixels corrigés RENDUE (écart max "
+        f"{dl_sd:.4f} unité de Lab, contre {dl_sd_sans:.2f} sans préservation)")
 img_grain0 = img_grain.copy()
 coul.scnr_doux(img_grain)
 verifie(np.array_equal(img_grain, img_grain0),
@@ -211,7 +282,8 @@ app._on_vl_scnr()
 verifie(app.disp.vl_scnr is False,
         "vue « traitée » : SCNR live DÉSACTIVÉ (l'image a déjà été traitée)")
 # ==================================== [3] traitement externe
-print("[3] traitement externe : cases 4/5 en fin de chaîne")
+print("[3] traitement externe : plus AUCUNE case couleur dans cette chaîne "
+      "(jalon 85) — le résultat reste LINÉAIRE")
 app2 = ui.App(root)
 app2.rejeter_flou = False
 
@@ -232,107 +304,131 @@ app2.var_wb = _Val(False)
 app2.var_wb_force = _Val(1.0)
 app2.camera = type("Muette", (), {"name": "test",
                                   "read": lambda s: None})()
-# Job 11-TUPLE (jalon 22/23) : AUCUN outil externe (tout à False), uniquement
-# les cases couleur — la chaîne doit tout de même produire un résultat
-# transformé. Ordre d'application : SCNR → SCNR doux → démagenta.
+# POURQUOI la chaîne couleur n'est plus ici (décision d'Alain, jalon 85) : le
+# fichier LINÉAIRE sauvegardé portait le SCNR et sortait ÉCRÊTÉ EN VERT —
+# MESURÉ sur son empilement M31 : excès de vert max 5,9·10⁻⁸ pour 100 % des
+# pixels, contre 1,6·10⁻¹ sur le même empilement d'origine. Le job ne
+# transporte donc plus les trois cases : 8 éléments suffisent (aucun outil
+# externe).
 src = image_test()
-app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5,
-                True, False, True)
+src0 = src.copy()
+app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5)
 app2._session = 0
 app2._run_external(src, 3, 0)
 verifie(app2.ext_state == "ok" and app2.proc_full is not None
         and app2.proc_full.shape == src.shape,
-        "SCNR + démagenta seuls : la chaîne produit un résultat (H, W, 3)")
+        "chaîne externe sans outil : un résultat (H, W, 3) est produit")
 if app2.proc_full is not None:
-    verifie(np.allclose(app2.proc_full, coul.demagenta(coul.scnr(src)),
-                        atol=1e-6),
-            "résultat = démagenta(SCNR(image)) (ordre de la chaîne)")
-# SCNR doux seul (jalon 23) :
+    verifie(np.allclose(app2.proc_full, src, atol=1e-6),
+            "résultat = entrée, au pixel près : la chaîne externe ne retire "
+            "plus de vert (les cases couleur suivent l'étirement)")
+    exc_av = float(np.mean(src[..., 1] - 0.5 * (src[..., 0] + src[..., 2])))
+    exc_ap = float(np.mean(app2.proc_full[..., 1]
+                           - 0.5 * (app2.proc_full[..., 0]
+                                    + app2.proc_full[..., 2])))
+    verifie(exc_av > 0.05 and abs(exc_ap - exc_av) < 1e-6,
+            f"l'excès de vert TRAVERSE la chaîne intact "
+            f"(G−(R+B)/2 : {exc_av:.4f} → {exc_ap:.4f}) — plus d'écrêtage en "
+            f"vert du fichier linéaire")
+    verifie(np.array_equal(src, src0),
+            "l'image d'entrée n'est jamais modifiée par la chaîne")
+# Job 12-TUPLE (format courant) tout décoché : les emplacements 9 à 12 sont la
+# neutralisation du fond, le bruit chromatique, sa force et le rayon de
+# référence (v2.37.1 / v2.37.4).
 app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5,
-                False, True, False)
-app2._run_external(src, 3, 0)
-verifie(app2.ext_state == "ok"
-        and np.allclose(app2.proc_full, coul.scnr_doux(src), atol=1e-6),
-        "SCNR doux seul : résultat = scnr_doux(image)")
-# Mono : no-op — résultat identique à l'entrée.
-mono = np.clip(rng.normal(0.1, 0.01, (60, 80)), 0, None).astype(np.float32)
-app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5,
-                True, False, False)
-app2._run_external(mono, 2, 0)
-verifie(app2.proc_full is not None
-        and np.allclose(app2.proc_full, mono, atol=1e-6),
-        "mono : SCNR est un no-op (résultat = entrée)")
-# Job 8-TUPLE (jalon 7/14, ancien format) : déballage tolérant, rien appliqué.
-app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5)
+                False, False, 0.5, 3.0)
 app2._run_external(src, 3, 0)
 verifie(app2.ext_state == "ok"
         and np.allclose(app2.proc_full, src, atol=1e-6),
-        "job 8-tuple (ancien format) : déballage tolérant, aucun retrait")
+        "job 12-tuple (format courant, tout décoché) : déballage tolérant, "
+        "résultat = entrée")
+# Mono : no-op — résultat identique à l'entrée.
+mono = np.clip(rng.normal(0.1, 0.01, (60, 80)), 0, None).astype(np.float32)
+app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5)
+app2._run_external(mono, 2, 0)
+verifie(app2.proc_full is not None
+        and np.allclose(app2.proc_full, mono, atol=1e-6),
+        "mono : résultat = entrée (aucune correction de couleur dans cette "
+        "chaîne)")
 
 # v2.37.1 : corrections PRÉ-ÉTIREMENT de la chaîne live dans la chaîne EXTERNE
 # (demande d'Alain, 25/09/2026 : « intégrer les derniers ajouts (SPCC,
-# neutralisation, bruit chroma) dans la chaîne de traitement externe ») — job
-# 14-tuple : 12e = neutralisation du fond, 13e = bruit chromatique, 14e = force.
+# neutralisation, bruit chroma) dans la chaîne de traitement externe »).
+# v2.48.0 (jalon 85) : le job passe de 15 à 12 éléments (plus de cases couleur)
+# → la neutralisation du fond est le 9e (indice 8), le bruit chromatique le
+# 10e (9), sa force le 11e (10) et le rayon de référence le 12e (11).
 print("[3bis] chaîne externe : neutralisation du fond + bruit chromatique "
-      "(v2.37.1)")
+      "(v2.37.1, indices décalés par le jalon 85)")
 src_sp = image_test()
 app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5,
-                False, False, False, True, False, 0.5)
+                True, False, 0.5, 3.0)
 app2._run_external(src_sp, 4, 0)
 verifie(app2.ext_state == "ok"
         and np.allclose(app2.proc_full, coul.neutraliser_fond(src_sp),
                         atol=1e-6),
-        "12e élément : neutralisation du fond seule → fond égalisé")
+        "9e élément : neutralisation du fond seule → fond égalisé")
 app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5,
-                False, False, False, False, True, 0.75)
+                False, True, 0.75, 3.0)
 app2._run_external(src_sp, 4, 0)
 verifie(app2.ext_state == "ok"
         and np.allclose(app2.proc_full,
                         coul.reduire_bruit_chroma(src_sp, force=0.75),
                         atol=1e-6),
-        "13e/14e éléments : bruit chromatique à la FORCE transportée (0,75)")
-# Ordre de la chaîne complete, identique au live :
-# … → SCNR → démagenta → neutralisation → bruit chromatique.
+        "10e/11e éléments : bruit chromatique à la FORCE transportée (0,75)")
+# Ordre de la chaîne : … → neutralisation du fond → bruit chromatique (le vert
+# de l'objet n'est plus touché ICI : il l'est APRÈS l'étirement, à l'affichage).
 app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5,
-                True, True, True, True, True, 0.5)
+                True, True, 0.5, 3.0)
 app2._run_external(src_sp, 5, 0)
-attendu = coul.reduire_bruit_chroma(
-    coul.neutraliser_fond(coul.demagenta(coul.scnr_doux(coul.scnr(src_sp)))),
-    force=0.5)
+attendu = coul.reduire_bruit_chroma(coul.neutraliser_fond(src_sp), force=0.5)
 verifie(app2.ext_state == "ok"
         and np.allclose(app2.proc_full, attendu, atol=1e-6),
-        "chaîne complète : SCNR → SCNR doux → démagenta → fond → chromatique")
+        "chaîne complète : fond → chromatique (sans SCNR : il suit "
+        "l'étirement)")
+# Les gains de neutralisation sont ANNONCÉS dans le message final — même
+# exigence d'honnêteté que « État des calculs » du live. Ici le fond de
+# `image_test()` est franchement vert : la correction a lieu, donc elle se dit.
+verifie("fond neutralisé" in (app2.ext_msg or ""),
+        f"fond non neutre : les gains appliqués sont ANNONCÉS "
+        f"(« {str(app2.ext_msg)[:70]}… »)")
+# …et ils ne le sont PAS quand il n'y a rien à corriger : fond déjà neutre.
+fond_neutre = np.full((60, 80, 3), 0.08, np.float32)
+app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5,
+                True, False, 0.5, 3.0)
+app2._run_external(fond_neutre, 3, 0)
 verifie("fond neutralisé" not in (app2.ext_msg or ""),
-        "les gains de neutralisation ne sont PAS annoncés quand il n'y a rien à "
-        "corriger (fond déjà neutre après SCNR)")
-# …et ils le SONT sur un ciel réellement coloré (bleu de 3 %, comme sur ses
-# empilements M31) — même exigence d'honnêteté que « État des calculs » du live.
+        "fond déjà neutre : les gains ne sont PAS annoncés (aucune correction "
+        "inventée)")
+# …et sur un ciel réellement coloré (bleu de 3 %, comme sur ses empilements
+# M31), ils le sont — mesuré ici sur une image dont les DEUX bords diffèrent.
 ciel_bleu = np.empty((60, 80, 3), np.float32)
 ciel_bleu[..., 0] = 0.0310
 ciel_bleu[..., 1] = 0.0320
 ciel_bleu[..., 2] = 0.0330
 ciel_bleu += rng.normal(0, 0.0005, ciel_bleu.shape).astype(np.float32)
 app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5,
-                False, False, False, True, False, 0.5)
+                True, False, 0.5, 3.0)
 app2._run_external(ciel_bleu, 3, 0)
-verifie("fond neutralisé" in (app2.ext_msg or ""),
-        f"ciel bleui : les gains appliqués sont ANNONCÉS dans le message "
-        f"(« {str(app2.ext_msg)[:70]}… »)")
-# Mono : les deux nouvelles étapes sont des no-op.
+verifie(app2.ext_state == "ok"
+        and np.allclose(app2.proc_full, coul.neutraliser_fond(ciel_bleu),
+                        atol=1e-6),
+        "ciel bleui : le fond corrigé est bien celui de la chaîne externe")
+# Mono : les deux étapes sont des no-op.
 app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5,
-                False, False, False, True, True, 1.0)
+                True, True, 1.0, 3.0)
 app2._run_external(mono, 2, 0)
 verifie(app2.proc_full is not None
         and np.allclose(app2.proc_full, mono, atol=1e-6),
         "mono : neutralisation et bruit chromatique sont des no-op")
-# Job 11-tuple (format v2.36) : déballage tolérant → les deux étapes inactives.
+# Job 11-tuple (format v2.36, trois cases couleur dont AUCUNE n'existe plus) :
+# déballage tolérant — les emplacements lus sont ceux du format courant, donc
+# ici tout est décoché et le résultat est l'entrée, au pixel près.
 app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5,
-                True, False, True)
+                False, False, 0.5)
 app2._run_external(src_sp, 3, 0)
 verifie(app2.ext_state == "ok"
-        and np.allclose(app2.proc_full, coul.demagenta(coul.scnr(src_sp)),
-                        atol=1e-6),
-        "job 11-tuple (v2.36) : déballage tolérant, correctifs v2.37.1 inactifs")
+        and np.allclose(app2.proc_full, src_sp, atol=1e-6),
+        "job 11-tuple (v2.36) : déballage tolérant, rien appliqué")
 
 # ==================================== [4] persistance
 print("[4] persistance : clés explicites, restauration")
@@ -340,37 +436,47 @@ app3 = ui.App(root)
 app3.var_vl_scnr.set(True)
 app3.var_vl_scnr_doux.set(True)
 app3.var_vl_demagenta.set(True)
-app3.var_ext_scnr.set(True)
 app3.var_ext_chroma.set(True)          # v2.37.1 : opt-in
 sauvegardes = []
 ui.sauver_config = lambda d: sauvegardes.append(dict(d))
 app3._sauver_config_app()
 c_cfg = sauvegardes[-1]
 verifie(c_cfg.get("vl_scnr") is True and c_cfg.get("vl_scnr_doux") is True
-        and c_cfg.get("vl_demagenta") is True
-        and c_cfg.get("ext_scnr") is True
-        and c_cfg.get("ext_scnr_doux") is False
-        and c_cfg.get("ext_demagenta") is False,
-        "config : vl_scnr / vl_scnr_doux / vl_demagenta / ext_scnr / "
-        "ext_scnr_doux / ext_demagenta écrits")
+        and c_cfg.get("vl_demagenta") is True,
+        "config : vl_scnr / vl_scnr_doux / vl_demagenta écrits")
 verifie(c_cfg.get("ext_chroma") is True
         and c_cfg.get("ext_neutre_fond") is True,
         "config : ext_chroma (coché) et ext_neutre_fond (défaut) écrits")
+# v2.48.0 (jalon 85) : les cases couleur ont QUITTÉ la chaîne externe → les clés
+# ext_scnr / ext_scnr_doux / ext_demagenta ne sont plus ÉCRITES (elles ne
+# décrivent plus aucun réglage).
+verifie("ext_scnr" not in c_cfg and "ext_scnr_doux" not in c_cfg
+        and "ext_demagenta" not in c_cfg,
+        "config : ext_scnr / ext_scnr_doux / ext_demagenta ABSENTES (plus de "
+        "case couleur dans la chaîne externe)")
 ui.CONFIG = dict(c_cfg)
 app4 = ui.App(root)
 verifie(app4.var_vl_scnr.get() is True
         and app4.var_vl_scnr_doux.get() is True
         and app4.var_vl_demagenta.get() is True
-        and app4.var_ext_scnr.get() is True
-        and app4.var_ext_scnr_doux.get() is False
-        and app4.var_ext_demagenta.get() is False
         and app4.disp.vl_scnr is True,
-        "config : cases restaurées (disp.vl_scnr actif)")
+        "config : cases couleur restaurées (disp.vl_scnr actif)")
 verifie(app4.var_ext_chroma.get() is True
         and bool(app4.var_ext_neutre.get()) is True,
         "config : ext_chroma restauré, ext_neutre_fond reste coché")
-ui.CONFIG = {"ext_neutre_fond": False}       # décision d'Alain persistée
+# Une configuration ANTÉRIEURE qui porte encore les trois clés retirées les voit
+# RETIRÉES à la sauvegarde — seule exception à la règle « ne touche pas aux
+# entrées inconnues » : sinon le fichier laisserait croire à une case qui
+# n'existe plus. Le réglage respecté au passage : ext_neutre_fond décoché.
+sauvegardes = []
+ui.CONFIG = {"ext_scnr": True, "ext_scnr_doux": True,
+             "ext_demagenta": True, "ext_neutre_fond": False}
 app5 = ui.App(root)
+app5._sauver_config_app()
+c5 = sauvegardes[-1]
+verifie("ext_scnr" not in c5 and "ext_scnr_doux" not in c5
+        and "ext_demagenta" not in c5,
+        "config antérieure : les clés ext_scnr* sont RETIRÉES à la sauvegarde")
 verifie(bool(app5.var_ext_neutre.get()) is False,
         "config : ext_neutre_fond DÉCOCHÉ par l'utilisateur est respecté")
 

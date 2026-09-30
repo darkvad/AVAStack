@@ -626,14 +626,11 @@ class App:
             self.var_ext_dn.set(True)
         if c.get("ext_bxt"):
             self.var_ext_bxt.set(True)
-        # Jalon 22 : SCNR + démagenta du traitement externe (booléens
-        # explicites — aucun outil requis, numpy seul).
-        if c.get("ext_scnr"):
-            self.var_ext_scnr.set(True)
-        if c.get("ext_scnr_doux"):
-            self.var_ext_scnr_doux.set(True)
-        if c.get("ext_demagenta"):
-            self.var_ext_demagenta.set(True)
+        # v2.48.0 (jalon 85) : les clés `ext_scnr` / `ext_scnr_doux` /
+        # `ext_demagenta` ne sont PLUS relues — la chaîne couleur suit
+        # l'étirement (section « Couleur de l'objet (après étirement) »), elle
+        # n'appartient plus à la chaîne externe. Une configuration antérieure
+        # qui les portait reste lisible : elles sont simplement ignorées.
         # v2.37.1 : corrections pré-étirement de la chaîne externe. La
         # neutralisation est COCHÉE par défaut → on ne la modifie que si la
         # config porte la clé ET une valeur (même règle que vl_neutre_fond) ;
@@ -836,6 +833,37 @@ class App:
         if c.get("vl_demagenta"):
             self.var_vl_demagenta.set(True)
             self._on_vl_demagenta()
+        # v2.48.0 (jalon 85) : force du SCNR et du démagenta — restaurées de
+        # façon TOLÉRANTE (valeur hors [0,1] ou illisible : IGNORÉE, la valeur
+        # d'usage reste), comme la force du bruit chromatique plus bas.
+        for _cle, _var in (("vl_scnr_force", self.var_vl_scnr_force),
+                           ("vl_demagenta_force", self.var_vl_demagenta_force)):
+            _f = c.get(_cle)
+            if isinstance(_f, (int, float)) and not isinstance(_f, bool) \
+                    and 0.0 <= float(_f) <= 1.0:
+                _var.set(float(_f))
+        self.disp.vl_scnr_force = float(self.var_vl_scnr_force.get())
+        self.disp.vl_demagenta_force = float(self.var_vl_demagenta_force.get())
+        # v2.48.0 (jalon 86) : boost du rouge (SII) — DÉFAUT DÉCOCHÉ, donc une
+        # config antérieure (sans la clé) le laisse décoché ; la FORCE est
+        # restaurée de façon TOLÉRANTE (hors bornes du module ou illisible :
+        # IGNORÉE, la valeur d'usage — le défaut du module — reste).
+        if "vl_boost_rouge" in c:
+            self.var_vl_boost.set(bool(c.get("vl_boost_rouge")))
+            self._on_vl_boost()
+        _fb = c.get("vl_boost_force")
+        if isinstance(_fb, (int, float)) and not isinstance(_fb, bool) \
+                and couleurs_mod.BOOST_ROUGE_MIN <= float(_fb) \
+                <= couleurs_mod.BOOST_ROUGE_MAX:
+            self.var_vl_boost_force.set(float(_fb))
+        self.disp.vl_boost_force = float(self.var_vl_boost_force.get())
+        # Préservation de la luminosité : DÉFAUT COCHÉE (comme Siril et
+        # PixInsight) — on ne la modifie que si la config porte la clé ET une
+        # valeur (même règle que vl_neutre_fond : une config antérieure ne doit
+        # pas changer le défaut).
+        if "vl_preserve_luminance" in c:
+            self.var_vl_preserve.set(bool(c.get("vl_preserve_luminance")))
+            self._on_vl_preserve()
         # v2.36.1 : neutralisation de la couleur du fond — DÉFAUT COCHÉE, donc on
         # ne l'active que si la config la demande ET qu'une valeur est présente
         # (une config antérieure ne doit pas changer le défaut).
@@ -936,6 +964,16 @@ class App:
         c["vl_scnr"] = bool(self.var_vl_scnr.get())
         c["vl_scnr_doux"] = bool(self.var_vl_scnr_doux.get())
         c["vl_demagenta"] = bool(self.var_vl_demagenta.get())
+        # v2.48.0 (jalon 85) : force des deux outils et préservation de la
+        # luminosité (curseurs « Force du SCNR » / « Force du démagenta » et
+        # case « Préserver la luminosité (L*) »).
+        c["vl_scnr_force"] = float(self.var_vl_scnr_force.get())
+        c["vl_demagenta_force"] = float(self.var_vl_demagenta_force.get())
+        c["vl_preserve_luminance"] = bool(self.var_vl_preserve.get())
+        # v2.48.0 (jalon 86) : boost du rouge (SII) — booléen EXPLICITE (comme
+        # les autres cases) et force dans les bornes du module.
+        c["vl_boost_rouge"] = bool(self.var_vl_boost.get())
+        c["vl_boost_force"] = float(self.var_vl_boost_force.get())
         # v2.36.1 : neutralisation de la couleur du fond — booléen EXPLICITE
         # (comme les autres cases : si Alain la décoche, elle reste décochée).
         c["vl_neutre_fond"] = bool(self.var_vl_neutre.get())
@@ -949,9 +987,15 @@ class App:
         # v2.38.0 : rendu pleine résolution de l'écran (booléen EXPLICITE, comme
         # les autres cases : décoché, il reste décoché).
         c["vl_pleine_res_ecran"] = bool(self.var_vl_pleine_res.get())
-        c["ext_scnr"] = bool(self.var_ext_scnr.get())
-        c["ext_scnr_doux"] = bool(self.var_ext_scnr_doux.get())
-        c["ext_demagenta"] = bool(self.var_ext_demagenta.get())
+        # v2.48.0 : plus de cases couleur dans la chaîne externe (elles suivent
+        # l'étirement) — clés ext_scnr / ext_scnr_doux / ext_demagenta plus
+        # écrites.
+        # Elles sont en plus RETIRÉES d'une configuration antérieure : c'est la
+        # seule exception à la règle « ne touche pas aux entrées inconnues »
+        # (la docstring de cette méthode) — ces clés ne décrivent plus AUCUN
+        # réglage, les garder ferait croire à une case qui n'existe plus.
+        for _cle in ("ext_scnr", "ext_scnr_doux", "ext_demagenta"):
+            c.pop(_cle, None)
         # v2.37.1 : corrections pré-étirement de la chaîne externe (booléens
         # EXPLICITES, comme toutes les autres cases).
         c["ext_neutre_fond"] = bool(self.var_ext_neutre.get())
@@ -1860,6 +1904,114 @@ class App:
                         variable=self.var_rejeter_flou,
                         command=self._on_rejeter_flou).pack(anchor="w")
 
+        # --- v2.48.0 (jalon 85) : L'ORDRE DES CADRES SUIT L'ORDRE DES TRAITEMENTS
+        # (demande d'Alain : « l'UI doit respecter l'ordre des traitements »).
+        # Le cadre couleur du jalon 22 MÉLANGEAIT deux étapes de la chaîne : les
+        # corrections AVANT l'étirement (neutralisation du fond, réduction du bruit
+        # chromatique — appliquées par le solveur « après la neutralisation et juste
+        # avant l'étirement », cf. display.py) et celles APRÈS (SCNR, SCNR doux,
+        # démagenta, préservation de L*). Il est donc SCINDÉ, et la colonne suit
+        # désormais la chaîne réelle :
+        #   Fond et grain (AVANT étirement) → neutralisation + bruit chromatique ;
+        #   Netteté live (AVANT étirement)  → Richardson-Lucy ;
+        #   Affichage (temps réel)          → l'étirement lui-même + gamma/saturation ;
+        #   Couleur de l'objet (APRÈS)      → SCNR / SCNR doux / démagenta (L*, R*).
+        # Aucun réglage, aucune clé de configuration et aucun comportement ne
+        # changent : seuls les PARENTS de ces widgets (donc leur place à l'écran)
+        # changent, et l'ordre affiché devient l'ordre appliqué.
+        self.frm_fond = ttk.LabelFrame(
+            left, text="Fond et grain (AVANT étirement)", padding=6)
+        self.frm_fond.pack(fill="x", pady=3)
+        # --- v2.36.1 : NEUTRALISATION DE LA COULEUR DU FOND avant étirement ---
+        # Constat d'Alain (25/09/2026) : le fond restait bleu à l'écran (et le
+        # PNG était franchement bleu, pour une autre raison : canaux permutés).
+        # COCHÉE PAR DÉFAUT : ce n'est pas un choix esthétique mais la
+        # correction d'un défaut de rendu (l'ancre de VeraLux transforme
+        # quelques pour cent d'écart de ciel en fond franchement coloré).
+        # Décocher = ancien rendu.
+        self.var_vl_neutre = tk.BooleanVar(value=True)
+        ttk.Checkbutton(self.frm_fond,
+                        text="Neutraliser la couleur du fond (live)",
+                        variable=self.var_vl_neutre,
+                        command=self._on_vl_neutre).pack(anchor="w")
+        ttk.Label(self.frm_fond,
+                  text="Égalise les 3 canaux sur la MÉDIANE DE LA MOITIÉ SOMBRE, "
+                       "juste avant l'étirement. Les gains RÉELLEMENT appliqués "
+                       "sont annoncés dans « État des calculs (live) » : c'est "
+                       "cette mesure qu'il faut lire, jamais un exemple chiffré.",
+                  foreground="#888888", wraplength=310).pack(anchor="w")
+
+        # --- v2.37.0 : RÉDUCTION DU BRUIT CHROMATIQUE (opt-in, DÉCOCHÉE par
+        # défaut — choix d'Alain, 25/09/2026 : « oui pour la réduction de bruit
+        # chromatique (j'allais te demander un équivalent de SCNR pour le bleu de
+        # toute façon) et case décochée par défaut »). Justification MESURÉE sur
+        # ses empilements M31 (41 et 115 frames) : le grain du fond est équilibré
+        # en R/G (0,90) mais B/G reste à ~1,17 — la SPCC applique K_B/K_G = 1,32,
+        # et un gain multiplicatif amplifie le bruit du canal qu'il monte. Elle
+        # lisse la CHROMA (YCrCb) en laissant la LUMINANCE intacte : ni le niveau
+        # ni le contraste du fond ne bougent, seulement le grain coloré.
+        self.var_vl_chroma = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self.frm_fond,
+                        text="Réduire le bruit chromatique (live)",
+                        variable=self.var_vl_chroma,
+                        command=self._on_vl_chroma).pack(anchor="w")
+        self.var_vl_chroma_force = tk.DoubleVar(value=0.5)
+        self._add_slider(self.frm_fond, "Force du bruit chromatique",
+                         self.var_vl_chroma_force, 0.0, 1.0, 0.05,
+                         self._on_vl_chroma, "{:.2f}")
+        ttk.Label(self.frm_fond,
+                  text="Lisse la COULEUR du grain (YCrCb) sans toucher à la "
+                       "luminance : un gain par canal (SPCC en tête) amplifie le "
+                       "bruit du canal qu'il monte — mesuré : B/G 1,17 → ~1,00. "
+                       "Force = part du bruit chromatique retirée.",
+                  foreground="#888888", wraplength=310).pack(anchor="w")
+        # --- v2.37.4 : RAYON DE RÉFÉRENCE du flou de chroma (demande d'Alain,
+        # 26/09/2026 : « pour la visu live, mets à disposition le réglage du rayon
+        # de référence pour pouvoir faire des tests »). Exprimé en pixels PLEINE
+        # RÉSOLUTION : l'aperçu de l'appli le ramène à sa propre échelle
+        # (`couleurs.rayon_chroma_apercu`) pour rester fidèle aux fichiers, et la
+        # chaîne EXTERNE comme la sauvegarde « tel que vu » l'utilisent tel quel.
+        self.var_vl_chroma_rayon = tk.DoubleVar(value=couleurs_mod.RAYON_CHROMA_DEFAUT)
+        self._add_slider(self.frm_fond, "Rayon de référence (px pleine rés.)",
+                         self.var_vl_chroma_rayon, 0.5, 8.0, 0.25,
+                         self._on_vl_chroma_rayon, "{:.2f}")
+        ttk.Label(self.frm_fond,
+                  text="Rayon du flou qui lisse la couleur : plus grand = grain "
+                       "coloré mieux retiré, mais couleur des étoiles plus "
+                       "étalée (halo de couleur). L'aperçu applique ce rayon à "
+                       "SON échelle, les fichiers à la pleine résolution — "
+                       "l'écran reste fidèle au fichier.",
+                  foreground="#888888", wraplength=310).pack(anchor="w")
+
+        # --- Netteté live (jalon 12) : cadre INDÉPENDANT du moteur
+        # d'étirement (demande d'Alain) — Richardson-Lucy s'applique AVANT
+        # l'étirement, en STF/manuel comme en VeraLux. Position dans la
+        # chaîne : après le débruitage (on lisse d'abord, on restaure
+        # ensuite), avant l'étirement. PSF = seeing mesuré (jalon 10) ; la
+        # netteté est calculée dans un thread dédié, jamais dans l'UI.
+        # v2.48.0 (jalon 85) : ce cadre a été REMONTÉ ici, avant « Affichage » —
+        # son titre dit « avant étirement » depuis le jalon 12, mais il était
+        # affiché APRÈS le cadre qui porte l'étirement (demande d'Alain : « l'UI
+        # doit respecter l'ordre des traitements »). Aucun comportement ne
+        # change : seule la place dans la colonne.
+        self.frm_sharp = ttk.LabelFrame(left, text="Netteté live (Richardson-Lucy)",
+                                        padding=6)
+        self.frm_sharp.pack(fill="x", pady=3)
+        self.var_vl_sharp = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self.frm_sharp, text="Netteté live (avant étirement)",
+                        variable=self.var_vl_sharp,
+                        command=self._on_vl_sharp).pack(anchor="w")
+        self.var_vl_sharp_iter = tk.DoubleVar(
+            value=float(nettete_live.ITERATIONS_DEFAUT))
+        self.scl_sharp = self._add_slider(
+            self.frm_sharp, "Itérations (3-5 = réglage utile)",
+            self.var_vl_sharp_iter, 1.0,
+            float(nettete_live.ITERATIONS_MAX), 1.0,
+            self._on_vl_sharp, "{:.0f}")
+        self.lbl_sharp = ttk.Label(self.frm_sharp, text="Netteté désactivée",
+                                   foreground="#888888", wraplength=310)
+        self.lbl_sharp.pack(anchor="w", pady=(2, 0))
+
         # --- Affichage
         box = ttk.LabelFrame(left, text="Affichage (temps réel)", padding=6)
         box.pack(fill="x", pady=3)
@@ -2069,118 +2221,101 @@ class App:
                        "(~7-8 s par rendu, contre ~2 s pour l'aperçu).",
                   foreground="#888888", wraplength=310).pack(anchor="w")
 
-        # --- Netteté live (jalon 12) : cadre INDÉPENDANT du moteur
-        # d'étirement (demande d'Alain) — Richardson-Lucy s'applique AVANT
-        # l'étirement, en STF/manuel comme en VeraLux. Position dans la
-        # chaîne : après le débruitage (on lisse d'abord, on restaure
-        # ensuite), avant l'étirement. PSF = seeing mesuré (jalon 10) ; la
-        # netteté est calculée dans un thread dédié, jamais dans l'UI.
-        self.frm_sharp = ttk.LabelFrame(left, text="Netteté live (Richardson-Lucy)",
-                                        padding=6)
-        self.frm_sharp.pack(fill="x", pady=3)
-        self.var_vl_sharp = tk.BooleanVar(value=False)
-        ttk.Checkbutton(self.frm_sharp, text="Netteté live (avant étirement)",
-                        variable=self.var_vl_sharp,
-                        command=self._on_vl_sharp).pack(anchor="w")
-        self.var_vl_sharp_iter = tk.DoubleVar(
-            value=float(nettete_live.ITERATIONS_DEFAUT))
-        self.scl_sharp = self._add_slider(
-            self.frm_sharp, "Itérations (3-5 = réglage utile)",
-            self.var_vl_sharp_iter, 1.0,
-            float(nettete_live.ITERATIONS_MAX), 1.0,
-            self._on_vl_sharp, "{:.0f}")
-        self.lbl_sharp = ttk.Label(self.frm_sharp, text="Netteté désactivée",
-                                   foreground="#888888", wraplength=310)
-        self.lbl_sharp.pack(anchor="w", pady=(2, 0))
-
-        # --- Couleur live (jalon 41, décision d'Alain) : cadre INDÉPENDANT
-        # du moteur d'étirement — SCNR / SCNR doux / démagenta sont appliqués
-        # par le solveur VeraLux (jalons 22/23) ET par le moteur STF/manuel
-        # (process(), testé au jalon 22). Jalon 22 (décision d'Alain) :
-        # APRÈS composition (image COULEUR du composite) et JUSTE AVANT
-        # l'étirement ; no-op sur un composite monochrome (Mono). Vue
-        # « empilement » uniquement (en vue « traitée », l'image a déjà subi
-        # le traitement externe).
+        # --- Couleur de l'objet (v2.48.0, jalon 85) : cadre INDÉPENDANT du
+        # moteur d'étirement, appliqué APRÈS l'étirement par le solveur VeraLux
+        # (jalon 22/23, déplacé ici au jalon 85) ET par le moteur STF/manuel
+        # (`display.process()`) ; no-op sur un composite monochrome (Mono).
+        # Vue « empilement » uniquement (en vue « traitée », l'image a déjà
+        # subi le traitement externe). POURQUOI APRÈS l'étirement : la
+        # préservation de la luminosité (case ci-dessous, cochée par défaut)
+        # est une grandeur PERCEPTUELLE, et la sortie LINÉAIRE sauvegardée ne
+        # doit plus être écrêtée en vert (elle l'était — MESURÉ sur l'empilement
+        # M31 d'Alain : excès de vert max 5,9·10⁻⁸ contre 1,6·10⁻¹ sur
+        # l'empilement d'origine).
         self.frm_couleur = ttk.LabelFrame(
-            left, text="Couleur live (SCNR / démagenta)", padding=6)
+            left, text="Couleur de l'objet (APRÈS étirement)", padding=6)
         self.frm_couleur.pack(fill="x", pady=3)
+        self.var_vl_preserve = tk.BooleanVar(value=True)
+        ttk.Checkbutton(self.frm_couleur,
+                        text="Préserver la luminosité (L*) — comme Siril",
+                        variable=self.var_vl_preserve,
+                        command=self._on_vl_preserve).pack(anchor="w",
+                                                           pady=(2, 0))
+        ttk.Label(self.frm_couleur,
+                  text="Sans elle, retirer du vert RETIRE DE LA LUMIÈRE : "
+                       "mesuré sur ton empilement SHO NGC 2237, la nébuleuse "
+                       "passe de L* 56,5 à 25,8 (elle s'éteint — « manque de "
+                       "doré ») ; avec elle, 56,4. Seuls les pixels corrigés "
+                       "changent.",
+                  foreground="#888888", wraplength=310).pack(anchor="w")
         self.var_vl_scnr = tk.BooleanVar(value=False)
-        ttk.Checkbutton(self.frm_couleur, text="SCNR — retrait du vert (live)",
+        ttk.Checkbutton(self.frm_couleur, text="SCNR — retrait du vert",
                         variable=self.var_vl_scnr,
-                        command=self._on_vl_scnr).pack(anchor="w", pady=(2, 0))
+                        command=self._on_vl_scnr).pack(anchor="w", pady=(4, 0))
+        self.var_vl_scnr_force = tk.DoubleVar(value=1.0)
+        self._add_slider(self.frm_couleur, "Force du SCNR (1,00 = retrait total)",
+                         self.var_vl_scnr_force, 0.0, 1.0, 0.05,
+                         self._on_vl_scnr_force, "{:.2f}")
         # Jalon 23 : SCNR doux borné par le bruit — ne retire que le
         # grésillement vert (excès de vert ≤ 3σ), préserve la structure
         # (nébuleuses) : pensé pour les palettes narrowband où le vert est
-        # de la DONNÉE (HOO : O3 ; SHO sans S : Ha).
+        # de la DONNÉE (HOO : O3 ; SHO sans S : Ha). MESURÉ (banc jalon 85 [6]) :
+        # après un SCNR à force 1,00 l'excès est ≤ 0 partout, donc cette case ne
+        # retire plus rien — elle ne redevient active qu'avec une force < 1,00.
         self.var_vl_scnr_doux = tk.BooleanVar(value=False)
         ttk.Checkbutton(self.frm_couleur,
-                        text="SCNR doux — bruit seul (live)",
+                        text="SCNR doux — bruit seul (actif si force < 1,00)",
                         variable=self.var_vl_scnr_doux,
                         command=self._on_vl_scnr_doux).pack(anchor="w")
         self.var_vl_demagenta = tk.BooleanVar(value=False)
         ttk.Checkbutton(self.frm_couleur,
-                        text="Démagenta — négatif + SCNR (live)",
+                        text="Démagenta — négatif + SCNR",
                         variable=self.var_vl_demagenta,
                         command=self._on_vl_demagenta).pack(anchor="w")
-        # --- v2.36.1 : NEUTRALISATION DE LA COULEUR DU FOND avant étirement ---
-        # Constat d'Alain (25/09/2026) : le fond restait bleu à l'écran (et le
-        # PNG était franchement bleu, pour une autre raison : canaux permutés).
-        # COCHÉE PAR DÉFAUT : ce n'est pas un choix esthétique mais la
-        # correction d'un défaut de rendu (l'ancre de VeraLux transforme
-        # quelques pour cent d'écart de ciel en facteur ~2,4 de couleur de
-        # fond). Décocher = ancien rendu.
-        self.var_vl_neutre = tk.BooleanVar(value=True)
-        ttk.Checkbutton(self.frm_couleur,
-                        text="Neutraliser la couleur du fond (live)",
-                        variable=self.var_vl_neutre,
-                        command=self._on_vl_neutre).pack(anchor="w", pady=(4, 0))
+        self.var_vl_demagenta_force = tk.DoubleVar(value=1.0)
+        self._add_slider(self.frm_couleur, "Force du démagenta",
+                         self.var_vl_demagenta_force, 0.0, 1.0, 0.05,
+                         self._on_vl_demagenta_force, "{:.2f}")
         ttk.Label(self.frm_couleur,
-                  text="Égalise les 3 canaux sur la MÉDIANE DE LA MOITIÉ SOMBRE "
-                       "(gains ~2 %) juste avant l'étirement : l'ancre de "
-                       "VeraLux transformait 2 % d'écart de ciel en un fond "
-                       "bleu (mesuré R/G 0,36 · B/G 1,61 → 1,02 · 1,00).",
+                  text="Les deux cases sont INDÉPENDANTES (en SHO la teinte "
+                       "magenta coexiste avec l'excès de vert) : l'ordre est "
+                       "SCNR → SCNR doux → démagenta, et chacun garde sa force.",
                   foreground="#888888", wraplength=310).pack(anchor="w")
 
-        # --- v2.37.0 : RÉDUCTION DU BRUIT CHROMATIQUE (opt-in, DÉCOCHÉE par
-        # défaut — choix d'Alain, 25/09/2026 : « oui pour la réduction de bruit
-        # chromatique (j'allais te demander un équivalent de SCNR pour le bleu de
-        # toute façon) et case décochée par défaut »). Justification MESURÉE sur
-        # ses empilements M31 (41 et 115 frames) : le grain du fond est équilibré
-        # en R/G (0,90) mais B/G reste à ~1,17 — la SPCC applique K_B/K_G = 1,32,
-        # et un gain multiplicatif amplifie le bruit du canal qu'il monte. Elle
-        # lisse la CHROMA (YCrCb) en laissant la LUMINANCE intacte : ni le niveau
-        # ni le contraste du fond ne bougent, seulement le grain coloré.
-        self.var_vl_chroma = tk.BooleanVar(value=False)
+        # --- v2.48.0 (jalon 86) : BOOST DU ROUGE (SII) MASQUÉ À L'OBJET -------
+        # Décision d'Alain après la mesure de son empilement SHO NGC 2237 :
+        # « la préservation de L* marche (la nébuleuse n'est plus éteinte), mais
+        # elle reste verte — il manque le doré ». Le doré EST physique : en SHO
+        # le rouge vient du SII, faible (MESURÉ sur ses brutes : SII/Ha = 0,22,
+        # soit 4,6× moins de flux que Ha), et les deux autres leviers essayés
+        # sont MESURÉS et écartés — le « Linear Fit » gain + offset se cale sur
+        # le quart central de l'image (60,6 % d'OBJET ici), choisit un gain rouge
+        # au plafond (×4,0) et colore le fond (saturation 0,08 → 0,34) tout en
+        # délavant la nébuleuse (0,72 → 0,31) ; un gain R global teinte le ciel
+        # (97 % des pixels de fond en R > V à ×2,5). Ce boost-ci pèse son gain
+        # par la LUMINANCE (0 dans le fond, 1 sur l'objet) : le fond reste
+        # identique AU PIXEL près (vérifié : les quatre mesures de fond ne
+        # bougent pas de ×1,5 à ×4,0).
+        ttk.Separator(self.frm_couleur).pack(fill="x", pady=4)
+        self.var_vl_boost = tk.BooleanVar(value=False)
         ttk.Checkbutton(self.frm_couleur,
-                        text="Réduire le bruit chromatique (live)",
-                        variable=self.var_vl_chroma,
-                        command=self._on_vl_chroma).pack(anchor="w", pady=(4, 0))
-        self.var_vl_chroma_force = tk.DoubleVar(value=0.5)
-        self._add_slider(self.frm_couleur, "Force du bruit chromatique",
-                         self.var_vl_chroma_force, 0.0, 1.0, 0.05,
-                         self._on_vl_chroma, "{:.2f}")
+                        text="Boost du rouge (SII) — masqué à l'objet",
+                        variable=self.var_vl_boost,
+                        command=self._on_vl_boost).pack(anchor="w")
+        self.var_vl_boost_force = tk.DoubleVar(
+            value=float(couleurs_mod.BOOST_ROUGE_DEFAUT))
+        self._add_slider(self.frm_couleur,
+                         "Force du boost (3,00 = doré mesuré)",
+                         self.var_vl_boost_force,
+                         float(couleurs_mod.BOOST_ROUGE_MIN),
+                         float(couleurs_mod.BOOST_ROUGE_MAX), 0.05,
+                         self._on_vl_boost_force, "{:.2f}")
         ttk.Label(self.frm_couleur,
-                  text="Lisse la COULEUR du grain (YCrCb) sans toucher à la "
-                       "luminance : un gain par canal (SPCC en tête) amplifie le "
-                       "bruit du canal qu'il monte — mesuré : B/G 1,17 → ~1,00. "
-                       "Force = part du bruit chromatique retirée.",
-                  foreground="#888888", wraplength=310).pack(anchor="w")
-        # --- v2.37.4 : RAYON DE RÉFÉRENCE du flou de chroma (demande d'Alain,
-        # 26/09/2026 : « pour la visu live, mets à disposition le réglage du rayon
-        # de référence pour pouvoir faire des tests »). Exprimé en pixels PLEINE
-        # RÉSOLUTION : l'aperçu de l'appli le ramène à sa propre échelle
-        # (`couleurs.rayon_chroma_apercu`) pour rester fidèle aux fichiers, et la
-        # chaîne EXTERNE comme la sauvegarde « tel que vu » l'utilisent tel quel.
-        self.var_vl_chroma_rayon = tk.DoubleVar(value=couleurs_mod.RAYON_CHROMA_DEFAUT)
-        self._add_slider(self.frm_couleur, "Rayon de référence (px pleine rés.)",
-                         self.var_vl_chroma_rayon, 0.5, 8.0, 0.25,
-                         self._on_vl_chroma_rayon, "{:.2f}")
-        ttk.Label(self.frm_couleur,
-                  text="Rayon du flou qui lisse la couleur : plus grand = grain "
-                       "coloré mieux retiré, mais couleur des étoiles plus "
-                       "étalée (halo de couleur). L'aperçu applique ce rayon à "
-                       "SON échelle, les fichiers à la pleine résolution — "
-                       "l'écran reste fidèle au fichier.",
+                  text="À 3,00 la nébuleuse atteint le R:G du Linear Fit "
+                       "(mesuré 1,07 contre 1,05) en gardant sa saturation "
+                       "(0,70 contre 0,31) ; à 4,00 le doré est franc. Appliqué "
+                       "EN DERNIER (après le SCNR) pour que les deux se cumulent "
+                       "au lieu de se combattre. 1,00 = aucun effet.",
                   foreground="#888888", wraplength=310).pack(anchor="w")
 
         # --- État des calculs (jalons 40/41) : cadre INDÉPENDANT du moteur —
@@ -2276,20 +2411,21 @@ class App:
         for _v in (self.var_cmd_graxpert, self.var_cmd_graxpert_dn,
                    self.var_cmd_bxt):
             _v.trace_add("write", self._maj_etat_outils)
-        # Jalon 22/23 (décision d'Alain) : chaîne couleur en fin de traitement
-        # externe — SCNR classique, puis SCNR doux (bruit seul, jalon 23 :
-        # pensé pour les palettes narrowband), puis démagenta — sur l'image
-        # COULEUR du résultat (no-op si mono), juste avant l'étirement
-        # d'affichage. Équivalent des cases live du cadre VeraLux.
-        self.var_ext_scnr = tk.BooleanVar(value=False)
-        ttk.Checkbutton(box, text="4. SCNR — retrait du vert",
-                        variable=self.var_ext_scnr).pack(anchor="w")
-        self.var_ext_scnr_doux = tk.BooleanVar(value=False)
-        ttk.Checkbutton(box, text="5. SCNR doux — bruit seul",
-                        variable=self.var_ext_scnr_doux).pack(anchor="w")
-        self.var_ext_demagenta = tk.BooleanVar(value=False)
-        ttk.Checkbutton(box, text="6. Démagenta (négatif + SCNR)",
-                        variable=self.var_ext_demagenta).pack(anchor="w")
+        # v2.48.0 (jalon 85) : les trois cases couleur qui vivaient ICI
+        # (« 4. SCNR », « 5. SCNR doux », « 6. Démagenta ») ont été RETIRÉES.
+        # POURQUOI : la chaîne couleur suit désormais l'ÉTIREMENT (préservation
+        # de la luminosité + sortie linéaire non écrêtée) — elle ne peut donc
+        # plus faire partie d'une chaîne qui produit un fichier LINÉAIRE. Elle
+        # est réglée par la section « Couleur de l'objet (après étirement) » et
+        # s'applique à l'affichage du résultat ⚡ comme à sa sauvegarde
+        # « tel que vu ». Les clés de configuration `ext_scnr`, `ext_scnr_doux`
+        # et `ext_demagenta` ne sont plus écrites ni relues (sans effet).
+        ttk.Label(box, text="4-6. Couleur (SCNR / SCNR doux / démagenta) et boost "
+                            "du rouge (SII) : réglés par la section « Couleur de "
+                            "l'objet (après étirement) » — appliqués APRÈS "
+                            "l'étirement, à l'écran comme dans le fichier.",
+                  foreground="#888888",
+                  wraplength=310).pack(anchor="w", pady=(4, 0))
         # v2.37.1 — DEMANDE D'ALAIN (25/09/2026) : « intégrer les derniers ajouts
         # (SPCC, neutralisation, bruit chroma) dans la chaîne de traitement
         # externe pour que je puisse sortir une belle image à la fin du stack ».
@@ -3786,6 +3922,71 @@ class App:
         if actif != self.disp.vl_chroma:
             self.disp.vl_chroma = actif      # la clé change → re-résolution
 
+    def _on_vl_preserve(self):
+        """Case « Préserver la luminosité (L*) » (v2.48.0, jalon 85) : lue par la
+        chaîne couleur APRÈS étirement — la clé des réglages change (solveur
+        VeraLux relancé) et les modes STF/manuel sont refaits. Rendu IMMÉDIAT
+        (leçon du jalon 39, revécue à chaque case couleur). N'agit QUE sur les
+        pixels réellement corrigés : sur une image sans excès de vert, cocher ou
+        décocher ne change rien (identité au bit)."""
+        self.disp.vl_preserve_luminance = bool(self.var_vl_preserve.get())
+        self._refresh_preview()
+
+    def _on_vl_scnr_force(self):
+        """Curseur « Force du SCNR » (v2.48.0) : 1,00 = formule historique des
+        jalons 22/23 (AU BIT PRÈS), 0,00 = aucun effet. Entre les deux, une part
+        de l'excès de vert est conservée — c'est à force < 1,00 que le « SCNR
+        doux » redevient actif derrière lui (MESURÉ : à force 1,00 l'excès est
+        ≤ 0 partout, écart 2,98·10⁻⁸ — banc jalon 85 [6])."""
+        try:
+            self.disp.vl_scnr_force = min(
+                1.0, max(0.0, float(self.var_vl_scnr_force.get())))
+        except (tk.TclError, TypeError, ValueError):
+            pass                            # saisie invalide : on garde
+        self._refresh_preview()
+
+    def _on_vl_demagenta_force(self):
+        """Curseur « Force du démagenta » (v2.48.0) : part du magenta retirée
+        (1,00 = formule historique des jalons 22/23, AU BIT PRÈS)."""
+        try:
+            self.disp.vl_demagenta_force = min(
+                1.0, max(0.0, float(self.var_vl_demagenta_force.get())))
+        except (tk.TclError, TypeError, ValueError):
+            pass
+        self._refresh_preview()
+
+    def _on_vl_boost(self):
+        """Case « Boost du rouge (SII) — masqué à l'objet » (v2.48.0, jalon 86) :
+        rendu IMMÉDIAT (leçon des cases couleur, jalon 39). La case entre dans la
+        clé des réglages du solveur VeraLux (donc re-résolution) et dans les
+        réglages du rendu pleine résolution : le fichier « tel que vu » suit
+        l'écran."""
+        self._sync_vl_boost_vue()
+        self._refresh_preview()
+
+    def _sync_vl_boost_vue(self):
+        """État SEUL (sans rendu) du boost du rouge — vue « empilement »
+        uniquement, comme les autres corrections de couleur (en vue « traitée »,
+        l'image vient du traitement externe, sans étirement live)."""
+        actif = bool(self.var_vl_boost.get()) \
+            and self.var_view.get() != "traitée"
+        if actif != self.disp.vl_boost_rouge:
+            self.disp.vl_boost_rouge = actif    # la clé change → re-résolution
+
+    def _on_vl_boost_force(self):
+        """Curseur « Force du boost » (v2.48.0, jalon 86) : 1,00 = identité AU BIT
+        PRÈS (aucun pixel touché : le réglage peut rester en place sans rien
+        changer), 3,00 = le doré mesuré sur l'empilement d'Alain, 4,00 = le
+        maximum. Une saisie invalide laisse la valeur précédente."""
+        try:
+            self.disp.vl_boost_force = min(
+                float(couleurs_mod.BOOST_ROUGE_MAX),
+                max(float(couleurs_mod.BOOST_ROUGE_MIN),
+                    float(self.var_vl_boost_force.get())))
+        except (tk.TclError, TypeError, ValueError):
+            pass                            # saisie invalide : on garde
+        self._refresh_preview()
+
     def _poser_rayon_chroma(self, scale):
         """Pose le rayon EFFECTIF du flou de chroma pour une image d'échelle
         `scale` (v2.37.4). Le réglage utilisateur (`self.rayon_chroma_ref`) est
@@ -3883,6 +4084,7 @@ class App:
         self._sync_vl_scnr_vue()
         self._sync_vl_scnr_doux_vue()
         self._sync_vl_demagenta_vue()
+        self._sync_vl_boost_vue()           # v2.48.0 (jalon 86) : boost du rouge
         self._sync_vl_neutre_vue()          # v2.36.1 : fond neutre avant étirement
         self._sync_vl_chroma_vue()          # v2.37.0 : bruit chromatique
 
@@ -5289,6 +5491,17 @@ class App:
             vl_denoise_force=d.vl_denoise_force,
             vl_scnr=d.vl_scnr, vl_demagenta=d.vl_demagenta,
             vl_scnr_doux=d.vl_scnr_doux,
+            # v2.48.0 (jalon 85) : force des deux outils et préservation de la
+            # luminosité — la chaîne couleur suit l'étirement, donc le rendu
+            # pleine résolution doit les recevoir pour rester identique à
+            # l'écran (règle du projet : le fichier = l'écran).
+            vl_scnr_force=float(d.vl_scnr_force),
+            vl_demagenta_force=float(d.vl_demagenta_force),
+            vl_preserve_luminance=bool(d.vl_preserve_luminance),
+            # v2.48.0 (jalon 86) : boost du rouge (SII) masqué à l'objet — la
+            # sauvegarde « tel que vu » doit être l'écran au pixel près.
+            vl_boost_rouge=bool(d.vl_boost_rouge),
+            vl_boost_force=float(d.vl_boost_force),
             vl_neutre_fond=bool(d.vl_neutre_fond),   # v2.36.1
             # v2.37.0 : réduction du bruit chromatique (case + force).
             vl_chroma=bool(d.vl_chroma),
@@ -5554,15 +5767,14 @@ class App:
                     self.asseen_result = f"ERREUR: Netteté live : {err}"
                     return
                 source = img_net
-            # Jalon 22/23 : la chaîne couleur fait aussi partie de la chaîne
-            # affichée (… → netteté → SCNR → SCNR doux → démagenta →
-            # étirement).
-            if vue == "pile" and reglages.get("vl_scnr"):
-                source = couleurs_mod.scnr(source)
-            if vue == "pile" and reglages.get("vl_scnr_doux"):
-                source = couleurs_mod.scnr_doux(source)
-            if vue == "pile" and reglages.get("vl_demagenta"):
-                source = couleurs_mod.demagenta(source)
+            # v2.48.0 (jalon 85) : la chaîne couleur n'est PLUS appliquée ici.
+            # Elle suit désormais l'ÉTIREMENT, donc elle vit dans
+            # `rendu_pleine_resolution` (appelé plus bas), exactement comme à
+            # l'écran — « le fichier correspond à l'écran » reste vrai.
+            # CONSÉQUENCE VOULUE : la 3e sortie LINÉAIRE ci-dessous n'est plus
+            # écrêtée en vert (elle était la SEULE à porter le SCNR des jalons
+            # 22/23 — MESURÉ sur son empilement M31 : excès de vert max 5,9·10⁻⁸
+            # contre 1,6·10⁻¹ sur l'empilement d'origine).
             if lineaire:
                 # 3e sortie LINÉAIRE (« empilement traité ») : on écrit l'image
                 # telle quelle, bornée [0,1] comme la sauvegarde brute, AVEC
@@ -5996,9 +6208,7 @@ class App:
                        "Un traitement est déjà en cours — patientez.")
             return
         if not (self.var_ext_graxpert.get() or self.var_ext_dn.get()
-                or self.var_ext_bxt.get() or self.var_ext_scnr.get()
-                or self.var_ext_scnr_doux.get()
-                or self.var_ext_demagenta.get()
+                or self.var_ext_bxt.get()
                 or self.var_ext_neutre.get()            # v2.37.1
                 or self.var_ext_chroma.get()):          # v2.37.1
             self._dire("Traitement externe",
@@ -6046,14 +6256,13 @@ class App:
                         self.var_cmd_bxt.get().strip(),
                         mode_dn,
                         self.var_dn_force.get(),
-                        # Jalon 22/23 : chaîne couleur EN FIN de chaîne,
-                        # dans l'ordre d'application — SCNR classique,
-                        # SCNR doux (bruit seul), démagenta.
-                        self.var_ext_scnr.get(),
-                        self.var_ext_scnr_doux.get(),
-                        self.var_ext_demagenta.get(),
+                        # v2.48.0 (jalon 85) : la chaîne couleur
+                        # (SCNR / SCNR doux / démagenta) N'EST PLUS dans ce job
+                        # — elle suit l'étirement et est réglée par la section
+                        # « Couleur de l'objet (après étirement) ». Le résultat
+                        # ⚡ reste LINÉAIRE, non écrêté en vert.
                         # v2.37.1 : corrections PRÉ-ÉTIREMENT de la chaîne live
-                        # (12e/13e éléments + la force en 14e) — déballage
+                        # (9e/10e éléments + la force en 11e) — déballage
                         # tolérant côté thread de traitement. La force est
                         # CAPTURÉE ici (curseur « Couleur live ») : le thread
                         # externe ne lit jamais une variable Tk.
@@ -6061,7 +6270,7 @@ class App:
                         self.var_ext_chroma.get(),
                         float(self.disp.vl_chroma_force),
                         # v2.37.4 : RAYON DE RÉFÉRENCE du flou de chroma
-                        # (15e élément), en pixels PLEINE RÉSOLUTION — la chaîne
+                        # (12e élément), en pixels PLEINE RÉSOLUTION — la chaîne
                         # externe travaille à cette résolution, elle l'utilise
                         # tel quel. Capturé ici : le thread de traitement ne lit
                         # JAMAIS une variable Tk.
@@ -6137,31 +6346,26 @@ class App:
                     return
             (use_gx, cmd_gx, use_dn, cmd_dn, use_bxt, cmd_bxt,
              mode_dn, force_dn) = self.ext_job[:8]
-            # Jalon 22/23 : chaîne couleur transportée dans le job (9e, 10e
-            # et 11e éléments — ordre d'application). Déballage TOLÉRANT
-            # (8 éléments = tout False) pour compatibilité des tests qui
-            # fabriquent des jobs 8-tuple (jalons 7/14).
-            scnr_actif = bool(self.ext_job[8]) if len(self.ext_job) > 8 \
-                else False
-            sd_actif = bool(self.ext_job[9]) if len(self.ext_job) > 9 \
-                else False
-            dm_actif = bool(self.ext_job[10]) if len(self.ext_job) > 10 \
-                else False
-            # v2.37.1 : corrections pré-étirement de la chaîne LIVE (12e, 13e et
-            # 14e éléments du job — déballage tolérant : les jobs antérieurs n'en
-            # ont pas → inactives). Ordre d'application identique au live :
-            # … → démagenta → neutralisation du fond → réduction du bruit
+            # v2.48.0 (jalon 85) : la chaîne couleur (SCNR / SCNR doux /
+            # démagenta) NE FAIT PLUS PARTIE DE CETTE CHAÎNE — elle suit
+            # l'étirement, donc elle est appliquée par l'AFFICHAGE et par la
+            # sauvegarde « tel que vu » (`display.couleur_apres_etirement`).
+            # Le résultat ⚡ reste ainsi LINÉAIRE et non écrêté en vert :
+            # réutilisable tel quel.
+            # v2.37.1 : corrections pré-étirement de la chaîne LIVE (9e, 10e et
+            # 11e éléments du job — déballage tolérant : les jobs antérieurs n'en
+            # ont pas → inactives) : neutralisation du fond → réduction du bruit
             # chromatique, juste avant l'étirement d'affichage.
-            nf_ext = bool(self.ext_job[11]) if len(self.ext_job) > 11 else False
-            chroma_ext = bool(self.ext_job[12]) if len(self.ext_job) > 12 \
+            nf_ext = bool(self.ext_job[8]) if len(self.ext_job) > 8 else False
+            chroma_ext = bool(self.ext_job[9]) if len(self.ext_job) > 9 \
                 else False
-            force_chroma_ext = (float(self.ext_job[13])
-                                if len(self.ext_job) > 13 else 0.5)
-            # v2.37.4 : rayon de RÉFÉRENCE du flou de chroma (15e élément —
+            force_chroma_ext = (float(self.ext_job[10])
+                                if len(self.ext_job) > 10 else 0.5)
+            # v2.37.4 : rayon de RÉFÉRENCE du flou de chroma (12e élément —
             # déballage tolérant : les jobs antérieurs n'en ont pas → rayon de
             # référence, soit le comportement de la v2.37.3).
-            rayon_chroma_ext = (float(self.ext_job[14])
-                                if len(self.ext_job) > 14
+            rayon_chroma_ext = (float(self.ext_job[11])
+                                if len(self.ext_job) > 11
                                 else couleurs_mod.RAYON_CHROMA_DEFAUT)
             steps = []
             if use_gx:
@@ -6290,16 +6494,10 @@ class App:
                                   "(pixels non finis ou image vide)",
                                   state="error")
                 return
-            # Jalon 22/23 : chaîne couleur (opt-in) — EN FIN de chaîne
-            # externe, sur l'image COULEUR du résultat (no-op si mono),
-            # juste avant l'étirement d'affichage (décision d'Alain).
-            # Ordre : SCNR classique → SCNR doux (bruit seul) → démagenta.
-            if scnr_actif:
-                img = couleurs_mod.scnr(img)
-            if sd_actif:
-                img = couleurs_mod.scnr_doux(img)
-            if dm_actif:
-                img = couleurs_mod.demagenta(img)
+            # v2.48.0 (jalon 85) : la chaîne couleur a QUITTÉ la chaîne externe
+            # (elle suit l'étirement : `display.couleur_apres_etirement`,
+            # appliquée à l'affichage du résultat et à « tel que vu ») — le
+            # résultat ⚡ est donc LINÉAIRE et non écrêté en vert.
             # v2.37.1 : NEUTRALISATION DU FOND puis RÉDUCTION DU BRUIT
             # CHROMATIQUE — les deux corrections pré-étirement de la chaîne live,
             # au même rang qu'elle (elles corrigent ce que l'ANCRE de VeraLux
@@ -6383,23 +6581,18 @@ class App:
         try:
             (use_gx, cmd_gx, use_dn, cmd_dn, use_bxt, cmd_bxt,
              mode_dn, force_dn) = self.ext_job[:8]
-            scnr_actif = bool(self.ext_job[8]) if len(self.ext_job) > 8 \
+            # v2.48.0 (jalon 85) : plus de chaîne couleur ici (elle suit
+            # l'étirement, cf. `display.couleur_apres_etirement`) — seules les
+            # corrections PRÉ-étirement restent dans cette chaîne.
+            nf_ext = bool(self.ext_job[8]) if len(self.ext_job) > 8 else False
+            chroma_ext = bool(self.ext_job[9]) if len(self.ext_job) > 9 \
                 else False
-            sd_actif = bool(self.ext_job[9]) if len(self.ext_job) > 9 \
-                else False
-            dm_actif = bool(self.ext_job[10]) if len(self.ext_job) > 10 \
-                else False
-            # v2.37.1 : corrections pré-étirement de la chaîne live (12e/13e/14e
-            # éléments — voir _run_external ; déballage tolérant).
-            nf_ext = bool(self.ext_job[11]) if len(self.ext_job) > 11 else False
-            chroma_ext = bool(self.ext_job[12]) if len(self.ext_job) > 12 \
-                else False
-            force_chroma_ext = (float(self.ext_job[13])
-                                if len(self.ext_job) > 13 else 0.5)
-            # v2.37.4 : rayon de RÉFÉRENCE du flou de chroma (15e élément —
+            force_chroma_ext = (float(self.ext_job[10])
+                                if len(self.ext_job) > 10 else 0.5)
+            # v2.37.4 : rayon de RÉFÉRENCE du flou de chroma (12e élément —
             # déballage tolérant, comme la chaîne mono).
-            rayon_chroma_ext = (float(self.ext_job[14])
-                                if len(self.ext_job) > 14
+            rayon_chroma_ext = (float(self.ext_job[11])
+                                if len(self.ext_job) > 11
                                 else couleurs_mod.RAYON_CHROMA_DEFAUT)
             tmp = travail.creer_dossier("avastack_compo_")
             journal = os.path.join(tmp, "outils_sortie.txt")
@@ -6470,12 +6663,9 @@ class App:
                                   "(pixels non finis ou image vide)",
                                   state="error")
                 return
-            if scnr_actif:
-                img = couleurs_mod.scnr(img)
-            if sd_actif:
-                img = couleurs_mod.scnr_doux(img)
-            if dm_actif:
-                img = couleurs_mod.demagenta(img)
+            # v2.48.0 (jalon 85) : la chaîne couleur a QUITTÉ la chaîne externe
+            # (composition comprise) — elle suit l'étirement et est appliquée à
+            # l'affichage / « tel que vu » (`display.couleur_apres_etirement`).
             # v2.37.1 : neutralisation du fond puis réduction du bruit
             # chromatique (chaîne live) — sur le COMPOSITE re-fait, comme les
             # SCNR ; les couches restent brutes (contrat jalon 54).
@@ -7274,14 +7464,17 @@ class App:
         if val(4):
             outils.append("BXT")
         preet = []
-        for actif, nom in ((val(8), "SCNR"), (val(9), "SCNR doux"),
-                           (val(10), "demagenta"), (val(11), "fond neutre"),
-                           (val(12), "chroma")):
+        # v2.48.0 (jalon 85) : la chaîne couleur (SCNR / SCNR doux / démagenta)
+        # NE FAIT PLUS PARTIE de la chaîne externe — elle suit l'étirement et
+        # est appliquée à l'affichage comme à « tel que vu »
+        # (`display.couleur_apres_etirement`). Le fichier ⚡ ne porte donc que
+        # les corrections PRÉ-étirement, ce que dit AVAAPPLI.
+        for actif, nom in ((val(8), "fond neutre"), (val(9), "chroma")):
             if actif:
                 preet.append(nom)
-        if val(12):
+        if val(9):
             preet.append("chroma force %.2f rayon %.1fpx"
-                         % (float(val(13, 0.5)), float(val(14, 3.0))))
+                         % (float(val(10, 0.5)), float(val(11, 3.0))))
         ent = {"AVAOUTIL": " + ".join(outils) if outils else "aucun",
                "AVAAPPLI": " + ".join(preet) if preet else "aucune",
                "AVAVUE": ("resultat du traitement externe (LINEAIRE, "

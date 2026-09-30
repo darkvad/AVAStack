@@ -10,73 +10,216 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **ÉTAT À LA CLÔTURE DE SESSION (30/09/2026, jalon 84) — À LIRE EN PREMIER.**
-  **Tout est livré, publié et poussé** : dépôt `master` = `deb41af` (commit de
-  clôture), tag annoté `v2.47.0` sur `5ecc0a1` (code + doc + mémoires),
-  working tree propre. Rien en attente de l'agent.
-  **Version stable de référence : v2.47.0**, PUBLIÉE (tag annoté `v2.47.0` sur
-  `5ecc0a1` + release GitHub
-  https://github.com/darkvad/AVAStack/releases/tag/v2.47.0 — trois paquets +
-  `INSTALLATION.md` joints ; notes relues par l'API : accents et tirets longs
-  intacts, 384 lignes). **Repli : v2.46.0** (également publiée). Paquets :
-  Windows `installer/windows/output/avastack-setup-2.47.0.exe` (**11 491 452 o**,
-  SHA-256 `2386C44EE38F69D13E9C956FB9D73BA5408190BB2CECB6F0AA3C0D0653A92E61`),
-  Linux `installer/linux/output/avastack-setup-2.47.0-linux.tar.gz` (605 904 o,
-  `810706F3…`), macOS
-  `installer/macos/output/avastack-setup-2.47.0-macos.tar.gz` (603 582 o,
-  `DBD60A6C…`).
-  **DÉCLENCHEUR : le PREMIER RETOUR UTILISATEUR macOS** (macOS 27 « Golden
-  Gate », build 26A428) — installation et lancement OK, puis : « l'UI a quelques
-  soucis (boutons qui ne sont pas toujours cliquables, par exemple le bouton
-  "Dossier", mais qui le deviennent après que j'ai cliqué frénétiquement
-  dessus)… le bouton permettant de choisir le dossier à surveiller ne répond
-  pas… le bouton flat reste désespérément inactif ». Diagnostic : les 47
-  dialogues de l'application étaient ouverts SANS `parent=`, or sur macOS Tk
-  ouvre alors un panneau ou une alerte APPLICATIVE LIBRE (NSOpenPanel / NSAlert
-  non attaché), qui peut rester DERRIÈRE la fenêtre principale — laquelle attend
-  la réponse (attente modale) : l'application paraît insensible, et les clics ne
-  produisent rien tant qu'ils n'atteignent pas la boîte invisible.
-  **LIVRÉ (jalon 84)** : ① **six aides de dialogue** qui posent `parent=<fenêtre>`
-  (`_demander_dossier`, `_demander_fichier`, `_enregistrer_sous`, `_dire`,
-  `_avertir`, `_signaler`) et les **47 appels** passés par elles (aucun appel
-  direct ne subsiste : banc STATIQUE) ; ② `main()` met la fenêtre **devant** sur
-  macOS (`activer_fenetre` : `lift` + `-topmost` bref + `focus_force`) et
-  **journalise la version de Tcl/Tk** ; ③ la boîte maison « ce dark/flat
-  s'applique à : » est **mappée AVANT son grab** puis levée ; ④ **guet de gel
-  d'interface NEUF** (`avastack/ui/reactivite.py`) : « les boutons ne répondent
-  pas » devient **MESURABLE** (durée + **pile du fil fautif** dans `journal.txt`,
-  5 rapports par session, un par épisode ; `AVASTACK_SANS_GUET=1` pour débrayer ;
-  ne démarre PAS sans fenêtre affichée).
-  **Banc NEUF `bancs/_test_dialogues_jalon84.py`** (7 sections, **28
-  vérifications, TOUT AU VERT**) + **25 bancs de régression verts**. Piège de
-  banc rencontré et corrigé : le guet, armé dans un banc, rapportait comme « gel »
-  la CONSTRUCTION de l'interface suivante (1,6 s, pile lue dans le journal) et
-  déstabilisait `rafale_fin_rendu_jalon80` — d'où le refus de démarrer sans
-  fenêtre AFFICHÉE (leçon : un instrument de mesure doit être aveugle là où il
-  n'y a pas d'utilisateur).
-  **À FAIRE — TEST RÉEL macOS (en attente du testeur)** : relancer cette version
-  et vérifier que « 📂 Dossier » ET « Charger un flat… » répondent au PREMIER
-  clic ; en cas de reste, envoyer le `journal.txt` (une ligne « gel de
-  l'interface » y donne la pile du blocage, donc la cause, sans supposition).
-  **FAIT — paquets et release (30/09/2026)** : les trois installeurs reconstruits
-  (Windows, Linux, macOS — faits par l'agent) et la release `v2.47.0` publiée,
-  tag annoté sur le commit `5ecc0a1` (code + doc + mémoires).
-  **PISTE IDENTIFIÉE, PAS ENCORE TRAITÉE** (à mesurer avant de coder) :
-  `_on_source_choisie` attend la fin de la déconnexion d'une caméra dans une
-  BOUCLE `root.update()` + `time.sleep(0.05)` bornée à 8 s — sur macOS, une
-  boucle `update()` RÉENTRANTE dans le fil Tk est un piège connu (elle peut
-  geler la distribution des événements natifs). Le guet de gel la DÉSIGNERA
-  (pile « _on_source_choisie ») si un testeur la rencontre : attendre cette
-  mesure plutôt que de réécrire le chemin à l'aveugle.
-  **CLAUDE.md (accord d'Alain, 30/09/2026)** : les deux leçons du jalon y sont
-  REMONTÉES — ① sur macOS une boîte de dialogue sans `parent` peut rester
-  derrière la fenêtre (règle des six aides + banc statique, et les deux
-  corollaires : activation de la fenêtre au démarrage, `grab_set` après
-  affichage) ; ② un symptôme « l'interface ne répond pas » se mesure par la
-  durée ET la pile du fil fautif (avec la leçon de banc : un instrument de
-  mesure doit être aveugle là où il n'y a pas d'utilisateur).
-  **NETTOYAGE DE CE FICHIER toujours à prévoir** (blocs antérieurs au 29/09) : à
-  faire par petites touches, JAMAIS par un aller-retour PowerShell.
+- **DERNIER JALON (30/09/2026, jalons 85 + 86, v2.48.0 — TERMINÉ, BANCS VERTS) —
+  PRÉSERVATION DE LA LUMINANCE DU RETRAIT DU VERT + ORDRE DE LA CHAÎNE COULEUR.**
+  Déclencheur : ton constat sur ton empilement SHO (NGC 2237) — « vert par
+  défaut, manque de doré » ; exigences : la **variante fidèle Siril**
+  (préservation de L*), « **l'UI doit respecter l'ordre des traitements** »,
+  **pas d'exclusivité** SCNR/démagenta (en SHO la teinte magenta coexiste avec
+  l'excès de vert), et **tests de non-régression RGB avant de coder dans
+  l'appli** (sur tes images M31, pas sur une nébuleuse).
+  **MESURES (tes données, AVANT tout code)** : ① le SCNR des jalons 22/23
+  ÉTEINT l'objet — L* de la nébuleuse 56,5 → 25,8 (composite SHO étiré VeraLux)
+  et 82,5 → 9,8 (VeraLux live) ; ② `scnr_doux` après `scnr` (force 1) est un
+  **no-op** (écart 2,98·10⁻⁸) ; ③ ton fichier « empilement traité (linéaire) »
+  `M31_traite_lineaire_2.38.0.fits` était **écrêté en vert** (excès max 5,9·10⁻⁸
+  pour 100 % des pixels contre 1,6·10⁻¹ sur le même empilement d'origine) : la
+  chaîne LINÉAIRE portait le SCNR ; ④ le moteur VeraLux est **LIÉ** (même
+  plancher, même échelle, même MTF pour les 3 canaux —
+  `veralux_core_headless.py:203-279`), donc le déséquilibre Ha/SII de tes brutes
+  traverse tout l'étirement → piste conservée pour un jalon suivant : une
+  **OPTION d'étirement PAR CANAL** (non lié ; mesuré : vert 91,7 % → 16,8 %).
+  **LIVRÉ (code + banc NEUF ; PAS encore les bancs de régression ni le
+  changelog)** : ① `processing/couleurs.py` :
+  `scnr/scnr_doux/demagenta(amount=1.0, preserve_luminance=True)` — préservation
+  de la **L\* CIE (Lab)** sur les **SEULS pixels corrigés** + garde de résolution
+  `SEUIL_REMISE_LUMINANCE = 1e-6` ; `amount=1, preserve=False` rend l'ancien
+  résultat **au bit**, `amount=0` rend l'entrée au bit ; ②
+  `processing/display.py` : chaîne couleur **APRÈS l'étirement**
+  (`couleur_apres_etirement`) dans le solveur VeraLux, `process()` STF/manuel et
+  `rendu_pleine_resolution` ; sous-tuple `coul` de 6 (déballage tolérant) ;
+  ③ `ui/app.py` : la chaîne couleur **quitte les trois chaînes LINÉAIRES** (⚡
+  mono, ⚡ composition, « tel que vu ») ; job externe **15 → 12 éléments** ; les
+  cases 4/5/6 du cadre externe sont **retirées** (note explicative) et
+  `AVAAPPLI` suit ; UI : cadre « **Couleur de l'objet (APRÈS étirement)** »
+  avec case « Préserver la luminosité (L\*) » (**cochée par défaut, comme
+  Siril/PixInsight**) + curseurs « Force du SCNR » et « Force du démagenta » ;
+  clés `vl_preserve_luminance` / `vl_scnr_force` / `vl_demagenta_force` (et les
+  clés `ext_scnr*` sont **retirées** à la sauvegarde) ; ④ **BANC NEUF
+  `bancs/_test_couleur_luminance_jalon85.py` : TOUT AU VERT** (7 sections,
+  19 vérifications : scènes synthétiques + tes empilements M31 réels + NGC 2237
+  SHO réel lu sur le NAS ; 0 pixel de régression au bit).
+  **TEST RÉEL D'ALAIN (30/09/2026 au soir, ta capture) : la préservation de la
+  luminosité MARCHE — la nébuleuse n'est plus éteinte — MAIS elle reste VERTE
+  (« manque de doré »). MESURÉ (diagnostic NEUF
+  `bancs/_diag_couleur_dore_jalon85.py`, sur les BRUTES de TA session live lues
+  dans `compo_dossier_*` : 17 SII + 17 Ha + 21 OIII de 300 s, moyenne en cache
+  locale) : ① le vert est PHYSIQUE — dans la nébuleuse SII/Ha = **0,219** et
+  OIII/Ha = **0,260** (Ha = 4,6× SII) : un SHO à poids égaux (R=SII, V=Ha,
+  B=OIII) ne PEUT pas être doré ; ② le SCNR ne peut PAS créer du doré — force
+  0,35 : vert 86,6 % / R:G:B 1:1,68:0,95 ; force 0,75 : 78,4 % ; force 1,00 :
+  vert 0 %, mais l'objet devient GRIS (R:G:B 1:1,00:0,99, saturation 0,19) —
+  la préservation de L* tient (L* 37,7 → 37,6 sur tout le balayage) ; ③
+  l'étirement PAR CANAL ne donne pas non plus du doré : il fait virer au CYAN
+  (logD 3,45 pour le B contre 3,00 pour le V) — 24 % vert mais 60 % cyan ; ④
+  le démagenta (force 1) est quasi neutre sur la nébuleuse (R:G 1,63 → 1,68) :
+  sans danger ; ⑤ il faut **R ×2,0 à 2,5** pour que le rouge atteigne le vert
+  (gain mesuré : 1,68× pour R = V, 2,2× pour R = 1,3·V) — mais un boost
+  GLOBAL teinte aussi le ciel (fond R:G 1:0,59 à ×2,5, R>V 97 %), et la
+  recette « Linear Fit (offset) » est un PIÈGE sur un objet qui remplit le
+  champ (offsets R +0,235 / B +0,242 : nébuleuse délavée sat 0,20, fond bleu
+  96 %) ; ⑥ le curseur « saturation par couleur » R ne crée pas de doré
+  (86,6 % de vert à ×3,0) ; ⑦ **ta piste « Linear Fit (gain + offset) sans
+  SCNR » (capture de 22:09) est MESURÉE et ÉCARTÉE** : le fit se cale sur le
+  QUART CENTRAL, qui sur ta Rosette est à **60,6 % de pixels d'OBJET** → il
+  égalise la NÉBULEUSE et pas le ciel (gains R **4,000 = le plafond** · B 2,875,
+  offsets R **−0,1661** · B +0,0014) ; comparé sur TES DEUX ÉCRANS, mêmes 4
+  coins : fond **sat 0,08 (neutre) à 21:47** (chaîne actuelle, SCNR 0,35, sans
+  fit) → **sat 0,34 (brun) à 22:09** (fit), la nébuleuse du centre passant de
+  R:G:B 1:1,64:1,09 à 1:1,90:1,54 (un peu PLUS verte) et sa saturation tombant
+  de 0,72 à 0,31 (délavée). Le doré n'apparaît QUE sur le masque des 20 % les
+  plus clairs (vert 88,5 % → 15,6 %, doré 6 % → 33 %) : le fit « marche » au
+  niveau de brillance où il a été calibré et se trompe partout ailleurs (fond
+  coloré, mi-tons plus verts) — mesure non reproductible d'ailleurs d'une
+  session à l'autre (ma reproduction hors appli donne un fond BLEU là où ton
+  écran donne un fond BRUN : les offsets sont en unités absolues, donc
+  dépendants de la calibration de la session) ; ⑧ **la PROPOSITION est
+  VALIDÉE par la mesure** : un boost du ROUGE pondéré par la luminance (0 dans
+  le fond, `bancs/_diag_couleur_dore_jalon85.py::boost_rouge_masque`) atteint
+  sur l'objet le MÊME R:G que le fit (**1,07 à ×3,0** contre 1,05) en gardant
+  la saturation (0,70 contre 0,31 ; avec L* gardée : L* 37,99 = celle de la
+  base) et en laissant le FOND **rigoureusement inchangé, au pixel** (les 4
+  lignes « FOND » sont identiques à la base pour ×1,5 → ×4,0). ×4,0 = doré
+  franc (R>V 55,6 %, rouge/orange 12,4 % + jaune 25,2 %), fond toujours intact.
+  **CONCLUSION (mise à jour) : le levier est le boost du ROUGE (SII) MASQUÉ À
+  L'OBJET, après l'étirement — et le Linear Fit doit rester DÉCOCHÉ en
+  narrowband (c'est un outil de fond pour l'OSC).**
+  **① FAIT (cette session) : L'ORDRE DES CADRES SUIT L'ORDRE DES TRAITEMENTS.**
+  Le cadre couleur du jalon 22 est SCINDÉ en « **Fond et grain (AVANT
+  étirement)** » (neutralisation du fond + bruit chromatique — ses deux réglages
+  pré-étirement) et « **Couleur de l'objet (APRÈS étirement)** » (L*, SCNR, SCNR
+  doux, démagenta, + le boost du rouge) ; « **Netteté live** » remonte AVANT
+  « Affichage (temps réel) » (son titre disait « avant étirement » depuis le
+  jalon 12 alors qu'il était affiché APRÈS le cadre qui porte l'étirement). Ordre
+  vérifié sur l'application EN MARCHE : Fichiers → Caméra → Calibration →
+  Empilement → **Fond et grain** → **Netteté live** → **Affichage** → **Couleur
+  de l'objet** → État des calculs → Traitement externe → Sortie. AUCUN réglage,
+  aucune clé de configuration et aucun comportement ne changent (seuls les
+  PARENTS des widgets changent) ; le texte gris de la neutralisation ne cite plus
+  les chiffres historiques du jalon 61 comme s'ils étaient mesurés (les gains
+  RÉELS sont annoncés par « État des calculs (live) »). Le banc
+  `_test_ui_visibilite_jalon47.py` porte une section **[5bis] NEUVE** qui
+  verrouille l'ordre ET le contenu de chaque cadre.
+  **④ FAIT (cette session) : JALON 86 — BOOST DU ROUGE (SII) MASQUÉ À L'OBJET.**
+  `couleurs.boost_rouge(img, force=3.00, preserve_luminance=False)` avec
+  `BOOST_ROUGE_MIN/MAX/DEFAUT = 1,00 / 4,00 / 3,00` et un masque de **centiles de
+  luminance 40 → 97** : le gain du rouge suit la lumière du pixel (0 dans le
+  fond, 1 sur l'objet), donc le FOND reste identique AU PIXEL (mesuré : écart
+  exactement nul à ×1,5, ×3,00 et ×4,00). Appliqué EN DERNIER dans
+  `display.couleur_apres_etirement` (après le SCNR — le SCNR retire l'excès de
+  vert AU-DESSUS de (R+B)/2 : appliqué après le boost, il en reprendrait une
+  partie ; les deux s'ADDITIONNENT donc au lieu de se combattre). UI : case
+  « **Boost du rouge (SII) — masqué à l'objet** » (DÉCOCHÉE par défaut : c'est
+  une retouche ESTHÉTIQUE, pas un défaut de rendu — un rendu par défaut reste
+  inchangé au bit) + curseur « Force du boost (1,00 → 4,00, défaut 3,00 = le doré
+  mesuré) » dans le cadre « Couleur de l'objet (APRÈS étirement) » ; clés
+  `vl_boost_rouge` / `vl_boost_force` (config + `_reglages_rendu`, donc le
+  fichier « tel que vu » suit l'écran) ; sous-tuple du job solveur 6 → 8
+  éléments (déballage TOLÉRANT côté worker). **BANC NEUF
+  `bancs/_test_boost_rouge_jalon86.py` : TOUT AU VERT (7 sections, 28
+  vérifications)** — identité AU BIT à 1,00 et à toutes cases décochées, fond
+  inchangé AU BIT, objet qui part vers le doré (G:R 3,22 → 1,21 à ×4,00 ; R>V
+  0 → 7,6 % sur la scène synthétique, 6,2 % → 55,6 % sur l'empilement réel au
+  diagnostic), saturation de l'objet CONSERVÉE (le Linear Fit la faisait tomber
+  à 0,31 pour 0,72), variante « L* gardée » à 0,15 % de la lumière d'avant, ordre
+  de la chaîne vérifié au bit, centiles insensibles au sous-échantillonnage
+  (4,4·10⁻⁵), bornes/config/vue « traitée », coût 0,079 s sur l'aperçu 1600×904.
+  NON-RÉGRESSION : 8 bancs rejoués (85, 47, 41, 39, 62, 63, 12, 59) → TOUS VERTS.
+  **⑥ FAIT (cette session) : LES BANCS SONT AU CONTRAT NEUF — AUCUN RENDU N'A
+  CHANGÉ.** Adaptation sans affaiblissement (chaque assertion reformulée mesure
+  ce que le contrat neuf promet) : `_test_couleurs_jalon22.py` — les formules
+  HISTORIQUES sont testées à `preserve_luminance=False` (« R et B inchangés » et
+  « démagenta = négatif → SCNR → positif » ne sont vrais QUE là), la préservation
+  de L* est mesurée AU DÉFAUT avec son TÉMOIN sur le même masque (0,21 unité de
+  Lab rendue, contre 14 quand elle ne l'est pas) et l'assertion « les pixels non
+  corrigés sont intacts AU BIT près » ; sections externes réécrites — la chaîne
+  couleur **n'y retire plus rien** (résultat = entrée AU PIXEL, l'excès de vert
+  la traverse intact : 0,0784 → 0,0784), les corrections pré-étirement sont
+  lues aux indices **9 à 12** (neutralisation, chroma, force, rayon) et les clés
+  `ext_scnr*` sont ABSENTES puis **retirées** d'une configuration antérieure.
+  `_test_dn_jalon7.py` et `_test_chroma_halo_jalon65.py` **[6bis]** : le job
+  externe est un **12-tuple** (le rayon de référence en est le 12e élément).
+  **DÉCOUVERT AU PASSAGE** : `_test_bxt_entete_jalon69.py` était ROUGE sans avoir
+  été vu (il attendait « SCNR » dans `AVAAPPLI`), et
+  `_test_gradient_couche_jalon24.py` / `_test_gx_lot_externe_jalon83.py` étaient
+  VERTS tout en encodant l'ANCIENNE disposition du job (leurs commentaires
+  mentaient : la 12e valeur « neutralisation » y était devenue un rayon) — les
+  trois remis au format courant. **30 bancs rejoués : TOUS VERTS.**
+  **DÉCISION D'ALAIN (30/09/2026) : IL GARDE SON LINEAR FIT.** Le boost reste
+  livré, DISPONIBLE et **DORMANT** (case décochée par défaut, rendu inchangé au
+  bit près) : plus rien à coder pour son rendu. La piste « étirement par canal »
+  reste MESURÉE et **refermée** (elle mène au cyan, cf. ③ ci-dessus).
+  **⑤ FAIT (cette session) : LE RENDU SHO SE CHOISIT SUR DES IMAGES, PAS SUR
+  DES STATISTIQUES.** Retour d'Alain sur le boost : « bof, pas satisfait par le
+  boost du rouge, je préférais ma version avec linear fit offset + gain ».
+  Diagnostic NEUF `bancs/_diag_dore_choix_jalon86.py` (chaîne de PRODUCTION
+  étage par étage, sur les 3 moyennes SII/Ha/OIII déjà en cache) : 9 variantes
+  rendues en PNG dans `%TEMP%\avastack_diag_dore\comparaison\` (planche contact
+  + un PNG par variante) et un tableau de balayage SCNR × boost. **Deux mesures
+  qui changent la lecture** : ① la reproduction du diagnostic jalon 85 était
+  dans le MAUVAIS ORDRE (neutralisation AVANT le fit) : la chaîne réelle est
+  **fit → neutralisation → chroma → étirement → couleur** (`display.py:833`
+  puis `938-941` ; idem `app.py:5682→5806`, `6638→6674`) — avec le bon ordre le
+  fond redevient neutre et chaud, comme sur l'écran d'Alain ; ② le VERT de son
+  écran vient des CURSEURS, pas du principe : à SCNR 0,55 le boost 1,60 laisse
+  **61 %** de l'objet vert, alors que SCNR **0,75** (même boost 1,60) n'en
+  laisse plus que **5 %** (doré 88 %) — le doré était à un cran de curseur. Le
+  fit reste mesuré tel quel : gain R **4,000 = PLAFOND**, gain B 3,162 (le cœur
+  OIII part au CYAN), objet à saturation 0,32 contre 0,41 sans fit.
+
+- **ÉTAT À LA CLÔTURE DE SESSION (30/09/2026, jalons 85 + 86, v2.48.0) — À LIRE
+  EN PREMIER.** Le travail est TERMINÉ et prêt à livrer : working tree = jalons
+  85 + 86 + bancs adaptés, **30 bancs rejoués TOUS VERTS** (dont les 4 qui
+  bloquaient), changelog écrit et version **v2.48.0**.
+  **DÉCISION D'ALAIN (30/09/2026) : IL GARDE SON LINEAR FIT « gain + offset ».**
+  Le boost du rouge reste livré, DISPONIBLE et **DORMANT** (case décochée par
+  défaut : le rendu par défaut est inchangé AU BIT près) — plus rien à coder pour
+  son rendu.
+  **CE QUI EST LIVRÉ (jalons 85 et 86)** : la chaîne couleur (SCNR / SCNR doux /
+  démagenta) **suit désormais l'ÉTIREMENT** et préserve la **L\* CIE** des seuls
+  pixels corrigés (comme Siril / PixInsight) — l'objet n'est plus éteint et le
+  fichier linéaire n'est plus écrêté en vert ; le job de la chaîne externe passe
+  de 15 à 12 éléments ; les clés `ext_scnr*` ne sont plus écrites (et sont
+  RETIRÉES d'une configuration antérieure) ; l'ordre des cadres de l'écran dit
+  l'ordre réel des traitements (… → Fond et grain → Netteté live → Affichage →
+  Couleur de l'objet → État des calculs → Traitement externe → Sortie) ; le boost
+  du rouge (SII) masqué à l'objet est disponible (1,00 → 4,00, défaut 3,00).
+  **RESTE À FAIRE POUR PUBLIER v2.48.0** (non demandé dans cette passe) :
+  ① reconstruire les **trois installeurs** (les paquets publiés sont encore ceux
+  de la v2.47.0) ; ② `INSTALLATION.md` en v2.48.0 (tailles + SHA-256) ; ③ tag
+  annoté `v2.48.0` + release GitHub avec les paquets et les notes relues.
+  **REPLI : v2.47.0** (publiée : tag annoté sur `5ecc0a1`, release GitHub
+  https://github.com/darkvad/AVAStack/releases/tag/v2.47.0) — rien n'est perdu à
+  revenir en arrière.
+  **PISTES OUVERTES, À MESURER AVANT DE CODER** : ① `_on_source_choisie` attend
+  la fin de la déconnexion d'une caméra dans une BOUCLE `root.update()` +
+  `time.sleep(0.05)` bornée à 8 s — boucle RÉENTRANTE dans le fil Tk, piège connu
+  sur macOS ; le guet de gel la DÉSIGNERA (pile « _on_source_choisie ») si un
+  testeur la rencontre : attendre cette mesure plutôt que de réécrire à
+  l'aveugle. ② TEST RÉEL macOS toujours en attente du testeur sur la v2.47.0
+  (« 📂 Dossier » et « Charger un flat… » doivent répondre au PREMIER clic ; toute
+  ligne « gel de l'interface » du `journal.txt` donne la pile du blocage).
+  **LEÇONS DE CETTE PASSE (bancs)** : un banc qui encode un ANCIEN contrat doit
+  être ADAPTÉ, pas contourné — le contrat neuf s'écrit dans le même langage
+  (formules historiques testées à `preserve_luminance=False`, indices du job mis
+  à jour, TÉMOIN mesuré pour prouver que l'assertion discrimine) ; un banc peut
+  être ROUGE sans que personne ne le voie (après un changement de contrat,
+  rejouer la SÉRIE, pas seulement les bancs qui semblent liés : c'est ainsi que
+  `_test_bxt_entete_jalon69.py` a été trouvé) ; et un banc VERT peut mentir
+  (commentaires et disposition du job périmés dans
+  `_test_gradient_couche_jalon24.py` et `_test_gx_lot_externe_jalon83.py`).
+  **NETTOYAGE DE CE FICHIER toujours à prévoir** (blocs antérieurs au 29/09) :
+  à faire par petites touches, JAMAIS par un aller-retour PowerShell.
 - **ÉTAT DE LA SESSION 30/09/2026 (jalon 83, v2.46.0 — version PUBLIÉE).**
   **Version stable de référence : v2.46.0**, PUBLIÉE (tag annoté + release GitHub,
   trois paquets + `INSTALLATION.md` ; installeur Windows
@@ -792,28 +935,35 @@ dans le changelog du source et l'historique git.)
 
 ## En attente / prochaine session
 
-- **ÉTAT COMPACT POUR LA PROCHAINE SESSION (30/09/2026, clôture — jalon 84)** :
-  **rien en attente de l'agent** : la passe est livrée, les trois installateurs
-  sont reconstruits et la release `v2.47.0` est publiée. Ce qui ATTEND est chez
-  les autres :
-  ① **TEST RÉEL macOS (le plus important — c'est ce qui a motivé la passe)** :
-  faire installer `avastack-setup-2.47.0-macos.tar.gz` au testeur de macOS 27 et
-  vérifier que « 📂 Dossier » (dossier surveillé) et « Charger un flat… »
-  répondent **au PREMIER clic**. Si ça résiste : **son `journal.txt`** décide —
-  la version de Tcl/Tk y est notée, et toute ligne « gel de l'interface » donne
-  la **pile** du fil retenu (donc la cause, sans supposition).
-  ② **TEST RÉEL de la chaîne ⚡ par couche** (v2.46.0, toujours en attente) : un
+- **ÉTAT COMPACT POUR LA PROCHAINE SESSION (30/09/2026, clôture — jalons 85/86,
+  v2.48.0)** : **la passe de code est terminée** (jalons 85 + 86 livrés, bancs
+  adaptés et 30 verts, changelog écrit, version v2.48.0). Rien en attente de
+  l'agent côté code ; ce qui ATTEND est la PUBLICATION et les essais :
+  ① **PUBLIER v2.48.0** (non demandé dans cette passe) : reconstruire les trois
+  installeurs, mettre `INSTALLATION.md` à jour (tailles + SHA-256), tag annoté
+  `v2.48.0` + release GitHub. Les paquets publiés sont encore ceux de la v2.47.0.
+  ② **TEST RÉEL D'ALAIN sur v2.48.0** : son rendu SHO avec **SON Linear Fit**
+  (case « Recalage colorimétrique » cochée, mode « Gain + offset ») et la chaîne
+  couleur après étirement ; le boost du rouge reste DÉCOCHÉ (il l'a refusé : le
+  doré exagéré effaçait le bleu). Ses curseurs SCNR restent les siens : à SCNR
+  0,55 il reste 61 % de vert sur l'objet, à 0,75 seulement 5 %.
+  ③ **TEST RÉEL macOS (le plus important pour le testeur)** : faire installer le
+  paquet macOS et vérifier que « 📂 Dossier » (dossier surveillé) et « Charger un
+  flat… » répondent **au PREMIER clic**. Si ça résiste : **son `journal.txt`**
+  décide — la version de Tcl/Tk y est notée, et toute ligne « gel de l'interface »
+  donne la **pile** du fil retenu (donc la cause, sans supposition).
+  ④ **TEST RÉEL de la chaîne ⚡ par couche** (v2.46.0, toujours en attente) : un
   ⚡ traitement par couche en composition 3 rôles — la ligne d'état doit annoncer
   « 3 couche(s) en parallèle… » à l'étape gradient, et le résultat être celui
   d'avant.
-  ③ **Piste à MESURER avant de coder** (consignée au jalon 84) :
-  `_on_source_choisie` boucle `root.update()` + `time.sleep(0.05)` jusqu'à 8 s
-  pour attendre la fin d'une déconnexion caméra — piège connu sur macOS (boucle
-  `update()` réentrante). Le guet de gel la désignera par sa pile si elle gêne.
-  ④ Les attentes « **déléguées aux utilisateurs** » des blocs ci-dessous restent
+  ⑤ **Piste à MESURER avant de coder** : `_on_source_choisie` boucle
+  `root.update()` + `time.sleep(0.05)` jusqu'à 8 s pour attendre la fin d'une
+  déconnexion caméra — piège connu sur macOS (boucle `update()` réentrante). Le
+  guet de gel la désignera par sa pile si elle gêne.
+  ⑥ Les attentes « **déléguées aux utilisateurs** » des blocs ci-dessous restent
   valables (boutons de données sans Siril : « ⬇ Gaia », « ⬇ Spectres (champ) »,
   « ⬇ Base SPCC »).
-  **Prochaine passe de code : version `v2.48.0`** (règle : on ne réécrit jamais
+  **Prochaine passe de code : version `v2.49.0`** (règle : on ne réécrit jamais
   un tag publié — cf. CLAUDE.md).
 - **ÉTAT COMPACT POUR UNE NOUVELLE SESSION (29/09/2026, clôture de soirée)** :
   **rien en attente de l'agent**. Dernière passe : **v2.42.0** — AVAStack ne

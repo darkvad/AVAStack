@@ -306,10 +306,12 @@ app.ext_job = (True, cmd("GX"),          # 0,1 : gradient par couche
                True, cmd("DN"),          # 2,3 : débruitage GraXpert par couche
                True, cmd("BXT"),         # 4,5 : un seul appel sur le composite
                "graxpert", 0.5,          # 6,7 : mode et force du débruitage
-               False, False, False,      # 8,9,10 : SCNR, SCNR doux, démagenta
-               False,                    # 11 : neutralisation du fond
-               False,                    # 12 : réduction du bruit chromatique
-               0.5, 3.0)                 # 13,14 : force et rayon de chroma
+               # v2.48.0 (jalon 85) : le job n'a plus que 12 éléments — les
+               # trois cases couleur ont quitté la chaîne externe (elles suivent
+               # l'étirement) :
+               False,                    # 8 : neutralisation du fond
+               False,                    # 9 : réduction du bruit chromatique
+               0.5, 3.0)                 # 10,11 : force et rayon de chroma
 res = {}
 for parallele in (1, 3):
     vide_journal()

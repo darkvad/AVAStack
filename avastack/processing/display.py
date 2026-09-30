@@ -73,6 +73,61 @@ def niveaux(x, noir=0.0, median=0.5, blanc=1.0):
     return mtf(y, float(median))
 
 
+def couleur_apres_etirement(x, actif=(False, False, False), force_scnr=1.0,
+                            force_demagenta=1.0, preserve_luminance=True,
+                            boost_rouge=False,
+                            force_boost=_couleurs.BOOST_ROUGE_DEFAUT,
+                            boost_preserve_luminance=False):
+    """Chaîne couleur APRÈS l'étirement (v2.48.0, jalons 85/86) : SCNR classique
+    → SCNR doux (bruit seul) → démagenta → boost du rouge (SII) masqué à
+    l'objet, dans cet ordre.
+
+    POURQUOI APRÈS L'ÉTIREMENT (et non avant, comme aux jalons 22/23) :
+    ① `preserve_luminance` (ACTIVE par défaut) rend au pixel sa L* CIE — une
+    grandeur PERCEPTUELLE, sans objet sur une image linéaire ; ② l'ordre des
+    références est « égaliser le fond, PUIS retirer le vert » ; ③ la sortie
+    LINÉAIRE sauvegardée ne doit porter que l'empilement et les corrections
+    (elle était écrêtée en vert : MESURÉ sur l'empilement M31 d'Alain, excès
+    de vert max 5,9·10⁻⁸ contre 1,6·10⁻¹ sur l'empilement d'origine).
+
+    POURQUOI LE BOOST EN DERNIER (jalon 86) : le SCNR retire l'excès de vert,
+    c'est-à-dire le vert AU-DESSUS de (R+B)/2. Appliqué après le boost du rouge,
+    il en reprendrait une partie (le seuil (R+B)/2 monte avec le rouge ajouté) :
+    les deux réglages se combattraient au lieu de s'ajouter. En dernier, le boost
+    garde TOUTE sa force, et le SCNR garde toute la sienne — les deux restent
+    INDÉPENDANTS (décision d'Alain : pas d'exclusivité).
+
+    x    : image ÉTIRÉE (H, W, 3) [0..1] — un composite monochrome (H, W) est
+           rendu inchangé (les quatre outils sont des no-op sur du monochrome) ;
+    actif: (SCNR, SCNR doux, démagenta) — les trois cases à cocher ;
+    force: part de correction (1,0 = formule historique des jalons 22/23) ;
+    boost_rouge / force_boost / boost_preserve_luminance : le boost du rouge
+           (jalon 86) — `force_boost` à 1,00 est une identité AU BIT, donc le
+           réglage peut rester en place sans rien changer (cf. couleurs.boost_rouge).
+    → float32 de mêmes dimensions ; l'entrée n'est jamais modifiée.
+
+    NB (les deux faits sont MESURÉS et verrouillés par le banc
+    `bancs/_test_couleur_luminance_jalon85.py`) : les cases SCNR et SCNR doux
+    ne se complètent que si la force du SCNR est < 1 (à force 1, l'excès est
+    ≤ 0 partout : le doux ne retire plus rien, écart 2,98·10⁻⁸) ; la
+    préservation de L* ne touche que les pixels réellement corrigés."""
+    if x is None or np.ndim(x) != 3 or x.shape[-1] != 3:
+        return x
+    scnr_actif, sd_actif, dm_actif = (tuple(actif) + (False, False, False))[:3]
+    if scnr_actif:
+        x = _couleurs.scnr(x, amount=force_scnr,
+                           preserve_luminance=preserve_luminance)
+    if sd_actif:
+        x = _couleurs.scnr_doux(x, preserve_luminance=preserve_luminance)
+    if dm_actif:
+        x = _couleurs.demagenta(x, amount=force_demagenta,
+                                preserve_luminance=preserve_luminance)
+    if boost_rouge:
+        x = _couleurs.boost_rouge(x, force=force_boost,
+                                  preserve_luminance=boost_preserve_luminance)
+    return x
+
+
 def saturation_actifs(gains):
     """True si la saturation par canal change quelque chose (1,0 = neutre)."""
     if gains is None:
@@ -280,12 +335,45 @@ class DisplayProcessor:
         self.vl_sharp = False         # netteté live activée (vue « empilement »)
         self.vl_sharp_iterations = _sharpness.ITERATIONS_DEFAUT
         # --- SCNR + démagenta (jalon 22, opt-in) ----------------------------
-        # APRÈS composition (image COULEUR du composite) et JUSTE AVANT
-        # l'étirement (décision d'Alain) — no-op sur un composite monochrome.
+        # APPLIQUÉS APRÈS L'ÉTIREMENT (v2.48.0, jalon 85 : ils étaient juste
+        # AVANT depuis le jalon 22) sur l'image COULEUR du composite — no-op
+        # sur un composite monochrome. POURQUOI le déplacement : ① la
+        # préservation de la luminosité (option ACTIVE par défaut, cf.
+        # `couleurs.scnr`) est une grandeur PERCEPTUELLE, sans objet en
+        # linéaire ; ② l'ordre des références est « égaliser le fond, PUIS
+        # retirer le vert » ; ③ la sortie LINÉAIRE sauvegardée ne doit porter
+        # que l'empilement et les corrections — elle était ÉCRÊTÉE EN VERT
+        # (MESURÉ sur son empilement M31 : excès de vert max 5,9·10⁻⁸ contre
+        # 1,6·10⁻¹ sur l'empilement non écrêté).
         self.vl_scnr = False          # SCNR « moyenne neutre » (retrait du vert)
         self.vl_demagenta = False     # négatif → SCNR → positif (anti-magenta)
         self.vl_scnr_doux = False     # jalon 23 : SCNR borné par le bruit
                                       # (bruit seul — structure préservée)
+        # v2.48.0 (jalon 85) : options communes aux trois outils.
+        # `vl_preserve_luminance` — ACTIVE par défaut, comme Siril et
+        # PixInsight (« lightness is preserved by default », `-nopreserve` pour
+        # l'annuler) : après le retrait du vert, le pixel retrouve sa L* CIE.
+        # MESURÉ sur l'empilement SHO NGC 2237 d'Alain (composite + étirement
+        # VeraLux) : sans elle la nébuleuse passe de L* 56,5 à 25,8 — elle
+        # s'ÉTEINT, c'est le « manque de doré » constaté ; avec elle, 56,4. La
+        # remise de L* ne touche QUE les pixels réellement corrigés (identité
+        # au bit partout ailleurs : non-régression vérifiée sur ses empilements
+        # M31, 0 pixel changé).
+        # `vl_scnr_force` / `vl_demagenta_force` — part de la correction
+        # (1,00 = formule historique des jalons 22/23, 0,00 = aucun effet).
+        # Un SCNR à force 1,00 laisse l'excès ≤ 0 PARTOUT, donc le « SCNR
+        # doux » ne retire plus rien derrière lui (mesuré : 2,98·10⁻⁸) : les
+        # deux cases ne se complètent qu'à force < 1.
+        self.vl_preserve_luminance = True
+        self.vl_scnr_force = 1.0
+        self.vl_demagenta_force = 1.0
+        # v2.48.0 (jalon 86) : BOOST DU ROUGE (SII) masqué à l'objet — la case
+        # et sa force. DÉCOCHÉ par défaut : c'est une retouche ESTHÉTIQUE (le
+        # doré du SHO), pas la correction d'un défaut de rendu — un rendu par
+        # défaut reste donc inchangé AU BIT près. `force` à 1,00 est une
+        # identité exacte, donc le curseur peut rester en place sans effet.
+        self.vl_boost_rouge = False
+        self.vl_boost_force = float(_couleurs.BOOST_ROUGE_DEFAUT)
         # --- Neutralisation de la COULEUR DU FOND avant étirement (v2.36.1) --
         # Constat d'Alain (25/09/2026) : « le fond reste bleu » à l'écran et
         # « vachement bleu » en PNG. Mesuré : le fichier LINÉAIRE a un fond
@@ -540,6 +628,17 @@ class DisplayProcessor:
                 round(self.vl_denoise_force, 2),
                 self.vl_sharp, int(self.vl_sharp_iterations),
                 self.vl_scnr, self.vl_demagenta, self.vl_scnr_doux,
+                # v2.48.0 (jalon 85) : force de chaque outil et préservation de
+                # la luminosité — la chaîne couleur vit APRÈS l'étirement, donc
+                # la modifier doit relancer le solveur.
+                bool(self.vl_preserve_luminance),
+                round(float(self.vl_scnr_force), 2),
+                round(float(self.vl_demagenta_force), 2),
+                # v2.48.0 (jalon 86) : le boost du rouge fait partie de la chaîne
+                # couleur APRÈS l'étirement (le solveur doit donc le refaire) —
+                # la case ET la force entrent dans la clé des réglages.
+                bool(self.vl_boost_rouge),
+                round(float(self.vl_boost_force), 2),
                 bool(self.vl_neutre_fond),             # v2.36.1 (option)
                 bool(self.vl_chroma),                  # v2.37.0 (option)
                 round(float(self.vl_chroma_force), 2),
@@ -586,6 +685,19 @@ class DisplayProcessor:
             scnr_actif = bool(coul[0]) if len(coul) > 0 else False
             sd_actif = bool(coul[1]) if len(coul) > 1 else False
             dm_actif = bool(coul[2]) if len(coul) > 2 else False
+            # v2.48.0 (jalon 85) : force du SCNR, force du démagenta et
+            # préservation de la luminosité (3 éléments suivants du sous-tuple,
+            # déballage TOLÉRANT : les jobs antérieurs n'en ont pas → 1,0/1,0/
+            # True, soit les valeurs par défaut de la chaîne couleur).
+            force_scnr = float(coul[3]) if len(coul) > 3 else 1.0
+            force_dm = float(coul[4]) if len(coul) > 4 else 1.0
+            preserve_lum = bool(coul[5]) if len(coul) > 5 else True
+            # v2.48.0 (jalon 86) : boost du ROUGE (SII) masqué à l'objet — 7e et
+            # 8e éléments du sous-tuple (déballage TOLÉRANT : les jobs
+            # antérieurs n'en ont pas → case décochée, comme le défaut).
+            boost_actif = bool(coul[6]) if len(coul) > 6 else False
+            force_boost = (float(coul[7]) if len(coul) > 7
+                           else _couleurs.BOOST_ROUGE_DEFAUT)
             # v2.37.0 : réduction du BRUIT CHROMATIQUE (10e élément du job —
             # déballage tolérant : les jobs antérieurs n'en ont pas → inactif).
             chroma_actif = bool(job[9]) if len(job) > 9 else False
@@ -808,16 +920,12 @@ class DisplayProcessor:
                 if err_net:
                     img_net = img_dn     # repli : étirement sans netteté
                 self.sh_msg, self.sh_new = err_net, True
-            # Jalon 22/23 : chaîne couleur (opt-in) — APRÈS la netteté,
-            # JUSTE AVANT l'étirement (décision d'Alain : sur le composite
-            # COULEUR ; no-op si l'image est monochrome). Ordre :
-            # SCNR classique → SCNR doux (bruit seul) → démagenta.
-            if scnr_actif:
-                img_net = _couleurs.scnr(img_net)
-            if sd_actif:
-                img_net = _couleurs.scnr_doux(img_net)
-            if dm_actif:
-                img_net = _couleurs.demagenta(img_net)
+            # v2.48.0 (jalon 85) : la chaîne couleur (SCNR → SCNR doux →
+            # démagenta) n'est PLUS ICI — elle est appliquée APRÈS l'étirement
+            # (`couleur_apres_etirement`, juste après le moteur d'étirement).
+            # NE PAS la remettre avant : elle écrêterait la sortie LINÉAIRE
+            # sauvegardée et priverait la préservation de L* de tout sens
+            # (cf. la note de tête du module `couleurs`).
             # v2.36.1 : NEUTRALISATION DE LA COULEUR DU FOND, juste AVANT
             # l'étirement (9e élément du job, déballage tolérant). L'étirement
             # VeraLux soustrait une ancre puis étire en log : quelques pour cent
@@ -861,10 +969,24 @@ class DisplayProcessor:
                     self.vl_new = True
                     self.vl_stage = ""    # calcul terminé (en erreur) — jalon 40
                 continue
+            # v2.48.0 (jalon 85) : CHAÎNE COULEUR APRÈS L'ÉTIREMENT — SCNR →
+            # SCNR doux → démagenta, avec préservation de la luminosité. Elle
+            # était appliquée AVANT le moteur aux jalons 22/23 (cf. la note du
+            # module `couleurs`). Garde-fou : un échec n'est jamais silencieux
+            # (le résultat non corrigé est publié ET la raison est annoncée).
+            err_coul = ""
+            try:
+                result = couleur_apres_etirement(
+                    result, coul, force_scnr=force_scnr,
+                    force_demagenta=force_dm,
+                    preserve_luminance=preserve_lum,
+                    boost_rouge=boost_actif, force_boost=force_boost)
+            except Exception as exc:
+                err_coul = f"Chaîne couleur live : {exc} ; "
             with self._vl_lock:
                 self._vl_pending = False
                 self._vl_result = (key, result)
-                self.vl_error = prefixe   # "" si tout s'est bien passé
+                self.vl_error = prefixe + err_coul   # "" si tout s'est bien passé
                 self.vl_log_d_resolu = log_d_util
                 self.vl_diagnostics = diag
                 self.vl_new = True
@@ -895,8 +1017,18 @@ class DisplayProcessor:
             dn = (self.vl_denoise, self.vl_denoise_methode,
                   self.vl_denoise_force)                    # capté côté UI
             sh = (self.vl_sharp, int(self.vl_sharp_iterations))
-            coul = (self.vl_scnr, self.vl_scnr_doux,
-                    self.vl_demagenta)     # jalon 22/23 : chaîne couleur
+            coul = (self.vl_scnr, self.vl_scnr_doux, self.vl_demagenta,
+                    float(self.vl_scnr_force),
+                    float(self.vl_demagenta_force),
+                    bool(self.vl_preserve_luminance),
+                    bool(self.vl_boost_rouge),      # v2.48.0 (jalon 86)
+                    float(self.vl_boost_force))
+            # v2.48.0 (jalons 85/86) : les trois cases couleur ET leurs options
+            # (dont le boost du rouge) voyagent ensemble — sous-tuple de 8,
+            # deballage TOLERANT cote worker ; appliquees APRES l'etirement.
+            # v2.48.0 (jalon 85) : les trois cases ET leurs options voyagent
+            # ensemble (sous-tuple de 6 — déballage tolérant côté worker) —
+            # elles sont appliquées APRÈS l'étirement du solveur.
             # v2.36.1 : neutralisation de la couleur du fond AVANT l'étirement
             # (9e élément du job — déballage tolérant côté worker).
             nf = bool(self.vl_neutre_fond)
@@ -1054,15 +1186,11 @@ class DisplayProcessor:
         # refaire ici — d'où le test sur le moteur RÉELLEMENT utilisé.
         if self.vl_sharp and not self._veralux_actif():
             img = self._process_nettete(img)
-        # Jalon 22/23 : chaîne couleur (opt-in) — AVANT l'étirement, en
-        # STF/manuel ; en VeraLux elle fait partie de la chaîne du solveur
-        # (appliquée dans _vl_worker) : ne pas la refaire ici.
-        if self.vl_scnr and not self._veralux_actif():
-            img = _couleurs.scnr(img)
-        if self.vl_scnr_doux and not self._veralux_actif():
-            img = _couleurs.scnr_doux(img)
-        if self.vl_demagenta and not self._veralux_actif():
-            img = _couleurs.demagenta(img)
+        # v2.48.0 (jalon 85) : la chaîne couleur (SCNR / SCNR doux / démagenta)
+        # n'est plus appliquée AVANT l'étirement — elle suit le moteur, juste
+        # après (cf. `couleur_apres_etirement` ci-dessous). En mode VeraLux
+        # elle est appliquée par le solveur (dans _vl_worker) : ne pas la
+        # refaire ici.
         if self._veralux_actif():
             x = self._process_veralux(img, live=live)
         else:
@@ -1074,6 +1202,18 @@ class DisplayProcessor:
             # un réglage d'APRÈS étirement (gamma, saturations, barres de
             # niveaux) retrouve l'image déjà étirée au lieu de la recalculer.
             x = self._moteur_stf(img, live=live)
+            # v2.48.0 (jalon 85) : chaîne couleur APRÈS l'étirement — la
+            # préservation de la luminosité est une grandeur perceptuelle, et
+            # l'entrée linéaire (et donc le fichier « empilement traité ») n'est
+            # plus écrêtée en vert. En mode VeraLux, elle est appliquée par le
+            # solveur (branche ci-dessus) : ne pas la refaire.
+            x = couleur_apres_etirement(
+                x, (self.vl_scnr, self.vl_scnr_doux, self.vl_demagenta),
+                force_scnr=self.vl_scnr_force,
+                force_demagenta=self.vl_demagenta_force,
+                preserve_luminance=self.vl_preserve_luminance,
+                boost_rouge=self.vl_boost_rouge,
+                force_boost=self.vl_boost_force)
         # Jalon 75 : l'image de SORTIE DU MOTEUR est mémorisée AVANT l'étage
         # de niveaux — c'est elle qu'affiche la bande basse de l'histogramme,
         # pour que les barres découpent bien la donnée qu'elles reçoivent (et
@@ -1159,6 +1299,21 @@ class DisplayProcessor:
             if hi - lo < 1e-6:
                 hi = lo + 1e-6
             x = np.clip((img - lo) / (hi - lo), 0.0, 1.0)
+        # v2.48.0 (jalon 85) : CHAÎNE COULEUR APRÈS L'ÉTIREMENT, comme à
+        # l'écran — le fichier « tel que vu » doit être l'écran au pixel près
+        # (règle du projet). Aux jalons 22/23 elle était appliquée AVANT, par
+        # l'appelant, et n'apparaissait donc pas ici.
+        x = couleur_apres_etirement(
+            x, (r("vl_scnr", self.vl_scnr),
+                r("vl_scnr_doux", self.vl_scnr_doux),
+                r("vl_demagenta", self.vl_demagenta)),
+            force_scnr=float(r("vl_scnr_force", self.vl_scnr_force)),
+            force_demagenta=float(r("vl_demagenta_force",
+                                    self.vl_demagenta_force)),
+            preserve_luminance=bool(r("vl_preserve_luminance",
+                                      self.vl_preserve_luminance)),
+            boost_rouge=bool(r("vl_boost_rouge", self.vl_boost_rouge)),
+            force_boost=float(r("vl_boost_force", self.vl_boost_force)))
         # Jalon 75 : étage de NIVEAUX (les 3 barres de l'histogramme) puis
         # finition (gamma, saturation globale, saturation par couleur) —
         # exactement la même chaîne que `process()`, au même endroit, pour que

@@ -17,9 +17,98 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.47.0"
+AVASTACK_VERSION = "2.48.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.48.0 : LA CHAÎNE COULEUR SUIT L'ÉTIREMENT, LA L* EST PRÉSERVÉE, ET LE SHO
+#   GAGNE — OU PAS — SON DORÉ (jalons 85 et 86). Déclencheur : le constat
+#   d'Alain sur son empilement SHO NGC 2237 (« vert par défaut, manque de
+#   doré »), avec trois exigences : la variante FIDÈLE SIRIL (préservation de la
+#   L*), « l'UI doit respecter l'ordre des traitements », et pas d'exclusivité
+#   SCNR/démagenta (en SHO la teinte magenta coexiste avec l'excès de vert).
+#   MESURES QUI ONT DÉCIDÉ (ses données, AVANT tout code) :
+#     ① le SCNR des jalons 22/23 ÉTEINT l'objet — L* de la nébuleuse 56,5 → 25,8
+#        (composite SHO étiré VeraLux) et 82,5 → 9,8 (VeraLux live) ;
+#     ② son fichier « empilement traité (linéaire) » était ÉCRÊTÉ EN VERT (excès
+#        max 5,9·10⁻⁸ pour 100 % des pixels, contre 1,6·10⁻¹ sur le même
+#        empilement d'origine) : c'est la chaîne LINÉAIRE qui portait le SCNR ;
+#     ③ le moteur VeraLux est LIÉ (même plancher, même échelle, même MTF pour les
+#        trois canaux) : le déséquilibre Ha/SII des brutes traverse tout
+#        l'étirement (piste « étirement par canal » MESURÉE puis REFERMÉE : elle
+#        mène au cyan).
+#   - avastack/processing/couleurs.py : `scnr` / `scnr_doux` / `demagenta`
+#     prennent `preserve_luminance=True` (défaut, comme Siril et PixInsight :
+#     « lightness is preserved by default », `-nopreserve` l'annule) — la L* CIE
+#     (Lab) du pixel est rendue APRÈS le retrait, sur les SEULS pixels réellement
+#     corrigés, avec un garde de résolution `SEUIL_REMISE_LUMINANCE = 1e-6` : une
+#     correction plus petite que le pas d'affichage n'est pas une correction, et
+#     un empilement déjà écrêté par un SCNR antérieur ne doit pas voir des
+#     millions de pixels retouchés par l'aller-retour Lab. `amount=1,
+#     preserve_luminance=False` rend le résultat des jalons 22/23 AU BIT ;
+#     `amount=0` rend l'entrée au bit.
+#   - avastack/processing/display.py : la chaîne couleur est appliquée APRÈS
+#     l'étirement (`couleur_apres_etirement`) — solveur VeraLux, `process()`
+#     STF/manuel et `rendu_pleine_resolution` ; le sous-tuple `coul` du job
+#     passe à 8 éléments (forces + préservation) avec déballage TOLÉRANT.
+#   - avastack/ui/app.py : la chaîne couleur QUITTE les trois chaînes LINÉAIRES
+#     (⚡ mono, ⚡ composition, « tel que vu ») — le fichier linéaire ne porte
+#     plus le SCNR et n'est plus écrêté en vert ; le job de la chaîne externe
+#     passe de 15 à 12 éléments (les cases 4/5/6 sont retirées du cadre, une note
+#     explique où la couleur se règle désormais) et `AVAAPPLI` ne liste plus que
+#     les corrections pré-étirement réellement appliquées ; les clés `ext_scnr*`
+#     ne sont plus écrites — et sont RETIRÉES d'une configuration antérieure
+#     (seule exception assumée à la règle « ne touche pas aux entrées
+#     inconnues » : elles ne décrivent plus aucun réglage).
+#   - UI : cadre « Couleur de l'objet (APRÈS étirement) » — case « Préserver la
+#     luminosité (L*) » (cochée par défaut) + curseurs « Force du SCNR » et
+#     « Force du démagenta » ; ordre des cadres revu pour que l'écran dise
+#     l'ordre RÉEL des traitements : Fichiers → Caméra → Calibration → Empilement
+#     → Fond et grain (AVANT étirement) → Netteté live → Affichage → Couleur de
+#     l'objet (APRÈS étirement) → État des calculs → Traitement externe → Sortie
+#     (AUCUN réglage, aucune clé et aucun comportement ne changent : seuls les
+#     PARENTS des widgets). Clés `vl_preserve_luminance`, `vl_scnr_force`,
+#     `vl_demagenta_force`.
+#   - JALON 86 — `couleurs.boost_rouge(img, force, preserve_luminance=False)` :
+#     boost du ROUGE (SII) MASQUÉ À L'OBJET par les centiles de luminance
+#     40 → 97 (le gain suit la lumière du pixel : 0 dans le fond, 1 sur l'objet),
+#     bornes `BOOST_ROUGE_MIN/MAX/DEFAUT = 1,00 / 4,00 / 3,00`, appliqué EN
+#     DERNIER dans `couleur_apres_etirement` — APRÈS le SCNR, car le SCNR retire
+#     l'excès de vert AU-DESSUS de (R+B)/2 : appliqué après le boost, il en
+#     reprendrait une partie, donc les deux s'ADDITIONNENT au lieu de se
+#     combattre. Le FOND reste identique AU PIXEL (écart nul mesuré à ×1,5,
+#     ×3,00 et ×4,00) et l'outil est une identité AU BIT à force 1,00 comme à
+#     toutes cases décochées. UI : case « Boost du rouge (SII) — masqué à
+#     l'objet », DÉCOCHÉE par défaut (c'est une retouche ESTHÉTIQUE, pas la
+#     correction d'un défaut de rendu : un rendu par défaut reste inchangé au
+#     bit) + curseur « Force du boost » ; clés `vl_boost_rouge` /
+#     `vl_boost_force` (config ET `_reglages_rendu`, donc le fichier « tel que
+#     vu » suit l'écran) ; sous-tuple du job solveur 6 → 8 éléments.
+#   - MESURES DE DÉCISION, gardées au dépôt (`bancs/_diag_couleur_dore_jalon85.py`
+#     et `bancs/_diag_dore_choix_jalon86.py`) : ① le diagnostic du jalon 85
+#     reproduisait la chaîne dans le MAUVAIS ORDRE (neutralisation AVANT le
+#     recalage) — l'ordre réel est fit → neutralisation → chroma → étirement →
+#     couleur (avec le bon ordre, le fond redevient neutre et chaud, comme à son
+#     écran) ; ② le VERT vu à l'écran venait des CURSEURS, pas du principe : à
+#     SCNR 0,55 le boost 1,60 laisse 61 % de l'objet vert ; à SCNR 0,75 (même
+#     boost) il n'en reste que 5 % (88 % doré). Le Linear Fit, mesuré tel quel,
+#     monte le rouge au PLAFOND (gain 4,000) et le bleu à 3,162 (le cœur OIII
+#     part au cyan) avec une saturation d'objet plus basse (0,32 contre 0,41).
+#     DÉCISION D'ALAIN (30/09/2026) : il garde SON Linear Fit « gain + offset » ;
+#     le boost reste livré comme option DISPONIBLE et DORMANTE (décochée).
+#   - Bancs NEUFS : `_test_couleur_luminance_jalon85.py` (7 sections,
+#     19 vérifications : scènes synthétiques + ses empilements M31 réels +
+#     NGC 2237 SHO réel ; 0 pixel de régression au bit) et
+#     `_test_boost_rouge_jalon86.py` (7 sections, 28 vérifications).
+#   - Bancs ADAPTÉS au contrat neuf (AUCUN rendu changé) :
+#     `_test_couleurs_jalon22.py` (les formules historiques sont désormais
+#     testées à `preserve_luminance=False`, la L* rendue est mesurée AU DÉFAUT
+#     avec son témoin, sections externes réécrites pour le job 12-tuple et la
+#     chaîne qui a déménagé), `_test_dn_jalon7.py` et
+#     `_test_chroma_halo_jalon65.py` (indices du job externe),
+#     `_test_bxt_entete_jalon69.py` (`AVAAPPLI` ne dit plus SCNR),
+#     `_test_gradient_couche_jalon24.py` et `_test_gx_lot_externe_jalon83.py`
+#     (jobs remis au format courant, commentaires compris). 30 bancs rejoués,
+#     TOUS VERTS.
 # v2.47.0 : PREMIER RETOUR UTILISATEUR macOS — DIALOGUES ATTACHÉS À LA FENÊTRE,
 #   FENÊTRE MISE DEVANT, ET UN GEL D'INTERFACE QUI SE MESURE (jalon 84).
 #   Constat RÉEL (testeur sous macOS 27 « Golden Gate », 30/09/2026) :
