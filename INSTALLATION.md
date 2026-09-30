@@ -1,4 +1,4 @@
-# AVAStack — installation rapide (v2.46.0)
+# AVAStack — installation rapide (v2.47.0)
 
 AVAStack est un **live stacking** : il empile tes brutes **en temps réel**
 pendant l'acquisition (calibration dark/flat, alignement, rejet kappa-sigma,
@@ -8,7 +8,7 @@ passage aux **outils externes** (GraXpert, BlurXTerminator) sur un instantané.
 Il tourne sur **Windows, Linux et macOS**, et s'installe **dans ton profil** :
 aucun droit administrateur n'est nécessaire.
 
-Ce document accompagne la **release v2.46.0** (les trois installateurs y sont
+Ce document accompagne la **release v2.47.0** (les trois installateurs y sont
 attachés). Il ne remplace pas le `LISEZMOI.txt` que l'installateur copie à côté
 de l'application — celui-ci détaille **tous les réglages** de l'interface.
 
@@ -18,9 +18,9 @@ de l'application — celui-ci détaille **tous les réglages** de l'interface.
 
 | Plateforme | Fichier | Taille | SHA-256 |
 | --- | --- | --- | --- |
-| Windows (10/11, 64 bits) | `avastack-setup-2.46.0.exe` | 11,5 Mo | `60BAFCEA916F6186A3E674EAE2C2F18328902A93D69A7244789A7E4051FC7F60` |
-| Linux (x86_64) | `avastack-setup-2.46.0-linux.tar.gz` | 586 Kio | `047B45AECA182922D59ACA3BF157BC70266A482762F69A923F63865FA4521DBA` |
-| macOS (11 et plus) | `avastack-setup-2.46.0-macos.tar.gz` | 584 Kio | `3B9380C7A7E9742BBDF7057C6FA70BAE2AF1AAA18CD7BAB1817F80A97C7C64FE` |
+| Windows (10/11, 64 bits) | `avastack-setup-2.47.0.exe` | 11,5 Mo | `2386C44EE38F69D13E9C956FB9D73BA5408190BB2CECB6F0AA3C0D0653A92E61` |
+| Linux (x86_64) | `avastack-setup-2.47.0-linux.tar.gz` | 592 Kio | `810706F34B9E1CD31A3DCAE9B5EB33FF215E7508E94CDAB94F2B4ECFA41AFC6D` |
+| macOS (11 et plus) | `avastack-setup-2.47.0-macos.tar.gz` | 589 Kio | `DBD60A6CBFBE5C9C29AB494E6624C36DE40EBE3CF7100967492BF4B2B61E29EA` |
 | Documentation | `INSTALLATION.md` | ce fichier | — |
 
 Les artéfacts portent leur **numéro de version** : deux versions ne s'écrasent
@@ -32,7 +32,7 @@ jamais, et un installateur plus ancien peut rester à côté comme repli.
 
 ---
 
-## 2. Windows — `avastack-setup-2.46.0.exe`
+## 2. Windows — `avastack-setup-2.47.0.exe`
 
 1. **Lancer l'exécutable.** Windows peut afficher un avertissement
    SmartScreen (l'exécutable n'est pas signé) : « Informations
@@ -60,11 +60,11 @@ L'application fonctionne **sans aucune caméra** (mode « Dossier surveillé »,
 
 ---
 
-## 3. Linux — `avastack-setup-2.46.0-linux.tar.gz`
+## 3. Linux — `avastack-setup-2.47.0-linux.tar.gz`
 
 ```bash
-tar xzf avastack-setup-2.46.0-linux.tar.gz
-cd avastack-2.46.0-linux
+tar xzf avastack-setup-2.47.0-linux.tar.gz
+cd avastack-2.47.0-linux
 bash installer/install_avastack.sh
 ```
 
@@ -102,10 +102,10 @@ n'est visible **qu'en root**.
 
 **macOS** : l'installateur macOS existe depuis le **29/09/2026** — voir le § 3 bis.
 
-> **État de cet installateur (à jour le 29/09/2026)** : le paquet Linux est
+> **État de cet installateur (à jour le 30/09/2026)** : le paquet Linux est
 > construit, son contenu est vérifié (62 fichiers, aucun `.so`/`.dll`, script
 > `install_avastack.sh` exécutable, fins de ligne UNIX, racine unique
-> `avastack-2.46.0-linux/`) **et il a été exécuté plusieurs fois EN RÉEL sur une
+> `avastack-2.47.0-linux/`) **et il a été exécuté plusieurs fois EN RÉEL sur une
 > machine Ubuntu 26.04 LTS** : installation, prérequis système, création du venv,
 > dépendances et lancement de l'application y sont validés. Restent à faire : le
 > test sur une machine **vierge** (sans Python ni paquets prérequis) et le
@@ -114,11 +114,11 @@ n'est visible **qu'en root**.
 
 ---
 
-## 3 bis. macOS — `avastack-setup-2.46.0-macos.tar.gz`
+## 3 bis. macOS — `avastack-setup-2.47.0-macos.tar.gz`
 
 ```bash
-tar xzf avastack-setup-2.46.0-macos.tar.gz
-cd avastack-2.46.0-macos
+tar xzf avastack-setup-2.47.0-macos.tar.gz
+cd avastack-2.47.0-macos
 bash installer/install_avastack.sh
 ```
 
@@ -154,13 +154,25 @@ xattr -dr com.apple.quarantine ~/Applications/AVAStack.app
 Désinstallation : `bash installer/install_avastack.sh --desinstaller` (garde les
 réglages et les données téléchargées) ; `--purger` supprime aussi les réglages.
 
-> **État de cet installateur (29/09/2026) — daté et sans exagération** : écrit à
-> partir de l'installateur **Linux** (éprouvé en réel), vérifié par analyse
-> syntaxique (`bash -n`), par **exécution réelle** de ses garde-fous (il refuse
-> de s'installer hors macOS, `--aide` répond) et par un banc qui contrôle le
-> contenu du paquet (`bancs/_test_installeur_macos_jalon78.py`). Il n'a **pas
-> encore été exécuté sur une machine macOS** : c'est le prochain test à faire,
-> et le premier retour d'un utilisateur macOS vaut de l'or.
+> **État de cet installateur — daté et sans exagération** : écrit à partir de
+> l'installateur **Linux** (éprouvé en réel), vérifié par analyse syntaxique
+> (`bash -n`), par **exécution réelle** de ses garde-fous (il refuse de
+> s'installer hors macOS, `--aide` répond) et par un banc qui contrôle le
+> contenu du paquet (`bancs/_test_installeur_macos_jalon78.py`).
+> **PREMIER RETOUR RÉEL macOS (30/09/2026, macOS 27 « Golden Gate ») :
+> l'installation et le lancement se font sans problème.** Deux points signalés
+> ensuite ont été corrigés (v2.47.0) : les boîtes de dialogue sont désormais
+> **attachées à la fenêtre** — sur macOS, un panneau ou un avertissement non
+> attaché peut rester DERRIÈRE la fenêtre principale, qui attend pourtant la
+> réponse, ce qui donne l'impression que des boutons « ne répondent pas »
+> (choix de dossier, dark/flat, enregistrement) — et la fenêtre est **mise au
+> premier plan** à l'ouverture (une application lancée par un lanceur n'est pas
+> « activée » par macOS, et ses premiers clics servaient à l'activer).
+> En cas de doute, le **journal** (`~/Library/Application Support/AVAStack/
+> journal.txt`) indique la **version de Tcl/Tk** utilisée et signale tout
+> blocage de l'interface de plus d'une seconde et demie (« gel de
+> l'interface »), **avec la pile du fil fautif** : c'est LE fichier à envoyer
+> avec une description du problème.
 
 ---
 
@@ -290,7 +302,7 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
 
 ---
 
-## 8. Limites connues de la v2.46.0 (dites franchement)
+## 8. Limites connues de la v2.47.0 (dites franchement)
 
 - **Installateur Linux : TESTÉ EN RÉEL** — exécuté **plusieurs fois** sur une
   machine **Ubuntu 26.04 LTS** (installation, prérequis, venv, dépendances,
@@ -299,10 +311,13 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
 - Restent à faire : l'installateur Linux sur une machine **vierge** (sans Python
   ni paquets prérequis) et le **test matériel caméras** sous Linux (option
   `--cameras`, quand les `*.so` constructeurs y seront déposés).
-- **Installateur macOS : ÉCRIT mais PAS ENCORE EXÉCUTÉ sur un Mac** (29/09/2026) —
-  contenu du paquet vérifié au banc et garde-fous essayés en réel (refus hors
-  macOS, `--aide`), mais c'est le prochain test à faire sur une vraie machine ;
-  la signature/notarisation Apple n'est pas faite (bundle local non signé).
+- **Installateur macOS : EXÉCUTÉ EN RÉEL le 30/09/2026** (macOS 27 « Golden
+  Gate ») — installation et lancement **sans problème**, contenu du paquet
+  vérifié au banc et garde-fous essayés en réel (refus hors macOS, `--aide`).
+  Les défauts d'INTERACTION signalés ensuite (boutons « qui ne répondent pas » :
+  boîtes de dialogue non attachées à la fenêtre) sont corrigés depuis la
+  **v2.47.0**. La signature/notarisation Apple n'est pas faite (bundle local non
+  signé).
 - **Aucune caméra** n'est embarquée (SDK constructeurs, licences).
 - Les **données Gaia** ne sont pas embarquées : ≈ 1,1 Go (catalogue astro),
   ≈ 10,6 Go (les 48 morceaux de spectres — le bouton « ⬇ les 48 ») et quelques
@@ -315,7 +330,7 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
 
 ## 9. Repli si régression
 
-Le repli de référence est la **v2.45.0**. Les installateurs des versions
+Le repli de référence est la **v2.46.0**. Les installateurs des versions
 antérieures restent à côté des nouveaux, dans `installer/windows/output/`,
 `installer/linux/output/` et `installer/macos/output/` : aucun nouveau
 installateur n'écrase une version précédente.

@@ -17,9 +17,55 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.46.0"
+AVASTACK_VERSION = "2.47.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.47.0 : PREMIER RETOUR UTILISATEUR macOS — DIALOGUES ATTACHÉS À LA FENÊTRE,
+#   FENÊTRE MISE DEVANT, ET UN GEL D'INTERFACE QUI SE MESURE (jalon 84).
+#   Constat RÉEL (testeur sous macOS 27 « Golden Gate », 30/09/2026) :
+#   « l'UI a quelques soucis (boutons qui ne sont pas toujours cliquables, par
+#   exemple le bouton "Dossier", mais qui le deviennent après que j'ai cliqué
+#   frénétiquement dessus)… le bouton permettant de choisir le dossier à
+#   surveiller ne répond pas… le bouton flat reste désespérément inactif ».
+#   - avastack/ui/app.py : TOUS les dialogues (dossier, ouverture, enregistrement,
+#     information, avertissement, erreur) passent par six aides qui posent
+#     `parent=<fenêtre>`. Sur macOS, Tk ouvre SANS `parent` un panneau ou une
+#     alerte APPLICATIVE LIBRE (NSOpenPanel / NSAlert non attaché), qui peut
+#     rester DERRIÈRE la fenêtre principale — laquelle attend la réponse (attente
+#     modale) : l'application paraît alors insensible, et les clics ne produisent
+#     rien tant qu'ils n'atteignent pas la boîte invisible. Avec `parent=`, macOS
+#     ATTACHE la boîte à la fenêtre (feuille) : elle est toujours devant.
+#     47 appels directs remplacés ; un banc STATIQUE refuse tout appel direct
+#     résiduel (un seul oublié ramènerait le défaut).
+#   - `main()` : sur macOS, `activer_fenetre()` (lift + `-topmost` bref +
+#     `focus_force`) — une application Tk lancée par un lanceur ou depuis un
+#     terminal n'est pas « activée » par macOS à l'ouverture, et ses premiers
+#     clics servent alors à activer l'application au lieu d'atteindre le widget.
+#     La version de Tcl/Tk est désormais JOURNALISÉE au démarrage (piste d'un
+#     Tk trop ancien soulevée par le testeur : elle doit être lisible sans avoir
+#     à la demander).
+#   - La boîte maison « ce dark/flat s'applique à : » est MAPPÉE avant son grab
+#     puis levée : un grab posé sur une fenêtre pas encore affichée est au mieux
+#     sans effet, au pire bloquant (macOS comme X11).
+#   - avastack/ui/reactivite.py (NEUF) : GUET DE GEL du fil d'interface — un fil
+#     démon compare l'horloge au BATTEMENT posé par `_tick` (30 ms) et écrit au
+#     journal, avec la PILE du fil fautif, tout blocage au-delà de 1,5 s (5
+#     rapports au plus par session, un par épisode de gel). C'est ce qui rend
+#     « les boutons ne répondent pas » MESURABLE au lieu d'être supposé. Il ne
+#     démarre PAS sans fenêtre affichée ni avec `AVASTACK_SANS_GUET=1` : un banc
+#     masqué n'a pas de clic perdu à expliquer et ne doit pas voir ses mesures de
+#     temps faussées (défaut réellement observé : la CONSTRUCTION d'une interface
+#     dure 1,6 s et était rapportée comme un gel).
+#   - Banc NEUF `bancs/_test_dialogues_jalon84.py` (7 sections, 28 vérifications,
+#     TOUT AU VERT) : contrôle STATIQUE du source, `parent` posé sur les chemins
+#     RÉELS de l'application (dossier surveillé, dark, enregistrement, dossier de
+#     travail, information, avertissement, erreur), options historiques
+#     conservées (titre, types de fichiers, extension), aucun `parent=None` quand
+#     la fenêtre est détruite, boîte maison affichée avant son grab, et le guet
+#     éprouvé sur un gel volontaire (durée + pile qui nomme le fichier fautif,
+#     un seul rapport par gel, épisode suivant rapporté, débrayages).
+#   - Régression : 25 bancs relancés VERTS (dont rafale_fin_rendu_jalon80, qui
+#     avait révélé l'effet de bord du guet sur les mesures de temps des bancs).
 # v2.46.0 : LE GRADIENT GraXpert DE LA CHAÎNE EXTERNE (⚡) PART EN UN SEUL LOT
 #   (jalon 83) — décision d'Alain du 30/09/2026, prise APRÈS MESURE sur trois
 #   machines. POURQUOI : le jalon 81 avait mis en lot le gradient du SOLVEUR LIVE

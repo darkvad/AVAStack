@@ -805,6 +805,53 @@ ce qui manquait n'était pas une correction mais une MESURE.
 
 ## Pièges (leçons du projet AVAStack)
 
+- **SUR macOS, UNE BOÎTE DE DIALOGUE Tk SANS `parent` PEUT RESTER DERRIÈRE LA
+  FENÊTRE PRINCIPALE — et l'application paraît alors insensible** (retour RÉEL
+  d'un testeur sous macOS 27 « Golden Gate », 30/09/2026 : « les boutons ne sont
+  pas toujours cliquables… le bouton permettant de choisir le dossier à
+  surveiller ne répond pas », « le bouton flat reste désespérément inactif »,
+  alors que le mode simulation marchait). Sans `-parent`, Tk demande à macOS un
+  panneau ou une alerte **APPLICATIVE LIBRE** (NSOpenPanel / NSAlert non
+  attaché) ; la fenêtre principale, elle, **attend la réponse** (attente modale)
+  : les clics ne produisent rien tant qu'ils n'atteignent pas la boîte invisible,
+  et « insister » finit par la toucher. AVEC `parent=`, macOS **attache** la
+  boîte à la fenêtre (feuille) : toujours devant. Règle : tout
+  `filedialog.*` / `messagebox.*` passe par les **six aides de `App`**
+  (`_demander_dossier`, `_demander_fichier`, `_enregistrer_sous`, `_dire`,
+  `_avertir`, `_signaler`) — **47 appels** convertis au jalon 84, et un banc
+  **STATIQUE** (`bancs/_test_dialogues_jalon84.py`, analyse du source) refuse
+  tout appel direct résiduel : un seul oublié ramènerait le défaut. Le diagnostic
+  vaut pour les symptômes voisins : **le point commun de deux boutons « qui ne
+  répondent pas » a désigné la cause** (tous deux ouvraient une boîte de
+  dialogue), et `journal.montrer()` faisait déjà `parent=` + `-topmost` — la
+  leçon était connue à un endroit et pas au reste du code. Deux corollaires :
+  ① au démarrage, une application Tk lancée par un lanceur ou depuis un terminal
+  n'est pas « activée » par macOS : ses premiers clics servent à **activer
+  l'application** au lieu d'atteindre le widget → `activer_fenetre()` (`lift` +
+  `-topmost` bref + `focus_force`, **macOS seulement** — ailleurs `focus_force`
+  volerait le focus de l'utilisateur) ; ② une boîte MAISON (Toplevel) doit être
+  **MAPPÉE avant son `grab_set()`** (`update_idletasks()`, puis `lift` et
+  `focus_force`) : un grab posé sur une fenêtre pas encore affichée est au mieux
+  sans effet, au pire bloquant (macOS comme X11).
+- **UN SYMPTÔME « L'INTERFACE NE RÉPOND PAS » SE MESURE — DURÉE + PILE DU FIL
+  FAUTIF** (`avastack/ui/reactivite.py`, jalon 84 ; même esprit que la leçon du
+  27/09/2026 : un blocage se désigne par sa pile, jamais par une hypothèse). Sous
+  macOS, un clic qui tombe pendant que le fil d'interface travaille n'est pas mis
+  en file d'attente : il est **perdu** — d'où « les boutons ne répondent pas
+  toujours ». Un fil DÉMON compare l'horloge au **battement** posé par `_tick`
+  (30 ms) et écrit au journal, au-delà de 1,5 s, la durée ET
+  `traceback.format_stack()` du fil principal lu par `sys._current_frames()` (le
+  fil bloqué n'a rien à coopérer : un gel natif — Tk, OpenCV, disque — est vu
+  comme les autres). Garde-fous mesurés : un rapport **par épisode** (5 par
+  session), `AVASTACK_SANS_GUET=1` pour débrayer, et **le guet ne démarre pas
+  sans fenêtre AFFICHÉE** — leçon de banc : armé dans un banc, il rapportait
+  comme « gel » la **CONSTRUCTION de l'interface suivante** (1,6 s, pile lue
+  dans le journal) et déstabilisait `rafale_fin_rendu_jalon80`, un banc de
+  timing. Un instrument de mesure doit être **aveugle là où il n'y a pas
+  d'utilisateur**. Corollaire : la **version de Tcl/Tk** est journalisée au
+  démarrage (`info patchlevel`) dès qu'un testeur évoque un Tk ancien —
+  vérifier ce fait avant de refuser ou d'accuser le code.
+
 - **TROIS OPTIMISATIONS DE LA CHAÎNE LIVE SONT ÉCARTÉES — NE PAS LES
   REPROPOSER** (décisions d'Alain des 29-30/09/2026, argumentées ET mesurées ;
   elles reviennent naturellement dès qu'on cherche à raccourcir la chaîne) :

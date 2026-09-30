@@ -10,7 +10,54 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **ÉTAT À LA CLÔTURE DE SESSION (30/09/2026) — À LIRE EN PREMIER.**
+- **ÉTAT AU JALON 84 (30/09/2026) — À LIRE EN PREMIER.**
+  **Version DU CODE : v2.47.0** (changelog en tête d'`avastack/__init__.py`) —
+  **aucun paquet reconstruit, aucune release** : à décider par Alain. La version
+  stable PUBLIÉE reste **v2.46.0** (repli v2.45.0 — le bloc suivant la décrit).
+  **DÉCLENCHEUR : le PREMIER RETOUR UTILISATEUR macOS** (macOS 27 « Golden
+  Gate », build 26A428) — installation et lancement OK, puis : « l'UI a quelques
+  soucis (boutons qui ne sont pas toujours cliquables, par exemple le bouton
+  "Dossier", mais qui le deviennent après que j'ai cliqué frénétiquement
+  dessus)… le bouton permettant de choisir le dossier à surveiller ne répond
+  pas… le bouton flat reste désespérément inactif ». Diagnostic : les 47
+  dialogues de l'application étaient ouverts SANS `parent=`, or sur macOS Tk
+  ouvre alors un panneau ou une alerte APPLICATIVE LIBRE (NSOpenPanel / NSAlert
+  non attaché), qui peut rester DERRIÈRE la fenêtre principale — laquelle attend
+  la réponse (attente modale) : l'application paraît insensible, et les clics ne
+  produisent rien tant qu'ils n'atteignent pas la boîte invisible.
+  **LIVRÉ (jalon 84)** : ① **six aides de dialogue** qui posent `parent=<fenêtre>`
+  (`_demander_dossier`, `_demander_fichier`, `_enregistrer_sous`, `_dire`,
+  `_avertir`, `_signaler`) et les **47 appels** passés par elles (aucun appel
+  direct ne subsiste : banc STATIQUE) ; ② `main()` met la fenêtre **devant** sur
+  macOS (`activer_fenetre` : `lift` + `-topmost` bref + `focus_force`) et
+  **journalise la version de Tcl/Tk** ; ③ la boîte maison « ce dark/flat
+  s'applique à : » est **mappée AVANT son grab** puis levée ; ④ **guet de gel
+  d'interface NEUF** (`avastack/ui/reactivite.py`) : « les boutons ne répondent
+  pas » devient **MESURABLE** (durée + **pile du fil fautif** dans `journal.txt`,
+  5 rapports par session, un par épisode ; `AVASTACK_SANS_GUET=1` pour débrayer ;
+  ne démarre PAS sans fenêtre affichée).
+  **Banc NEUF `bancs/_test_dialogues_jalon84.py`** (7 sections, **28
+  vérifications, TOUT AU VERT**) + **25 bancs de régression verts**. Piège de
+  banc rencontré et corrigé : le guet, armé dans un banc, rapportait comme « gel »
+  la CONSTRUCTION de l'interface suivante (1,6 s, pile lue dans le journal) et
+  déstabilisait `rafale_fin_rendu_jalon80` — d'où le refus de démarrer sans
+  fenêtre AFFICHÉE (leçon : un instrument de mesure doit être aveugle là où il
+  n'y a pas d'utilisateur).
+  **À FAIRE — TEST RÉEL macOS (en attente du testeur)** : relancer cette version
+  et vérifier que « 📂 Dossier » ET « Charger un flat… » répondent au PREMIER
+  clic ; en cas de reste, envoyer le `journal.txt` (une ligne « gel de
+  l'interface » y donne la pile du blocage, donc la cause, sans supposition).
+  **À FAIRE — paquets** : rebuild des trois installeurs + release v2.47.0.
+  **PISTE IDENTIFIÉE, PAS ENCORE TRAITÉE** (à mesurer avant de coder) :
+  `_on_source_choisie` attend la fin de la déconnexion d'une caméra dans une
+  BOUCLE `root.update()` + `time.sleep(0.05)` bornée à 8 s — sur macOS, une
+  boucle `update()` RÉENTRANTE dans le fil Tk est un piège connu (elle peut
+  geler la distribution des événements natifs). Le guet de gel la DÉSIGNERA
+  (pile « _on_source_choisie ») si un testeur la rencontre : attendre cette
+  mesure plutôt que de réécrire le chemin à l'aveugle.
+  **NETTOYAGE DE CE FICHIER toujours à prévoir** (blocs antérieurs au 29/09) : à
+  faire par petites touches, JAMAIS par un aller-retour PowerShell.
+- **ÉTAT DE LA SESSION 30/09/2026 (jalon 83, v2.46.0 — version PUBLIÉE).**
   **Version stable de référence : v2.46.0**, PUBLIÉE (tag annoté + release GitHub,
   trois paquets + `INSTALLATION.md` ; installeur Windows
   `installer/windows/output/avastack-setup-2.46.0.exe`, **11 487 452 o**, SHA-256

@@ -16,7 +16,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from PIL import Image, ImageTk
 
-from ..compat import IS_WINDOWS
+from ..compat import IS_MACOS, IS_WINDOWS
 from .. import AVASTACK_VERSION
 from .. import delais
 from .. import journal
@@ -111,6 +111,9 @@ from ..processing import astrometrie as astro_mod
 # téléchargement Gaia DR3) — l'astrométrie interne en dépend, et son absence
 # doit être DITE (constat Linux du 27/09/2026 : échec silencieux).
 from .. import catalogues as cat_mod
+# Jalon 84 : GUET DE GEL du fil d'interface — « les boutons ne répondent pas »
+# devient MESURABLE (durée + pile du fil retenu). Voir ui/reactivite.py.
+from . import reactivite as reactivite_mod
 # Jalon 56 (étape 4) : photométrie — zéro-point instrumental PAR BANDE via le
 # WCS (appariement mutuel des étoiles de l'empilement au catalogue Gaia). On
 # MESURE ici ; l'application aux gains du stacker est l'étape 5.
@@ -525,6 +528,13 @@ class App:
         # AUCUN message ni ligne de journal (la mesure de l'environnement, qui
         # précédait la première ligne, se bloquait aussi).
         self._travail_recycle = (0, 0)
+        # Jalon 84 : le GUET DE GEL est ARMÉ après la mise en route (1 s) —
+        # il ne doit pas compter la construction de la fenêtre. Il écrit au
+        # journal dès que le fil d'interface dépasse `SEUIL_S` sans rendre la
+        # main, avec la PILE de ce fil (retour réel macOS 27 : « les boutons ne
+        # sont pas toujours cliquables »).
+        self.guet = reactivite_mod.Guet(self.root)
+        self.root.after(1000, self.guet.demarrer)
         journal.note("démarrage", "prêt (mesures de disque différées, bornées)")
         self.root.after(30, self._tick)
         self.root.after(150, self._premieres_mesures)
@@ -2406,6 +2416,84 @@ class App:
                 roles.append(r)
         return roles
 
+    # ------------------------------------------------- dialogues (jalon 84)
+    # POURQUOI (retour RÉEL d'un testeur sous macOS 27 « Golden Gate »,
+    # 30/09/2026) : « les boutons ne sont pas toujours cliquables… le bouton
+    # permettant de choisir le dossier à surveiller ne répond pas ». TOUS les
+    # dialogues de l'application étaient ouverts SANS `parent=` : macOS ouvre
+    # alors un panneau ou une alerte APPLICATIVE LIBRE (NSOpenPanel / NSAlert
+    # non attaché), qui peut se retrouver DERRIÈRE la fenêtre principale —
+    # laquelle, elle, ATTEND la réponse (attente modale). L'application paraît
+    # insensible : les clics ne produisent rien tant qu'ils n'atteignent pas la
+    # boîte invisible. Avec `parent=`, Tk demande à macOS une FEUILLE ATTACHÉE
+    # à la fenêtre : elle est toujours devant son parent, quel que soit l'état
+    # du gestionnaire de fenêtres (et sur Windows/Linux, cela ne change rien
+    # d'observable : la boîte reste modale).
+    # Tous les dialogues passent par les aides ci-dessous — le banc
+    # `_test_dialogues_jalon84.py` REFUSE tout appel direct résiduel : un seul
+    # appel oublié ramènerait le défaut.
+    def _parent_dlg(self):
+        """Fenêtre parente des dialogues, ou None si la racine n'existe plus."""
+        try:
+            if self.root.winfo_exists():
+                return self.root
+        except Exception:                  # racine détruite (fermeture)
+            pass
+        return None
+
+    def _kw_parent(self):
+        """`{"parent": …}`, ou vide si la fenêtre n'existe plus.
+
+        Jamais `parent=None` : Tk refuserait alors l'appel (chaîne vide reçue
+        comme un nom de fenêtre)."""
+        parent = self._parent_dlg()
+        return {"parent": parent} if parent is not None else {}
+
+    def _demander_dossier(self, titre, depart=None):
+        """Boîte « choisir un dossier », ATTACHÉE à la fenêtre (cf. plus haut)."""
+        opts = dict(title=titre)
+        opts.update(self._kw_parent())
+        if depart:
+            opts["initialdir"] = depart
+        return filedialog.askdirectory(**opts)
+
+    def _demander_fichier(self, titre=None, filetypes=None, initialdir=None):
+        """Boîte « ouvrir un fichier », ATTACHÉE à la fenêtre (cf. plus haut)."""
+        opts = dict(self._kw_parent())
+        if titre:
+            opts["title"] = titre
+        if filetypes:
+            opts["filetypes"] = filetypes
+        if initialdir:
+            opts["initialdir"] = initialdir
+        return filedialog.askopenfilename(**opts)
+
+    def _enregistrer_sous(self, titre=None, defaultextension=None,
+                          filetypes=None, initialfile=None):
+        """Boîte « enregistrer sous », ATTACHÉE à la fenêtre (cf. plus haut)."""
+        opts = dict(self._kw_parent())
+        if titre:
+            opts["title"] = titre
+        if defaultextension:
+            opts["defaultextension"] = defaultextension
+        if filetypes:
+            opts["filetypes"] = filetypes
+        if initialfile:
+            opts["initialfile"] = initialfile
+        return filedialog.asksaveasfilename(**opts)
+
+    def _dire(self, titre, message):
+        """Information ATTACHÉE à la fenêtre (jamais derrière elle)."""
+        messagebox.showinfo(titre, message, **self._kw_parent())
+
+    def _avertir(self, titre, message):
+        """Avertissement ATTACHÉ à la fenêtre (jamais derrière elle)."""
+        messagebox.showwarning(titre, message, **self._kw_parent())
+
+    def _signaler(self, titre, message):
+        """Erreur ATTACHÉE à la fenêtre (jamais derrière elle)."""
+        messagebox.showerror(titre, message, **self._kw_parent())
+
     def _choisir_cible(self, famille):
         """Cible d'un chargement de master (`famille` = « dark »/« flat ») :
         → None si l'utilisateur annule ;
@@ -2453,6 +2541,19 @@ class App:
         ttk.Button(row, text="Annuler", width=10, command=dlg.destroy
                    ).pack(side="left", expand=True, padx=3)
         dlg.protocol("WM_DELETE_WINDOW", dlg.destroy)
+        # Jalon 84 : la boîte doit être MAPPÉE avant le grab (sur macOS comme
+        # sous X11, un grab posé sur une fenêtre pas encore affichée est au
+        # mieux sans effet, au pire bloquant), puis placée DEVANT la fenêtre
+        # principale : c'est le pendant, pour cette boîte maison, du `parent=`
+        # des boîtes Tk standard (cf. les aides de dialogue ci-dessus).
+        dlg.update_idletasks()
+        try:
+            dlg.lift()
+            dlg.focus_force()
+            if IS_MACOS:
+                dlg.attributes("-topmost", True)
+        except Exception:
+            pass
         dlg.grab_set()
         self._dlg = dlg                     # exposés pour le test automatisé
         self._dlg_var = var
@@ -3251,8 +3352,9 @@ class App:
         de la base de profils (capteurs, filtres, références de blanc)."""
         depart = delais.borne(cat_mod.spcc_db.dossier_ecriture,
                               os.path.expanduser("~"), delais.DELAI_DEFAUT)[0]
-        d = filedialog.askdirectory(title="Dossier de la base SPCC",
-                                    initialdir=depart or os.path.expanduser("~"))
+        d = self._demander_dossier(
+            "Dossier de la base SPCC",
+            depart or os.path.expanduser("~"))
         if not d:
             return
         CONFIG[cat_mod.spcc_db.CLE_CONFIG] = d
@@ -3303,8 +3405,8 @@ class App:
         depart = delais.borne(cat_mod.dossier_catalogues,
                               os.path.expanduser("~"),
                               delais.DELAI_DEFAUT)[0]
-        d = filedialog.askdirectory(title="Dossier des catalogues (Gaia/Siril)",
-                                    initialdir=depart)
+        d = self._demander_dossier("Dossier des catalogues (Gaia/Siril)",
+                                   depart)
         if not d:
             return
         CONFIG["chemin_catalogues"] = d
@@ -3482,7 +3584,7 @@ class App:
         comme pour le STF."""
         if self.var_moteur.get() == "VeraLux" \
                 and not veralux_moteur.moteur_disponible():
-            messagebox.showerror(
+            self._signaler(
                 "VeraLux",
                 "Moteur veralux_core_headless.py introuvable à la racine du "
                 "projet — le STF est conservé.")
@@ -3554,7 +3656,7 @@ class App:
             cmd = self.var_cmd_graxpert.get().strip()
             if not gx_live.commande_valide(cmd):
                 self.var_vl_graxpert.set(False)
-                messagebox.showwarning(
+                self._avertir(
                     "GraXpert live",
                     "Commande GraXpert absente ou incomplète.\n"
                     "Vérifiez la commande dans « Traitement externe » "
@@ -3563,7 +3665,7 @@ class App:
             manque = gx_live.outil_manquant(cmd)
             if manque:
                 self.var_vl_graxpert.set(False)
-                messagebox.showwarning(
+                self._avertir(
                     "GraXpert live",
                     f"{manque}.\n\n"
                     "Désignez l'exécutable avec le bouton « … » du cadre "
@@ -4209,9 +4311,9 @@ class App:
         self._tec_demande = ("stop", None)
 
     def _pick_dossier_compo(self, i):
-        d = filedialog.askdirectory(
-            title=("Dossier des brutes « "
-                   + (self.var_compo_roles[i].get() or "rôle ?") + " »"))
+        d = self._demander_dossier(
+            "Dossier des brutes « "
+            + (self.var_compo_roles[i].get() or "rôle ?") + " »")
         if d:
             self.var_compo_dossiers[i].set(d)
 
@@ -4247,10 +4349,10 @@ class App:
                 rapports.append(f"Ligne {i + 1} : aucun mot-clé FILTER trouvé")
         self._on_compo_roles()   # la composition se recolle aux rôles détectés
         if rapports:
-            messagebox.showinfo("Détection des filtres", "\n".join(rapports))
+            self._dire("Détection des filtres", "\n".join(rapports))
         else:
-            messagebox.showinfo("Détection des filtres",
-                                "Aucun dossier rempli dans la composition.")
+            self._dire("Détection des filtres",
+                       "Aucun dossier rempli dans la composition.")
 
     def _save_canaux(self):
         """Sauvegarde des empilements PAR CANAL (jalon 19) : un fichier
@@ -4258,12 +4360,12 @@ class App:
         empilé. Consommée par le thread d'acquisition (comme save_request)."""
         if not (self._mode_compo and self.stacker is not None
                 and self.stacker.n > 0):
-            messagebox.showinfo(
+            self._dire(
                 "Canaux", "Rien à enregistrer : démarrez une session en mode "
                           "composition et attendez au moins une frame.")
             return
-        d = filedialog.askdirectory(
-            title="Dossier où enregistrer les empilements par canal")
+        d = self._demander_dossier(
+            "Dossier où enregistrer les empilements par canal")
         if d:
             self.save_canaux_request = d
 
@@ -4333,7 +4435,7 @@ class App:
                     break
                 time.sleep(0.05)
             if qhy:
-                messagebox.showinfo(
+                self._dire(
                     "Changement de source",
                     "La caméra QHY a été déconnectée.\n\nAprès une "
                     "déconnexion, relancez l'application pour reconnecter "
@@ -4361,7 +4463,7 @@ class App:
     def _detecter_camera(self):
         """Lance la détection (thread : ne jamais bloquer l'UI)."""
         if self.camera is not None:
-            messagebox.showinfo(
+            self._dire(
                 "Détection",
                 "Une caméra est déjà connectée — déconnectez-la d'abord "
                 "(⏏) pour en changer.")
@@ -4587,7 +4689,7 @@ class App:
         self._maj_libelles_calib()   # jalon 53 : le détail suit les rôles
 
     def _pick_folder(self):
-        d = filedialog.askdirectory(title="Dossier où arrivent les brutes")
+        d = self._demander_dossier("Dossier où arrivent les brutes")
         if d:
             self.var_folder.set(d)
 
@@ -4691,7 +4793,7 @@ class App:
             else:
                 cam = self.camera
         except Exception as e:
-            messagebox.showerror("Caméra", str(e))
+            self._signaler("Caméra", str(e))
             return
         self.camera = cam
         self.cam_pilotee = cam if isinstance(cam, CAMERAS_PILOTEES) else None
@@ -5136,13 +5238,19 @@ class App:
             except Exception:
                 pass
         self.archive.vider()      # jalon 15 : dossier temp des frames supprimé
+        # Jalon 84 : le guet de gel s'arrête AVANT la destruction de la fenêtre
+        # (il est démon, donc sans danger, mais un instrument de mesure doit se
+        # taire quand ce qu'il surveille disparaît).
+        guet = getattr(self, "guet", None)
+        if guet is not None:
+            guet.arreter()
         self.root.destroy()
 
     def _save(self):
         if not self.running or self.stacker is None or self.stacker.n == 0:
-            messagebox.showinfo("Enregistrer", "Aucun empilement à enregistrer.")
+            self._dire("Enregistrer", "Aucun empilement à enregistrer.")
             return
-        path = filedialog.asksaveasfilename(
+        path = self._enregistrer_sous(
             defaultextension=".fits",
             filetypes=[("FITS", "*.fits"), ("TIFF 16 bits", "*.tif"), ("PNG 16 bits", "*.png")])
         if path:
@@ -5155,7 +5263,7 @@ class App:
         « presque comme vu »). → True si l'on peut continuer."""
         if (self.disp.stretch == "veralux" and self.disp.vl_graxpert
                 and not gx_live.commande_valide(self.disp.vl_graxpert_cmd)):
-            messagebox.showwarning(
+            self._avertir(
                 "GraXpert live",
                 "Commande GraXpert absente ou incomplète — impossible de "
                 "reproduire la chaîne live.\nVérifiez la commande dans "
@@ -5227,23 +5335,23 @@ class App:
         LINÉAIRE reste inchangé. Le rendu (plusieurs secondes possibles) part
         dans un thread dédié via _worker — comme un traitement externe."""
         if self.asseen_busy or self.save_asseen_request is not None:
-            messagebox.showinfo("Enregistrer tel que vu",
-                                "Un enregistrement est déjà en cours — patientez.")
+            self._dire("Enregistrer tel que vu",
+                       "Un enregistrement est déjà en cours — patientez.")
             return
         if not self.running or self.stacker is None or self.stacker.n == 0:
-            messagebox.showinfo("Enregistrer tel que vu",
-                                "Aucun empilement à enregistrer.")
+            self._dire("Enregistrer tel que vu",
+                       "Aucun empilement à enregistrer.")
             return
         vue = self.var_view.get()
         if vue == "traitée" and self.proc_full is None:
-            messagebox.showinfo(
+            self._dire(
                 "Enregistrer tel que vu",
                 "Aucun résultat traité — cliquez d'abord « ⚡ Traiter "
                 "l'empilement courant ».")
             return
         if not self._gx_live_prete("tel que vu"):
             return
-        path = filedialog.asksaveasfilename(
+        path = self._enregistrer_sous(
             defaultextension=".fits",
             filetypes=[("FITS", "*.fits"), ("TIFF 16 bits", "*.tif"),
                        ("PNG 16 bits", "*.png")])
@@ -5266,15 +5374,15 @@ class App:
         vu » (l'acquisition continue)."""
         titre = "Enregistrer l'empilement traité (linéaire)"
         if self.asseen_busy or self.save_asseen_request is not None:
-            messagebox.showinfo(titre, "Un enregistrement est déjà en cours — "
-                                       "patientez.")
+            self._dire(titre, "Un enregistrement est déjà en cours — "
+                              "patientez.")
             return
         if not self.running or self.stacker is None or self.stacker.n == 0:
-            messagebox.showinfo(titre, "Aucun empilement à enregistrer.")
+            self._dire(titre, "Aucun empilement à enregistrer.")
             return
         if not self._gx_live_prete(titre):
             return
-        path = filedialog.asksaveasfilename(
+        path = self._enregistrer_sous(
             defaultextension=".fits",
             filetypes=[("FITS", "*.fits"), ("TIFF 16 bits", "*.tif"),
                        ("PNG 16 bits", "*.png")])
@@ -5521,7 +5629,7 @@ class App:
         cible = self._choisir_cible("dark")
         if cible is None:
             return
-        p = filedialog.askopenfilename(filetypes=[
+        p = self._demander_fichier(filetypes=[
             ("Images", "*.fits *.fit *.fts *.png *.tif *.tiff *.jpg *.jpeg"), ("Tous", "*.*")])
         if p:
             try:
@@ -5534,7 +5642,7 @@ class App:
                     msg += "  —  pensez à « Réinitialiser l'empilement » pour que tout soit calibré pareil"
                 self.lbl_status.config(text=msg)
             except Exception as e:
-                messagebox.showerror("Dark", str(e))
+                self._signaler("Dark", str(e))
 
     def _load_flat(self):
         # Jalon 53 : cible INDÉPENDANTE de celle des darks (ex. flat par
@@ -5542,7 +5650,7 @@ class App:
         cible = self._choisir_cible("flat")
         if cible is None:
             return
-        p = filedialog.askopenfilename(filetypes=[
+        p = self._demander_fichier(filetypes=[
             ("Images", "*.fits *.fit *.fts *.png *.tif *.tiff *.jpg *.jpeg"), ("Tous", "*.*")])
         if p:
             try:
@@ -5555,7 +5663,7 @@ class App:
                     msg += "  —  pensez à « Réinitialiser l'empilement » pour que tout soit calibré pareil"
                 self.lbl_status.config(text=msg)
             except Exception as e:
-                messagebox.showerror("Flat", str(e))
+                self._signaler("Flat", str(e))
 
     def _clear_calib(self):
         self.calib.clear()
@@ -5815,16 +5923,15 @@ class App:
         depart = delais.borne(travail.dossier_travail,
                               os.path.expanduser("~"),
                               delais.DELAI_DEFAUT)[0]
-        d = filedialog.askdirectory(
-            title="Dossier de travail (fichiers temporaires lourds)",
-            initialdir=depart)
+        d = self._demander_dossier(
+            "Dossier de travail (fichiers temporaires lourds)", depart)
         if not d:
             return
         CONFIG["dossier_travail"] = d
         sauver_config(dict(CONFIG))
         self._maj_travail_vue()
         libre = travail.espace_libre(d)
-        messagebox.showinfo(
+        self._dire(
             "Dossier de travail",
             "Les fichiers de travail (frames archivées, FITS des étapes "
             f"d'outils) seront écrits dans :\n{d}\n\n"
@@ -5841,8 +5948,8 @@ class App:
         d = travail.dossier_travail()
         err = travail.ouvrir_dossier(d)
         if err:
-            messagebox.showwarning("Dossier de travail",
-                                   f"Impossible d'ouvrir « {d} » :\n{err}")
+            self._avertir("Dossier de travail",
+                          f"Impossible d'ouvrir « {d} » :\n{err}")
 
     def _ouvrir_journal(self):
         """Ouvre le JOURNAL de l'application (v2.38.7) : démarrages, erreurs
@@ -5852,7 +5959,7 @@ class App:
         chemin = journal.chemin_journal()
         err = journal.ouvrir()
         if err:                              # aucun outil associé : le dire
-            messagebox.showwarning(
+            self._avertir(
                 "Journal",
                 f"Impossible d'ouvrir le journal :\n{err}\n\nLe fichier est :\n"
                 f"{chemin}")
@@ -5861,8 +5968,8 @@ class App:
         """Sélectionne l'exécutable d'un outil externe et le place en tête de
         la commande — les options déjà saisies ({input}, {output}…) sont
                 conservées telles quelles."""
-        p = filedialog.askopenfilename(
-            title="Exécutable de l'outil",
+        p = self._demander_fichier(
+            "Exécutable de l'outil",
             filetypes=[("Exécutables", "*.exe *.bat *.cmd *.py" if IS_WINDOWS
                         else "*.py *.sh *.AppImage"),
                        ("Tous les fichiers", "*.*")])
@@ -5882,11 +5989,11 @@ class App:
     def _request_ext(self):
         """Demande un traitement externe sur l'empilement courant (lancé par le worker)."""
         if not self.running or self.stacker is None or self.stacker.n == 0:
-            messagebox.showinfo("Traitement externe", "Aucun empilement à traiter.")
+            self._dire("Traitement externe", "Aucun empilement à traiter.")
             return
         if self.ext_busy:
-            messagebox.showinfo("Traitement externe",
-                                "Un traitement est déjà en cours — patientez.")
+            self._dire("Traitement externe",
+                       "Un traitement est déjà en cours — patientez.")
             return
         if not (self.var_ext_graxpert.get() or self.var_ext_dn.get()
                 or self.var_ext_bxt.get() or self.var_ext_scnr.get()
@@ -5894,8 +6001,8 @@ class App:
                 or self.var_ext_demagenta.get()
                 or self.var_ext_neutre.get()            # v2.37.1
                 or self.var_ext_chroma.get()):          # v2.37.1
-            messagebox.showinfo("Traitement externe",
-                                "Cochez au moins un traitement.")
+            self._dire("Traitement externe",
+                       "Cochez au moins un traitement.")
             return
         # v2.38.5 : dire AVANT de lancer (des minutes de calcul) qu'un outil
         # est introuvable — l'échec n'arrivait jusque-là qu'à SON étape, sous
@@ -5915,7 +6022,7 @@ class App:
             if m:
                 manques.append(f"• {nom} : {m}")
         if manques:
-            messagebox.showwarning(
+            self._avertir(
                 "Traitement externe",
                 "Outil externe introuvable — le traitement échouerait :\n\n"
                 + "\n".join(manques)
@@ -5978,7 +6085,7 @@ class App:
     def _save_proc(self):
         if self.proc_full is None:
             return
-        path = filedialog.asksaveasfilename(
+        path = self._enregistrer_sous(
             defaultextension=".fits",
             filetypes=[("FITS", "*.fits"), ("TIFF 16 bits", "*.tif"), ("PNG 16 bits", "*.png")])
         if path:
@@ -5990,9 +6097,9 @@ class App:
                 img, entete = borner_lineaire(self.proc_full,
                                               dict(self.proc_entete or {}))
                 save_image(path, img, entete=entete)
-                messagebox.showinfo("Enregistrer", f"Résultat traité sauvegardé :\n{path}")
+                self._dire("Enregistrer", f"Résultat traité sauvegardé :\n{path}")
             except Exception as e:
-                messagebox.showerror("Enregistrer", str(e))
+                self._signaler("Enregistrer", str(e))
 
     def _run_external(self, stack, n_frames, session):
         """Chaîne les outils externes (GraXpert → BlurXTerminator) sur un
@@ -7526,7 +7633,7 @@ class App:
         """Bouton « ⓘ » : historique horodaté des re-stacks de la session
         (fenêtre modale, la plus récente en premier)."""
         lignes = self.restack_hist or ["(aucun re-stack cette session)"]
-        messagebox.showinfo(
+        self._dire(
             "Historique des re-stacks",
             f"Re-stacks de la session : {self.restack_total}\n\n"
             + "\n".join(f"• {l}" for l in lignes))
@@ -8484,6 +8591,11 @@ class App:
 
     # ------------------------------------------------------------ rafraîchissement UI
     def _tick(self):
+        # Jalon 84 : BATTEMENT pour le guet de gel — la PREUVE que le fil
+        # d'interface rend la main (deux affectations, aucun coût mesurable).
+        guet = getattr(self, "guet", None)
+        if guet is not None:
+            guet.battement()
         # v2.38.11 : résultats des MESURES DE DISQUE différées (fil démon borné ;
         # le fil ne touche AUCUN widget — il ne pose qu'un dictionnaire ici).
         while getattr(self, "_mesures", None) is not None:
@@ -8831,18 +8943,18 @@ class App:
                             if (self.ext_busy or self.ext_request) else "normal")
         if self._ext_popup:
             self._ext_popup = False
-            messagebox.showerror("Traitement externe", self.ext_msg)
+            self._signaler("Traitement externe", self.ext_msg)
         if self.saved_path:
             p, self.saved_path = self.saved_path, None
             if p.startswith("ERREUR"):
-                messagebox.showerror("Enregistrer", p)
+                self._signaler("Enregistrer", p)
             elif os.path.isdir(p):
-                messagebox.showinfo("Enregistrer",
-                                    f"Canaux sauvegardés dans :\n{p}")
+                self._dire("Enregistrer",
+                           f"Canaux sauvegardés dans :\n{p}")
             else:
                 corr = self.dernier_applicatif
                 self.dernier_applicatif = None
-                messagebox.showinfo(
+                self._dire(
                     "Enregistrer", f"Empilement sauvegardé :\n{p}"
                     + (f"\n\nCorrections écrites dans le fichier (AVAAPPLI) :"
                        f"\n{corr}" if corr else ""))
@@ -8860,9 +8972,9 @@ class App:
             corr = self.dernier_applicatif
             self.dernier_applicatif = None
             if p.startswith("ERREUR"):
-                messagebox.showerror(titre, p)
+                self._signaler(titre, p)
             else:
-                messagebox.showinfo(
+                self._dire(
                     titre, f"Image sauvegardée :\n{p}"
                     + (f"\n\nCorrections écrites dans le fichier (AVAAPPLI) :"
                        f"\n{corr}" if corr else "")
@@ -9735,16 +9847,57 @@ class App:
                      if st.get("crop_w") else "")))
 
 
+def activer_fenetre(root):
+    """macOS : met la fenêtre AU PREMIER PLAN et lui donne le focus (jalon 84).
+
+    POURQUOI (retour RÉEL d'un testeur sous macOS 27 « Golden Gate »,
+    30/09/2026 : « les boutons ne sont pas toujours cliquables, mais qui le
+    deviennent après que j'ai cliqué frénétiquement dessus ») : une application
+    Tk lancée par un lanceur ou depuis un terminal n'est pas « activée » par
+    macOS à l'ouverture ; sa fenêtre peut rester DERRIÈRE, et les premiers clics
+    servent alors à activer l'application au lieu d'atteindre le widget — d'où
+    l'impression qu'il faut insister. `lift` + `-topmost` bref + `focus_force`
+    est la séquence qui force cette activation. Elle n'est faite QUE sur macOS :
+    ailleurs, `focus_force` volerait le focus à ce que fait l'utilisateur, ce
+    que l'application n'a jamais fait. → True si l'activation a été tentée.
+    (Le pendant pour les boîtes de dialogue est le `parent=` des aides
+    `_dire`/`_signaler`/`_demander_*` de `App`.)"""
+    if not IS_MACOS:
+        return False
+    try:
+        root.lift()
+        root.attributes("-topmost", True)
+        root.focus_force()
+        # `-topmost` retiré aussitôt : la fenêtre passe devant au moment de
+        # l'ouverture, puis redevient une fenêtre ordinaire (elle n'écrase pas
+        # celles que l'utilisateur ouvre ensuite).
+        root.after(250, lambda: root.attributes("-topmost", False))
+    except Exception:
+        return False
+    return True
+
+
 def main():
     """Point d'entrée : ouvre la fenêtre principale.
 
     v2.38.7 : `report_callback_exception` est remplacé par le journal — une
     erreur dans un rappel d'interface (clic, curseur, touche) était écrite sur
     `stderr` et nulle part ailleurs, donc invisible pour une application
-    lancée par le menu (constat d'Alain, 27/09/2026)."""
+    lancée par le menu (constat d'Alain, 27/09/2026).
+
+    Jalon 84 : la version de Tcl/Tk est JOURNALISÉE (le retour macOS 27 a
+    relancé la piste d'un Tk trop ancien : elle doit être lisible dans le
+    journal sans avoir à la demander à l'utilisateur), et la fenêtre est mise
+    au premier plan sur macOS (`activer_fenetre`)."""
     root = tk.Tk()
     root.report_callback_exception = journal.rapport_callback
+    try:
+        journal.note("démarrage",
+                     "Tcl/Tk %s" % root.tk.call("info", "patchlevel"))
+    except Exception:
+        pass
     App(root)
+    activer_fenetre(root)
     root.mainloop()
 
 
