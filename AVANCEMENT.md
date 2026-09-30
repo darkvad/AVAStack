@@ -11,9 +11,17 @@ dans le changelog du source et l'historique git.)
 
 
 - **ÉTAT AU JALON 84 (30/09/2026) — À LIRE EN PREMIER.**
-  **Version DU CODE : v2.47.0** (changelog en tête d'`avastack/__init__.py`) —
-  **aucun paquet reconstruit, aucune release** : à décider par Alain. La version
-  stable PUBLIÉE reste **v2.46.0** (repli v2.45.0 — le bloc suivant la décrit).
+  **Version stable de référence : v2.47.0**, PUBLIÉE (tag annoté `v2.47.0` sur
+  `5ecc0a1` + release GitHub
+  https://github.com/darkvad/AVAStack/releases/tag/v2.47.0 — trois paquets +
+  `INSTALLATION.md` joints ; notes relues par l'API : accents et tirets longs
+  intacts, 384 lignes). **Repli : v2.46.0** (également publiée). Paquets :
+  Windows `installer/windows/output/avastack-setup-2.47.0.exe` (**11 491 452 o**,
+  SHA-256 `2386C44EE38F69D13E9C956FB9D73BA5408190BB2CECB6F0AA3C0D0653A92E61`),
+  Linux `installer/linux/output/avastack-setup-2.47.0-linux.tar.gz` (605 904 o,
+  `810706F3…`), macOS
+  `installer/macos/output/avastack-setup-2.47.0-macos.tar.gz` (603 582 o,
+  `DBD60A6C…`).
   **DÉCLENCHEUR : le PREMIER RETOUR UTILISATEUR macOS** (macOS 27 « Golden
   Gate », build 26A428) — installation et lancement OK, puis : « l'UI a quelques
   soucis (boutons qui ne sont pas toujours cliquables, par exemple le bouton
@@ -47,7 +55,9 @@ dans le changelog du source et l'historique git.)
   et vérifier que « 📂 Dossier » ET « Charger un flat… » répondent au PREMIER
   clic ; en cas de reste, envoyer le `journal.txt` (une ligne « gel de
   l'interface » y donne la pile du blocage, donc la cause, sans supposition).
-  **À FAIRE — paquets** : rebuild des trois installeurs + release v2.47.0.
+  **FAIT — paquets et release (30/09/2026)** : les trois installeurs reconstruits
+  (Windows, Linux, macOS — faits par l'agent) et la release `v2.47.0` publiée,
+  tag annoté sur le commit `5ecc0a1` (code + doc + mémoires).
   **PISTE IDENTIFIÉE, PAS ENCORE TRAITÉE** (à mesurer avant de coder) :
   `_on_source_choisie` attend la fin de la déconnexion d'une caméra dans une
   BOUCLE `root.update()` + `time.sleep(0.05)` bornée à 8 s — sur macOS, une
@@ -55,6 +65,13 @@ dans le changelog du source et l'historique git.)
   geler la distribution des événements natifs). Le guet de gel la DÉSIGNERA
   (pile « _on_source_choisie ») si un testeur la rencontre : attendre cette
   mesure plutôt que de réécrire le chemin à l'aveugle.
+  **CLAUDE.md (accord d'Alain, 30/09/2026)** : les deux leçons du jalon y sont
+  REMONTÉES — ① sur macOS une boîte de dialogue sans `parent` peut rester
+  derrière la fenêtre (règle des six aides + banc statique, et les deux
+  corollaires : activation de la fenêtre au démarrage, `grab_set` après
+  affichage) ; ② un symptôme « l'interface ne répond pas » se mesure par la
+  durée ET la pile du fil fautif (avec la leçon de banc : un instrument de
+  mesure doit être aveugle là où il n'y a pas d'utilisateur).
   **NETTOYAGE DE CE FICHIER toujours à prévoir** (blocs antérieurs au 29/09) : à
   faire par petites touches, JAMAIS par un aller-retour PowerShell.
 - **ÉTAT DE LA SESSION 30/09/2026 (jalon 83, v2.46.0 — version PUBLIÉE).**
