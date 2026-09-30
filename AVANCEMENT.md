@@ -11,21 +11,27 @@ dans le changelog du source et l'historique git.)
 
 
 - **ÉTAT À LA CLÔTURE DE SESSION (30/09/2026) — À LIRE EN PREMIER.**
-  **Version stable de référence : v2.45.0**, PUBLIÉE (tag + release GitHub, trois
-  paquets + `INSTALLATION.md` ; installeur Windows
-  `installer/windows/output/avastack-setup-2.45.0.exe`, 11 486 570 o, SHA-256
-  `CC0F742EA1A8DE90E337D3031FC3A8A8DEF71203C15E779AAF7A8F748180EB32`).
-  **Testée et validée par Alain : « testé et OK, il y a un petit mieux. »**
-  Repli : v2.44.0.
-  **Livré par cette session (29-30/09/2026)** : **v2.43.0** chantier performance
-  et réactivité (jalon 79, zéro pixel changé) ; **v2.44.0** le rendu de la chaîne
-  lourde part en **fin de rafale** (jalon 80) ; **v2.45.0** les outils externes
-  par couche partent en **un seul lot** (jalon 81).
+  **Version stable de référence : v2.46.0**, PUBLIÉE (tag annoté + release GitHub,
+  trois paquets + `INSTALLATION.md` ; installeur Windows
+  `installer/windows/output/avastack-setup-2.46.0.exe`, **11 487 452 o**, SHA-256
+  `60BAFCEA916F6186A3E674EAE2C2F18328902A93D69A7244789A7E4051FC7F60`).
+  **TEST RÉEL EN ATTENTE sur cette version** : un ⚡ traitement par couche
+  (composition à 3 rôles) — l'étape gradient doit s'annoncer « 3 couche(s) en
+  parallèle… » et le résultat être celui d'avant. **Repli : v2.45.0** (testée et
+  validée par Alain le 29/09 : « testé et OK, il y a un petit mieux »).
+  **Livré par cette session (30/09/2026)** : ① les **MESURES de parallélisme sur
+  TROIS machines** (jalon 82 : le débruitage LOCAL en lot PERD avec son réglage
+  NLM ; le lot du gradient GraXpert gagne +57 à +60 % partout ; le lot du
+  débruitage GraXpert ne rapporte rien → écarté) ; ② **v2.46.0** = le gradient de
+  la chaîne externe ⚡ part en UN SEUL LOT (jalon 83, zéro pixel changé).
   **Coût de la chaîne live aujourd'hui** (ses réglages : aperçu 1600 px, GraXpert
   live, chroma/neutralisation/démagenta, VeraLux ; débruitage et netteté live
   DÉCOCHÉS) : GraXpert ~4,5-5 s (3 couches en parallèle) + le reste ~0,5 s →
   **passe ~5 s**, UNE seule passe par rafale, rafales d'1 minute → panneau
-  occupé ~8 % du temps.
+  occupé ~8 % du temps. ⚠ **Sur les machines à GPU dédié**, le débruitage GraXpert
+  d'une couche de 8,2 Mpx coûte 26 s (4070) / 41 s (4060 Ti) contre **290 s** sur
+  l'iGPU de dev : la chaîne ⚡ complète y est jouable (~1 min 30), ce qui n'était
+  pas le cas ici.
   **IDÉES ÉCARTÉES — NE PAS LES REPROPOSER** (détail plus bas ; l'essentiel est
   aussi dans CLAUDE.md) : ① **décimation** de la chaîne lourde (« GraXpert/NLM
   une fois sur N ») — un débruitage ou un gradient n'est pas un modèle
@@ -34,20 +40,32 @@ dans le changelog du source et l'historique git.)
   à bande étroite a SON gradient (décision des jalons 24/54) ; ③ **inférence ONNX
   en processus** — mesurée : aucun gain en CPU, mémoire GPU épuisée en DirectML,
   et surtout **fidélité 0,24** avec le fond de GraXpert.
-  **Piste du débruitage MESURÉE le 30/09/2026 (jalon 82)** : paralléliser le
-  DÉBRUITAGE par couche PERD du temps avec son réglage (NLM) et ne rapporte que
-  0,9 s avec « ondelettes » → **mesure faite, verdict en tête de ce fichier** ;
-  les mesures GraXpert du traitement externe ⚡ y sont aussi. **LES TROIS MACHINES
-  SONT MESURÉES (30/09/2026 : iGPU de dev · RTX 4070 / Windows · RTX 4060 Ti /
-  Linux)** → verdict : le lot du **GRADIENT** gagne PARTOUT (+57 à +60 %), celui
-  du **DÉBRUITAGE est ABANDONNÉ** (−13 % / +12,9 % / +1,2 %). La décision
-  demandée est prise : **JALON 83 = v2.46.0, LIVRÉ le 30/09/2026** — le gradient
-  ⚡ part en un seul lot (détail plus bas : banc de 28 cas + 13 régressions vertes).
+  **Piste du débruitage : MESURÉE ET CLOSE (30/09/2026, jalons 82 et 83)** —
+  paralléliser le DÉBRUITAGE LOCAL perd du temps avec son réglage (NLM : 5,86 s →
+  9,63 s en pleine résolution ; un appel NLM prend DÉJÀ tous les cœurs) et ne
+  rapporte que 0,9 s avec « ondelettes » ; paralléliser le DÉBRUITAGE GraXpert ne
+  rapporte rien non plus (mesuré sur trois GPU : un seul appel sature déjà la
+  carte). **Le lot ne sert QUE là où un appel ATTEND** : le gradient, dont les
+  appels passent 3,4 s à démarrer — il part en un seul lot partout depuis la
+  v2.46.0.
   **NETTOYAGE À PRÉVOIR au prochain jalon** : les blocs « PASSE PRÉCÉDENTE » et
   « PASSES ANTÉRIEURES » antérieurs au 29/09 peuvent être supprimés (leur trace
   vit dans le changelog d'`avastack/__init__.py` et dans l'historique git) — à
   faire par petites touches, JAMAIS par un aller-retour PowerShell (piège
   d'encodage connu).
+- **CLÔTURE DE LA SESSION 30/09/2026 — RELEASE v2.46.0 PUBLIÉE** :
+  https://github.com/darkvad/AVAStack/releases/tag/v2.46.0 — tag **annoté** sur
+  `6a261e1`, assets : `avastack-setup-2.46.0.exe` (11 487 452 o, SHA-256
+  `60BAFCEA…`), `avastack-setup-2.46.0-linux.tar.gz` (599 904 o, `047B45AE…`),
+  `avastack-setup-2.46.0-macos.tar.gz` (597 521 o, `3B9380C7…`) et
+  `INSTALLATION.md` (18 468 o) ; notes de release = résumé « ce qui change » + la
+  doc d'installation complète, fichier fabriqué hors dépôt en UTF-8 sans BOM
+  (`gh release create --notes-file`), **relues par l'API : 38 tirets longs,
+  284 « é », ZÉRO caractère de remplacement**. Commits de la session : `e688670`
+  (mesures + 2 bancs) → `b877daa`/`590c28d` (banc GPU + mémoires) → `a104e0d`
+  (correction DirectML, précision d'Alain) → `ec39d55` (résultat Linux/4060 Ti) →
+  `b3a0980` (jalon 83) → `6a261e1` (INSTALLATION.md v2.46.0, commit taggé).
+  **Arbre propre, `origin/master` à jour.**
 - **JALON 83 (v2.46.0) — LE GRADIENT DE LA CHAÎNE EXTERNE ⚡ PART EN UN SEUL LOT :
   LIVRÉ, BANCS VERTS.** Décision d'Alain (30/09/2026), prise après la mesure des
   trois machines (jalon 82 : +57 à +60 % pour le gradient ; le lot du débruitage,
