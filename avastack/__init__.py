@@ -17,9 +17,47 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.45.0"
+AVASTACK_VERSION = "2.46.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.46.0 : LE GRADIENT GraXpert DE LA CHAÎNE EXTERNE (⚡) PART EN UN SEUL LOT
+#   (jalon 83) — décision d'Alain du 30/09/2026, prise APRÈS MESURE sur trois
+#   machines. POURQUOI : le jalon 81 avait mis en lot le gradient du SOLVEUR LIVE
+#   et de l'EXPORT pleine résolution, mais le TRAITEMENT EXTERNE (⚡, chaîne par
+#   couche du jalon 24) appelait encore ses trois couches l'une APRÈS l'autre —
+#   or chaque appel paie un démarrage FIXE (~3,4 s mesurés, IDENTIQUES sur iGPU
+#   Intel, RTX 4070 et RTX 4060 Ti : c'est le chargement du binaire et du modèle,
+#   pas le calcul).
+#   MESURÉ sur ses 3 vraies couches (8,2-8,3 Mpx), série → lot :
+#     11,45 → 4,92 s (+57 %) sur RTX 4060 Ti 8 Go / Linux (CUDA) ;
+#     10,73 → 4,28 s (+60 %) sur RTX 4070 12 Go / Windows (DirectML) ;
+#     10,12 → 4,24 s (+58 %) sur l'iGPU de dev (DirectML) —
+#   sorties IDENTIQUES AU BIT dans les trois cas (même binaire, mêmes arguments,
+#   entrées indépendantes : le parallélisme ne change que l'instant de départ).
+#   Le DÉBRUITAGE GraXpert, lui, RESTE EN SÉRIE, et c'est mesuré : son lot ne
+#   rapporte rien (−13 % sur iGPU, +12,9 % sur 4070, +1,2 % sur 4060 Ti) car un
+#   seul appel sature DÉJÀ le GPU (100 % d'utilisation sur les trois), et il
+#   coûte 2,2 à 3,7 Go de VRAM par appel (9,6 Go pour trois, mesuré).
+#   - avastack/ui/app.py : `_compo_couches_traitees` — le GRADIENT des couches
+#     part en UN lot (`external.live.appliquer_lot`, mémoire bornée par
+#     `parallele_max`, repli SÉRIE automatique), avec validation du gabarit de
+#     commande ET de l'exécutable AVANT le lancement (leçon du jalon 24 : après
+#     substitution, les placeholders n'existent plus), garde « couche vide »
+#     conservée et message de progression pendant le lot.
+#     ÉCHEC PARTIEL du gradient : la couche fautive garde ses valeurs BRUTES, son
+#     message est posé, et la chaîne CONTINUE (avant : tout s'arrêtait) ;
+#     ÉCHEC TOTAL : arrêt et message d'erreur, comme avant. Le DÉBRUITAGE
+#     (GraXpert IA ou local) garde son ordre et son fonctionnement, et le dossier
+#     de la chaîne ne reçoit plus que les FITS réellement utiles (un par couche,
+#     uniquement pour le débruitage GraXpert).
+#   Test _test_gx_lot_externe_jalon83 (7 cas : égalité AU BIT avec le
+#   comportement d'avant — témoin `MAX_PARALLELE = 1` —, chevauchement prouvé par
+#   journal, ordre « tous les gradients puis les débruitages », couche vide
+#   ignorée, échec partiel qui continue, échec total qui s'arrête, intégration
+#   `_run_external_compo` au composite identique AU BIT) ; régression :
+#   gradient_couche_jalon24, ext_rgb_jalon14, dn_jalon7, denoise_live_jalon9,
+#   gx_parallele_jalon81, etat_calcul_jalon40, save_brute_jalon59,
+#   compo_ui_jalon19, fit_canaux_jalon54, graxpert_live_jalon4.
 # v2.45.0 : OUTILS EXTERNES PAR COUCHE EN PARALLÈLE (jalon 81) — décision
 #   d'Alain du 29/09/2026, après avoir demandé la MESURE de la mémoire avant de
 #   coder (et après l'essai de faisabilité de la piste « inférence ONNX en

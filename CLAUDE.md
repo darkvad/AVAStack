@@ -846,6 +846,20 @@ ce qui manquait n'était pas une correction mais une MESURE.
   la MÊME signature (`img, cmd, timeout=…`) — un lambda à 2 arguments casse dès
   que le lot passe le délai (constat réel sur `_test_save_brute_jalon59`).
 
+- **LA CHAÎNE ⚡ PAR COUCHE : GRADIENT EN LOT, DÉBRUITAGE EN SÉRIE** (jalon 83,
+  v2.46.0, décision d'Alain du 30/09/2026, après la mesure des TROIS machines).
+  `App._compo_couches_traitees` envoie le GRADIENT de toutes les couches en UN
+  lot (`external.live.appliquer_lot`, repli SÉRIE automatique) : **+57 à +60 %**
+  mesurés sur iGPU Intel / RTX 4070 / RTX 4060 Ti, sorties **identiques AU BIT**
+  (banc `_test_gx_lot_externe_jalon83`). Le DÉBRUITAGE GraXpert reste couche par
+  couche : son lot ne rapporte rien (un seul appel sature déjà le GPU) et il
+  coûte 2,2 à 3,7 Go de VRAM par appel. Deux conséquences à connaître :
+  ① l'ordre est désormais « TOUS les gradients, puis les débruitages » (chaque
+  couche reçoit bien son débruitage APRÈS son gradient) ; ② un échec PARTIEL du
+  gradient ne bloque PLUS la chaîne — la couche fautive garde ses valeurs
+  BRUTES, son message est posé, et la chaîne continue (un échec TOTAL arrête
+  toujours, comme avant).
+
 - **LE LOT NE RAPPORTE QUE LÀ OÙ UN APPEL ATTEND — MESURER AVANT DE PARALLÉLISER**
   (jalon 82, mesuré le 30/09/2026, demande d'Alain : « mesurer le gain en
   parallélisant le débruitage »). Paralléliser par couche ne multiplie rien : ou

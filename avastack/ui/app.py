@@ -6408,41 +6408,83 @@ class App:
     def _compo_couches_traitees(self, canaux, use_gx, cmd_gx, use_dn, cmd_dn,
                                 mode_dn, force_dn, tmp, journal, n_frames,
                                 n_etapes, msgs):
-        """Boucle PAR COUCHE du traitement externe (jalon 24) : gradient
-        (subprocess) puis débruitage (subprocess GraXpert IA, ou local en
-        mémoire numpy/OpenCV) sur chaque couche 2D du dossier temporaire.
-        → dict rôle → couche traitée, ou None (erreur d'un subprocess :
-        message déjà posé, chaîne arrêtée — même politique que la chaîne
-        mono ; les échecs SANS subprocess dégénèrent en couche brute +
-        message et la chaîne continue)."""
+        """Chaîne PAR COUCHE du traitement externe (jalon 24), avec le GRADIENT
+        EN UN SEUL LOT (jalon 83) et le DÉBRUITAGE couche par couche.
+
+        POURQUOI le lot POUR LE GRADIENT SEUL : les couches sont INDÉPENDANTES et
+        chaque appel GraXpert paie un démarrage FIXE (~3,4 s, identiques sur
+        iGPU, RTX 4070 et RTX 4060 Ti) — les lancer ensemble recouvre ces temps
+        morts : **+57 à +60 % sur les trois machines**, sorties identiques AU BIT
+        (banc `_test_gx_lot_externe_jalon83`). Le DÉBRUITAGE reste en SÉRIE : sur
+        ces mêmes trois machines son lot ne rapporte rien (un appel sature déjà
+        le GPU : −13 % sur iGPU, +12,9 % sur 4070, +1,2 % sur 4060 Ti) et il
+        coûte 2,2 à 3,7 Go de VRAM par appel.
+
+        → dict rôle → couche traitée, ou None (échec TOTAL du gradient, ou échec
+        d'un subprocess de débruitage : message posé, chaîne arrêtée — même
+        politique que la chaîne mono ; un échec PARTIEL du gradient conserve la
+        couche brute, le signale, et la chaîne continue)."""
         traites = {}
         i_etape = 0
-        for role, couche in canaux.items():
-            c = np.asarray(couche, dtype=np.float32)
-            src = os.path.join(tmp, f"in_{role}.fits")
-            gx_live._ecrire_entree(src, c)
-            if use_gx:
+        couches = {role: np.asarray(couche, dtype=np.float32)
+                   for role, couche in canaux.items()}
+        # --- ① GRADIENT : UN SEUL LOT pour toutes les couches (jalon 83).
+        # Validation du GABARIT et de l'exécutable AVANT tout lancement — mêmes
+        # messages que la chaîne mono (leçon du jalon 24 : après substitution les
+        # placeholders n'existent plus, on ne peut plus les vérifier).
+        if use_gx:
+            if ("{input}" not in cmd_gx
+                    or ("{output}" not in cmd_gx
+                        and "{outbase}" not in cmd_gx)):
+                self._set_ext_msg("Commande GraXpert gradient incomplète : il "
+                                  "manque {input} ou {output}/{outbase}.",
+                                  state="error")
+                return None
+            manque = gx_live.outil_manquant(cmd_gx)
+            if manque:
+                self._set_ext_msg(
+                    f"GraXpert gradient : {manque} — désignez l'exécutable avec "
+                    "le bouton « … » du cadre « Traitement externe (long) ».",
+                    state="error")
+                return None
+            a_lancer = []                    # (rôle, couche) à envoyer à l'outil
+            for role, c in couches.items():
                 if float(np.max(np.abs(c))) < 1e-9:
                     msgs.append(f"GraXpert ({role}) : couche vide — ignorée")
                 else:
-                    i_etape += 1
-                    outbase = os.path.join(tmp, f"gx_{role}")
-                    res = self._ext_run_cmd(
-                        f"GraXpert gradient {role}", cmd_gx, src, outbase,
-                        tmp, journal, n_frames, f" ({i_etape}/{n_etapes})")
-                    if res is None:
-                        return None
-                    c2 = auto_unflip(gx_live._lire_sortie(res), c)
-                    if (not np.isfinite(c2).all()
-                            or float(np.max(np.abs(c2))) < 1e-9):
-                        msgs.append(f"GraXpert ({role}) : sortie dégénérée — "
-                                    "couche brute conservée")
+                    a_lancer.append((role, c))
+            if a_lancer:
+                i_etape += len(a_lancer)
+                self._set_ext_msg(
+                    f"GraXpert gradient : {len(a_lancer)} couche(s) en "
+                    f"parallèle… ({n_frames} frames)", state="busy")
+                lot = gx_live.appliquer_lot(
+                    [(role, c, cmd_gx) for role, c in a_lancer])
+                echecs = 0
+                for role, _c in a_lancer:
+                    c2, err = lot.get(role, (None, "appel non exécuté"))
+                    if err or c2 is None:
+                        echecs += 1
+                        msgs.append(f"GraXpert ({role}) : "
+                                    f"{err or 'aucun résultat'}")
                     else:
-                        c = c2.astype(np.float32)
-                        src = os.path.join(tmp, f"in2_{role}.fits")
-                        gx_live._ecrire_entree(src, c)
+                        couches[role] = c2.astype(np.float32)
+                if echecs == len(a_lancer):
+                    # ÉCHEC TOTAL : on ARRÊTE et on le dit — continuer
+                    # produirait une image « traitée » qui ne l'est pas.
+                    self._set_ext_msg(
+                        "Erreur GraXpert gradient : "
+                        + (msgs[-1] if msgs else "aucun résultat"),
+                        state="error")
+                    return None
+        # --- ② DÉBRUITAGE par couche : SÉRIE (mesuré : le lot n'apporte rien).
+        # L'entrée du subprocess est la couche APRÈS gradient, écrite ici dans le
+        # dossier de la chaîne (le gradient travaille, lui, dans le sien).
+        for role, c in list(couches.items()):
             if use_dn:
                 if mode_dn == "graxpert":
+                    src = os.path.join(tmp, f"dn_in_{role}.fits")
+                    gx_live._ecrire_entree(src, c)
                     i_etape += 1
                     outbase = os.path.join(tmp, f"dn_{role}")
                     res = self._ext_run_cmd(

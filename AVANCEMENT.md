@@ -40,14 +40,48 @@ dans le changelog du source et l'historique git.)
   les mesures GraXpert du traitement externe ⚡ y sont aussi. **LES TROIS MACHINES
   SONT MESURÉES (30/09/2026 : iGPU de dev · RTX 4070 / Windows · RTX 4060 Ti /
   Linux)** → verdict : le lot du **GRADIENT** gagne PARTOUT (+57 à +60 %), celui
-  du **DÉBRUITAGE est ABANDONNÉ** (−13 % / +12,9 % / +1,2 %). **DÉCISION EN
-  ATTENTE** : coder le lot du gradient dans la chaîne externe ⚡ (jalon 83, ~6 s
-  par chaîne, zéro pixel) — ou s'en tenir aux mesures.
+  du **DÉBRUITAGE est ABANDONNÉ** (−13 % / +12,9 % / +1,2 %). La décision
+  demandée est prise : **JALON 83 = v2.46.0, LIVRÉ le 30/09/2026** — le gradient
+  ⚡ part en un seul lot (détail plus bas : banc de 28 cas + 13 régressions vertes).
   **NETTOYAGE À PRÉVOIR au prochain jalon** : les blocs « PASSE PRÉCÉDENTE » et
   « PASSES ANTÉRIEURES » antérieurs au 29/09 peuvent être supprimés (leur trace
   vit dans le changelog d'`avastack/__init__.py` et dans l'historique git) — à
   faire par petites touches, JAMAIS par un aller-retour PowerShell (piège
   d'encodage connu).
+- **JALON 83 (v2.46.0) — LE GRADIENT DE LA CHAÎNE EXTERNE ⚡ PART EN UN SEUL LOT :
+  LIVRÉ, BANCS VERTS.** Décision d'Alain (30/09/2026), prise après la mesure des
+  trois machines (jalon 82 : +57 à +60 % pour le gradient ; le lot du débruitage,
+  lui, ne rapporte rien → il RESTE en série).
+  - **CODE** : `avastack/ui/app.py` → `_compo_couches_traitees` : le gradient des
+    couches part en UN appel à `gx_live.appliquer_lot` (mémoire bornée par
+    `parallele_max`, repli SÉRIE automatique), avec validation du GABARIT de
+    commande et de l'EXÉCUTABLE avant tout lancement (mêmes messages que la
+    chaîne mono), garde « couche vide » conservée et message de progression
+    pendant le lot (« N couche(s) en parallèle… »). Le DÉBRUITAGE garde son
+    déroulé couche par couche, et le dossier de la chaîne ne reçoit plus que les
+    FITS utiles (un par couche, seulement pour le débruitage GraXpert).
+  - **CHANGEMENTS DE COMPORTEMENT, ASSUMÉS ET TESTÉS** : ① un échec PARTIEL du
+    gradient conserve la couche brute (message posé) et la chaîne CONTINUE —
+    avant, une seule couche en échec arrêtait tout ; un échec TOTAL arrête et le
+    dit, comme avant ; ② l'ordre devient « TOUS les gradients, puis les
+    débruitages » (chaque couche reçoit bien son débruitage APRÈS son gradient,
+    vérifié par les moyennes du journal).
+  - **BANC NEUF `bancs/_test_gx_lot_externe_jalon83.py` (7 sections, 28
+    vérifications, TOUT PASSE)** : égalité AU BIT avec le repli série
+    (`MAX_PARALLELE = 1`), chevauchement prouvé par journal horodaté, entrées
+    vérifiées par leurs MOYENNES, couche vide écartée, échec partiel qui
+    continue, échec total qui s'arrête, intégration `_run_external_compo` (App
+    réelle + composition à 3 rôles) au composite identique AU BIT.
+    **13 bancs de régression verts** : gradient_couche_jalon24, ext_rgb_jalon14,
+    dn_jalon7, denoise_live_jalon9, gx_parallele_jalon81, etat_calcul_jalon40,
+    save_brute_jalon59, compo_ui_jalon19, fit_canaux_jalon54, graxpert_live_jalon4,
+    pleine_res_traitee_jalon69, outils_jalon71, rafale_fin_rendu_jalon80.
+  - **VERSION v2.46.0** (changelog en tête d'`avastack/__init__.py`). **Aucun
+    paquet ni release reconstruit** : à décider (l'installeur Windows + Linux +
+    macOS et une release sont la suite naturelle). **TEST RÉEL À FAIRE** : un
+    ⚡ traitement par couche (composition 3 rôles) — surveiller la ligne d'état
+    pendant l'étape gradient (« 3 couche(s) en parallèle… ») et vérifier que le
+    résultat est celui d'avant.
 - **JALON 82 — MESURES DE PARALLÉLISME (30/09/2026) : LE DÉBRUITAGE PERD, LES
   GRAXPERT NE SE PARTAGENT PAS.** Demande d'Alain : « mesurer le gain en
   parallélisant le débruitage (et éventuellement celui de GraXpert dans le
