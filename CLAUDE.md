@@ -869,23 +869,36 @@ ce qui manquait n'était pas une correction mais une MESURE.
     même débruitage gagne +22 % à 300 px et perd −13 % à 8,32 Mpx (les
     démarrages fixes pèsent proportionnellement plus à petite définition).
     **Un banc qui conclut autre chose qu'en PLEINE RÉSOLUTION ne conclut rien.**
-  - **MÊMES COUCHES, MÊME APPLICATION, DEUX GPU — DEUX VERDICTS (mesuré le
-    30/09/2026)** : le débruitage GraXpert (8,21-8,32 Mpx, modèle 3.0.2) coûte
-    **290 s par appel sur l'iGPU de dev et 25,9 s sur une RTX 4070 (11×)** ; son
-    lot **perd 13 %** sur l'iGPU et **gagne 12,9 %** sur la 4070 (77,7 s → 67,7 s).
-    Le GRADIENT, lui, se comporte pareil partout (+58 % iGPU, +60 % 4070) : ses
-    appels sont dominés par leur démarrage. Bilan des deux machines : le lot est
-    utile sur un GPU DÉDIÉ pour les DEUX étapes, **et jamais au détriment d'un
-    pixel** (sorties identiques au bit dans les 4 configurations).
+  - **TROIS MACHINES MESURÉES, UN SEUL GAIN UNIVERSEL (30/09/2026)** — mêmes
+    couches (8,21-8,32 Mpx), même application, GraXpert 3.1.0rc2, sorties
+    **identiques AU BIT** dans toutes les configurations :
+    - iGPU Intel (dev, mémoire partagée) · DirectML · gradient 10,12 → 4,24 s
+      (**+58 %**) · débruitage 869,8 → 981,7 s (**−13 %**) · 1 débruitage 290 s ;
+    - RTX 4070 12 Go (Windows, 16 cœurs) · DirectML · gradient 10,73 → 4,28 s
+      (**+60 %**) · débruitage 77,7 → 67,6 s (**+12,9 %**) · 1 débruitage 25,9 s ;
+    - RTX 4060 Ti 8 Go (Linux, 4 cœurs) · **CUDA** · gradient 11,45 → 4,92 s
+      (**+57 %**) · débruitage 121,9 → 120,5 s (**+1,2 %**) · 1 débruitage 40,7 s.
+    → **le LOT du GRADIENT gagne PARTOUT (+57 à +60 %)** : ses appels sont dominés
+    par leur démarrage (3,4 s fixes quel que soit le GPU), et le lot recouvre ces
+    temps morts. C'est le seul gain UNIVERSEL — et gratuit (zéro pixel).
+    → **le LOT du DÉBRUITAGE ne se justifie PAS** : −13 % sur iGPU, +12,9 % sur
+    4070, **+1,2 % (rien) sur 4060 Ti**, avec le GPU à **100 % dans les trois
+    cas** — un seul appel sature déjà la carte, il n'y a aucun temps mort GPU à
+    recouvrir. Mesuré sur trois GPU et deux moteurs d'inférence : c'est la
+    NATURE du calcul qui décide, pas la puissance de la carte.
+    → **Linux = CUDA, Windows = DirectML** (lu dans les journaux des deux
+    machines le même jour) : le moteur d'inférence dépend de la BUILD, pas de la
+    carte graphique.
   - **⚠ LA VRAM EST UN GARDE-FOU QUE NOUS N'AVONS PAS (mesuré le 30/09/2026)** :
-    sur la RTX 4070 (12 282 Mo), **un** débruitage GraXpert occupe **3 686 Mo** et
-    **trois simultanés 9 642 Mo** (78 % de la carte) — sur les **8 Go** d'une
-    3060 Ti, trois appels ne rentrent PAS (le pilote bascule alors en mémoire
-    système et tout s'écroule). Or `parallele_max()` ne borne que la mémoire
-    SYSTÈME (`PAR_APPEL_OCTETS = 800 Mo`, mesuré sur le GRADIENT) : il
-    autoriserait ces trois appels. Ne pas paralléliser le débruitage GraXpert
-    sans borner la VRAM. Le banc GPU sait désormais sonder une carte limite
-    (`--simultane 2`, VRAM de pic affichée).
+    un débruitage GraXpert de 8,2 Mpx occupe **2,2 Go (CUDA, 4060 Ti)** ou
+    **3,7 Go (DirectML, 4070)** ; trois simultanés = **9 642 Mo sur 12 282**
+    (78 %) ; le GRADIENT, lui, tient dans **0,7 à 2,0 Go même en lot** (mesuré sur
+    les trois machines). Sur une carte à 8 Go, trois débruitages ne rentrent PAS
+    (le pilote bascule en mémoire système et tout s'écroule) — or
+    `parallele_max()` ne borne que la mémoire SYSTÈME (`PAR_APPEL_OCTETS =
+    800 Mo`, mesuré sur le GRADIENT). C'est une raison de plus de NE PAS
+    paralléliser le débruitage ; le banc GPU sait sonder une carte limite
+    (`--simultane N`, VRAM de pic affichée, échantillonnée à 1 s).
   - Pour les machines à GPU NVIDIA (RTX 3060 Ti 8 Go sous Linux, RTX 4070 12 Go
     sous Windows), le banc dédié est `bancs/_diag_parallele_gpu_jalon82.py` :
     il lit les « inference providers » du journal de GraXpert, puis remesure

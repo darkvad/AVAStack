@@ -37,10 +37,12 @@ dans le changelog du source et l'historique git.)
   **Piste du débruitage MESURÉE le 30/09/2026 (jalon 82)** : paralléliser le
   DÉBRUITAGE par couche PERD du temps avec son réglage (NLM) et ne rapporte que
   0,9 s avec « ondelettes » → **mesure faite, verdict en tête de ce fichier** ;
-  les mesures GraXpert du traitement externe ⚡ y sont aussi. **PROCHAINE ÉTAPE =
-  lancer `bancs/_diag_parallele_gpu_jalon82.py` sur les deux machines NVIDIA
-  (3060 Ti 8 Go / Linux, 4070 12 Go / Windows)** — le travail est terminé sur la
-  machine de dev (décision d'Alain : « on s'arrête là sur cette machine »).
+  les mesures GraXpert du traitement externe ⚡ y sont aussi. **LES TROIS MACHINES
+  SONT MESURÉES (30/09/2026 : iGPU de dev · RTX 4070 / Windows · RTX 4060 Ti /
+  Linux)** → verdict : le lot du **GRADIENT** gagne PARTOUT (+57 à +60 %), celui
+  du **DÉBRUITAGE est ABANDONNÉ** (−13 % / +12,9 % / +1,2 %). **DÉCISION EN
+  ATTENTE** : coder le lot du gradient dans la chaîne externe ⚡ (jalon 83, ~6 s
+  par chaîne, zéro pixel) — ou s'en tenir aux mesures.
   **NETTOYAGE À PRÉVOIR au prochain jalon** : les blocs « PASSE PRÉCÉDENTE » et
   « PASSES ANTÉRIEURES » antérieurs au 29/09 peuvent être supprimés (leur trace
   vit dans le changelog d'`avastack/__init__.py` et dans l'historique git) — à
@@ -141,6 +143,31 @@ dans le changelog du source et l'historique git.)
       -smoothing 0.5` au lieu des siennes `Division -smoothing 0.8`) — le rendu du
       gradient y sera donc DIFFÉRENT s'il traite des images là-bas sans régler le
       cadre « Traitement externe ».
+  - **⑥ RÉSULTAT LINUX / RTX 4060 Ti 8 Go (Alain, 30/09/2026)** — mêmes couches
+    (8,32 Mpx, copiées dans `./bancs`), machine à **4 cœurs** et 7,7 Go de RAM,
+    GraXpert-linux (`~/apps/graxpert/GraXpert-linux/GraXpert`) :
+    - **CUDA est bien le moteur sous LINUX** (`Used providers :
+      ['CUDAExecutionProvider', …]` pour le gradient ET le débruitage) → ta
+      remarque du 30/09 est MESURÉE : Linux = CUDA, Windows = DirectML, et la
+      nouvelle mesure de VRAM confirme l'adaptateur (+270 Mo sur le gradient,
+      +2 200 Mo sur le débruitage, « c'est BIEN la carte NVIDIA qui a calculé ») ;
+    - **GRADIENT** : série 11,45 s → lot 4,92 s = **+57,0 %**, identiques au bit,
+      VRAM 2 001 Mo au pic (sur 8 188) — le lot du gradient tient donc dans 8 Go ;
+    - **DÉBRUITAGE `--simultane 2`** : 40,65 s par appel (contre 25,9 s sur la
+      4070 et 290 s sur l'iGPU de dev) · série 121,95 s → **lot de 2 : 120,50 s =
+      +1,2 % = RIEN**, identiques au bit, GPU à **100 % dans les deux cas**,
+      VRAM 2 217 → 4 410 Mo (2,2 Go par appel en CUDA) ;
+    - **VERDICT FINAL, TRIPLE MESURE (iGPU dev, 4070 Windows, 4060 Ti Linux)** :
+      ① **le lot du GRADIENT gagne PARTOUT (+57 à +60 %)** — c'est le seul gain
+      universel, gratuit, à coder si on veut ces ~6 s par chaîne ; ② **le lot du
+      DÉBRUITAGE est ABANDONNÉ** (−13 % sur iGPU, +12,9 % sur 4070, +1,2 % sur
+      4060 Ti) : un seul appel sature déjà le GPU (100 % partout), il n'y a aucun
+      temps mort à recouvrir ; ③ les sorties sont **identiques au bit dans les
+      3 × 2 configurations**.
+    - À SAVOIR pour cette machine : **4 cœurs** (le direct live y sera limité par
+      le processeur, cf. le NLM qui prend 14 fils ici), et sa **config AVAStack
+      est vide** (commandes GraXpert par défaut : `-correction Subtraction
+      -smoothing 0.5`, ses `Division -smoothing 0.8` n'y sont pas).
   - **ÉTAT** : AUCUNE ligne de l'application n'a été modifiée (mesures seules ;
     les deux bancs sont les seuls fichiers neufs). Décision d'Alain attendue :
     ② le gradient ⚡ en lot est prêt à coder (même mécanisme que le jalon 81,
