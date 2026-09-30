@@ -200,6 +200,14 @@ SDK constructeurs, capacités, TEC, câblage UI des contrôles) — seuls les
   installateurs, un banc de test ne part JAMAIS.
 - Un banc cité dans CLAUDE.md ou AVANCEMENT.md le reste par son NOM (les
   fichiers n'ont pas été renommés) : pour le retrouver, chercher sous `bancs/`.
+- **Un banc qui doit tourner AILLEURS que sur la machine de dev doit être
+  AUTONOME** (constat du 30/09/2026, banc GPU) : aucun chemin absolu, repli
+  documenté quand une donnée manque — `bancs/_diag_parallele_gpu_jalon82.py`
+  fabrique des couches SYNTHÉTIQUES à la bonne définition si on ne lui donne pas
+  de couches réelles (et le DIT dans son rapport : les durées d'un appel
+  GraXpert dépendent de la taille, pas du contenu) —, et il écrit un **fichier de
+  rapport dans le dossier de travail** en plus de l'affichage : la mesure se lit
+  sur une autre machine que celle qui l'a produite.
 
 ## Portage Linux / macOS — prérequis et installateur (étude du 27/09/2026)
 
@@ -509,6 +517,34 @@ Pièges :
   (il garde le modèle en mémoire). Pour aller plus vite un jour : inférence ONNX
   **en processus** (le modèle est un `.onnx` lisible) plutôt qu'un sous-processus
   par couche.
+- **LE DÉBRUITAGE A SON PROPRE MODÈLE, ET SON PROPRE COÛT** (mesuré le
+  30/09/2026, GraXpert 3.1.0rc2) : le retrait de gradient charge
+  `bge-ai-models\<version>\model.onnx` (version STOCKÉE, ici 1.0.1) tandis que le
+  débruitage charge `denoise-ai-models\<version>\model.onnx` (ici **3.0.2**) —
+  deux familles et deux versions INDÉPENDANTES : ne pas conclure de l'une à
+  l'autre. Coût mesuré sur une couche mono de 8,32 Mpx : **290 s par appel**
+  (14 min 30 s pour trois couches en série, contre ~10 s pour les trois retraits
+  de gradient), **~3,45 Go de working set par processus**, avec les réglages
+  STOCKÉS « batch size 4 » et « gpu acceleration True ». C'est LE poste dominant
+  d'une chaîne externe par couche ; le MÊME débruitage en local (« nlm ») coûte
+  5,9 s pour les trois couches — c'est un choix de qualité, pas une contrainte
+  technique. ⚠ Garde-fou à ne pas oublier : `PAR_APPEL_OCTETS = 800 Mo`
+  (jalon 81) a été mesuré sur le GRADIENT et ne couvre PAS le débruitage.
+- **LE JOURNAL DE GRAXPERT DIT TOUT — MAIS PAS AVEC LES MÊMES MOTS SELON LA
+  TÂCHE** (constat du 30/09/2026) : le retrait de gradient écrit
+  `Providers : [...]` puis `Used providers : [...]` ; le débruitage écrit
+  `Available inference providers : [...]` puis `Used inference providers :
+  [...]`. Ces lignes nomment le MOTEUR D'INFÉRENCE réellement employé
+  (`['DmlExecutionProvider', 'CPUExecutionProvider']`, `CUDAExecutionProvider`
+  sur un GPU NVIDIA…) : **c'est LA ligne à lire pour savoir si le GPU sert**. Un
+  analyseur qui n'en connaîtrait qu'UNE formulation ne saurait rien dire de
+  l'autre tâche (erreur commise puis corrigée dans le banc GPU). Le CLI écrit
+  aussi `Using AI version …`, `AI model path - …`, `batch size`, `gpu
+  acceleration`. ⚠ `external.live.appliquer` envoie cette sortie dans un fichier
+  du dossier temporaire, qu'il SUPPRIME quand tout va bien : pour LIRE le
+  journal, il faut un appel instrumenté — c'est ce que fait
+  `bancs/_diag_parallele_gpu_jalon82.py`, qui vérifie au passage que son appel
+  rend la MÊME image que `appliquer`, au bit.
 - Les méthodes **classiques** (RBF / Splines / Kriging) existent mais exigent des
   **points de fond fournis** (`-preferences_file`) : il n'y a pas de mode
   automatique sans IA en ligne de commande (le mode IA est justement celui qui
@@ -793,6 +829,35 @@ ce qui manquait n'était pas une correction mais une MESURE.
   Corollaire pour les bancs : un bouchon qui remplace `appliquer` doit accepter
   la MÊME signature (`img, cmd, timeout=…`) — un lambda à 2 arguments casse dès
   que le lot passe le délai (constat réel sur `_test_save_brute_jalon59`).
+
+- **LE LOT NE RAPPORTE QUE LÀ OÙ UN APPEL ATTEND — MESURER AVANT DE PARALLÉLISER**
+  (jalon 82, mesuré le 30/09/2026, demande d'Alain : « mesurer le gain en
+  parallélisant le débruitage »). Paralléliser par couche ne multiplie rien : ou
+  l'on **recouvre un temps mort** (démarrage, E/S), ou l'on **partage des cœurs
+  déjà pris**. Bancs : `bancs/_diag_parallele_debruitage_jalon82.py` et
+  `bancs/_diag_parallele_gx_externe_jalon82.py`, sur ses 3 vraies couches
+  (2168 × 3838 = 8,32 Mpx) ; dans TOUS les cas série et lot rendent des pixels
+  **identiques au bit**.
+  - **Débruitage LOCAL (nlm, son réglage) : le LOT PERD** — 0,95-1,37 s → 1,61-
+    2,02 s à l'aperçu 1600 px, **5,86 s → 9,63 s en pleine résolution (−64 %)**.
+    Cause MESURÉE : un appel NLM utilise DÉJÀ les cœurs (×4,3 à ×4,5 de 1 à
+    14 fils). Corollaire : **ne jamais brider `cv2.setNumThreads`** (à 1 fil, le
+    NLM passe de 5,9 s à 22,5 s). Seule exception, « ondelettes » gagne +53 %
+    (1,82 s → 0,85 s) parce qu'un appel n'utilise qu'UN fil : gain absolu 0,9 s,
+    ce n'est pas son réglage.
+  - **GraXpert débruitage par couche : le LOT PERD aussi** sur cette machine
+    (−12,9 % : 869,80 s contre 981,69 s), avec **~10 Go** pour les trois
+    simultanés. Trace : un appel SEUL brûle ~282 s de CPU en 290 s, les trois
+    simultanés en ont brûlé **~880 s CHACUN** pour le même travail.
+  - **Le gain dépend donc de la NATURE de l'appel, de la TAILLE et du GPU** : le
+    même débruitage gagne +22 % à 300 px et perd −13 % à 8,32 Mpx (les
+    démarrages fixes pèsent proportionnellement plus à petite définition).
+    **Un banc qui conclut autre chose qu'en PLEINE RÉSOLUTION ne conclut rien.**
+  - Pour les machines à GPU NVIDIA (RTX 3060 Ti 8 Go sous Linux, RTX 4070 12 Go
+    sous Windows), le banc dédié est `bancs/_diag_parallele_gpu_jalon82.py` :
+    il lit les « inference providers » du journal de GraXpert, puis remesure
+    série/lot et sonde VRAM/RAM (`nvidia-smi`). Voir « GraXpert CLI » pour les
+    deux formulations du journal.
 
 - **LE RENDU (chaîne lourde) PART EN FIN DE RAFALE, JAMAIS SUR LA PREMIÈRE BRUTE**
   (jalon 80, v2.44.0, demande d'Alain du 29/09/2026 : « on en lit 10, on les

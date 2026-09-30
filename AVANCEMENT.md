@@ -37,8 +37,10 @@ dans le changelog du source et l'historique git.)
   **Piste du débruitage MESURÉE le 30/09/2026 (jalon 82)** : paralléliser le
   DÉBRUITAGE par couche PERD du temps avec son réglage (NLM) et ne rapporte que
   0,9 s avec « ondelettes » → **mesure faite, verdict en tête de ce fichier** ;
-  les mesures GraXpert du traitement externe ⚡ y sont aussi. Rien d'autre n'est
-  en attente — aucun défaut connu ouvert.
+  les mesures GraXpert du traitement externe ⚡ y sont aussi. **PROCHAINE ÉTAPE =
+  lancer `bancs/_diag_parallele_gpu_jalon82.py` sur les deux machines NVIDIA
+  (3060 Ti 8 Go / Linux, 4070 12 Go / Windows)** — le travail est terminé sur la
+  machine de dev (décision d'Alain : « on s'arrête là sur cette machine »).
   **NETTOYAGE À PRÉVOIR au prochain jalon** : les blocs « PASSE PRÉCÉDENTE » et
   « PASSES ANTÉRIEURES » antérieurs au 29/09 peuvent être supprimés (leur trace
   vit dans le changelog d'`avastack/__init__.py` et dans l'historique git) — à
@@ -83,6 +85,26 @@ dans le changelog du source et l'historique git.)
     couches en débruitage LOCAL (« nlm », force 0,4) coûtent **5,9 s** en pleine
     résolution. L'écart 5,9 s contre 14 min 30 s est un CHOIX DE QUALITÉ, pas une
     contrainte technique.
+  - **③ BANC GPU NVIDIA LIVRÉ — LA SUITE SE JOUE SUR LES DEUX AUTRES MACHINES
+    (décision d'Alain, 30/09/2026 : « on s'arrête là sur cette machine »)** :
+    `bancs/_diag_parallele_gpu_jalon82.py` (neuf, AUTONOME — aucun chemin
+    absolu, couches synthétiques à la bonne définition si on ne lui en donne pas,
+    rapport écrit dans le dossier de travail). Il répond à trois questions, dans
+    cet ordre : **(1) GraXpert utilise-t-il VRAIMENT le GPU ?** en LISANT le
+    journal du CLI (`Providers :` / `Used providers :` pour le gradient,
+    `Available/Used inference providers :` pour le débruitage — DEUX formulations
+    différentes, constat du 30/09/2026) ; **(2)** série contre lot sur les
+    3 couches, gradient ET débruitage ; **(3)** VRAM et RAM de pic
+    (`nvidia-smi`, absent de cette machine → dit « non mesurée », jamais
+    inventée). **Validé ici** : `diagnostic` = ~25 s et n'entraîne AUCUNE mesure
+    longue ; le reste (`gradient` / `debruitage` / `tout`, `--px N` réservé à la
+    validation) est à lancer sur la **RTX 3060 Ti 8 Go sous Linux** et la
+    **RTX 4070 12 Go sous Windows** :
+    `python bancs/_diag_parallele_gpu_jalon82.py <dossier des couches> diagnostic`
+    puis l'étape voulue. Ce que la mesure a déjà établi ICI et qui reste à
+    confirmer là-bas : le gain du lot **dépend de la taille** (+22 % à 300 px,
+    **−13 % à 8,32 Mpx** pour le débruitage) — et l'appel instrumenté du banc
+    rend la MÊME image que l'application, au bit (vérifié à l'exécution).
   - **ÉTAT** : AUCUNE ligne de l'application n'a été modifiée (mesures seules ;
     les deux bancs sont les seuls fichiers neufs). Décision d'Alain attendue :
     ② le gradient ⚡ en lot est prêt à coder (même mécanisme que le jalon 81,
