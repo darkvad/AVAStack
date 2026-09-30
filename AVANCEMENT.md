@@ -34,14 +34,60 @@ dans le changelog du source et l'historique git.)
   à bande étroite a SON gradient (décision des jalons 24/54) ; ③ **inférence ONNX
   en processus** — mesurée : aucun gain en CPU, mémoire GPU épuisée en DirectML,
   et surtout **fidélité 0,24** avec le fond de GraXpert.
-  **Pistes encore ouvertes, si un jour le besoin revient** : paralléliser aussi
-  le DÉBRUITAGE par couche (jamais mesuré) ; rien d'autre n'est en attente —
-  aucun défaut connu ouvert.
+  **Piste du débruitage MESURÉE le 30/09/2026 (jalon 82)** : paralléliser le
+  DÉBRUITAGE par couche PERD du temps avec son réglage (NLM) et ne rapporte que
+  0,9 s avec « ondelettes » → **mesure faite, verdict en tête de ce fichier** ;
+  les mesures GraXpert du traitement externe ⚡ y sont aussi. Rien d'autre n'est
+  en attente — aucun défaut connu ouvert.
   **NETTOYAGE À PRÉVOIR au prochain jalon** : les blocs « PASSE PRÉCÉDENTE » et
   « PASSES ANTÉRIEURES » antérieurs au 29/09 peuvent être supprimés (leur trace
   vit dans le changelog d'`avastack/__init__.py` et dans l'historique git) — à
   faire par petites touches, JAMAIS par un aller-retour PowerShell (piège
   d'encodage connu).
+- **JALON 82 — MESURES DE PARALLÉLISME (30/09/2026) : LE DÉBRUITAGE PERD, LES
+  GRAXPERT NE SE PARTAGENT PAS.** Demande d'Alain : « mesurer le gain en
+  parallélisant le débruitage (et éventuellement celui de GraXpert dans le
+  traitement externe) ». Deux bancs NEUFS, sur ses VRAIES couches
+  (`C:\Astro\test\canal_R/G/B.fit`, 2168 × 3838 = 8,32 Mpx chacune) et son VRAI
+  GraXpert installé (mesures faites sur sa machine, GraXpert 3.1.0rc2) :
+  - **① `bancs/_diag_parallele_debruitage_jalon82.py` — débruitage LOCAL par
+    couche** (NLM = son réglage, force 0,40 ; lot et série rendent TOUJOURS des
+    pixels identiques AU BIT) : **le LOT PERD** — 0,95-1,37 s → 1,61-2,02 s à
+    l'aperçu 1600 px, **5,86 s → 9,63 s en pleine résolution (-64 %)**. Cause
+    MESURÉE (courbe de mise à l'échelle incluse au banc) : un appel NLM utilise
+    DÉJÀ les cœurs (×4,26 de 1 à 14 fils à l'aperçu, ×3,73 en pleine résolution),
+    donc trois appels se partagent des cœurs déjà pris. Symétriquement
+    « ondelettes » GAGNE +53 % en lot (1,82 s → 0,85 s pleine résolution) parce
+    qu'un de ses appels n'utilise QU'UN fil (×1,13) — gain absolu 0,9 s, et ce
+    n'est pas son réglage. **Conséquence : ne PAS paralléliser le débruitage
+    local**, et NE PAS brider OpenCV (à 1 fil le NLM passe de 5,9 s à 22,2 s).
+  - **② `bancs/_diag_parallele_gx_externe_jalon82.py` — traitement externe ⚡ par
+    couche** (ce chemin était resté SÉRIE au jalon 81) : **GRADIENT
+    (`cmd_graxpert`, pleine résolution) : 10,12 s → 4,24 s (+58,1 %)**, sorties
+    identiques À L'OCTET (le gain du jalon 81 se vérifie donc sur la chaîne ⚡) ;
+    **DÉBRUITAGE GraXpert (`cmd_graxpert_dn`, mode « graxpert ») : 869,80 s
+    (14 min 30 s, 290 s par appel) contre 981,69 s en lot → -12,9 % (PERTE)**,
+    sorties identiques à l'octet aussi.
+  - **CE QUE LA MESURE APPREND SUR SON RÉGLAGE** : dans la chaîne ⚡, le gradient
+    des 3 couches coûte ~10 s et le DÉBRUITAGE GraXpert ~14 min 30 s — c'est lui
+    qui coûte la chaîne. Son modèle de débruitage est le **3.0.2**
+    (`denoise-ai-models\3.0.2\model.onnx`, DirectML, batch 4) et **chaque appel
+    consomme ~3,45 Go** (working set mesuré) : les trois simultanés ont tenu
+    ~10 Go. Trace du partage des cœurs : un appel SEUL brûle ~282 s de CPU en
+    290 s ; les trois simultanés en ont brûlé ~880 s CHACUN (×3,1 pour le même
+    travail) tout en restant plus LENTS — le lot ne recouvre ici aucun temps mort,
+    il ajoute de la contention. ⚠ Pour un futur code : la constante du jalon 81
+    (`PAR_APPEL_OCTETS = 800 Mo`) a été mesurée sur le GRADIENT (modèle 1.0.1) et
+    ne couvre PAS le débruitage GraXpert.
+  - **POUR COMPARAISON (banc ①, même machine, mêmes couches)** : ces MÊMES 3
+    couches en débruitage LOCAL (« nlm », force 0,4) coûtent **5,9 s** en pleine
+    résolution. L'écart 5,9 s contre 14 min 30 s est un CHOIX DE QUALITÉ, pas une
+    contrainte technique.
+  - **ÉTAT** : AUCUNE ligne de l'application n'a été modifiée (mesures seules ;
+    les deux bancs sont les seuls fichiers neufs). Décision d'Alain attendue :
+    ② le gradient ⚡ en lot est prêt à coder (même mécanisme que le jalon 81,
+    zéro pixel) — à noter qu'il ne fait gagner que ~6 s sur une chaîne ⚡ dominée
+    par le débruitage.
 - **CLÔTURE DE LA SESSION 29-30/09/2026 — RELEASE v2.45.0 PUBLIÉE** :
   https://github.com/darkvad/AVAStack/releases/tag/v2.45.0 — tag annoté sur
   `4af8621`, assets : `avastack-setup-2.45.0.exe`,
