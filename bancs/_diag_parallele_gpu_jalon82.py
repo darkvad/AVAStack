@@ -292,6 +292,8 @@ def couches_synthetiques(h, w, graine=7):
 def charger_couches():
     """(couches, provenance) — les siennes si le dossier les porte, sinon des
     couches synthétiques à la même définition."""
+    if DOSSIER and not os.path.isdir(DOSSIER):
+        dit("  ⚠ le dossier donné n'existe pas ici : %s" % DOSSIER)
     if DOSSIER and os.path.isdir(DOSSIER):
         trouve = {}
         for role in ROLES:
@@ -420,9 +422,10 @@ def phase_diagnostic(cmd_gx, cmd_dn, imgs, faire_gx, faire_dn):
     c'est la réponse à « le GPU sert-il VRAIMENT ? » (les providers ne dépendent
     pas de la taille de l'image ; les durées, si)."""
     dit("\n[2] DIAGNOSTIC — quel moteur d'inférence GraXpert utilise-t-il ?")
+    cote = min(VIGNETTE, imgs["R"].shape[0], imgs["R"].shape[1])
     dit("    (vignette %d px ; la ligne « providers UTILISÉS » est la réponse)"
-        % VIGNETTE)
-    vign = {r: np.ascontiguousarray(imgs[r][:VIGNETTE, :VIGNETTE])
+        % cote)
+    vign = {r: np.ascontiguousarray(imgs[r][:cote, :cote])
             for r in ROLES}
     cuda = []
     for libelle, cmd, actif in (("GRADIENT", cmd_gx, faire_gx),
