@@ -64,6 +64,16 @@ Usage :
             PAS une mesure (chaque ligne le rappelle).
   --delai S : délai par appel (défaut 1200 s ; c'est aussi le garde-fou en cas de
             boîte de dialogue modale d'un GraXpert en échec).
+  --simultane N[,M…] : force le nombre d'appels SIMULTANÉS du lot (défaut : le
+            calcul borné de l'application, `parallele_max`). À utiliser pour
+            sonder une carte à VRAM limitée.
+
+⚠ SUR UNE CARTE À 8 Go DE VRAM, NE PAS COMMENCER PAR « tout » : sur une RTX 4070
+12 Go (Windows, mesuré le 30/09/2026) **trois débruitages simultanés ont demandé
+9 642 Mo de VRAM** (3,7 Go pour un seul) — soit ~78 % de la carte. Sur 8 Go le
+pilote bascule en mémoire système et TOUT ralentit (ou l'appel échoue). Mesurer
+d'abord « gradient » (le lot y tient dans ~700 Mo), puis « debruitage
+--simultane 2 », et regarder la VRAM de pic avant de tenter 3.
 
 ⚠ SANS moteur GPU (`CPUExecutionProvider` seul), le débruitage peut être BEAUCOUP
 plus lent qu'avec un GPU : commencer par « diagnostic » (vignette) avant « tout ».
@@ -129,6 +139,10 @@ DOSSIER = _POS[0] if _POS else ""
 ETAPE = (_POS[1] if len(_POS) > 1 else "tout").strip().lower()
 PX_FORCE = int(OPT.get("px", 0) or 0)      # 0 = plein format
 DELAI = float(OPT.get("delai", 1200) or 1200)
+# Nombres d'appels SIMULTANÉS à essayer dans le lot (`--simultane 2,3`) : vide =
+# le calcul borné de l'application (`parallele_max`, mémoire système).
+SIMULTANE = [int(x) for x in str(OPT.get("simultane", "") or "")
+             .replace(" ", "").split(",") if x.isdigit()]
 # La config d'AVAStack de CETTE machine (`%APPDATA%\AVAStack\config.json` sous
 # Windows, `~/.config/AVAStack` sous Linux…) : c'est `config.py` qui sait où
 # elle vit — le banc ne devine pas.
@@ -444,19 +458,31 @@ def lire_journal(lignes):
     return out
 
 
-def etape(nom, imgs, cmd, lot):
+def etape(nom, imgs, cmd, lot, simultane=None):
     """Une étape GraXpert par couche : SÉRIE (aujourd'hui) ou LOT → (durée, images).
 
     Passe par le code de l'application (`gx.appliquer` / `gx.appliquer_lot`) et
-    sonde la VRAM et la RAM système pendant l'appel."""
-    dit("\n  %s — %s" % (nom, "LOT (3 appels simultanés)" if lot
-                         else "SÉRIE (aujourd'hui)"))
+    sonde la VRAM et la RAM système pendant l'appel. `simultane` borne le nombre
+    d'appels lancés ENSEMBLE (par défaut le calcul de l'application) : c'est ce
+    qui permet de sonder une carte dont la VRAM est limitée."""
+    n_sim = int(simultane or 3)
+    dit("\n  %s — %s" % (nom, "SÉRIE (aujourd'hui)" if not lot else
+                         "LOT (%d appel%s simultané%s)"
+                         % (n_sim, "s" if n_sim > 1 else "",
+                            "s" if n_sim > 1 else "")))
+    ancien = gx.MAX_PARALLELE
+    if lot and simultane:
+        gx.MAX_PARALLELE = int(simultane)
     t0 = time.perf_counter()
-    with Sonde() as sonde:
-        if lot:
-            res = gx.appliquer_lot([(r, imgs[r], cmd) for r in ROLES], DELAI)
-        else:
-            res = {r: gx.appliquer(imgs[r], cmd, DELAI) for r in ROLES}
+    try:
+        with Sonde(periode=1.0) as sonde:
+            if lot:
+                res = gx.appliquer_lot([(r, imgs[r], cmd) for r in ROLES],
+                                       DELAI)
+            else:
+                res = {r: gx.appliquer(imgs[r], cmd, DELAI) for r in ROLES}
+    finally:
+        gx.MAX_PARALLELE = ancien
     duree = time.perf_counter() - t0
     out, ok = {}, 0
     for r in ROLES:
@@ -600,6 +626,12 @@ def main():
     dit("  étape mesurée   : %s%s" % (ETAPE, "" if not PX_FORCE else
                                      "  (--px %d : VALIDATION, pas une mesure)"
                                      % PX_FORCE))
+    if SIMULTANE:
+        dit("  --simultane     : %s  (le lot RETENU au bilan est le dernier "
+            "mesuré de chaque étape)" % ", ".join(str(n) for n in SIMULTANE))
+    if PX_FORCE or SIMULTANE:
+        dit("  ⚠ mode de VALIDATION : ne pas conclure de ces chiffres (cf. la "
+            "docstring du banc)")
 
     dit("\n[1] images")
     imgs, provenance = charger_couches()
@@ -631,18 +663,20 @@ def main():
             continue
         dit("\n[%d] %s — 3 couches, une par une" % (numero, nom))
         t_s, out_s = etape("couche par couche", imgs, cmd, lot=False)
-        t_l, out_l = etape("couche par couche", imgs, cmd, lot=True)
-        ident = all(out_s[r] is not None and out_l[r] is not None
-                    and np.array_equal(out_s[r], out_l[r]) for r in ROLES)
-        dit("      → série %.2f s · lot %.2f s · %s   [%s]"
-            % (t_s, t_l,
-               ("GAIN de %.1f %% (%.2f s gagnées)"
-                % (100.0 * (t_s - t_l) / t_s, t_s - t_l) if t_l <= t_s else
-                "PERTE de %.1f %% (%.2f s perdues)"
-                % (100.0 * (t_l - t_s) / t_s, t_l - t_s)),
-               "images identiques AU BIT" if ident
-               else "⚠ ÉCART (ou appel raté) : ne pas conclure"))
-        totaux[nom] = (t_s, t_l, ident)
+        for nb in (SIMULTANE or [None]):
+            t_l, out_l = etape("couche par couche", imgs, cmd, lot=True,
+                               simultane=nb)
+            ident = all(out_s[r] is not None and out_l[r] is not None
+                        and np.array_equal(out_s[r], out_l[r]) for r in ROLES)
+            dit("      → série %.2f s · lot%s %.2f s · %s   [%s]"
+                % (t_s, "" if nb is None else " de %d" % nb, t_l,
+                   ("GAIN de %.1f %% (%.2f s gagnées)"
+                    % (100.0 * (t_s - t_l) / t_s, t_s - t_l) if t_l <= t_s else
+                    "PERTE de %.1f %% (%.2f s perdues)"
+                    % (100.0 * (t_l - t_s) / t_s, t_l - t_s)),
+                   "images identiques AU BIT" if ident
+                   else "⚠ ÉCART (ou appel raté) : ne pas conclure"))
+            totaux[nom] = (t_s, t_l, ident)      # le DERNIER lot mesuré compte
         numero += 1
 
     dit("\n" + "=" * 78)

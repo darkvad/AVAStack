@@ -118,6 +118,29 @@ dans le changelog du source et l'historique git.)
     disant pas. Leçon remontée dans CLAUDE.md. **Reste à mesurer** : la même chose
     sur le **Linux/3060 Ti** (CUDA attendu là-bas, mais rien n'est présumé) et les
     mesures série/lot sur les deux machines.
+  - **⑤ RÉSULTAT COMPLET WINDOWS / RTX 4070 12 Go (Alain, 30/09/2026)** — couches
+    réelles de 8,21 Mpx (`D:\astro\test`), 16 cœurs, DirectML, GraXpert 3.1.0rc2 :
+    - **GRADIENT** : 1 appel 3,58 s (identique à l'iGPU : c'est du démarrage) ·
+      série 10,73 s → **lot 4,28 s = +60,1 %**, images **identiques au bit** ;
+    - **DÉBRUITAGE** (modèle 3.0.2) : **1 appel 25,9 s** contre **290 s** sur
+      l'iGPU de dev (**11× plus rapide**) · série 77,71 s → **lot 67,65 s =
+      +12,9 %** (un GAIN ici, là où l'iGPU PERDAIT 13 %), images identiques au bit ;
+    - **VRAM** : gradient 972 Mo (série) / 683 Mo (lot) · débruitage **3 686 Mo
+      pour UN appel, 9 642 Mo pour trois** sur 12 282 Mo — **78 % de la carte** ;
+      GPU à 100 % même avec un seul appel (d'où le gain modeste du lot).
+    - **CONSÉQUENCES** : ① sur une carte à GPU dédié, le lot est utile pour les
+      DEUX étapes (et jamais au détriment d'un pixel) ; ② **le verdict du lot
+      dépend du GPU** (même appli, mêmes couches : −13 % sur iGPU, +13 % sur
+      4070) ; ③ ⚠ **trois débruitages simultanés demandent ~9,6 Go de VRAM** :
+      **ça ne rentre PAS dans les 8 Go de la 3060 Ti**, et le garde-fou actuel
+      (`PAR_APPEL_OCTETS = 800 Mo`) ne compte que la mémoire SYSTÈME — d'où
+      `--simultane N` ajouté au banc pour sonder une carte limite (à mesurer
+      d'abord à 2).
+    - Observation à ne pas perdre : sur cette machine **la config d'AVAStack est
+      vide** (commandes par défaut : `graxpert … -correction Subtraction
+      -smoothing 0.5` au lieu des siennes `Division -smoothing 0.8`) — le rendu du
+      gradient y sera donc DIFFÉRENT s'il traite des images là-bas sans régler le
+      cadre « Traitement externe ».
   - **ÉTAT** : AUCUNE ligne de l'application n'a été modifiée (mesures seules ;
     les deux bancs sont les seuls fichiers neufs). Décision d'Alain attendue :
     ② le gradient ⚡ en lot est prêt à coder (même mécanisme que le jalon 81,

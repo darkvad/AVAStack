@@ -869,6 +869,23 @@ ce qui manquait n'était pas une correction mais une MESURE.
     même débruitage gagne +22 % à 300 px et perd −13 % à 8,32 Mpx (les
     démarrages fixes pèsent proportionnellement plus à petite définition).
     **Un banc qui conclut autre chose qu'en PLEINE RÉSOLUTION ne conclut rien.**
+  - **MÊMES COUCHES, MÊME APPLICATION, DEUX GPU — DEUX VERDICTS (mesuré le
+    30/09/2026)** : le débruitage GraXpert (8,21-8,32 Mpx, modèle 3.0.2) coûte
+    **290 s par appel sur l'iGPU de dev et 25,9 s sur une RTX 4070 (11×)** ; son
+    lot **perd 13 %** sur l'iGPU et **gagne 12,9 %** sur la 4070 (77,7 s → 67,7 s).
+    Le GRADIENT, lui, se comporte pareil partout (+58 % iGPU, +60 % 4070) : ses
+    appels sont dominés par leur démarrage. Bilan des deux machines : le lot est
+    utile sur un GPU DÉDIÉ pour les DEUX étapes, **et jamais au détriment d'un
+    pixel** (sorties identiques au bit dans les 4 configurations).
+  - **⚠ LA VRAM EST UN GARDE-FOU QUE NOUS N'AVONS PAS (mesuré le 30/09/2026)** :
+    sur la RTX 4070 (12 282 Mo), **un** débruitage GraXpert occupe **3 686 Mo** et
+    **trois simultanés 9 642 Mo** (78 % de la carte) — sur les **8 Go** d'une
+    3060 Ti, trois appels ne rentrent PAS (le pilote bascule alors en mémoire
+    système et tout s'écroule). Or `parallele_max()` ne borne que la mémoire
+    SYSTÈME (`PAR_APPEL_OCTETS = 800 Mo`, mesuré sur le GRADIENT) : il
+    autoriserait ces trois appels. Ne pas paralléliser le débruitage GraXpert
+    sans borner la VRAM. Le banc GPU sait désormais sonder une carte limite
+    (`--simultane 2`, VRAM de pic affichée).
   - Pour les machines à GPU NVIDIA (RTX 3060 Ti 8 Go sous Linux, RTX 4070 12 Go
     sous Windows), le banc dédié est `bancs/_diag_parallele_gpu_jalon82.py` :
     il lit les « inference providers » du journal de GraXpert, puis remesure
