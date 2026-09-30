@@ -545,6 +545,22 @@ Pièges :
   journal, il faut un appel instrumenté — c'est ce que fait
   `bancs/_diag_parallele_gpu_jalon82.py`, qui vérifie au passage que son appel
   rend la MÊME image que `appliquer`, au bit.
+- **`DmlExecutionProvider` EST UN MOTEUR GPU — NE JAMAIS LE LIRE COMME « PAS DE
+  GPU »** (correction apportée par Alain, 30/09/2026, après un diagnostic sur son
+  Windows à RTX 4070 : « tu dis qu'il n'y a pas CUDA, mais c'est DML qui est
+  utilisé »). Le build **Windows** de GraXpert embarque **DirectML**, qui calcule
+  sur n'importe quel GPU **DirectX 12**, NVIDIA comprise ; la machine de dev
+  (iGPU Intel) écrit la MÊME ligne. Grille de lecture d'un journal :
+  `DmlExecutionProvider` → GPU via DirectML (cas de Windows) ·
+  `CUDAExecutionProvider` → GPU via CUDA (build Linux : **À MESURER, ne pas
+  présumer**) · `CoreMLExecutionProvider` → GPU Apple · **`CPUExecutionProvider`
+  SEUL → aucun GPU** (tout est calculé par le processeur : le seul cas où le
+  débruitage s'effondre). ⚠ Le moteur NOMMÉ ne dit pas quel ADAPTATEUR travaille
+  (iGPU ou RTX) : c'est la **VRAM de la carte NVIDIA, sondée PENDANT l'appel**,
+  qui le dit — hausse de plusieurs centaines de Mo = c'est elle qui calcule,
+  VRAM immobile = l'inférence tourne sur l'autre adaptateur. Le banc GPU applique
+  cette grille et ce sondage (un message « CUDA absent » y a été écrit par erreur,
+  puis corrigé).
 - Les méthodes **classiques** (RBF / Splines / Kriging) existent mais exigent des
   **points de fond fournis** (`-preferences_file`) : il n'y a pas de mode
   automatique sans IA en ligne de commande (le mode IA est justement celui qui

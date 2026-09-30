@@ -1,10 +1,27 @@
 # -*- coding: utf-8 -*-
 """_diag_parallele_gpu_jalon82.py — LES OUTILS EXTERNES PAR COUCHE, EN LOT, SUR
-UNE MACHINE À GPU NVIDIA (CUDA).
+UNE MACHINE À GPU DÉDIÉ (NVIDIA).
+
+⚠ « GPU » N'EST PAS SYNONYME DE « CUDA » — PRÉCISION D'ALAIN (30/09/2026), après
+un diagnostic sur son Windows à RTX 4070 : « ce n'est pas CUDA qui est utilisé,
+c'est DML ». Le build **Windows** de GraXpert embarque le moteur **DirectML**
+(`DmlExecutionProvider`), qui tourne sur n'importe quel GPU DirectX 12 —
+**NVIDIA comprise** ; la machine de dev (iGPU Intel, mémoire partagée) est dans le
+même cas. Lire les « inference providers » se traduit donc ainsi :
+
+  DmlExecutionProvider        → le GPU SERT (DirectML) — le cas de Windows ;
+  CUDAExecutionProvider       → le GPU sert (CUDA) — attendu sous Linux, À MESURER ;
+  CoreMLExecutionProvider     → le GPU sert (CoreML) — macOS, à mesurer ;
+  CPUExecutionProvider SEUL   → AUCUN GPU : tout est calculé par le processeur
+                                (le débruitage est alors très lent).
+
+Le moteur ne dit PAS *quel* adaptateur travaille (iGPU ou RTX) : c'est la VRAM de
+la carte NVIDIA, sondée PENDANT l'appel, qui le dit — si elle ne bouge pas,
+l'inférence tourne ailleurs.
 
 POURQUOI CE BANC EXISTE. La mesure du 30/09/2026 (jalon 82) a été faite sur la
-machine de dev, dont le GPU est un iGPU à mémoire PARTAGÉE, utilisé via DirectML
-(GraXpert 3.1.0rc2) — sur 3 couches de 2168 × 3838 :
+machine de dev (iGPU à mémoire PARTAGÉE, DirectML) — sur 3 couches de
+2168 × 3838 :
 
   - GRADIENT GraXpert (`-cmd background-extraction`) : **10,12 s -> 4,24 s en
     lot (+58,1 %)** — ses appels passent l'essentiel de leur temps à DÉMARRER,
@@ -17,10 +34,9 @@ Le verdict du débruitage peut tenir au GPU (DirectML sur mémoire partagée), p
 au principe du parallélisme : ce banc rejoue donc EXACTEMENT les mêmes mesures
 sur une machine à GPU DÉDIÉ et répond à trois questions, dans cet ordre :
 
-  [1] GraXpert utilise-t-il VRAIMENT le GPU ? Son journal nomme les
-      « inference providers » (`['CUDAExecutionProvider', 'CPUExecutionProvider']`
-      ou autre chose) — c'est la première chose à savoir : sans CUDA, tout le
-      reste mesure du calcul CPU ;
+  [1] GraXpert travaille-t-il VRAIMENT sur un GPU ? → le moteur d'inférence lu
+      dans son journal ([1] ci-dessus) ET la VRAM de la carte NVIDIA sondée
+      pendant l'appel : sans moteur GPU, tout le reste mesure du calcul CPU ;
   [2] le lot fait-il gagner du temps sur un GPU DÉDIÉ (gradient ET débruitage) ?
   [3] combien de VRAM et de RAM système consomment 1 puis 3 appels simultanés ?
       (`nvidia-smi` est interrogé pendant les appels : 8 Go de la 3060 Ti
@@ -49,8 +65,8 @@ Usage :
   --delai S : délai par appel (défaut 1200 s ; c'est aussi le garde-fou en cas de
             boîte de dialogue modale d'un GraXpert en échec).
 
-⚠ Sur une machine SANS CUDA, le débruitage peut être BEAUCOUP plus lent qu'avec
-un GPU : commencer par « diagnostic » (vignette) avant « tout ».
+⚠ SANS moteur GPU (`CPUExecutionProvider` seul), le débruitage peut être BEAUCOUP
+plus lent qu'avec un GPU : commencer par « diagnostic » (vignette) avant « tout ».
 
 ⚠ LE GAIN DÉPEND DE LA TAILLE (mesuré le 30/09/2026 sur la machine de dev) : à
 petite définition le lot GAGNE — les démarrages fixes y pèsent lourd et se
@@ -177,6 +193,45 @@ def info_gpu():
         return None
     champs = [c.strip() for c in ligne[0].split(",")]
     return champs if len(champs) >= 3 else None
+
+
+def etat_vram():
+    """(Mo utilisés, Mo totaux) de la première carte NVIDIA, ou None.
+
+    C'est ce qui dit si c'est BIEN la carte NVIDIA qui travaille : un moteur
+    DirectML peut aussi s'exécuter sur l'iGPU (adaptateur DX12 par défaut)."""
+    ligne = _nvidia_smi("--query-gpu=memory.used,memory.total",
+                        "--format=csv,noheader,nounits")
+    if not ligne:
+        return None
+    try:
+        utilise, total = (float(x) for x in ligne[0].split(",")[:2])
+        return utilise, total
+    except Exception:
+        return None
+
+
+# Moteurs d'inférence qui VEULENT DIRE « GPU » — et leur nom lisible. ⚠
+# `dml` (DirectML) en fait partie : c'est le moteur du build Windows, il tourne
+# sur les GPU DirectX 12, NVIDIA comprise (précision d'Alain, 30/09/2026).
+MOTEURS_GPU = {
+    "cudaexecutionprovider": "CUDA (NVIDIA)",
+    "dmlexecutionprovider": "DirectML (GPU DirectX 12 — NVIDIA comprise)",
+    "tensorrtexecutionprovider": "TensorRT (NVIDIA)",
+    "rocmexecutionprovider": "ROCm (AMD)",
+    "coremlexecutionprovider": "CoreML (Apple)",
+    "openvinoexecutionprovider": "OpenVINO",
+}
+
+
+def moteur_gpu(infos):
+    """(moteurs GPU employés, le CPU est-il SEUL ?) d'après les providers lus.
+
+    ⚠ `DmlExecutionProvider` est un moteur GPU, PAS une absence de GPU : c'est le
+    DirectML du build Windows (précision d'Alain du 30/09/2026)."""
+    txt = (infos.get("providers_utilises") or "").lower()
+    trouves = [nom for cle, nom in MOTEURS_GPU.items() if cle in txt]
+    return trouves, (not trouves and "cpuexecutionprovider" in txt)
 
 
 class Sonde:
@@ -418,21 +473,28 @@ def etape(nom, imgs, cmd, lot):
 
 
 def phase_diagnostic(cmd_gx, cmd_dn, imgs, faire_gx, faire_dn):
-    """Les « inference providers », sur une VIGNETTE : quelques secondes, et
-    c'est la réponse à « le GPU sert-il VRAIMENT ? » (les providers ne dépendent
-    pas de la taille de l'image ; les durées, si)."""
-    dit("\n[2] DIAGNOSTIC — quel moteur d'inférence GraXpert utilise-t-il ?")
+    """Le moteur d'inférence ET l'adaptateur qui travaille, sur une VIGNETTE :
+    quelques secondes, et c'est la réponse à « le GPU sert-il VRAIMENT ? » (le
+    moteur ne dépend pas de la taille de l'image ; les durées, si).
+
+    ⚠ Le moteur NOMMÉ ne dit pas quel adaptateur travaille : DirectML peut aussi
+    s'exécuter sur l'iGPU. On sonde donc la VRAM de la carte NVIDIA PENDANT
+    l'appel (0,5 s) — si elle ne bouge pas, c'est l'autre adaptateur qui calcule."""
+    dit("\n[2] DIAGNOSTIC — quel moteur d'inférence GraXpert utilise-t-il, et sur "
+        "quel GPU ?")
     cote = min(VIGNETTE, imgs["R"].shape[0], imgs["R"].shape[1])
-    dit("    (vignette %d px ; la ligne « providers UTILISÉS » est la réponse)"
-        % cote)
+    dit("    (vignette %d px ; « providers UTILISÉS » nomme le moteur, la VRAM "
+        "NVIDIA dit qui travaille)" % cote)
     vign = {r: np.ascontiguousarray(imgs[r][:cote, :cote])
             for r in ROLES}
-    cuda = []
+    gpu_vus, cpu_seul = [], []
     for libelle, cmd, actif in (("GRADIENT", cmd_gx, faire_gx),
                                 ("DÉBRUITAGE", cmd_dn, faire_dn)):
         if not actif or not cmd:
             continue
-        out, err, lignes, duree = appel_journalise(vign["R"], cmd, DELAI)
+        vram0 = etat_vram()
+        with Sonde(periode=0.5) as sonde:
+            out, err, lignes, duree = appel_journalise(vign["R"], cmd, DELAI)
         dit("\n    · %s — appel de %.2f s" % (libelle, duree))
         dit("      commande : %s" % cmd[:110])
         infos = lire_journal(lignes)
@@ -443,15 +505,41 @@ def phase_diagnostic(cmd_gx, cmd_dn, imgs, faire_gx, faire_dn):
                           ("providers_utilises", "providers UTILISÉS")):
             if cle in infos:
                 dit("      %-21s : %s" % (etiq, infos[cle][:150]))
-        if "providers_utilises" not in infos:
+        moteurs, seul_cpu = moteur_gpu(infos)
+        if moteurs:
+            gpu_vus.extend(moteurs)
+            dit("      → moteur GPU : %s" % ", ".join(moteurs))
+        elif seul_cpu:
+            cpu_seul.append(libelle)
+            dit("      → ⚠ AUCUN moteur GPU : ce calcul tourne sur le "
+                "PROCESSEUR (le débruitage sera très lent)")
+        else:
             dit("      ⚠ le journal ne nomme pas les providers — dernières "
                 "lignes :")
             for l in lignes[-6:]:
                 dit("      | %s" % l[:150])
-        elif "CUDA" in (infos.get("providers_utilises") or ""):
-            cuda.append(libelle)
+        # QUELLE carte a travaillé ? Le moteur ne le dit pas : la VRAM, si.
+        v = sonde.vram_max or 0.0
+        if vram0 is None and not sonde.vram_tot:
+            dit("      VRAM NVIDIA           : non mesurée (nvidia-smi "
+                "indisponible)")
+        else:
+            repos = vram0[0] if vram0 else 0.0
+            total = (vram0[1] if vram0 else sonde.vram_tot) or 0.0
+            hausse = v - repos
+            dit("      VRAM NVIDIA           : %.0f Mo au repos → %.0f Mo de pic "
+                "(%.0f Mo de hausse%s)"
+                % (repos, v, hausse,
+                   " sur %.0f Mo" % total if total else ""))
+            if hausse >= 200.0:
+                dit("      → c'est BIEN la carte NVIDIA qui a calculé "
+                    "(+%.0f Mo occupés pendant l'appel)" % hausse)
+            else:
+                dit("      → la carte NVIDIA n'a PAS bougé : l'inférence tourne "
+                    "sur un AUTRE adaptateur (probablement l'iGPU)")
         if err or out is None:
-            dit("      ⚠ l'appel a échoué : %s" % (err or "aucune image")[:150])
+            dit("      ⚠ l'appel a échoué : %s"
+                % (err or "aucune image")[:150])
             continue
         # L'appel instrumenté doit rendre EXACTEMENT l'image de l'application.
         ref, err_ref = gx.appliquer(vign["R"], cmd, DELAI)
@@ -463,18 +551,21 @@ def phase_diagnostic(cmd_gx, cmd_dn, imgs, faire_gx, faire_dn):
                               if np.array_equal(out, ref)
                               else "⚠ ÉCART entre l'appel instrumenté et "
                                    "l'application — ne pas conclure"))
-    if cuda:
-        dit("\n    ✔ CUDA est utilisé pour : %s" % ", ".join(cuda))
-    else:
-        dit("\n    ⚠ CUDA n'apparaît dans AUCUN journal : l'inférence ne passe "
-            "pas par le GPU NVIDIA")
-        dit("      (Vérifier le pilote NVIDIA, `nvidia-smi`, et une éventuelle "
-            "mise à jour de GraXpert : sa build doit embarquer CUDA.)")
+    dit("")
+    if gpu_vus:
+        dit("    ✔ calcul PAR GPU : %s" % ", ".join(sorted(set(gpu_vus))))
+        dit("      (DirectML = moteur du build Windows : il calcule sur un GPU "
+            "DirectX 12, NVIDIA comprise — ce n'est PAS une absence de CUDA.)")
+    if cpu_seul:
+        dit("    ⚠ calcul sur le PROCESSEUR seul pour : %s"
+            % ", ".join(cpu_seul))
+        dit("      (vérifier la mise à jour du pilote graphique — GraXpert "
+            "doit disposer de son moteur GPU.)")
 
 
 def main():
     dit("=" * 78)
-    dit("PARALLÉLISME DES OUTILS EXTERNES SUR GPU NVIDIA (mesure, jalon 82)")
+    dit("PARALLÉLISME DES OUTILS EXTERNES SUR MACHINE À GPU DÉDIÉ (jalon 82)")
     dit("=" * 78)
     faire_diag = ETAPE in ("tout", "gradient", "debruitage", "diagnostic")
     diag_gx = ETAPE in ("tout", "gradient", "diagnostic")
@@ -490,7 +581,10 @@ def main():
         % (cv2.__version__, cv2.getNumThreads()))
     gpu = info_gpu()
     dit("  GPU NVIDIA      : %s" % ("%s · pilote %s · %s Mo de VRAM" % tuple(gpu)
-                                    if gpu else "AUCUN vu par nvidia-smi"))
+                                    if gpu else "aucun vu par nvidia-smi "
+                                    "(sans conséquence en soi : DirectML peut "
+                                    "travailler sur un autre adaptateur — la "
+                                    "VRAM sondée le dira)"))
     libre = memoire_libre()
     dit("  mémoire libre   : %s" % ("%.1f Go" % (libre / 2**30) if libre
                                     else "indéterminée"))

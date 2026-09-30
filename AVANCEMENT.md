@@ -105,6 +105,19 @@ dans le changelog du source et l'historique git.)
     confirmer là-bas : le gain du lot **dépend de la taille** (+22 % à 300 px,
     **−13 % à 8,32 Mpx** pour le débruitage) — et l'appel instrumenté du banc
     rend la MÊME image que l'application, au bit (vérifié à l'exécution).
+  - **④ PREMIER RÉSULTAT RENVOYÉ PAR ALAIN + CORRECTION DU BANC (30/09/2026)** :
+    sur son **Windows à RTX 4070**, le diagnostic donne
+    `Used inference providers : ['DmlExecutionProvider', 'CPUExecutionProvider']`
+    → **le GPU SERT, mais via DirectML — pas via CUDA** : le build Windows de
+    GraXpert embarque DirectML, qui calcule sur tout GPU DirectX 12, **NVIDIA
+    comprise**. Le banc annonçait à tort « CUDA absent → l'inférence ne passe pas
+    par le GPU NVIDIA » : **message corrigé** (grille de lecture
+    DML/CUDA/CoreML/CPU, et « CPUExecutionProvider SEUL » = le seul cas sans GPU),
+    et il **sonde désormais la VRAM de la carte NVIDIA pendant l'appel** — c'est
+    elle qui dira si la 4070 (ou l'iGPU) fait le travail, le moteur nommé ne le
+    disant pas. Leçon remontée dans CLAUDE.md. **Reste à mesurer** : la même chose
+    sur le **Linux/3060 Ti** (CUDA attendu là-bas, mais rien n'est présumé) et les
+    mesures série/lot sur les deux machines.
   - **ÉTAT** : AUCUNE ligne de l'application n'a été modifiée (mesures seules ;
     les deux bancs sont les seuls fichiers neufs). Décision d'Alain attendue :
     ② le gradient ⚡ en lot est prêt à coder (même mécanisme que le jalon 81,
