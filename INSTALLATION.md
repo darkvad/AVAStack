@@ -1,4 +1,4 @@
-# AVAStack — installation rapide (v2.47.0)
+# AVAStack — installation rapide (v2.48.0)
 
 AVAStack est un **live stacking** : il empile tes brutes **en temps réel**
 pendant l'acquisition (calibration dark/flat, alignement, rejet kappa-sigma,
@@ -8,7 +8,7 @@ passage aux **outils externes** (GraXpert, BlurXTerminator) sur un instantané.
 Il tourne sur **Windows, Linux et macOS**, et s'installe **dans ton profil** :
 aucun droit administrateur n'est nécessaire.
 
-Ce document accompagne la **release v2.47.0** (les trois installateurs y sont
+Ce document accompagne la **release v2.48.0** (les trois installateurs y sont
 attachés). Il ne remplace pas le `LISEZMOI.txt` que l'installateur copie à côté
 de l'application — celui-ci détaille **tous les réglages** de l'interface.
 
@@ -18,9 +18,9 @@ de l'application — celui-ci détaille **tous les réglages** de l'interface.
 
 | Plateforme | Fichier | Taille | SHA-256 |
 | --- | --- | --- | --- |
-| Windows (10/11, 64 bits) | `avastack-setup-2.47.0.exe` | 11,5 Mo | `2386C44EE38F69D13E9C956FB9D73BA5408190BB2CECB6F0AA3C0D0653A92E61` |
-| Linux (x86_64) | `avastack-setup-2.47.0-linux.tar.gz` | 592 Kio | `810706F34B9E1CD31A3DCAE9B5EB33FF215E7508E94CDAB94F2B4ECFA41AFC6D` |
-| macOS (11 et plus) | `avastack-setup-2.47.0-macos.tar.gz` | 589 Kio | `DBD60A6CBFBE5C9C29AB494E6624C36DE40EBE3CF7100967492BF4B2B61E29EA` |
+| Windows (10/11, 64 bits) | `avastack-setup-2.48.0.exe` | 11,5 Mo | `30960641917085A7B43C96506F2043078F8D284D8A83A523F8AF931335D9F895` |
+| Linux (x86_64) | `avastack-setup-2.48.0-linux.tar.gz` | 605 Kio | `20ECD02D30EACFFF1352AEA0EFA4891B3921330372E856E3687ABFF032211777` |
+| macOS (11 et plus) | `avastack-setup-2.48.0-macos.tar.gz` | 602 Kio | `1AC09C224B63A4C6A1467FF8527AD902A71E41E7CA66FD88FB5917E0FC5A4B7D` |
 | Documentation | `INSTALLATION.md` | ce fichier | — |
 
 Les artéfacts portent leur **numéro de version** : deux versions ne s'écrasent
@@ -32,7 +32,7 @@ jamais, et un installateur plus ancien peut rester à côté comme repli.
 
 ---
 
-## 2. Windows — `avastack-setup-2.47.0.exe`
+## 2. Windows — `avastack-setup-2.48.0.exe`
 
 1. **Lancer l'exécutable.** Windows peut afficher un avertissement
    SmartScreen (l'exécutable n'est pas signé) : « Informations
@@ -60,11 +60,11 @@ L'application fonctionne **sans aucune caméra** (mode « Dossier surveillé »,
 
 ---
 
-## 3. Linux — `avastack-setup-2.47.0-linux.tar.gz`
+## 3. Linux — `avastack-setup-2.48.0-linux.tar.gz`
 
 ```bash
-tar xzf avastack-setup-2.47.0-linux.tar.gz
-cd avastack-2.47.0-linux
+tar xzf avastack-setup-2.48.0-linux.tar.gz
+cd avastack-2.48.0-linux
 bash installer/install_avastack.sh
 ```
 
@@ -103,9 +103,9 @@ n'est visible **qu'en root**.
 **macOS** : l'installateur macOS existe depuis le **29/09/2026** — voir le § 3 bis.
 
 > **État de cet installateur (à jour le 30/09/2026)** : le paquet Linux est
-> construit, son contenu est vérifié (62 fichiers, aucun `.so`/`.dll`, script
+> construit, son contenu est vérifié (63 fichiers, aucun `.so`/`.dll`, script
 > `install_avastack.sh` exécutable, fins de ligne UNIX, racine unique
-> `avastack-2.47.0-linux/`) **et il a été exécuté plusieurs fois EN RÉEL sur une
+> `avastack-2.48.0-linux/`) **et il a été exécuté plusieurs fois EN RÉEL sur une
 > machine Ubuntu 26.04 LTS** : installation, prérequis système, création du venv,
 > dépendances et lancement de l'application y sont validés. Restent à faire : le
 > test sur une machine **vierge** (sans Python ni paquets prérequis) et le
@@ -114,11 +114,11 @@ n'est visible **qu'en root**.
 
 ---
 
-## 3 bis. macOS — `avastack-setup-2.47.0-macos.tar.gz`
+## 3 bis. macOS — `avastack-setup-2.48.0-macos.tar.gz`
 
 ```bash
-tar xzf avastack-setup-2.47.0-macos.tar.gz
-cd avastack-2.47.0-macos
+tar xzf avastack-setup-2.48.0-macos.tar.gz
+cd avastack-2.48.0-macos
 bash installer/install_avastack.sh
 ```
 
@@ -302,7 +302,7 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
 
 ---
 
-## 8. Limites connues de la v2.47.0 (dites franchement)
+## 8. Limites connues de la v2.48.0 (dites franchement)
 
 - **Installateur Linux : TESTÉ EN RÉEL** — exécuté **plusieurs fois** sur une
   machine **Ubuntu 26.04 LTS** (installation, prérequis, venv, dépendances,
@@ -316,7 +316,10 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
   vérifié au banc et garde-fous essayés en réel (refus hors macOS, `--aide`).
   Les défauts d'INTERACTION signalés ensuite (boutons « qui ne répondent pas » :
   boîtes de dialogue non attachées à la fenêtre) sont corrigés depuis la
-  **v2.47.0**. La signature/notarisation Apple n'est pas faite (bundle local non
+  **v2.47.0**. Le paquet **v2.48.0** reprend exactement la même chaîne
+  d'installation (seul le code de l'application change) et attend son **essai
+  réel chez le testeur** — c'est la première chose à vérifier quand il l'aura
+  installé. La signature/notarisation Apple n'est pas faite (bundle local non
   signé).
 - **Aucune caméra** n'est embarquée (SDK constructeurs, licences).
 - Les **données Gaia** ne sont pas embarquées : ≈ 1,1 Go (catalogue astro),
@@ -330,7 +333,7 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
 
 ## 9. Repli si régression
 
-Le repli de référence est la **v2.46.0**. Les installateurs des versions
+Le repli de référence est la **v2.47.0**. Les installateurs des versions
 antérieures restent à côté des nouveaux, dans `installer/windows/output/`,
 `installer/linux/output/` et `installer/macos/output/` : aucun nouveau
 installateur n'écrase une version précédente.
