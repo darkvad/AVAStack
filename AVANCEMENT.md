@@ -10,7 +10,8 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **DERNIER JALON (30/09/2026, jalons 85 + 86, v2.48.0 — TERMINÉ, BANCS VERTS) —
+- **DERNIER JALON (30/09/2026, jalons 85 + 86, v2.48.0 — TERMINÉ, BANCS VERTS,
+  PUBLIÉE) —
   PRÉSERVATION DE LA LUMINANCE DU RETRAIT DU VERT + ORDRE DE LA CHAÎNE COULEUR.**
   Déclencheur : ton constat sur ton empilement SHO (NGC 2237) — « vert par
   défaut, manque de doré » ; exigences : la **variante fidèle Siril**
@@ -194,10 +195,23 @@ dans le changelog du source et l'historique git.)
   l'ordre réel des traitements (… → Fond et grain → Netteté live → Affichage →
   Couleur de l'objet → État des calculs → Traitement externe → Sortie) ; le boost
   du rouge (SII) masqué à l'objet est disponible (1,00 → 4,00, défaut 3,00).
-  **RESTE À FAIRE POUR PUBLIER v2.48.0** (non demandé dans cette passe) :
-  ① reconstruire les **trois installeurs** (les paquets publiés sont encore ceux
-  de la v2.47.0) ; ② `INSTALLATION.md` en v2.48.0 (tailles + SHA-256) ; ③ tag
-  annoté `v2.48.0` + release GitHub avec les paquets et les notes relues.
+  **PAQUETS ET RELEASE v2.48.0 : PUBLIÉS (30/09/2026).** Les trois installeurs
+  ont été reconstruits sur le code des jalons 85 + 86, puis vérifiés en lisant
+  les archives (63 fichiers chacun, aucun `.so`/`.dll`/`.dylib`/`.rules`,
+  `install_avastack.sh` en 0755, fins de ligne UNIX, racine unique) : Windows
+  `installer/windows/output/avastack-setup-2.48.0.exe` (**11 501 171 o**, SHA-256
+  `30960641917085A7B43C96506F2043078F8D284D8A83A523F8AF931335D9F895`), Linux
+  `installer/linux/output/avastack-setup-2.48.0-linux.tar.gz` (619 127 o,
+  `20ECD02D30EACFFF1352AEA0EFA4891B3921330372E856E3687ABFF032211777`), macOS
+  `installer/macos/output/avastack-setup-2.48.0-macos.tar.gz` (616 744 o,
+  `1AC09C224B63A4C6A1467FF8527AD902A71E41E7CA66FD88FB5917E0FC5A4B7D`).
+  `INSTALLATION.md` est passé en v2.48.0 (titre, tableau des trois fichiers,
+  noms cités dans les sections Windows/Linux/macOS, section 8 et repli porté à
+  la v2.47.0). **Tag annoté `v2.48.0` sur `63ca10b`** (code + doc) et **release
+  GitHub v2.48.0** publiée avec les trois paquets + `INSTALLATION.md` (notes =
+  résumé « ce qui change » + la doc d'installation complète, relues par l'API :
+  35 tirets longs, 268 « é », ZÉRO caractère de remplacement) :
+  https://github.com/darkvad/AVAStack/releases/tag/v2.48.0
   **REPLI : v2.47.0** (publiée : tag annoté sur `5ecc0a1`, release GitHub
   https://github.com/darkvad/AVAStack/releases/tag/v2.47.0) — rien n'est perdu à
   revenir en arrière.
@@ -936,31 +950,28 @@ dans le changelog du source et l'historique git.)
 ## En attente / prochaine session
 
 - **ÉTAT COMPACT POUR LA PROCHAINE SESSION (30/09/2026, clôture — jalons 85/86,
-  v2.48.0)** : **la passe de code est terminée** (jalons 85 + 86 livrés, bancs
-  adaptés et 30 verts, changelog écrit, version v2.48.0). Rien en attente de
-  l'agent côté code ; ce qui ATTEND est la PUBLICATION et les essais :
-  ① **PUBLIER v2.48.0** (non demandé dans cette passe) : reconstruire les trois
-  installeurs, mettre `INSTALLATION.md` à jour (tailles + SHA-256), tag annoté
-  `v2.48.0` + release GitHub. Les paquets publiés sont encore ceux de la v2.47.0.
-  ② **TEST RÉEL D'ALAIN sur v2.48.0** : son rendu SHO avec **SON Linear Fit**
-  (case « Recalage colorimétrique » cochée, mode « Gain + offset ») et la chaîne
-  couleur après étirement ; le boost du rouge reste DÉCOCHÉ (il l'a refusé : le
-  doré exagéré effaçait le bleu). Ses curseurs SCNR restent les siens : à SCNR
-  0,55 il reste 61 % de vert sur l'objet, à 0,75 seulement 5 %.
-  ③ **TEST RÉEL macOS (le plus important pour le testeur)** : faire installer le
-  paquet macOS et vérifier que « 📂 Dossier » (dossier surveillé) et « Charger un
-  flat… » répondent **au PREMIER clic**. Si ça résiste : **son `journal.txt`**
-  décide — la version de Tcl/Tk y est notée, et toute ligne « gel de l'interface »
-  donne la **pile** du fil retenu (donc la cause, sans supposition).
-  ④ **TEST RÉEL de la chaîne ⚡ par couche** (v2.46.0, toujours en attente) : un
+  v2.48.0 PUBLIÉE)** : **tout est livré, publié et poussé** — trois paquets
+  reconstruits, `INSTALLATION.md` en v2.48.0, tag annoté `v2.48.0` sur `63ca10b`,
+  release GitHub publiée, working tree propre. **Rien en attente de l'agent** :
+  ce qui reste attend des ESSAIS.
+  ① **ESSAI RÉEL D'ALAIN (le plus important)** : son rendu SHO avec **SON Linear
+  Fit** (case « Recalage colorimétrique » cochée, mode « Gain + offset ») et la
+  chaîne couleur après étirement ; le boost du rouge reste DÉCOCHÉ (il l'a
+  refusé : le doré exagéré effaçait le bleu). Ses curseurs SCNR restent les siens :
+  à SCNR 0,55 il reste 61 % de vert sur l'objet, à 0,75 seulement 5 %.
+  ② **ESSAI RÉEL macOS (testeur)** : paquet `avastack-setup-2.48.0-macos.tar.gz` —
+  « 📂 Dossier » (dossier surveillé) et « Charger un flat… » doivent répondre au
+  PREMIER clic. Si ça résiste : **son `journal.txt`** décide (version de Tcl/Tk
+  notée, et la **pile** du fil retenu pour toute ligne « gel de l'interface »).
+  ③ **ESSAI RÉEL de la chaîne ⚡ par couche** (v2.46.0, toujours en attente) : un
   ⚡ traitement par couche en composition 3 rôles — la ligne d'état doit annoncer
   « 3 couche(s) en parallèle… » à l'étape gradient, et le résultat être celui
   d'avant.
-  ⑤ **Piste à MESURER avant de coder** : `_on_source_choisie` boucle
+  ④ **Piste à MESURER avant de coder** : `_on_source_choisie` boucle
   `root.update()` + `time.sleep(0.05)` jusqu'à 8 s pour attendre la fin d'une
   déconnexion caméra — piège connu sur macOS (boucle `update()` réentrante). Le
   guet de gel la désignera par sa pile si elle gêne.
-  ⑥ Les attentes « **déléguées aux utilisateurs** » des blocs ci-dessous restent
+  ⑤ Les attentes « **déléguées aux utilisateurs** » des blocs ci-dessous restent
   valables (boutons de données sans Siril : « ⬇ Gaia », « ⬇ Spectres (champ) »,
   « ⬇ Base SPCC »).
   **Prochaine passe de code : version `v2.49.0`** (règle : on ne réécrit jamais
