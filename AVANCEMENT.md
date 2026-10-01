@@ -51,6 +51,33 @@ dans le changelog du source et l'historique git.)
   affichée proprement** (`ModuleNotFoundError: No module named 'cv2'`), code 0 ;
   banc **TOUT AU VERT** (40 vérifications) ; `-Prefix <racine du paquet>` refusé
   (code 2).
+  **TEST RÉEL (Alain, machine RTX 4070, Windows 11, 02/10/2026) — PARTIELLEMENT
+  SIGNIFICATIF, ET IL RÉVISE LE DIAGNOSTIC.** Alain a DÉSACTIVÉ puis RÉACTIVÉ
+  Smart App Control, redémarré, et lancé l'installeur **`.exe` v2.48.1 SANS
+  PROBLÈME** ; il a aussi lancé l'installateur du **paquet ZIP sans problème**,
+  avec le message attendu annonçant le **Python du Microsoft Store détecté et
+  IGNORÉ**. → **CONSÉQUENCE : l'hypothèse « SAC bloque tout exécutable non signé »
+  est AFFAIBLIE** (SAC activé laisse passer notre installeur Inno).
+  **MAIS** Alain le dit lui-même : « l'installateur n'avait pas grand-chose à
+  faire » car l'application était déjà installée — les DEUX pas où les pannes
+  sont nées n'ont donc PAS été exercés : ① le **téléchargement puis l'exécution
+  du Python de python.org DEPUIS `%TEMP%`** (c'est le pas exact de l'Erreur 4551 :
+  Inno ne le fait que s'il ne trouve AUCUN Python 3.10+ ; sur cette machine
+  `C:\Python314` existe) ; ② la **création d'un venv NEUF** (téléchargement
+  complet des dépendances — là où naît « Code retour : 1 »).
+  **À INSTRUIRE AVANT TOUTE CONCLUSION** : ① si SAC était en **ÉVALUATION**
+  (`VerifiedAndReputablePolicyState = 2`), il n'applique RIEN par construction —
+  le test ne prouverait alors rien ; ② l'ami a peut-être un **AUTRE** mécanisme de
+  contrôle d'application (`C:\Windows\System32\CodeIntegrity\CiPolicies\Active`
+  non vide = stratégie WDAC déployée ; antivirus tiers avec mode durci ; S mode) ;
+  ③ un téléchargement **tronqué** produirait un fichier sans signature valide —
+  bloqué par n'importe quel contrôle d'application.
+  **TEST SIGNIFICATIF À FAIRE ICI (5 min, ne touche à rien d'existant)** :
+  `installer\install_avastack.bat -Prefix <dossier neuf> -SansRaccourci` → venv
+  NEUF + téléchargement complet des dépendances + test de démarrage réel ; puis
+  supprimer le dossier. Le pas « aucun Python trouvé → téléchargement python.org »
+  reste, lui, IMPOSSIBLE à exercer ici (il faudrait masquer `C:\Python314`) : il
+  n'est testable que sur une machine SANS Python de python.org — celle de l'ami.
   **TROIS PANNES MESURÉES ET CORRIGÉES pendant l'essai** (leçons remontées dans
   CLAUDE.md) : `$MyInvocation.MyCommand.Path` est VIDE dans une fonction ;
   `exit (Main)` CAPTURE la sortie de pipeline (l'aide ne s'affichait plus) ;
