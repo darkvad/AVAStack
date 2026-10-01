@@ -70,6 +70,7 @@ dans le changelog du source et l'historique git.)
   remplacement) pour que la page de la release ne liste pas QUATRE fichiers
   quand elle en contient CINQ.
   **REPLI : v2.48.0.**
+  **COMMIT** : `5c79b64` (poussé sur `origin/master` le 02/10/2026, arbre propre).
   **VALIDATIONS D'ALAIN (02/10/2026)** : ① le **rendu SHO avec SON Linear Fit
   « gain + offset » est OK** ; ② la **chaîne externe est bien ensuite soumise aux
   réglages de couleur du live en vue « traitée »** — le test réel du jalon 87 est
