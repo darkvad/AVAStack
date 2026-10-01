@@ -111,6 +111,14 @@ def fichiers_a_embarquer(racine):
     for nom in FICHIERS_RACINE:
         ajouter(os.path.join(racine, nom), nom)
 
+    # Ressources : l'icone de l'application (assets/ a la racine du depot).
+    dossier_assets = os.path.join(racine, "assets")
+    if os.path.isdir(dossier_assets):
+        for nom in sorted(os.listdir(dossier_assets)):
+            chemin = os.path.join(dossier_assets, nom)
+            if os.path.isfile(chemin):
+                ajouter(chemin, "assets/" + nom)
+
     # Application : tous les .py du package, __pycache__ exclu.
     for dossier, sous, noms in os.walk(os.path.join(racine, "avastack")):
         sous[:] = [s for s in sous if s != "__pycache__"]

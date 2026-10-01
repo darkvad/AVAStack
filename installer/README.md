@@ -259,10 +259,15 @@ défauts (`AVAStack` / `CN=AVAStack Test`) suffisent ; **pour le Store**, ils
 doivent être EXACTEMENT ceux de Partner Center (`--nom`, `--publisher`), et le
 `Publisher` doit être le **sujet** du certificat signataire.
 
-Les **vignettes sont des placeholders** (motif d'essai) : à remplacer par de
-vraies images avant la soumission. L'application est déclarée **pleine
-confiance** (`Windows.FullTrustApplication` + `rescap:runFullTrust`) → son
-`%APPDATA%\AVAStack` reste RÉEL (config + journal non virtualisés).
+Les **vignettes** (tuiles) sont générées depuis la **vraie icône**
+(`assets/avastack.png`, 512×512) — recadrage « cover » + LANCZOS — aux tailles
+du manifeste (50, 44, 71, 150, 310 et 310×150) ; repli géométrique stdlib si
+PIL ou l'icône manque. L'**icône de l'application** (`assets/avastack.ico` +
+`assets/avastack.png`) est posée par `avastack/ressources.py` (barre de titres
+et barre des tâches) et embarquée par les **quatre** canaux. L'application est
+déclarée **pleine confiance** (`Windows.FullTrustApplication` +
+`rescap:runFullTrust`) → son `%APPDATA%\AVAStack` reste RÉEL (config + journal
+non virtualisés).
 
 ## Structure
 

@@ -44,13 +44,22 @@ DESCRIPTION_DEFAUT = ("Live stacking : empilement des brutes en temps réel "
                       "pendant l'acquisition.")
 EXE_DEFAUT = "AVAStack.exe"
 
-# --- Vignettes (placeholder d'essai ; à REMPLACER pour le Store) -------------
-FOND = (0x1B, 0x2A, 0x4A)       # bleu nuit
-BORD = (0x5C, 0x8A, 0xC8)       # bleu clair
-MARQUE = (0xFF, 0xFF, 0xFF)     # blanc
-VIGNETTES = (("StoreLogo.png", 50),
-             ("Square44x44Logo.png", 44),
-             ("Square150x150Logo.png", 150))
+# --- Vignettes MSIX (tuiles) : SOURCE = l'icône de l'application -------------
+# `assets/avastack.png` (512x512) est recadré « cover » puis redimensionné en
+# LANCZOS. Les trois premières tailles sont EXIGÉES par le manifeste ; les
+# suivantes habillent la fiche Store. PIL (pillow) est ici un outil de BUILD —
+# il fait déjà partie des dépendances du projet. Repli SANS PIL/icône : motif
+# géométrique déterministe (pour que le packer reste utilisable partout).
+VIGNETTES = (("StoreLogo.png", 50, 50),
+             ("Square44x44Logo.png", 44, 44),
+             ("Square71x71Logo.png", 71, 71),
+             ("Square150x150Logo.png", 150, 150),
+             ("Square310x310Logo.png", 310, 310),
+             ("Wide310x150Logo.png", 310, 150))
+FICHIER_SOURCE = "avastack.png"
+FOND = (0x1B, 0x2A, 0x4A)       # bleu nuit  (repli)
+BORD = (0x5C, 0x8A, 0xC8)       # bleu clair (repli)
+MARQUE = (0xFF, 0xFF, 0xFF)     # blanc      (repli)
 
 
 # ============================================================ outils externes
@@ -117,38 +126,70 @@ def _bloc_png(typ, donnees):
             + struct.pack(">I", zlib.crc32(typ + donnees) & 0xFFFFFFFF))
 
 
-def _png_carre(cote):
-    """PNG RGBA carré, code SANS dépendance (zlib + struct de la stdlib).
+def _png_rect(largeur, hauteur):
+    """PNG RGBA (l×h), code SANS dépendance (zlib + struct de la stdlib).
 
-    Motif d'essai : bordure claire + losange central (à remplacer au Store)."""
-    centre = (cote - 1) / 2.0
-    rayon = max(2.0, cote * 0.18)
-    marge = max(1.0, cote * 0.06)
+    REPLI utilisé seulement sans PIL ou sans icône source : bordure claire +
+    losange central — motif déterministe, PAS une vraie icône."""
+    cx, cy = (largeur - 1) / 2.0, (hauteur - 1) / 2.0
+    mini = min(largeur, hauteur)
+    rayon = max(2.0, mini * 0.18)
+    marge = max(1.0, mini * 0.06)
     lignes = []
-    for y in range(cote):
+    for y in range(hauteur):
         ligne = bytearray()
-        for x in range(cote):
-            if x < marge or y < marge or x >= cote - marge or y >= cote - marge:
+        for x in range(largeur):
+            if (x < marge or y < marge
+                    or x >= largeur - marge or y >= hauteur - marge):
                 couleur = BORD
             else:
                 couleur = FOND
-            if abs(x - centre) + abs(y - centre) <= rayon:
+            if abs(x - cx) + abs(y - cy) <= rayon:
                 couleur = MARQUE
             ligne += bytes((couleur[0], couleur[1], couleur[2], 255))
         lignes.append(bytes(ligne))
-    ihdr = struct.pack(">IIBBBBB", cote, cote, 8, 6, 0, 0, 0)
+    ihdr = struct.pack(">IIBBBBB", largeur, hauteur, 8, 6, 0, 0, 0)
     brut = b"".join(b"\x00" + ligne for ligne in lignes)   # filtre 0 par ligne
     return (b"\x89PNG\r\n\x1a\n" + _bloc_png(b"IHDR", ihdr)
             + _bloc_png(b"IDAT", zlib.compress(brut, 9))
             + _bloc_png(b"IEND", b""))
 
 
-def faire_vignettes(dossier):
-    """Écrit les vignettes exigées par le manifeste dans `dossier`."""
+def _vignettes_photo(source, dossier):
+    """Vignettes depuis l'icône réelle (PIL) : recadrage « cover » + LANCZOS."""
+    from PIL import Image               # outil de BUILD (pillow est une dep.)
+    image = Image.open(source).convert("RGB")
+    base_l, base_h = image.size
+    for nom, larg, haut in VIGNETTES:
+        # « cover » : on remplit la tuile sans DÉFORMER, puis on recadre au
+        # centre (on perd le moins possible de l'astre).
+        ratio = max(larg / base_l, haut / base_h)
+        neuf_l = max(larg, int(base_l * ratio + 0.5))
+        neuf_h = max(haut, int(base_h * ratio + 0.5))
+        redim = image.resize((neuf_l, neuf_h), Image.LANCZOS)
+        dx, dy = (neuf_l - larg) // 2, (neuf_h - haut) // 2
+        redim.crop((dx, dy, dx + larg, dy + haut)).save(
+            os.path.join(dossier, nom), "PNG")
+
+
+def faire_vignettes(dossier, source=None):
+    """Écrit les vignettes du manifeste dans `dossier`.
+
+    → (information, chemin de la source) : « photo » quand l'icône RÉELLE a
+    servi, « repli » sinon (PIL ou icône absents)."""
     os.makedirs(dossier, exist_ok=True)
-    for nom, cote in VIGNETTES:
+    if source is None:
+        source = os.path.join(racine_depot(__file__), "assets", FICHIER_SOURCE)
+    if os.path.isfile(source):
+        try:
+            _vignettes_photo(source, dossier)
+            return "photo", source
+        except Exception:
+            pass                            # PIL absent/cassé : repli ci-dessous
+    for nom, larg, haut in VIGNETTES:
         with open(os.path.join(dossier, nom), "wb") as f:
-            f.write(_png_carre(cote))
+            f.write(_png_rect(larg, haut))
+    return "repli", ""
 
 
 # ============================================================ staging + pack
@@ -167,7 +208,9 @@ def ecrire_manifeste(staging, gabarit, remplacements):
 
 
 def preparer_staging(package, staging, gabarit, remplacements):
-    """Staging = copie du paquet GELÉ + manifeste + vignettes."""
+    """Staging = copie du paquet GELÉ + manifeste + vignettes.
+
+    → (chemin du manifeste, (information, source) des vignettes)."""
     if not os.path.isfile(os.path.join(package, EXE_DEFAUT)):
         raise SystemExit(
             "Paquet gele introuvable : %s\n"
@@ -177,8 +220,8 @@ def preparer_staging(package, staging, gabarit, remplacements):
     if os.path.isdir(staging):
         shutil.rmtree(staging)
     shutil.copytree(package, staging)
-    faire_vignettes(os.path.join(staging, "Assets"))
-    return ecrire_manifeste(staging, gabarit, remplacements)
+    info = faire_vignettes(os.path.join(staging, "Assets"))
+    return ecrire_manifeste(staging, gabarit, remplacements), info
 
 
 def empaqueter(makeappx, staging, destination):
@@ -255,8 +298,14 @@ def principal():
     os.makedirs(dossier_sortie, exist_ok=True)
     if os.path.exists(destination):
         os.remove(destination)
-    manifeste = preparer_staging(args.package, staging, gabarit, remplacements)
+    manifeste, info_vig = preparer_staging(args.package, staging, gabarit,
+                                           remplacements)
     print("Manifeste   : %s" % manifeste)
+    if info_vig[0] == "photo":
+        print("Vignettes   : depuis %s" % info_vig[1])
+    else:
+        print("Vignettes   : motif de REPLI (icone assets/%s absente, ou PIL "
+              "manquant)" % FICHIER_SOURCE)
 
     code, sortie = empaqueter(makeappx, staging, destination)
     if not args.garder_staging:

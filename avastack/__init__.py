@@ -17,9 +17,25 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.49.0"
+AVASTACK_VERSION = "2.50.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.50.0 : ICÔNE DE L'APPLICATION (barre de titres + barre des tâches) ET
+#   VIGNETTES MSIX DEPUIS L'ICÔNE RÉELLE (chantier « Microsoft Store »).
+#   - assets/avastack.ico (multirésolution 16/32/48/256) + assets/avastack.png
+#     (512×512, M31) : SOURCE unique de l'icône (fournis par Alain).
+#   - avastack/ressources.py (NEUF) : `poser_icone_fenetre()` — Windows prend
+#     le .ico (net à toutes les tailles), ailleurs le PNG via `iconphoto` ;
+#     dossier résolu depuis `__file__`, donc identique gelé ou non.
+#   - avastack/ui/app.py : la fenêtre principale reçoit l'icône au démarrage.
+#   - installer/windows/msix/build_msix.py : les VIGNETTES (tuiles) sont
+#     désormais recadrées « cover » + LANCZOS depuis assets/avastack.png, aux
+#     tailles du manifeste (repli géométrique stdlib si PIL ou icône absents).
+#   - Les QUATRE canaux embarquent assets/ : avastack.iss (SetupIconFile,
+#     icône des raccourcis, copie), paquet ZIP, packers ET installateurs
+#     Linux/macOS.
+#   - bancs/_test_msix_jalon92.py étendu : vignettes depuis la vraie icône et
+#     pose effective de l'icône de fenêtre.
 # v2.49.0 : SCAN QHY RÉPARÉ POUR UNE APPLICATION GELÉE + PACKER WINDOWS GELÉ
 #   (PyInstaller) — PREMIER PAS DU CHANTIER « MICROSOFT STORE » (jalon 91).
 #   Contexte : la voie Store (MSIX, IMMUABLE : le venv ne peut pas se créer à

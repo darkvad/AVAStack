@@ -71,6 +71,13 @@ $PyArgs = @(
     '--specpath', $Travail,
     (Join-Path $Root 'AVAStack.py')
 )
+# Icone de l'application (barre des taches / Explorateur) + ressources : le
+# .ico choisit l'icone de l'EXE ; assets\ est EMBARQUE pour que le code pose
+# aussi l'icone de la FENETRE au demarrage (avastack/ressources.py).
+$Icone = Join-Path $Root 'assets\avastack.ico'
+$DossierAssets = Join-Path $Root 'assets'
+if (Test-Path $Icone) { $PyArgs += @('--icon', $Icone) }
+if (Test-Path $DossierAssets) { $PyArgs += @('--add-data', "$DossierAssets;assets") }
 $Embarquees = @()
 $Manquantes = @()
 foreach ($d in $Dlls) {

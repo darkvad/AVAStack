@@ -169,6 +169,11 @@ copier_application() {
     cp -f "$src/requirements.txt" "$dst/"
     rm -rf "$dst/avastack"
     cp -R "$src/avastack" "$dst/avastack"
+    # Ressources : icone de l'application (assets/ a cote du package).
+    if [ -d "$src/assets" ]; then
+        rm -rf "$dst/assets"
+        cp -R "$src/assets" "$dst/assets"
+    fi
     find "$dst/avastack" -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
     # Bancs installés : les OUTILS DE DIAGNOSTIC MATÉRIEL caméra
     # seulement (`bancs/cameras/_diag_*.py`). Le paquet ne contient QUE

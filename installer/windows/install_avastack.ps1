@@ -390,6 +390,14 @@ function Copy-Application {
     $dstPkg = Join-Path $Dst 'avastack'
     if (Test-Path $dstPkg) { Remove-Item $dstPkg -Recurse -Force }
     Copy-Item -LiteralPath (Join-Path $Src 'avastack') $dstPkg -Recurse -Force
+    # Ressources : icone de l'application (avastack/ressources.py la cherche
+    # dans assets/, a cote du package).
+    $srcAssets = Join-Path $Src 'assets'
+    if (Test-Path $srcAssets) {
+        $dstAssets = Join-Path $Dst 'assets'
+        if (Test-Path $dstAssets) { Remove-Item $dstAssets -Recurse -Force }
+        Copy-Item -LiteralPath $srcAssets $dstAssets -Recurse -Force
+    }
     Get-ChildItem -Path $dstPkg -Recurse -Directory -Filter '__pycache__' `
         -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force `
         -ErrorAction SilentlyContinue

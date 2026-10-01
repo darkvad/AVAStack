@@ -10,60 +10,47 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **DERNIER JALON (02/10/2026, jalon 92 — v2.49.0 : PAQUET MSIX (voie Microsoft
-  Store) CONSTRUIT, SIGNÉ ET VERROUILLÉ PAR BANC. AUCUN changement au code de
-  l'application — installer-only, donc MÊME version v2.49.0.)**
-  **POURQUOI** : le Store distribue des MSIX, et un MSIX est IMMUABLE (fichiers
-  en LECTURE SEULE) → le venv disparaît et le MSIX doit EMBALLER l'application
-  GELÉE (paquet du jalon 91).
-  **LIVRÉ (3 fichiers neufs, `installer/windows/msix/`)** : ①
-  `AppxManifest.xml.template` — application de BUREAU **pleine confiance**
-  (`Windows.FullTrustApplication` + `rescap:runFullTrust`, d'où un
-  `%APPDATA%\AVAStack` RÉEL), jetons `__X__` remplacés au build ; ②
-  `build_msix.py` (stdlib) — staging = copie du paquet gelé + manifeste +
-  **vignettes PNG générées sans dépendance** (zlib+struct), puis `MakeAppx.exe`
-  (Windows SDK) ; ③ `signer_msix.ps1` — **certificat auto-signé** (créé si
-  absent) + `signtool`, `.cer`/`.pfx` exportés, `-Installer` (confiance +
-  installation) et `-Timestamp`. Banc neuf `bancs/_test_msix_jalon92.py` →
-  **20 vérifications TOUT AU VERT**, dont un **vrai MakeAppx de bout en bout**.
-  **MESURES RÉELLES** : SDK présent (`10.0.26100.0`) → `avastack-2.49.0-windows.msix`
-  **105,7 Mo** (SHA-256 `fa4d2240…`), **619 entrées**, `AppxManifest.xml` /
-  `[Content_Types].xml` / `AppxBlockMap.xml` / vignettes / `_internal\ASICamera2.dll`
-  tous présents ; **signé** (`Successfully signed`, `AppxSignature.p7x` dans
-  l'archive). `signtool verify /pa` répond « root certificate which is not
-  trusted » — **NORMAL** tant que le certificat d'essai n'est pas approuvé.
-  **PIÈGE MESURÉ PUIS RÉSOLU (02/10/2026)** : `Add-AppxPackage` a REFUSÉ le paquet
-  avec **`0x800B0109`** « certificat racine non approuvé » parce que le certificat
-  était dans `CurrentUser\TrustedPeople` ; le magasin correct pour le déploiement
-  AppX est **`Cert:\LocalMachine\TrustedPeople`** (doc Microsoft « Create a
-  certificate for package signing »), donc une session **ADMINISTRATEUR**.
-  `signer_msix.ps1` est corrigé en conséquence (`-Installer` refuse clairement
-  hors élévation).
-  **VALIDÉ EN RÉEL PAR ALAIN (02/10/2026) — L'INSTALLATION MSIX FONCTIONNE** :
-  après approbation du certificat dans `LocalMachine\TrustedPeople` (PowerShell
-  **administrateur**) puis `Add-AppxPackage`, **l'appli s'ouvre depuis le MENU
-  DÉMARRER** et tourne depuis le paquet installé ; le **scan QHY tourne**
-  (« non détecté » = NORMAL, aucune caméra branchée sur ce PC) ; un
-  **multi-dossiers fonctionne**. La chaîne complète — gel → MSIX → installation →
-  exécution réelle — est donc PROUVÉE.
-  **PROCHAINE ÉTAPE** : préparer la **soumission Partner Center** — compte
-  développeur (Individuel, gratuit), réservation du nom, rebuild avec `--nom` /
-  `--publisher` EXACTS de Partner Center, **vraies vignettes** (à la place des
-  placeholders), description annonçant la dépendance pilotes (politique 10.2.4)
-  et exception demandée en notes de certification. Puis soumission : la
-  certification **re-signe** le paquet.
-- **JALON PRÉCÉDENT (02/10/2026, jalon 91 — v2.49.0 : SCAN QHY EN GELÉ + PACKER
-  GELÉ.)** Un exe PyInstaller **IGNORE `-c`** → le scan QHY, isolé en
-  sous-processus, aurait échoué en gelé : corrigé par un mode interne
-  `--scan-qhy` (`AVAStack.py`) que l'exe se relance avec. Packer
-  `installer/windows/build_avastack_frozen.ps1` (`--onedir --windowed` + 4 DLL
-  par NOM). Banc `_test_gel_qhy_jalon91.py` (10 verts) ; paquet **249,8 Mo**
-  essayé en réel par Alain : **OK**.
-- **JALON PRÉCÉDENT (jalon 90 — GEL MESURÉ FAISABLE ; DÉCISION : ON GARDE LES
-  DLL DANS TOUS LES INSTALLATEURS).** Gel `--onedir --windowed` 214 Mo,
-  `sdk_loader`/VeraLux/DLL QHY OK sans modification ; la politique Store 10.2.4
-  ne vise que les **PILOTES noyau**, pas les DLL utilisateur, et un MSIX en
-  lecture seule rend leur dépôt manuel impossible → les **EMBARQUER**.
+- **DERNIER JALON (02/10/2026, jalon 93 — v2.50.0 : ICÔNE DE L'APPLICATION
+  (barre de titres + barre des tâches) ET VIGNETTES MSIX DEPUIS LA VRAIE ICÔNE.
+  BANC VERT, PAQUETS RECONSTRUITS.)**
+  **POURQUOI** : Alain a fourni l'icône (`assets/avastack.ico` multirésolution
+  16/32/48/256 + `assets/avastack.png` 512×512, M31) et a posé LA question qui
+  tranche : « les vignettes, c'est l'icône de la barre de titres ? » — NON, ce
+  sont DEUX choses : l'icône de fenêtre/exe d'un côté, les TUILES du manifeste
+  MSIX de l'autre. Les deux viennent maintenant de la MÊME source.
+  **LIVRÉ** : ① `assets/` (NEUF, racine) = source unique de l'icône ; ②
+  `avastack/ressources.py` (NEUF) — `poser_icone_fenetre()` : Windows prend le
+  `.ico`, ailleurs `iconphoto(PNG)` ; dossier résolu depuis `__file__` (donc
+  gelé comme en dev) ; ③ `avastack/ui/app.py` pose l'icône dans `main()` ; ④
+  `build_avastack_frozen.ps1` : `--icon` + `--add-data assets` (l'exe ET la
+  fenêtre portent l'icône) ; ⑤ `build_msix.py` : vignettes recadrées « cover » +
+  LANCZOS depuis `assets/avastack.png`, aux 6 tailles du manifeste (repli
+  géométrique stdlib), manifeste complété (`uap:DefaultTile` : 71, 310×150,
+  310) — PIÈGE corrigé : `Square71x71Logo` appartient à `uap:DefaultTile`, PAS
+  à `uap:VisualElements` (MakeAppx le refusait) ; ⑥ les QUATRE canaux embarquent
+  `assets/` (`avastack.iss` + `SetupIconFile` + icône des raccourcis, ZIP,
+  packers et installeurs Linux/macOS).
+  **MESURES RÉELLES** : gel **250,5 Mo** (`8829ADE9…`, assets présents dans
+  `_internal/assets`, icône associée à l'exe) ; MSIX **106,7 Mo**
+  (`3c5cfffc…`), **626 entrées**, les **6 vignettes aux tailles exactes**,
+  signé. Bancs : `_test_msix_jalon92.py` (étendu : vraie icône + icône de
+  fenêtre) TOUT AU VERT ; **rejoués verts** : jalon 91, QHY (33), ZIP (88),
+  macOS (78), interface robuste (87).
+  **PROCHAINE ÉTAPE** : Alain teste le paquet (gel ou MSIX v2.50.0) et regarde
+  l'ICÔNE (barre de titres + barre des tâches) ; puis **soumission Partner
+  Center** (compte déjà créé et vérifié) : réserver le nom, rebuild avec
+  `--nom`/`--publisher` EXACTS, description annonçant la dépendance pilotes
+  (10.2.4) + exception en notes de certification.
+- **JALON PRÉCÉDENT (02/10/2026, jalons 91-92 — v2.49.0).** ① Le **scan QHY
+  FONCTIONNE EN GELÉ** : un exe PyInstaller ignore `-c`, donc l'exe se relance
+  avec le mode interne `--scan-qhy` (`AVAStack.py`, avant toute interface) ; ②
+  **paquet MSIX** (voie Store) : `installer/windows/msix/` — `build_msix.py`
+  (staging + manifeste + `MakeAppx`) et `signer_msix.ps1` (certificat
+  auto-signé + `signtool`). **PIÈGE MESURÉ** : le certificat doit être approuvé
+  dans `Cert:\LocalMachine\TrustedPeople` (PAS `CurrentUser`, erreur
+  `0x800B0109`) → session ADMINISTRATEUR. **Installation MSIX validée en réel**
+  par Alain : l'appli s'ouvre depuis le menu Démarrer, le scan QHY tourne, un
+  multi-dossiers fonctionne.
 - **THREADS ENCORE OUVERTS (jalons 88-89, rien à coder d'ici là)** : ① le testeur
   **Windows 11 famille** — relancer l'installeur **2.48.2** et passer le banc dans
   les DEUX états (SAC actif), relever les **faits machine**

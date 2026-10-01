@@ -89,6 +89,13 @@ def fichiers_a_embarquer(racine):
 
     for nom in FICHIERS_RACINE:
         ajouter(os.path.join(racine, nom))
+    # Ressources : l'icone de l'application (assets/ a la racine du depot).
+    dossier_assets = os.path.join(racine, "assets")
+    if os.path.isdir(dossier_assets):
+        for nom in sorted(os.listdir(dossier_assets)):
+            chemin = os.path.join(dossier_assets, nom)
+            if os.path.isfile(chemin):
+                ajouter(chemin, "assets/" + nom)
     dossier_cameras = os.path.join(racine, DOSSIER_CAMERAS)
     for nom in sorted(os.listdir(dossier_cameras)):
         if nom.startswith(MOTIF_DIAG) and nom.endswith(".py"):

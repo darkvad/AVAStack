@@ -8,8 +8,8 @@ vérifiable SANS soumettre au Store :
   [1] la VERSION MSIX : « 2.49.0 » → « 2.49.0.0 » (quatre nombres exigés) ;
   [2] le MODÈLE de manifeste porte tous les jetons, une application de BUREAU
       pleine confiance (Windows.FullTrustApplication + rescap:runFullTrust) ;
-  [3] les VIGNETTES générées sont des PNG VALIDES (entête + IEND + dimensions),
-      sans AUCUNE dépendance (zlib + struct de la stdlib) ;
+  [3] les VIGNETTES sont générées depuis la VRAIE icône (assets/avastack.png)
+      aux tailles EXACTES attendues par le manifeste ;
   [4] MakeAppx / signtool sont trouvables (Windows SDK) ;
   [5] le manifeste ÉCRIT ne contient plus aucun jeton et porte l'identité ;
   [6] BOUT EN BOUT : MakeAppx emballe un VRAI .msix (faux paquet léger) et
@@ -73,15 +73,22 @@ verifie("runFullTrust" in gabarit and "restrictedcapabilities" in gabarit,
 verifie("Identity" in gabarit and "ProcessorArchitecture" in gabarit,
         "Identity + architecture declarees")
 
-# ==================================== [3] vignettes PNG valides
-print("[3] les vignettes sont des PNG VALIDES (stdlib, sans dependance)")
-for nom, cote in M.VIGNETTES:
-    octets = M._png_carre(cote)
-    entete = octets[:8] == b"\x89PNG\r\n\x1a\n"
-    largeur, hauteur = struct.unpack(">II", octets[16:24])
-    verifie(entete and (largeur, hauteur) == (cote, cote)
-            and b"IDAT" in octets and octets[-8:-4] == b"IEND",
-            "%s : PNG %dx%d (entete + IDAT + IEND)" % (nom, largeur, hauteur))
+# ==================================== [3] vignettes depuis la vraie icone
+print("[3] vignettes : la VRAIE icone (assets/avastack.png) sert de source")
+vdir = tempfile.mkdtemp(prefix="banc92_vig_")
+info, source = M.faire_vignettes(vdir)
+verifie(info == "photo",
+        "source REELLE utilisee (info=%r, %s)" % (info, os.path.basename(source)))
+from PIL import Image                                     # noqa: E402
+for nom, larg, haut in M.VIGNETTES:
+    p = os.path.join(vdir, nom)
+    taille = None
+    if os.path.isfile(p):
+        with Image.open(p) as im:
+            taille = im.size
+    verifie(taille == (larg, haut),
+            "%s : PNG %dx%d (obtenu %s)" % (nom, larg, haut, taille))
+shutil.rmtree(vdir, ignore_errors=True)
 
 # ==================================== [4] outils du Windows SDK
 print("[4] MakeAppx / signtool trouvables (Windows SDK)")
@@ -103,7 +110,7 @@ remplacements = {"__NAME__": "Banc92.Test", "__PUBLISHER__": "CN=Banc92",
                  "__VERSION__": "2.49.0.0", "__DISPLAY_NAME__": "Banc",
                  "__PUBLISHER_DISPLAY__": "Banc", "__DESCRIPTION__": "desc",
                  "__EXE__": M.EXE_DEFAUT}
-manifeste = M.preparer_staging(paquet, staging, GABARIT, remplacements)
+manifeste, _ = M.preparer_staging(paquet, staging, GABARIT, remplacements)
 with open(manifeste, encoding="utf-8") as f:
     xml = f.read()
 restants = [j for j in JETONS if j in xml]
@@ -135,6 +142,24 @@ else:
     print("  (MakeAppx absent : section 6 ignoree)")
 
 shutil.rmtree(bac, ignore_errors=True)
+
+# ==================================== [7] icone de FENETRE (barre de titres)
+print("[7] l'icone de FENETRE est posable (barre de titres + barre des taches)")
+import tkinter as tk                                       # noqa: E402
+from avastack import ressources                            # noqa: E402
+racine_tk = tk.Tk()
+racine_tk.withdraw()
+try:
+    posee = ressources.poser_icone_fenetre(racine_tk)
+    verifie(posee, "poser_icone_fenetre -> True (icone %s)"
+            % os.path.basename(ressources.FICHIER_ICO))
+    verifie(os.path.isfile(ressources.chemin(ressources.FICHIER_ICO)),
+            "l'icone .ico existe : %s" % ressources.DOSSIER)
+    verifie(os.path.isfile(ressources.chemin(ressources.FICHIER_PNG)),
+            "la source .png des vignettes existe")
+finally:
+    racine_tk.destroy()
+
 print("")
 print("TOUT AU VERT" if ok else "DES ÉCHECS")
 sys.exit(0 if ok else 1)

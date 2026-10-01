@@ -21,6 +21,7 @@ from ..compat import IS_MACOS, IS_WINDOWS
 from .. import AVASTACK_VERSION
 from .. import delais
 from .. import journal
+from .. import ressources
 from .. import travail
 from ..config import CONFIG, sauver_config
 from ..images import (CFA_MODE, borner_lineaire, lire_filtre_fits,
@@ -10204,6 +10205,7 @@ def main():
     journal sans avoir à la demander à l'utilisateur), et la fenêtre est mise
     au premier plan sur macOS (`activer_fenetre`)."""
     root = tk.Tk()
+    ressources.poser_icone_fenetre(root)   # barre de titres + barre des tâches
     root.report_callback_exception = journal.rapport_callback
     try:
         journal.note("démarrage",

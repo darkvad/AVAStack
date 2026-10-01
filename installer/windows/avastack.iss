@@ -59,7 +59,8 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
 WizardStyle=modern
-UninstallDisplayIcon={app}\AVAStack.py
+SetupIconFile={#RepoRoot}\assets\avastack.ico
+UninstallDisplayIcon={app}\assets\avastack.ico
 
 [Languages]
 Name: "french"; MessagesFile: "compiler:Languages\French.isl"
@@ -73,6 +74,9 @@ Source: "{#RepoRoot}\avastack\processing\*.py"; DestDir: "{app}\avastack\process
 Source: "{#RepoRoot}\avastack\catalogues\*.py"; DestDir: "{app}\avastack\catalogues"; Flags: ignoreversion
 Source: "{#RepoRoot}\avastack\external\*.py"; DestDir: "{app}\avastack\external"; Flags: ignoreversion
 Source: "{#RepoRoot}\avastack\ui\*.py"; DestDir: "{app}\avastack\ui"; Flags: ignoreversion
+; Ressources : l'icone de l'application (avastack/ressources.py la cherche dans
+; assets/, a cote du package) - barre de titres, barre des taches, raccourcis.
+Source: "{#RepoRoot}\assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubdirs
 Source: "{#RepoRoot}\requirements.txt"; DestDir: "{app}"; Flags: ignoreversion
 ; SDK binaires des cameras (places a la racine du depot) : charges
 ; par avastack/cameras/sdk_loader.py dans le dossier du programme.
@@ -101,8 +105,10 @@ Source: "..\common\avastack_setup.py"; DestDir: "{tmp}"; Flags: dontcopy
 
 [Icons]
 Name: "{autodesktop}\AVAStack"; Filename: "{app}\lancer_avastack.bat"; \
+    IconFilename: "{app}\assets\avastack.ico"; \
     Comment: "Live stacking AVAStack"
-Name: "{group}\AVAStack"; Filename: "{app}\lancer_avastack.bat"
+Name: "{group}\AVAStack"; Filename: "{app}\lancer_avastack.bat"; \
+    IconFilename: "{app}\assets\avastack.ico"
 Name: "{group}\Dossier AVAStack"; Filename: "{app}"
 Name: "{group}\Desinstaller AVAStack"; Filename: "{uninstallexe}"
 
