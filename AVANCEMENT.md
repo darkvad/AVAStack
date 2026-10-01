@@ -94,6 +94,25 @@ dans le changelog du source et l'historique git.)
   BLOQUÉE → le pas `%TEMP%` est bien le coupable, et les remèdes sont clairs
   (signer l'installeur, ou faire en sorte qu'Inno ne lance rien depuis `%TEMP%`) ;
   signature INVALIDE chez le testeur → la cause est le téléchargement, rien d'autre.
+  **TEST SIGNIFICATIF : FAIT ET RÉUSSI, AVEC SAC ACTIF (02/10/2026, compte
+  « avadon », Smart App Control ACTIVÉ).** `install_avastack.bat -Prefix
+  C:\Temp\AVAStack_Essai -SansRaccourci` → **code 0, chaîne COMPLÈTE** : Python du
+  Microsoft Store **IGNORÉ**, Python retenu **3.12.7 de python.org**
+  (`%LOCALAPPDATA%\Programs\Python\Python312`), copie de l'application + des 4 DLL,
+  **venv NEUF créé**, dépendances téléchargées (**Tkinter, numpy/OpenCV/Pillow,
+  astropy tous OK**), `qhyccd` + `zwoasi` OK, lanceur écrit, et **« demarrage
+  (imports) OK »**. C'est la PREUVE que le pas « venv neuf + dépendances » — celui
+  qui produisait « Code retour : 1 » — FONCTIONNE, y compris sous SAC appliqué, et
+  que le paquet ZIP installe de bout en bout.
+  **RESTE NON EXERCÉ** : cette machine avait DÉJÀ un Python de python.org (3.12.7)
+  → le pas « aucun Python trouvé → téléchargement DEPUIS `%TEMP%` » (le pas exact de
+  l'Erreur 4551) n'a toujours pas tourné.
+  **DÉFAUT RELEVÉ AU PASSAGE (constaté, NON corrigé)** : `-Desinstaller` enlève
+  **inconditionnellement** les raccourcis Bureau + Menu Démarrer ; pour une
+  installation d'essai lancée en `-SansRaccourci`, il peut donc effacer les
+  raccourcis d'une AUTRE installation réelle. Contournement immédiat : supprimer le
+  dossier à la main. Correctif naturel : que `-Desinstaller -SansRaccourci` ne
+  touche pas aux raccourcis.
   **TROIS PANNES MESURÉES ET CORRIGÉES pendant l'essai** (leçons remontées dans
   CLAUDE.md) : `$MyInvocation.MyCommand.Path` est VIDE dans une fonction ;
   `exit (Main)` CAPTURE la sortie de pipeline (l'aide ne s'affichait plus) ;
