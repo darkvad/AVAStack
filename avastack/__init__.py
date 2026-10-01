@@ -17,9 +17,60 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.48.0"
+AVASTACK_VERSION = "2.48.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.48.1 : LA CHAÎNE COULEUR S'APPLIQUE ENFIN À LA VUE « TRAITÉE » — CORRECTION
+#   (constat d'Alain, 01/10/2026 : « les corrections de couleurs ne sont plus
+#   dans le traitement externe et celles du live ne sont pas appliquées sur
+#   l'affichage de la vue traitée »). Le jalon 85 avait sorti la chaîne couleur
+#   (SCNR, SCNR doux, démagenta, boost du rouge) de la chaîne LINÉAIRE externe
+#   pour qu'elle suive l'ÉTIREMENT — mais les synchros de vue (`_sync_vl_*_vue`)
+#   continuaient de la COUPER en vue « traitée », comme du temps où la chaîne
+#   externe la portait. Résultat : en vue « traitée » (résultat ⚡ GraXpert/BXT),
+#   l'écran ET le fichier « tel que vu » ne portaient plus AUCUNE correction de
+#   couleur — l'image restait VERTE.
+#   - avastack/ui/app.py : `_sync_vl_scnr_vue`, `_sync_vl_scnr_doux_vue`,
+#     `_sync_vl_demagenta_vue` et `_sync_vl_boost_vue` suivent désormais la CASE
+#     seule (plus de condition de vue) : les corrections APRÈS étirement
+#     s'appliquent DANS LES DEUX VUES, avec les MÊMES réglages que le live
+#     (aucun jeu de réglages séparé, aucune clé de configuration nouvelle).
+#     Les corrections PRÉ-étirement (neutralisation du fond, bruit chromatique)
+#     RESTENT coupées en vue « traitée », ainsi que GraXpert/débruitage/netteté
+#     live : elles SONT dans la chaîne externe ⚡ — les refaire à l'affichage
+#     serait un DEUXIÈME traitement.
+#   - Aucune clé de configuration ni aucun réglage par défaut ne change : à
+#     cases décochées (défaut), l'affichage reste identique AU BIT.
+#   - Bancs adaptés au contrat neuf : `_test_couleurs_jalon22.py`,
+#     `_test_couleurs_immediat_jalon39.py`, `_test_boost_rouge_jalon86.py`,
+#     `_test_pleine_res_traitee_jalon69.py`.
+#   MÊME VERSION — LA BOUCLE D'INTERFACE NE PEUT PLUS GELER (retour du testeur
+#   macOS, 30/09/2026, v2.47.0 : « ce n'est pas mieux »). Son journal se
+#   terminait par `TclError: invalid command name "…!labelframe7.!label11"` dans
+#   `_tick` → `_maj_libelle_fit`. CAUSE : `_tick` se replanifiait en DERNIÈRE
+#   ligne (`after(30, _tick)`) — la moindre exception tuait la boucle POUR DE
+#   BON, donc l'interface restait GELÉE (les clics ne répondent plus). Le
+#   widget était devenu invalide (arbre de widgets détruit : fermeture de la
+#   fenêtre, ou boîte de dialogue NATIVE macOS pendant laquelle un `after` en
+#   attente se déclenche).
+#   - avastack/ui/app.py : `_tick` est dédoublé en un ORDONNANCEUR (`_tick`) et
+#     un CORPS (`_tick_corps`). L'ordonnanceur protège le corps et REPLANIFIE
+#     dans un `finally` : une exception n'arrête plus jamais la boucle ; elle
+#     est ÉCRITE au journal UNE fois par épisode (`_journal_erreur_tick`, sinon
+#     un widget durablement détruit produirait 33 exceptions par seconde).
+#   - `_planifier_tick` MÉMORISE l'identifiant `after` (`_tick_id`) ;
+#     `_on_close` l'ANNULE (`after_cancel`) AVANT `root.destroy()` — sans cela,
+#     un `after` orphelin se déclenche sur l'arbre détruit (« invalid command
+#     name ») et la fermeture peut ne pas aboutir.
+#   - `_widget_vivant()` : `winfo exists` (seule interrogation qui ne lève pas
+#     sur un widget détruit) permet aux rafraîchissements de se TAISIR au lieu
+#     d'échouer ; `_maj_libelle_fit` l'utilise (c'était EXACTEMENT la ligne du
+#     journal macOS : un widget créé n'est pas un widget VIVANT).
+#   - Banc NEUF `bancs/_test_ui_robuste_jalon87.py` (4 sections, 12
+#     vérifications) : widget détruit sans exception, `_maj_libelle_fit` muet,
+#     boucle replanifiée malgré l'exception et JAMAIS deux fois par tour,
+#     `after` annulé à la fermeture. Série rejouée verte : 84, 5, 75, 47, 40,
+#     79, 74, 73, 77, 80, 22, 39, 86, 85, 41.
 # v2.48.0 : LA CHAÎNE COULEUR SUIT L'ÉTIREMENT, LA L* EST PRÉSERVÉE, ET LE SHO
 #   GAGNE — OU PAS — SON DORÉ (jalons 85 et 86). Déclencheur : le constat
 #   d'Alain sur son empilement SHO NGC 2237 (« vert par défaut, manque de

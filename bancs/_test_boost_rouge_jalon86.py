@@ -297,12 +297,12 @@ verifie(abs(float(app.var_vl_boost_force.get())
         "force hors bornes dans la config → défaut du module conservé")
 app.var_view.set("traitée")
 app._sync_vl_boost_vue()
-verifie(app.disp.vl_boost_rouge is False,
-        "vue « traitée » : boost inactif (l'image vient du traitement externe, "
-        "sans étirement live)")
+verifie(app.disp.vl_boost_rouge is True,
+        "vue « traitée » : boost ACTIF (v2.48.1 — la chaîne couleur suit "
+        "l'étirement, elle vaut pour les deux vues)")
 app.var_view.set("pile")
 app._sync_vl_boost_vue()
-verifie(app.disp.vl_boost_rouge is True, "retour vue « pile » : réactivé")
+verifie(app.disp.vl_boost_rouge is True, "vue « pile » : toujours actif")
 root.destroy()
 
 # ==================================================================== [7] coût

@@ -19,7 +19,8 @@ Vérifie, SANS nouvel empilement ni autre réglage :
   [3] SCNR doux et démagenta → idem ;
   [4] _sync_vl_couleur_vue (appelée par _tick toutes les 30 ms) ne
       touche qu'à l'état : AUCUNE soumission en boucle, et elle suit la
-      vue (« traitée » → désactivé, retour « pile » → réactivé).
+      case dans les DEUX vues (« traitée » comme « pile » l'appliquent
+      depuis la v2.48.1 : la chaîne couleur suit l'étirement).
 
 Nécessite un affichage. Exécution : python bancs/_test_couleurs_immediat_jalon39.py
 """
@@ -158,16 +159,19 @@ for _ in range(50):                  # ce que ferait _tick pendant 1,5 s
 verifie(not d._vl_pending and d._vl_job is None
         and d._vl_result[0] == cle,
         "50 appels sans changement : aucun calcul relancé (état seul)")
-# Changement d'état via la sync SEULE (changement de vue) : l'état suit,
-# mais AUCUN rendu ni soumission — c'est la case/la vue qui rafraîchit.
+# Changement d'état via la sync SEULE : l'état suit la case, mais AUCUN rendu
+# ni soumission — c'est la case/la vue qui rafraîchit. v2.48.1 : la chaîne
+# couleur suit l'étirement et vaut pour LES DEUX VUES — elle n'est donc plus
+# coupée en vue « traitée ».
 app.var_view.set("traitée")
 app._sync_vl_couleur_vue()
-verifie(d.vl_scnr is False and not d._vl_pending and d._vl_job is None,
-        "vue « traitée » : SCNR live désactivé, sans calcul lancé ici")
+verifie(d.vl_scnr is True and not d._vl_pending and d._vl_job is None,
+        "vue « traitée » : SCNR ACTIF (chaîne couleur après étirement), sans "
+        "calcul lancé ici")
 app.var_view.set("pile")
 app._sync_vl_couleur_vue()
 verifie(d.vl_scnr is True and not d._vl_pending and d._vl_job is None,
-        "retour vue « pile » : réactivé, sans calcul lancé ici")
+        "vue « pile » : toujours actif, sans calcul lancé ici")
 
 root.destroy()
 print()

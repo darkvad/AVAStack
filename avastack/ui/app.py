@@ -9,6 +9,7 @@ import math
 import queue
 import shutil
 import threading
+import traceback
 
 import numpy as np
 import cv2
@@ -515,6 +516,14 @@ class App:
         # peut déjà en demander une, et elle doit rester BORNÉE.
         self._mesures = queue.Queue()
         self._mesure_en_cours = False
+        # v2.48.1 (retour macOS du 30/09/2026) : identifiant de la
+        # replanification de `_tick` (ANNULABLE à la fermeture — un `after` en
+        # attente qui se déclenche APRÈS `root.destroy()` lève « invalid command
+        # name .!… » : la fenêtre est détruite, le rappel ne doit plus courir)
+        # et signature de la dernière erreur de la boucle (écriture UNE fois par
+        # épisode : un widget durablement détruit ne doit pas noyer le journal).
+        self._tick_id = None
+        self._tick_err_sig = None
         journal.note("démarrage", "construction de l'interface")
         self._build_ui()
         journal.note("démarrage", "restauration de la configuration")
@@ -536,7 +545,7 @@ class App:
         self.guet = reactivite_mod.Guet(self.root)
         self.root.after(1000, self.guet.demarrer)
         journal.note("démarrage", "prêt (mesures de disque différées, bornées)")
-        self.root.after(30, self._tick)
+        self._planifier_tick(30)
         self.root.after(150, self._premieres_mesures)
 
     # ------------------------------------------------------------ persistance config
@@ -2171,9 +2180,10 @@ class App:
                          self.var_vl_dn_force, 0.0, 1.0, 0.05,
                          self._on_vl_denoise, "{:.2f}")
         # Jalon 22 (décision d'Alain) : SCNR + démagenta — APRÈS composition
-        # (image COULEUR du composite) et JUSTE AVANT l'étirement ; no-op sur
-        # un composite monochrome (Mono). Vue « empilement » uniquement (en
-        # vue « traitée », l'image a déjà subi le traitement externe).
+        # (image COULEUR du composite) ; no-op sur un composite monochrome
+        # (Mono). Depuis le jalon 85 la chaîne couleur suit l'ÉTIREMENT (elle
+        # n'est plus dans la chaîne externe) : elle vaut pour LES DEUX VUES
+        # (v2.48.1), « empilement » comme « traitée ».
         # Jalon 41 (décision d'Alain) : les CASES couleur sont sorties du
         # cadre VeraLux (cadre « Couleur live » indépendant, plus bas) — la
         # chaîne couleur est appliquée par le solveur VeraLux ET par le
@@ -2225,8 +2235,9 @@ class App:
         # moteur d'étirement, appliqué APRÈS l'étirement par le solveur VeraLux
         # (jalon 22/23, déplacé ici au jalon 85) ET par le moteur STF/manuel
         # (`display.process()`) ; no-op sur un composite monochrome (Mono).
-        # Vue « empilement » uniquement (en vue « traitée », l'image a déjà
-        # subi le traitement externe). POURQUOI APRÈS l'étirement : la
+        # S'applique aux DEUX VUES (v2.48.1) : elle n'est plus dans la chaîne
+        # externe, donc la vue « traitée » la porte enfin comme le live.
+        # POURQUOI APRÈS l'étirement : la
         # préservation de la luminosité (case ci-dessous, cochée par défaut)
         # est une grandeur PERCEPTUELLE, et la sortie LINÉAIRE sauvegardée ne
         # doit plus être écrêtée en vert (elle l'était — MESURÉ sur l'empilement
@@ -3658,7 +3669,11 @@ class App:
     def _maj_libelle_fit(self):
         """Libellé des gains/offsets MESURÉS par le recalage (effectif sur
         le dernier mean() : R et B seulement, le vert est la référence)."""
-        if not hasattr(self, "lbl_fit"):
+        # v2.48.1 : « existe ENCORE » (créé ET pas détruit) plutôt que « a été
+        # créé » — un widget détruit par une boîte de dialogue native macOS
+        # doit faire taire le libellé, pas lever « invalid command name .!… »
+        # à chaque tick (le symptôme du journal du testeur macOS).
+        if not self._widget_vivant(getattr(self, "lbl_fit", None)):
             return
         d = (self.stacker.fit_diag if self.stacker is not None else None)
         if not getattr(self, "var_fit", None) or not self.var_fit.get():
@@ -3860,8 +3875,8 @@ class App:
 
     def _on_vl_scnr(self):
         """Case SCNR (jalon 22) : répercute dans le solveur — la clé des
-        réglages change → re-résolution. Vue « empilement » uniquement
-        (en vue « traitée », l'image a déjà subi le traitement externe).
+        réglages change → re-résolution. Vaut pour LES DEUX VUES (v2.48.1) : la
+        chaîne couleur suit l'étirement et n'est plus dans la chaîne externe.
         Jalon 39 : relance le rendu IMMÉDIATEMENT (comme GraXpert live,
         le débruitage et la netteté) — sans ce rafraîchissement, la
         nouvelle chaîne n'était soumise au solveur qu'à la prochaine
@@ -3872,9 +3887,20 @@ class App:
         self._refresh_preview()
 
     def _sync_vl_scnr_vue(self):
-        """État SEUL (sans rendu) de la case SCNR : appelé par la case ET
-        par _tick/_on_view (la chaîne couleur suit la vue)."""
-        actif = self.var_vl_scnr.get() and self.var_view.get() != "traitée"
+        """État SEUL (sans rendu) de la case SCNR — appelé par la case ET
+        par _tick/_on_view.
+
+        v2.48.1 (constat d'Alain, 01/10/2026 : « les corrections de couleurs
+        ne sont plus dans le traitement externe et celles du live ne sont pas
+        appliquées sur l'affichage de la vue traitée ») : la chaîne couleur
+        SUIT l'étirement (jalon 85) et n'appartient PLUS à la chaîne externe —
+        elle doit donc s'appliquer DANS LES DEUX VUES, y compris « traitée »
+        (qui passe par le même étirement que le live). Avant, elle était
+        coupée en vue « traitée » pour éviter un DEUXIÈME traitement, parce que
+        le résultat ⚡ LINÉAIRE la portait déjà : ce n'est plus le cas, et la
+        vue « traitée » restait VERTE. Les corrections PRÉ-étirement (fond,
+        chroma) restent, elles, coupées — elles SONT dans la chaîne externe."""
+        actif = bool(self.var_vl_scnr.get())
         if actif != self.disp.vl_scnr:
             self.disp.vl_scnr = actif       # la clé change → re-résolution
 
@@ -3891,8 +3917,11 @@ class App:
         self._refresh_preview()
 
     def _sync_vl_neutre_vue(self):
-        """Vue « empilement » uniquement (même règle que SCNR/débruitage : en vue
-        « traitée », l'image vient du traitement externe, sans étirement live)."""
+        """Vue « empilement » uniquement : la neutralisation du fond est une
+        correction PRÉ-étirement qui RESTE dans la chaîne externe ⚡ (indice 8
+        du job) — le résultat ⚡ la porte déjà, la refaire à l'affichage ferait
+        un DEUXIÈME traitement. (Contraste avec les corrections APRÈS
+        étirement, qui valent pour les deux vues depuis la v2.48.1.)"""
         actif = bool(self.var_vl_neutre.get()) \
             and self.var_view.get() != "traitée"
         if actif != self.disp.vl_neutre_fond:
@@ -3916,7 +3945,9 @@ class App:
 
     def _sync_vl_chroma_vue(self):
         """État SEUL (sans rendu) de la case « Réduire le bruit chromatique » —
-        vue « empilement » uniquement, comme les autres corrections de couleur."""
+        vue « empilement » uniquement : comme la neutralisation du fond, cette
+        correction PRÉ-étirement RESTE dans la chaîne externe ⚡ (indice 9 du
+        job) ; la refaire à l'affichage doublerait le traitement."""
         actif = bool(self.var_vl_chroma.get()) \
             and self.var_view.get() != "traitée"
         if actif != self.disp.vl_chroma:
@@ -3965,11 +3996,12 @@ class App:
         self._refresh_preview()
 
     def _sync_vl_boost_vue(self):
-        """État SEUL (sans rendu) du boost du rouge — vue « empilement »
-        uniquement, comme les autres corrections de couleur (en vue « traitée »,
-        l'image vient du traitement externe, sans étirement live)."""
-        actif = bool(self.var_vl_boost.get()) \
-            and self.var_view.get() != "traitée"
+        """État SEUL (sans rendu) du boost du rouge. v2.48.1 : comme les autres
+        corrections de couleur (elles suivent l'étirement, cf.
+        `_sync_vl_scnr_vue`), le boost s'applique DANS LES DEUX VUES — la vue
+        « traitée » l'applique sur l'image externe comme le live l'applique sur
+        l'empilement."""
+        actif = bool(self.var_vl_boost.get())
         if actif != self.disp.vl_boost_rouge:
             self.disp.vl_boost_rouge = actif    # la clé change → re-résolution
 
@@ -4055,8 +4087,10 @@ class App:
         self._refresh_preview()
 
     def _sync_vl_demagenta_vue(self):
-        """État SEUL (sans rendu) de la case démagenta."""
-        actif = self.var_vl_demagenta.get() and self.var_view.get() != "traitée"
+        """État SEUL (sans rendu) de la case démagenta. v2.48.1 : s'applique
+        DANS LES DEUX VUES, comme les autres corrections de couleur qui suivent
+        l'étirement (`_sync_vl_scnr_vue`)."""
+        actif = bool(self.var_vl_demagenta.get())
         if actif != self.disp.vl_demagenta:
             self.disp.vl_demagenta = actif  # la clé change → re-résolution
 
@@ -4068,19 +4102,27 @@ class App:
         self._refresh_preview()
 
     def _sync_vl_scnr_doux_vue(self):
-        """État SEUL (sans rendu) de la case SCNR doux."""
-        actif = self.var_vl_scnr_doux.get() \
-            and self.var_view.get() != "traitée"
+        """État SEUL (sans rendu) de la case SCNR doux. v2.48.1 : s'applique
+        DANS LES DEUX VUES, comme les autres corrections de couleur qui suivent
+        l'étirement (`_sync_vl_scnr_vue`)."""
+        actif = bool(self.var_vl_scnr_doux.get())
         if actif != self.disp.vl_scnr_doux:
             self.disp.vl_scnr_doux = actif  # la clé change → re-résolution
 
     def _sync_vl_couleur_vue(self):
-        """Chaîne couleur live (jalon 22/23 : SCNR, SCNR doux, démagenta) =
-        vue « empilement » uniquement (même règle que le débruitage live) :
-        suit le changement de vue. Appelée par _tick TOUTES les 30 ms :
-        elle ne touche qu'à l'ÉTAT (les _sync_*), JAMAIS au rendu — les
-        _on_* (avec _refresh_preview) ne sont appelés que par les cases
-        elles-mêmes (jalon 39 : un rendu ici serait déclenché 3× par tick)."""
+        """Chaîne couleur APRÈS étirement (jalon 22/23, déplacée après
+        l'étirement au jalon 85 : SCNR, SCNR doux, démagenta, boost du rouge)
+        ET corrections PRÉ-étirement (neutralisation du fond, bruit
+        chromatique). Appelée par _tick TOUTES les 30 ms : elle ne touche qu'à
+        l'ÉTAT (les _sync_*), JAMAIS au rendu — les _on_* (avec
+        _refresh_preview) ne sont appelés que par les cases elles-mêmes
+        (jalon 39 : un rendu ici serait déclenché 3× par tick).
+
+        v2.48.1 : les synchros ne partagent plus la même règle de vue. Celles
+        qui suivent l'ÉTIREMENT (SCNR, SCNR doux, démagenta, boost du rouge)
+        valent pour LES DEUX VUES ; celles qui restent dans la chaîne EXTERNE
+        (neutralisation du fond, bruit chromatique) restent coupées en vue
+        « traitée » — le résultat ⚡ les porte déjà (double traitement sinon)."""
         self._sync_vl_scnr_vue()
         self._sync_vl_scnr_doux_vue()
         self._sync_vl_demagenta_vue()
@@ -5446,6 +5488,21 @@ class App:
         guet = getattr(self, "guet", None)
         if guet is not None:
             guet.arreter()
+        # v2.48.1 : ANNULER la replanification de `_tick` AVANT de détruire la
+        # fenêtre. Sans cela, un rappel `after` déjà en file se déclenche sur
+        # l'arbre détruit et lève « invalid command name .!… » (constat du
+        # journal macOS) — au mieux une erreur de journal, au pire une
+        # fermeture qui n'aboutit pas (l'application reste « ouverte » sans
+        # fenêtre). `after_cancel` sur un identifiant déjà consommé est sans
+        # effet, et l'échec éventuel est avalé : la fermeture ne doit JAMAIS
+        # dépendre de ce nettoyage.
+        tick_id = getattr(self, "_tick_id", None)
+        if tick_id is not None:
+            try:
+                self.root.after_cancel(tick_id)
+            except Exception:
+                pass
+            self._tick_id = None
         self.root.destroy()
 
     def _save(self):
@@ -8783,7 +8840,69 @@ class App:
         return App._hist_canaux(img, plage)
 
     # ------------------------------------------------------------ rafraîchissement UI
+    def _planifier_tick(self, delai=30):
+        """Replanifie la boucle d'interface en MÉMORISANT l'identifiant `after`
+        (v2.48.1).
+
+        Deux raisons, toutes deux mesurées sur le retour macOS du 30/09/2026 :
+        ① `_on_close` peut ANNULER ce rappel avant `root.destroy()` — sinon un
+        `after` en attente se déclenche sur un arbre de widgets détruit et lève
+        « invalid command name .!… » ; ② une fenêtre DÉJÀ détruite (fermeture en
+        cours) n'a plus rien à replanifier — l'erreur est simplement ignorée."""
+        try:
+            self._tick_id = self.root.after(delai, self._tick)
+        except tk.TclError:
+            self._tick_id = None            # fenêtre détruite : rien à faire
+
+    @staticmethod
+    def _widget_vivant(w):
+        """True si `w` est un widget Tk encore VALIDE (v2.48.1).
+
+        `winfo exists` est la SEULE interrogation qui ne lève pas sur un widget
+        détruit (elle rend 0) : c'est ce qui permet aux rafraîchissements
+        d'interface de se TAISIR au lieu d'échouer quand un widget a disparu
+        (constat macOS : « invalid command name .!… »)."""
+        if w is None:
+            return False
+        try:
+            return bool(w.winfo_exists())
+        except tk.TclError:
+            return False
+
     def _tick(self):
+        """Boucle d'interface : rafraîchissements + consommation des files.
+
+        v2.48.1 (retour macOS du 30/09/2026) : le CORPS est protégé et la
+        REPLANIFICATION est faite dans un `finally`. Avant, `_tick` se
+        replanifiait en DERNIÈRE ligne : la moindre exception (un widget détruit
+        pendant une boîte de dialogue native macOS, « invalid command name
+        .!… ») tuait la boucle POUR DE BON et l'interface restait GELÉE — c'est
+        exactement ce que montrait le journal du testeur. Désormais une erreur
+        est ÉCRITE au journal (une fois par épisode, jamais 33 fois par seconde)
+        et la boucle CONTINUE : un rafraîchissement raté n'est plus un gel."""
+        try:
+            self._tick_corps()
+            self._tick_err_sig = None          # épisode clos
+        except tk.TclError:
+            self._journal_erreur_tick("boucle d'interface (widget détruit ?)")
+        except Exception:
+            self._journal_erreur_tick("boucle d'interface")
+        finally:
+            self._planifier_tick(30)
+
+    def _journal_erreur_tick(self, titre):
+        """Écrit l'erreur de la boucle d'interface UNE fois par épisode.
+
+        Un widget durablement détruit ferait 33 exceptions par seconde : sans
+        ce garde-fou, le journal deviendrait illisible et masquerait la CAUSE.
+        """
+        sig = traceback.format_exc()
+        if sig == self._tick_err_sig:
+            return
+        self._tick_err_sig = sig
+        journal.erreur(titre)
+
+    def _tick_corps(self):
         # Jalon 84 : BATTEMENT pour le guet de gel — la PREUVE que le fil
         # d'interface rend la main (deux affectations, aucun coût mesurable).
         guet = getattr(self, "guet", None)
@@ -9002,7 +9121,7 @@ class App:
                     self._tec_defaut = float(
                         self.var_tec_consigne.get().replace(",", "."))
                 except ValueError:
-                    return self.root.after(30, self._tick)
+                    return
                 self._tec_demande = ("consigne", self._tec_defaut)
             if self._roue_ok:
                 self._roue_ok = False
@@ -9172,7 +9291,9 @@ class App:
                     + (f"\n\nCorrections écrites dans le fichier (AVAAPPLI) :"
                        f"\n{corr}" if corr else "")
                     + (f"\n\nOutils : {outils}" if outils else ""))
-        self.root.after(30, self._tick)
+        # v2.48.1 : la replanification de la boucle est faite par `_tick`, dans
+        # un `finally` — elle ne doit PAS être répétée ici (sinon la boucle
+        # serait planifiée DEUX fois, et le travail doublerait à chaque tour).
 
     def _src_pleine_res(self):
         """Image LINÉAIRE pleine résolution de la VUE COURANTE (v2.38.1), ou

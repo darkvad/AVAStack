@@ -10,8 +10,58 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **DERNIER JALON (30/09/2026, jalons 85 + 86, v2.48.0 — TERMINÉ, BANCS VERTS,
-  PUBLIÉE) —
+- **DERNIER JALON (01/10/2026, v2.48.1 — DEUX CORRECTIONS, CODE ÉCRIT, BANCS
+  VERTS, EN ATTENTE DU TEST RÉEL).**
+  **① LA CHAÎNE COULEUR S'APPLIQUE À LA VUE « TRAITÉE ».** Déclencheur : ton
+  constat — « les corrections de couleurs ne sont plus dans le traitement
+  externe et celles du live ne sont pas appliquées sur l'affichage de la vue
+  traitée ». CAUSE : le jalon 85 a sorti la chaîne couleur (SCNR / SCNR doux /
+  démagenta / boost) de la chaîne LINÉAIRE externe pour qu'elle suive
+  l'ÉTIREMENT, mais les synchros de vue (`_sync_vl_*_vue`) la COUPAIENT encore
+  en vue « traitée » (raison héritée : éviter un 2e traitement du temps où la
+  chaîne externe la portait) → l'écran ET le « tel que vu » de la vue traitée
+  restaient VERTS.
+  **CHOIX : RENDRE LES RÉGLAGES DU LIVE ACTIFS SUR LA VUE TRAITÉE** — et NON
+  remettre la couleur dans le traitement externe : celui-ci produit un fichier
+  LINÉAIRE pré-étirement, l'y remettre recreerait l'écrêtage vert que le jalon
+  85 a corrigé.
+  **LIVRÉ ①** : `ui/app.py` — `_sync_vl_scnr_vue` / `_sync_vl_scnr_doux_vue` /
+  `_sync_vl_demagenta_vue` / `_sync_vl_boost_vue` suivent la CASE seule (plus de
+  condition de vue) ; les corrections PRÉ-étirement (neutralisation du fond,
+  chroma) ET GraXpert/débruitage/netteté live restent coupées en vue « traitée »
+  (elles SONT dans la chaîne externe). AUCUNE clé ni aucun défaut ne change.
+  **② LA BOUCLE D'INTERFACE NE PEUT PLUS GELER** (retour du testeur macOS,
+  30/09/2026, v2.47.0 : « ce n'est pas mieux »). Son journal se terminait par
+  `TclError: invalid command name "…!labelframe7.!label11"` dans `_tick` →
+  `_maj_libelle_fit`. CAUSE : `_tick` se replanifiait en DERNIÈRE ligne — la
+  moindre exception (widget devenu invalide : arbre détruit à la fermeture, ou
+  boîte de dialogue NATIVE macOS pendant laquelle un `after` en attente se
+  déclenche) tuait la boucle POUR DE BON → interface GELÉE (« les boutons ne
+  répondent plus »). C'est ce que le guet de gel (jalon 84) cherchait à mesurer :
+  il ne restera plus muet, la panne venant de `_tick` qui mourait.
+  **LIVRÉ ②** : `_tick` = ORDONNANCEUR (`_tick`) + CORPS (`_tick_corps`) ;
+  l'ordonnanceur protège le corps et REPLANIFIE dans un `finally` (une erreur
+  est écrite au journal UNE fois par épisode, jamais 33 fois par seconde) ;
+  `_planifier_tick` mémorise l'identifiant `after` et `_on_close` l'ANNULE avant
+  `root.destroy()` ; `_widget_vivant()` (`winfo exists`) permet aux
+  rafraîchissements de se TAISIR au lieu d'échouer.
+  Version **v2.48.1**, changelog en tête d'`avastack/__init__.py`.
+  **BANCS** : ① 4 adaptés (jalon22, jalon39, jalon86, jalon69) ; ② BANC NEUF
+  `_test_ui_robuste_jalon87.py` (4 sections, 12 vérifications). Série rejouée
+  verte (85, 41, 59, 63, 65, 69, 9, 12, 5, 75, 68, 47, 84, 40, 79, 74, 73, 77,
+  80).
+  **TEST RÉEL À FAIRE (Alain)** : ① en vue « traitée », cocher SCNR / SCNR doux /
+  démagenta / boost → l'image traitée doit se corriger comme le live ; ② sur
+  macOS, vérifier que l'interface ne gèle plus (le journal ne doit plus finir
+  sur « invalid command name ») et que la fermeture aboutit.
+  **INSTALLEURS v2.48.1 RECONSTRUITS** :
+  `installer/windows/output/avastack-setup-2.48.1.exe` (11 506 333 o, SHA-256
+  `87710E40…3F34D`), `installer/linux/output/avastack-setup-2.48.1-linux.tar.gz`
+  (622 902 o, `684B7747…8A693`), `installer/macos/output/avastack-setup-2.48.1-macos.tar.gz`
+  (620 491 o, `7C72F10B…1EA59`). **Aucun tag, aucune release** avant ton retour.
+  **REPLI : v2.48.0** (publiée — release GitHub `v2.48.0`).
+- **JALON PRÉCÉDENT (30/09/2026, jalons 85 + 86, v2.48.0 — TERMINÉ, BANCS
+  VERTS, PUBLIÉE) —
   PRÉSERVATION DE LA LUMINANCE DU RETRAIT DU VERT + ORDRE DE LA CHAÎNE COULEUR.**
   Déclencheur : ton constat sur ton empilement SHO (NGC 2237) — « vert par
   défaut, manque de doré » ; exigences : la **variante fidèle Siril**

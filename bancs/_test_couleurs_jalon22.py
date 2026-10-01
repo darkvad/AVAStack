@@ -279,8 +279,29 @@ app.var_view.set("traitée")
 app._on_view()
 app.var_vl_scnr.set(True)
 app._on_vl_scnr()
-verifie(app.disp.vl_scnr is False,
-        "vue « traitée » : SCNR live DÉSACTIVÉ (l'image a déjà été traitée)")
+verifie(app.disp.vl_scnr is True,
+        "vue « traitée » : SCNR ACTIF (v2.48.1 — la chaîne couleur suit "
+        "l'étirement et n'est plus dans la chaîne externe)")
+# v2.48.1 : BOUT-EN-BOUT — en vue « traitée », le rendu porte RÉELLEMENT le
+# SCNR. Avant la v2.48.1, la synchro de vue remettait disp.vl_scnr à False et
+# l'image traitée restait VERTE : on fixe donc l'état par la SEULE synchro de
+# vue (comme le fait _tick), puis on rend l'image « résultat externe ».
+app.var_view.set("traitée")
+app.var_vl_scnr.set(True)
+app._sync_vl_couleur_vue()
+out_traitee_avec = d.process(img, live=False).astype(np.float32) / 255.0
+app.var_vl_scnr.set(False)
+app._sync_vl_couleur_vue()
+out_traitee_sans = d.process(img, live=False).astype(np.float32) / 255.0
+gr_avec = float(np.mean(out_traitee_avec[..., 1]
+                        - 0.5 * (out_traitee_avec[..., 0]
+                                 + out_traitee_avec[..., 2])))
+gr_sans = float(np.mean(out_traitee_sans[..., 1]
+                        - 0.5 * (out_traitee_sans[..., 0]
+                                 + out_traitee_sans[..., 2])))
+verifie(d.vl_scnr is False and gr_avec < gr_sans,
+        f"vue « traitée » : le SCNR AGIT sur le rendu (G−(R+B)/2 : "
+        f"{gr_sans:.4f} → {gr_avec:.4f}) — la vue traitée n'est plus verte")
 # ==================================== [3] traitement externe
 print("[3] traitement externe : plus AUCUNE case couleur dans cette chaîne "
       "(jalon 85) — le résultat reste LINÉAIRE")

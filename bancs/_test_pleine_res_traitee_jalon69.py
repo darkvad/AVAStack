@@ -192,8 +192,10 @@ d.vl_mode_res = veralux.MODE_TARGET_BG
 d.vl_target_bg = 0.16
 verifie(veralux.moteur_disponible(), "moteur VeraLux disponible")
 scene = scene_synthetique()
-# La VUE commande la chaîne : en vue « traitée » les cases live (SCNR, neutre,
-# chroma, débruitage, netteté) se désactivent — exactement ce que fait _tick.
+# La VUE commande la chaîne : en vue « traitée » les corrections PRÉ-étirement
+# restent coupées (neutralisation, chroma : déjà dans la chaîne externe), comme
+# le débruitage et la netteté ; les corrections APRÈS étirement (SCNR…) valent
+# pour les deux vues depuis la v2.48.1 — exactement ce que fait _tick.
 app.var_view.set("traitée")
 app._sync_vl_couleur_vue()
 app._sync_vl_graxpert_vue()
