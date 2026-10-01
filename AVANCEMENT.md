@@ -54,12 +54,31 @@ dans le changelog du source et l'historique git.)
   démagenta / boost → l'image traitée doit se corriger comme le live ; ② sur
   macOS, vérifier que l'interface ne gèle plus (le journal ne doit plus finir
   sur « invalid command name ») et que la fermeture aboutit.
-  **INSTALLEURS v2.48.1 RECONSTRUITS** :
-  `installer/windows/output/avastack-setup-2.48.1.exe` (11 506 333 o, SHA-256
-  `87710E40…3F34D`), `installer/linux/output/avastack-setup-2.48.1-linux.tar.gz`
-  (622 902 o, `684B7747…8A693`), `installer/macos/output/avastack-setup-2.48.1-macos.tar.gz`
-  (620 491 o, `7C72F10B…1EA59`). **Aucun tag, aucune release** avant ton retour.
+  **PAQUETS ET RELEASE v2.48.1 : PUBLIÉS (01/10/2026).** Trois installateurs
+  reconstruits sur le code testé (`installer/windows/output/avastack-setup-2.48.1.exe`
+  11 506 333 o, SHA-256 `87710E40…3F34D` ; `…-linux.tar.gz` 622 902 o,
+  `684B7747…8A693` ; `…-macos.tar.gz` 620 491 o, `7C72F10B…1EA59`).
+  `INSTALLATION.md` en v2.48.1 (titre, tableau des trois fichiers et empreintes,
+  noms cités dans les sections Windows / Linux / macOS, § 8 avec l'état macOS
+  honnête, repli porté à la **v2.48.0**). Tag annoté **v2.48.1** sur `6da768a`
+  (code + doc) ; release GitHub publiée avec les trois paquets + `INSTALLATION.md` :
+  https://github.com/darkvad/AVAStack/releases/tag/v2.48.1
   **REPLI : v2.48.0** (publiée — release GitHub `v2.48.0`).
+  **ÉTAT DE FIN DE SESSION (01/10/2026) — RIEN EN ATTENTE DE L'AGENT.**
+  **PROCHAINE ÉTAPE, TON ORDRE : un PROBLÈME D'INSTALLATION SUR WINDOWS 11
+  FAMILLE.** À instruire à la reprise : demander d'abord le **message exact**
+  affiché (et, s'il existe, le journal) **avant toute hypothèse** — le filet de
+  démarrage (v2.38.7) écrit `<config>/journal.txt` et MONTRERAIT l'erreur ; sous
+  Windows, le dossier de configuration est **`%APPDATA%\AVAStack`** (le journal
+  vit à côté de `config.json`). Pistes à GARDER pour la mesure (pas à coder à
+  l'aveugle) : l'installateur Inno Setup copie l'application dans
+  `%LOCALAPPDATA%\AVAStack` et y crée un venv (droits, antivirus/Defender,
+  Python système absent) — l'échec le plus probable est un refus d'écriture ou
+  d'exécution, que le journal nommerait.
+  **RESTE EN ATTENTE (essais réels, non bloquants)** : ① le rendu SHO avec SON
+  Linear Fit « gain + offset » ; ② l'essai macOS de la **v2.48.1** par le testeur
+  (l'interface ne doit plus geler, le journal ne doit plus finir sur « invalid
+  command name ») ; ③ la chaîne ⚡ par couche en composition à 3 rôles.
 - **JALON PRÉCÉDENT (30/09/2026, jalons 85 + 86, v2.48.0 — TERMINÉ, BANCS
   VERTS, PUBLIÉE) —
   PRÉSERVATION DE LA LUMINANCE DU RETRAIT DU VERT + ORDRE DE LA CHAÎNE COULEUR.**
