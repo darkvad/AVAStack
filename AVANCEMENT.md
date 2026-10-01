@@ -78,6 +78,22 @@ dans le changelog du source et l'historique git.)
   supprimer le dossier. Le pas « aucun Python trouvé → téléchargement python.org »
   reste, lui, IMPOSSIBLE à exercer ici (il faudrait masquer `C:\Python314`) : il
   n'est testable que sur une machine SANS Python de python.org — celle de l'ami.
+  **TÉMOIN MESURÉ (02/10/2026, machine d'Alain, SAC ARRÊTÉ — `VerifiedAndReputable
+  PolicyState = 0`)** : banc `%TEMP%\test_sac_execution_temp.ps1` = télécharge
+  l'installateur python.org 3.12.7 DANS `%TEMP%` et l'EXÉCUTE de là en `/layout`
+  (donc SANS RIEN INSTALLER — vérifié : 0 entrée « Python 3.12 », aucun dossier
+  dans `Programs\Python`) → **EXÉCUTION AUTORISÉE, code de sortie 0**, fichier
+  **signé `Valid` par la Python Software Foundation**. C'est la RÉFÉRENCE À BATTRE.
+  **À REJOUER avec SAC ACTIF** (exiger `VerifiedAndReputablePolicyState = 1`, PAS 2 :
+  en évaluation Windows n'applique rien) et surtout **CHEZ LE TESTEUR**, dont la
+  machine a échoué. Le même banc imprime l'état SAC, la **validité de la signature
+  du fichier téléchargé** (il détecte donc un téléchargement TRONQUÉ, qui
+  expliquerait l'Erreur 4551 à lui seul) et l'exécution depuis `%TEMP%`.
+  **LECTURE DES RÉSULTATS** : exécution AUTORISÉE avec SAC actif → SAC INNOCENT,
+  chercher chez le testeur une AUTRE stratégie (WDAC/antivirus) ; exécution
+  BLOQUÉE → le pas `%TEMP%` est bien le coupable, et les remèdes sont clairs
+  (signer l'installeur, ou faire en sorte qu'Inno ne lance rien depuis `%TEMP%`) ;
+  signature INVALIDE chez le testeur → la cause est le téléchargement, rien d'autre.
   **TROIS PANNES MESURÉES ET CORRIGÉES pendant l'essai** (leçons remontées dans
   CLAUDE.md) : `$MyInvocation.MyCommand.Path` est VIDE dans une fonction ;
   `exit (Main)` CAPTURE la sortie de pipeline (l'aide ne s'affichait plus) ;
