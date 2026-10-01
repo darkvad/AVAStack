@@ -7,6 +7,7 @@ administrateur requis (tout s'installe dans le profil de l'utilisateur) :
 | --- | --- | --- |
 | Windows | `windows/output/avastack-setup-<version>.exe` | `windows/build_avastack.ps1` (Inno Setup 6) |
 | Windows (paquet ZIP, sans exécutable) | `windows/output/avastack-setup-<version>-windows.zip` | `windows/build_avastack_zip.py` |
+| Windows (paquet GELÉ, PyInstaller) | `windows/output/avastack-frozen-<version>-windows.zip` | `windows/build_avastack_frozen.ps1` |
 | Linux | `linux/output/avastack-setup-<version>-linux.tar.gz` | `linux/build_avastack.py` |
 | macOS | `macos/output/avastack-setup-<version>-macos.tar.gz` | `macos/build_avastack.py` |
 
@@ -207,6 +208,26 @@ ce packer-ci **embarque les quatre DLL nommées** d'`avastack.iss` quand elles
 sont présentes à la racine : sans elles, le paquet ZIP offrirait moins de caméras
 que le `.exe`.
 
+## Packer GELÉ (PyInstaller) — antichambre de la voie Store (v2.49.0)
+
+`windows/build_avastack_frozen.ps1` produit une application **GELÉE** par
+PyInstaller (`--onedir --windowed`) — **sans venv, sans Python à installer** :
+c'est ce qu'exige un futur **MSIX** (un MSIX est immuable, donc on ne peut pas y
+créer un venv à l'installation). C'est un **paquet d'ESSAI**, en plus des quatre
+installateurs.
+
+- Artefact : `output/avastack-frozen-<version>-windows/` (+ `.zip`, SHA-256
+  affiché) ; le nom PORTE la version, comme les autres packers.
+- Les **4 DLL constructeurs sont EMBARQUÉES** (liste nommée, `--add-binary`) —
+  décision d'Alain du 02/10/2026 : **on les garde dans TOUS les installateurs**
+  (la politique Store 10.2.4 ne vise que les PILOTES noyau / services NT, pas les
+  DLL en mode utilisateur ; et la lecture seule d'un MSIX rendrait leur dépôt
+  manuel impossible). Une DLL absente au build est ANNONCÉE, jamais inventée.
+- Prérequis de build : **PyInstaller ≥ 6.16** dans le venv (Python 3.14) ;
+  **outil de DEV**, jamais dans `requirements.txt`.
+- Le **scan QHY** fonctionne en gelé (correctif v2.49.0 : l'exe se relance avec
+  `--scan-qhy`, car un exe PyInstaller ignore `-c`).
+
 ## Structure
 
 ```
@@ -224,10 +245,15 @@ installer/
     install_avastack.bat  lanceur double-clic de install_avastack.ps1
     build_avastack_zip.py packer (stdlib) : lit AVASTACK_VERSION et écrit
                           output/avastack-setup-<version>-windows.zip
+    build_avastack_frozen.ps1
+                          packer PyInstaller (gel) : lit AVASTACK_VERSION,
+                          embarque les 4 DLL NOMMEES, écrit
+                          output/avastack-frozen-<version>-windows/ (+ .zip)
     LISEZMOI.txt          lisez-moi utilisateur (copié à l'installation)
     output/               artefact compilé (gitignore) :
                           avastack-setup-<version>.exe
                           avastack-setup-<version>-windows.zip
+                          avastack-frozen-<version>-windows/ (+ .zip)
   linux/
     install_avastack.sh   installateur (bash) : prérequis, copie, venv,
                           lanceur, entrée .desktop, vérification ; sans caméras

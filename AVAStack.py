@@ -103,7 +103,33 @@ def _echec(exc):
     return 1
 
 
+# --- Mode INTERNE « --scan-qhy » (v2.49.0) ----------------------------------
+# Le scan QHY est isolé dans un SOUS-PROCESSUS (cf. avastack/cameras/qhy.py).
+# En dev, le parent lance `python -c …`. Une fois l'appli GELÉE (PyInstaller),
+# l'exe ne sait pas exécuter `-c` (MESURÉ : il ignore ses arguments et rouvre
+# l'interface) — il se relance donc LUI-MÊME avec ce drapeau, traité ICI, AVANT
+# toute interface : seuls la liste JSON et rien d'autre sortent sur stdout.
+# DOIT être identique à cameras/qhy.DRAPEAU_SCAN (vérifié par banc).
+_MODE_SCAN_QHY = "--scan-qhy"
+
+
+def _scan_qhy():
+    """[Interne] scan QHY isolé → imprime les ids JSON sur stdout.
+
+    `QHYCamera.lister()` ne lève jamais (il rend [] si le SDK est absent) :
+    l'enfant imprime donc TOUJOURS une liste JSON, comme le chemin `-c` du
+    venv — le parent n'a ainsi qu'un seul format à comprendre."""
+    import json
+    from avastack.cameras.qhy import QHYCamera
+    print(json.dumps(QHYCamera.lister()))
+    return 0
+
+
 if __name__ == "__main__":
+    # Mode interne demandé par le parent (scan QHY d'une appli GELÉE) : rien
+    # d'autre n'est fait — aucune fenêtre, aucun bruit sur stdout, un JSON net.
+    if _MODE_SCAN_QHY in sys.argv[1:]:
+        raise SystemExit(_scan_qhy())
     try:
         import avastack
         print(f"AVAStack v{avastack.AVASTACK_VERSION}")

@@ -10,44 +10,51 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **DERNIER JALON (02/10/2026, jalon 89 — v2.48.2 : LES INSTALLATEURS WINDOWS
-  VÉRIFIENT L'EMPREINTE DU PYTHON TÉLÉCHARGÉ. CODE ÉCRIT, BANC VERT, PAQUETS
-  PUBLIÉS.)**
-  **POURQUOI** : chez le testeur, l'installation s'arrêtait sur « Erreur 4551 :
-  une stratégie de contrôle d'application a bloqué ce fichier » (fichier
-  TEMPORAIRE). La MESURE (banc `bancs/_diag_execution_temp.ps1`, compte
-  « avadon », `VerifiedAndReputablePolicyState = 1`) a montré que **SAC APPLIQUÉ
-  laisse exécuter depuis `%TEMP%` un fichier SIGNÉ** → **SAC est INNOCENT**, et un
-  **téléchargement TRONQUÉ** (donc sans signature valide) restait une cause
-  plausible : elle est désormais détectée et refusée.
-  **LIVRÉ** : `avastack.iss` (define `PythonSha256` + `VerifierEmpreintePython`
-  via `GetSHA256OfFile` — disponible depuis **Inno Setup 6.1**, casse non
-  documentée d'où `Lowercase` des deux côtés — plus `TelechargerPython`, DEUX
-  tentatives) ; `install_avastack.ps1` (`$PY_SHA256` + `Get-FileHash`, DEUX
-  tentatives, MÊME empreinte) ; l'échec est DIT en clair (« INCOMPLET » + quoi
-  faire) ; **CORRECTION `-Desinstaller`** (les raccourcis ne partent plus s'ils
-  n'ont pas été créés — marque `raccourcis : AUCUN` écrite dans `VERSION.txt` et
-  relue). Valeur épinglée des deux côtés, relevée d'un téléchargement dont la
-  **signature Authenticode est Valide** (signataire Python Software Foundation).
-  **BANCS** : neuf `_test_installeurs_empreinte_jalon89.py` → **21 vérifications
-  TOUT AU VERT**, dont la comparaison de l'empreinte déclarée avec le fichier
-  RÉEL de python.org ; `_test_installeur_windows_zip_jalon88.py` **rejoué vert**.
-  **PAQUETS PUBLIÉS (release v2.48.2, 5 assets, tag annoté sur `ffb3287`)** :
-  `.exe` 11 505 818 o `CC22386A…` ; `-windows.zip` 14 034 921 o `6F762C66…` ;
-  `-linux.tar.gz` 623 658 o `6140B35B…` ; `-macos.tar.gz` 621 252 o `5BA9A543…` ;
-  `INSTALLATION.md` 22 900 o `F80FB8AD…`. **Les cinq empreintes PUBLIÉES ont été
-  vérifiées par l'API contre les fichiers locaux : identiques.** `INSTALLATION.md`
-  passe en v2.48.2 (« les QUATRE installateurs », tableau des quatre avec tailles
-  et SHA-256, § 8 avec le motif et « l'enquête sur SA machine n'est pas close »).
-  **REPLI : v2.48.1** (release publiée, quatre paquets).
-  **PROCHAINE ÉTAPE : RIEN À CODER — ATTENDRE LES RETOURS.** ① le testeur Windows
-  11 famille : relancer l'installeur **2.48.2** (fichier différent → verdict de
-  réputation potentiellement différent) et **passer le banc dans les deux états**
-  (SAC actif) ; ② les **faits machine** (`CodeIntegrity\CiPolicies\Active`, état
-  SAC, `where.exe python`, antivirus tiers) — c'est là que se joue la cause de
-  l'Erreur 4551 ; ③ l'essai macOS de la v2.48.2 par le testeur ; ④ la chaîne ⚡
-  par couche en composition à 3 rôles.
-
+- **DERNIER JALON (02/10/2026, jalon 91 — v2.49.0 : LE SCAN QHY FONCTIONNE DANS
+  UNE APPLICATION GELÉE, ET UN PACKER GELÉ (PyInstaller) EST LIVRÉ. BANC VERT,
+  PAQUET CONSTRUIT ET ESSAYÉ.)**
+  **POURQUOI** : la voie Store (MSIX IMMUABLE) exige une application GELÉE — le
+  gel ayant été mesuré faisable au jalon 90. Le SEUL point de code qui cassait en
+  gelé était le **scan QHY** : il isole le SDK natif dans un sous-processus par
+  `subprocess.run([sys.executable, "-c", …])`, or un exe PyInstaller **IGNORE `-c`**
+  (MESURÉ) → la détection QHY aurait échoué en « délai dépassé ».
+  **LIVRÉ** : ① `cameras/qhy.py` — `_commande_scan()` : en dev INCHANGÉ (`python
+  -c …`), en gelé l'exe se relance avec `DRAPEAU_SCAN` (« --scan-qhy ») ; ②
+  `AVAStack.py` — mode interne `--scan-qhy`, traité AVANT toute interface (un JSON
+  sur stdout, aucune fenêtre) ; ③ `bancs/_test_gel_qhy_jalon91.py` (NEUF) — **10
+  vérifications TOUT AU VERT** (drapeau unique, les deux commandes, bout en bout
+  RÉEL du drapeau, contrat du parent inchangé) ; ④
+  `installer/windows/build_avastack_frozen.ps1` (NEUF) — packer PyInstaller
+  `--onedir --windowed` + les **4 DLL ajoutées par NOM**, artefact nommé avec la
+  version. `bancs/cameras/_test_qhy_camera.py` **rejoué vert (33)** et
+  `_test_installeur_windows_zip_jalon88.py` **rejoué vert**.
+  **MESURES (paquet construit)** : dossier **249,8 Mo**, archive **101,5 Mo**
+  (`avastack-frozen-2.49.0-windows.zip`, SHA-256 `A6E3ACDF…`) ; les 4 DLL SONT dans
+  le paquet (`_internal/`) ; **`AVAStack.exe --scan-qhy` → `[]`, code 0, sans
+  erreur** ; probe gelé séparé : **`import qhyccd` RÉUSSIT** (`QHYCCD_IMPORT_OK`) →
+  le `[]` est bien « aucune caméra », PAS un import raté ; **l'exe du paquet ouvre
+  sa fenêtre** (« AVAStack v2.49.0 — live stacking »), journal sans erreur.
+  **PROCHAINE ÉTAPE** : **essai RÉEL d'Alain** du paquet gelé — dossier
+  `installer\windows\output\avastack-frozen-2.49.0-windows\`, double-clic sur
+  `AVAStack.exe`, et surtout **« Détecter » une caméra QHY** (c'est le correctif) ;
+  puis, si concluant, le **MSIX** (`AppxManifest` + MakeAppx) et la certification.
+- **JALON PRÉCÉDENT (02/10/2026, jalon 90 — GEL MESURÉ FAISABLE, et DÉCISION : ON
+  GARDE LES DLL DANS TOUS LES INSTALLATEURS).** Gel RÉUSSI (`--onedir --windowed`,
+  214 Mo, fenêtre ouverte, mode « Simulée (démo) » OK au banc). **Pourquoi garder
+  les DLL** : la politique Store **10.2.4 « Software Dependencies » ne vise QUE les
+  PILOTES noyau / services NT**, PAS les DLL en mode utilisateur chargées par
+  `ctypes` — et le pilote USB constructeur reste requis DE TOUTE FAÇON ; de plus,
+  un MSIX étant en **LECTURE SEULE**, les EMBARQUER est plus simple que de faire
+  déposer des fichiers. Mesuré : `sdk_loader`, le moteur tiers VeraLux et la DLL QHY
+  fonctionnent gelés **SANS modification**. Détail : changelog
+  d'`avastack/__init__.py` et historique git.
+- **THREADS ENCORE OUVERTS (jalons 88-89, rien à coder d'ici là)** : ① le testeur
+  **Windows 11 famille** — relancer l'installeur **2.48.2** et passer le banc dans
+  les DEUX états (SAC actif), relever les **faits machine**
+  (`CodeIntegrity\CiPolicies\Active`, état SAC, `where.exe python`, antivirus
+  tiers) : c'est là que se joue la cause de l'Erreur 4551 ; ② l'essai **macOS** de
+  la v2.48.2 ; ③ la **chaîne ⚡ par couche** en composition à 3 rôles.
+  **REPLI** : release **v2.48.2** (publiée, 5 assets).
 - **JALON PRÉCÉDENT (02/10/2026, jalon 88 — INSTALLATEUR WINDOWS EN PAQUET ZIP,
   CODE ÉCRIT, BANC VERT, EN ATTENTE DU TEST RÉEL).**
   **DÉCLENCHEUR** : un ami sous **Windows 11 famille** n'arrive pas à installer

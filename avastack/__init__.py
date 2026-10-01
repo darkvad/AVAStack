@@ -17,9 +17,29 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.48.2"
+AVASTACK_VERSION = "2.49.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.49.0 : SCAN QHY RÉPARÉ POUR UNE APPLICATION GELÉE + PACKER WINDOWS GELÉ
+#   (PyInstaller) — PREMIER PAS DU CHANTIER « MICROSOFT STORE » (jalon 91).
+#   Contexte : la voie Store (MSIX, IMMUABLE : le venv ne peut pas se créer à
+#   l'installation) impose une application GELÉE, et le gel a été MESURÉ
+#   faisable au jalon 90 (214 Mo, fenêtre ouverte, mode « Simulée (démo) » OK,
+#   `sdk_loader`/VeraLux/DLL QHY trouvés SANS modification). Le SEUL point de
+#   code qui cassait en gelé était le scan QHY.
+#   - avastack/cameras/qhy.py : `_commande_scan()` choisit la commande du scan
+#     isolé. En dev, INCHANGÉ (`python -c …`). GELÉ, l'exe ne sait pas exécuter
+#     `-c` (MESURÉ : il ignore ses arguments et rouvre l'interface) : il se
+#     relance donc LUI-MÊME avec le drapeau `DRAPEAU_SCAN` (« --scan-qhy »).
+#   - AVAStack.py : mode interne `--scan-qhy`, traité AVANT toute interface
+#     (un JSON sur stdout, aucune fenêtre) : c'est le point d'entrée de l'enfant.
+#   - installer/windows/build_avastack_frozen.ps1 : NOUVEAU packer — PyInstaller
+#     `--onedir --windowed`, les 4 DLL constructeurs ajoutées par NOM (décision
+#     confirmée : on les garde dans TOUS les installateurs), artefact
+#     `output/avastack-frozen-<version>-windows/` + `.zip` (SHA-256 affiché).
+#   - bancs/_test_gel_qhy_jalon91.py : 10 vérifications (drapeau unique, les deux
+#     commandes, bout en bout RÉEL du drapeau, contrat du parent inchangé).
+#   Le reste du pipeline tourne DÉJÀ en gelé sans aucun changement.
 # v2.48.2 : LES INSTALLATEURS WINDOWS VÉRIFIENT L'EMPREINTE DU PYTHON TÉLÉCHARGÉ
 #   (durcissement, sans aucun changement de comportement de l'application).
 #   Contexte : un testeur a reçu « Impossible d'exécuter un fichier depuis le

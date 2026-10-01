@@ -43,6 +43,15 @@ FICHIER_TRACE = os.path.join(tempfile.gettempdir(), "avastack_qhy_debug.log")
 # console (l'application tourne normalement via pythonw, sans console).
 _CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 
+# Drapeau du mode « scan isolé » (v2.49.0). Le scan QHY tourne dans un
+# SOUS-PROCESSUS : en dev le parent lance `python -c …`, mais une fois l'appli
+# GELÉE (PyInstaller) l'exe ne sait pas exécuter `-c` (MESURÉ : il IGNORE ses
+# arguments et rouvre l'interface) — il se relance donc LUI-MÊME avec ce
+# drapeau, traité par AVAStack.py AVANT toute interface. La MÊME chaîne vit
+# dans AVAStack.py (_MODE_SCAN_QHY) : un banc vérifie qu'elles ne divergent
+# jamais (bancs/_test_gel_qhy_jalon91.py).
+DRAPEAU_SCAN = "--scan-qhy"
+
 # --- Contrôles SDK (ids d'après l'enum OFFICIEL, crate qhyccd-rs) ---------
 # Vérifiés en réel sur la MiniCam8M (banc + relevés d'Alain, 19/09/2026) :
 # la roue INTÉGRÉE se pilote par les contrôles (aucune API « filter wheel »
@@ -106,20 +115,35 @@ def _initialiser_sdk():
     return True
 
 
+def _commande_scan():
+    """Commande du scan QHY isolé (cf. `lister_via_sous_processus`).
+
+    Deux formes, UN SEUL contrat (l'enfant imprime la liste JSON sur stdout) :
+    - application NORMALE (venv) : `python -c …`, la racine du projet passant
+      par sys.argv[1] et JAMAIS interpolée dans le code (un chemin
+      d'installation peut contenir quotes/apostrophes) ;
+    - application GELÉE (PyInstaller) : `-c` est IGNORÉ par un exe gelé
+      (MESURÉ : l'exe rouvrirait l'interface au lieu de scanner) — on relance
+      donc l'exe avec DRAPEAU_SCAN, que AVAStack.py traite avant l'interface.
+    """
+    if getattr(sys, "frozen", False):
+        return [sys.executable, DRAPEAU_SCAN]
+    code = ("import sys, json; sys.path.insert(0, sys.argv[1]); "
+            "from avastack.cameras.qhy import QHYCamera; "
+            "print(json.dumps(QHYCamera.lister()))")
+    return [sys.executable, "-c", code, RACINE_PROJET]
+
+
 def lister_via_sous_processus(timeout_s=25):
     """Scan QHY DANS UN SOUS-PROCESSUS isolé → (ids, None) ou (None, message).
 
     Isolation : le SDK natif est du code externe — s'il segfaulte au scan,
     seul l'enfant meurt et la fonction renvoie un message clair (un scan
-    in-process tuerait TOUTE l'application). Le chemin racine est transmis
-    via sys.argv, JAMAIS interpolé dans le code (un chemin d'installation
-    peut contenir quotes/apostrophes).
+    in-process tuerait TOUTE l'application). La commande de l'enfant dépend de
+    l'état gelé ou non : cf. `_commande_scan` (v2.49.0).
     """
-    code = ("import sys, json; sys.path.insert(0, sys.argv[1]); "
-            "from avastack.cameras.qhy import QHYCamera; "
-            "print(json.dumps(QHYCamera.lister()))")
     try:
-        r = subprocess.run([sys.executable, "-c", code, RACINE_PROJET],
+        r = subprocess.run(_commande_scan(),
                            capture_output=True, text=True,
                            timeout=timeout_s,
                            creationflags=_CREATE_NO_WINDOW)
