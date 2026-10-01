@@ -12,7 +12,8 @@ dans le changelog du source et l'historique git.)
 
 - **DERNIER JALON (02/10/2026, jalon 93 — v2.50.0 : ICÔNE DE L'APPLICATION
   (barre de titres + barre des tâches) ET VIGNETTES MSIX DEPUIS LA VRAIE ICÔNE.
-  BANC VERT, PAQUETS RECONSTRUITS.)**
+  BANC VERT, PAQUETS RECONSTRUITS, MSIX À IDENTITÉ RÉELLE INSTALLÉ ET TESTÉ
+  EN RÉEL.)**
   **POURQUOI** : Alain a fourni l'icône (`assets/avastack.ico` multirésolution
   16/32/48/256 + `assets/avastack.png` 512×512, M31) et a posé LA question qui
   tranche : « les vignettes, c'est l'icône de la barre de titres ? » — NON, ce
@@ -46,11 +47,18 @@ dans le changelog du source et l'historique git.)
   l'identité, essai local, **textes de la fiche Store** (la description COMMENCE
   par la dépendance pilotes — exigence de la politique 10.2.4), **notes de
   certification** demandant l'exception, images à fournir, réglages, étapes.
-  **PROCHAINE ÉTAPE** : Alain installe/teste le MSIX à identité réelle — NOUVEAU
-  certificat à approuver dans `LocalMachine\TrustedPeople` (ADMIN ; le sujet est
-  maintenant le `CN=<GUID>` de Partner Center, donc l'ancien certificat d'essai
-  `CN=AVAStack Test` ne suffit plus) — et vérifie l'**icône** ; puis la
-  **soumission** (textes de SOUMISSION.md ; certification 1 à 3 jours).
+  **INSTALLATION + TEST RÉELS DU MSIX À IDENTITÉ RÉELLE VALIDÉS PAR ALAIN
+  (02/10/2026)** : nouveau certificat approuvé dans
+  `LocalMachine\TrustedPeople` (ADMIN ; sujet = `CN=<GUID>` de Partner Center,
+  l'ancien `CN=AVAStack Test` ne suffit plus), `Add-AppxPackage` OK — l'appli
+  s'ouvre, tourne et empile en **« Composition multi-dossiers »** (capture
+  réelle d'Alain : SHO S2+Ha+O3, 55 poses cumulées, recadrée 3819×2159,
+  GraXpert branché), titre affiché **v2.50.0**. C'était LA prochaine étape du
+  jalon 93 : elle est FRANCHIE.
+  **PROCHAINE ÉTAPE** : produire les **images de la fiche Store** (≥1 capture
+  ≥1366×768 — idéalement en mode « Simulée (démo) », SANS chemin ni cible
+  personnels — + tuiles 1:1/16:9/4:3), puis la **soumission** Partner Center
+  (textes de `SOUMISSION.md` ; certification 1 à 3 jours ; le Store re-signe).
 - **JALON PRÉCÉDENT (02/10/2026, jalons 91-92 — v2.49.0).** ① Le **scan QHY
   FONCTIONNE EN GELÉ** : un exe PyInstaller ignore `-c`, donc l'exe se relance
   avec le mode interne `--scan-qhy` (`AVAStack.py`, avant toute interface) ; ②
