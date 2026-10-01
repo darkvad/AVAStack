@@ -94,6 +94,28 @@ dans le changelog du source et l'historique git.)
   BLOQUÉE → le pas `%TEMP%` est bien le coupable, et les remèdes sont clairs
   (signer l'installeur, ou faire en sorte qu'Inno ne lance rien depuis `%TEMP%`) ;
   signature INVALIDE chez le testeur → la cause est le téléchargement, rien d'autre.
+  **VERDICT MESURÉ (02/10/2026, machine du compte « avadon », SAC APPLIQUÉ :
+  `VerifiedAndReputablePolicyState = 1`)** : banc d'exécution depuis `%TEMP%`
+  (`bancs/_diag_execution_temp.ps1`) → fichier python.org **signé `Valid`**
+  (Python Software Foundation) exécuté DEPUIS `%TEMP%` = **EXÉCUTION AUTORISÉE,
+  code de sortie 0** (contenu extrait à l'appui). ⟹ **SAC est INNOCENT pour un
+  fichier SIGNÉ : il n'est PAS la cause de l'Erreur 4551.**
+  (Le « Python 3.12 installe ? 9 » du contrôle n'est PAS une installation du banc :
+  ce sont les 9 sous-paquets MSI de l'installation **3.12.7 déjà présente** sur
+  cette machine — celle que l'essai ZIP venait de choisir ; le mode `/layout` ne
+  fait que TÉLÉCHARGER. Contrôle à affiner : compter AVANT/APRÈS.)
+  **CONSÉQUENCE** : l'Erreur 4551 du testeur vient d'AILLEURS — ① une AUTRE
+  stratégie de contrôle d'application (WDAC « entreprise » : voir
+  `C:\Windows\System32\CodeIntegrity\CiPolicies\Active` ; antivirus tiers ; S
+  mode), ou ② un fichier temporaire bloqué pour une autre raison.
+  **À ESSAYER, PAS CHER** : lui faire relancer l'installeur **2.48.1** (et non
+  2.48.0) — fichier et empreinte DIFFÉRENTS, donc verdict du service de réputation
+  potentiellement différent — et lui faire lancer **le même banc** chez lui.
+  **DURCISSEMENT ENVISAGÉ (à décider, NON fait)** : vérifier l'empreinte SHA-256 du
+  Python téléchargé AVANT de l'exécuter, dans les DEUX installateurs — mais cela
+  change des artéfacts DÉJÀ PUBLIÉS (empreintes citées dans `INSTALLATION.md` et
+  dans les notes de release) ⇒ ce serait une **NOUVELLE version (v2.48.2)**, jamais
+  une substitution silencieuse.
   **TEST SIGNIFICATIF : FAIT ET RÉUSSI, AVEC SAC ACTIF (02/10/2026, compte
   « avadon », Smart App Control ACTIVÉ).** `install_avastack.bat -Prefix
   C:\Temp\AVAStack_Essai -SansRaccourci` → **code 0, chaîne COMPLÈTE** : Python du
