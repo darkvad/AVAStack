@@ -6,6 +6,7 @@ administrateur requis (tout s'installe dans le profil de l'utilisateur) :
 | Plateforme | Artéfact | Produit par |
 | --- | --- | --- |
 | Windows | `windows/output/avastack-setup-<version>.exe` | `windows/build_avastack.ps1` (Inno Setup 6) |
+| Windows (paquet ZIP, sans exécutable) | `windows/output/avastack-setup-<version>-windows.zip` | `windows/build_avastack_zip.py` |
 | Linux | `linux/output/avastack-setup-<version>-linux.tar.gz` | `linux/build_avastack.py` |
 | macOS | `macos/output/avastack-setup-<version>-macos.tar.gz` | `macos/build_avastack.py` |
 
@@ -164,6 +165,44 @@ Linux.
 Rebuilder les installateurs après toute montée de version (le numéro suit le
 source) et annoncer le chemin EXACT de l'artéfact en fin de passe.
 
+## Ce que fait l'installateur Windows en paquet ZIP
+
+Pourquoi il existe (constat réel du 01/10/2026) : `avastack-setup-<version>.exe`
+est un **exécutable non signé** ; sur un Windows 11 neuf, le **Contrôle
+intelligent des applications** (Smart App Control) bloque un fichier temporaire
+d'Inno Setup et l'installation s'arrête sur « Erreur 4551 : une stratégie de
+contrôle d'application a bloqué ce fichier ». Ce paquet-ci n'exécute **aucun
+exécutable à nous** : un script PowerShell fait tout le travail.
+
+1. **Clic droit sur le `.zip` → Extraire tout** (ne pas travailler depuis
+   l'intérieur de l'archive), puis **double-cliquer sur
+   `installer\install_avastack.bat`**.
+2. Le script cherche un **Python de python.org ≥ 3.10 AVEC Tkinter**. Le
+   **Python du Microsoft Store est TOUJOURS ignoré** — même s'il est présent
+   (consigne d'Alain, 01/10/2026) : avec lui, la création d'un venv avec pip
+   échoue de façon connue (redirection de chemins → `No pyvenv.cfg file`, le
+   « Code retour : 1 » observé en v2.45.0).
+3. **S'il n'en trouve pas, il télécharge et installe Python depuis python.org**
+   (par utilisateur : `InstallAllUsers=0`, `Include_tcltk=1` → Tkinter inclus).
+4. Il copie l'application dans `%LOCALAPPDATA%\AVAStack` (le MÊME dossier que le
+   `.exe`), copie les SDK constructeurs présents, crée le venv, écrit le lanceur
+   `lancer_avastack.bat` et les raccourcis (Bureau + Menu Démarrer), puis fait un
+   **TEST DE DÉMARRAGE RÉEL** (import de `avastack.ui.app`, aucune fenêtre) et
+   **affiche l'erreur exacte** si l'application ne peut pas démarrer.
+5. Options : `-Prefix`, `-Python`, `-Simulation` (montre le Python choisi et ce
+   qui serait fait, sans rien modifier), `-SansRaccourci`, `-Forcer`,
+   `-Desinstaller [-Purge]`, `-Aide`. Le script natif reste appelable :
+   `powershell -NoProfile -ExecutionPolicy Bypass -File install_avastack.ps1`.
+
+Paquets pip caméras : `qhyccd` et `zwoasi` sont **tentés séparément et SANS
+bloquer** l'installation (un paquet caméra en échec ne doit jamais faire échouer
+tout le reste — c'est précisément la cause du « Code retour : 1 » d'un venv).
+
+Contrairement aux packers Linux/macOS (qui REFUSENT tout binaire constructeur),
+ce packer-ci **embarque les quatre DLL nommées** d'`avastack.iss` quand elles
+sont présentes à la racine : sans elles, le paquet ZIP offrirait moins de caméras
+que le `.exe`.
+
 ## Structure
 
 ```
@@ -175,9 +214,16 @@ installer/
     avastack.iss          script Inno Setup (version passée via /DAppVersion ;
                           refus de compiler sans version)
     build_avastack.ps1    wrapper ISCC : lit AVASTACK_VERSION, appelle ISCC
+    install_avastack.ps1  installateur ALTERNATIF (paquet ZIP) : Python de
+                          python.org (le Python du Microsoft Store est ignoré),
+                          venv, lanceur, raccourcis, test de démarrage
+    install_avastack.bat  lanceur double-clic de install_avastack.ps1
+    build_avastack_zip.py packer (stdlib) : lit AVASTACK_VERSION et écrit
+                          output/avastack-setup-<version>-windows.zip
     LISEZMOI.txt          lisez-moi utilisateur (copié à l'installation)
     output/               artefact compilé (gitignore) :
                           avastack-setup-<version>.exe
+                          avastack-setup-<version>-windows.zip
   linux/
     install_avastack.sh   installateur (bash) : prérequis, copie, venv,
                           lanceur, entrée .desktop, vérification ; sans caméras

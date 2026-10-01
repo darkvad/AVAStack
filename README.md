@@ -66,6 +66,7 @@ l'utilisateur**, sans droits administrateur.
 | Plateforme | Fichier | Marche à suivre |
 |---|---|---|
 | **Windows 10/11** | `avastack-setup-<version>.exe` | lancer l'exécutable (il installe Python si besoin, crée l'environnement et les raccourcis) |
+| **Windows 10/11** (si l'exécutable est bloqué) | `avastack-setup-<version>-windows.zip` | extraire, puis double-cliquer sur `installer\install_avastack.bat` — aucun exécutable à nous (utile quand le Contrôle intelligent des applications bloque le `.exe`) |
 | **Linux x86_64** | `avastack-setup-<version>-linux.tar.gz` | `tar xzf …` puis `bash installer/install_avastack.sh` |
 | **macOS 11+** | `avastack-setup-<version>-macos.tar.gz` | `tar xzf …` puis `bash installer/install_avastack.sh` (Python **avec Tkinter** requis : python.org, ou Homebrew + `python-tk`) |
 

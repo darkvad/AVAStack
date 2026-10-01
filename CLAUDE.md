@@ -103,6 +103,47 @@ alors sur `ModuleNotFoundError: No module named 'numpy'`, ce qui n'est PAS une
 panne du banc. Lancer les bancs par l'interpréteur du venv, en clair :
 `.\venv\Scripts\python.exe bancs\_test_histo_jalon75.py`.
 
+**INSTALLATEUR WINDOWS EN PAQUET ZIP (jalon 88, 01/10/2026)** : à côté de
+l'installateur Inno Setup (`.exe`, NON SIGNÉ) existe un paquet
+`avastack-setup-<version>-windows.zip` (producteur
+`installer/windows/build_avastack_zip.py`, script d'installation
+`installer/windows/install_avastack.ps1`, lancé par `install_avastack.bat`). Il
+fait la MÊME installation **sans exécuter aucun binaire à nous** : c'est la
+réponse au blocage du `.exe` par le **Contrôle intelligent des applications**
+(Smart App Control) d'un Windows 11 neuf — « Impossible d'exécuter un fichier
+depuis le dossier temporaire. Abandon de l'installation. Erreur 4551 : une
+stratégie de contrôle d'application a bloqué ce fichier. » (message INTÉGRÉ
+d'Inno Setup ; Smart App Control ignore « Exécuter quand même » et n'a AUCUNE
+exception par application : remède immédiat = l'arrêter, remède durable = signer
+l'installateur).
+
+- **Le Python du Microsoft Store est TOUJOURS ignoré** par ce script (consigne
+  d'Alain, 01/10/2026), même s'il est présent : avec lui, `venv`+`pip` échoue
+  (redirection de chemins → venv écrit sous `...\AppData\Local\Packages\
+  PythonSoftwareFoundation...` → `No pyvenv.cfg file` → « Code retour : 1 », vu
+  sur un poste de testeur en v2.45.0). Un Python est « du Store » si son chemin
+  contient `\WindowsApps\` ou `\Packages\PythonSoftwareFoundation`. Sans Python
+  utilisable, le script télécharge python.org (`InstallAllUsers=0`,
+  `Include_tcltk=1`).
+- **Les paquets pip caméras ne doivent JAMAIS faire échouer l'installation** :
+  `qhyccd`/`zwoasi` sont retirés de la liste principale et tentés séparément, en
+  avertissement seulement.
+- **`$ErrorActionPreference='Stop'` + commande NATIVE écrivant sur `stderr` =
+  ERREUR TERMINANTE (PowerShell 5.1).** Mesure du 02/10/2026 : le contrôle
+  « import numpy, cv2, PIL » TUAIT l'installation au lieu d'avertir, et la sortie
+  de `New-Venv` (qui doit rester une valeur unique) aurait été capturée avec le
+  texte de pip. Règle : appel natif dont on veut seulement LIRE le résultat →
+  `$ErrorActionPreference = 'Continue'` ramené ensuite (cf. `Test-ImportModules`) ;
+  sortie à AFFICHER sans entrer dans le pipeline → `| Out-Host`.
+- **Deux pièges PowerShell mesurés** : ① dans une FONCTION,
+  `$MyInvocation.MyCommand.Path` est VIDE (le chemin du script n'existe qu'à la
+  portée du script) → capturer `$PSScriptRoot` UNE fois ; ② `exit (Main)`
+  CAPTURE la sortie de pipeline de `Main` au lieu de l'afficher (`-Aide`
+  n'affichait plus RIEN) → passer le code par une variable de portée script.
+- Le script a `-Aide` et `-Simulation` (montre le Python choisi **sans rien
+  modifier**) : le banc `bancs/_test_installeur_windows_zip_jalon88.py` l'exécute
+  réellement et vérifie que le Python du Store n'est jamais « retenu ».
+
 `requirements.txt` = dépendances de `AVAStack.py`. Toute nouvelle
 dépendance ajoutée au script doit y être ajoutée — cf. Conventions
 non-négociables.

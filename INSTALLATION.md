@@ -19,6 +19,7 @@ de l'application — celui-ci détaille **tous les réglages** de l'interface.
 | Plateforme | Fichier | Taille | SHA-256 |
 | --- | --- | --- | --- |
 | Windows (10/11, 64 bits) | `avastack-setup-2.48.1.exe` | 11,5 Mo | `87710E40887B07E0AE4689DEF1535BD5DB1D5F691ECADAEF2DF79DCB4FE3F34D` |
+| Windows (10/11), **sans exécutable** | `avastack-setup-2.48.1-windows.zip` | 13,4 Mio | `29A7D9CE15719020A205D23BF54E41A7344D03EAE3B23B1310A010D63A7562F3` |
 | Linux (x86_64) | `avastack-setup-2.48.1-linux.tar.gz` | 608 Kio | `684B774772F99390857C65B443F76DB087917C68FA8E4CDE049D942E7FE8A693` |
 | macOS (11 et plus) | `avastack-setup-2.48.1-macos.tar.gz` | 606 Kio | `7C72F10B7FCD01D0946A1DF59F39FB926F518C9F477A3EF0C993C18211F1EA59` |
 | Documentation | `INSTALLATION.md` | ce fichier | — |
@@ -54,6 +55,22 @@ jamais, et un installateur plus ancien peut rester à côté comme repli.
    copie leurs DLL dans le dossier d'installation de l'application, ou
    désigne un dossier par variable d'environnement (ex.
    `AVASTACK_PLAYERONE_DIR=C:\chemin\vers\SDK\PlayerOne`).
+
+**Alternative : le paquet ZIP** — `avastack-setup-<version>-windows.zip` (même
+release). Si Windows refuse l'exécutable (message « Erreur 4551 : une stratégie
+de contrôle d'application a bloqué ce fichier », typique du **Contrôle
+intelligent des applications** d'un Windows 11 neuf), ce paquet fait la MÊME
+installation **sans aucun exécutable de notre part** :
+
+1. clic droit sur le `.zip` → **Extraire tout**, puis **double-cliquer sur
+   `installer\install_avastack.bat`** ;
+2. le script utilise un Python de **python.org** (≥ 3.10, Tkinter inclus). Il
+   **ignore le Python du Microsoft Store**, même s'il est présent (c'est lui qui
+   faisait échouer la création de l'environnement), et il **télécharge et
+   installe Python depuis python.org** s'il n'en trouve aucun ;
+3. il installe au MÊME endroit (`%LOCALAPPDATA%\AVAStack`), avec le même
+   lanceur et les mêmes raccourcis. `-Aide` liste les options et `-Simulation`
+   montre ce qui serait fait sans rien modifier.
 
 L'application fonctionne **sans aucune caméra** (mode « Dossier surveillé »,
 « Composition multi-dossiers », « OpenCV », « Simulée (démo) »).

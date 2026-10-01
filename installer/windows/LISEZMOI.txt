@@ -8,6 +8,20 @@ LANCEMENT
 Double-clique sur le raccourci "AVAStack" (Bureau ou Menu Démarrer),
 ou sur lancer_avastack.bat dans ce dossier.
 
+SI TU AS INSTALLÉ DEPUIS LE PAQUET ZIP
+--------------------------------------
+L'installation a été faite par installer\install_avastack.bat : elle a copié ces
+fichiers dans %LOCALAPPDATA%\AVAStack et créé l'environnement Python à partir
+d'un Python de python.org. Le Python du Microsoft Store est volontairement
+IGNORÉ (avec lui, la création de l'environnement échoue : c'est la cause du
+message « Création du venv AVAStack... Code retour : 1 »). Rien de plus à faire.
+
+Si Windows avait refusé l'exécutable habituel (« Erreur 4551 : une stratégie de
+contrôle d'application a bloqué ce fichier »), c'est le Contrôle intelligent des
+applications (Smart App Control) de Windows 11. Le paquet ZIP contourne le
+problème ; tu peux aussi l'arrêter dans Sécurité Windows > Contrôle des
+applications et du navigateur > Contrôle intelligent des applications > Arrêté.
+
 SUPPORT DES CAMÉRAS
 -------------------
 AVAStack gère plusieurs marques de caméras. Les SDK constructeurs sont

@@ -10,7 +10,83 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **DERNIER JALON (01/10/2026, v2.48.1 — DEUX CORRECTIONS, CODE ÉCRIT, BANCS
+- **DERNIER JALON (02/10/2026, jalon 88 — INSTALLATEUR WINDOWS EN PAQUET ZIP,
+  CODE ÉCRIT, BANC VERT, EN ATTENTE DU TEST RÉEL).**
+  **DÉCLENCHEUR** : un ami sous **Windows 11 famille** n'arrive pas à installer
+  AVAStack. Deux captures : ① `avastack-setup-2.48.0.exe` → « Impossible
+  d'exécuter un fichier depuis le dossier temporaire. Abandon de l'installation.
+  Erreur 4551 : une stratégie de contrôle d'application a bloqué ce fichier. » ;
+  ② `avastack-setup-2.45.0.exe` → « Création du venv AVAStack … Code retour : 1 ».
+  **CAUSES IDENTIFIÉES (recherche documentée, pas d'hypothèse)** : ① le message
+  est INTÉGRÉ à Inno Setup : un fichier d'aide extrait dans `%TEMP%` est bloqué
+  par une stratégie de « contrôle d'application » — sous Windows 11 FAMILLE,
+  c'est le **Contrôle intelligent des applications** (Smart App Control), actif
+  par défaut sur une installation neuve ; il ignore « Exécuter quand même » et
+  n'admet AUCUNE exception par application (remède immédiat : l'arrêter ; remède
+  durable : signer l'installateur). ② très probablement le **Python du Microsoft
+  Store** détecté par l'installateur : `venv`+`pip` échoue alors de façon connue
+  (redirection de chemins → `No pyvenv.cfg file`).
+  **DÉCISION D'ALAIN** : distribuer aussi un **paquet ZIP sans exécutable**, dont
+  le script **télécharge Python depuis python.org** s'il n'y en a pas, et
+  **ignore TOUJOURS le Python du Microsoft Store** — même présent.
+  **LIVRÉ (4 fichiers neufs, AUCUN changement au code de l'application → la
+  version reste v2.48.1, comme le précédent installer-only du jalon 78)** :
+  `installer/windows/install_avastack.ps1` (détection Python excluant
+  `\WindowsApps\` et `\Packages\PythonSoftwareFoundation` → à défaut,
+  téléchargement + installation silencieuse python.org `InstallAllUsers=0`,
+  `Include_tcltk=1` ; copie de l'application et des 4 DLL constructeurs ; venv
+  via `installer/common/avastack_setup.py` ; `qhyccd`/`zwoasi` tentés
+  SÉPARÉMENT et sans bloquer ; lanceur + raccourcis ; TEST DE DÉMARRAGE réel ;
+  options `-Prefix -Python -Simulation -SansRaccourci -Forcer -Desinstaller
+  -Purge -Aide`) ; `install_avastack.bat` (double-clic) ;
+  `build_avastack_zip.py` (packer → `windows/output/avastack-setup-<version>-
+  windows.zip`, racine unique, CRLF forcé, DLL nommées) ; banc
+  `_test_installeur_windows_zip_jalon88.py`.
+  **MESURES RÉELLES (02/10/2026, machine d'Alain — qui porte justement l'alias
+  du Store : `...\WindowsApps\python3.exe`)** : `-Simulation` → « Python du
+  Microsoft Store IGNORE : …\WindowsApps\python3.exe » puis « Python retenu :
+  Python 3.14.7 (C:\Python314\python.exe) » ; installation RÉELLE de bout en
+  bout dans un bac à sable (ZIP extrait, dépendances réduites à `pillow`) :
+  copie, venv, `qhyccd`+`zwoasi` OK, lanceur, Tkinter OK, **erreur de démarrage
+  affichée proprement** (`ModuleNotFoundError: No module named 'cv2'`), code 0 ;
+  banc **TOUT AU VERT** (40 vérifications) ; `-Prefix <racine du paquet>` refusé
+  (code 2).
+  **TROIS PANNES MESURÉES ET CORRIGÉES pendant l'essai** (leçons remontées dans
+  CLAUDE.md) : `$MyInvocation.MyCommand.Path` est VIDE dans une fonction ;
+  `exit (Main)` CAPTURE la sortie de pipeline (l'aide ne s'affichait plus) ;
+  `$ErrorActionPreference='Stop'` transforme en erreur TERMINANTE une ligne
+  écrite sur `stderr` par une commande native (l'installation mourait au
+  contrôle `import numpy, cv2, PIL` au lieu d'avertir).
+  **PAQUET CONSTRUIT ET PUBLIÉ (02/10/2026)** : `installer/windows/output/
+  avastack-setup-2.48.1-windows.zip` — 68 fichiers, 13 704 Kio (14 033 193 o),
+  SHA-256 `29A7D9CE…` (artefact gitignore). **AJOUTÉ À LA RELEASE v2.48.1
+  EXISTANTE** (consigne d'Alain du 02/10/2026) : la release porte maintenant
+  CINQ assets, elle reste publiée, et NI le tag (toujours sur `6da768a`) NI le
+  code de l'application n'ont bougé. Le tableau « Les fichiers de cette
+  release » d'`INSTALLATION.md` porte la ligne du paquet ZIP (SHA `29A7D9CE…`),
+  l'asset `INSTALLATION.md` a été REMPLACÉ par le fichier du dépôt (21 549 o,
+  SHA `D487DE20…`) et les NOTES de release ont été rejouées (résumé inchangé
+  suivi de `INSTALLATION.md` à jour, UTF-8 sans BOM, 0 caractère de
+  remplacement) pour que la page de la release ne liste pas QUATRE fichiers
+  quand elle en contient CINQ.
+  **REPLI : v2.48.0.**
+  **VALIDATIONS D'ALAIN (02/10/2026)** : ① le **rendu SHO avec SON Linear Fit
+  « gain + offset » est OK** ; ② la **chaîne externe est bien ensuite soumise aux
+  réglages de couleur du live en vue « traitée »** — le test réel du jalon 87 est
+  donc VALIDÉ (c'était le second essai resté ouvert sur la v2.48.1).
+  **PROCHAINE ÉTAPE : RIEN À CODER — ATTENDRE LES RETOURS D'ESSAIS.** Les
+  installateurs ne peuvent pas être essayés ici : ① le **paquet ZIP** chez le
+  testeur Windows 11 famille (LA mesure qui compte ; idéalement une machine SANS
+  Python de python.org, pour voir le téléchargement automatique se déclencher) ;
+  ② l'installateur **`.exe`** sur une machine Windows **sans Python** ; ③ l'essai
+  **macOS** de la v2.48.1 par le testeur. En cas d'échec : demander le message
+  EXACT et le résultat de `where.exe python` AVANT toute hypothèse, et vérifier
+  Smart App Control (Sécurité Windows > Contrôle des applications et du
+  navigateur).
+  **RESTE EN ATTENTE (essai réel, non bloquant)** : la chaîne ⚡ par couche en
+  composition à 3 rôles.
+
+- **JALON PRÉCÉDENT (01/10/2026, v2.48.1 — DEUX CORRECTIONS, CODE ÉCRIT, BANCS
   VERTS, EN ATTENTE DU TEST RÉEL).**
   **① LA CHAÎNE COULEUR S'APPLIQUE À LA VUE « TRAITÉE ».** Déclencheur : ton
   constat — « les corrections de couleurs ne sont plus dans le traitement
@@ -50,9 +126,10 @@ dans le changelog du source et l'historique git.)
   `_test_ui_robuste_jalon87.py` (4 sections, 12 vérifications). Série rejouée
   verte (85, 41, 59, 63, 65, 69, 9, 12, 5, 75, 68, 47, 84, 40, 79, 74, 73, 77,
   80).
-  **TEST RÉEL À FAIRE (Alain)** : ① en vue « traitée », cocher SCNR / SCNR doux /
-  démagenta / boost → l'image traitée doit se corriger comme le live ; ② sur
-  macOS, vérifier que l'interface ne gèle plus (le journal ne doit plus finir
+  **TEST RÉEL (Alain)** : ① **VALIDÉ le 02/10/2026** — en vue « traitée », les
+  corrections de couleur du live (SCNR / SCNR doux / démagenta / boost)
+  s'appliquent bien à l'image traitée, comme au direct ; ② sur macOS, il reste à
+  vérifier que l'interface ne gèle plus (le journal ne doit plus finir
   sur « invalid command name ») et que la fermeture aboutit.
   **PAQUETS ET RELEASE v2.48.1 : PUBLIÉS (01/10/2026).** Trois installateurs
   reconstruits sur le code testé (`installer/windows/output/avastack-setup-2.48.1.exe`
@@ -79,7 +156,7 @@ dans le changelog du source et l'historique git.)
   Linear Fit « gain + offset » ; ② l'essai macOS de la **v2.48.1** par le testeur
   (l'interface ne doit plus geler, le journal ne doit plus finir sur « invalid
   command name ») ; ③ la chaîne ⚡ par couche en composition à 3 rôles.
-- **JALON PRÉCÉDENT (30/09/2026, jalons 85 + 86, v2.48.0 — TERMINÉ, BANCS
+- **JALON ANTÉRIEUR (30/09/2026, jalons 85 + 86, v2.48.0 — TERMINÉ, BANCS
   VERTS, PUBLIÉE) —
   PRÉSERVATION DE LA LUMINANCE DU RETRAIT DU VERT + ORDRE DE LA CHAÎNE COULEUR.**
   Déclencheur : ton constat sur ton empilement SHO (NGC 2237) — « vert par
