@@ -134,16 +134,33 @@ Write-Host "     mot de passe : $MotDePasse   (.pfx, NE PAS diffuser)"
 
 if ($Installer) {
     Write-Host ''
-    Write-Host 'Confiance au certificat (CurrentUser\TrustedPeople) puis installation...'
-    Import-Certificate -FilePath $Cer -CertStoreLocation 'Cert:\CurrentUser\TrustedPeople' |
-        Out-Null
+    # MAGASIN CORRECT pour le deploiement AppX = LocalMachine\TrustedPeople
+    # (PAS CurrentUser : constate en reel, erreur 0x800B0109). Il exige une
+    # session ADMINISTRATEUR.
+    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $estAdmin = ([Security.Principal.WindowsPrincipal]$id).IsInRole(
+        [Security.Principal.WindowsBuiltInRole]::Administrator)
+    if (-not $estAdmin) {
+        Write-Host 'ERREUR : -Installer exige une fenetre PowerShell ADMINISTRATEUR.' -ForegroundColor Red
+        Write-Host '  (le certificat doit aller dans Cert:\LocalMachine\TrustedPeople)'
+        Write-Host '  Ouvre PowerShell en administrateur et relance cette commande,'
+        Write-Host '  ou fais juste les deux commandes affichees ci-dessus.'
+        exit 1
+    }
+    Import-Certificate -FilePath $Cer `
+        -CertStoreLocation 'Cert:\LocalMachine\TrustedPeople' | Out-Null
+    Write-Host 'Certificat approuve (LocalMachine\TrustedPeople).'
     Add-AppxPackage -Path $Msix
     Write-Host 'Installe : l''application apparait dans le menu Demarrer.' -ForegroundColor Green
 } else {
     Write-Host ''
-    Write-Host 'Pour INSTALLER (2 commandes, une seule fois par machine) :'
-    Write-Host "  Import-Certificate -FilePath `"$Cer`" -CertStoreLocation Cert:\CurrentUser\TrustedPeople"
-    Write-Host "  Add-AppxPackage -Path `"$Msix`""
+    Write-Host 'Pour INSTALLER (une seule fois par machine) :'
+    Write-Host '  1) PowerShell en ADMINISTRATEUR (le magasin est LocalMachine) :'
+    Write-Host "     Import-Certificate -FilePath `"$Cer`" -CertStoreLocation Cert:\LocalMachine\TrustedPeople"
+    Write-Host '  2) PowerShell normal :'
+    Write-Host "     Add-AppxPackage -Path `"$Msix`""
+    Write-Host '  (ou en une seule commande, EN ADMINISTRATEUR :'
+    Write-Host '   signer_msix.ps1 -Msix "...msix" -Installer)'
     Write-Host 'Puis lancer AVAStack depuis le menu Demarrer.'
     Write-Host 'Pour DESINSTALLER :'
     Write-Host '  Get-AppxPackage AVAStack* | Remove-AppxPackage'

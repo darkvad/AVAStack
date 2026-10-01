@@ -47,7 +47,9 @@ AVASTACK_VERSION = "2.49.0"
 #     immuable : on ne peut pas y créer un venv). Application déclarée pleine
 #     confiance (Windows.FullTrustApplication + rescap:runFullTrust). Banc
 #     `bancs/_test_msix_jalon92.py` (20 vérifications) ; paquet construit et
-#     signé en réel (105,7 Mo).
+#     signé en réel (105,7 Mo). PIÈGE MESURÉ : le certificat doit être approuvé
+#     dans Cert:\LocalMachine\TrustedPeople (PAS CurrentUser, qui donne l'erreur
+#     0x800B0109 « racine non approuvée ») — donc une session ADMINISTRATEUR.
 # v2.48.2 : LES INSTALLATEURS WINDOWS VÉRIFIENT L'EMPREINTE DU PYTHON TÉLÉCHARGÉ
 #   (durcissement, sans aucun changement de comportement de l'application).
 #   Contexte : un testeur a reçu « Impossible d'exécuter un fichier depuis le

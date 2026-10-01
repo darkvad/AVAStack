@@ -32,13 +32,20 @@ dans le changelog du source et l'historique git.)
   tous présents ; **signé** (`Successfully signed`, `AppxSignature.p7x` dans
   l'archive). `signtool verify /pa` répond « root certificate which is not
   trusted » — **NORMAL** tant que le certificat d'essai n'est pas approuvé.
-  **PROCHAINE ÉTAPE** : **essai RÉEL d'Alain de l'installation MSIX** —
-  `installer\windows\msix\` : soit `signer_msix.ps1 -Installer` (confiance +
-  installation d'un coup), soit les 2 commandes affichées
-  (`Import-Certificate … TrustedPeople` puis `Add-AppxPackage`), puis lancer
-  AVAStack depuis le menu Démarrer et **« Détecter » une caméra QHY** ; vérifier
-  que `%APPDATA%\AVAStack` (config + journal) est bien réel ; désinstaller par
-  `Get-AppxPackage AVAStack* | Remove-AppxPackage`. **ENSUITE seulement** :
+  **PIÈGE MESURÉ (02/10/2026, essai d'Alain)** : `Add-AppxPackage` a REFUSÉ le
+  paquet avec **`0x800B0109`** « certificat racine non approuvé », parce que le
+  certificat avait été importé dans `CurrentUser\TrustedPeople`. Le magasin
+  correct pour le déploiement AppX est **`Cert:\LocalMachine\TrustedPeople`**
+  (doc Microsoft « Create a certificate for package signing ») — donc une session
+  **ADMINISTRATEUR**. `signer_msix.ps1` est corrigé en conséquence (`-Installer`
+  utilise LocalMachine et REFUSE clairement hors élévation).
+  **PROCHAINE ÉTAPE** : relancer l'installation — ① PowerShell **administrateur** :
+  `Import-Certificate -FilePath installer\windows\output\avastack-2.49.0-windows.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople` ;
+  ② PowerShell normal : `Add-AppxPackage -Path installer\windows\output\avastack-2.49.0-windows.msix` ;
+  ③ lancer AVAStack depuis le menu Démarrer et **« Détecter » une caméra QHY** ;
+  vérifier que `%APPDATA%\AVAStack` (config + journal) est bien réel ; désinstaller
+  par `Get-AppxPackage AVAStack* | Remove-AppxPackage`.
+  **ENSUITE seulement** :
   compte Partner Center, `--nom`/`--publisher` EXACTS, vraies vignettes,
   description mentionnant la dépendance pilotes (politique 10.2.4), soumission.
 - **JALON PRÉCÉDENT (02/10/2026, jalon 91 — v2.49.0 : SCAN QHY EN GELÉ + PACKER

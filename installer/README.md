@@ -246,6 +246,13 @@ en lecture seule) → on y emballe l'application **GELÉE** produite ci-dessus.
    (Microsoft re-signe le paquet publié) : l'auto-signé sert au test LOCAL.
    `-Installer` fait confiance au certificat puis installe ; `-Timestamp`
    horodate (exige Internet ; pour la soumission).
+   ⚠ **PIÈGE MESURÉ (02/10/2026)** : le certificat doit être approuvé dans
+   **`Cert:\LocalMachine\TrustedPeople`**, PAS `CurrentUser\TrustedPeople`
+   (l'installation AppX échoue alors sur **`0x800B0109`** « certificat racine
+   non approuvé »). Le magasin « LocalMachine » exige donc une session
+   **administrateur** — c'est ce que fait `-Installer` (qui refuse clairement
+   sinon). Faire confiance à un certificat **machine** affecte tous les
+   utilisateurs : le retirer quand l'essai est fini.
 
 **Identity** : `Name`/`Publisher` sont des paramètres — pour un ESSAI, les
 défauts (`AVAStack` / `CN=AVAStack Test`) suffisent ; **pour le Store**, ils
