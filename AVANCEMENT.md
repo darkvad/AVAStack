@@ -10,44 +10,49 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **DERNIER JALON (02/10/2026, jalon 91 — v2.49.0 : LE SCAN QHY FONCTIONNE DANS
-  UNE APPLICATION GELÉE, ET UN PACKER GELÉ (PyInstaller) EST LIVRÉ. BANC VERT,
-  PAQUET CONSTRUIT ET ESSAYÉ.)**
-  **POURQUOI** : la voie Store (MSIX IMMUABLE) exige une application GELÉE — le
-  gel ayant été mesuré faisable au jalon 90. Le SEUL point de code qui cassait en
-  gelé était le **scan QHY** : il isole le SDK natif dans un sous-processus par
-  `subprocess.run([sys.executable, "-c", …])`, or un exe PyInstaller **IGNORE `-c`**
-  (MESURÉ) → la détection QHY aurait échoué en « délai dépassé ».
-  **LIVRÉ** : ① `cameras/qhy.py` — `_commande_scan()` : en dev INCHANGÉ (`python
-  -c …`), en gelé l'exe se relance avec `DRAPEAU_SCAN` (« --scan-qhy ») ; ②
-  `AVAStack.py` — mode interne `--scan-qhy`, traité AVANT toute interface (un JSON
-  sur stdout, aucune fenêtre) ; ③ `bancs/_test_gel_qhy_jalon91.py` (NEUF) — **10
-  vérifications TOUT AU VERT** (drapeau unique, les deux commandes, bout en bout
-  RÉEL du drapeau, contrat du parent inchangé) ; ④
-  `installer/windows/build_avastack_frozen.ps1` (NEUF) — packer PyInstaller
-  `--onedir --windowed` + les **4 DLL ajoutées par NOM**, artefact nommé avec la
-  version. `bancs/cameras/_test_qhy_camera.py` **rejoué vert (33)** et
-  `_test_installeur_windows_zip_jalon88.py` **rejoué vert**.
-  **MESURES (paquet construit)** : dossier **249,8 Mo**, archive **101,5 Mo**
-  (`avastack-frozen-2.49.0-windows.zip`, SHA-256 `A6E3ACDF…`) ; les 4 DLL SONT dans
-  le paquet (`_internal/`) ; **`AVAStack.exe --scan-qhy` → `[]`, code 0, sans
-  erreur** ; probe gelé séparé : **`import qhyccd` RÉUSSIT** (`QHYCCD_IMPORT_OK`) →
-  le `[]` est bien « aucune caméra », PAS un import raté ; **l'exe du paquet ouvre
-  sa fenêtre** (« AVAStack v2.49.0 — live stacking »), journal sans erreur.
-  **PROCHAINE ÉTAPE** : **essai RÉEL d'Alain** du paquet gelé — dossier
-  `installer\windows\output\avastack-frozen-2.49.0-windows\`, double-clic sur
-  `AVAStack.exe`, et surtout **« Détecter » une caméra QHY** (c'est le correctif) ;
-  puis, si concluant, le **MSIX** (`AppxManifest` + MakeAppx) et la certification.
-- **JALON PRÉCÉDENT (02/10/2026, jalon 90 — GEL MESURÉ FAISABLE, et DÉCISION : ON
-  GARDE LES DLL DANS TOUS LES INSTALLATEURS).** Gel RÉUSSI (`--onedir --windowed`,
-  214 Mo, fenêtre ouverte, mode « Simulée (démo) » OK au banc). **Pourquoi garder
-  les DLL** : la politique Store **10.2.4 « Software Dependencies » ne vise QUE les
-  PILOTES noyau / services NT**, PAS les DLL en mode utilisateur chargées par
-  `ctypes` — et le pilote USB constructeur reste requis DE TOUTE FAÇON ; de plus,
-  un MSIX étant en **LECTURE SEULE**, les EMBARQUER est plus simple que de faire
-  déposer des fichiers. Mesuré : `sdk_loader`, le moteur tiers VeraLux et la DLL QHY
-  fonctionnent gelés **SANS modification**. Détail : changelog
-  d'`avastack/__init__.py` et historique git.
+- **DERNIER JALON (02/10/2026, jalon 92 — v2.49.0 : PAQUET MSIX (voie Microsoft
+  Store) CONSTRUIT, SIGNÉ ET VERROUILLÉ PAR BANC. AUCUN changement au code de
+  l'application — installer-only, donc MÊME version v2.49.0.)**
+  **POURQUOI** : le Store distribue des MSIX, et un MSIX est IMMUABLE (fichiers
+  en LECTURE SEULE) → le venv disparaît et le MSIX doit EMBALLER l'application
+  GELÉE (paquet du jalon 91).
+  **LIVRÉ (3 fichiers neufs, `installer/windows/msix/`)** : ①
+  `AppxManifest.xml.template` — application de BUREAU **pleine confiance**
+  (`Windows.FullTrustApplication` + `rescap:runFullTrust`, d'où un
+  `%APPDATA%\AVAStack` RÉEL), jetons `__X__` remplacés au build ; ②
+  `build_msix.py` (stdlib) — staging = copie du paquet gelé + manifeste +
+  **vignettes PNG générées sans dépendance** (zlib+struct), puis `MakeAppx.exe`
+  (Windows SDK) ; ③ `signer_msix.ps1` — **certificat auto-signé** (créé si
+  absent) + `signtool`, `.cer`/`.pfx` exportés, `-Installer` (confiance +
+  installation) et `-Timestamp`. Banc neuf `bancs/_test_msix_jalon92.py` →
+  **20 vérifications TOUT AU VERT**, dont un **vrai MakeAppx de bout en bout**.
+  **MESURES RÉELLES** : SDK présent (`10.0.26100.0`) → `avastack-2.49.0-windows.msix`
+  **105,7 Mo** (SHA-256 `fa4d2240…`), **619 entrées**, `AppxManifest.xml` /
+  `[Content_Types].xml` / `AppxBlockMap.xml` / vignettes / `_internal\ASICamera2.dll`
+  tous présents ; **signé** (`Successfully signed`, `AppxSignature.p7x` dans
+  l'archive). `signtool verify /pa` répond « root certificate which is not
+  trusted » — **NORMAL** tant que le certificat d'essai n'est pas approuvé.
+  **PROCHAINE ÉTAPE** : **essai RÉEL d'Alain de l'installation MSIX** —
+  `installer\windows\msix\` : soit `signer_msix.ps1 -Installer` (confiance +
+  installation d'un coup), soit les 2 commandes affichées
+  (`Import-Certificate … TrustedPeople` puis `Add-AppxPackage`), puis lancer
+  AVAStack depuis le menu Démarrer et **« Détecter » une caméra QHY** ; vérifier
+  que `%APPDATA%\AVAStack` (config + journal) est bien réel ; désinstaller par
+  `Get-AppxPackage AVAStack* | Remove-AppxPackage`. **ENSUITE seulement** :
+  compte Partner Center, `--nom`/`--publisher` EXACTS, vraies vignettes,
+  description mentionnant la dépendance pilotes (politique 10.2.4), soumission.
+- **JALON PRÉCÉDENT (02/10/2026, jalon 91 — v2.49.0 : SCAN QHY EN GELÉ + PACKER
+  GELÉ.)** Un exe PyInstaller **IGNORE `-c`** → le scan QHY, isolé en
+  sous-processus, aurait échoué en gelé : corrigé par un mode interne
+  `--scan-qhy` (`AVAStack.py`) que l'exe se relance avec. Packer
+  `installer/windows/build_avastack_frozen.ps1` (`--onedir --windowed` + 4 DLL
+  par NOM). Banc `_test_gel_qhy_jalon91.py` (10 verts) ; paquet **249,8 Mo**
+  essayé en réel par Alain : **OK**.
+- **JALON PRÉCÉDENT (jalon 90 — GEL MESURÉ FAISABLE ; DÉCISION : ON GARDE LES
+  DLL DANS TOUS LES INSTALLATEURS).** Gel `--onedir --windowed` 214 Mo,
+  `sdk_loader`/VeraLux/DLL QHY OK sans modification ; la politique Store 10.2.4
+  ne vise que les **PILOTES noyau**, pas les DLL utilisateur, et un MSIX en
+  lecture seule rend leur dépôt manuel impossible → les **EMBARQUER**.
 - **THREADS ENCORE OUVERTS (jalons 88-89, rien à coder d'ici là)** : ① le testeur
   **Windows 11 famille** — relancer l'installeur **2.48.2** et passer le banc dans
   les DEUX états (SAC actif), relever les **faits machine**

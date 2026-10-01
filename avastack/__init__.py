@@ -40,6 +40,14 @@ AVASTACK_VERSION = "2.49.0"
 #   - bancs/_test_gel_qhy_jalon91.py : 10 vérifications (drapeau unique, les deux
 #     commandes, bout en bout RÉEL du drapeau, contrat du parent inchangé).
 #   Le reste du pipeline tourne DÉJÀ en gelé sans aucun changement.
+#   - installer/windows/msix/ : NOUVEAU — le paquet MSIX (voie Microsoft Store,
+#     jalon 92). `build_msix.py` (staging + AppxManifest + vignettes PNG en
+#     stdlib + appel de MakeAppx) et `signer_msix.ps1` (certificat auto-signé +
+#     signtool, pour l'essai local). Le MSIX EMBALLE le paquet GELÉ (un MSIX est
+#     immuable : on ne peut pas y créer un venv). Application déclarée pleine
+#     confiance (Windows.FullTrustApplication + rescap:runFullTrust). Banc
+#     `bancs/_test_msix_jalon92.py` (20 vérifications) ; paquet construit et
+#     signé en réel (105,7 Mo).
 # v2.48.2 : LES INSTALLATEURS WINDOWS VÉRIFIENT L'EMPREINTE DU PYTHON TÉLÉCHARGÉ
 #   (durcissement, sans aucun changement de comportement de l'application).
 #   Contexte : un testeur a reçu « Impossible d'exécuter un fichier depuis le

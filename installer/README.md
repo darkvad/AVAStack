@@ -228,6 +228,35 @@ installateurs.
 - Le **scan QHY** fonctionne en gelé (correctif v2.49.0 : l'exe se relance avec
   `--scan-qhy`, car un exe PyInstaller ignore `-c`).
 
+## Paquet MSIX (voie Microsoft Store) — jalon 92
+
+`msix/build_msix.py` + `msix/signer_msix.ps1` préparent la **voie Microsoft
+Store** : le Store distribue des **MSIX**, or un MSIX est **immuable** (fichiers
+en lecture seule) → on y emballe l'application **GELÉE** produite ci-dessus.
+
+1. **Construire** (partie déterministe, testable) :
+   `python installer/windows/msix/build_msix.py`
+   → `output/avastack-<version>-windows.msix` (NON signé). Il copie le paquet
+   gelé, écrit `AppxManifest.xml` (depuis `AppxManifest.xml.template`) et génère
+   les **vignettes** (PNG, stdlib seule), puis appelle `MakeAppx.exe`.
+2. **Signer** (un MSIX non signé NE s'installe PAS) :
+   `powershell -File installer/windows/msix/signer_msix.ps1 -Msix "...msix"`
+   → certificat **auto-signé** (créé si absent), `.cer`/`.pfx` exportés,
+   signature `signtool`. **La signature du Store n'existe qu'APRÈS soumission**
+   (Microsoft re-signe le paquet publié) : l'auto-signé sert au test LOCAL.
+   `-Installer` fait confiance au certificat puis installe ; `-Timestamp`
+   horodate (exige Internet ; pour la soumission).
+
+**Identity** : `Name`/`Publisher` sont des paramètres — pour un ESSAI, les
+défauts (`AVAStack` / `CN=AVAStack Test`) suffisent ; **pour le Store**, ils
+doivent être EXACTEMENT ceux de Partner Center (`--nom`, `--publisher`), et le
+`Publisher` doit être le **sujet** du certificat signataire.
+
+Les **vignettes sont des placeholders** (motif d'essai) : à remplacer par de
+vraies images avant la soumission. L'application est déclarée **pleine
+confiance** (`Windows.FullTrustApplication` + `rescap:runFullTrust`) → son
+`%APPDATA%\AVAStack` reste RÉEL (config + journal non virtualisés).
+
 ## Structure
 
 ```
@@ -249,11 +278,18 @@ installer/
                           packer PyInstaller (gel) : lit AVASTACK_VERSION,
                           embarque les 4 DLL NOMMEES, écrit
                           output/avastack-frozen-<version>-windows/ (+ .zip)
+    msix/
+      AppxManifest.xml.template  modele du manifeste MSIX (jetons __X__)
+      build_msix.py    packer (stdlib) : staging + manifeste + vignettes, puis
+                       MakeAppx -> output/avastack-<version>-windows.msix
+      signer_msix.ps1  certificat AUTO-SIGNE + signtool (essai local) ;
+                       -Installer fait confiance au certificat et installe
     LISEZMOI.txt          lisez-moi utilisateur (copié à l'installation)
     output/               artefact compilé (gitignore) :
                           avastack-setup-<version>.exe
                           avastack-setup-<version>-windows.zip
                           avastack-frozen-<version>-windows/ (+ .zip)
+                          avastack-<version>-windows.msix (+ .cer/.pfx)
   linux/
     install_avastack.sh   installateur (bash) : prérequis, copie, venv,
                           lanceur, entrée .desktop, vérification ; sans caméras
