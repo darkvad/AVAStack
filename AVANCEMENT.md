@@ -36,11 +36,21 @@ dans le changelog du source et l'historique git.)
   signé. Bancs : `_test_msix_jalon92.py` (étendu : vraie icône + icône de
   fenêtre) TOUT AU VERT ; **rejoués verts** : jalon 91, QHY (33), ZIP (88),
   macOS (78), interface robuste (87).
-  **PROCHAINE ÉTAPE** : Alain teste le paquet (gel ou MSIX v2.50.0) et regarde
-  l'ICÔNE (barre de titres + barre des tâches) ; puis **soumission Partner
-  Center** (compte déjà créé et vérifié) : réserver le nom, rebuild avec
-  `--nom`/`--publisher` EXACTS, description annonçant la dépendance pilotes
-  (10.2.4) + exception en notes de certification.
+  **IDENTITÉ PARTNER CENTER OBTENUE (02/10/2026)** : le nom est RÉSERVÉ et le
+  MSIX a été RECONSTRUIT + RE-SIGNÉ avec l'identité RÉELLE de la page « Product
+  identity » (`--nom` / `--publisher` / `--publisher-display`). Les VALEURS ne
+  sont PAS écrites dans le dépôt (règle : rien de personnel, et rien qui vienne
+  du compte, dans un document publié). Manifeste vérifié : Identity Name /
+  Publisher / DisplayName cohérents, 626 entrées, signature posée.
+  **`installer/windows/msix/SOUMISSION.md` (NEUF)** : relier le paquet à
+  l'identité, essai local, **textes de la fiche Store** (la description COMMENCE
+  par la dépendance pilotes — exigence de la politique 10.2.4), **notes de
+  certification** demandant l'exception, images à fournir, réglages, étapes.
+  **PROCHAINE ÉTAPE** : Alain installe/teste le MSIX à identité réelle — NOUVEAU
+  certificat à approuver dans `LocalMachine\TrustedPeople` (ADMIN ; le sujet est
+  maintenant le `CN=<GUID>` de Partner Center, donc l'ancien certificat d'essai
+  `CN=AVAStack Test` ne suffit plus) — et vérifie l'**icône** ; puis la
+  **soumission** (textes de SOUMISSION.md ; certification 1 à 3 jours).
 - **JALON PRÉCÉDENT (02/10/2026, jalons 91-92 — v2.49.0).** ① Le **scan QHY
   FONCTIONNE EN GELÉ** : un exe PyInstaller ignore `-c`, donc l'exe se relance
   avec le mode interne `--scan-qhy` (`AVAStack.py`, avant toute interface) ; ②
