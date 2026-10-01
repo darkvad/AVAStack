@@ -71,6 +71,46 @@ dans le changelog du source et l'historique git.)
   quand elle en contient CINQ.
   **REPLI : v2.48.0.**
   **COMMIT** : `5c79b64` (poussé sur `origin/master` le 02/10/2026, arbre propre).
+  **PISTE « MICROSOFT STORE » — ANALYSÉE, NON ENGAGÉE (02/10/2026).** Alain a
+  demandé à Copilot comment passer au travers de Smart App Control ; la réponse
+  proposait PyInstaller → MSIX → Store (Microsoft signe gratuitement). VÉRIFIÉ À
+  LA SOURCE : ① c'est EXACT, et l'ouverture d'un compte développeur **Individuel
+  est sans frais** depuis la refonte du parcours (`storedeveloper.microsoft.com`,
+  vérification d'identité par pièce + selfie) ; ② la politique **10.2.9**
+  interdit bien un installeur « downloader » (le nôtre télécharge Python et
+  pip-installe : il serait refusé SUR CE CHEMIN) — le MSIX y échappe puisque tout
+  est dans le paquet ; ③ la **taille n'est pas une limite** (des jeux dépassent
+  100 Go en MSIX ; la limite à 2 Go était celle du MSI) ; ④ la virtualisation des
+  fichiers/registre ne s'applique qu'aux applis `appContainer` : un MSIX **pleine
+  confiance** garde `%APPDATA%\AVAStack` RÉEL (notre config ET notre journal
+  continuent de fonctionner tels quels).
+  **TROIS CONTRAINTES QUI DÉCIDENT POUR NOUS** : ① politique **10.2.4** — nos
+  caméras dépendent de **pilotes non Microsoft** : la dépendance doit être
+  **annoncée au début de la description** et une **exception demandée dans les
+  notes de certification** (pas un refus automatique, mais une démarche à faire) ;
+  ② un MSIX est **immuable** (`C:\Program Files\WindowsApps`, fichiers **en
+  lecture seule**, « writes inside the package: not allowed ») ⇒ le venv **doit**
+  disparaître et le **gel PyInstaller devient un PRÉREQUIS**, donc de VRAIS
+  changements de code (`sys.frozen`/`sys._MEIPASS` dans `cameras/sdk_loader` et
+  pour les outils externes) — contrairement au « aucun changement » de Copilot ;
+  ③ ce serait une **quatrième** chaîne Windows (gelé vs venv) et **chaque version
+  passerait par la certification** du Store (la cadence actuelle, plusieurs
+  versions par jour, ne le supporterait pas en flux tendu).
+  **ERREURS DE COPILOT À NE PAS REPRENDRE** : `--onefile` est un mauvais choix
+  ici (ré-extraction de plusieurs centaines de Mo à CHAQUE lancement → `--onedir`) ;
+  « la majorité des apps Python distribuées sur Windows » passent par le Store =
+  FAUX (canal minoritaire) ; l'analyse omet la politique pilotes (10.2.4) et les
+  changements de code.
+  **BÉNÉFICE CACHÉ** : le gel supprimerait toute la famille de problèmes
+  Python/venv/Python du Store — plus de « Code retour : 1 » possible.
+  **DÉCISION D'ALAIN (02/10/2026) : ATTENDRE d'abord le retour du paquet ZIP chez
+  le testeur.** Les voies écartées pour l'instant restent ouvertes : SignPath
+  Foundation (signature gratuite du `.exe`, mais clause « pas de code
+  propriétaire » face à nos DLL constructeurs), le ZIP (déjà publié), ne rien
+  faire de plus. Si on devait y aller un jour, **première mesure pas chère et
+  décisive** : tenter le gel PyInstaller et regarder s'il gèle VRAIMENT, sa
+  TAILLE et le mode « Simulée (démo) » — si le gel échoue, la voie Store est morte
+  et il est inutile de préparer la fiche produit.
   **VALIDATIONS D'ALAIN (02/10/2026)** : ① le **rendu SHO avec SON Linear Fit
   « gain + offset » est OK** ; ② la **chaîne externe est bien ensuite soumise aux
   réglages de couleur du live en vue « traitée »** — le test réel du jalon 87 est
@@ -84,6 +124,8 @@ dans le changelog du source et l'historique git.)
   EXACT et le résultat de `where.exe python` AVANT toute hypothèse, et vérifier
   Smart App Control (Sécurité Windows > Contrôle des applications et du
   navigateur).
+  La voie **Microsoft Store n'est PAS engagée** (analyse ci-dessus) : décision du
+  02/10/2026 = attendre d'abord le retour du paquet ZIP.
   **RESTE EN ATTENTE (essai réel, non bloquant)** : la chaîne ⚡ par couche en
   composition à 3 rôles.
 
