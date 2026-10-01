@@ -32,22 +32,26 @@ dans le changelog du source et l'historique git.)
   tous présents ; **signé** (`Successfully signed`, `AppxSignature.p7x` dans
   l'archive). `signtool verify /pa` répond « root certificate which is not
   trusted » — **NORMAL** tant que le certificat d'essai n'est pas approuvé.
-  **PIÈGE MESURÉ (02/10/2026, essai d'Alain)** : `Add-AppxPackage` a REFUSÉ le
-  paquet avec **`0x800B0109`** « certificat racine non approuvé », parce que le
-  certificat avait été importé dans `CurrentUser\TrustedPeople`. Le magasin
-  correct pour le déploiement AppX est **`Cert:\LocalMachine\TrustedPeople`**
-  (doc Microsoft « Create a certificate for package signing ») — donc une session
-  **ADMINISTRATEUR**. `signer_msix.ps1` est corrigé en conséquence (`-Installer`
-  utilise LocalMachine et REFUSE clairement hors élévation).
-  **PROCHAINE ÉTAPE** : relancer l'installation — ① PowerShell **administrateur** :
-  `Import-Certificate -FilePath installer\windows\output\avastack-2.49.0-windows.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople` ;
-  ② PowerShell normal : `Add-AppxPackage -Path installer\windows\output\avastack-2.49.0-windows.msix` ;
-  ③ lancer AVAStack depuis le menu Démarrer et **« Détecter » une caméra QHY** ;
-  vérifier que `%APPDATA%\AVAStack` (config + journal) est bien réel ; désinstaller
-  par `Get-AppxPackage AVAStack* | Remove-AppxPackage`.
-  **ENSUITE seulement** :
-  compte Partner Center, `--nom`/`--publisher` EXACTS, vraies vignettes,
-  description mentionnant la dépendance pilotes (politique 10.2.4), soumission.
+  **PIÈGE MESURÉ PUIS RÉSOLU (02/10/2026)** : `Add-AppxPackage` a REFUSÉ le paquet
+  avec **`0x800B0109`** « certificat racine non approuvé » parce que le certificat
+  était dans `CurrentUser\TrustedPeople` ; le magasin correct pour le déploiement
+  AppX est **`Cert:\LocalMachine\TrustedPeople`** (doc Microsoft « Create a
+  certificate for package signing »), donc une session **ADMINISTRATEUR**.
+  `signer_msix.ps1` est corrigé en conséquence (`-Installer` refuse clairement
+  hors élévation).
+  **VALIDÉ EN RÉEL PAR ALAIN (02/10/2026) — L'INSTALLATION MSIX FONCTIONNE** :
+  après approbation du certificat dans `LocalMachine\TrustedPeople` (PowerShell
+  **administrateur**) puis `Add-AppxPackage`, **l'appli s'ouvre depuis le MENU
+  DÉMARRER** et tourne depuis le paquet installé ; le **scan QHY tourne**
+  (« non détecté » = NORMAL, aucune caméra branchée sur ce PC) ; un
+  **multi-dossiers fonctionne**. La chaîne complète — gel → MSIX → installation →
+  exécution réelle — est donc PROUVÉE.
+  **PROCHAINE ÉTAPE** : préparer la **soumission Partner Center** — compte
+  développeur (Individuel, gratuit), réservation du nom, rebuild avec `--nom` /
+  `--publisher` EXACTS de Partner Center, **vraies vignettes** (à la place des
+  placeholders), description annonçant la dépendance pilotes (politique 10.2.4)
+  et exception demandée en notes de certification. Puis soumission : la
+  certification **re-signe** le paquet.
 - **JALON PRÉCÉDENT (02/10/2026, jalon 91 — v2.49.0 : SCAN QHY EN GELÉ + PACKER
   GELÉ.)** Un exe PyInstaller **IGNORE `-c`** → le scan QHY, isolé en
   sous-processus, aurait échoué en gelé : corrigé par un mode interne
