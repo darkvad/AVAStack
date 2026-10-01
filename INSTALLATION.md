@@ -1,4 +1,4 @@
-# AVAStack — installation rapide (v2.48.0)
+# AVAStack — installation rapide (v2.48.1)
 
 AVAStack est un **live stacking** : il empile tes brutes **en temps réel**
 pendant l'acquisition (calibration dark/flat, alignement, rejet kappa-sigma,
@@ -8,7 +8,7 @@ passage aux **outils externes** (GraXpert, BlurXTerminator) sur un instantané.
 Il tourne sur **Windows, Linux et macOS**, et s'installe **dans ton profil** :
 aucun droit administrateur n'est nécessaire.
 
-Ce document accompagne la **release v2.48.0** (les trois installateurs y sont
+Ce document accompagne la **release v2.48.1** (les trois installateurs y sont
 attachés). Il ne remplace pas le `LISEZMOI.txt` que l'installateur copie à côté
 de l'application — celui-ci détaille **tous les réglages** de l'interface.
 
@@ -18,9 +18,9 @@ de l'application — celui-ci détaille **tous les réglages** de l'interface.
 
 | Plateforme | Fichier | Taille | SHA-256 |
 | --- | --- | --- | --- |
-| Windows (10/11, 64 bits) | `avastack-setup-2.48.0.exe` | 11,5 Mo | `30960641917085A7B43C96506F2043078F8D284D8A83A523F8AF931335D9F895` |
-| Linux (x86_64) | `avastack-setup-2.48.0-linux.tar.gz` | 605 Kio | `20ECD02D30EACFFF1352AEA0EFA4891B3921330372E856E3687ABFF032211777` |
-| macOS (11 et plus) | `avastack-setup-2.48.0-macos.tar.gz` | 602 Kio | `1AC09C224B63A4C6A1467FF8527AD902A71E41E7CA66FD88FB5917E0FC5A4B7D` |
+| Windows (10/11, 64 bits) | `avastack-setup-2.48.1.exe` | 11,5 Mo | `87710E40887B07E0AE4689DEF1535BD5DB1D5F691ECADAEF2DF79DCB4FE3F34D` |
+| Linux (x86_64) | `avastack-setup-2.48.1-linux.tar.gz` | 608 Kio | `684B774772F99390857C65B443F76DB087917C68FA8E4CDE049D942E7FE8A693` |
+| macOS (11 et plus) | `avastack-setup-2.48.1-macos.tar.gz` | 606 Kio | `7C72F10B7FCD01D0946A1DF59F39FB926F518C9F477A3EF0C993C18211F1EA59` |
 | Documentation | `INSTALLATION.md` | ce fichier | — |
 
 Les artéfacts portent leur **numéro de version** : deux versions ne s'écrasent
@@ -32,7 +32,7 @@ jamais, et un installateur plus ancien peut rester à côté comme repli.
 
 ---
 
-## 2. Windows — `avastack-setup-2.48.0.exe`
+## 2. Windows — `avastack-setup-2.48.1.exe`
 
 1. **Lancer l'exécutable.** Windows peut afficher un avertissement
    SmartScreen (l'exécutable n'est pas signé) : « Informations
@@ -60,11 +60,11 @@ L'application fonctionne **sans aucune caméra** (mode « Dossier surveillé »,
 
 ---
 
-## 3. Linux — `avastack-setup-2.48.0-linux.tar.gz`
+## 3. Linux — `avastack-setup-2.48.1-linux.tar.gz`
 
 ```bash
-tar xzf avastack-setup-2.48.0-linux.tar.gz
-cd avastack-2.48.0-linux
+tar xzf avastack-setup-2.48.1-linux.tar.gz
+cd avastack-2.48.1-linux
 bash installer/install_avastack.sh
 ```
 
@@ -105,7 +105,7 @@ n'est visible **qu'en root**.
 > **État de cet installateur (à jour le 30/09/2026)** : le paquet Linux est
 > construit, son contenu est vérifié (63 fichiers, aucun `.so`/`.dll`, script
 > `install_avastack.sh` exécutable, fins de ligne UNIX, racine unique
-> `avastack-2.48.0-linux/`) **et il a été exécuté plusieurs fois EN RÉEL sur une
+> `avastack-2.48.1-linux/`) **et il a été exécuté plusieurs fois EN RÉEL sur une
 > machine Ubuntu 26.04 LTS** : installation, prérequis système, création du venv,
 > dépendances et lancement de l'application y sont validés. Restent à faire : le
 > test sur une machine **vierge** (sans Python ni paquets prérequis) et le
@@ -114,11 +114,11 @@ n'est visible **qu'en root**.
 
 ---
 
-## 3 bis. macOS — `avastack-setup-2.48.0-macos.tar.gz`
+## 3 bis. macOS — `avastack-setup-2.48.1-macos.tar.gz`
 
 ```bash
-tar xzf avastack-setup-2.48.0-macos.tar.gz
-cd avastack-2.48.0-macos
+tar xzf avastack-setup-2.48.1-macos.tar.gz
+cd avastack-2.48.1-macos
 bash installer/install_avastack.sh
 ```
 
@@ -168,6 +168,12 @@ réglages et les données téléchargées) ; `--purger` supprime aussi les régl
 > (choix de dossier, dark/flat, enregistrement) — et la fenêtre est **mise au
 > premier plan** à l'ouverture (une application lancée par un lanceur n'est pas
 > « activée » par macOS, et ses premiers clics servaient à l'activer).
+> **DEUXIÈME RETOUR RÉEL (30/09/2026, v2.47.0) : le symptôme persistait — et le
+> journal a cette fois montré la CAUSE** : la boucle de rafraîchissement de
+> l'interface MOURAIT sur un widget devenu invalide (« invalid command name »),
+> ce qui laissait la fenêtre figée. Corrigé depuis la **v2.48.1** : la boucle ne
+> peut plus s'arrêter (elle repart même après une erreur) et la fermeture de la
+> fenêtre annule proprement les rappels en attente.
 > En cas de doute, le **journal** (`~/Library/Application Support/AVAStack/
 > journal.txt`) indique la **version de Tcl/Tk** utilisée et signale tout
 > blocage de l'interface de plus d'une seconde et demie (« gel de
@@ -302,7 +308,7 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
 
 ---
 
-## 8. Limites connues de la v2.48.0 (dites franchement)
+## 8. Limites connues de la v2.48.1 (dites franchement)
 
 - **Installateur Linux : TESTÉ EN RÉEL** — exécuté **plusieurs fois** sur une
   machine **Ubuntu 26.04 LTS** (installation, prérequis, venv, dépendances,
@@ -311,16 +317,17 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
 - Restent à faire : l'installateur Linux sur une machine **vierge** (sans Python
   ni paquets prérequis) et le **test matériel caméras** sous Linux (option
   `--cameras`, quand les `*.so` constructeurs y seront déposés).
-- **Installateur macOS : EXÉCUTÉ EN RÉEL le 30/09/2026** (macOS 27 « Golden
-  Gate ») — installation et lancement **sans problème**, contenu du paquet
+- **Installateur macOS : EXÉCUTÉ EN RÉEL** (macOS 27 « Golden Gate »,
+  30/09/2026) — installation et lancement **sans problème**, contenu du paquet
   vérifié au banc et garde-fous essayés en réel (refus hors macOS, `--aide`).
-  Les défauts d'INTERACTION signalés ensuite (boutons « qui ne répondent pas » :
-  boîtes de dialogue non attachées à la fenêtre) sont corrigés depuis la
-  **v2.47.0**. Le paquet **v2.48.0** reprend exactement la même chaîne
-  d'installation (seul le code de l'application change) et attend son **essai
-  réel chez le testeur** — c'est la première chose à vérifier quand il l'aura
-  installé. La signature/notarisation Apple n'est pas faite (bundle local non
-  signé).
+  Les défauts d'INTERACTION signalés (boutons « qui ne répondent pas ») ont été
+  corrigés en DEUX temps : boîtes de dialogue attachées à la fenêtre et fenêtre
+  mise au premier plan (**v2.47.0**), puis — le symptôme persistant à l'essai
+  suivant — la boucle de rafraîchissement de l'interface, qui mourait sur un
+  widget devenu invalide et laissait la fenêtre figée (**v2.48.1**). Le paquet
+  **v2.48.1** attend son **essai réel chez le testeur** — c'est la première
+  chose à vérifier quand il l'aura installé. La signature/notarisation Apple
+  n'est pas faite (bundle local non signé).
 - **Aucune caméra** n'est embarquée (SDK constructeurs, licences).
 - Les **données Gaia** ne sont pas embarquées : ≈ 1,1 Go (catalogue astro),
   ≈ 10,6 Go (les 48 morceaux de spectres — le bouton « ⬇ les 48 ») et quelques
@@ -333,7 +340,7 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
 
 ## 9. Repli si régression
 
-Le repli de référence est la **v2.47.0**. Les installateurs des versions
+Le repli de référence est la **v2.48.0**. Les installateurs des versions
 antérieures restent à côté des nouveaux, dans `installer/windows/output/`,
 `installer/linux/output/` et `installer/macos/output/` : aucun nouveau
 installateur n'écrase une version précédente.
