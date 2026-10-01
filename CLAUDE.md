@@ -144,6 +144,31 @@ l'installateur).
   modifier**) : le banc `bancs/_test_installeur_windows_zip_jalon88.py` l'exécute
   réellement et vérifie que le Python du Store n'est jamais « retenu ».
 
+**EMPREINTE DU PYTHON TÉLÉCHARGÉ, VÉRIFIÉE (v2.48.2, jalon 89)** : les DEUX
+installateurs Windows contrôlent le **SHA-256** de l'installateur python.org
+**AVANT de l'exécuter**, avec **une seconde tentative**, et le disent en clair si
+le fichier est incomplet. Motif : chez un testeur l'installation s'est arrêtée sur
+« Erreur 4551 : une stratégie de contrôle d'application a bloqué ce fichier » — et
+le seul fichier exécuté depuis `%TEMP%` est celui-là. La MESURE a montré que
+**Smart App Control APPLIQUÉ laisse exécuter depuis `%TEMP%` un fichier SIGNÉ**
+(banc `bancs/_diag_execution_temp.ps1` : « EXECUTION AUTORISEE ») ; un
+téléchargement TRONQUÉ était donc une cause restante plausible.
+
+- **Inno Setup sait calculer un SHA-256 depuis la 6.1** :
+  `GetSHA256OfFile(const Filename: String): String` (lève une exception en cas
+  d'échec). Sa **casse n'est pas documentée** → `Lowercase()` des DEUX côtés.
+- **La valeur est épinglée dans les deux fichiers** (`#define PythonSha256` côté
+  Inno, `$PY_SHA256` côté PowerShell) : c'est le banc du jalon 89 qui les empêche
+  de diverger, et il VÉRIFIE en plus l'empreinte déclarée contre le fichier réel
+  quand celui-ci est présent dans `%TEMP%`.
+- **Provenance de la valeur** (à refaire si la version de Python change) : la
+  relever d'un téléchargement dont la **signature Authenticode est Valide** et
+  signée « Python Software Foundation » — jamais d'un souvenir ni d'un site tiers.
+- **`-Desinstaller` ne touche plus aux raccourcis s'ils n'ont pas été créés**
+  (marque écrite dans `VERSION.txt`, relue à la désinstallation) : une
+  installation d'essai faite en `-SansRaccourci` ne doit pas effacer les
+  raccourcis d'une AUTRE installation — défaut constaté le 02/10/2026.
+
 `requirements.txt` = dépendances de `AVAStack.py`. Toute nouvelle
 dépendance ajoutée au script doit y être ajoutée — cf. Conventions
 non-négociables.

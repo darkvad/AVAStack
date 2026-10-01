@@ -32,6 +32,14 @@
 #define MinPythonMinor 10
 #define PythonInstallerUrl "https://www.python.org/ftp/python/3.12.7/python-3.12.7-amd64.exe"
 #define PythonInstallerFile "python-3.12.7-amd64.exe"
+; Empreinte SHA-256 du fichier ci-dessus, VERIFIEE avant de l'executer (v2.48.2) :
+; un telechargement interrompu ne doit jamais partir a l'execution (fichier
+; tronque = signature invalide = message incomprehensible chez l'utilisateur).
+; Valeur relevee d'un telechargement dont la signature Authenticode a ete
+; verifiee comme Valide (signataire : Python Software Foundation).
+; MEME valeur que installer/windows/install_avastack.ps1 (paquet ZIP) : un banc
+; verifie que les deux fichiers s'accordent, sinon ils divergeraient en silence.
+#define PythonSha256 "1206721601A62C925D4E4A0DCFC371E88F2DDBE8C0C07962EBB2BE9B5BDE4570"
 
 [Setup]
 AppId={{7E1A2C4B-9D3F-4E68-A5C1-B2F0D8A6E4C2}
@@ -199,24 +207,73 @@ begin
       Result := 'py';
 end;
 
-function InstallerPythonSiAbsent(): Boolean;
-var
-  CheminInstalleur: String;
-  ResultCode: Integer;
+// --- Python : telechargement VERIFIE par empreinte SHA-256 (v2.48.2) ---------
+// POURQUOI (constat reel du 01/10/2026) : chez un testeur, l'installation s'est
+// arretee sur
+//   "Impossible d'executer un fichier depuis le dossier temporaire.
+//    Abandon de l'installation. Erreur 4551 : une strategie de controle
+//    d'application a bloque ce fichier."
+// Le seul fichier EXECUTE depuis {tmp} est celui telecharge ici. Un
+// telechargement INTERROMPU (fichier tronque, donc sans signature valide) en est
+// une cause possible : on VERIFIE donc l'empreinte SHA-256 AVANT de l'executer,
+// et on RETENTE une fois. Sans cette verification, un fichier incomplet partait
+// a l'execution et produisait un message incomprehensible.
+function VerifierEmpreintePython(const Chemin: String): Boolean;
 begin
   Result := False;
-  CheminInstalleur := ExpandConstant('{tmp}\{#PythonInstallerFile}');
-  WizardForm.StatusLabel.Caption := 'Telechargement de Python (aucune version 3.10+ trouvee)...';
+  if not FileExists(Chemin) then
+    Exit;
+  try
+    // Lowercase des deux cotes : la casse de GetSHA256OfFile n'est pas garantie.
+    Result := Lowercase(GetSHA256OfFile(Chemin)) = Lowercase('{#PythonSha256}');
+  except
+    Result := False;
+  end;
+end;
+
+function TelechargerPython(const CheminInstalleur: String): Boolean;
+var
+  ResultCode: Integer;
+begin
   Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
        '-NoProfile -ExecutionPolicy Bypass -Command "' +
        '[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; ' +
        'Invoke-WebRequest -Uri ''{#PythonInstallerUrl}'' -OutFile ''' + CheminInstalleur + ''' -UseBasicParsing"',
        '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  if not FileExists(CheminInstalleur) then
+  Result := FileExists(CheminInstalleur);
+end;
+
+function InstallerPythonSiAbsent(): Boolean;
+var
+  CheminInstalleur: String;
+  ResultCode: Integer;
+  Essai: Integer;
+  FichierBon: Boolean;
+begin
+  Result := False;
+  CheminInstalleur := ExpandConstant('{tmp}\{#PythonInstallerFile}');
+  FichierBon := False;
+  // DEUX tentatives : un telechargement interrompu ne doit JAMAIS partir a
+  // l'execution (fichier tronque = empreinte fausse = message obscur ensuite).
+  for Essai := 1 to 2 do
   begin
-    MsgBox('Echec du telechargement de Python (verifiez la connexion Internet). ' +
-           'Installez Python 3.10 ou plus recent manuellement depuis python.org, ' +
-           'puis relancez cet installateur.', mbCriticalError, MB_OK);
+    WizardForm.StatusLabel.Caption :=
+      'Telechargement de Python (aucune version 3.10+ trouvee)...';
+    if TelechargerPython(CheminInstalleur) and VerifierEmpreintePython(CheminInstalleur) then
+    begin
+      FichierBon := True;
+      Break;
+    end;
+    DeleteFile(CheminInstalleur);
+  end;
+  if not FichierBon then
+  begin
+    MsgBox('Le telechargement de Python a echoue, ou le fichier recu est INCOMPLET ' +
+           '(empreinte SHA-256 differente de celle attendue).' + #13#10#13#10 +
+           'Verifiez la connexion Internet (ou un proxy / antivirus qui filtre les ' +
+           'telechargements), puis relancez cet installateur.' + #13#10#13#10 +
+           'Sinon, installez Python 3.10 ou plus recent manuellement depuis ' +
+           'python.org, puis relancez cet installateur.', mbCriticalError, MB_OK);
     Exit;
   end;
   WizardForm.StatusLabel.Caption := 'Installation de Python (silencieuse)...';

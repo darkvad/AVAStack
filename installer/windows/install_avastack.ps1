@@ -66,6 +66,14 @@ $VERSION_MIN_MINEUR = 10
 # s'accordent, pour que les deux chemins d'installation ne divergent jamais.
 $PY_VERSION = '3.12.7'
 $PY_URL = "https://www.python.org/ftp/python/$PY_VERSION/python-$PY_VERSION-amd64.exe"
+# Empreinte SHA-256 du fichier ci-dessus, VERIFIEE avant de l'executer (v2.48.2) :
+# un telechargement interrompu ne doit jamais partir a l'execution (fichier
+# tronque = signature invalide = message incomprehensible chez l'utilisateur).
+# Valeur relevee d'un telechargement dont la signature Authenticode a ete
+# verifiee comme Valide (signataire : Python Software Foundation).
+# MEME valeur que installer/windows/avastack.iss (define PythonSha256) : un banc
+# verifie que les deux fichiers s'accordent, sinon ils divergeraient en silence.
+$PY_SHA256 = '1206721601A62C925D4E4A0DCFC371E88F2DDBE8C0C07962EBB2BE9B5BDE4570'
 
 function Info   ($m) { Write-Host "[AVAStack] $m" }
 function Avis   ($m) { Write-Host "[AVAStack] ATTENTION : $m" -ForegroundColor Yellow }
@@ -292,17 +300,45 @@ function Install-PythonPythonOrg {
        installe, ou $null en cas d'echec (cause AFFICHEE, jamais muette). #>
     $dest = Join-Path $env:TEMP ("python-{0}-amd64.exe" -f $PY_VERSION)
     Info "aucun Python 3.10+ utilisable : telechargement de Python $PY_VERSION (python.org)"
-    try {
-        [Net.ServicePointManager]::SecurityProtocol = `
-            [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest -Uri $PY_URL -OutFile $dest -UseBasicParsing
-    } catch {
-        Erreur "telechargement impossible : $($_.Exception.Message)"
-        Erreur "Verifie la connexion Internet (ou un proxy), puis relance."
-        Erreur "Sinon, installe Python 3.10+ MANUELLEMENT depuis python.org"
-        Erreur "(coche 'Add python.exe to PATH'), puis relance ce script."
+    # Empreinte VERIFIEE avant execution (v2.48.2) : un telechargement interrompu
+    # ne doit jamais partir a l'execution (fichier tronque = signature invalide =
+    # message incomprehensible chez l'utilisateur). DEUX tentatives, comme
+    # l'installateur Inno Setup, avec la MEME empreinte des deux cotes.
+    $fichierBon = $false
+    for ($essai = 1; $essai -le 2 -and -not $fichierBon; $essai++) {
+        try {
+            [Net.ServicePointManager]::SecurityProtocol = `
+                [Net.SecurityProtocolType]::Tls12
+            Invoke-WebRequest -Uri $PY_URL -OutFile $dest -UseBasicParsing
+        } catch {
+            Avis "telechargement impossible (tentative $essai/2) : $($_.Exception.Message)"
+            continue
+        }
+        $obtenue = ''
+        if (Test-Path -LiteralPath $dest) {
+            try {
+                $obtenue = (Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash
+            } catch {
+                $obtenue = ''
+            }
+        }
+        if ($obtenue.ToUpperInvariant() -eq $PY_SHA256) {
+            $fichierBon = $true
+        } else {
+            Avis "fichier INCOMPLET ou altere (tentative $essai/2) : empreinte $obtenue"
+            Remove-Item -LiteralPath $dest -Force -ErrorAction SilentlyContinue
+        }
+    }
+    if (-not $fichierBon) {
+        Erreur "le telechargement de Python a echoue, ou le fichier recu est INCOMPLET."
+        Erreur "Empreinte attendue : $PY_SHA256"
+        Erreur "Verifie la connexion Internet (ou un proxy / antivirus qui filtre les"
+        Erreur "telechargements), puis relance. Sinon, installe Python 3.10+"
+        Erreur "MANUELLEMENT depuis python.org (coche 'Add python.exe to PATH'), puis"
+        Erreur "relance ce script."
         return $null
     }
+    Info "fichier telecharge et VERIFIE (SHA-256) : $dest"
     Info "installation silencieuse de Python (par utilisateur, Tkinter inclus)..."
     $arguments = @(
         '/quiet',
@@ -601,7 +637,8 @@ function Test-Application {
 
 function Uninstall-AvaStack {
     param([string]$Dossier, [switch]$PurgeReglages)
-    if (-not (Test-Path (Join-Path $Dossier 'VERSION.txt'))) {
+    $versionTxt = Join-Path $Dossier 'VERSION.txt'
+    if (-not (Test-Path $versionTxt)) {
         Erreur "$Dossier ne ressemble pas a une installation AVAStack (VERSION.txt absent)."
         if (-not $Forcer) {
             Erreur "Verifie -Prefix ; ajoute -Forcer pour passer outre ce garde-fou."
@@ -609,14 +646,30 @@ function Uninstall-AvaStack {
         }
         Avis "garde-fou ignore (-Forcer) : poursuite de la suppression."
     }
+    # Ne touche aux raccourcis QUE si l'installation les a CREES. Marque depuis la
+    # v2.48.2 dans VERSION.txt : une installation d'essai faite en -SansRaccourci
+    # ne doit pas effacer les raccourcis d'une AUTRE installation (defaut constate
+    # le 02/10/2026). Les installations ANTERIEURES n'ont pas la marque : on garde
+    # alors le comportement d'avant (raccourcis retires).
+    $raccourcisCrees = $true
+    if (Test-Path $versionTxt) {
+        if (Select-String -Path $versionTxt -Pattern 'raccourcis : AUCUN' `
+                -SimpleMatch -ErrorAction SilentlyContinue) {
+            $raccourcisCrees = $false
+        }
+    }
     Info "desinstallation de $Dossier"
     Remove-Item -LiteralPath $Dossier -Recurse -Force
-    $bureau = [Environment]::GetFolderPath('Desktop')
-    foreach ($lien in @((Join-Path $bureau 'AVAStack.lnk'),
-                        (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\AVAStack'))) {
-        if (Test-Path -LiteralPath $lien) {
-            Remove-Item -LiteralPath $lien -Recurse -Force -ErrorAction SilentlyContinue
+    if ($raccourcisCrees) {
+        $bureau = [Environment]::GetFolderPath('Desktop')
+        foreach ($lien in @((Join-Path $bureau 'AVAStack.lnk'),
+                            (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\AVAStack'))) {
+            if (Test-Path -LiteralPath $lien) {
+                Remove-Item -LiteralPath $lien -Recurse -Force -ErrorAction SilentlyContinue
+            }
         }
+    } else {
+        Info "raccourcis non touches (installation faite avec -SansRaccourci)."
     }
     $config = Join-Path $env:APPDATA 'AVAStack'
     if ($PurgeReglages) {
@@ -705,9 +758,18 @@ function Main {
     }
 
     Copy-Application -Src $racine -Dst $cible
+    # La marque "raccourcis" est RELUE a la desinstallation : une installation
+    # d'essai en -SansRaccourci ne doit PAS effacer les raccourcis d'une AUTRE
+    # installation (defaut constate le 02/10/2026).
+    $marqueRaccourcis = if ($SansRaccourci) {
+        'raccourcis : AUCUN (-SansRaccourci)'
+    } else {
+        'raccourcis : Bureau + Menu Demarrer'
+    }
     Set-Content -LiteralPath (Join-Path $cible 'VERSION.txt') -Encoding ASCII `
         -Value @("AVAStack $version",
-                 "installe le $(Get-Date -Format 'yyyy-MM-dd HH:mm') par installer\install_avastack.ps1")
+                 "installe le $(Get-Date -Format 'yyyy-MM-dd HH:mm') par installer\install_avastack.ps1",
+                 $marqueRaccourcis)
 
     $requirements = Join-Path $cible 'requirements-installation.txt'
     New-RequirementsSansCameras -Source (Join-Path $cible 'requirements.txt') `

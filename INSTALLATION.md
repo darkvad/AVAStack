@@ -1,4 +1,4 @@
-# AVAStack — installation rapide (v2.48.1)
+# AVAStack — installation rapide (v2.48.2)
 
 AVAStack est un **live stacking** : il empile tes brutes **en temps réel**
 pendant l'acquisition (calibration dark/flat, alignement, rejet kappa-sigma,
@@ -8,7 +8,7 @@ passage aux **outils externes** (GraXpert, BlurXTerminator) sur un instantané.
 Il tourne sur **Windows, Linux et macOS**, et s'installe **dans ton profil** :
 aucun droit administrateur n'est nécessaire.
 
-Ce document accompagne la **release v2.48.1** (les trois installateurs y sont
+Ce document accompagne la **release v2.48.2** (les **quatre** installateurs y sont
 attachés). Il ne remplace pas le `LISEZMOI.txt` que l'installateur copie à côté
 de l'application — celui-ci détaille **tous les réglages** de l'interface.
 
@@ -18,10 +18,10 @@ de l'application — celui-ci détaille **tous les réglages** de l'interface.
 
 | Plateforme | Fichier | Taille | SHA-256 |
 | --- | --- | --- | --- |
-| Windows (10/11, 64 bits) | `avastack-setup-2.48.1.exe` | 11,5 Mo | `87710E40887B07E0AE4689DEF1535BD5DB1D5F691ECADAEF2DF79DCB4FE3F34D` |
-| Windows (10/11), **sans exécutable** | `avastack-setup-2.48.1-windows.zip` | 13,4 Mio | `29A7D9CE15719020A205D23BF54E41A7344D03EAE3B23B1310A010D63A7562F3` |
-| Linux (x86_64) | `avastack-setup-2.48.1-linux.tar.gz` | 608 Kio | `684B774772F99390857C65B443F76DB087917C68FA8E4CDE049D942E7FE8A693` |
-| macOS (11 et plus) | `avastack-setup-2.48.1-macos.tar.gz` | 606 Kio | `7C72F10B7FCD01D0946A1DF59F39FB926F518C9F477A3EF0C993C18211F1EA59` |
+| Windows (10/11, 64 bits) | `avastack-setup-2.48.2.exe` | 11,5 Mo | `CC22386AB1D1F041071FCA2BB5267133CA2D180AC749F1998E6DD485C110FF7E` |
+| Windows (10/11), **sans exécutable** | `avastack-setup-2.48.2-windows.zip` | 13,4 Mio | `6F762C66FE8A9648D9A1F72A486DAC50F875D147EED024D2FE8A5719F9F6AD9C` |
+| Linux (x86_64) | `avastack-setup-2.48.2-linux.tar.gz` | 609 Kio | `6140B35B448CD6FD27DDEBB338BA70F64C771046425C27C93DFBF3FF926858E0` |
+| macOS (11 et plus) | `avastack-setup-2.48.2-macos.tar.gz` | 607 Kio | `5BA9A5436DBD9DB16051158CBEF6074923DC39B3813D7B42C53198D1188FEC44` |
 | Documentation | `INSTALLATION.md` | ce fichier | — |
 
 Les artéfacts portent leur **numéro de version** : deux versions ne s'écrasent
@@ -33,14 +33,17 @@ jamais, et un installateur plus ancien peut rester à côté comme repli.
 
 ---
 
-## 2. Windows — `avastack-setup-2.48.1.exe`
+## 2. Windows — `avastack-setup-2.48.2.exe`
 
 1. **Lancer l'exécutable.** Windows peut afficher un avertissement
    SmartScreen (l'exécutable n'est pas signé) : « Informations
    complémentaires » → « Exécuter quand même ».
 2. L'installateur :
    1. vérifie la présence de **Python 3.10+** et, si besoin, le télécharge et
-      l'installe silencieusement depuis python.org ;
+      l'installe silencieusement depuis python.org — en **vérifiant l'empreinte
+      SHA-256** du fichier téléchargé **avant de l'exécuter**, avec **une seconde
+      tentative** (un téléchargement interrompu est ainsi refusé et DIT, au lieu
+      de partir à l'exécution) ;
    2. copie l'application dans `%LOCALAPPDATA%\AVAStack` (dossier modifiable
       pendant l'installation) ;
    3. crée un **venv** et installe les dépendances : `numpy`,
@@ -77,11 +80,11 @@ L'application fonctionne **sans aucune caméra** (mode « Dossier surveillé »,
 
 ---
 
-## 3. Linux — `avastack-setup-2.48.1-linux.tar.gz`
+## 3. Linux — `avastack-setup-2.48.2-linux.tar.gz`
 
 ```bash
-tar xzf avastack-setup-2.48.1-linux.tar.gz
-cd avastack-2.48.1-linux
+tar xzf avastack-setup-2.48.2-linux.tar.gz
+cd avastack-2.48.2-linux
 bash installer/install_avastack.sh
 ```
 
@@ -122,20 +125,21 @@ n'est visible **qu'en root**.
 > **État de cet installateur (à jour le 30/09/2026)** : le paquet Linux est
 > construit, son contenu est vérifié (63 fichiers, aucun `.so`/`.dll`, script
 > `install_avastack.sh` exécutable, fins de ligne UNIX, racine unique
-> `avastack-2.48.1-linux/`) **et il a été exécuté plusieurs fois EN RÉEL sur une
-> machine Ubuntu 26.04 LTS** : installation, prérequis système, création du venv,
-> dépendances et lancement de l'application y sont validés. Restent à faire : le
-> test sur une machine **vierge** (sans Python ni paquets prérequis) et le
-> **test matériel caméras** sous Linux (option `--cameras`, quand les `*.so`
-> constructeurs y seront déposés).
+> `avastack-2.48.2-linux/`) — **seul le numéro de version a changé depuis la
+> v2.48.1, aucun changement fonctionnel côté Linux** — **et la même chaîne a été
+> exécutée plusieurs fois EN RÉEL sur une machine Ubuntu 26.04 LTS** : installation,
+> prérequis système, création du venv, dépendances et lancement de l'application y
+> sont validés. Restent à faire : le test sur une machine **vierge** (sans Python
+> ni paquets prérequis) et le **test matériel caméras** sous Linux (option
+> `--cameras`, quand les `*.so` constructeurs y seront déposés).
 
 ---
 
-## 3 bis. macOS — `avastack-setup-2.48.1-macos.tar.gz`
+## 3 bis. macOS — `avastack-setup-2.48.2-macos.tar.gz`
 
 ```bash
-tar xzf avastack-setup-2.48.1-macos.tar.gz
-cd avastack-2.48.1-macos
+tar xzf avastack-setup-2.48.2-macos.tar.gz
+cd avastack-2.48.2-macos
 bash installer/install_avastack.sh
 ```
 
@@ -325,8 +329,20 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
 
 ---
 
-## 8. Limites connues de la v2.48.1 (dites franchement)
+## 8. Limites connues de la v2.48.2 (dites franchement)
 
+- **Installateurs Windows : ils vérifient l'empreinte du Python téléchargé.**
+  Depuis la v2.48.2, le fichier de python.org est contrôlé par son **SHA-256
+  avant d'être exécuté**, avec **une seconde tentative** si le fichier est
+  incomplet. Motif : un testeur a reçu « Erreur 4551 : une stratégie de contrôle
+  d'application a bloqué ce fichier » sur un fichier **temporaire** — et la
+  MESURE a montré que Smart App Control, **appliqué**, laisse pourtant exécuter
+  depuis `%TEMP%` un fichier **signé** (banc `bancs/_diag_execution_temp.ps1`).
+  Un téléchargement interrompu (fichier tronqué, donc sans signature valide)
+  était l'une des causes possibles restantes : elle est désormais détectée et
+  dite en clair. **L'enquête sur SA machine n'est pas close** (autre stratégie de
+  contrôle d'application de type WDAC, antivirus tiers, ou téléchargement
+  tronqué) — c'est la seule chose que cette version ne peut pas trancher.
 - **Installateur Linux : TESTÉ EN RÉEL** — exécuté **plusieurs fois** sur une
   machine **Ubuntu 26.04 LTS** (installation, prérequis, venv, dépendances,
   lancement) ; l'application y est employée en séance, astrométrie, SPCC et
@@ -342,7 +358,7 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
   mise au premier plan (**v2.47.0**), puis — le symptôme persistant à l'essai
   suivant — la boucle de rafraîchissement de l'interface, qui mourait sur un
   widget devenu invalide et laissait la fenêtre figée (**v2.48.1**). Le paquet
-  **v2.48.1** attend son **essai réel chez le testeur** — c'est la première
+  **v2.48.2** attend son **essai réel chez le testeur** — c'est la première
   chose à vérifier quand il l'aura installé. La signature/notarisation Apple
   n'est pas faite (bundle local non signé).
 - **Aucune caméra** n'est embarquée (SDK constructeurs, licences).
@@ -357,7 +373,7 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
 
 ## 9. Repli si régression
 
-Le repli de référence est la **v2.48.0**. Les installateurs des versions
+Le repli de référence est la **v2.48.1**. Les installateurs des versions
 antérieures restent à côté des nouveaux, dans `installer/windows/output/`,
 `installer/linux/output/` et `installer/macos/output/` : aucun nouveau
 installateur n'écrase une version précédente.

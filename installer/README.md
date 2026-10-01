@@ -56,7 +56,9 @@ dans les deux installateurs ; un banc de régression ne part jamais.
 ## Ce que fait l'installateur Windows (avastack-setup-<version>.exe)
 
 1. Vérifie/présente Python 3.10+ (le télécharge et l'installe silencieusement
-   depuis python.org si absent).
+   depuis python.org si absent) — en **vérifiant son empreinte SHA-256 AVANT de
+   l'exécuter**, avec une seconde tentative (v2.48.2 ; même empreinte que le
+   paquet ZIP, verrouillée par le banc du jalon 89).
 2. Copie l'application dans `%LOCALAPPDATA%\AVAStack`
    (modifiable pendant l'installation).
 3. Crée un venv et installe les dépendances : numpy, opencv-python, pillow,
@@ -183,7 +185,9 @@ exécutable à nous** : un script PowerShell fait tout le travail.
    échoue de façon connue (redirection de chemins → `No pyvenv.cfg file`, le
    « Code retour : 1 » observé en v2.45.0).
 3. **S'il n'en trouve pas, il télécharge et installe Python depuis python.org**
-   (par utilisateur : `InstallAllUsers=0`, `Include_tcltk=1` → Tkinter inclus).
+   (par utilisateur : `InstallAllUsers=0`, `Include_tcltk=1` → Tkinter inclus) —
+   en **vérifiant son empreinte SHA-256 AVANT de l'exécuter**, avec une seconde
+   tentative (v2.48.2).
 4. Il copie l'application dans `%LOCALAPPDATA%\AVAStack` (le MÊME dossier que le
    `.exe`), copie les SDK constructeurs présents, crée le venv, écrit le lanceur
    `lancer_avastack.bat` et les raccourcis (Bureau + Menu Démarrer), puis fait un

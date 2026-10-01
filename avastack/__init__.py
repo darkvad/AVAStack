@@ -17,9 +17,35 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.48.1"
+AVASTACK_VERSION = "2.48.2"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.48.2 : LES INSTALLATEURS WINDOWS VÉRIFIENT L'EMPREINTE DU PYTHON TÉLÉCHARGÉ
+#   (durcissement, sans aucun changement de comportement de l'application).
+#   Contexte : un testeur a reçu « Impossible d'exécuter un fichier depuis le
+#   dossier temporaire... Erreur 4551 : une stratégie de contrôle d'application a
+#   bloqué ce fichier » — et la MESURE a montré que Smart App Control, APPLIQUÉ,
+#   laisse pourtant exécuter depuis %TEMP% un fichier SIGNÉ (banc
+#   `bancs/_diag_execution_temp.ps1`). Une cause possible restait : un
+#   téléchargement INTERROMPU, donc un fichier TRONQUÉ sans signature valide,
+#   aussitôt parti à l'exécution avec un message incompréhensible.
+#   - installer/windows/avastack.iss : le fichier de python.org est désormais
+#     vérifié par son empreinte SHA-256 (define PythonSha256, fonction
+#     VerifierEmpreintePython → GetSHA256OfFile) AVANT d'être exécuté, avec UNE
+#     seconde tentative si le fichier est incomplet ou altéré ; l'échec est dit
+#     en clair (connexion, proxy/antivirus, ou installation manuelle de Python).
+#   - installer/windows/install_avastack.ps1 (paquet ZIP) : MÊME contrôle
+#     (Get-FileHash), DEUX tentatives, MÊME empreinte des deux côtés ; la
+#     création du venv n'est pas touchée.
+#   - installer/windows/install_avastack.ps1 : CORRECTION — la désinstallation
+#     n'efface plus les raccourcis Bureau / Menu Démarrer quand l'installation a
+#     été faite avec -SansRaccourci (marque ajoutée dans VERSION.txt, relue à la
+#     désinstallation ; les installations antérieures gardent l'ancien
+#     comportement). Défaut constaté le 02/10/2026 : une installation d'essai
+#     pouvait effacer les raccourcis d'une AUTRE installation.
+#   Les QUATRE installateurs (Windows .exe et .zip, Linux, macOS) sont reconstruits
+#   pour porter la même version ; seul le couple Windows change de contenu utile.
+
 # v2.48.1 : LA CHAÎNE COULEUR S'APPLIQUE ENFIN À LA VUE « TRAITÉE » — CORRECTION
 #   (constat d'Alain, 01/10/2026 : « les corrections de couleurs ne sont plus
 #   dans le traitement externe et celles du live ne sont pas appliquées sur
