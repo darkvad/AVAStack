@@ -10,7 +10,7 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **DERNIER JALON (02/10/2026, jalon 95 — v2.48.3 : _tick_corps TAIL LA ZONE
+- **DERNIER JALON (02/10/2026, jalon 95 — v2.51.0 : _tick_corps TAIL LA ZONE
   « TRAITEMENT EXTERNE » QUAND ELLE DISPARAÎT. CORRECTIF CIBLÉ MACOS.)
   BANC NEUF VERT, NON-RÉGRESSION VERTE, PUBLICATION EN COURS.**
   **POURQUOI** : retour du testeur macOS sur la v2.48.1 puis v2.48.2
@@ -39,7 +39,7 @@ dans le changelog du source et l'historique git.)
   rafraîchissements (statut, histogramme, mesures, etc.) continuent.
   **AUCUN changement** : aucune clé de configuration, aucun comportement
   visible côté UI, aucun changement sur Windows/Linux (`winfo exists` rend
-  simplement True). Bump **`AVASTACK_VERSION = "2.48.3"`** + changelog.
+  simplement True). Bump **`AVASTACK_VERSION = "2.51.0"`** + changelog.
   **BANC NEUF `bancs/_test_ui_robuste_v2_48_3.py` (5 sections, 14
   vérifications)** : ① statique — les .config( de la zone sont TOUS précédés
   d'un `_widget_vivant` (4 assertions) ; ② dynamique — détruire `btn_ext`,
@@ -56,7 +56,7 @@ dans le changelog du source et l'historique git.)
   touché directement dans `_tick_corps` doit être gardé par `_widget_vivant`.
   Le filet du jalon 87 (un seul widget protégé) était incomplet : la zone
   suivante oubliée a pris 14 jours à refaire surface.
-  **PROCHAINE ÉTAPE** : rebuild des TROIS installateurs + release `v2.48.3`
+  **PROCHAINE ÉTAPE** : rebuild des TROIS installateurs + release `v2.51.0`
   sur GitHub. Repli : `v2.48.1` (déjà publiée, sans le bug et sans la
   correction — le bug y EST en réalité, voir journal du testeur).
 - **JALON PRÉCÉDENT (02/10/2026, jalon 88 — INSTALLATEUR WINDOWS EN PAQUET ZIP,

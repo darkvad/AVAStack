@@ -918,7 +918,7 @@ ce qui manquait n'était pas une correction mais une MESURE.
   démarrage (`info patchlevel`) dès qu'un testeur évoque un Tk ancien —
   vérifier ce fait avant de refuser ou d'accuser le code.
 
-- **LEÇON DU JALON 95 (v2.48.3, retour macOS du 01/10/2026)** : **tout
+- **LEÇON DU JALON 95 (v2.51.0, retour macOS du 01/10/2026)** : **tout
   widget touché directement dans `_tick_corps` doit être gardé par
   `_widget_vivant()`**, pas seulement celui qui a posé problème une fois. Le
   filet du jalon 87 protégeait `_maj_libelle_fit` (le widget qui avait planté
