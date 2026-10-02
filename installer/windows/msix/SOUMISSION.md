@@ -400,3 +400,37 @@ construit ET signé (§ 1) ; les images sont dans `installer\windows\output\fich
   1200×900 est donc inutilisable, § 5) ; le **Store logo 1:1 est obligatoire**.
 - Toute **nouvelle version** repasse par une soumission complète (cadence :
   cf. `AVANCEMENT.md`).
+
+## 8. Après la soumission (quoi surveiller)
+
+**SOUMISSION FAITE le 02/10/2026** (AVAStack **v2.50.0**, paquet MSIX).
+
+1. **Statut** : sur la page du produit, la soumission passe à **« In
+   certification »**, puis à **« Published »** (ou « Certification failed »).
+   Compter **1 à 3 jours ouvrés** ; la revue de `runFullTrust` (§ 4 bis) peut
+   ajouter quelques jours.
+2. **Pendant l'attente** : rien à faire. Éviter de lancer une seconde
+   soumission sur le même produit tant que celle-ci est en cours.
+3. **Si la certification ÉCHOUE** : ouvrir le **rapport de certification**
+   (lien sur la page de la soumission), corriger exactement ce qui est
+   reproché, puis **New submission**. Distinguer deux cas :
+   - le reproche porte sur la **fiche** (texte, image, réglage) → corriger et
+     resoumettre, **le paquet ne change pas** ;
+   - il porte sur le **CODE** → alors **bumper `AVASTACK_VERSION`** (nouvelle
+     version, ex. v2.51.0), reconstruire (et re-signer) le MSIX (§ 1) et
+     téléverser celui-là : le numéro de version doit être **supérieur** à celui
+     publié, sinon l'upload est refusé.
+4. **Une fois PUBLIÉE** :
+   - le **Store re-signe** le paquet : la signature locale ne sert qu'aux essais
+     (§ 2) — rien à faire ;
+   - la fiche peut mettre **quelques heures** à se propager dans le Store ;
+   - faire le **dernier test qui n'existe que par cette voie** : installer
+     **depuis le Store** sur un poste (menu Démarrer) et vérifier que
+     l'application s'ouvre et empile ;
+   - le lien public de la fiche est celui affiché sur la page produit.
+5. **Mises à jour** : chaque version repasse par une **soumission complète**
+   (mêmes sections). La **classification d'âge** et les **capacités déjà
+   approuvées** ne se redemandent pas.
+6. **Mettre à jour la mémoire après publication** : `AVANCEMENT.md` (version
+   publiée + date) — et corriger toute affirmation d'état devenue fausse dans
+   la documentation publique (règle du projet : un état publié ne ment jamais).

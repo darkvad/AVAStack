@@ -124,9 +124,21 @@ dans le changelog du source et l'historique git.)
   `https://github.com/darkvad/AVAStack/blob/master/PRIVACY.md` — § 6 bis de
   `SOUMISSION.md` passe de « à trancher » à « FAIT » (le brouillon n'y est plus
   dupliqué : la source de vérité est le fichier).
-  **PROCHAINE ÉTAPE** : la **SOUMISSION** Partner Center (textes
-  `SOUMISSION.md` § 3-4, images § 5 ; certification 1 à 3 jours ; le Store
-  re-signe le paquet).
+  **SOUMISSION FAITE PAR ALAIN (02/10/2026, v2.50.0)** — la soumission Partner
+  Center est **PARTIE EN CERTIFICATION** (toutes les sections de `SOUMISSION.md`
+  § 6-7 remplies : catégorie photo/vidéo, textes § 3 en TEXTE BRUT, images § 5,
+  notes § 4, **justification `runFullTrust` § 4 bis**, politique de
+  confidentialité = **URL de `PRIVACY.md`** § 6 bis). Rien à faire pendant
+  l'attente : **1 à 3 jours ouvrés** (la revue de `runFullTrust` peut allonger).
+  **`SOUMISSION.md` § 8 (NEUF)** dit quoi surveiller : statut « In
+  certification » → « Published », ou « Certification failed » (lire le
+  **rapport de certification**, corriger, **New submission** — un correctif de
+  CODE impose un `AVASTACK_VERSION` SUPÉRIEUR, ex. v2.51.0, et un MSIX
+  reconstruit), puis vérifier l'installation **depuis le Store** (le paquet y
+  est re-signé) et consigner l'état publié ici.
+  **PROCHAINE ÉTAPE** : au retour d'Alain sur le **résultat de la
+  certification** — consigner la version PUBLIÉE (et mettre à jour les
+  affirmations d'état publiques si nécessaire), OU corriger selon le rapport.
   **PIÈGE CONSIGNÉ (02/10/2026) : les champs de Partner Center sont du TEXTE
   BRUT, aucun balisage.** Ne PAS coller le Markdown de `SOUMISSION.md` (`**`,
   `#`, backticks s'afficheraient tels quels) ; Microsoft interdit en outre
