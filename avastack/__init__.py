@@ -36,6 +36,14 @@ AVASTACK_VERSION = "2.50.0"
 #     Linux/macOS.
 #   - bancs/_test_msix_jalon92.py étendu : vignettes depuis la vraie icône et
 #     pose effective de l'icône de fenêtre.
+#   - installer/windows/msix/images_fiche.py (NEUF, jalon 94) : images de la
+#     FICHE Store depuis une capture RÉELLE — la capture telle quelle (≥1366×768
+#     exigé) + tuiles 1:1 2160², 16:9 1920×1080, 4:3 1200×900 (fenêtre ENTIÈRE
+#     sur fond flou ; `--recadrer` = « cover »), `--masquer x,y,l,h` neutralise
+#     les zones PERSONNELLES (le dépôt reste sans donnée personnelle),
+#     `--verifier` contrôle un dossier écrit. Banc bancs/_test_images_fiche_
+#     jalon94.py. (Les vignettes DU PAQUET, elles, restent faites par
+#     build_msix.py depuis l'icône : ce sont DEUX choses distinctes.)
 # v2.49.0 : SCAN QHY RÉPARÉ POUR UNE APPLICATION GELÉE + PACKER WINDOWS GELÉ
 #   (PyInstaller) — PREMIER PAS DU CHANTIER « MICROSOFT STORE » (jalon 91).
 #   Contexte : la voie Store (MSIX, IMMUABLE : le venv ne peut pas se créer à

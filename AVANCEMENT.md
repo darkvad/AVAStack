@@ -55,10 +55,86 @@ dans le changelog du source et l'historique git.)
   réelle d'Alain : SHO S2+Ha+O3, 55 poses cumulées, recadrée 3819×2159,
   GraXpert branché), titre affiché **v2.50.0**. C'était LA prochaine étape du
   jalon 93 : elle est FRANCHIE.
-  **PROCHAINE ÉTAPE** : produire les **images de la fiche Store** (≥1 capture
-  ≥1366×768 — idéalement en mode « Simulée (démo) », SANS chemin ni cible
-  personnels — + tuiles 1:1/16:9/4:3), puis la **soumission** Partner Center
-  (textes de `SOUMISSION.md` ; certification 1 à 3 jours ; le Store re-signe).
+  **IMAGES DE LA FICHE STORE — FAIT (jalon 94, 02/10/2026)** : nouveau
+  `installer/windows/msix/images_fiche.py` — capture telle quelle (≥1366×768) +
+  tuiles 1:1 2160², 16:9 1920×1080, 4:3 1200×900 (fenêtre entière sur fond
+  flou ; `--recadrer` = « cover ») ; `--masquer x,y,l,h` neutralise les zones
+  PERSONNELLES — le masquage est appliqué AVANT l'écriture, donc la CAPTURE
+  TÉLÉVERSÉE le porte aussi ; `--verifier` contrôle. Banc
+  `bancs/_test_images_fiche_jalon94.py` TOUT AU VERT. Jeu réel dans
+  `installer/windows/output/fiche/` : `--verifier` = **CONFORME**.
+  **DÉCISION (02/10/2026) : la voie « Simulée (démo) » est ABANDONNÉE pour la
+  fiche.** Vérifié dans le code : `avastack/cameras/simulated.py` ne dessine
+  qu'un CIEL SYNTHÉTIQUE (étoiles + nébulosité gaussienne faible) — jamais la
+  belle image voulue ; la Rosette de la capture précédente venait en fait des
+  VRAIS fichiers (source « Composition multi-dossiers »). Alain a donc fourni
+  une capture RÉELLE de son empilement **SHO NGC 2237 (Rosette, 55 poses)** et
+  y a FLOUTÉ LUI-MÊME les chemins : au zoom, le nom d'utilisateur et l'adresse
+  réseau sont illisibles (seuls « /Telechargements/ », « /Astro/ » restent —
+  aucun identifiant personnel). Seul élément NON lié à l'appli à neutraliser :
+  la **notification Windows** (« Alimentation et batterie ») →
+  `--masquer 1428,860,488,158`. **Vérifié au pixel** : le bandeau commence
+  juste APRÈS la fin de la barre de statut, donc « … 55 frames empilées
+  (intégration cumulée) | recadrée 3819×2159 » reste ENTIÈRE (aucune coupure).
+  Une variante recouvrant AUSSI les champs S2/Ha/O3 d'un bandeau neutre a été
+  produite pour comparaison : Alain garde son flou.
+  **GUIDE DE SOUMISSION DÉTAILLÉ (02/10/2026)** — Alain a demandé à être guidé
+  « plus que cela » (« catégorie, je mets quoi ? »). `SOUMISSION.md` est passé de
+  6 lignes de réglages à une procédure **champ par champ** (§ 6) et **clic par
+  clic** (§ 7), sourcée sur la doc Microsoft (listes de catégories, tailles
+  d'images, options de soumission). Quatre
+  trouvailles de fond :
+  ① **`runFullTrust` EXIGE une justification écrite** dans *Submission options →
+  Restricted capabilities* (« tell us why your app needs to declare the
+  capability and how it is used ») : SANS elle, **échec de certification** →
+  texte prêt à coller en **§ 4 bis** (application de bureau classique, dossiers
+  choisis par l'utilisateur, SDK constructeurs via ctypes, %APPDATA% réel,
+  outils externes ; aucun privilège admin, aucune donnée personnelle).
+  ② **Catégorie** : la catégorie **photo/vidéo** (tableau Microsoft « Photo +
+  video », interface « Photo & video »/« Photo et vidéo »), **sous-catégorie :
+  aucune** ; ce n'est PAS « Games » (sinon la catégorie ne peut plus changer).
+  ③ **Mapping des images** (§ 5) : capture 1916×1018 → *Screenshots* (≥1366×768
+  exigé, 10 max, PNG ≤ 50 Mo, légende ≤ 200 car.) ; tuile 2160² → *Store logos
+  1:1 box art* (**obligatoire**) ; tuile 1920×1080 → *Windows 10/11 and Xbox
+  image, 16:9 Super hero art* (**sans aucun texte**) ; et la **tuile 4:3
+  1200×900 est INUTILISABLE** dans Partner Center (1200 < 1366) — elle ne sert
+  qu'au site/README.
+  ④ **Politique de confidentialité** : réponse « NON » (aucune collecte, aucun
+  analytics, aucun compte ; SEUL accès réseau du code = téléchargement de
+  catalogues publics, `avastack/catalogues/telechargeur.py`) MAIS Microsoft peut
+  exiger une URL d'après les capacités déclarées → **§ 6 bis** : décision à
+  prendre + texte de `PRIVACY.md` prêt à publier (sans donnée personnelle,
+  contact = page *Issues*).
+  Aussi : § 6 ter (exigences système, lignes ≤ 200 car., affichées en puces),
+  déclarations produit (garder les défauts, NE PAS cocher accessibilité/IA
+  générative/achats), questionnaire d'âge (catégorie utilitaire, « Non » partout
+  → 3+), et les pièges connus (« Incomplete » non bloquant, re-signature Store,
+  reprise complète à chaque version).
+  **`PRIVACY.md` PUBLIÉ (02/10/2026)** — la question du § 6 bis est TRANCHÉE et
+  FAITE : nouveau `PRIVACY.md` à la **racine du dépôt** (français + résumé
+  anglais), écrit d'après le **code VÉRIFIÉ** : aucun `requests` ni `socket` dans
+  `avastack/` ; SEUL `catalogues/telechargeur.py` fait du réseau, vers
+  `zenodo.org` et `gitlab.com`, **en LECTURE**, et uniquement sur clic de
+  l'utilisateur (« ⬇ Gaia », « ⬇ les 48 », « ⬇ Base SPCC ») ; réglages et journal
+  sous `%APPDATA%\AVAStack` (le journal peut contenir des chemins locaux — c'est
+  ANNONCÉ, avec le conseil de le relire avant de l'envoyer dans un rapport).
+  **Aucune donnée personnelle** : contact = page *Issues* (règle « les documents
+  publics ne citent jamais le mainteneur »). Lien ajouté au **README** (dernier
+  paragraphe). **URL à coller dans Partner Center (champ *Privacy policy*)** :
+  `https://github.com/darkvad/AVAStack/blob/master/PRIVACY.md` — § 6 bis de
+  `SOUMISSION.md` passe de « à trancher » à « FAIT » (le brouillon n'y est plus
+  dupliqué : la source de vérité est le fichier).
+  **PROCHAINE ÉTAPE** : la **SOUMISSION** Partner Center (textes
+  `SOUMISSION.md` § 3-4, images § 5 ; certification 1 à 3 jours ; le Store
+  re-signe le paquet).
+  **PIÈGE CONSIGNÉ (02/10/2026) : les champs de Partner Center sont du TEXTE
+  BRUT, aucun balisage.** Ne PAS coller le Markdown de `SOUMISSION.md` (`**`,
+  `#`, backticks s'afficheraient tels quels) ; Microsoft interdit en outre
+  explicitement HTML, extraits de code et URL dans la description. § 3 le dit
+  désormais, avec les **longueurs MESURÉES** : description **1489** car.
+  (max 10 000, source Microsoft), description courte **297** car. (max 1000,
+  conseillé **< 270** → variante mesurée **263** car. fournie), notes de
+  certification **1034** car. (champ libre, les ``` de § 4 ne se collent pas).
 - **JALON PRÉCÉDENT (02/10/2026, jalons 91-92 — v2.49.0).** ① Le **scan QHY
   FONCTIONNE EN GELÉ** : un exe PyInstaller ignore `-c`, donc l'exe se relance
   avec le mode interne `--scan-qhy` (`AVAStack.py`, avant toute interface) ; ②

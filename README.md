@@ -152,3 +152,8 @@ Questions, anomalies, propositions : les **issues** de ce dépôt sont l'endroit
 indiqué — avec, si possible, la version (`barre de titre`), le journal
 (`journal.txt`, cadre « Fichiers de travail et journal ») et la marche suivie.
 
+**Confidentialité** : AVAStack ne collecte **aucune** donnée personnelle et ne
+transmet rien ; son seul accès réseau est le téléchargement, à votre demande, de
+catalogues astronomiques publics. Détail complet :
+[`PRIVACY.md`](PRIVACY.md).
+
