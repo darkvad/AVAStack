@@ -9238,6 +9238,15 @@ class App:
                                   # ⏳ étape courante + curseur, puis résultat
         if self.proc_new:
             self.proc_new = False
+            # v2.48.3 (jalon 95, retour macOS du 01/10/2026) : la zone
+            # « Traitement externe » peut disparaître sur Tcl/Tk 8.6.12 / macOS
+            # (invalid command name sur btn_ext.config) — la garde suivante
+            # TAIT toute la zone (3 widgets : btn_save_proc, lbl_ext, btn_ext)
+            # et laisse `_tick` se replanifier normalement. _maj_libelle_fit
+            # l'avait déjà, posée au jalon 87 ; cette zone avait été oubliée
+            # (cf. CLAUDE.md « leçon du jalon 95 »).
+            if not self._widget_vivant(getattr(self, "btn_save_proc", None)):
+                return
             self.btn_save_proc.config(state="normal")
             if self.var_view.get() == "traitée" and self.proc_show is not None:
                 self.last_show = self.proc_show
@@ -9245,13 +9254,19 @@ class App:
                     self._src_rendu(self.proc_show), live=False))
         if self.ext_msg != self._ext_shown:
             self._ext_shown = self.ext_msg
+            if not self._widget_vivant(getattr(self, "lbl_ext", None)):
+                return
             self.lbl_ext.config(
                 text=self.ext_msg,
                 foreground={"busy": "#c98a00", "ok": "#1d7f1d",
                             "error": "#d04040"}.get(self.ext_state, "#888888"))
         if self.ext_busy:                      # chrono pendant le traitement
+            if not self._widget_vivant(getattr(self, "lbl_ext", None)):
+                return
             self.lbl_ext.config(text=f"{self.ext_msg}  "
                                       f"({time.time() - (self.ext_t0 or time.time()):.0f} s)")
+        if not self._widget_vivant(getattr(self, "btn_ext", None)):
+            return
         self.btn_ext.config(state="disabled"
                             if (self.ext_busy or self.ext_request) else "normal")
         if self._ext_popup:

@@ -1,4 +1,4 @@
-# AVAStack — installation rapide (v2.48.2)
+﻿# AVAStack — installation rapide (v2.48.3)
 
 AVAStack est un **live stacking** : il empile tes brutes **en temps réel**
 pendant l'acquisition (calibration dark/flat, alignement, rejet kappa-sigma,
@@ -8,7 +8,7 @@ passage aux **outils externes** (GraXpert, BlurXTerminator) sur un instantané.
 Il tourne sur **Windows, Linux et macOS**, et s'installe **dans ton profil** :
 aucun droit administrateur n'est nécessaire.
 
-Ce document accompagne la **release v2.48.2** (les **quatre** installateurs y sont
+Ce document accompagne la **release v2.48.3** (les **quatre** installateurs y sont
 attachés). Il ne remplace pas le `LISEZMOI.txt` que l'installateur copie à côté
 de l'application — celui-ci détaille **tous les réglages** de l'interface.
 
@@ -18,10 +18,10 @@ de l'application — celui-ci détaille **tous les réglages** de l'interface.
 
 | Plateforme | Fichier | Taille | SHA-256 |
 | --- | --- | --- | --- |
-| Windows (10/11, 64 bits) | `avastack-setup-2.48.2.exe` | 11,5 Mo | `CC22386AB1D1F041071FCA2BB5267133CA2D180AC749F1998E6DD485C110FF7E` |
-| Windows (10/11), **sans exécutable** | `avastack-setup-2.48.2-windows.zip` | 13,4 Mio | `6F762C66FE8A9648D9A1F72A486DAC50F875D147EED024D2FE8A5719F9F6AD9C` |
-| Linux (x86_64) | `avastack-setup-2.48.2-linux.tar.gz` | 609 Kio | `6140B35B448CD6FD27DDEBB338BA70F64C771046425C27C93DFBF3FF926858E0` |
-| macOS (11 et plus) | `avastack-setup-2.48.2-macos.tar.gz` | 607 Kio | `5BA9A5436DBD9DB16051158CBEF6074923DC39B3813D7B42C53198D1188FEC44` |
+| Windows (10/11, 64 bits) | `avastack-setup-2.48.3.exe` | 11,7 Mo | `ED5032BED91B224DCDA313FA1DE9E769D0A5816272185B69A6269F7C6FCA4EDF` |
+| Windows (10/11), **sans exécutable** | `avastack-setup-2.48.3-windows.zip` | 13,4 Mio | `C3F91AC03F53069156660143E4A900FBDB2CFD9160D3DF2D2B72AA17E02B4674` |
+| Linux (x86_64) | `avastack-setup-2.48.3-linux.tar.gz` | 609 Kio | `8EA2BB176022F6A0690F92706CC355BE89E9556B30B9AA72288ECADA0DDC6FD6` |
+| macOS (11 et plus) | `avastack-setup-2.48.3-macos.tar.gz` | 607 Kio | `D88F4E307DB76A682679FC45B118C7DBCF5ED84D8CD920D329FF23E8ABBCA01C` |
 | Documentation | `INSTALLATION.md` | ce fichier | — |
 
 Les artéfacts portent leur **numéro de version** : deux versions ne s'écrasent
@@ -80,10 +80,10 @@ L'application fonctionne **sans aucune caméra** (mode « Dossier surveillé »,
 
 ---
 
-## 3. Linux — `avastack-setup-2.48.2-linux.tar.gz`
+## 3. Linux — `avastack-setup-2.48.3-linux.tar.gz`
 
 ```bash
-tar xzf avastack-setup-2.48.2-linux.tar.gz
+tar xzf avastack-setup-2.48.3-linux.tar.gz
 cd avastack-2.48.2-linux
 bash installer/install_avastack.sh
 ```
@@ -135,10 +135,10 @@ n'est visible **qu'en root**.
 
 ---
 
-## 3 bis. macOS — `avastack-setup-2.48.2-macos.tar.gz`
+## 3 bis. macOS — `avastack-setup-2.48.3-macos.tar.gz`
 
 ```bash
-tar xzf avastack-setup-2.48.2-macos.tar.gz
+tar xzf avastack-setup-2.48.3-macos.tar.gz
 cd avastack-2.48.2-macos
 bash installer/install_avastack.sh
 ```
@@ -329,7 +329,7 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
 
 ---
 
-## 8. Limites connues de la v2.48.2 (dites franchement)
+## 8. Limites connues de la v2.48.3
 
 - **Installateurs Windows : ils vérifient l'empreinte du Python téléchargé.**
   Depuis la v2.48.2, le fichier de python.org est contrôlé par son **SHA-256

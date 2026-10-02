@@ -918,6 +918,33 @@ ce qui manquait n'était pas une correction mais une MESURE.
   démarrage (`info patchlevel`) dès qu'un testeur évoque un Tk ancien —
   vérifier ce fait avant de refuser ou d'accuser le code.
 
+- **LEÇON DU JALON 95 (v2.48.3, retour macOS du 01/10/2026)** : **tout
+  widget touché directement dans `_tick_corps` doit être gardé par
+  `_widget_vivant()`**, pas seulement celui qui a posé problème une fois. Le
+  filet du jalon 87 protégeait `_maj_libelle_fit` (le widget qui avait planté
+  chez son testeur à ce moment-là) et c'est tout — la zone « Traitement
+  externe » (`btn_save_proc`, `lbl_ext`, `btn_ext`), qui a planté 14 jours
+  plus tard chez le même testeur, était non gardée. Cause amplificatrice :
+  `_journal_erreur_tick` filtre par épisode (`_tick_err_sig`) — une SEULE
+  ligne dans le journal même si l'exception revient 33 fois/seconde. La
+  boucle survivait mais TOUS les rafraîchissements d'interface étaient
+  MORTS, sans qu'aucune ligne de journal ne le dise après la première.
+  Symptômes côté utilisateur : « plein de boutons ne répondent pas », « la
+  liste déroulante ne fonctionne plus », sans aucune entrée visible après la
+  première ligne ERREUR. Règle d'extension : à chaque widget UI directement
+  touché par `_tick_corps` (`.config(`, `.state(...)`, etc.), ajouter
+  `_widget_vivant` en début de bloc OU garantir que l'appel passe par une
+  méthode déjà gardée (ex : `_maj_libelle_fit` au jalon 87). Le banc
+  `bancs/_test_ui_robuste_v2_48_3.py` (jalon 95) vérifie ce contrat par
+  analyse statique : tout `.config(` direct sur un widget de la zone
+  cible doit être précédé d'un `_widget_vivant(` dans les 15 lignes
+  précédentes. PIÈGE documenté par le banc lui-même : la garde doit être
+  sur **le widget qu'on va toucher** (`btn_save_proc` pour le `.config(
+  btn_save_proc`, `btn_ext` pour le `.config( btn_ext`) — pas sur un
+  voisin. Sur macOS / Tk 8.6.12 les indices Tk des widgets peuvent changer
+  à la destruction d'un voisin, et `winfo exists` du voisin reste True
+  alors que la cible est déjà invalide.
+
 - **TROIS OPTIMISATIONS DE LA CHAÎNE LIVE SONT ÉCARTÉES — NE PAS LES
   REPROPOSER** (décisions d'Alain des 29-30/09/2026, argumentées ET mesurées ;
   elles reviennent naturellement dès qu'on cherche à raccourcir la chaîne) :

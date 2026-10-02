@@ -1,4 +1,4 @@
-# AVANCEMENT.md — mémoire de travail à court terme
+﻿# AVANCEMENT.md — mémoire de travail à court terme
 
 (Complète CLAUDE.md : état courant du développement et tâche en cours.
 **Gardé LÉGER** (consigne d'Alain, 18/09/2026, cf. CLAUDE.md) : le
@@ -10,160 +10,55 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **DERNIER JALON (02/10/2026, jalon 93 — v2.50.0 : ICÔNE DE L'APPLICATION
-  (barre de titres + barre des tâches) ET VIGNETTES MSIX DEPUIS LA VRAIE ICÔNE.
-  BANC VERT, PAQUETS RECONSTRUITS, MSIX À IDENTITÉ RÉELLE INSTALLÉ ET TESTÉ
-  EN RÉEL.)**
-  **POURQUOI** : Alain a fourni l'icône (`assets/avastack.ico` multirésolution
-  16/32/48/256 + `assets/avastack.png` 512×512, M31) et a posé LA question qui
-  tranche : « les vignettes, c'est l'icône de la barre de titres ? » — NON, ce
-  sont DEUX choses : l'icône de fenêtre/exe d'un côté, les TUILES du manifeste
-  MSIX de l'autre. Les deux viennent maintenant de la MÊME source.
-  **LIVRÉ** : ① `assets/` (NEUF, racine) = source unique de l'icône ; ②
-  `avastack/ressources.py` (NEUF) — `poser_icone_fenetre()` : Windows prend le
-  `.ico`, ailleurs `iconphoto(PNG)` ; dossier résolu depuis `__file__` (donc
-  gelé comme en dev) ; ③ `avastack/ui/app.py` pose l'icône dans `main()` ; ④
-  `build_avastack_frozen.ps1` : `--icon` + `--add-data assets` (l'exe ET la
-  fenêtre portent l'icône) ; ⑤ `build_msix.py` : vignettes recadrées « cover » +
-  LANCZOS depuis `assets/avastack.png`, aux 6 tailles du manifeste (repli
-  géométrique stdlib), manifeste complété (`uap:DefaultTile` : 71, 310×150,
-  310) — PIÈGE corrigé : `Square71x71Logo` appartient à `uap:DefaultTile`, PAS
-  à `uap:VisualElements` (MakeAppx le refusait) ; ⑥ les QUATRE canaux embarquent
-  `assets/` (`avastack.iss` + `SetupIconFile` + icône des raccourcis, ZIP,
-  packers et installeurs Linux/macOS).
-  **MESURES RÉELLES** : gel **250,5 Mo** (`8829ADE9…`, assets présents dans
-  `_internal/assets`, icône associée à l'exe) ; MSIX **106,7 Mo**
-  (`3c5cfffc…`), **626 entrées**, les **6 vignettes aux tailles exactes**,
-  signé. Bancs : `_test_msix_jalon92.py` (étendu : vraie icône + icône de
-  fenêtre) TOUT AU VERT ; **rejoués verts** : jalon 91, QHY (33), ZIP (88),
-  macOS (78), interface robuste (87).
-  **IDENTITÉ PARTNER CENTER OBTENUE (02/10/2026)** : le nom est RÉSERVÉ et le
-  MSIX a été RECONSTRUIT + RE-SIGNÉ avec l'identité RÉELLE de la page « Product
-  identity » (`--nom` / `--publisher` / `--publisher-display`). Les VALEURS ne
-  sont PAS écrites dans le dépôt (règle : rien de personnel, et rien qui vienne
-  du compte, dans un document publié). Manifeste vérifié : Identity Name /
-  Publisher / DisplayName cohérents, 626 entrées, signature posée.
-  **`installer/windows/msix/SOUMISSION.md` (NEUF)** : relier le paquet à
-  l'identité, essai local, **textes de la fiche Store** (la description COMMENCE
-  par la dépendance pilotes — exigence de la politique 10.2.4), **notes de
-  certification** demandant l'exception, images à fournir, réglages, étapes.
-  **INSTALLATION + TEST RÉELS DU MSIX À IDENTITÉ RÉELLE VALIDÉS PAR ALAIN
-  (02/10/2026)** : nouveau certificat approuvé dans
-  `LocalMachine\TrustedPeople` (ADMIN ; sujet = `CN=<GUID>` de Partner Center,
-  l'ancien `CN=AVAStack Test` ne suffit plus), `Add-AppxPackage` OK — l'appli
-  s'ouvre, tourne et empile en **« Composition multi-dossiers »** (capture
-  réelle d'Alain : SHO S2+Ha+O3, 55 poses cumulées, recadrée 3819×2159,
-  GraXpert branché), titre affiché **v2.50.0**. C'était LA prochaine étape du
-  jalon 93 : elle est FRANCHIE.
-  **IMAGES DE LA FICHE STORE — FAIT (jalon 94, 02/10/2026)** : nouveau
-  `installer/windows/msix/images_fiche.py` — capture telle quelle (≥1366×768) +
-  tuiles 1:1 2160², 16:9 1920×1080, 4:3 1200×900 (fenêtre entière sur fond
-  flou ; `--recadrer` = « cover ») ; `--masquer x,y,l,h` neutralise les zones
-  PERSONNELLES — le masquage est appliqué AVANT l'écriture, donc la CAPTURE
-  TÉLÉVERSÉE le porte aussi ; `--verifier` contrôle. Banc
-  `bancs/_test_images_fiche_jalon94.py` TOUT AU VERT. Jeu réel dans
-  `installer/windows/output/fiche/` : `--verifier` = **CONFORME**.
-  **DÉCISION (02/10/2026) : la voie « Simulée (démo) » est ABANDONNÉE pour la
-  fiche.** Vérifié dans le code : `avastack/cameras/simulated.py` ne dessine
-  qu'un CIEL SYNTHÉTIQUE (étoiles + nébulosité gaussienne faible) — jamais la
-  belle image voulue ; la Rosette de la capture précédente venait en fait des
-  VRAIS fichiers (source « Composition multi-dossiers »). Alain a donc fourni
-  une capture RÉELLE de son empilement **SHO NGC 2237 (Rosette, 55 poses)** et
-  y a FLOUTÉ LUI-MÊME les chemins : au zoom, le nom d'utilisateur et l'adresse
-  réseau sont illisibles (seuls « /Telechargements/ », « /Astro/ » restent —
-  aucun identifiant personnel). Seul élément NON lié à l'appli à neutraliser :
-  la **notification Windows** (« Alimentation et batterie ») →
-  `--masquer 1428,860,488,158`. **Vérifié au pixel** : le bandeau commence
-  juste APRÈS la fin de la barre de statut, donc « … 55 frames empilées
-  (intégration cumulée) | recadrée 3819×2159 » reste ENTIÈRE (aucune coupure).
-  Une variante recouvrant AUSSI les champs S2/Ha/O3 d'un bandeau neutre a été
-  produite pour comparaison : Alain garde son flou.
-  **GUIDE DE SOUMISSION DÉTAILLÉ (02/10/2026)** — Alain a demandé à être guidé
-  « plus que cela » (« catégorie, je mets quoi ? »). `SOUMISSION.md` est passé de
-  6 lignes de réglages à une procédure **champ par champ** (§ 6) et **clic par
-  clic** (§ 7), sourcée sur la doc Microsoft (listes de catégories, tailles
-  d'images, options de soumission). Quatre
-  trouvailles de fond :
-  ① **`runFullTrust` EXIGE une justification écrite** dans *Submission options →
-  Restricted capabilities* (« tell us why your app needs to declare the
-  capability and how it is used ») : SANS elle, **échec de certification** →
-  texte prêt à coller en **§ 4 bis** (application de bureau classique, dossiers
-  choisis par l'utilisateur, SDK constructeurs via ctypes, %APPDATA% réel,
-  outils externes ; aucun privilège admin, aucune donnée personnelle).
-  ② **Catégorie** : la catégorie **photo/vidéo** (tableau Microsoft « Photo +
-  video », interface « Photo & video »/« Photo et vidéo »), **sous-catégorie :
-  aucune** ; ce n'est PAS « Games » (sinon la catégorie ne peut plus changer).
-  ③ **Mapping des images** (§ 5) : capture 1916×1018 → *Screenshots* (≥1366×768
-  exigé, 10 max, PNG ≤ 50 Mo, légende ≤ 200 car.) ; tuile 2160² → *Store logos
-  1:1 box art* (**obligatoire**) ; tuile 1920×1080 → *Windows 10/11 and Xbox
-  image, 16:9 Super hero art* (**sans aucun texte**) ; et la **tuile 4:3
-  1200×900 est INUTILISABLE** dans Partner Center (1200 < 1366) — elle ne sert
-  qu'au site/README.
-  ④ **Politique de confidentialité** : réponse « NON » (aucune collecte, aucun
-  analytics, aucun compte ; SEUL accès réseau du code = téléchargement de
-  catalogues publics, `avastack/catalogues/telechargeur.py`) MAIS Microsoft peut
-  exiger une URL d'après les capacités déclarées → **§ 6 bis** : décision à
-  prendre + texte de `PRIVACY.md` prêt à publier (sans donnée personnelle,
-  contact = page *Issues*).
-  Aussi : § 6 ter (exigences système, lignes ≤ 200 car., affichées en puces),
-  déclarations produit (garder les défauts, NE PAS cocher accessibilité/IA
-  générative/achats), questionnaire d'âge (catégorie utilitaire, « Non » partout
-  → 3+), et les pièges connus (« Incomplete » non bloquant, re-signature Store,
-  reprise complète à chaque version).
-  **`PRIVACY.md` PUBLIÉ (02/10/2026)** — la question du § 6 bis est TRANCHÉE et
-  FAITE : nouveau `PRIVACY.md` à la **racine du dépôt** (français + résumé
-  anglais), écrit d'après le **code VÉRIFIÉ** : aucun `requests` ni `socket` dans
-  `avastack/` ; SEUL `catalogues/telechargeur.py` fait du réseau, vers
-  `zenodo.org` et `gitlab.com`, **en LECTURE**, et uniquement sur clic de
-  l'utilisateur (« ⬇ Gaia », « ⬇ les 48 », « ⬇ Base SPCC ») ; réglages et journal
-  sous `%APPDATA%\AVAStack` (le journal peut contenir des chemins locaux — c'est
-  ANNONCÉ, avec le conseil de le relire avant de l'envoyer dans un rapport).
-  **Aucune donnée personnelle** : contact = page *Issues* (règle « les documents
-  publics ne citent jamais le mainteneur »). Lien ajouté au **README** (dernier
-  paragraphe). **URL à coller dans Partner Center (champ *Privacy policy*)** :
-  `https://github.com/darkvad/AVAStack/blob/master/PRIVACY.md` — § 6 bis de
-  `SOUMISSION.md` passe de « à trancher » à « FAIT » (le brouillon n'y est plus
-  dupliqué : la source de vérité est le fichier).
-  **SOUMISSION FAITE PAR ALAIN (02/10/2026, v2.50.0)** — la soumission Partner
-  Center est **PARTIE EN CERTIFICATION** (toutes les sections de `SOUMISSION.md`
-  § 6-7 remplies : catégorie photo/vidéo, textes § 3 en TEXTE BRUT, images § 5,
-  notes § 4, **justification `runFullTrust` § 4 bis**, politique de
-  confidentialité = **URL de `PRIVACY.md`** § 6 bis). Rien à faire pendant
-  l'attente : **1 à 3 jours ouvrés** (la revue de `runFullTrust` peut allonger).
-  **`SOUMISSION.md` § 8 (NEUF)** dit quoi surveiller : statut « In
-  certification » → « Published », ou « Certification failed » (lire le
-  **rapport de certification**, corriger, **New submission** — un correctif de
-  CODE impose un `AVASTACK_VERSION` SUPÉRIEUR, ex. v2.51.0, et un MSIX
-  reconstruit), puis vérifier l'installation **depuis le Store** (le paquet y
-  est re-signé) et consigner l'état publié ici.
-  **PROCHAINE ÉTAPE** : au retour d'Alain sur le **résultat de la
-  certification** — consigner la version PUBLIÉE (et mettre à jour les
-  affirmations d'état publiques si nécessaire), OU corriger selon le rapport.
-  **PIÈGE CONSIGNÉ (02/10/2026) : les champs de Partner Center sont du TEXTE
-  BRUT, aucun balisage.** Ne PAS coller le Markdown de `SOUMISSION.md` (`**`,
-  `#`, backticks s'afficheraient tels quels) ; Microsoft interdit en outre
-  explicitement HTML, extraits de code et URL dans la description. § 3 le dit
-  désormais, avec les **longueurs MESURÉES** : description **1489** car.
-  (max 10 000, source Microsoft), description courte **297** car. (max 1000,
-  conseillé **< 270** → variante mesurée **263** car. fournie), notes de
-  certification **1034** car. (champ libre, les ``` de § 4 ne se collent pas).
-- **JALON PRÉCÉDENT (02/10/2026, jalons 91-92 — v2.49.0).** ① Le **scan QHY
-  FONCTIONNE EN GELÉ** : un exe PyInstaller ignore `-c`, donc l'exe se relance
-  avec le mode interne `--scan-qhy` (`AVAStack.py`, avant toute interface) ; ②
-  **paquet MSIX** (voie Store) : `installer/windows/msix/` — `build_msix.py`
-  (staging + manifeste + `MakeAppx`) et `signer_msix.ps1` (certificat
-  auto-signé + `signtool`). **PIÈGE MESURÉ** : le certificat doit être approuvé
-  dans `Cert:\LocalMachine\TrustedPeople` (PAS `CurrentUser`, erreur
-  `0x800B0109`) → session ADMINISTRATEUR. **Installation MSIX validée en réel**
-  par Alain : l'appli s'ouvre depuis le menu Démarrer, le scan QHY tourne, un
-  multi-dossiers fonctionne.
-- **THREADS ENCORE OUVERTS (jalons 88-89, rien à coder d'ici là)** : ① le testeur
-  **Windows 11 famille** — relancer l'installeur **2.48.2** et passer le banc dans
-  les DEUX états (SAC actif), relever les **faits machine**
-  (`CodeIntegrity\CiPolicies\Active`, état SAC, `where.exe python`, antivirus
-  tiers) : c'est là que se joue la cause de l'Erreur 4551 ; ② l'essai **macOS** de
-  la v2.48.2 ; ③ la **chaîne ⚡ par couche** en composition à 3 rôles.
-  **REPLI** : release **v2.48.2** (publiée, 5 assets).
+- **DERNIER JALON (02/10/2026, jalon 95 — v2.48.3 : _tick_corps TAIL LA ZONE
+  « TRAITEMENT EXTERNE » QUAND ELLE DISPARAÎT. CORRECTIF CIBLÉ MACOS.)
+  BANC NEUF VERT, NON-RÉGRESSION VERTE, PUBLICATION EN COURS.**
+  **POURQUOI** : retour du testeur macOS sur la v2.48.1 puis v2.48.2
+  (« pareil, voire pire, même la liste déroulante ne fonctionne plus »). Son
+  journal se terminait par une SEULE ligne :
+
+      ERREUR boucle d'interface (widget détruit ?) : TclError: invalid
+      command name ".!panedwindow.!frame.!canvas.!frame.!labelframe13.!button"
+      … self._tick_corps() … self.btn_ext.config(state="disabled"…)
+
+  `labelframe13` = « Traitement externe (long) ». Cause : `_tick_corps`
+  touchait `btn_save_proc.config`, `lbl_ext.config` (×2) et `btn_ext.config`
+  SANS protection `_widget_vivant` — Tcl/Tk 8.6.12 sous macOS 27 (Tahoe,
+  arm64) invalide ponctuellement ces widgets. `_journal_erreur_tick` filtre
+  par épisode (`_tick_err_sig`) : UNE seule ligne dans le journal même si
+  l'exception revient 33 fois/seconde. La boucle survivait mais TOUS les
+  rafraîchissements d'interface étaient MORTS — Alain voyait « plein de
+  boutons qui ne répondent plus » sans qu'aucune ligne du journal ne le dise
+  après la première. Le filet posé au jalon 87 ne couvrait QUE
+  `_maj_libelle_fit` ; cette zone avait été oubliée.
+  **LIVRÉ** : `avastack/ui/app.py`, `_tick_corps` — les 3 accès
+  (`btn_save_proc.config`, `lbl_ext.config` ×2, `btn_ext.config`) sont
+  désormais précédés d'un `if not self._widget_vivant(getattr(self, CIBLE,
+  None)): return`. Un widget invalide TAIT toute la zone : pas d'exception,
+  pas de ligne de journal, `_tick` se replanifie normalement, les autres
+  rafraîchissements (statut, histogramme, mesures, etc.) continuent.
+  **AUCUN changement** : aucune clé de configuration, aucun comportement
+  visible côté UI, aucun changement sur Windows/Linux (`winfo exists` rend
+  simplement True). Bump **`AVASTACK_VERSION = "2.48.3"`** + changelog.
+  **BANC NEUF `bancs/_test_ui_robuste_v2_48_3.py` (5 sections, 14
+  vérifications)** : ① statique — les .config( de la zone sont TOUS précédés
+  d'un `_widget_vivant` (4 assertions) ; ② dynamique — détruire `btn_ext`,
+  `lbl_ext` ou `btn_save_proc` puis appeler `_tick_corps` ne lève PLUS
+  `TclError` ET `_journal_erreur_tick` n'écrit plus (6 assertions) ; ③
+  widgets en vie : aucun changement de comportement (4 assertions) — TOUT
+  AU VERT. **Non-régression** : jalon 87 (UI robuste), 47 (visibilité), 22
+  (couleurs), 75 (histogramme), 80 (rafale), 41 (UI moteur), 5 (UI), 12
+  (sharp), 59 (save), 65 (chroma), 69 (pleine res) — TOUS VERTS.
+  (`_test_dialogues_jalon84.py` échoue toujours sur sa section [6] guet
+  — banc de timing sensible à la charge, NON lié à ce correctif, déjà
+  consigné comme non-régression stable.)
+  **LEÇON REMONTÉE DANS CLAUDE.md** (« leçon du jalon 95 ») : tout widget
+  touché directement dans `_tick_corps` doit être gardé par `_widget_vivant`.
+  Le filet du jalon 87 (un seul widget protégé) était incomplet : la zone
+  suivante oubliée a pris 14 jours à refaire surface.
+  **PROCHAINE ÉTAPE** : rebuild des TROIS installateurs + release `v2.48.3`
+  sur GitHub. Repli : `v2.48.1` (déjà publiée, sans le bug et sans la
+  correction — le bug y EST en réalité, voir journal du testeur).
 - **JALON PRÉCÉDENT (02/10/2026, jalon 88 — INSTALLATEUR WINDOWS EN PAQUET ZIP,
   CODE ÉCRIT, BANC VERT, EN ATTENTE DU TEST RÉEL).**
   **DÉCLENCHEUR** : un ami sous **Windows 11 famille** n'arrive pas à installer

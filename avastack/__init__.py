@@ -17,9 +17,37 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.50.0"
+AVASTACK_VERSION = "2.48.3"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.48.3 : _tick_corps TAIL LA ZONE « Traitement externe » QUAND ELLE
+#   DISPARAÎT (retour macOS du 01/10/2026 — v2.48.1 et v2.48.2). Tcl/Tk
+#   8.6.12 sous macOS 27 (Tahoe, arm64) invalide ponctuellement le bouton
+#   `btn_ext` (« invalid command name ".!…!labelframe13.!button" ») ;
+#   l'exception remontait dans `_tick → _tick_corps → btn_ext.config`, mais
+#   `_journal_erreur_tick` filtre par épisode (`_tick_err_sig`) → UNE seule
+#   ligne dans le journal même si l'exception revient 33 fois/seconde. La
+#   boucle survivait mais TOUS les rafraîchissements d'interface étaient
+#   MORTS (les boutons ne répondaient plus, les combobox ne s'ouvraient
+#   plus, le statut ne se mettait plus à jour) — Alain voyait « plein de
+#   boutons qui ne répondent pas » sans qu'aucune ligne du journal ne le
+#   dise après la première.
+#   - avastack/ui/app.py : `_tick_corps` est désormais gardé par
+#     `_widget_vivant()` (introduit au jalon 87 sur `_maj_libelle_fit`) sur
+#     LES TROIS widgets de la zone « Traitement externe » — `btn_save_proc`,
+#     `lbl_ext` (deux occurrences) et `btn_ext`. Un widget invalide TAIT
+#     toute la séquence : pas d'exception, pas de ligne de journal, `_tick`
+#     se replanifie normalement et les autres rafraîchissements (statut,
+#     histogramme, mesures, etc.) continuent.
+#   - AUCUNE clé de configuration ne change. AUCUN changement de
+#     comportement visible côté UNUR. AUCUN changement sur Windows ou
+#     Linux — `winfo exists` rend simplement True.
+#   - Banc neuf `bancs/_test_ui_robuste_v2_48_3.py` :
+#       [1] statique : aucun `.config(` direct dans `_tick_corps` n'est
+#           plus atteint sans `_widget_vivant` à proximité ;
+#       [2] dynamique : détruire `btn_ext` puis appeler `_tick_corps` ne
+#           lève PLUS `TclError` et `_journal_erreur_tick` n'écrit plus.
+#   - 13 bancs rejoués verts (87, 47, 22, 75, 84, 80, 41, 5, 12, 59, 63, 69, 40).
 # v2.50.0 : ICÔNE DE L'APPLICATION (barre de titres + barre des tâches) ET
 #   VIGNETTES MSIX DEPUIS L'ICÔNE RÉELLE (chantier « Microsoft Store »).
 #   - assets/avastack.ico (multirésolution 16/32/48/256) + assets/avastack.png
