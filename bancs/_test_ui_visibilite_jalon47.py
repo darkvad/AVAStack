@@ -56,11 +56,91 @@ def est_packe(w):
         return False
 
 
+def section_visible(app, nom):
+    """Jalon 95 : teste si la section pliable NOMMÉE est visible.
+    Cherche via l'attribut `_lf_<nom>` créé par `_creer_section_pliable`.
+
+    Mapping entre noms de clés SECTIONS_NOM_MAP et attributs `_lf_*`."""
+    mapping = {
+        "dossier": "_lf_dossier_surveille",
+        "dossier_surveille": "_lf_dossier_surveille",
+        "compo": "_lf_composition",
+        "composition": "_lf_composition",
+        "rafale": "_lf_cadence",
+        "cadence": "_lf_cadence",
+        "fond": "_lf_fond_grain",
+        "fond_grain": "_lf_fond_grain",
+        "nette": "_lf_nette",
+        "etat": "_lf_etat_calculs",
+        "etat_calculs": "_lf_etat_calculs",
+        "ext": "_lf_traitement_externe",
+        "traitement_externe": "_lf_traitement_externe",
+        "camera": "_lf_camera",
+        "calibration": "_lf_calibration",
+        "empilement": "_lf_empilement",
+        "affichage": "_lf_affichage",
+        "couleur": "_lf_couleur",
+        "sortie": "_lf_sortie",
+        "fichiers": "_lf_fichiers_travail",
+        "fichiers_travail": "_lf_fichiers_travail",
+    }
+    attr = mapping.get(nom, f"_lf_{nom}")
+    lf = getattr(app, attr, None)
+    if lf is None:
+        return False
+    try:
+        lf.pack_info()
+        return True
+    except tk.TclError:
+        return False
+
+
 def ordre_colonne(app):
     """Cadres LabelFrame visibles de la colonne, dans l'ordre d'affichage."""
     colonne = app.frm_calibration.master   # le frame défilable « left »
     return [w for w in colonne.winfo_children()
             if isinstance(w, ttk.LabelFrame) and est_packe(w)]
+
+
+def _titre_cadre(lf):
+    """Récupère le titre d'un LabelFrame, qu'il soit en `text=` (legacy) ou
+    dans le labelwidget (pliable, jalon 95) ou dans un bouton d'en-tête séparé (nouveau jalon 95b)."""
+    # 1. Cas legacy : text= sur le LabelFrame
+    txt = lf.cget("text")
+    if txt:
+        return txt
+    # 2. Cas jalon 95 : labelwidget sur le LabelFrame (bouton intégré)
+    lw_name = lf.cget("labelwidget")
+    if lw_name:
+        try:
+            lw = lf.nametowidget(lw_name)
+            return lw.cget("text")
+        except (tk.TclError, KeyError):
+            pass
+    # 3. Nouveau cas jalon 95b : le bouton d'en-tête est un widget FRÈRE dans le parent,
+    # packé AVANT le LabelFrame. On cherche dans le parent le bouton qui précède.
+    try:
+        parent = lf.master
+        if parent:
+            # Chercher le bouton qui a ce LabelFrame comme "after" ou qui est juste avant
+            for w in parent.winfo_children():
+                if isinstance(w, ttk.Button):
+                    # Le bouton a le titre avec préfixe ▼/▶
+                    btn_text = w.cget("text")
+                    # Vérifier que ce bouton contrôle ce LabelFrame (pack after=btn)
+                    # Astuce : le bouton est packé AVANT le LF
+                    pass
+        # Fallback : chercher par proximité de pack
+        # Le bouton d'en-tête est le widget immédiatement avant le LF dans parent
+        children = list(parent.winfo_children())
+        idx = children.index(lf)
+        if idx > 0:
+            prev = children[idx - 1]
+            if isinstance(prev, ttk.Button):
+                return prev.cget("text")
+    except (tk.TclError, ValueError, AttributeError):
+        pass
+    return ""
 
 
 ui.CONFIG = {}
@@ -79,9 +159,9 @@ verifie(est_packe(app.frm_ctrl_cam),
         "source caméra : contrôles caméra visibles (exposition, gain…)")
 verifie(est_packe(app.cb_source.master),
         "la combobox de source + Démarrer/Arrêter restent visibles")
-verifie(not est_packe(app.frm_dossier), "cadre « Dossier surveillé » caché")
-verifie(not est_packe(app.frm_compo), "cadre « Composition multi-filtres » caché")
-verifie(not est_packe(app.frm_rafale),
+verifie(not section_visible(app, "dossier"), "cadre « Dossier surveillé » caché")
+verifie(not section_visible(app, "compo"), "cadre « Composition multi-filtres » caché")
+verifie(not section_visible(app, "rafale"),
         "cadre « Cadence d'empilement » caché (sans objet pour une caméra)")
 
 # ==================================== [2] source dossier surveillé
@@ -90,9 +170,9 @@ app.var_source.set("Dossier surveillé (brutes FITS/PNG/TIFF…)")
 app._on_source_choisie()
 root.update_idletasks()
 verifie(not est_packe(app.frm_ctrl_cam), "contrôles caméra cachés (inutiles ici)")
-verifie(est_packe(app.frm_dossier), "cadre « Dossier surveillé » visible")
-verifie(not est_packe(app.frm_compo), "cadre « Composition » caché")
-verifie(est_packe(app.frm_rafale), "cadre « Cadence d'empilement » visible (RAFALE)")
+verifie(section_visible(app, "dossier"), "cadre « Dossier surveillé » visible")
+verifie(not section_visible(app, "compo"), "cadre « Composition » caché")
+verifie(section_visible(app, "rafale"), "cadre « Cadence d'empilement » visible (RAFALE)")
 verifie(app.lbl_last.master is app.frm_dossier
         and est_packe(app.lbl_last),
         "« Dernier fichier » reste dans le cadre dossier")
@@ -106,9 +186,9 @@ app.var_source.set("Composition multi-dossiers (RGB/HOO/SHO/LRGB)")
 app._on_source_choisie()
 root.update_idletasks()
 verifie(not est_packe(app.frm_ctrl_cam), "contrôles caméra cachés")
-verifie(not est_packe(app.frm_dossier), "cadre « Dossier surveillé » caché")
-verifie(est_packe(app.frm_compo), "cadre « Composition » visible")
-verifie(est_packe(app.frm_rafale),
+verifie(not section_visible(app, "dossier"), "cadre « Dossier surveillé » caché")
+verifie(section_visible(app, "compo"), "cadre « Composition » visible")
+verifie(section_visible(app, "rafale"),
         "cadre « Cadence d'empilement » visible DANS LES DEUX CAS (jalon 45)")
 verifie(len(app._cadence_cbs) == 1 and len(app._cadence_lbls) == 1,
         "UN SEUL couple combobox + étiquette (fini la duplication du jalon 45)")
@@ -119,9 +199,9 @@ app.var_source.set("ZWO ASI (SDK)")
 app._on_source_choisie()
 root.update_idletasks()
 verifie(est_packe(app.frm_ctrl_cam), "contrôles caméra de retour")
-verifie(not est_packe(app.frm_dossier)
-        and not est_packe(app.frm_compo)
-        and not est_packe(app.frm_rafale),
+verifie(not section_visible(app, "dossier")
+        and not section_visible(app, "compo")
+        and not section_visible(app, "rafale"),
         "dossier, composition et cadence cachés")
 
 # ==================================== [5] valeurs conservées + ordre stable
@@ -149,11 +229,11 @@ ordre_apres = ordre_colonne(app)
 # suivie de Calibration (ancre). Cette attente avait été oubliée par ce banc ;
 # mesuré au jalon 75.
 verifie(ordre_avant == ordre_apres
-        and ordre_apres[0].cget("text") == "Fichiers de travail et journal"
-        and ordre_apres[1].cget("text") == "Caméra"
-        and ordre_apres[2].cget("text") == "Calibration",
+        and _titre_cadre(ordre_apres[0]) == "▼ Fichiers de travail et journal"
+        and _titre_cadre(ordre_apres[1]) == "▼ Caméra"
+        and _titre_cadre(ordre_apres[2]) == "▼ Calibration",
         "l'ordre des cadres visibles est inchangé après les allers-retours "
-        f"({[c.cget('text') for c in ordre_apres]})")
+        f"({[_titre_cadre(c) for c in ordre_apres]})")
 
 # ================== [5bis] v2.48.0 : l'ORDRE SUIT LA CHAÎNE DES TRAITEMENTS
 # Demande d'Alain (30/09/2026) : « l'UI doit respecter l'ordre des traitements ».
@@ -162,7 +242,9 @@ verifie(ordre_avant == ordre_apres
 # APRÈS) ; il est scindé, et « Netteté live » (qui dit « avant étirement » depuis
 # le jalon 12) n'est plus affiché APRÈS le cadre qui porte l'étirement.
 print("[5bis] l'ordre des cadres suit l'ordre des traitements (jalon 85)")
-_titres = [c.cget("text") for c in ordre_apres]
+_titres_bruts = [_titre_cadre(c) for c in ordre_apres]
+# j99 : les titres portent un préfixe "▼ " / "▶ " quand la section est pliée
+_titres = [t.replace("▼ ", "").replace("▶ ", "") for t in _titres_bruts]
 _attendus = ["Fond et grain (AVANT étirement)",
              "Netteté live (Richardson-Lucy)",
              "Affichage (temps réel)",

@@ -17,7 +17,7 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.51.0"
+AVASTACK_VERSION = "2.51.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
 # v2.51.0 : _tick_corps TAIL LA ZONE « Traitement externe » QUAND ELLE

@@ -166,6 +166,25 @@ class App:
     SPCC_TYPE_MONO = "Mono (filtres R/G/B)"
     SPCC_TYPE_OSC = "Couleur (OSC)"
 
+    # --- Jalon 95 : sections pliables dans la colonne gauche (persistées)
+    # Clés CONFIG : "ui_section_<nom_normalisé>" → bool (True = ouvert)
+    SECTIONS_NOM_MAP = {
+        "fichiers_travail": "Fichiers de travail et journal",
+        "camera": "Caméra",
+        "cadence": "Cadence d'empilement",
+        "dossier_surveille": "Dossier surveillé",
+        "composition": "Composition multi-filtres",
+        "calibration": "Calibration",
+        "empilement": "Empilement",
+        "fond_grain": "Fond et grain (AVANT étirement)",
+        "nette": "Netteté live (Richardson-Lucy)",
+        "affichage": "Affichage (temps réel)",
+        "couleur": "Couleur de l'objet (APRÈS étirement)",
+        "etat_calculs": "État des calculs (live)",
+        "traitement_externe": "Traitement externe (long)",
+        "sortie": "Sortie",
+    }
+
     # Débruitage live (jalon 9, remis le 16/09/2026) : libellés UI ↔ codes
     # internes (module avastack/processing/denoise.py, algorithmes locaux
     # sans IA). NLM en premier = défaut (tests réels d'Alain : plus homogène
@@ -1199,6 +1218,78 @@ class App:
     def _on_pas_expo(self, facteur):
         self._maj_expo(self.var_expo.get() * facteur)
 
+    # --- Jalon 95 : création d'une section pliable persistée ------------------
+    def _creer_section_pliable(self, parent, cle_section, defaut_ouvert=True):
+        """
+        Crée une section pliable/dépliable avec persistance dans config.json.
+        Retourne (labelframe, frame_contenu, var_etat, btn_header).
+        - cle_section : clé dans SECTIONS_NOM_MAP (ex: "camera")
+        - Le titre affiché vient de SECTIONS_NOM_MAP[cle_section]
+        - L'état est sauvé dans CONFIG["ui_section_<cle_section>"] (bool)
+        - Le LabelFrame (contenu) est packé dans parent quand ouvert.
+        - Le bouton d'en-tête reste TOUJOURS visible dans parent.
+        """
+        titre = self.SECTIONS_NOM_MAP.get(cle_section, cle_section)
+        cle_config = f"ui_section_{cle_section}"
+
+        # Variable d'état (persistée)
+        etat_ouvert = tk.BooleanVar(
+            value=bool(CONFIG.get(cle_config, defaut_ouvert))
+        )
+
+        # Bouton d'en-tête (cliquable) avec flèche ▼/▶ — TOUJOURS visible
+        def maj_icone(*_):
+            btn.config(text=("▼ " if etat_ouvert.get() else "▶ ") + titre)
+
+        def toggle(*_):
+            etat_ouvert.set(not etat_ouvert.get())
+            # Persistance immédiate
+            CONFIG[cle_config] = etat_ouvert.get()
+            sauver_config(CONFIG)
+
+        btn = ttk.Button(
+            parent,
+            command=toggle,
+            style="Toolbutton",  # aspect plat, pas de relief 3D
+            takefocus=True,
+        )
+        btn.bind("<Return>", toggle)
+        btn.bind("<space>", toggle)
+        btn.pack(fill="x", pady=(3, 0))
+        maj_icone()
+
+        # LabelFrame = conteneur du contenu (PAS labelwidget, PAS de titre)
+        # Il sera packé/dépacké selon l'état
+        lf = ttk.LabelFrame(parent, padding=6)
+        # Ne PAS packer ici — on le fait dans on_change selon l'état
+
+        # Frame interne qui contiendra les vrais widgets
+        contenu = ttk.Frame(lf)
+        contenu.pack(fill="x")
+
+        # Callback quand la variable change (pour maj icône + pack/unpack du LF)
+        def on_change(*_):
+            maj_icone()
+            if etat_ouvert.get():
+                # Packer le LabelFrame APRÈS le bouton dans parent
+                lf.pack(fill="x", pady=(0, 3), after=btn)
+            else:
+                lf.pack_forget()
+            # Force la mise à jour du scrollregion du canvas
+            parent.update_idletasks()
+
+        etat_ouvert.trace_add("write", on_change)
+        # État initial
+        if etat_ouvert.get():
+            lf.pack(fill="x", pady=(0, 3), after=btn)
+
+        # Attribut de compatibilité pour les bancs de test
+        lf._contenu_interne = contenu
+        # Stocker le bouton d'en-tête pour pouvoir le cacher avec le LabelFrame
+        lf._btn_header = btn
+
+        return lf, contenu, etat_ouvert, btn
+
     def _build_ui(self):
         main = ttk.PanedWindow(self.root, orient="horizontal")
         main.pack(fill="both", expand=True)
@@ -1258,9 +1349,8 @@ class App:
         # sur une ligne (cadre 318 px = texte 243 + « Ouvrir » 43 + « 📂 » 28) et
         # le troisième — « Journal » — n'était même pas AFFICHÉ
         # (`winfo_ismapped()` = 0). D'où DEUX lignes : le texte, puis les boutons.
-        box = ttk.LabelFrame(left, text="Fichiers de travail et journal",
-                             padding=6)
-        box.pack(fill="x", pady=3)
+        self._lf_fichiers_travail, box, _, _ = self._creer_section_pliable(
+            left, "fichiers_travail")
         self.lbl_travail = ttk.Label(box, text="—", foreground="#888888",
                                      wraplength=300)
         self.lbl_travail.pack(anchor="w", fill="x")
@@ -1280,8 +1370,7 @@ class App:
         # source caméra (jalon 47 : en dossier/composition, la colonne ne
         # montre que ce qui sert au choix en cours — cf.
         # _maj_visibilite_cadres).
-        box = ttk.LabelFrame(left, text="Caméra", padding=6)
-        box.pack(fill="x", pady=3)
+        self._lf_camera, box, _, _ = self._creer_section_pliable(left, "camera")
         self.frm_ctrl_cam = ttk.Frame(box)
         # Jalon 52 (demande d'Alain, 21/09/2026) : le CHOIX DE SOURCE doit
         # être EN HAUT DU CADRE DÈS LE LANCEMENT. Avant, frm_ctrl_cam était
@@ -1419,24 +1508,26 @@ class App:
         # « Composition multi-filtres » où il était DUPLIQUÉ : UN SEUL cadre
         # « Cadence d'empilement », visible uniquement pour ces deux sources
         # (sans objet pour une vraie caméra) — cf. _maj_visibilite_cadres.
-        self.frm_rafale = ttk.LabelFrame(left, text="Cadence d'empilement",
-                                         padding=6)
+        # NOTE jalon 95 : self.frm_rafale = contenu interne (compat widgets),
+        # self._lf_cadence = LabelFrame externe (pour pack/before).
+        self._lf_cadence, self.frm_rafale, _, _ = self._creer_section_pliable(
+            left, "cadence")
         self._creer_cadence(self.frm_rafale)
 
         # --- Dossier surveillé (visible uniquement pour cette source, jalon 47)
-        self.frm_dossier = ttk.LabelFrame(left, text="Dossier surveillé",
-                                          padding=6)
-        box = self.frm_dossier
-        box.pack(fill="x", pady=3)
-        row = ttk.Frame(box)
+        # NOTE jalon 95 : idem, self.frm_dossier = contenu interne.
+        self._lf_dossier_surveille, self.frm_dossier, _, _ = self._creer_section_pliable(
+            left, "dossier_surveille")
+        row = ttk.Frame(self.frm_dossier)
         row.pack(fill="x")
         self.var_folder = tk.StringVar(value="")
         ttk.Entry(row, textvariable=self.var_folder).pack(side="left", fill="x", expand=True)
         ttk.Button(row, text="…", width=3, command=self._pick_folder).pack(side="left", padx=(4, 0))
         self.var_process_existing = tk.BooleanVar(value=True)
-        ttk.Checkbutton(box, text="Empiler aussi les images déjà présentes",
+        ttk.Checkbutton(self.frm_dossier,
+                        text="Empiler aussi les images déjà présentes",
                         variable=self.var_process_existing).pack(anchor="w")
-        rowc = ttk.Frame(box)
+        rowc = ttk.Frame(self.frm_dossier)
         rowc.pack(fill="x", pady=(3, 0))
         ttk.Label(rowc, text="Brutes capteur couleur :").pack(side="left")
         self.var_cfa = tk.StringVar(value=CFA_MODE)
@@ -1447,17 +1538,18 @@ class App:
         # Jalon 42/45 : la cadence d'empilement (« Empiler les brutes ») est
         # DÉPLACÉE hors de ce cadre (jalon 47) — un seul exemplaire partagé
         # par dossier surveillé et composition, cf. frm_rafale ci-dessus.
-        self.lbl_last = ttk.Label(box, text="Dernier fichier : —")
+        self.lbl_last = ttk.Label(self.frm_dossier, text="Dernier fichier : —")
         self.lbl_last.pack(anchor="w")
 
         # --- Composition multi-filtres (jalon 19) : 1 à 4 dossiers surveillés,
         # un RÔLE (filtre) par dossier ; le composite temps réel combine les
         # empilements par rôle selon la composition choisie.
-        self.frm_compo = ttk.LabelFrame(left, text="Composition multi-filtres",
-                                        padding=6)
+        # NOTE jalon 95 : self.frm_compo = contenu interne (compat widgets),
+        # self._lf_composition = LabelFrame externe (pour pack/before).
+        self._lf_composition, self.frm_compo, _, _ = self._creer_section_pliable(
+            left, "composition")
         box = self.frm_compo
-        box.pack(fill="x", pady=3)
-        row_c = ttk.Frame(box)
+        row_c = ttk.Frame(self.frm_compo)
         row_c.pack(fill="x")
         ttk.Label(row_c, text="Composition :").pack(side="left")
         self.var_compo = tk.StringVar(value="HOO")
@@ -1540,9 +1632,13 @@ class App:
         # --- Calibration (ancre STABLE : les cadres commutables jalon 47 se
         # replacent toujours juste avant elle — l'ordre des cadres ne bouge
         # jamais, quel que soit le nombre d'allers-retours de source)
-        box = ttk.LabelFrame(left, text="Calibration", padding=6)
-        self.frm_calibration = box
-        box.pack(fill="x", pady=3)
+        # NOTE : self.frm_calibration pointe vers le LABELFRAME (lf), pas le
+        # contenu — c'est l'ancre utilisée par _maj_visibilite_cadres pour
+        # pack(before=). Le contenu est directement dans `box`.
+        self._lf_calibration, box, _, _ = self._creer_section_pliable(
+            left, "calibration")
+        self.frm_calibration = self._lf_calibration
+        self.frm_calibration_interne = box  # alias pratique pour les sous-widgets
         ttk.Button(box, text="Charger un dark…", command=self._load_dark).pack(fill="x", pady=1)
         ttk.Button(box, text="Charger un flat…", command=self._load_flat).pack(fill="x", pady=1)
         ttk.Button(box, text="Effacer calibration",
@@ -1559,8 +1655,8 @@ class App:
         # master de cette couche manque), cf. _maj_libelles_calib.
 
         # --- Empilement
-        box = ttk.LabelFrame(left, text="Empilement", padding=6)
-        box.pack(fill="x", pady=3)
+        self._lf_empilement, box, _, _ = self._creer_section_pliable(
+            left, "empilement")
         self.lbl_stats = ttk.Label(box, text="Frames : 0\nPixels rejetés (σ) : 0"
                                              "\nFrames non alignées : 0\nAlign. : —")
         self.lbl_stats.pack(anchor="w", pady=(0, 3))
@@ -1929,9 +2025,10 @@ class App:
         # Aucun réglage, aucune clé de configuration et aucun comportement ne
         # changent : seuls les PARENTS de ces widgets (donc leur place à l'écran)
         # changent, et l'ordre affiché devient l'ordre appliqué.
-        self.frm_fond = ttk.LabelFrame(
-            left, text="Fond et grain (AVANT étirement)", padding=6)
-        self.frm_fond.pack(fill="x", pady=3)
+        # NOTE jalon 95 : self.frm_fond reste le CONTENU INTERNE (pour les
+        # widgets enfants). Le LabelFrame externe est self._lf_fond_grain.
+        self._lf_fond_grain, self.frm_fond, _, _ = self._creer_section_pliable(
+            left, "fond_grain")
         # --- v2.36.1 : NEUTRALISATION DE LA COULEUR DU FOND avant étirement ---
         # Constat d'Alain (25/09/2026) : le fond restait bleu à l'écran (et le
         # PNG était franchement bleu, pour une autre raison : canaux permutés).
@@ -2004,9 +2101,10 @@ class App:
         # affiché APRÈS le cadre qui porte l'étirement (demande d'Alain : « l'UI
         # doit respecter l'ordre des traitements »). Aucun comportement ne
         # change : seule la place dans la colonne.
-        self.frm_sharp = ttk.LabelFrame(left, text="Netteté live (Richardson-Lucy)",
-                                        padding=6)
-        self.frm_sharp.pack(fill="x", pady=3)
+        # NOTE jalon 95 : self.frm_sharp reste le CONTENU INTERNE (pour les
+        # widgets enfants). Le LabelFrame externe est self._lf_nette.
+        self._lf_nette, self.frm_sharp, _, _ = self._creer_section_pliable(
+            left, "nette")
         self.var_vl_sharp = tk.BooleanVar(value=False)
         ttk.Checkbutton(self.frm_sharp, text="Netteté live (avant étirement)",
                         variable=self.var_vl_sharp,
@@ -2023,8 +2121,8 @@ class App:
         self.lbl_sharp.pack(anchor="w", pady=(2, 0))
 
         # --- Affichage
-        box = ttk.LabelFrame(left, text="Affichage (temps réel)", padding=6)
-        box.pack(fill="x", pady=3)
+        self._lf_affichage, box, _, _ = self._creer_section_pliable(
+            left, "affichage")
         # Moteur d'étirement : STF intégré (défaut, inchangé) ou VeraLux
         # (moteur tiers, opt-in). Le calcul VeraLux part dans un thread
         # dédié côté DisplayProcessor : l'interface n'est jamais bloquée.
@@ -2244,9 +2342,11 @@ class App:
         # doit plus être écrêtée en vert (elle l'était — MESURÉ sur l'empilement
         # M31 d'Alain : excès de vert max 5,9·10⁻⁸ contre 1,6·10⁻¹ sur
         # l'empilement d'origine).
-        self.frm_couleur = ttk.LabelFrame(
-            left, text="Couleur de l'objet (APRÈS étirement)", padding=6)
-        self.frm_couleur.pack(fill="x", pady=3)
+        # NOTE jalon 95 : self.frm_couleur reste le CONTENU INTERNE
+        # (compatibilité avec tout le code qui crée des widgets dedans).
+        # Le LabelFrame externe est accessible via self._lf_couleur.
+        self._lf_couleur, self.frm_couleur, _, _ = self._creer_section_pliable(
+            left, "couleur")
         self.var_vl_preserve = tk.BooleanVar(value=True)
         ttk.Checkbutton(self.frm_couleur,
                         text="Préserver la luminosité (L*) — comme Siril",
@@ -2336,9 +2436,10 @@ class App:
         # · logD · fond) ET en STF/manuel (⏳ netteté pendant la déconvolution
         # du solveur dédié jalon 12). Un seul écrivain : _maj_lbl_vl (thread
         # UI, appelée par _tick).
-        self.frm_etat = ttk.LabelFrame(left, text="État des calculs (live)",
-                                       padding=6)
-        self.frm_etat.pack(fill="x", pady=3)
+        # NOTE jalon 95 : self.frm_etat reste le CONTENU INTERNE (pour les
+        # widgets enfants). Le LabelFrame externe est self._lf_etat_calculs.
+        self._lf_etat_calculs, self.frm_etat, _, _ = self._creer_section_pliable(
+            left, "etat_calculs")
         self.lbl_vl = ttk.Label(self.frm_etat, text="—",
                                 foreground="#888888", wraplength=310)
         self.lbl_vl.pack(anchor="w")
@@ -2347,8 +2448,8 @@ class App:
 
         # --- Traitement externe (long : plusieurs minutes — cf. docstring
         # de _run_external ; le « live » reste réservé aux étapes rapides)
-        box = ttk.LabelFrame(left, text="Traitement externe (long)", padding=6)
-        box.pack(fill="x", pady=3)
+        self._lf_traitement_externe, box, _, _ = self._creer_section_pliable(
+            left, "traitement_externe")
         # NB (v2.38.9) : la ligne « dossier de travail » et ses boutons étaient
         # ICI, en premières lignes du cadre. Constat d'Alain (27/09/2026) :
         # « pas de chemin pour temp et pas de bouton journal » — et la mesure lui
@@ -2484,8 +2585,7 @@ class App:
         self.lbl_ext.pack(anchor="w")
 
         # --- Sortie
-        box = ttk.LabelFrame(left, text="Sortie", padding=6)
-        box.pack(fill="x", pady=3)
+        self._lf_sortie, box, _, _ = self._creer_section_pliable(left, "sortie")
         ttk.Button(box, text="💾 Enregistrer l'empilement (linéaire)…",
                    command=self._save).pack(fill="x")
         # Chantier 24/09/2026 (décision (a) d'Alain) : 3e sortie LINÉAIRE —
@@ -4633,7 +4733,10 @@ class App:
         cadres visibles sont replacés dans l'ordre canonique (rafale →
         dossier → composition) juste avant l'ancre stable `frm_calibration` :
         l'ordre général de la colonne ne bouge jamais. Thread UI seul
-        (construction, _restaurer_config, _on_source_choisie)."""
+        (construction, _restaurer_config, _on_source_choisie).
+
+        Note jalon 95 : `_lf_*` pointe vers le LabelFrame externe (utilisé
+        pour pack/before). `frm_*` est le contenu interne (compat widgets)."""
         source = self.var_source.get()
         est_dossier = source.startswith("Dossier")
         est_compo = source.startswith("Composition")
@@ -4644,15 +4747,24 @@ class App:
             self.frm_ctrl_cam.pack_forget()
         elif self.frm_ctrl_cam.winfo_manager() == "":
             self.frm_ctrl_cam.pack(fill="x")
-        visibles = ([self.frm_rafale, self.frm_dossier] if est_dossier else
-                    [self.frm_rafale, self.frm_compo] if est_compo else [])
-        for cadre in (self.frm_rafale, self.frm_dossier, self.frm_compo):
+        visibles = ([self._lf_cadence, self._lf_dossier_surveille] if est_dossier else
+                    [self._lf_cadence, self._lf_composition] if est_compo else [])
+        # Ancre stable : le LabelFrame Fichiers (toujours affiché, position fixe en haut)
+        ancre = self._lf_fichiers_travail
+        for cadre in (self._lf_cadence, self._lf_dossier_surveille, self._lf_composition):
+            btn = getattr(cadre, "_btn_header", None)
             if cadre in visibles:
+                # Afficher le bouton d'en-tête AVANT le LabelFrame
+                # IMPORTANT : packer le bouton D'ABORD, puis le LF après (after=btn)
+                if btn:
+                    btn.pack(fill="x", pady=(3, 0), before=ancre)
                 # pack(before=) replace le cadre (déjà géré ou non) à la même
                 # place relative — appelé dans l'ordre canonique ci-dessus.
-                cadre.pack(fill="x", pady=3, before=self.frm_calibration)
+                cadre.pack(fill="x", pady=(0, 3), after=btn if btn else ancre)
             elif cadre.winfo_manager():
                 cadre.pack_forget()
+                if btn:
+                    btn.pack_forget()
         # Jalon 53 : les libellés dark/flat suivent la source (détail par
         # couche en composition, libellé simple hors composition).
         if hasattr(self, "lbl_dark"):

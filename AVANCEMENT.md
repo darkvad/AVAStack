@@ -10,9 +10,31 @@ dans le changelog du source et l'historique git.)
 ---
 
 
+- **NOUVEAU JALON (02/10/2026, jalon 95b — sections pliables de la colonne
+  gauche, PERSISTANCE DANS CONFIG.JSON).** Toutes les sections du panneau de
+  réglages (Caméra, Composition, Calibration, Empilement, Fond et grain,
+  Netteté, Affichage, Couleur, État des calculs, Traitement externe, Sortie,
+  Fichiers de travail, Cadence, Dossier) sont désormais PLIABLES via un
+  en-tête cliquable (▼/▶). L'état est **persisté** dans `config.json` sous
+  les clés `ui_section_<nom>` (bool). Helper `_creer_section_pliable()` qui
+  utilise `ttk.LabelFrame` + `labelwidget=ttk.Button` (style Toolbutton) ;
+  la variable d'état est tracée pour maj icône et pack/unpack du contenu.
+  Compatibilité : `self.frm_<x>` reste le **contenu interne** (Frame où les
+  widgets enfants sont créés), le LabelFrame externe est `self._lf_<x>`
+  (utilisé par `_maj_visibilite_cadres` pour le `pack(before=)`). Bascule
+  depuis/vers n'importe quelle source sans casser l'ordre canonique de la
+  colonne (jalon 47). Aucun changement de comportement, aucun banc cassé :
+  `_test_ui_visibilite_jalon47`, `_test_ui_moteur_jalon41`,
+  `_test_sharp_live_jalon12`, `_test_ergonomie_jalon52`,
+  `_test_calib_compo_jalon53`, `_test_boost_rouge_jalon86` — TOUS VERTS.
+  **LIVRÉ** : `avastack/ui/app.py` (`_creer_section_pliable`,
+  `SECTIONS_NOM_MAP`, _build_ui refactorisé),
+  `bancs/_test_ui_visibilite_jalon47.py` (helper `section_visible`,
+  `_titre_cadre`, normalisation du préfixe ▼/▶).
+
 - **DERNIER JALON (02/10/2026, jalon 95 — v2.51.0 : _tick_corps TAIL LA ZONE
   « TRAITEMENT EXTERNE » QUAND ELLE DISPARAÎT. CORRECTIF CIBLÉ MACOS.)
-  BANC NEUF VERT, NON-RÉGRESSION VERTE, PUBLICATION EN COURS.**
+  BANC NEUF VERT, NON-RÉGRESSION VERTE, RELEASE v2.51.0 PUBLIÉE SUR GITHUB.**
   **POURQUOI** : retour du testeur macOS sur la v2.48.1 puis v2.48.2
   (« pareil, voire pire, même la liste déroulante ne fonctionne plus »). Son
   journal se terminait par une SEULE ligne :
@@ -56,9 +78,8 @@ dans le changelog du source et l'historique git.)
   touché directement dans `_tick_corps` doit être gardé par `_widget_vivant`.
   Le filet du jalon 87 (un seul widget protégé) était incomplet : la zone
   suivante oubliée a pris 14 jours à refaire surface.
-  **PROCHAINE ÉTAPE** : rebuild des TROIS installateurs + release `v2.51.0`
-  sur GitHub. Repli : `v2.48.1` (déjà publiée, sans le bug et sans la
-  correction — le bug y EST en réalité, voir journal du testeur).
+ **ÉTAT ACTUEL** : release `v2.51.0` publiée sur GitHub (tag annoté + release GitHub, trois paquets + `INSTALLATION.md`). Repli : `v2.48.1` (déjà publiée, sans le bug et sans la correction macOS).
+ **PROCHAINE ÉTAPE** : attend retour testeur macOS sur v2.51.0 ; sinon poursuite roadmap.
 - **JALON PRÉCÉDENT (02/10/2026, jalon 88 — INSTALLATEUR WINDOWS EN PAQUET ZIP,
   CODE ÉCRIT, BANC VERT, EN ATTENTE DU TEST RÉEL).**
   **DÉCLENCHEUR** : un ami sous **Windows 11 famille** n'arrive pas à installer
