@@ -10,74 +10,92 @@ dans le changelog du source et l'historique git.)
 ---
 
 
-- **NOUVEAU JALON (02/10/2026, jalon 95b — sections pliables de la colonne
-  gauche, PERSISTANCE DANS CONFIG.JSON).** Toutes les sections du panneau de
-  réglages (Caméra, Composition, Calibration, Empilement, Fond et grain,
-  Netteté, Affichage, Couleur, État des calculs, Traitement externe, Sortie,
-  Fichiers de travail, Cadence, Dossier) sont désormais PLIABLES via un
-  en-tête cliquable (▼/▶). L'état est **persisté** dans `config.json` sous
-  les clés `ui_section_<nom>` (bool). Helper `_creer_section_pliable()` qui
-  utilise `ttk.LabelFrame` + `labelwidget=ttk.Button` (style Toolbutton) ;
-  la variable d'état est tracée pour maj icône et pack/unpack du contenu.
-  Compatibilité : `self.frm_<x>` reste le **contenu interne** (Frame où les
-  widgets enfants sont créés), le LabelFrame externe est `self._lf_<x>`
-  (utilisé par `_maj_visibilite_cadres` pour le `pack(before=)`). Bascule
-  depuis/vers n'importe quelle source sans casser l'ordre canonique de la
-  colonne (jalon 47). Aucun changement de comportement, aucun banc cassé :
-  `_test_ui_visibilite_jalon47`, `_test_ui_moteur_jalon41`,
-  `_test_sharp_live_jalon12`, `_test_ergonomie_jalon52`,
-  `_test_calib_compo_jalon53`, `_test_boost_rouge_jalon86` — TOUS VERTS.
-  **LIVRÉ** : `avastack/ui/app.py` (`_creer_section_pliable`,
-  `SECTIONS_NOM_MAP`, _build_ui refactorisé),
-  `bancs/_test_ui_visibilite_jalon47.py` (helper `section_visible`,
-  `_titre_cadre`, normalisation du préfixe ▼/▶).
+## Session du 02/10/2026 — jalon 95b — sections pliables du panneau gauche
 
-- **DERNIER JALON (02/10/2026, jalon 95 — v2.51.0 : _tick_corps TAIL LA ZONE
-  « TRAITEMENT EXTERNE » QUAND ELLE DISPARAÎT. CORRECTIF CIBLÉ MACOS.)
-  BANC NEUF VERT, NON-RÉGRESSION VERTE, RELEASE v2.51.0 PUBLIÉE SUR GITHUB.**
-  **POURQUOI** : retour du testeur macOS sur la v2.48.1 puis v2.48.2
-  (« pareil, voire pire, même la liste déroulante ne fonctionne plus »). Son
-  journal se terminait par une SEULE ligne :
+### Résumé
+Toutes les sections du panneau de réglages (14 sections : Fichiers, Caméra,
+Cadence, Dossier, Composition, Calibration, Empilement, Fond/grain, Netteté,
+Affichage, Couleur, État calculs, Traitement externe, Sortie) sont
+**PLIABLES** via un en-tête cliquable (▼/▶). L'état est **persisté** dans
+`config.json` sous les clés `ui_section_<nom>` (bool).
 
-      ERREUR boucle d'interface (widget détruit ?) : TclError: invalid
-      command name ".!panedwindow.!frame.!canvas.!frame.!labelframe13.!button"
-      … self._tick_corps() … self.btn_ext.config(state="disabled"…)
+### Mécanique
+- Helper `_creer_section_pliable(parent, cle_section)` dans
+  `avastack/ui/app.py` (~ligne 1222) :
+  - Bouton d'en-tête `ttk.Button` (style Toolbutton, packé dans `parent`)
+  - Contenu dans `ttk.LabelFrame` (packé après le bouton, **librement
+    pack/unpack** — les sections du dessous remontent quand on plie)
+  - Variable `tk.BooleanVar` tracée → maj icône + pack/unpack du LabelFrame
+  - Persistance immédiate : `CONFIG[ui_section_<cle>] = bool` +
+    `sauver_config(CONFIG)`
+- Convention :
+  - `self.frm_<x>` = contenu interne (Frame pour les widgets enfants, **ne
+    change pas** — l'ancien code qui crée ses widgets dans `self.frm_camera`
+    continue de fonctionner)
+  - `self._lf_<x>` = LabelFrame externe (utilisé pour `pack(before=)` dans
+    `_maj_visibilite_cadres`)
+  - `self._lf_<x>._btn_header` = bouton d'en-tête (utilisé par `_maj_visibilite_cadres`)
+  - `self._lf_<x>._contenu_interne` = alias pour les bancs de test
 
-  `labelframe13` = « Traitement externe (long) ». Cause : `_tick_corps`
-  touchait `btn_save_proc.config`, `lbl_ext.config` (×2) et `btn_ext.config`
-  SANS protection `_widget_vivant` — Tcl/Tk 8.6.12 sous macOS 27 (Tahoe,
-  arm64) invalide ponctuellement ces widgets. `_journal_erreur_tick` filtre
-  par épisode (`_tick_err_sig`) : UNE seule ligne dans le journal même si
-  l'exception revient 33 fois/seconde. La boucle survivait mais TOUS les
-  rafraîchissements d'interface étaient MORTS — Alain voyait « plein de
-  boutons qui ne répondent plus » sans qu'aucune ligne du journal ne le dise
-  après la première. Le filet posé au jalon 87 ne couvrait QUE
-  `_maj_libelle_fit` ; cette zone avait été oubliée.
-  **LIVRÉ** : `avastack/ui/app.py`, `_tick_corps` — les 3 accès
-  (`btn_save_proc.config`, `lbl_ext.config` ×2, `btn_ext.config`) sont
-  désormais précédés d'un `if not self._widget_vivant(getattr(self, CIBLE,
-  None)): return`. Un widget invalide TAIT toute la zone : pas d'exception,
-  pas de ligne de journal, `_tick` se replanifie normalement, les autres
-  rafraîchissements (statut, histogramme, mesures, etc.) continuent.
-  **AUCUN changement** : aucune clé de configuration, aucun comportement
-  visible côté UI, aucun changement sur Windows/Linux (`winfo exists` rend
-  simplement True). Bump **`AVASTACK_VERSION = "2.51.0"`** + changelog.
-  **BANC NEUF `bancs/_test_ui_robuste_v2_48_3.py` (5 sections, 14
-  vérifications)** : ① statique — les .config( de la zone sont TOUS précédés
-  d'un `_widget_vivant` (4 assertions) ; ② dynamique — détruire `btn_ext`,
-  `lbl_ext` ou `btn_save_proc` puis appeler `_tick_corps` ne lève PLUS
-  `TclError` ET `_journal_erreur_tick` n'écrit plus (6 assertions) ; ③
-  widgets en vie : aucun changement de comportement (4 assertions) — TOUT
-  AU VERT. **Non-régression** : jalon 87 (UI robuste), 47 (visibilité), 22
-  (couleurs), 75 (histogramme), 80 (rafale), 41 (UI moteur), 5 (UI), 12
-  (sharp), 59 (save), 65 (chroma), 69 (pleine res) — TOUS VERTS.
-  (`_test_dialogues_jalon84.py` échoue toujours sur sa section [6] guet
-  — banc de timing sensible à la charge, NON lié à ce correctif, déjà
-  consigné comme non-régression stable.)
-  **LEÇON REMONTÉE DANS CLAUDE.md** (« leçon du jalon 95 ») : tout widget
-  touché directement dans `_tick_corps` doit être gardé par `_widget_vivant`.
-  Le filet du jalon 87 (un seul widget protégé) était incomplet : la zone
-  suivante oubliée a pris 14 jours à refaire surface.
+### Mapping des sections (mot clé)
+`SECTIONS_NOM_MAP` (dans la classe App) :
+
+| Clé mot | Titre affiché | Attribut `self` |
+|---------|---------------|-----------------|
+| `fichiers_travail` | Fichiers de travail et journal | `_lf_fichiers_travail` |
+| `camera` | Caméra | `_lf_camera` |
+| `cadence` | Cadence d'empilement | `_lf_cadence` |
+| `dossier_surveille` | Dossier surveillé | `_lf_dossier_surveille` |
+| `composition` | Composition multi-filtres | `_lf_composition` |
+| `calibration` | Calibration | `_lf_calibration` |
+| `empilement` | Empilement | `_lf_empilement` |
+| `fond_grain` | Fond et grain (AVANT étirement) | `_lf_fond_grain` |
+| `nette` | Netteté live (Richardson-Lucy) | `_lf_nette` |
+| `affichage` | Affichage (temps réel) | `_lf_affichage` |
+| `couleur` | Couleur de l'objet (APRÈS étirement) | `_lf_couleur` |
+| `etat_calculs` | État des calculs (live) | `_lf_etat_calculs` |
+| `traitement_externe` | Traitement externe (long) | `_lf_traitement_externe` |
+| `sortie` | Sortie | `_lf_sortie` |
+
+### Tests
+Bancs adaptés et tous verts :
+- `bancs/_test_ui_visibilite_jalon47.py` (helpers `section_visible()`,
+  `_titre_cadre()` qui gère les 3 cas : `text=` legacy, `labelwidget=`
+  dans le LabelFrame, bouton frère séparé)
+
+Bancs de non-régression (tous verts) :
+- `_test_ui_moteur_jalon41`
+- `_test_sharp_live_jalon12`
+- `_test_ergonomie_jalon52`
+- `_test_calib_compo_jalon53`
+- `_test_boost_rouge_jalon86`
+
+### Release
+- **Version** : `2.51.1`
+- **Tag GitHub** : `v2.51.1`
+- **URL** : https://github.com/darkvad/AVAStack/releases/tag/v2.51.1
+
+### Fichiers modifiés
+- `avastack/__init__.py` : bump `2.51.0` → `2.51.1`
+- `avastack/ui/app.py` : `_creer_section_pliable()`, `SECTIONS_NOM_MAP`,
+  refactor `_build_ui()` (14 sections), `_maj_visibilite_cadres()` adapté
+- `bancs/_test_ui_visibilite_jalon47.py` : helpers `section_visible()`,
+  `_titre_cadre()`, gestion des 3 cas de titre
+
+### Leçons (à reporter dans CLAUDE.md si pertinent)
+- **Le LabelFrame 1 + bouton d'en-tête séparé** est la SEULE façon d'obtenir
+  un vrai pliage (gain de place). L'utilisation de `labelwidget=` ne
+  fonctionne PAS : le LabelFrame reste packé, ne libère pas l'espace.
+- Quand on utilise `pack(before=)`, **la cible DOIT être déjà packée**.
+  Donc : packer le bouton d'en-tête AVANT, puis le LabelFrame avec
+  `after=btn`.
+
+---
+
+## Prochaine étape
+
+**RIEN.** Fonctionnalité livrée, testée, versionnée, publiée. Attendre
+prochain retour utilisateur (Alain).
  **ÉTAT ACTUEL** : release `v2.51.0` publiée sur GitHub (tag annoté + release GitHub, trois paquets + `INSTALLATION.md`). Repli : `v2.48.1` (déjà publiée, sans le bug et sans la correction macOS).
  **PROCHAINE ÉTAPE** : attend retour testeur macOS sur v2.51.0 ; sinon poursuite roadmap.
 - **JALON PRÉCÉDENT (02/10/2026, jalon 88 — INSTALLATEUR WINDOWS EN PAQUET ZIP,
