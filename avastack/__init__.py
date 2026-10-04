@@ -17,9 +17,109 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.51.1"
+AVASTACK_VERSION = "2.54.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.54.1 : CASE « DEBUG » DÉPLACÉE (FICHIERS DE TRAVAIL ET JOURNAL)
+#   - Demande d'Alain : la case « Debug » quitte le panneau Astrométrie et
+#     rejoint la PREMIÈRE section de la colonne de gauche
+#     (« Fichiers de travail et journal »), à côté du bouton « Journal » —
+#     logique : les logs DEBUG vont dans le journal, le réglage vit à côté
+#     de son bouton.
+# v2.54.0 : POPUP « NOM CIBLE » À RADIO-BOUTONS + DÉDUPLICATION CÉLESTE
+#   - Nouvelle méthode `_objets_celestes_resolus()` : objets célèbres DÉDUPLIQUÉS
+#     par position (~0,01°) — NGC 224 et M31 sont le même objet aux mêmes
+#     coordonnées ; un seul représentant par groupe, avec le MEILLEUR nom
+#     (score : Messier « M31 » > NGC/IC préfixé > autre ; un nombre nu « 224 »
+#     ou un nom tronqué est le pire). Espaces internes collapsés (« M  31 » → « M31 »).
+#   - Nouveau dialogue `_demander_nom_cible()` : radio-boutons listant les
+#     objets trouvés (jusqu'à 6, libellé nom — type · mag · taille) + option
+#     « Garder « actuel » » quand le champ est rempli ; OK / Annuler.
+#   - Remplace le messagebox.askyesno de `_maj_astro_etat` (règle dialogue
+#     directe du jalon 84 respectée : plus aucun messagebox direct hors aides).
+# v2.53.9 : CORRECTION ATTRIBUTS RA/DEC SUIVI_ASTROMETRIE
+#   - Fix : `_nom_cible_astro_only()` et `_nom_cible_pour_sauvegarde()` utilisaient
+#     `suivi_astro.ra` / `suivi_astro.dec` au lieu de `ra0` / `dec0` (attributs réels
+#     de la classe SuiviAstrometrie). Résultat : `cherche_celebres` appelé avec
+#     None → aucun match céleste → pas de popup.
+#   - Correction des 2 sites : lignes 2813-2814 et 2856-2857.
+# v2.53.8 : POPUP NOM CIBLE À CHAQUE RÉSOLUTION + DEBUG AMÉLIORÉ
+#   - Le popup de confirmation s'affiche maintenant à CHAQUE résolution astrométrique
+#     (transition non-résolu → résolu), pas seulement la première fois.
+#   - Reset de `_astro_name_proposed` : désactivation astrométrie, nouveaux indices,
+#     ou nouvelle résolution (via `_astro_was_resolved`).
+#   - Debug `_nom_cible_astro_only` : log détaillé de ce que `cherche_celebres` trouve
+#     (designation, type, mag, taille) ou "AUCUN objet trouvé".
+#   - Pas de fallback FITS dans le popup : n'annonce que le match céleste (catalogue).
+# v2.53.7 : CORRECTION POPUP NOM CIBLE + DEBUG SPAM
+#   - Fix : le popup de confirmation n'apparaissait pas car `_nom_cible_pour_sauvegarde()`
+#     retourne le nom manuel (priorité 1) qui a été pré-rempli depuis FITS.
+#     Maintenant `_maj_astro_etat()` récupère le nom d'astrométrie (match céleste)
+#     SÉPARÉMENT pour le comparer au champ actuel.
+#   - Fix DEBUG spam : `_mettre_a_jour_nom_depuis_fits()` n'est plus appelé à chaque
+#     tick UI (~20-30×/s) mais seulement quand `camera.last_file` change
+#     (nouvelle brute reçue). Suppression des logs "Aucun last_file" /
+#     "Champ déjà rempli" qui noyaient le journal.
+# v2.53.5 : LOGIQUE NOM CIBLE FINALE + DEBUG
+#   - Remplissage auto depuis l'en-tête FITS (camera.last_file) tant que le
+#     champ est vide.
+#   - À la première résolution astrométrique : si le champ est vide → adoption
+#     directe du nom détecté ; s'il contient déjà un nom différent → popup de
+#     confirmation pour le remplacer. Un refus est définitif jusqu'à ce que
+#     l'astrométrie soit décochée/recouchée.
+#   - Le champ « Nom cible » n'existe plus qu'une fois (panneau Empilement).
+#   - Case à cocher « Debug nom cible » dans le panneau Astrométrie → journal détaillé
+#     (valeur de auto_nom, contenu du champ, décision adoption/popup/refus, lecture FITS).
+# v2.53.4 : DEBUG NOM CIBLE
+#   - Ajout d'une case à cocher « Debug nom cible » dans le panneau Astrométrie.
+#   - Journalisation détaillée (journal.note) dans `_maj_astro_etat` et
+#     `_mettre_a_jour_nom_depuis_fits` lorsque la case est cochée :
+#       * valeur de `auto_nom` retournée par `_nom_cible_pour_sauvegarde`,
+#       * contenu actuel du champ, décision adoption / popup / refus,
+#       * lecture de `camera.last_file` et du nom extrait de l'en-tête FITS.
+#   - Permet de comprendre pourquoi la popup n'apparaît pas.
+# v2.53.3 : LOGIQUE NOM CIBLE FINALE
+#   - Remplissage auto depuis l'en-tête FITS (camera.last_file) tant que le
+#     champ est vide.
+#   - À la première résolution astrométrique : si le champ est vide → adoption
+#     directe du nom détecté ; s'il contient déjà un nom différent → popup de
+#     confirmation pour le remplacer. Un refus est définitif jusqu'à ce que
+#     l'astrométrie soit décochée/recouchée.
+#   - Le champ « Nom cible » n'existe plus qu'une fois (panneau Empilement).
+# v2.53.2 : CHAMP « NOM CIBLE » UNIQUE (PANNEAU EMPILEMENT) + POPUP ASTROMÉTRIE + AUTO FITS
+#   - Suppression du doublon dans le panneau Astrométrie ; l'Entry reste
+#     uniquement dans « Empilement » (var_nom_cible_manual partagée).
+#   - À la première résolution astrométrique (vert), une popup propose
+#     d'adopter le nom détecté (match céleste ou header FITS). L'utilisateur
+#     valide ou refuse.
+#   - Périodiquement (dans `_tick_corps`), si le champ est vide, on tente de
+#     le remplir depuis l'en-tête FITS de la dernière brute (`camera.last_file`).
+# v2.53.1 : CORRECTION BUG D'INITIALISATION + REMPLISSAGE AUTO DU CHAMP « NOM CIBLE »
+#   - Initialisation de `var_nom_cible_manual` **avant** la construction de l'UI
+#     (évite AttributeError au démarrage).
+#   - Dans `_maj_astro_etat`, quand l'astrométrie devient résolue (vert),
+#     le champ « Nom cible » est automatiquement rempli avec le nom détecté
+#     (match céleste ou header FITS) si l'utilisateur n'a rien saisi.
+# v2.53.0 : CHAMP « NOM CIBLE » VISIBLE DANS LE PANNEAU EMPILEMENT
+#   - Ajout d'une ligne « Nom cible : » avec Entry lié à var_nom_cible_manual
+#     (créée dans le panneau Astrométrie) afin que l'utilisateur voie et
+#     modifie le nom de l'objet principal sans aller dans l'onglet astrométrie.
+#   - La valeur manuelle a priorité absolue pour les 4 boîtes « Enregistrer »
+#     (logique _nom_cible_pour_sauvegarde : manuel > match céleste > header FITS).
+# v2.52.0 : NOMMAGE AUTOMATIQUE DES FICHIERS SAUVEGARDÉS (JALON 84)
+#   L'option « nom_cible_auto » (cochée par défaut) propose désormais un nom
+#   de fichier dérivé de l'en-tête FITS de la dernière brute :
+#   mots-clés lus dans l'ordre OBJECT → OBJNAME → TARGNAME → TARGET,
+#   premier non-vide retenu, nettoyé pour Windows (\\ / : * ? " < > | → _,
+#   espaces multiples collapsés, blancs aux extrémités retirés).
+#   Suffixe optionnel (_traite, _tel_que_vu…) et extension (.fits) ajoutés.
+#   - avastack/processing/astrometrie.py : nouvelle fonction
+#     nom_objet_entete_fits(chemin) → str|None
+#   - avastack/ui/app.py : nouvelle méthode _nom_cible_auto(suffixe, extension)
+#     appelée par les boîtes « Enregistrer sous » / « Enregistrer tel que vu »
+#   - Configuration : clé nom_cible_auto (bool, True par défaut)
+#   - Correctifs collatéraux : celebres.py (syntax + constante ECHELLE_ANGLE),
+#     processing/__init__.py (SuiviAstrometrie import)
 # v2.51.0 : _tick_corps TAIL LA ZONE « Traitement externe » QUAND ELLE
 #   DISPARAÎT (retour macOS du 01/10/2026 — v2.48.1 et v2.48.2 ; pas de
 #   changement de comportement depuis la v2.50.0). Tcl/Tk 8.6.12 sous macOS

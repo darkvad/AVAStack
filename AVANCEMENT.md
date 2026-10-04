@@ -9,6 +9,250 @@ dans le changelog du source et l'historique git.)
 
 ---
 
+## Session du 03/10/2026 -- jalon 96 (v2.53.0) -- "Nom de cible + Annotation temps-reel"
+
+### PLAN CONSOLIDE REVISE (intègre toutes les précisions d'Alain)
+
+**Objectif** : Jalon unique v2.53.0 combinant :
+1. Catalogue local d'objets célèbres étendu (Messier + NGC + IC + Sh2 + Barnard + LDN ≈ 20 k entrées, ~1 Mo CSV -> ~3-4 Mo HEALpix 8)  **✅ FAIT**
+2. Lecture OBJECT / OBJNAME / TARGNAME / TARGET dans le FITS  **✅ FAIT**
+3. **Champ saisissable** nom de cible dans le panneau d'astrométrie (affiche l'auto-détecté, modifiable, prioritaire pour sauvegarde) **✅ FAIT** (aussi affiché dans le panneau Empilement)
+4. Nom de cible par défaut pour les 4 boîtes "Enregistrer" (priorité : manuel > match céleste > FITS header > rien) **✅ FAIT**
+5. Annotation temps-réel sur l'image **AFFICHÉE** (overlay visuel) + option sauvegarde PNG annoté à côté du FITS
+6. Deux cases à cocher indépendantes : [✓] Objets célèbres  [✓] Étoiles brillantes
+
+---
+
+### ÉTAPES D'IMPLÉMENTATION (ordre suggéré)
+
+#### 1. Catalogue célèbres (data + téléchargeur + HEALpix) -- BASE INDISPENSABLE
+| Fichier | Rôle |
+|---------|------|
+| `avastack/catalogues/celebres.py` | Parsing VizieR -> écriture .dat HEALpix 8 (même format que siril_cat_healpix8_astro.dat) |
+| `avastack/catalogues/telechargeur.py` | `RECORD_CELEBRES` (Zenodo) + `telecharger_celebres()` |
+| `avastack/catalogues/__init__.py` | Export `cherche_celebres(ra, dec, rayon_deg)` -> `list[ObjetCelebre]` |
+| UI | Bouton "⬇ Célèbres" dans le panneau d'astrométrie (à côté de Gaia/Spectres) |
+
+**Structure `ObjetCelebre` (dataclass) :**
+```
+designation: str          # "M31", "NGC7000", "IC1396", "Sh2-101", "Barnard33", "LDN1622"
+aliases: list[str]        # ["Andromeda Galaxy", "M31", "NGC224"]
+type_obj: str             # "galaxie", "nebuleuse_diffuse", "nebuleuse_planetaire", 
+                          # "amas_ouvert", "amas_globulaire", "nebuleuse_obscure", "region_HII"
+mag_v: float | None       # magnitude visuelle (pour tri)
+size_arcmin: float        # taille angulaire majeure (pour échelle d'affichage)
+ra_deg, dec_deg: float    # centre
+healpix8: int             # pixel HEALpix NEST niveau 8
+```
+
+#### 2. Lecture FITS header -- FONCTION UTILITAIRE
+| Fichier | Ajout |
+|---------|-------|
+| `avastack/processing/astrometrie.py` | `def nom_objet_entete_fits(chemin: Path) -> str | None` |
+| | Lit OBJECT -> OBJNAME -> TARGNAME -> TARGET, retourne premier non-vide ou None |
+
+#### 3. Champ nom de cible dans panneau astrométrie -- SAISIE MANUELLE PRIORITAIRE
+| Emplacement | Modification |
+|-------------|--------------|
+| `avastack/ui/app.py` | Nouveau champ `ttk.Entry` + `StringVar var_nom_cible_manual` dans panneau astrométrie |
+| | Affichage par défaut : auto-détecté (match céleste si résolu, sinon FITS header) -- **jamais "cible_inconnue"**, peut être vide |
+| | L'utilisateur peut **écraser** -> cette valeur manuelle a priorité absolue pour les 4 boîtes "Enregistrer" |
+| | Pas de clé config pour ce champ (pas de persistance forcée), valeur courante uniquement |
+| 4 appels `filedialog.asksaveasfilename` (lignes ~5621, 5737, 5768, 6467) | `initialfile=self._nom_cible_pour_sauvegarde()` |
+
+**Logique `_nom_cible_pour_sauvegarde()` (priorité stricte) :**
+```
+def _nom_cible_pour_sauvegarde(self) -> str | None:
+    # 1. Manuel (champ saisi par l'utilisateur)
+    if self.var_nom_cible_manual.get().strip():
+        return sanitize_filename(self.var_nom_cible_manual.get().strip())
+    # 2. Match céleste (WCS résolu + catalogue célèbres)
+    if self.suivi_astro and self.suivi_astro.resolu:
+        objets = cherche_celebres(self.suivi_astro.ra, self.suivi_astro.dec, rayon_deg=0.5)
+        if objets:
+            return sanitize_filename(objets[0].designation)
+    # 3. FITS header (dernière brute)
+    chemin = getattr(self.camera, "last_file", "") or ""
+    if chemin:
+        nom = nom_objet_entete_fits(chemin)
+        if nom:
+            return sanitize_filename(nom)
+    # 4. Rien
+    return None
+```
+#### 4. Annotation temps-réel (overlay sur image affichée) -- VISUEL TEMPS-RÉEL
+**Nouvelles cases à cocher dans panneau affichage / astrométrie (deux `BooleanVar` persistées) :**
+- `config.annoter_objets: bool = False` -> `[✓] Annoter objets célèbres` (M31, NGC7000, Sh2-101, etc.)
+- `config.annoter_etoiles: bool = False` -> `[✓] Annoter étoiles brillantes` (catalogue Gaia déjà chargé, mag < seuil)
+- `config.seuil_mag_etoiles: float = 8.0` -> seuil magnitude pour étoiles (configurable)
+- `config.annoter_sauvegarde: bool = True` -> générer PNG annoté à côté du FITS si case(s) cochée(s)
+
+**Pipeline d'affichage (existant `_refresh_image` / `_update_display`) :**
+```
+brute -> traitement (stretch, NR, etc.) -> buffer_affichage (uint16 RGB)
+                      ↓
+            si (annoter_objets OU annoter_etoiles) ET WCS résolu :
+                overlay_annotations(buffer_affichage, wcs, liste_objets, liste_etoiles, config_couleurs)
+                      ↓
+            imshow / affichage Tk
+```
+
+**Nouveau module `avastack/processing/annotations.py` :**
+- `overlay_annotations(img_disp, wcs, objets, etoiles, config_couleurs) -> None` (modifie img_disp in-place)
+- `objets` = liste `ObjetCelebre` (via `cherche_celebres` autour du centre image)
+- `etoiles` = extrait du catalogue Gaia chargé (mag < seuil_mag_etoiles)
+- Conversion (ra, dec) -> (x, y) pixel via `wcs.world_to_pixel`
+- **Placement intelligent étiquettes** : éviter bords, chevauchements, quinconce
+- **Objets** : designation + icône 1 lettre (Gx, Nb, Oc, Gc, Dk, H2) -- couleur jaune défaut
+- **Étoiles** : nom HIP/HD/BD + magnitude -- couleur cyan défaut
+- Police : `cv2.FONT_HERSHEY_SIMPLEX`, échelle proportionnelle à résolution affichage
+- **Thread-safety** : overlay dans thread UI (après cv2.cvtColor vers RGB), coût visé < 2 ms/image
+
+#### 5. Sauvegarde PNG annoté -- FICHIER COMPAGNON
+- Dans `_save()` / `_save_tel_que_vu()` / `_save_proc()` : **après** écriture FITS linéaire
+- Si `config.annoter_sauvegarde` ET (au moins une case cochée) :
+  - Copie du buffer d'affichage courant -> réutilise `overlay_annotations` sur la copie
+  - Sauvegarde PNG `<nom>_annote.png` à côté du FITS
+- **FITS sacro-saints** : annotations **JAMAIS** écrites dans les FITS (linéarité photométrique préservée)
+
+#### 6. Configuration persistée (`avastack/config.py`)
+| Clé | Type | Défaut | Description |
+|-----|------|--------|-------------|
+| `nom_cible_auto` | bool | True | Activer proposition auto dans boîtes enregistrer |
+| `annoter_objets` | bool | False | Overlay objets célèbres sur affichage |
+| `annoter_etoiles` | bool | False | Overlay étoiles brillantes sur affichage |
+| `seuil_mag_etoiles` | float | 8.0 | Magnitude limite étoiles annotées |
+| `annoter_sauvegarde` | bool | True | Générer PNG annoté si case(s) cochée(s) |
+
+#### 7. Tests (6 nouveaux bancs + existant)
+| Banc | Couverture |
+|------|------------|
+| `_test_celebres_parsing.py` | CSV VizieR -> écriture .dat -> lecture binaire -> cohérence HEALpix |
+| `_test_celebres_recherche.py` | Cône vide/plein, hors champ, match multiple, tri distance/éclat |
+| `_test_nom_cible_auto.py` | 4 cas matrice (manuel, FITS+astro, FITS seul, astro seul, rien) + sanitize |
+| `_test_annotations_overlay.py` | Overlay n'écrase pas buffer brut, positions correctes via WCS connu, désactivation = pas d'overlay |
+| `_test_annotations_save.py` | FITS linéaire inchangé, PNG annoté généré seulement si case(s) cochée(s) |
+| `_test_dialogues_jalon84.py` (existant) | Vérifier `initialfile` non vide quand suggestion dispo |
+
+---
+
+### ÉTAT ACTUEL (04/10/2026 — fin de session, jalon 96 en cours, v2.54.1)
+
+**JALON 96 (nom de cible + annotation temps-réel) — AVANCEMENT DE LA SESSION :**
+
+✅ **Catalogue célèbres complet** : `celebres.py` (HEALpix 8), `telechargeur.py`
+   (catalogue **EMBARQUÉ** `avastack/catalogues/data/celebres_healpix8.dat.bz2`
+   235 Ko — le .dat décompressé 4,1 Mo est généré au premier usage, ignoré par
+   gitignore), bouton « ⬇ Célèbres » + `.gitignore` mis à jour
+✅ **Champ « Nom cible »** : `var_nom_cible_manual` + Entry dans panneau Empilement,
+   pré-rempli depuis l'en-tête FITS à chaque nouvelle brute (SEULEMENT quand
+   `camera.last_file` change, plus jamais à chaque tick — fin du DEBUG spam)
+✅ **Logique priorité** (règles d'Alain) : champ vide + FITS + astro non résolue →
+   FITS ; champ saisi → conservé jusqu'à la prochaine astrométrie ; astro résolue +
+   champ vide → adoption du match céleste ; astro + champ différent du match
+   céleste → popup de choix
+✅ **Popup à radio-boutons v2.54.0** : `_objets_celestes_resolus()` DÉDUPLIQUE par
+   position (~0,01°) — NGC 224 et M31 = même objet, meilleur nom par groupe
+   (score : Messier « M 31 » > NGC/IC préfixé > nombre nu/tronqué, espaces
+   collapsés) ; dialogue `_demander_nom_cible()` (jusqu'à 6 objets, libellé
+   nom — type · mag · taille) + « Garder « actuel » », OK/Annuler ; remplace
+   `messagebox.askyesno` (règle jalon 84 : banc dialogues TOUT AU VERT)
+✅ **Fix attributs ra0/dec0 v2.53.9** : `suivi_astro.ra`/`dec` n'existaient pas
+   (attributs réels : `ra0`/`dec0`) — le popup apparaissait jamais ; corrigé
+   aux 2 sites, popup VALIDÉE en réel chez Alain
+✅ **Popup à CHAQUE résolution v2.53.8** : transition non-résolu → résolu via
+   `_astro_was_resolved` ; reset `_astro_name_proposed` : désactivation
+   astrométrie, nouveaux indices (`_on_astro`), nouvelle résolution
+✅ **Case « Debug » déplacée v2.54.1** : du panneau Astrométrie vers la PREMIÈRE
+   section de la colonne de gauche (« Fichiers de travail et journal »), à côté
+   du bouton « Journal » (demande d'Alain)
+✅ **Nouvelle règle dans CLAUDE.md** : toute livraison/correction → mise à jour
+   AVANCEMENT.md (ÉTAT ACTUEL + version + changelog) dans la même réponse
+✅ **Bancs** : `_test_dedup_celebre_jalon96.py` NEUF (fichier RÉEL d'Alain :
+   5 entrées → 2 objets, « M 31 » gagne sur « 224 ») ; rejoués TOUS VERTS :
+   jalon 47 (UI visibilité), jalon 84 (dialogues), jalon 87 + 95 (UI robuste),
+   jalon 56 (astrométrie), jalon 56 photométrie, jalon 70 (catalogues),
+   jalon 76 (reset — TOUT PASSE)
+✅ **Version** : **2.54.1**, changelog en tête d'`avastack/__init__.py`
+
+❌ **RESTE À FAIRE (jalon 96, étapes 5-6)** :
+- Intégration de l'overlay dans `_refresh_image` / `_update_display`
+  (module `annotations.py` écrit : overlay complet + placement intelligent)
+- Cases à cocher UI (2 cases indépendantes [✓] Objets célèbres [✓] Étoiles
+  brillantes + seuil mag) + persistance config
+- PNG annoté à la sauvegarde (dans _save, _save_tel_que_vu, _save_proc)
+- Bancs de test annotations (overlay/save)
+
+---
+
+### POINTS DE VIGILANCE (rappel CLAUDE.md)
+- **Zéro invention de nom** : si ni FITS ni catalogue ne donnent de nom -> chaîne vide, **jamais** "cible_inconnue"
+- **Pas de réseau par défaut** : téléchargement catalogue célèbres uniquement via bouton explicite "⬇ Célèbres"
+- **FITS sacro-saints** : annotations jamais écrites dans les FITS (linéarité photométrique préservée)
+- **Performances** : overlay < 2 ms/image visé
+- **Configuration persistée** : toutes les cases/ seuils dans config.json
+- **Champ manuel prioritaire** : ce que l'utilisateur tape gagne toujours sur l'auto
+
+---
+
+### PROCHAINE ACTION
+Jalon 96, **étapes 5-6** : intégration de l'overlay dans `_refresh_image` /
+`_update_display` (module `annotations.py` déjà écrit), cases à cocher UI
+([✓] Objets célèbres [✓] Étoiles brillantes + seuil mag) + persistance config,
+PNG annoté à la sauvegarde. Les étapes 1-4 (catalogue célèbres, lecture FITS,
+champ nom cible, popup radio-boutons) sont LIVRÉES en v2.54.1.
+
+---
+
+### ÉTAT COURANT (mise à jour 03/10/2026 - fin de session)
+
+**Catalogue célèbres : ÉTAPE 1 - TÉLÉCHARGEMENT CSV EN COURS**
+
+| Catalogue | Identifiant VizieR | Statut | Notes |
+|-----------|-------------------|--------|-------|
+| Messier   | **Pas de catalogue séparé** | ✅ **Dans NGC2000** | Table VII/118/names (index noms usuels M↔NGC/IC) |
+| NGC 2000  | VII/118 | ✅ **Fait** | NGC2000.csv local (séparateur ; vérifié) |
+| IC        | VII/260 | ❌ À télécharger |
+| Sh2       | J/ApJS/59 | ❌ À télécharger |
+| Barnard   | J/AJ/117/349 | ❌ À télécharger |
+| LDN       | J/ApJS/179 | ❌ À télécharger |
+
+**Scripts prêts** :
+- generate_catalogue.py : lit CSV locaux (;), construit HEALPix 8, écrit celebres_healpix8.dat + .bz2 dans vastack/catalogues/data/
+- 	elechargeur.py : charge déjà le .bz2 embarqué — **zéro modif code nécessaire**
+
+**Prochaine action** : Télécharger les 4 CSV restants (IC, Sh2, Barnard, LDN) depuis VizieR avec séparateur ;, les placer dans c:\Astro\AstroLiveStack\catalogues_csv\, puis lancer python generate_catalogue.py.
+
+---## Session du 03/10/2026 - fin de session -- Catalogue célèbres GÉNÉRÉ ✅
+
+**Catalogue célèbres : ÉTAPE 1 - TERMINÉE**
+
+| Catalogue | Identifiant VizieR | Statut | Objets générés |
+|-----------|-------------------|--------|----------------|
+| Messier   | Dans NGC2000 (VII/118/names) | ✅ Cross-ref OK | 178 (via NGC2000) |
+| NGC 2000  | VII/118 | ✅ Fait | 13 226 |
+| IC        | Dans NGC2000 | ✅ Inclus dans NGC2000 | - |
+| Sh2       | J/ApJS/59 (VII/20) | ✅ Généré | 313 |
+| Barnard   | J/AJ/117/349 (VII/220A) | ✅ Généré | 359 |
+| LDN       | J/ApJS/179 (VII/7A) | ✅ Généré | 1 787 |
+| **TOTAL** | | **✅ 15 863 objets** | |
+
+**Fichiers générés :**
+- `avastack/catalogues/data/celebres_healpix8.dat` (6.67 Mo)
+- `avastack/catalogues/data/celebres_healpix8.dat.bz2` (167 Ko)
+
+**generate_catalogue.py** : adapté pour lire les CSV locaux existants (formats VizieR variés, séparateur `;`), gère le cross-reference Messier via Names.csv.
+
+**telechargeur.py** : déjà compatible .bz2 embarqué — **zéro modif nécessaire**.
+
+---
+
+**ÉTAPE SUIVANTE** : Intégrer le catalogue dans l'application
+1. `avastack/catalogues/celebres.py` : lecture binaire HEALpix 8 + recherche cône
+2. `avastack/catalogues/__init__.py` : export `cherche_celebres(ra, dec, rayon_deg)`
+3. UI : bouton "⬇ Célèbres" dans panneau astrométrie (optionnel car déjà embarqué)
+
+---
 
 ## Session du 02/10/2026 — jalon 95b — sections pliables du panneau gauche
 

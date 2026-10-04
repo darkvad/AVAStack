@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Téléchargeur des catalogues Siril sur Zenodo (à froid, hors session).
+"""Téléchargeur des catalogues Siril (Zenodo + GitHub Releases).
+
+Sources :
+  • Zenodo : catalogue astrométrique Gaia DR3 (≈ 1,1 Go) + spectrophotométrique 48 chunks (≈ 10,6 Go)
+  • GitHub Releases (free-astro/siril-scripts) : catalogue d'objets célèbres pré-généré HEALpix 8 (≈ 3-4 Mo)
 
 ZENODO BLOQUE LES CLIENTS NUS (403 anti-robot, constaté le 22/09/2026
 avec Invoke-WebRequest sans en-tête navigateur) : toutes les requêtes
@@ -27,7 +31,9 @@ from .spcc_db import SOUS_DOSSIERS as CATEGORIES_SPCC
 # Enregistrements Zenodo (vérifiés le 22/09/2026) :
 RECORD_ASTRO = "14692304"      # Siril Astrometry Catalogue from Gaia DR3
 RECORD_XPSAMP = "14738271"     # Siril Spectrophotometric Catalog (48 chunks)
+# RECORD_CELEBRES supprimé : catalogue célèbres hébergé sur GitHub Releases
 NOM_ASTRO = "siril_cat_healpix8_astro.dat.bz2"
+# NOM_CELEBRES supprimé : fichier téléchargé depuis GitHub Releases
 TOTAL_CHUNKS = 48              # morceaux de niveau 1 (0-47) du catalogue spectro
 
 # Hôtes des données (constantes de module : un banc les redirige vers un
@@ -172,6 +178,59 @@ def telecharger_catalogue_astro(dossier, progression=None):
     somme = sommaire_zenodo(RECORD_ASTRO, NOM_ASTRO)
     return verifier_ou_telecharger(dossier, NOM_ASTRO, RECORD_ASTRO,
                                    progression, somme)
+
+
+def telecharger_catalogue_celebres(dossier, progression=None):
+    """Installe le catalogue d'objets célèbres (Messier, NGC, IC, Sh2, Barnard, LDN)
+    depuis le fichier **embarqué dans l'application** (avastack/catalogues/data/).
+    → (chemin, telecharge: bool).
+    `progression(nom, fraction)` est appelée régulièrement."""
+    
+    chemin = os.path.join(dossier, "celebres_healpix8.dat")
+    deja_la = os.path.isfile(chemin) and os.path.getsize(chemin) > 100
+    
+    if deja_la:
+        return chemin, False
+    
+    # Fichier embarqué dans le package (bz2 ~1 Mo)
+    from importlib.resources import files
+    try:
+        embedded = files("avastack.catalogues.data").joinpath("celebres_healpix8.dat.bz2")
+        if not embedded.is_file():
+            raise FileNotFoundError("Fichier embarqué introuvable")
+        source_bz2 = str(embedded)
+    except Exception:
+        # Fallback : chemin relatif depuis le fichier source
+        base = os.path.dirname(__file__)
+        source_bz2 = os.path.join(base, "data", "celebres_healpix8.dat.bz2")
+        if not os.path.isfile(source_bz2):
+            raise RuntimeError(
+                "Catalogue célèbres absent : placez celebres_healpix8.dat.bz2 "
+                "dans avastack/catalogues/data/ (voir README)"
+            )
+    
+    os.makedirs(dossier, exist_ok=True)
+    
+    if progression:
+        progression("Installation catalogue célèbres (local)", 0.0)
+    
+    # Copie + décompression
+    import bz2, shutil
+    dest_bz2 = os.path.join(dossier, "celebres_healpix8.dat.bz2")
+    shutil.copy2(source_bz2, dest_bz2)
+    
+    if progression:
+        progression("Décompression", 0.5)
+    
+    with bz2.open(dest_bz2, "rb") as src, open(chemin, "wb") as dst:
+        shutil.copyfileobj(src, dst)
+    
+    os.remove(dest_bz2)
+    
+    if progression:
+        progression("Terminé", 1.0)
+    
+    return chemin, True
 
 
 def nom_chunk(chunk):

@@ -389,6 +389,10 @@ installé, documentations et pages constructeurs) :
   précisé. (La variable s appelait `ASTROLIVESTACK_VERSION` dans la
   convention d origine, mais n a été réellement créée qu au renommage en
   AVAStack, v1.0.0.)
+- **Toute livraison/correction (patch, fix, feature) : mise à jour `AVANCEMENT.md`**
+  (section "ÉTAT ACTUEL" + version + changelog résumé) **dans la même réponse**.
+  L'historique détaillé reste dans `avastack/__init__.py` (changelog source),
+  mais AVANCEMENT.md doit refléter l'état courant pour la reprise de session.
 - Toute nouvelle dépendance Python (`import` d un paquet pip pas déjà utilisé
   dans le fichier) : **toujours signaler explicitement à Alain dans la
   réponse** ET l ajouter au `requirements.txt`. Ne pas décider unilatéralement

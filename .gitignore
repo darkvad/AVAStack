@@ -34,3 +34,8 @@ _gx_jalon4_compteur.txt
 installer/windows/output/
 installer/linux/output/
 installer/macos/output/
+
+# Catalogue célèbres DÉCOMPRIMÉ (4,1 Mo) : généré au premier usage depuis le
+# fichier EMBARQUÉ celebres_healpix8.dat.bz2 (235 Ko, suivi lui) — le .dat
+# décompressé est une copie locale, jamais dans le dépôt (v2.54.1).
+avastack/catalogues/data/celebres_healpix8.dat

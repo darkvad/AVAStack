@@ -257,6 +257,28 @@ def indices_entete_fits(chemin):
                 f"vérifier FOCALLEN/XPIXSZ")
     return ra % 360.0, dec, champ, f"indices lus dans l'en-tête ({source})"
 
+
+def nom_objet_entete_fits(chemin):
+    """Nom d'objet lu dans l'en-tête FITS (OBJECT, OBJNAME, TARGNAME, TARGET).
+    Retourne le premier non-vide, ou None si aucun n'est présent.
+    JAMAIS d'invention — si absent, l'appelant gère le repli (catalogue, saisie)."""
+    if not FITS_OK:
+        return None
+    if not str(chemin or "").lower().endswith((".fits", ".fit", ".fts")):
+        return None
+    try:
+        with fits.open(chemin) as hd:
+            entete = hd[0].header
+    except Exception:
+        return None
+    # Ordre de priorité : conventions N.I.N.A., MaxIm DL, ACP, APT, SGP...
+    for cle in ("OBJECT", "OBJNAME", "TARGNAME", "TARGET"):
+        val = _valeur_entete(entete, (cle,))
+        if val and val.strip():
+            return val.strip()
+    return None
+
+
 def resoudre_aveugle_astap(img, fov_deg=0.0, ra0=None, dec0=None,
                            rayon_deg=None, chemin_astap=None,
                            timeout=ASTRO_ASTAP_TIMEOUT_S, dossier=None,

@@ -22,7 +22,7 @@ configuration AVAStack sert de repli.
 import os
 
 from ..compat import IS_MACOS, IS_WINDOWS
-from . import astap, healpix, siril_cat, solveur, spcc_db, telechargeur
+from . import astap, healpix, siril_cat, solveur, spcc_db, telechargeur, celebres
 from .healpix import (NIVEAU_CATALOGUE, NPIX_NIVEAU8, ang2pix_nest,
                       chunk_vers_plage_pixels, entrelacer, depaqueter,
                       pixel_vers_chunk, pix2ang_nest, pixels_cone)
@@ -38,18 +38,20 @@ from .telechargeur import (RECORD_ASTRO, RECORD_XPSAMP, TOTAL_CHUNKS,
                            URL_SPCC, chunks_du_champ, etat_base_spcc,
                            etat_local, nom_chunk, sommaire_zenodo, telecharger,
                            telecharger_base_spcc, telecharger_catalogue_astro,
-                           telecharger_chunk_xpsamp, telecharger_chunks,
-                           telecharger_tous_les_chunks)
+                           telecharger_catalogue_celebres, telecharger_chunk_xpsamp,
+                           telecharger_chunks, telecharger_tous_les_chunks)
+from .celebres import (ObjetCelebre, telecharger_et_indexer, est_disponible,
+                       cherche_celebres)
 
 __all__ = [
-    "healpix", "siril_cat", "telechargeur", "solveur", "astap", "spcc_db",
+    "healpix", "siril_cat", "telechargeur", "solveur", "astap", "spcc_db", "celebres",
     "NIVEAU_CATALOGUE", "NPIX_NIVEAU8", "ang2pix_nest", "pix2ang_nest",
     "entrelacer", "depaqueter", "pixel_vers_chunk", "chunk_vers_plage_pixels",
     "pixels_cone", "CatalogueSiril", "lire_entete", "TAILLE_ENTETE",
     "TYPE_ASTRO", "TYPE_XPSAMP", "DTYPE_ASTRO", "DTYPE_XPSAMP",
     "RECORD_ASTRO", "RECORD_XPSAMP", "telecharger", "etat_local",
     "sommaire_zenodo", "telecharger_catalogue_astro",
-    "telecharger_chunk_xpsamp", "dossier_catalogues",
+    "telecharger_catalogue_celebres", "telecharger_chunk_xpsamp", "dossier_catalogues",
     "dossiers_siril", "chemin_catalogue_astro", "MSG_CATALOGUE_ABSENT",
     "TOTAL_CHUNKS", "nom_chunk", "chunks_du_champ", "telecharger_chunks",
     "telecharger_tous_les_chunks", "URL_SPCC", "telecharger_base_spcc",
@@ -58,6 +60,7 @@ __all__ = [
     "WcsCompose", "propager", "compose_M", "inverse_M", "infos_M",
     "trouver_astap", "resoudre_avec_astap", "balayage_possible",
     "bases_installees",
+    "ObjetCelebre", "telecharger_et_indexer", "est_disponible", "cherche_celebres",
 ]
 
 

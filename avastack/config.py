@@ -55,3 +55,17 @@ def sauver_config(d):
 # Chargé une fois au démarrage — les commandes d'outils externes (module
 # external.detection) s'appuient dessus avant de lancer leur détection.
 CONFIG = charger_config()
+
+# ──────────────────────────────────────────────────────────────────────────
+# Clés de configuration par défaut (utilisées via CONFIG.get(cle, defaut))
+# ──────────────────────────────────────────────────────────────────────────
+DEFAUT_CONFIG = {
+    # Nom de cible automatique pour les boîtes d'enregistrement
+    "nom_cible_auto": True,
+    # Annotations temps-réel sur l'image affichée
+    "annoter_objets": False,
+    "annoter_etoiles": False,
+    "seuil_mag_etoiles": 8.0,
+    # Sauvegarde PNG annotée à côté du FITS
+    "annoter_sauvegarde": True,
+}

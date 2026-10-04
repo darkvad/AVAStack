@@ -4,6 +4,7 @@ orchestration calibration → alignement → empilement → affichage, et traite
 externe sur instantané."""
 
 import os
+import re
 import time
 import math
 import queue
@@ -388,6 +389,8 @@ class App:
         self.astro_couleur = "#888888"   # gris / vert (résolu) / ambre (souci)
         self._astro_actif = False        # case « Astrométrie » (instantané Tk)
         self._astro_indices = None       # (ra, dec, champ) validés (instantané)
+        self._astro_name_proposed = False  # popup déjà proposée pour ce nom
+        self.var_debug = tk.BooleanVar(value=False)  # case « Debug général »
         # Champ SEUL (sans coordonnées) : saisi par l'utilisateur qui connaît sa
         # focale mais pas ses coordonnées — sert de `fov` indicatif au balayage
         # ASTAP (CONSTAT RÉEL du 23/09/2026 : sans ordre de grandeur de champ,
@@ -544,6 +547,10 @@ class App:
         # épisode : un widget durablement détruit ne doit pas noyer le journal).
         self._tick_id = None
         self._tick_err_sig = None
+        # Variable pour le nom de cible manuel (utilisée dans panneaux Empilement et Astrométrie)
+        self.var_nom_cible_manual = tk.StringVar(value="")
+        # Suivi du dernier camera.last_file vu pour ne lire l'en-tête FITS qu'au changement
+        self._dernier_last_file = ""
         journal.note("démarrage", "construction de l'interface")
         self._build_ui()
         journal.note("démarrage", "restauration de la configuration")
@@ -1363,6 +1370,11 @@ class App:
                    ).pack(side="left", padx=(4, 0))
         ttk.Button(rowtr, text="Journal", width=8,
                    command=self._ouvrir_journal).pack(side="left", padx=(4, 0))
+        # Case « Debug » (v2.54.1, demande d'Alain : déplacée du panneau
+        # Astrométrie) — à côté du bouton « Journal », logique : les logs
+        # DEBUG vont dans le journal, le réglage vit à côté de son bouton.
+        ttk.Checkbutton(rowtr, text="Debug",
+                        variable=self.var_debug).pack(side="left", padx=(8, 0))
 
         # --- Caméra : la SOURCE + Démarrer/Arrêter sont TOUJOURS visibles ;
         # les contrôles propres à la caméra (exposition, gain, roue, TEC,
@@ -1665,6 +1677,12 @@ class App:
         self.lbl_seeing = ttk.Label(box, text="Seeing (FWHM) : —",
                                     foreground="#888888")
         self.lbl_seeing.pack(anchor="w", pady=(0, 3))
+        # Champ « Nom cible » (reprend la valeur saisissable du panneau Astrométrie)
+        row_nom = ttk.Frame(box)
+        row_nom.pack(fill="x", pady=(2, 0))
+        ttk.Label(row_nom, text="Nom cible :").pack(side="left", padx=(6, 0))
+        # self.var_nom_cible_manual existe déjà (créé dans le panneau Astrométrie)
+        ttk.Entry(row_nom, textvariable=self.var_nom_cible_manual, width=30).pack(side="left", padx=(2, 0), fill="x", expand=True)
         rowf = ttk.Frame(box)
         rowf.pack(fill="x", pady=2)
         # v2.41.0 : ce bouton fait une VRAIE remise à zéro (cf.
@@ -1769,6 +1787,7 @@ class App:
         self.lbl_astro = ttk.Label(box, text="Astrométrie : —",
                                    foreground="#888888", wraplength=310)
         self.lbl_astro.pack(anchor="w", pady=(2, 0))
+
         # Jalon 70 — DONNÉES de l'astrométrie : l'application DIT où elle
         # cherche le catalogue Gaia DR3 de Siril, laisse choisir un autre
         # dossier (config `chemin_catalogues`), et le télécharge (1,1 Go,
@@ -1795,6 +1814,9 @@ class App:
         self.btn_cat_dl = ttk.Button(row_cat_b, text="⬇ Gaia", width=9,
                                      command=self._telecharger_catalogue)
         self.btn_cat_dl.pack(side="left", padx=(4, 0))
+        self.btn_celebres_dl = ttk.Button(row_cat_b, text="⬇ Célèbres", width=10,
+                                          command=self._telecharger_celebres)
+        self.btn_celebres_dl.pack(side="left", padx=(4, 0))
         self.lbl_cat_etat = ttk.Label(box, text="", foreground="#888888",
                                       wraplength=310)
         self.lbl_cat_etat.pack(anchor="w")
@@ -2730,6 +2752,197 @@ class App:
             opts["initialfile"] = initialfile
         return filedialog.asksaveasfilename(**opts)
 
+    def _proposer_nom_cible(self, suffixe="", extension="fits"):
+        r"""Nom de fichier initial suggéré pour les boîtes d'enregistrement,
+        à partir du mot-clé FITS OBJECT (ou OBJNAME/TARGNAME/TARGET) de la
+        DERNIÈRE brute lue — sans cette clé, l'utilisateur tape un nom à la
+        main, comme avant.
+
+        RÈGLES (jalon « nom de cible auto ») :
+          • opt-in via `CONFIG["nom_cible_auto"]` (True par défaut) ;
+          • si le nom est absent du header, ou si la lecture échoue, on
+            retourne None (la boîte reste sans nom pré-rempli) ;
+          • le nom est SANITISÉ pour Windows/macOS/Linux : caractères de
+            contrôle, séparateurs (`/\:*?"<>|`), blancs aux extrémités ;
+            les espaces internes sont conservés (un nom « M 31 » reste
+            lisible), les espaces multiples sont collapsés ;
+          • le suffixe (p.ex. « _traite », « _tel_que_vu ») et l'extension
+            (sans point) sont ajoutés si fournis.
+
+        → str terminée par l'extension SANS point, ou None si rien à proposer."""
+        if not bool(CONFIG.get("nom_cible_auto", True)):
+            return None
+        chemin = ""
+        try:
+            chemin = getattr(self.camera, "last_file", "") or ""
+        except Exception:
+            chemin = ""
+        if not chemin:
+            return None
+        try:
+            nom = astro_mod.nom_objet_entete_fits(chemin) or ""
+        except Exception:
+            return None
+        if not nom:
+            return None
+        # Sanitisation : on retire tout caractère qui poserait problème sur
+        # Windows (\ / : * ? " < > |) ou les caractères de contrôle ; les
+        # espaces en trop sont collapsés, ceux du début/fin retirés.
+        nom = re.sub(r"[\\/:\"*?|<>]", "_", nom)
+        nom = re.sub(r"[\x00-\x1f]", "", nom)
+        nom = re.sub(r"\s+", " ", nom).strip(" .")
+        if not nom:
+            return None
+        base = nom + (suffixe or "")
+        if extension:
+            return f"{base}.{extension.lstrip('.')}"
+        return base
+
+    @staticmethod
+    def _sanitize_nom(nom: str) -> str:
+        """Nettoie un nom de fichier pour être valide sur Win/Linux/macOS."""
+        import re
+        nom = re.sub(r"[\\\\/:\\\"*?|<>]", "_", nom)
+        nom = re.sub(r"[\x00-\x1f]", "", nom)
+        nom = re.sub(r"\s+", " ", nom).strip(" .")
+        return nom
+
+    def _objets_celestes_resolus(self) -> list | None:
+        """Objets célèbres trouvés par l'astrométrie (WCS résolu), DÉDUPLIQUÉS
+        par position : NGC 224 et M31 sont le même objet aux mêmes coordonnées —
+        un seul représentant par groupe, avec le MEILLEUR nom (Messier d'abord,
+        « M31 » plus reconnaissable que « 224 » ou « Great Nebula in … » tronqué).
+        → liste triée (Messier d'abord, puis distance/éclat), ou None si aucun
+        match ou astrométrie non résolue."""
+        if self.suivi_astro is None or not getattr(self.suivi_astro, "resolu", False):
+            return None
+        ra = getattr(self.suivi_astro, "ra0", None)
+        dec = getattr(self.suivi_astro, "dec0", None)
+        if ra is None or dec is None:
+            return None
+        try:
+            from avastack.catalogues import cherche_celebres
+            import math
+            import re as _re
+
+            def nom_propre(s: str) -> str:
+                # « M  31 » → « M31 » : espaces internes collapsés, blancs retirés
+                return self._sanitize_nom(s)
+
+            objets = cherche_celebres(ra, dec, rayon_deg=0.5)
+            if self.var_debug.get():
+                if objets:
+                    details = [(o.designation, o.type_obj, o.mag_v, o.size_arcmin) for o in objets[:6]]
+                    journal.note("DEBUG", f"_objets_celestes_resolus: cherche_celebres({ra:.4f}, {dec:.4f}, 0.5°) -> {len(objets)} objets: {details}")
+                else:
+                    journal.note("DEBUG", f"_objets_celestes_resolus: cherche_celebres({ra:.4f}, {dec:.4f}, 0.5°) -> AUCUN objet trouvé")
+            if not objets:
+                return None
+
+            # Déduplication par position (~0,01° : même objet, catalogues différents)
+            groupes: dict = {}
+            for o in objets:
+                cle = (round(o.ra_deg * 100), round(o.dec_deg * 100))
+                groupes.setdefault(cle, []).append(o)
+
+            def score_nom(s: str) -> int:
+                # 0 = le meilleur : « M31 » (Messier), puis « NGC… »/« IC… » avec
+                # préfixe, puis tout nom exploitable ; un nombre nu (« 224 ») ou
+                # un nom tronqué (« Great Nebula in ») est le pire.
+                s2 = nom_propre(s)
+                if _re.fullmatch(r"M\s*\d+", s2):
+                    return 0
+                if _re.fullmatch(r"(NGC|IC)\s*\d+", s2):
+                    return 1
+                if _re.fullmatch(r"(Sh2-|Barnard\s*|LDN\s*)\d+", s2):
+                    return 2
+                if _re.search(r"\d", s2) and len(s2) >= 3 and not s2[-1].isspace():
+                    return 3
+                return 4
+
+            def meilleur_du_groupe(g: list):
+                def clef(o):
+                    dra = (o.ra_deg - ra + 180.0) % 360.0 - 180.0
+                    cosd = math.cos(math.radians(dec))
+                    dist2 = (dra * cosd) ** 2 + (o.dec_deg - dec) ** 2
+                    return (score_nom(o.designation), dist2, o.mag_v or 99.0)
+                return min(g, key=clef)
+
+            reps = [meilleur_du_groupe(g) for g in groupes.values()]
+
+            def clef_tri(o):
+                dra = (o.ra_deg - ra + 180.0) % 360.0 - 180.0
+                cosd = math.cos(math.radians(dec))
+                dist2 = (dra * cosd) ** 2 + (o.dec_deg - dec) ** 2
+                return (dist2, o.mag_v or 99.0)
+
+            reps.sort(key=clef_tri)
+            return reps
+        except Exception as e:
+            if self.var_debug.get():
+                journal.note("DEBUG", f"_objets_celestes_resolus: exception: {e}")
+            return None
+
+    def _nom_cible_astro_only(self) -> str | None:
+        """Retourne le nom détecté par l'astrométrie (match céleste UNIQUEMENT).
+        N'utilise PAS la priorité manuel, NI le fallback FITS — sert pour le popup
+        de confirmation : « L'astrométrie a résolu la cible : M31 »."""
+        objets = self._objets_celestes_resolus()
+        if not objets:
+            if self.var_debug.get():
+                journal.note("DEBUG", "_nom_cible_astro_only: aucun match céleste")
+            return None
+        nom = self._sanitize_nom(objets[0].designation)
+        if self.var_debug.get():
+            journal.note("DEBUG", f"_nom_cible_astro_only: céleste={nom!r}")
+        return nom
+
+    def _nom_cible_pour_sauvegarde(self) -> str | None:
+        """Retourne le nom de base à proposer dans les boîtes « Enregistrer ».
+        Priorité stricte :
+        1. Nom saisi manuellement (var_nom_cible_manual)
+        2. Match céleste (WCS résolu + catalogue célèbres)
+        3. En-tête FITS de la dernière brute (OBJECT/OBJNAME/TARGNAME/TARGET)
+        4. None
+        """
+        # 1. Manuel
+        manuel = self.var_nom_cible_manual.get().strip()
+        if manuel:
+            if self.var_debug.get():
+                journal.note("DEBUG", f"_nom_cible_pour_sauvegarde: manuel={manuel!r}")
+            return self._sanitize_nom(manuel)
+        # 2. Match céleste
+        if self.suivi_astro and getattr(self.suivi_astro, "resolu", False):
+            ra = getattr(self.suivi_astro, "ra0", None)
+            dec = getattr(self.suivi_astro, "dec0", None)
+            if ra is not None and dec is not None:
+                try:
+                    from avastack.catalogues import cherche_celebres
+                    objets = cherche_celebres(ra, dec, rayon_deg=0.5)
+                    if objets:
+                        nom = self._sanitize_nom(objets[0].designation)
+                        if self.var_debug.get():
+                            journal.note("DEBUG", f"_nom_cible_pour_sauvegarde: céleste={nom!r}")
+                        return nom
+                except Exception:
+                    pass
+        # 3. FITS header
+        chemin = getattr(self.camera, "last_file", "") or ""
+        if chemin:
+            try:
+                nom = astro_mod.nom_objet_entete_fits(chemin)
+                if nom:
+                    nom = self._sanitize_nom(nom)
+                    if self.var_debug.get():
+                        journal.note("DEBUG", f"_nom_cible_pour_sauvegarde: FITS={nom!r}")
+                    return nom
+            except Exception:
+                pass
+        # 4. Rien
+        if self.var_debug.get():
+            journal.note("DEBUG", "_nom_cible_pour_sauvegarde: aucun nom trouvé")
+        return None
+
     def _dire(self, titre, message):
         """Information ATTACHÉE à la fenêtre (jamais derrière elle)."""
         messagebox.showinfo(titre, message, **self._kw_parent())
@@ -3005,6 +3218,9 @@ class App:
         TELLE QUELLE : rien n'est deviné, et le suivi reste sans indices —
         l'astrométrie ne se lancera pas sur une valeur à moitié comprise."""
         self._astro_actif = bool(self.var_astro.get())
+        # Réinitialiser la proposition de nom quand l'astrométrie est désactivée
+        if not self._astro_actif:
+            self._astro_name_proposed = False
         ra, dec, champ, msg = astro_mod.analyser_indices(
             self.var_astro_ra.get().strip(),
             self.var_astro_dec.get().strip(),
@@ -3027,6 +3243,8 @@ class App:
                 # l'affichage repart de zéro.
                 self.astro_info = ""
                 self.astro_couleur = "#888888"
+                # Nouveaux indices → nouvelle proposition de nom possible
+                self._astro_name_proposed = False
         if not self._astro_actif and self.suivi_astro is not None:
             self.suivi_astro.reset()
         self._rafraichir_rendu = True     # la ligne d'état suit SANS brute
@@ -3477,6 +3695,7 @@ class App:
         tous neutralisés ensemble puis rendus ensemble (un bouton qui resterait
         gris, ou actif pendant un transfert, mentirait sur l'état réel)."""
         return [b for b in (getattr(self, "btn_cat_dl", None),
+                            getattr(self, "btn_celebres_dl", None),
                             getattr(self, "btn_spectres", None),
                             getattr(self, "btn_spectres_tous", None),
                             getattr(self, "btn_spcc_base", None))
@@ -3700,6 +3919,30 @@ class App:
                 self._cat_q.put(("erreur", str(exc)))
 
         threading.Thread(target=travail, daemon=True).start()
+
+    def _telecharger_celebres(self):
+        """Télécharge le catalogue d'objets célèbres (Messier, NGC, IC, Sh2, Barnard, LDN)
+        dans le dossier des catalogues — thread DÉDIÉ : reprise après coupure et sha256
+        vérifié par le téléchargeur ; l'interface ne reçoit que des messages par file
+        (jamais d'appel Tk depuis ce thread)."""
+        try:
+            dossier = cat_mod.dossier_catalogues()
+        except Exception as exc:
+            self.lbl_cat_etat.config(
+                text=f"célèbres : dossier des catalogues illisible ({exc})",
+                foreground="#d04040")
+            return
+
+        def fin(res):
+            chemin, telecharge = res
+            if telecharge:
+                return f"catalogue d'objets célèbres téléchargé : {os.path.basename(chemin)}"
+            return f"catalogue d'objets célèbres déjà présent : {os.path.basename(chemin)}"
+
+        self._lancer_telechargement(
+            "celebres", dossier,
+            lambda d, prog: cat_mod.telecharger_catalogue_celebres(d, prog),
+            "du catalogue d'objets célèbres (≈ quelques Mo)", fin)
 
     def _lire_indices_image(self):
         """Jalon 56 : lit AD/Dec/champ depuis l'image COURANTE (dernière brute
@@ -5624,7 +5867,8 @@ class App:
             return
         path = self._enregistrer_sous(
             defaultextension=".fits",
-            filetypes=[("FITS", "*.fits"), ("TIFF 16 bits", "*.tif"), ("PNG 16 bits", "*.png")])
+            filetypes=[("FITS", "*.fits"), ("TIFF 16 bits", "*.tif"), ("PNG 16 bits", "*.png")],
+            initialfile=self._nom_cible_pour_sauvegarde())
         if path:
             self.save_request = path  # la sauvegarde est faite par le thread d'acquisition
 
@@ -5737,7 +5981,8 @@ class App:
         path = self._enregistrer_sous(
             defaultextension=".fits",
             filetypes=[("FITS", "*.fits"), ("TIFF 16 bits", "*.tif"),
-                       ("PNG 16 bits", "*.png")])
+                       ("PNG 16 bits", "*.png")],
+            initialfile=self._nom_cible_pour_sauvegarde())
         if not path:
             return
         self.asseen_titre = "Enregistrer tel que vu"
@@ -5768,7 +6013,8 @@ class App:
         path = self._enregistrer_sous(
             defaultextension=".fits",
             filetypes=[("FITS", "*.fits"), ("TIFF 16 bits", "*.tif"),
-                       ("PNG 16 bits", "*.png")])
+                       ("PNG 16 bits", "*.png")],
+            initialfile=self._nom_cible_pour_sauvegarde())
         if not path:
             return
         self.asseen_titre = titre
@@ -6466,7 +6712,8 @@ class App:
             return
         path = self._enregistrer_sous(
             defaultextension=".fits",
-            filetypes=[("FITS", "*.fits"), ("TIFF 16 bits", "*.tif"), ("PNG 16 bits", "*.png")])
+            filetypes=[("FITS", "*.fits"), ("TIFF 16 bits", "*.tif"), ("PNG 16 bits", "*.png")],
+            initialfile=self._nom_cible_pour_sauvegarde())
         if path:
             try:
                 # v2.27.1 : même garantie d'échelle que la sauvegarde de
@@ -7272,10 +7519,138 @@ class App:
         txt = self.suivi_astro.texte_resume()
         if txt and txt != self.astro_info:
             self.astro_info = txt
-        if self.suivi_astro.resolu:
+        # Détecter la transition "non résolu → résolu" pour réinitialiser la proposition
+        precedent = getattr(self, "_astro_was_resolved", False)
+        maintenant = self.suivi_astro.resolu
+        if maintenant and not precedent:
+            # Nouvelle résolution : on réinitialise le flag pour permettre une nouvelle popup
+            self._astro_name_proposed = False
+        self._astro_was_resolved = maintenant
+        
+        if maintenant:
             self.astro_couleur = "#1d7f1d"
+            # Gestion du nom de cible à chaque résolution (pas seulement la première)
+            if not self._astro_name_proposed:
+                # Objets célèbres DÉDUPLIQUÉS trouvés par l'astrométrie
+                # (SANS la priorité manuel ni le fallback FITS)
+                objets = self._objets_celestes_resolus()
+                current = self.var_nom_cible_manual.get().strip()
+                auto_nom = (self._sanitize_nom(objets[0].designation)
+                            if objets else None)
+                if self.var_debug.get():
+                    journal.note("DEBUG", f"auto_nom(astro)={auto_nom!r} "
+                                 f"n_objets={len(objets) if objets else 0} "
+                                 f"current={current!r} proposed={self._astro_name_proposed}")
+                if auto_nom:
+                    if not current:
+                        # Champ vide → on adopte le meilleur nom de l'astrométrie
+                        if self.var_debug.get():
+                            journal.note("DEBUG", "Champ vide → adoption auto_nom")
+                        self.var_nom_cible_manual.set(auto_nom)
+                    elif current != auto_nom:
+                        # Nom différent → popup avec radio-boutons : tous les
+                        # objets trouvés + « garder l'actuel »
+                        if self.var_debug.get():
+                            journal.note("DEBUG", "Nom différent → popup radio-boutons")
+                        try:
+                            choix = self._demander_nom_cible(objets, current)
+                            if choix:
+                                self.var_nom_cible_manual.set(choix)
+                                if self.var_debug.get():
+                                    journal.note("DEBUG", f"Utilisateur a choisi « {choix} »")
+                            else:
+                                if self.var_debug.get():
+                                    journal.note("DEBUG", "Utilisateur a refusé le remplacement")
+                        except Exception as e:
+                            if self.var_debug.get():
+                                journal.note("DEBUG", f"Exception popup: {e}")
+                self._astro_name_proposed = True
+
+    def _demander_nom_cible(self, objets, current: str) -> str | None:
+        """Dialogue « Nom de cible détecté » : radio-boutons listant les objets
+        célèbres trouvés par l'astrométrie (meilleur présélectionné) + l'option
+        « garder l'actuel » quand le champ est déjà rempli. Retourne le nom
+        choisi, l'actuel si gardé, ou None (annulé)."""
+        import tkinter as tk
+
+        def libelle(o) -> str:
+            nom = self._sanitize_nom(o.designation)
+            bouts = [nom, o.type_obj]
+            if o.mag_v is not None:
+                bouts.append(f"mag {o.mag_v:.1f}".replace(".", ","))
+            if o.size_arcmin:
+                bouts.append(f"{o.size_arcmin:.0f}′")
+            return " — ".join(bouts)
+
+        noms = [libelle(o) for o in objets[:6]]
+        # Valeur par défaut : le meilleur objet, sauf si l'utilisateur garde l'actuel
+        garder = bool(current)
+        choix_initial = libelle(objets[0]) if not garder else current
+        var = tk.StringVar(value=choix_initial)
+
+        dlg = tk.Toplevel(self.root)
+        dlg.title("Nom de cible détecté")
+        dlg.transient(self.root)
+        dlg.grab_set()
+        dlg.resizable(False, False)
+        dlg.protocol("WM_DELETE_WINDOW", dlg.destroy)
+
+        tk.Label(dlg, text="L'astrométrie a résolu le champ. Choisissez le nom "
+                           "de la cible :", justify="left").pack(
+            anchor="w", padx=12, pady=(12, 6))
+
+        cadre = tk.Frame(dlg)
+        cadre.pack(fill="both", expand=True, padx=12)
+        for nom_lib in noms:
+            tk.Radiobutton(cadre, text=nom_lib, value=nom_lib,
+                           variable=var, justify="left").pack(anchor="w")
+        if garder:
+            tk.Radiobutton(cadre, text=f"Garder « {current} »",
+                           value=current, variable=var,
+                           justify="left").pack(anchor="w")
+
+        resultat = {"nom": None}
+
+        def valider():
+            resultat["nom"] = var.get()
+            dlg.destroy()
+
+        boutons = tk.Frame(dlg)
+        boutons.pack(fill="x", padx=12, pady=(6, 12))
+        tk.Button(boutons, text="OK", width=8, command=valider).pack(side="right")
+        tk.Button(boutons, text="Annuler", width=8,
+                  command=dlg.destroy).pack(side="right", padx=(0, 6))
+
+        dlg.wait_window()
+        nom = resultat["nom"]
+        # « Garder l'actuel » choisi → retourner l'actuel (pas de changement)
+        if garder and nom == current:
+            return current
+        return nom
 
     # -------------------------------- jalon 56 (étape 4) : photométrie
+    def _mettre_a_jour_nom_depuis_fits(self):
+        """Si le champ « Nom cible » est vide, tente de le remplir depuis
+        l'en-tête FITS de la dernière brute (camera.last_file).
+        Appelée seulement quand camera.last_file change (nouvelle brute)."""
+        if self.var_nom_cible_manual.get().strip():
+            return  # l'utilisateur a déjà saisi un nom
+        chemin = getattr(self.camera, "last_file", "") or ""
+        if not chemin:
+            return
+        try:
+            nom = astro_mod.nom_objet_entete_fits(chemin)
+            if self.var_debug.get():
+                journal.note("DEBUG", f"FITS nom_objet_entete_fits={nom!r} chemin={chemin!r}")
+            if nom:
+                self.var_nom_cible_manual.set(self._sanitize_nom(nom))
+                if self.var_debug.get():
+                    journal.note("DEBUG", f"Nom mis à jour depuis FITS -> {self.var_nom_cible_manual.get()!r}")
+        except Exception as e:
+            if self.var_debug.get():
+                journal.note("DEBUG", f"Exception lecture FITS: {e}")
+            pass
+
     def _photo_tour(self, stacker):
         """Mesure le zéro-point PAR BANDE quand l'astrométrie est RÉSOLUE (le
         WCS est indispensable : c'est lui qui relie les étoiles de l'image au
@@ -9021,6 +9396,12 @@ class App:
         guet = getattr(self, "guet", None)
         if guet is not None:
             guet.battement()
+        # Mise à jour automatique du nom de cible depuis l'en-tête FITS
+        # Seulement si camera.last_file a changé (nouvelle brute reçue)
+        chemin = getattr(self.camera, "last_file", "") or ""
+        if chemin != self._dernier_last_file:
+            self._dernier_last_file = chemin
+            self._mettre_a_jour_nom_depuis_fits()
         # v2.38.11 : résultats des MESURES DE DISQUE différées (fil démon borné ;
         # le fil ne touche AUCUN widget — il ne pose qu'un dictionnaire ici).
         while getattr(self, "_mesures", None) is not None:
@@ -9041,7 +9422,7 @@ class App:
             # Jalon 77 : les transferts des spectres et de la base SPCC passent
             # par la MÊME file ; leur nature est le DERNIER élément (les
             # messages de l'astrométrie, historiques, n'en ont pas).
-            quoi = msg[-1] if len(msg) >= 3 and msg[-1] in ("spectres", "spcc") \
+            quoi = msg[-1] if len(msg) >= 3 and msg[-1] in ("spectres", "spcc", "celebres") \
                 else "astro"
             if genre == "progres":
                 _, nom, frac = msg[0], msg[1], msg[2]
@@ -9061,6 +9442,9 @@ class App:
                 self._rafraichir_rendu = True
                 self._maj_cat_vue()
                 if quoi == "spectres":
+                    self.lbl_cat_etat.config(text=msg[1], foreground="#1d7f1d")
+                    continue
+                if quoi == "celebres":
                     self.lbl_cat_etat.config(text=msg[1], foreground="#1d7f1d")
                     continue
                 self._maj_astro_vue()
