@@ -9,242 +9,84 @@ dans le changelog du source et l'historique git.)
 
 ---
 
-## Session du 03/10/2026 -- jalon 96 (v2.53.0) -- "Nom de cible + Annotation temps-reel"
+## Session du 05/10/2026 -- jalon 96 bis (v2.55.1) -- « Annotations lisibles »
 
-### PLAN CONSOLIDE REVISE (intègre toutes les précisions d'Alain)
+### Contexte
+Retour d'Alain sur la capture M31 (04/10 au soir) : textes ILLISIBLES
+(plusieurs désignations superposées au même endroit), couleur cyan au lieu
+du jaune demandé, entourage en simple petit cercle fixe. Plan proposé puis
+VALIDÉ par Alain (P1-P4 + option A pour l'orientation des ellipses).
 
-**Objectif** : Jalon unique v2.53.0 combinant :
-1. Catalogue local d'objets célèbres étendu (Messier + NGC + IC + Sh2 + Barnard + LDN ≈ 20 k entrées, ~1 Mo CSV -> ~3-4 Mo HEALpix 8)  **✅ FAIT**
-2. Lecture OBJECT / OBJNAME / TARGNAME / TARGET dans le FITS  **✅ FAIT**
-3. **Champ saisissable** nom de cible dans le panneau d'astrométrie (affiche l'auto-détecté, modifiable, prioritaire pour sauvegarde) **✅ FAIT** (aussi affiché dans le panneau Empilement)
-4. Nom de cible par défaut pour les 4 boîtes "Enregistrer" (priorité : manuel > match céleste > FITS header > rien) **✅ FAIT**
-5. Annotation temps-réel sur l'image **AFFICHÉE** (overlay visuel) + option sauvegarde PNG annoté à côté du FITS
-6. Deux cases à cocher indépendantes : [✓] Objets célèbres  [✓] Étoiles brillantes
+### Livré (v2.55.1, bancs TOUT AU VERT)
+1. **Jaune partout (RGB)** : le buffer d'affichage est RGB, les couleurs
+   étaient en BGR → le « jaune » s'affichait CYAN (piège des canaux). TOUT
+   est jaune RGB : entourages, textes, lignes de rappel, objets ET étoiles.
+2. **UNE étiquette par objet** : fonction partagée
+   `catalogues.celebres.deduplique_celebres()` (+ `score_designation`),
+   appliquée au chemin d'annotation (`_donnees_annotation`) ET à
+   `_objets_celestes_resolus()` (code dupliqué d'app.py supprimé). Le
+   catalogue brut renvoie M31 + NGC 224 + « 224 » + « Great Nebula in » aux
+   mêmes coordonnées (vérifié sur données réelles : 5 entrées → 2 objets).
+3. **Anti-chevauchement** : `_position_etiquette` empile VERTICALEMENT sous
+   la collision (fin du zigzag horizontal qui saturait à 8 essais).
+4. **Entourage cercle/ellipse** : taille RÉELLE via `size_arcmin` × WCS
+   (plancher 6 px, plafond 50 % de la plus grande dimension) ; forme +
+   orientation MESURÉES dans l'image par moments d'inertie (`_mesure_forme`,
+   option A validée — le catalogue n'a pas d'angle de position ; option B,
+   l'ajouter au .dat + régénérer Zenodo, ÉCARTÉE) ; rond (ratio ≥ 0,92) /
+   trop faible / trop petit → cercle de repli ; taille inconnue → petit
+   cercle 4 px. Étoiles : petit cercle jaune, étiquette « mag 3,4 »
+   (le « ★ » sortait « ? » : police Hershey sans ce glyphe).
+5. **Bancs** : `_test_annotations_overlay_jalon96.py` enrichi ([6] dédup,
+   [7] forme mesurée : angle 30°/ratio 0,40 retrouvés, rond → None,
+   [8] jaune RGB + plafond/demi-axe, [9] empilement vertical sans
+   chevauchement) ; non-régression save + dédup réelle M31/M32 rejouées
+   vertes ; coût 27 ms pour 10 objets à l'aperçu 1600×904.
 
----
+### Suite — retours d'Alain sur sa capture M31 (v2.55.2, TOUT AU VERT)
+1. **« (?) » après les noms** : table inverse de type reconstruite en
+   français explicite (`TYPE_CODE_VERS_NOM`) — l'ancien dict inversé
+   faisait gagner « nebula », inconnu de `TYPE_ICON` → « ? » partout.
+2. **« 206 (?) »** : c'est **NGC 206** (nuage d'étoiles de M31, NGC 2000) ;
+   le générateur d'origine du .dat stockait les désignations NGC sans
+   préfixe et les beaux noms en alias seuls. Corrigé À LA LECTURE
+   (`_designations_lisibles`, répare le .dat installé sans régénération) :
+   « 221 »+« M  32 » → « M 32 », « 206 » → « NGC 206 », « M  31 » → « M 31 ».
+3. **Ellipse de M31 plus fine** : le crop de mesure couvre maintenant
+   l'étendue de l'objet (réduction INTER_AREA, poids clippés au p99), et
+   un prior de finesse par type (`TYPE_RATIO_MAX`) plafonne le ratio des
+   objets DÉBORDANTS (galaxie 0,45, nébuleuse diffuse 0,55…).
+   **NB** : le .dat d'origine classe M31 en « nébuleuse diffuse » (types
+   NGC 2000 mal mappés) — l'icône « (Nb) » reste imprécise ; correctif
+   structurel = régénérer le catalogue + Zenodo, à faire séparément.
+4. Bancs [10]/[11] ajoutés (types/désignations, mesure à l'échelle) — verts.
 
-### ÉTAPES D'IMPLÉMENTATION (ordre suggéré)
-
-#### 1. Catalogue célèbres (data + téléchargeur + HEALpix) -- BASE INDISPENSABLE
-| Fichier | Rôle |
-|---------|------|
-| `avastack/catalogues/celebres.py` | Parsing VizieR -> écriture .dat HEALpix 8 (même format que siril_cat_healpix8_astro.dat) |
-| `avastack/catalogues/telechargeur.py` | `RECORD_CELEBRES` (Zenodo) + `telecharger_celebres()` |
-| `avastack/catalogues/__init__.py` | Export `cherche_celebres(ra, dec, rayon_deg)` -> `list[ObjetCelebre]` |
-| UI | Bouton "⬇ Célèbres" dans le panneau d'astrométrie (à côté de Gaia/Spectres) |
-
-**Structure `ObjetCelebre` (dataclass) :**
-```
-designation: str          # "M31", "NGC7000", "IC1396", "Sh2-101", "Barnard33", "LDN1622"
-aliases: list[str]        # ["Andromeda Galaxy", "M31", "NGC224"]
-type_obj: str             # "galaxie", "nebuleuse_diffuse", "nebuleuse_planetaire", 
-                          # "amas_ouvert", "amas_globulaire", "nebuleuse_obscure", "region_HII"
-mag_v: float | None       # magnitude visuelle (pour tri)
-size_arcmin: float        # taille angulaire majeure (pour échelle d'affichage)
-ra_deg, dec_deg: float    # centre
-healpix8: int             # pixel HEALpix NEST niveau 8
-```
-
-#### 2. Lecture FITS header -- FONCTION UTILITAIRE
-| Fichier | Ajout |
-|---------|-------|
-| `avastack/processing/astrometrie.py` | `def nom_objet_entete_fits(chemin: Path) -> str | None` |
-| | Lit OBJECT -> OBJNAME -> TARGNAME -> TARGET, retourne premier non-vide ou None |
-
-#### 3. Champ nom de cible dans panneau astrométrie -- SAISIE MANUELLE PRIORITAIRE
-| Emplacement | Modification |
-|-------------|--------------|
-| `avastack/ui/app.py` | Nouveau champ `ttk.Entry` + `StringVar var_nom_cible_manual` dans panneau astrométrie |
-| | Affichage par défaut : auto-détecté (match céleste si résolu, sinon FITS header) -- **jamais "cible_inconnue"**, peut être vide |
-| | L'utilisateur peut **écraser** -> cette valeur manuelle a priorité absolue pour les 4 boîtes "Enregistrer" |
-| | Pas de clé config pour ce champ (pas de persistance forcée), valeur courante uniquement |
-| 4 appels `filedialog.asksaveasfilename` (lignes ~5621, 5737, 5768, 6467) | `initialfile=self._nom_cible_pour_sauvegarde()` |
-
-**Logique `_nom_cible_pour_sauvegarde()` (priorité stricte) :**
-```
-def _nom_cible_pour_sauvegarde(self) -> str | None:
-    # 1. Manuel (champ saisi par l'utilisateur)
-    if self.var_nom_cible_manual.get().strip():
-        return sanitize_filename(self.var_nom_cible_manual.get().strip())
-    # 2. Match céleste (WCS résolu + catalogue célèbres)
-    if self.suivi_astro and self.suivi_astro.resolu:
-        objets = cherche_celebres(self.suivi_astro.ra, self.suivi_astro.dec, rayon_deg=0.5)
-        if objets:
-            return sanitize_filename(objets[0].designation)
-    # 3. FITS header (dernière brute)
-    chemin = getattr(self.camera, "last_file", "") or ""
-    if chemin:
-        nom = nom_objet_entete_fits(chemin)
-        if nom:
-            return sanitize_filename(nom)
-    # 4. Rien
-    return None
-```
-#### 4. Annotation temps-réel (overlay sur image affichée) -- VISUEL TEMPS-RÉEL
-**Nouvelles cases à cocher dans panneau affichage / astrométrie (deux `BooleanVar` persistées) :**
-- `config.annoter_objets: bool = False` -> `[✓] Annoter objets célèbres` (M31, NGC7000, Sh2-101, etc.)
-- `config.annoter_etoiles: bool = False` -> `[✓] Annoter étoiles brillantes` (catalogue Gaia déjà chargé, mag < seuil)
-- `config.seuil_mag_etoiles: float = 8.0` -> seuil magnitude pour étoiles (configurable)
-- `config.annoter_sauvegarde: bool = True` -> générer PNG annoté à côté du FITS si case(s) cochée(s)
-
-**Pipeline d'affichage (existant `_refresh_image` / `_update_display`) :**
-```
-brute -> traitement (stretch, NR, etc.) -> buffer_affichage (uint16 RGB)
-                      ↓
-            si (annoter_objets OU annoter_etoiles) ET WCS résolu :
-                overlay_annotations(buffer_affichage, wcs, liste_objets, liste_etoiles, config_couleurs)
-                      ↓
-            imshow / affichage Tk
-```
-
-**Nouveau module `avastack/processing/annotations.py` :**
-- `overlay_annotations(img_disp, wcs, objets, etoiles, config_couleurs) -> None` (modifie img_disp in-place)
-- `objets` = liste `ObjetCelebre` (via `cherche_celebres` autour du centre image)
-- `etoiles` = extrait du catalogue Gaia chargé (mag < seuil_mag_etoiles)
-- Conversion (ra, dec) -> (x, y) pixel via `wcs.world_to_pixel`
-- **Placement intelligent étiquettes** : éviter bords, chevauchements, quinconce
-- **Objets** : designation + icône 1 lettre (Gx, Nb, Oc, Gc, Dk, H2) -- couleur jaune défaut
-- **Étoiles** : nom HIP/HD/BD + magnitude -- couleur cyan défaut
-- Police : `cv2.FONT_HERSHEY_SIMPLEX`, échelle proportionnelle à résolution affichage
-- **Thread-safety** : overlay dans thread UI (après cv2.cvtColor vers RGB), coût visé < 2 ms/image
-
-#### 5. Sauvegarde PNG annoté -- FICHIER COMPAGNON
-- Dans `_save()` / `_save_tel_que_vu()` / `_save_proc()` : **après** écriture FITS linéaire
-- Si `config.annoter_sauvegarde` ET (au moins une case cochée) :
-  - Copie du buffer d'affichage courant -> réutilise `overlay_annotations` sur la copie
-  - Sauvegarde PNG `<nom>_annote.png` à côté du FITS
-- **FITS sacro-saints** : annotations **JAMAIS** écrites dans les FITS (linéarité photométrique préservée)
-
-#### 6. Configuration persistée (`avastack/config.py`)
-| Clé | Type | Défaut | Description |
-|-----|------|--------|-------------|
-| `nom_cible_auto` | bool | True | Activer proposition auto dans boîtes enregistrer |
-| `annoter_objets` | bool | False | Overlay objets célèbres sur affichage |
-| `annoter_etoiles` | bool | False | Overlay étoiles brillantes sur affichage |
-| `seuil_mag_etoiles` | float | 8.0 | Magnitude limite étoiles annotées |
-| `annoter_sauvegarde` | bool | True | Générer PNG annoté si case(s) cochée(s) |
-
-#### 7. Tests (6 nouveaux bancs + existant)
-| Banc | Couverture |
-|------|------------|
-| `_test_celebres_parsing.py` | CSV VizieR -> écriture .dat -> lecture binaire -> cohérence HEALpix |
-| `_test_celebres_recherche.py` | Cône vide/plein, hors champ, match multiple, tri distance/éclat |
-| `_test_nom_cible_auto.py` | 4 cas matrice (manuel, FITS+astro, FITS seul, astro seul, rien) + sanitize |
-| `_test_annotations_overlay.py` | Overlay n'écrase pas buffer brut, positions correctes via WCS connu, désactivation = pas d'overlay |
-| `_test_annotations_save.py` | FITS linéaire inchangé, PNG annoté généré seulement si case(s) cochée(s) |
-| `_test_dialogues_jalon84.py` (existant) | Vérifier `initialfile` non vide quand suggestion dispo |
-
----
-
-### ÉTAT ACTUEL (04/10/2026 — jalon 96 TERMINÉ, v2.55.0)
-
-**JALON 96 (nom de cible + annotation temps-réel) — TOUT LIVRÉ :**
-
-✅ **Étapes 1-4** (catalogue célèbres embarqué, lecture FITS, champ « Nom cible »,
-   popup radio-boutons, déduplication céleste) : livrées en v2.54.1 — cf.
-   changelog d'`avastack/__init__.py`.
-✅ **Étape 5 (annotation temps-réel)** : deux cases INDÉPENDANTES dans le panneau
-   Astrométrie (« Annoter objets célèbres », « Étoiles brillantes » + seuil mag
-   défaut 8,0) + case « PNG annoté à côté du FITS » ; clés `annoter_objets` /
-   `annoter_etoiles` / `annoter_sauvegarde` / `seuil_mag_etoiles` persistées ;
-   overlay dessiné sur une COPIE du buffer dans `_render` (UNIQUE point de
-   passage : nouvelle image, réglage, zoom) — `_last_disp` reste PROPRE, brutes
-   et FITS JAMAIS annotés (linéarité photométrique préservée) ; listes de ciel
-   en CACHE par (centre, champ, seuil) — le catalogue Gaia (≈ 1 Go) n'est JAMAIS
-   relu à chaque rendu ni sous le zoom ; `WcsEchelle` : l'aperçu est une
-   réduction UNIFORME de la grille recadrée (facteur `_echelle_apercu` posé par
-   le worker), multiplier les coordonnées suffit — aucun re-solve.
-✅ **CORRECTION** : `processing/annotations.py` appelait `wcs.world_to_pixel(...)`
-   — méthode qui N'EXISTE PAS (le WCS du projet expose `vers_pixels(ra, dec)`)
-   : chaque étiquette tombait sur une exception et RIEN ne se dessinait.
-✅ **Étape 6 (PNG compagnon)** : `<nom>_annote.png` écrit à côté du FITS par
-   `_save`, `_save_asseen` et `_save_proc` — jamais d'exception propagée (un
-   PNG compagnon ne doit pas faire échouer la sauvegarde du FITS).
-✅ **PERFORMANCE (mesurée au banc)** : 53,8 → 8,3 ms pour 10 étiquettes à
-   l'aperçu 1600×904 — le fond semi-transparent de TOUTES les étiquettes est
-   posé en UNE passe (une copie + addWeighted) au lieu d'une par étiquette.
-✅ **Bancs NEUF, TOUT AU VERT** : `_test_annotations_overlay_jalon96.py` (15
-   vérifs), `_test_annotations_save_jalon96.py` (12 vérifs).
-✅ **Bancs rejoués TOUS VERTS** : jalon 56 (branchement astrométrie), jalon 56
-   photométrie, jalon 84 (dialogues), jalon 87 + 47 (interface robuste /
-   visibilité), jalon 74 (démarrage non bloquant), jalon 96 (déduplication).
-✅ **TEST RÉEL D'ALAIN (04/10/2026) : « ça fonctionne »** — les étiquettes
-   suivent l'image, le PNG compagnon est écrit à côté du FITS. **MAIS** le
-   rendu GRAPHIQUE ne lui plaît pas (« la façon dont ça a été fait
-   graphiquement ne me plait pas ») — à instruire en SESSION NEUVE, cf.
-   prochaine action.
-✅ **Version** : **2.55.0**, changelog en tête d'`avastack/__init__.py`
-
----
-
-### POINTS DE VIGILANCE (rappel CLAUDE.md)
-- **Zéro invention de nom** : si ni FITS ni catalogue ne donnent de nom -> chaîne vide, **jamais** "cible_inconnue"
-- **Pas de réseau par défaut** : téléchargement catalogue célèbres uniquement via bouton explicite "⬇ Célèbres"
-- **FITS sacro-saints** : annotations jamais écrites dans les FITS (linéarité photométrique préservée)
-- **Performances** : overlay < 2 ms/image visé
-- **Configuration persistée** : toutes les cases/ seuils dans config.json
-- **Champ manuel prioritaire** : ce que l'utilisateur tape gagne toujours sur l'auto
-
----
+### Suite 2 — taille d'écran constante (v2.55.3, TOUT AU VERT)
+1. **Textes minuscules à pleine résolution** : police fixe ~11 px DANS le
+   buffer (6000 px) → ~2 px à l'écran. Nouveau paramètre `echelle_police`
+   à travers toute la chaîne d'annotation ; `_render` calcule
+   `echelle = 1/échelle-écran` (jamais < 1, plafonné 12) → TAILLE À
+   L'ÉCRAN constante, aperçu comme pleine résolution, à tout zoom.
+2. **PNG compagnon** : même échelle que le dernier rendu à l'écran.
+3. **« Ne revient pas » au décochage** : cause trouvée — le cache VeraLux
+   n'avait PAS la résolution dans sa clé : le vieux résultat pleine
+   résolution resservait pour l'aperçu (même clé de réglages), l'écran
+   gardait l'image à textes minuscules. La FORME de la source entre dans
+   la clé (`_process_veralux`) → bascule = écran immédiat à la BONNE
+   résolution (image d'attente STF) pendant le recalcul.
+4. **Cache mono-slot de l'overlay** (`_annote_rendu`) : à pleine
+   résolution l'annotation recopie ~69 Mo par rendu ; le pan ne
+   re-dessine plus.
+5. Bancs [12] ajouté ; overlay, save, dedup réelle, VeraLux jalon 3 : verts.
 
 ### PROCHAINE ACTION
-Jalon 96 **LIVRÉ ET TESTÉ EN RÉEL** (04/10/2026, v2.55.0) : « ça fonctionne ».
-**SESSION NEUVE À OUVRIR** : le rendu GRAPHIQUE des annotations ne plaît PAS à
-Alain — à instruire à la reprise en demandant CE QUI ne plaît pas (couleurs,
-taille des étiquettes, fond semi-transparent, densité, libellés) **AVANT
-toute hypothèse**, puis redessiner. Rien d'autre en attente de l'agent.
+Alain teste le nouveau rendu à l'écran (jaune, une étiquette par objet,
+NGC 206 préfixé, ellipse de M31 plus fine). Si l'icône « (Nb) » de M31
+gêne : régénérer le catalogue célèbres (types NGC 2000 corrects) et
+mettre à jour Zenodo — décision à prendre avec Alain. Rien d'autre.
 
 ---
 
-### ÉTAT COURANT (mise à jour 03/10/2026 - fin de session)
-
-**Catalogue célèbres : ÉTAPE 1 - TÉLÉCHARGEMENT CSV EN COURS**
-
-| Catalogue | Identifiant VizieR | Statut | Notes |
-|-----------|-------------------|--------|-------|
-| Messier   | **Pas de catalogue séparé** | ✅ **Dans NGC2000** | Table VII/118/names (index noms usuels M↔NGC/IC) |
-| NGC 2000  | VII/118 | ✅ **Fait** | NGC2000.csv local (séparateur ; vérifié) |
-| IC        | VII/260 | ❌ À télécharger |
-| Sh2       | J/ApJS/59 | ❌ À télécharger |
-| Barnard   | J/AJ/117/349 | ❌ À télécharger |
-| LDN       | J/ApJS/179 | ❌ À télécharger |
-
-**Scripts prêts** :
-- generate_catalogue.py : lit CSV locaux (;), construit HEALPix 8, écrit celebres_healpix8.dat + .bz2 dans vastack/catalogues/data/
-- 	elechargeur.py : charge déjà le .bz2 embarqué — **zéro modif code nécessaire**
-
-**Prochaine action** : Télécharger les 4 CSV restants (IC, Sh2, Barnard, LDN) depuis VizieR avec séparateur ;, les placer dans c:\Astro\AstroLiveStack\catalogues_csv\, puis lancer python generate_catalogue.py.
-
----## Session du 03/10/2026 - fin de session -- Catalogue célèbres GÉNÉRÉ ✅
-
-**Catalogue célèbres : ÉTAPE 1 - TERMINÉE**
-
-| Catalogue | Identifiant VizieR | Statut | Objets générés |
-|-----------|-------------------|--------|----------------|
-| Messier   | Dans NGC2000 (VII/118/names) | ✅ Cross-ref OK | 178 (via NGC2000) |
-| NGC 2000  | VII/118 | ✅ Fait | 13 226 |
-| IC        | Dans NGC2000 | ✅ Inclus dans NGC2000 | - |
-| Sh2       | J/ApJS/59 (VII/20) | ✅ Généré | 313 |
-| Barnard   | J/AJ/117/349 (VII/220A) | ✅ Généré | 359 |
-| LDN       | J/ApJS/179 (VII/7A) | ✅ Généré | 1 787 |
-| **TOTAL** | | **✅ 15 863 objets** | |
-
-**Fichiers générés :**
-- `avastack/catalogues/data/celebres_healpix8.dat` (6.67 Mo)
-- `avastack/catalogues/data/celebres_healpix8.dat.bz2` (167 Ko)
-
-**generate_catalogue.py** : adapté pour lire les CSV locaux existants (formats VizieR variés, séparateur `;`), gère le cross-reference Messier via Names.csv.
-
-**telechargeur.py** : déjà compatible .bz2 embarqué — **zéro modif nécessaire**.
-
----
-
-**ÉTAPE SUIVANTE** : Intégrer le catalogue dans l'application
-1. `avastack/catalogues/celebres.py` : lecture binaire HEALpix 8 + recherche cône
-2. `avastack/catalogues/__init__.py` : export `cherche_celebres(ra, dec, rayon_deg)`
-3. UI : bouton "⬇ Célèbres" dans panneau astrométrie (optionnel car déjà embarqué)
-
----
 
 ## Session du 02/10/2026 — jalon 95b — sections pliables du panneau gauche
 

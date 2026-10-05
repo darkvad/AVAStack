@@ -401,6 +401,7 @@ class App:
         # chaque rendu, et a fortiori sous le zoom. Le WCS, lui, est recalculé
         # à chaque rendu (une composition de matrice : négligeable).
         self._annote_cache = None         # (clé, objets, etoiles) du champ
+        self._annote_rendu = None         # cache mono-slot de l'overlay dessiné
         self.var_debug = tk.BooleanVar(value=False)  # case « Debug général »
         # Champ SEUL (sans coordonnées) : saisi par l'utilisateur qui connaît sa
         # focale mais pas ses coordonnées — sert de `fov` indicatif au balayage
@@ -2886,13 +2887,8 @@ class App:
         if ra is None or dec is None:
             return None
         try:
-            from avastack.catalogues import cherche_celebres
-            import math
-            import re as _re
-
-            def nom_propre(s: str) -> str:
-                # « M  31 » → « M31 » : espaces internes collapsés, blancs retirés
-                return self._sanitize_nom(s)
+            from avastack.catalogues import (cherche_celebres,
+                                             deduplique_celebres)
 
             objets = cherche_celebres(ra, dec, rayon_deg=0.5)
             if self.var_debug.get():
@@ -2904,44 +2900,10 @@ class App:
             if not objets:
                 return None
 
-            # Déduplication par position (~0,01° : même objet, catalogues différents)
-            groupes: dict = {}
-            for o in objets:
-                cle = (round(o.ra_deg * 100), round(o.dec_deg * 100))
-                groupes.setdefault(cle, []).append(o)
-
-            def score_nom(s: str) -> int:
-                # 0 = le meilleur : « M31 » (Messier), puis « NGC… »/« IC… » avec
-                # préfixe, puis tout nom exploitable ; un nombre nu (« 224 ») ou
-                # un nom tronqué (« Great Nebula in ») est le pire.
-                s2 = nom_propre(s)
-                if _re.fullmatch(r"M\s*\d+", s2):
-                    return 0
-                if _re.fullmatch(r"(NGC|IC)\s*\d+", s2):
-                    return 1
-                if _re.fullmatch(r"(Sh2-|Barnard\s*|LDN\s*)\d+", s2):
-                    return 2
-                if _re.search(r"\d", s2) and len(s2) >= 3 and not s2[-1].isspace():
-                    return 3
-                return 4
-
-            def meilleur_du_groupe(g: list):
-                def clef(o):
-                    dra = (o.ra_deg - ra + 180.0) % 360.0 - 180.0
-                    cosd = math.cos(math.radians(dec))
-                    dist2 = (dra * cosd) ** 2 + (o.dec_deg - dec) ** 2
-                    return (score_nom(o.designation), dist2, o.mag_v or 99.0)
-                return min(g, key=clef)
-
-            reps = [meilleur_du_groupe(g) for g in groupes.values()]
-
-            def clef_tri(o):
-                dra = (o.ra_deg - ra + 180.0) % 360.0 - 180.0
-                cosd = math.cos(math.radians(dec))
-                dist2 = (dra * cosd) ** 2 + (o.dec_deg - dec) ** 2
-                return (dist2, o.mag_v or 99.0)
-
-            reps.sort(key=clef_tri)
+            # Déduplication par position (~0,01°) PARTAGÉE avec l'annotation
+            # (`catalogues.celebres.deduplique_celebres`) : une seule source
+            # de vérité — le meilleur nom (Messier d'abord), tri distance/éclat.
+            reps = deduplique_celebres(objets, ra, dec)
             return reps
         except Exception as e:
             if self.var_debug.get():
@@ -3345,6 +3307,7 @@ class App:
         CONFIG["seuil_mag_etoiles"] = self._seuil_mag()
         sauver_config(CONFIG)
         self._annote_cache = None
+        self._annote_rendu = None
         self._refresh_preview()
 
     def _forme_pleine(self, disp=None):
@@ -3425,6 +3388,13 @@ class App:
             try:
                 objets = cat_mod.celebres.cherche_celebres(
                     ra, dec, rayon) or None
+                if objets:
+                    # DÉDUPLICATION PARTAGÉE : le catalogue brut renvoie M31 +
+                    # NGC 224 + « 224 » aux MÊMES coordonnées — les doublons
+                    # empilaient leurs textes au même endroit, illisibles
+                    # (constat Alain sur M31, 04/10/2026).
+                    objets = (cat_mod.celebres.deduplique_celebres(
+                        objets, ra, dec) or None)
             except Exception:
                 objets = None
         if etoiles_act:
@@ -3439,11 +3409,17 @@ class App:
         self._annote_cache = (cle, objets, etoiles)
         return objets, etoiles
 
-    def _annoter_image(self, disp):
+    def _annoter_image(self, disp, echelle_police=1.0):
         """Copie de l'image affichée AVEC l'annotation (objets + étoiles), ou
         l'image telle quelle si rien à dessiner. `_last_disp` reste SANS
         annotation : le PNG compagnon et le zoom repartent de la version
-        propre, jamais d'une image déjà annotée (double étiquette)."""
+        propre, jamais d'une image déjà annotée (double étiquette).
+        `echelle_police` (v2.55.3) : taille des étiquettes pour une TAILLE À
+        L'ÉCRAN constante (pleine résolution ≠ aperçu).
+        Cache MONO-SLOT : à pleine résolution l'overlay recopie ~69 Mo — le
+        glissement de vue (pan) re-rend en continu, le cache l'évite. La clé
+        retient le buffer (id + référence, donc pas d'id recyclé), l'échelle
+        et l'état des deux cases."""
         if disp is None:
             return disp
         try:
@@ -3453,6 +3429,11 @@ class App:
             return disp
         if not (objets_act or etoiles_act):
             return disp
+        cle_cache = (id(disp), round(float(echelle_police), 3),
+                     objets_act, etoiles_act)
+        c = getattr(self, "_annote_rendu", None)
+        if c is not None and c[0] == cle_cache:
+            return c[1]
         wcs = self._wcs_affichage(disp)
         if wcs is None:
             return disp
@@ -3462,9 +3443,14 @@ class App:
         img = np.ascontiguousarray(disp)
         if img.ndim == 2:
             img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-        return annoter_mod.generer_image_annotee(
+        img_ann = annoter_mod.generer_image_annotee(
             img, wcs, objets, etoiles, self._seuil_mag(),
-            annoter_objets=objets_act, annoter_etoiles=etoiles_act)
+            annoter_objets=objets_act, annoter_etoiles=etoiles_act,
+            echelle_police=echelle_police)
+        if img_ann is None:
+            return disp
+        self._annote_rendu = (cle_cache, img_ann, disp)
+        return img_ann
 
     def _sauver_png_annote(self, chemin):
         """PNG annoté COMPAGNON à côté du FITS (jalon 96, étape 6) : copie du
@@ -3494,9 +3480,16 @@ class App:
         img = np.ascontiguousarray(disp)
         if img.ndim == 2:
             img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+        # Même échelle que le DERNIER rendu à l'écran (le PNG doit ressembler
+        # à l'écran) ; jamais rendu → repli sur la taille de l'image.
+        echelle = getattr(self, "_echelle_police_annot", None)
+        if not echelle or echelle < 1.0:
+            ih, iw = img.shape[:2]
+            echelle = min(12.0, max(1.0, max(ih, iw) / 1600.0))
         img_ann = annoter_mod.generer_image_annotee(
             img, wcs, objets, etoiles, self._seuil_mag(),
-            annoter_objets=objets_act, annoter_etoiles=etoiles_act)
+            annoter_objets=objets_act, annoter_etoiles=etoiles_act,
+            echelle_police=echelle)
         if img_ann is None:
             return None, ""
         sortie = os.path.splitext(chemin)[0] + "_annote.png"
@@ -10182,19 +10175,29 @@ class App:
 
     def _render(self):
         """Dessine self._last_disp en tenant compte du zoom et du pan."""
-        disp = self._last_disp
-        if disp is None:
+        disp_src = self._last_disp
+        if disp_src is None:
             return
-        # Jalon 96 (étape 5) : annotation temps-réel — overlay dessiné sur une
-        # COPIE du buffer, UNIQUE point de passage (tous les rendus : nouvelle
-        # image, réglage, zoom). `_last_disp` reste PROPRE : le PNG compagnon
-        # repart de la version sans annotation.
-        disp = self._annoter_image(disp)
-        ih, iw = disp.shape[:2]
+        # v2.55.3 : l'échelle d'affichage est calculée AVANT l'annotation —
+        # les étiquettes gardent une TAILLE À L'ÉCRAN constante quel que soit
+        # le buffer (aperçu 1600 px OU rendu pleine résolution) : à pleine
+        # résolution elles étaient dessinées à ~11 px DANS le buffer (6000 px)
+        # puis réduites à ~2 px à l'écran, illisibles (constat d'Alain).
+        # Jamais < 1 (le zoom avant ne rapetisse pas les textes) ; plafonnée
+        # à 12 pour un canvas minuscule.
+        ih, iw = disp_src.shape[:2]
         cw = self.cv_img.winfo_width() or self.W_IMG
         ch = self.cv_img.winfo_height() or self.H_IMG
         fit = min(cw / iw, ch / ih)                    # échelle « ajuster »
         scale = fit * self.zoom
+        echelle_police = min(12.0, max(1.0, 1.0 / max(scale, 1e-9)))
+        self._echelle_police_annot = echelle_police
+        # Jalon 96 (étape 5) : annotation temps-réel — overlay dessiné sur une
+        # COPIE du buffer, UNIQUE point de passage (tous les rendus : nouvelle
+        # image, réglage, zoom). `_last_disp` reste PROPRE : le PNG compagnon
+        # repart de la version sans annotation.
+        disp = self._annoter_image(disp_src, echelle_police)
+        ih, iw = disp.shape[:2]
         if self.zoom <= 1.0001:                        # vue ajustée, pas de recadrage
             crop, interp = disp, (cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR)
             nw, nh = max(1, int(iw * scale)), max(1, int(ih * scale))

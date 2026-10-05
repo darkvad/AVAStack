@@ -17,9 +17,108 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.55.0"
+AVASTACK_VERSION = "2.55.3"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.55.3 : ÉTIQUETTES À TAILLE D'ÉCRAN CONSTANTE EN PLEINE RÉSOLUTION +
+#           RETOUR IMMÉDIAT DE L'APERÇU AU DÉCOCHAGE (retours d'Alain, 05/10)
+#   - TEXTES HYPER PETITS À PLEINE RÉSOLUTION : la police des étiquettes était
+#     fixe (≈ 11 px DANS le buffer) — sur un rendu pleine résolution (6000 px)
+#     réduit à l'écran par ~5, elles tombaient à ~2 px, illisibles. Nouveau
+#     paramètre `echelle_police` à TRAVERS la chaîne d'annotation
+#     (`generer_image_annotee` → `overlay_objets_celebres` /
+#     `overlay_etoiles_brillantes` → `_position_etiquette` /
+#     `_rayon_entourage` / `_dessine_entourage`) : textes, épaisseurs,
+#     décrochages, marges, fond d'étiquette et plancher des entourages
+#     suivent. `_render` calcule l'échelle d'affichage AVANT l'annotation :
+#     `echelle_police = 1/échelle-écran` (jamais < 1, plafonné à 12) → taille
+#     constante À L'ÉCRAN quel que soit le buffer ou le zoom.
+#   - PNG COMPAGNON : même échelle que le dernier rendu à l'écran (repli :
+#     taille de l'image / 1600) — le PNG reste ressemblant à l'écran.
+#   - « NE REVIENT PAS » AU DÉCOCHAGE : le cache du solveur VeraLux n'avait
+#     PAS la résolution dans sa clé (`_vl_params` = réglages seuls) — le
+#     résultat PLEINE RÉSOLUTION en cache resservait pour l'aperçu (même
+#     clé), l'écran gardait l'ancienne image et ses étiquettes minuscules
+#     (jusqu'à ~12 s de chaîne lourde, ou indéfiniment à l'arrêt). La FORME
+#     de la source entre maintenant dans la clé : après bascule, l'écran
+#     montre IMMÉDIATEMENT l'image d'attente à la BONNE résolution (STF) en
+#     attendant la chaîne complète.
+#   - CACHE MONO-SLOT de l'overlay (`_annote_rendu`) : à pleine résolution
+#     l'annotation recopie ~69 Mo à CHAQUE rendu (pan inclus) — clé =
+#     identité du buffer + échelle + état des cases ; le glissement de vue
+#     ne re-dessine plus.
+#   - Bancs : [12] ajouté au banc overlay (étiquette ~3× plus haute à
+#     échelle 3, plancher des entourages suit) — TOUT AU VERT ; save, dedup
+#     réelle et VeraLux (jalon 3) rejoués verts.
+# v2.55.2 : ÉTIQUETTES COMPRÉHENSIBLES — TYPES, DÉSIGNATIONS NGC, ELLIPSE
+#           DE M31 PLUS FINE (retours d'Alain sur sa capture M31 du 05/10)
+#   - « (?) » APRÈS LES NOMS : le lecteur du .dat inversait TYPE_MAP avec un
+#     dict {v: k} où le DERNIER synonyme gagnait (« nebula ») — inconnu de
+#     TYPE_ICON (noms français) → icône « ? » partout. Table inverse
+#     EXPLICITE `TYPE_CODE_VERS_NOM` en français (catalogues.celebres).
+#   - « 206 (?) » : c'est NGC 206 (nuage d'étoiles de M31, catalogue
+#     NGC 2000 / VizieR VII/118) — le générateur d'ORIGINE du .dat stockait
+#     les désignations NGC SANS préfixe et les beaux noms en alias SEULS
+#     (« 221 » + « M  32 »). Nouveau `_designations_lisibles()` à la
+#     LECTURE (répare le .dat DÉJÀ installé, sans régénération ni
+#     retéléchargement) : espaces compactés (« M  31 » → « M 31 »),
+#     promotion de l'alias préfixé (« 221 » → « M 32 »), préfixe « NGC »
+#     pour les nombres nus sans alias préfixé (« 206 » → « NGC 206 » ;
+#     no-op sur le format nouveau déjà préfixé).
+#   - ELLIPSE DE M31 TROP ÉPAISSE : la mesure ne voyait qu'un crop borné à
+#     300 px (le cœur rond de la galaxie) → ratio biaisé rond. Le crop de
+#     mesure couvre maintenant l'ÉTENDUE de l'objet (réduction INTER_AREA
+#     au-delà de 300 px — coût constant) et les poids sont CLIPPÉS au 99e
+#     percentile (une étoile brillante du champ ou un cœur saturé ne
+#     dominent plus les moments). Pour un objet DÉBORDANT de l'entourage
+#     (taille réelle > plafond 50 %), un prior de finesse par type
+#     (`TYPE_RATIO_MAX`) plafonne en plus le ratio mesuré (galaxie 0,45,
+#     nébuleuse diffuse/HII 0,55, obscure 0,70, amas ouvert 0,85).
+#   - NB : le .dat d'origine classe M31 en « nébuleuse diffuse » (types
+#     NGC 2000 mal mappés par le générateur local) — l'icône « (Nb) » peut
+#     donc rester imprécise pour les galaxies ; correctif structurel =
+#     régénérer le catalogue (telecharger_et_indexer + mise à jour Zenodo),
+#     à faire séparément.
+#   - Bancs : overlay enrichi ([10] types + désignations préfixées,
+#     [11] mesure à l'échelle : ratio 0,40 retrouvé sur un objet géant) —
+#     TOUT AU VERT ; non-régression save + dédup réelle (« M 31 »/« M 32 »
+#     maintenant, types français) vertes.
+# v2.55.1 : ANNOTATIONS LISEIBLES — JAUNE RGB, UNE ÉTIQUETTE PAR OBJET,
+#           ENTOURAGE CERCLE/ELLIPSE SELON LA FORME (retours d'Alain, 04/10)
+#   - CORRECTION DES CANAUX : le buffer d'affichage est RGB (app.py :
+#     cvtColor GRAY2RGB, PNG compagnon écrit tel quel) mais les couleurs
+#     étaient définies à la mode OpenCV BGR — le « jaune » s'affichait CYAN
+#     (et le « cyan » des étoiles s'affichait jaune). TOUT est maintenant
+#     jaune RGB : entourages, textes, lignes de rappel, objets célèbres ET
+#     étoiles brillantes (demande d'Alain).
+#   - CORRECTION DES TEXTES ILLISIBLES (M31) : le chemin d'annotation appelait
+#     `cherche_celebres` SANS déduplication — le catalogue brut renvoie M31 +
+#     NGC 224 + « 224 » + « Great Nebula in » aux MÊMES coordonnées (vérifié
+#     sur données réelles : 5 entrées pour 2 objets), tous dessinés au même
+#     endroit. Nouvelle fonction PARTAGÉE `catalogues.celebres.
+#     deduplique_celebres()` (+ `score_designation`), utilisée par
+#     l'annotation ET par `_objets_celestes_resolus()` (une seule source de
+#     vérité ; le code dupliqué d'app.py est supprimé).
+#   - ANTI-CHEVAUCHEMENT refait (`_position_etiquette`) : empilement
+#     VERTICAL sous la collision (M31/M32/M110 forment une pile lisible) au
+#     lieu du zigzag horizontal qui saturait au bout de 8 essais.
+#   - ENTOURAGE « SELON LA FORME » (demande d'Alain) : taille RÉELLE de
+#     l'objet (`size_arcmin` convertie en pixels via le WCS — projection de
+#     deux points, robuste à l'échelle et à la rotation, plafond 50 % de la
+#     plus grande dimension pour les cibles géantes type M31 à 190′) ;
+#     forme + orientation MESURÉES dans l'image par moments d'inertie du
+#     crop (option A validée par Alain — le catalogue n'a pas d'angle de
+#     position ; l'option B, l'ajouter au .dat + régénérer Zenodo, écartée) ;
+#     objet rond (ratio ≥ 0,92), trop faible ou trop petit → CERCLE de
+#     repli ; taille inconnue → petit cercle 4 px. Étoiles : petit cercle.
+#   - Étiquettes d'étoiles : « mag 3,4 » (virgule française) — le « ★ »
+#     sortait en « ? » : la police Hershey d'OpenCV ne le contient pas.
+#   - Bancs : `_test_annotations_overlay_jalon96.py` enrichi ([6] dédup,
+#     [7] forme mesurée : angle 30°/ratio 0,4 retrouvés, rond → None,
+#     [8] jaune RGB + plafond/demi-axe, [9] empilement vertical sans
+#     chevauchement) — TOUT AU VERT ; non-régression save + dédup réelle
+#     M31/M32 rejouées verts ; coût 27 ms pour 10 objets à l'aperçu
+#     1600×904 (invisible devant l'étirement ~0,4 s).
 # v2.55.0 : ANNOTATION TEMPS-RÉEL DE L'IMAGE AFFICHÉE (JALON 96, ÉTAPES 5-6)
 #   - Deux cases INDÉPENDANTES dans le panneau Astrométrie :
 #     « Annoter objets célèbres » (catalogue célèbres embarqué) et

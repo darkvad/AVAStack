@@ -19,7 +19,9 @@ Le module fournit :
 
 import csv
 import gzip
+import math
 import os
+import re
 import struct
 import urllib.request
 from dataclasses import dataclass
@@ -250,6 +252,40 @@ def _tous_les_objets(dossier: str, progression=None) -> List[ObjetCelebre]:
 # ──────────────────────────────────────────────────────────────────────────
 # Lecture du fichier binaire (recherche par cône)
 # ──────────────────────────────────────────────────────────────────────────
+# PIÈGE (retours d'Alain, 05/10/2026, « ? » après chaque nom) : le dict
+# inverse de TYPE_MAP {v: k} faisait gagner le DERNIER synonyme (« nebula »),
+# que TYPE_ICON (noms français) ne connaissait pas → icône « ? » partout.
+# Table inverse EXPLICITE, en noms français (les mêmes clés que TYPE_ICON).
+TYPE_CODE_VERS_NOM = {
+    0: "galaxie", 1: "nebuleuse_diffuse", 2: "nebuleuse_planetaire",
+    3: "amas_ouvert", 4: "amas_globulaire", 5: "nebuleuse_obscure",
+    6: "region_HII",
+}
+
+
+def _designations_lisibles(designation: str, aliases: List[str]):
+    """Noms LISIBLES pour l'affichage (retours d'Alain, 05/10/2026).
+    Le générateur d'origine du .dat stockait les désignations NGC 2000 SANS
+    préfixe (« 224 », « 206 ») et les beaux noms en alias SEULS (« M  32 »
+    pour « 221 ») :
+    - espaces internes compactés (« M  31 » → « M 31 ») ;
+    - désignation « nombre nu » : on garde de préférence un alias PRÉFIXÉ
+      (« 221 » + alias « M  32 » → « M 32 ») ;
+    - à défaut, préfixe « NGC » : le générateur d'origine ne stockait les
+      nombres nus QUE pour NGC 2000 (pas de CSV IC séparé). No-op sur le
+      format nouveau, qui préfixe déjà (« NGC224 »).
+    → (designation, aliases) nettoyés."""
+    d = " ".join(str(designation).split())
+    aliases = [a for a in (_nom_propre(a) for a in aliases) if a and a != d]
+    if re.fullmatch(r"\d+", d):
+        meilleur = min(aliases, key=score_designation, default=None)
+        if meilleur is not None and score_designation(meilleur) <= 2:
+            d = meilleur
+        else:
+            d = "NGC " + d
+    return d, aliases
+
+
 class CatalogueCelebres:
     def __init__(self, chemin: str):
         self.chemin = chemin
@@ -307,12 +343,21 @@ class CatalogueCelebres:
                     continue
 
                 mag = float(mag_v) if not np.isnan(mag_v) else 99.0
-                designation = designation.split(b"\x00")[0].decode("ascii", errors="ignore")
-                aliases = aliases.split(b"\x00")[0].decode("ascii", errors="ignore")
-                aliases_list = [a for a in aliases.split(";") if a]
-
-                type_inv = {v: k for k, v in TYPE_MAP.items()}
-                type_obj = type_inv.get(type_code, "nebuleuse_diffuse")
+                designation = (designation.split(b"\x00")[0]
+                               .decode("ascii", errors="ignore").strip())
+                aliases = (aliases.split(b"\x00")[0]
+                           .decode("ascii", errors="ignore"))
+                aliases_list = [" ".join(a.split())
+                                for a in aliases.split(";") if a.strip()]
+                # Le générateur d'ORIGINE du .dat (généré localement, cf.
+                # AVANCEMENT 03/10/2026) stockait les désignations NGC SANS
+                # préfixe (« 224 ») et les beaux noms en alias SEULS (« M  32 »
+                # pour « 221 ») — retours d'Alain 05/10/2026 : étiquette
+                # « 206 (?) » pour NGC 206, icône « ? » partout.
+                designation, aliases_list = _designations_lisibles(
+                    designation, aliases_list)
+                type_obj = TYPE_CODE_VERS_NOM.get(type_code,
+                                                  "nebuleuse_diffuse")
 
                 resultats.append(ObjetCelebre(
                     designation=designation,
@@ -391,3 +436,60 @@ def cherche_celebres(ra: float, dec: float, rayon_deg: float, dossier: str = Non
     d = dossier or dossier_catalogues()
     cat = _catalogue(d)
     return cat.chercher(ra, dec, rayon_deg)
+
+
+def _nom_propre(nom: str) -> str:
+    """Nom compacté pour le classement (« M  31 » → « M31 »)."""
+    return " ".join(str(nom).split()).strip(" .")
+
+
+def score_designation(nom: str) -> int:
+    """0 = le meilleur : « M31 » (Messier), puis « NGC… »/« IC… » avec
+    préfixe, puis Sh2/Barnard/LDN, puis tout nom exploitable ; un nombre nu
+    (« 224 ») ou un nom tronqué (« Great Nebula in ») est le pire.
+    Sert à choisir le représentant d'un groupe de doublons (M31 ≡ NGC 224) —
+    cf. banc `bancs/_test_dedup_celebre_jalon96.py` (données réelles : le
+    catalogue brut renvoie M31, NGC 224 ET « 224 » aux mêmes coordonnées)."""
+    s = _nom_propre(nom)
+    if re.fullmatch(r"M\s*\d+", s):
+        return 0
+    if re.fullmatch(r"(NGC|IC)\s*\d+", s):
+        return 1
+    if re.fullmatch(r"(Sh2-|Barnard\s*|LDN\s*)\d+", s):
+        return 2
+    if re.search(r"\d", s) and len(s) >= 3 and not s[-1].isspace():
+        return 3
+    return 4
+
+
+def deduplique_celebres(objets: List[ObjetCelebre],
+                        ra_centre: float = None,
+                        dec_centre: float = None) -> List[ObjetCelebre]:
+    """Une SEULE entrée par position (~0,01° : même objet vu par plusieurs
+    catalogues — « NGC 224 » et « M31 ») : un représentant par groupe, choisi
+    par `score_designation` (Messier d'abord), puis distance au centre fourni
+    puis éclat ; la liste finale est triée par distance puis éclat.
+    Utilisée par l'annotation temps-réel (UNE étiquette par objet — les
+    doublons empilaient leurs textes au même endroit, illisibles, constat
+    Alain sur M31) et par le nom de cible (jamais « 224 » si « M31 » existe)."""
+    if not objets:
+        return []
+    cosd = (math.cos(math.radians(dec_centre))
+            if dec_centre is not None else 0.0)
+
+    def dist2(o: ObjetCelebre) -> float:
+        if ra_centre is None or dec_centre is None:
+            return 0.0
+        dra = (o.ra_deg - ra_centre + 180.0) % 360.0 - 180.0
+        return (dra * cosd) ** 2 + (o.dec_deg - dec_centre) ** 2
+
+    groupes = {}
+    for o in objets:
+        cle = (round(o.ra_deg * 100), round(o.dec_deg * 100))
+        groupes.setdefault(cle, []).append(o)
+
+    reps = [min(g, key=lambda o: (score_designation(o.designation),
+                                  dist2(o), o.mag_v or 99.0))
+            for g in groupes.values()]
+    reps.sort(key=lambda o: (dist2(o), o.mag_v or 99.0))
+    return reps

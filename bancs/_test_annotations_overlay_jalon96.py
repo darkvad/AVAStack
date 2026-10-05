@@ -35,7 +35,8 @@ import numpy as np
 import cv2
 cv2.ocl.setUseOpenCL(False)          # crash OpenCV 5/OpenCL au teardown sinon
 
-from avastack.catalogues import WcsTan, ObjetCelebre
+from avastack.catalogues import (WcsTan, ObjetCelebre, deduplique_celebres,
+                                 score_designation)
 from avastack.processing import annotations as ann
 
 if hasattr(sys.stdout, "reconfigure"):   # sortie pipée ≠ console (cp1252)
@@ -85,6 +86,12 @@ apres = img
 verifie(bool(rects), f"liste des rectangles rendue ({len(rects)})")
 verifie(not np.array_equal(avant, apres), "l'image est annotée (pixels ajoutés)")
 tx, ty, tw, th = rects[0]
+verifie(0 <= tx and tx + tw <= W and 0 <= ty - th and ty + th <= H,
+        f"l'étiquette tient dans les bornes ({tx},{ty},{tw},{th})")
+vide = np.zeros((H, W, 3), np.uint8)
+rects_v = ann.overlay_objets_celebres(vide, WCS, [])
+verifie(rects_v == [] and not vide.any(),
+        "liste vide : rien dessiné, image au bit")
 
 print("[3] generer_image_annotee : l'original n'est JAMAIS modifié")
 source = img.copy()
@@ -133,13 +140,136 @@ verifie(t1 - t0 < 0.2,
         f"aperçu 1600×904, 10 objets : {(t1 - t0) * 1000:.1f} ms "
         "(cible < 2 ms par étiquette, étirement VeraLux ~0,4 s)")
 
+print("[6] déduplication PARTAGÉE : UNE étiquette par objet (jamais « 224 »)")
+doublons = [
+    ObjetCelebre(designation="224", aliases=[], type_obj="galaxie",
+                 mag_v=3.4, size_arcmin=190.0, ra_deg=RA0, dec_deg=DEC0,
+                 healpix8=0),
+    ObjetCelebre(designation="NGC 224", aliases=[], type_obj="galaxie",
+                 mag_v=3.4, size_arcmin=190.0, ra_deg=RA0, dec_deg=DEC0,
+                 healpix8=0),
+    ObjetCelebre(designation="M 31", aliases=[], type_obj="galaxie",
+                 mag_v=3.4, size_arcmin=190.0, ra_deg=RA0, dec_deg=DEC0,
+                 healpix8=0),
+    ObjetCelebre(designation="M 32", aliases=[], type_obj="galaxie",
+                 mag_v=8.1, size_arcmin=8.0, ra_deg=RA0 + 0.02,
+                 dec_deg=DEC0 - 0.01, healpix8=0),
+]
+reps = deduplique_celebres(doublons, RA0, DEC0)
+verifie(len(reps) == 2, f"4 entrées / 2 positions → 2 objets ({len(reps)})")
+verifie(reps[0].designation == "M 31" and score_designation("M 31") == 0,
+        f"le meilleur nom d'abord : {reps[0].designation!r} (pas « 224 »)")
+verifie(score_designation("NGC 224") == 1 and score_designation("224") == 3,
+        "score_designation : Messier < NGC/IC < nombre nu")
+
+print("[7] forme mesurée (moments d'inertie) : ellipse orientée, cercle sinon")
+blob = np.zeros((200, 200, 3), np.uint8)
+cv2.ellipse(blob, (100, 100), (70, 28), 30, 0, 360, 200, -1)
+forme = ann._mesure_forme(blob, 100.0, 100.0, 80.0)
+verifie(forme is not None
+        and abs(((forme[0] - 30.0) + 90.0) % 180.0 - 90.0) < 6.0,
+        f"angle retrouvé ≈ 30° (mod 180) : "
+        f"{forme[0]:.1f}°" if forme else "pas de mesure")
+verifie(forme is not None and 0.30 <= forme[1] <= 0.60,
+        f"ratio d'axes ≈ 0,4 : {forme[1]:.2f}" if forme else "pas de mesure")
+rond = np.zeros((200, 200, 3), np.uint8)
+cv2.circle(rond, (100, 100), 60, 200, -1)
+verifie(ann._mesure_forme(rond, 100.0, 100.0, 80.0) is None,
+        "objet ROND → None (cercle dessiné, pas d'ellipse)")
+faible = np.zeros((200, 200, 3), np.uint8)
+faible[98:101, 98:101] = 120
+verifie(ann._mesure_forme(faible, 100.0, 100.0, 80.0) is None,
+        "signal trop faible/ponctuel → None (repli cercle)")
+
+print("[8] entourage : jaune RGB (plus jamais le cyan BGR), taille réelle")
+verifie(abs(ann._rayon_entourage(WCS, obj, H, W) - 180.0) < 1e-6,
+        f"plafond 50 % : M31 (190′) borné à "
+        f"{ann._rayon_entourage(WCS, obj, H, W):.0f} px sur 360×300")
+obj_petit = ObjetCelebre(designation="M32", aliases=[],
+                         type_obj="amas_globulaire", mag_v=8.1,
+                         size_arcmin=2.0, ra_deg=RA0, dec_deg=DEC0, healpix8=0)
+r2 = ann._rayon_entourage(WCS, obj_petit, H, W)
+verifie(abs(r2 - 60.0) < 1.5, f"2′ à 1″/px → demi-axe 60 px ({r2:.1f})")
+obj_inconnu = ObjetCelebre(designation="X", aliases=[], type_obj="galaxie",
+                           mag_v=None, size_arcmin=0.0, ra_deg=RA0,
+                           dec_deg=DEC0, healpix8=0)
+verifie(ann._rayon_entourage(WCS, obj_inconnu, H, W) == ann.RAYON_CERCLE,
+        "taille inconnue → petit cercle par défaut")
+toile = np.zeros((H, W, 3), np.uint8)
+toile[145:156, 165:196] = 200       # objet allongé HORIZONTAL (11×31 px)
+ann.overlay_objets_celebres(toile, WCS, [obj_petit])
+n_jaune = int(((toile[:, :, 0] > 200) & (toile[:, :, 1] > 200)
+               & (toile[:, :, 2] < 100)).sum())
+verifie(n_jaune > 50,
+        f"pixels JAUNES (R et G hauts, B bas → RGB) : {n_jaune}")
+zone = toile[124:136, 176:186]      # bord SUPÉRIEUR de l'ellipse attendue
+n_bord = int(((zone[:, :, 0] > 60) & (zone[:, :, 2] < 120)).sum())
+verifie(n_bord > 0,
+        f"l'entourage (demi-axe 60 px) est dessiné autour de l'objet "
+        f"({n_bord} px sur le bord)")
+
+print("[9] étiquettes : empilement VERTICAL, plus aucun chevauchement")
+def _chevauche(a, b):
+    return not (a[0] + a[2] <= b[0] or b[0] + b[2] <= a[0]
+                or a[1] + a[3] <= b[1] or b[1] + b[3] <= a[1])
+pile = []
+ts = []
+for _i in range(3):
+    t = ann._position_etiquette(100.0, 100.0, 360, 300, (60, 10), pile)
+    ts.append(t)
+    pile.append((t[0], t[1] - 10, 60, 10))
+verifie(not _chevauche(pile[0], pile[1]) and not _chevauche(pile[1], pile[2])
+        and not _chevauche(pile[0], pile[2]),
+        f"3 étiquettes au même point : aucune chevauchement ({ts})")
+verifie(ts[1][1] > ts[0][1] and ts[2][1] > ts[1][1],
+        "les étiquettes suivantes sont empilées VERTICALEMENT (vers le bas)")
+
+print("[10] lecteur du .dat : types lisibles + désignations préfixées")
+from avastack.catalogues.celebres import (TYPE_CODE_VERS_NOM,
+                                          _designations_lisibles)
+verifie(TYPE_CODE_VERS_NOM[0] == "galaxie"
+        and TYPE_CODE_VERS_NOM[1] == "nebuleuse_diffuse"
+        and TYPE_CODE_VERS_NOM[1] in ann.TYPE_ICON,
+        "table inverse de type EN FRANÇAIS, cohérente avec TYPE_ICON (plus de « ? »)")
+d, al = _designations_lisibles("221", ["M  32"])
+verifie(d == "M 32", f"« 221 » + alias « M  32 » → {d!r} (retour Alain)")
+d, al = _designations_lisibles("206", ["206"])
+verifie(d == "NGC 206",
+        f"nombre nu sans alias préfixé → {d!r} (NGC 206, plus « 206 (?) »)")
+d, al = _designations_lisibles("224", ["Great Nebula in "])
+verifie(d == "NGC 224",
+        f"alias non préfixé ignoré → {d!r} (jamais « Great Nebula in »)")
+d, al = _designations_lisibles("M  31", [])
+verifie(d == "M 31", f"espaces compactés : {d!r}")
+d, al = _designations_lisibles("NGC224", [])
+verifie(d == "NGC224", f"déjà préfixé (format nouveau) : intact {d!r}")
+
+print("[11] forme mesurée À L'ÉCHELLE de l'objet (crop pleine étendue)")
+grande_img = np.zeros((600, 900, 3), np.uint8)
+cv2.ellipse(grande_img, (450, 300), (350, 140), 0, 0, 360, 200, -1)
+fg = ann._mesure_forme(grande_img, 450.0, 300.0, 350.0)
+verifie(fg is not None
+        and abs(((fg[0] - 0.0) + 90.0) % 180.0 - 90.0) < 6.0,
+        f"angle de l'objet géant retrouvé ≈ 0° : "
+        f"{fg[0]:.1f}°" if fg else "pas de mesure")
+verifie(fg is not None and 0.30 <= fg[1] <= 0.60,
+        f"ratio de l'objet géant ≈ 0,40 (crop INTER_AREA pleine étendue) : "
+        f"{fg[1]:.2f}" if fg else "pas de mesure")
+
+print("[12] échelle de police : textes à taille d'écran constante en pleine résolution")
+toile1 = np.zeros((H, W, 3), np.uint8)
+toile1[145:156, 165:196] = 200
+r1 = ann.overlay_objets_celebres(toile1, WCS, [obj_petit], echelle_police=1.0)
+toile3 = np.zeros((H, W, 3), np.uint8)
+toile3[145:156, 165:196] = 200
+r3 = ann.overlay_objets_celebres(toile3, WCS, [obj_petit], echelle_police=3.0)
+verifie(bool(r1) and bool(r3) and r3[0][3] > 2.0 * r1[0][3],
+        f"échelle 3 → étiquette ~3× plus haute "
+        f"(th {r1[0][3]} → {r3[0][3]} px)")
+rj = ann._rayon_entourage(WCS, obj_inconnu, H, W, echelle_police=4.0)
+verifie(abs(rj - 4.0 * ann.RAYON_CERCLE) < 1e-6,
+        f"taille inconnue : le petit cercle suit l'échelle ({rj:.0f} px)")
+
 print()
 print("BANC TERMINÉ : " + ("TOUT AU VERT" if ok else "ÉCHEC — corriger avant de continuer"))
 sys.exit(0 if ok else 1)
-
-verifie(0 <= tx and tx + tw <= W and 0 <= ty - th and ty + th <= H,
-        f"l'étiquette tient dans les bornes ({tx},{ty},{tw},{th})")
-vide = img.copy()
-rects_v = ann.overlay_objets_celebres(vide, WCS, [])
-verifie(rects_v == [] and np.array_equal(vide, img),
-        "liste vide : rien dessiné, image au bit")

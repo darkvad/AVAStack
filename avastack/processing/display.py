@@ -1002,8 +1002,12 @@ class DisplayProcessor:
     def _process_veralux(self, img, live=True):
         """Chemin VeraLux : rend le dernier résultat terminé (ou le STF en
         image d'attente) et soumet un calcul si l'image ou les réglages ont
-        changé. Jamais bloquant : aucun calcul ici, seulement une copie."""
-        key = self._vl_params()
+        changé. Jamais bloquant : aucun calcul ici, seulement une copie.
+        v2.55.3 : la FORME de la source entre dans la clé — sans elle, le
+        résultat PLEINE RÉSOLUTION en cache resservait après décochage de
+        « Rendu pleine résolution » (même clé de réglages) : l'écran gardait
+        l'ancienne image et ses étiquettes minuscules, constat d'Alain."""
+        key = self._vl_params() + (img.shape,)
         with self._vl_lock:
             force = self._vl_force
         # Jalon 3 : on ne soumet QUE si l'empilement a changé

@@ -41,7 +41,8 @@ from .telechargeur import (RECORD_ASTRO, RECORD_XPSAMP, TOTAL_CHUNKS,
                            telecharger_catalogue_celebres, telecharger_chunk_xpsamp,
                            telecharger_chunks, telecharger_tous_les_chunks)
 from .celebres import (ObjetCelebre, telecharger_et_indexer, est_disponible,
-                       cherche_celebres)
+                       cherche_celebres, score_designation,
+                       deduplique_celebres)
 
 __all__ = [
     "healpix", "siril_cat", "telechargeur", "solveur", "astap", "spcc_db", "celebres",
@@ -61,6 +62,7 @@ __all__ = [
     "trouver_astap", "resoudre_avec_astap", "balayage_possible",
     "bases_installees",
     "ObjetCelebre", "telecharger_et_indexer", "est_disponible", "cherche_celebres",
+    "score_designation", "deduplique_celebres",
 ]
 
 
