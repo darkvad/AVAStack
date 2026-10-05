@@ -71,8 +71,8 @@ quatre paquets + `INSTALLATION.md`.
 
 **RIEN.** Fonctionnalité livrée, testée, versionnée, publiée. Attendre
 prochain retour utilisateur (Alain).
- **ÉTAT ACTUEL** : release `v2.51.0` publiée sur GitHub (tag annoté + release GitHub, trois paquets + `INSTALLATION.md`). Repli : `v2.48.1` (déjà publiée, sans le bug et sans la correction macOS).
- **PROCHAINE ÉTAPE** : attend retour testeur macOS sur v2.51.0 ; sinon poursuite roadmap.
+ **ÉTAT ACTUEL** : release `v2.56.0` publiée sur GitHub (tag annoté + release GitHub, quatre paquets + `INSTALLATION.md` — https://github.com/darkvad/AVAStack/releases/tag/v2.56.0). Repli : `v2.51.0` (publiée).
+ **PROCHAINE ÉTAPE** : attendre le retour d'usage d'Alain sur la v2.56.0 (classification « (Gx) », NGC 206 sans entourage) ; sinon poursuite roadmap.
 - **JALON PRÉCÉDENT (02/10/2026, jalon 88 — INSTALLATEUR WINDOWS EN PAQUET ZIP,
   CODE ÉCRIT, BANC VERT, EN ATTENTE DU TEST RÉEL).**
   **DÉCLENCHEUR** : un ami sous **Windows 11 famille** n'arrive pas à installer
