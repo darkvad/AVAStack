@@ -78,6 +78,12 @@ $Icone = Join-Path $Root 'assets\avastack.ico'
 $DossierAssets = Join-Path $Root 'assets'
 if (Test-Path $Icone) { $PyArgs += @('--icon', $Icone) }
 if (Test-Path $DossierAssets) { $PyArgs += @('--add-data', "$DossierAssets;assets") }
+# Catalogue d'objets celebres EMBARQUE (v2.56.0) : telecharger_catalogue_celebres
+# le copie depuis le paquet gele vers le dossier des catalogues.
+$CatData = Join-Path $Root 'avastack\catalogues\data\celebres_healpix8.dat.bz2'
+if (Test-Path $CatData) {
+    $PyArgs += @('--add-data', "$CatData;avastack/catalogues/data")
+}
 $Embarquees = @()
 $Manquantes = @()
 foreach ($d in $Dlls) {

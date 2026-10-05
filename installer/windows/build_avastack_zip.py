@@ -127,6 +127,15 @@ def fichiers_a_embarquer(racine):
                 chemin = os.path.join(dossier, nom)
                 ajouter(chemin, os.path.relpath(chemin, racine))
 
+    # Catalogue d'objets célèbres EMBARQUÉ (v2.56.0) : le .bz2 que
+    # `telecharger_catalogue_celebres` copie puis décompresse dans le
+    # dossier des catalogues. Par NOM (pas un .py : le walk ci-dessus
+    # ne le voyait pas — le paquet sortait sans catalogue !).
+    cat_data = os.path.join(racine, "avastack", "catalogues", "data",
+                            "celebres_healpix8.dat.bz2")
+    if os.path.isfile(cat_data):
+        ajouter(cat_data, os.path.relpath(cat_data, racine))
+
     # Bancs embarqués : les diagnostics matériel caméra (motif `_diag_`).
     dossier_cameras = os.path.join(racine, DOSSIER_CAMERAS)
     if os.path.isdir(dossier_cameras):

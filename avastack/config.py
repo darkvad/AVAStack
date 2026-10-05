@@ -65,6 +65,8 @@ DEFAUT_CONFIG = {
     # Annotations temps-réel sur l'image affichée
     "annoter_objets": False,
     "annoter_etoiles": False,
+    # N'entourer que les objets RÉELLEMENT détectés dans l'image (v2.56.0)
+    "annoter_visibles": True,
     "seuil_mag_etoiles": 8.0,
     # Sauvegarde PNG annotée à côté du FITS
     "annoter_sauvegarde": True,

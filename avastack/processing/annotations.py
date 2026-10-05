@@ -59,6 +59,23 @@ TYPE_RATIO_MAX = {
     "amas_ouvert": 0.85,
 }
 
+# Détection de visibilité (demande d'Alain, 05/10/2026 : « n'entourer que
+# les objets réellement visibles » — ex. NGC 206, nuage d'étoiles non
+# résolu, qui ne mérite pas de cercle). Le signal de l'objet (95e percentile
+# du disque, lissé) doit dépasser le fond local (couronne) d'au moins
+# 3·σ (σ = MAD du fond) ET d'au moins 8 niveaux sur 255 : le double plancher
+# évite de « détecter » le grain sur un fond parfaitement plat.
+# Mesuré sur la vraie image M31 d'Alain (05/10/2026, pixels d'annotation
+# neutralisés) : NGC 206 = +5,2 niveaux (0,6σ) → rejeté ; M110 = +77
+# (4,8σ) et M32 → détectés. Les nébuleuses obscures sont exemptées (aucun
+# excès positif à détecter — elles sont obscures par nature).
+SEUIL_VISIBILITE_SIGMA = 3.0
+SEUIL_VISIBILITE_NIVEAU = 8.0
+# Objets SANS taille angulaire connue (ex. NGC 206) : l'entourage est un
+# petit cercle 4 px, trop petit pour la détection — on sonde alors un
+# rayon fixe pour trancher (visible ou pas).
+RAYON_PROBE_INCONNU = 20.0
+
 # Codes de type objet → icône 1 lettre
 TYPE_ICON = {
     "galaxie": "Gx",
@@ -290,9 +307,48 @@ def _dessine_entourage(img_disp: np.ndarray, x: float, y: float,
                 0.0, 360.0, couleur, ep, cv2.LINE_AA)
 
 
+def _detecte_visibilite(img_disp: np.ndarray, x: float, y: float,
+                        rayon: float) -> bool:
+    """L'objet est-il RÉELLEMENT visible dans l'image affichée (demande
+    d'Alain, 05/10/2026) ? Le crop est lissé (les étoiles ponctuelles ne
+    dominent plus les percentiles), le signal = 95e percentile du disque de
+    rayon `rayon`, le fond = médiane d'une couronne 1,2–2,4·rayon. Visible si
+    signal − fond ≥ max(6·σ_MAD du fond, 8 niveaux/255). Renvoie True quand
+    on NE PEUT PAS trancher (crop trop petit ou trop grand : comportement
+    conservateur, entourage dessiné comme avant)."""
+    h, w = img_disp.shape[:2]
+    r = float(rayon)
+    if r < RAYON_MESURE_MIN_PX or r > PLAFOND_MESURE_PX:
+        return True
+    roi = r * 2.4
+    x0 = int(max(0, x - roi))
+    x1 = int(min(w, x + roi))
+    y0 = int(max(0, y - roi))
+    y1 = int(min(h, y + roi))
+    if x1 - x0 < 8 or y1 - y0 < 8:
+        return True
+    crop = img_disp[y0:y1, x0:x1]
+    gris = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY).astype(np.float32)
+    lis = cv2.GaussianBlur(gris, (0, 0), max(1.0, r / 6.0))
+    yy, xx = np.mgrid[0:lis.shape[0], 0:lis.shape[1]]
+    cx = x - x0
+    cy = y - y0
+    d = np.hypot(xx - cx, yy - cy)
+    coeur = lis[d <= r]
+    couronne = lis[(d > r * 1.2) & (d <= roi)]
+    if coeur.size < 16 or couronne.size < 64:
+        return True
+    fond = float(np.median(couronne))
+    sigma = max(1.0, 1.4826 * float(np.median(np.abs(couronne - fond))))
+    signal = float(np.percentile(coeur, 95))
+    return ((signal - fond)
+            >= max(SEUIL_VISIBILITE_NIVEAU, SEUIL_VISIBILITE_SIGMA * sigma))
+
+
 def overlay_objets_celebres(img_disp: np.ndarray, wcs, objets: List[ObjetCelebre],
                             couleur: Tuple[int, int, int] = COULEUR_DEFAUT_OBJET,
-                            echelle_police: float = 1.0) -> List[Tuple[int, int, int, int]]:
+                            echelle_police: float = 1.0,
+                            seulement_visibles: bool = False) -> List[Tuple[int, int, int, int]]:
     """Dessine les objets célèbres sur l'image d'affichage : entourage CERCLE
     ou ELLIPSE selon la forme réelle (mesurée dans l'image — cf.
     `_mesure_forme`), dimensionné par la taille angulaire du catalogue, puis
@@ -300,6 +356,11 @@ def overlay_objets_celebres(img_disp: np.ndarray, wcs, objets: List[ObjetCelebre
     (`catalogues.celebres.deduplique_celebres`) : une étiquette par objet.
     `echelle_police` (v2.55.3) met textes/traits/étiquettes à l'échelle pour
     garder une TAILLE À L'ÉCRAN constante sur un buffer pleine résolution.
+    `seulement_visibles` (v2.56.0, demande d'Alain) : quand True, l'entourage
+    n'est dessiné QUE si l'objet est réellement détecté dans l'image
+    (`_detecte_visibilite`) — l'étiquette reste toujours ; les nébuleuses
+    obscures sont exemptées (elles sont obscures par nature : aucun excès
+    positif à détecter).
     Retourne la liste des rectangles occupés par les étiquettes."""
     if img_disp is None or img_disp.size == 0 or not objets:
         return []
@@ -352,30 +413,39 @@ def overlay_objets_celebres(img_disp: np.ndarray, wcs, objets: List[ObjetCelebre
             if ratio_max is not None and forme[1] > ratio_max:
                 forme = (forme[0], ratio_max)
 
+        # Entourage conditionné à la visibilité réelle (v2.56.0) : mesure
+        # AVANT tout dessin — le crop doit voir l'image PROPRE, pas annotée.
+        entourage = True
+        if seulement_visibles and obj.type_obj != "nebuleuse_obscure":
+            rayon_test = (rayon if rayon >= RAYON_MESURE_MIN_PX
+                          else RAYON_PROBE_INCONNU)
+            entourage = _detecte_visibilite(img_disp, x, y, rayon_test)
+
         # DEUX PASSES (jalon 96, mesure du banc : 53,8 ms pour 10 étiquettes
         # à l'aperçu 1600×904) : le fond semi-transparent de TOUTES les
         # étiquettes est posé en UNE seule copie + addWeighted (la copie du
         # buffer ≈ 4,3 Mo payée par étiquette dominait tout le reste), puis
         # traits/textes/entourages. L'ordre reste respecté : le fond est sous
         # le texte.
-        attends.append((x, y, texte, tx, ty, tw, th, rayon, forme))
+        attends.append((x, y, texte, tx, ty, tw, th, rayon, forme, entourage))
         positions_prises.append((tx, ty - th, tw, th))
 
     if attends:
         overlay = img_disp.copy()
-        for _x, _y, _texte, tx, ty, tw, th, _rayon, _forme in attends:
+        for _x, _y, _texte, tx, ty, tw, th, _rayon, _forme, _ent in attends:
             cv2.rectangle(overlay, (tx - pad, ty - th - pad),
                           (tx + tw + pad, ty + pad), (0, 0, 0), -1)
         cv2.addWeighted(overlay, 0.3, img_disp, 0.7, 0, img_disp)
         del overlay
-        for x, y, texte, tx, ty, tw, th, rayon, forme in attends:
+        for x, y, texte, tx, ty, tw, th, rayon, forme, entourage in attends:
             cv2.line(img_disp, (int(x), int(y)), (tx, ty - th // 2),
                      couleur, ep_trait, cv2.LINE_AA)
             cv2.putText(img_disp, texte, (tx, ty), cv2.FONT_HERSHEY_SIMPLEX,
                         taille_police, couleur, EPaisseUR_POLICE,
                         cv2.LINE_AA)
-            _dessine_entourage(img_disp, x, y, rayon, forme, couleur,
-                               echelle_police=e)
+            if entourage:
+                _dessine_entourage(img_disp, x, y, rayon, forme, couleur,
+                                   echelle_police=e)
 
     return positions_prises
 def overlay_etoiles_brillantes(img_disp: np.ndarray, wcs, etoiles: dict,
@@ -467,9 +537,11 @@ def overlay_etoiles_brillantes(img_disp: np.ndarray, wcs, etoiles: dict,
 def generer_image_annotee(img_disp: np.ndarray, wcs, objets: List[ObjetCelebre],
                           etoiles: dict, mag_limite: float = 8.0,
                           annoter_objets: bool = True, annoter_etoiles: bool = True,
-                          echelle_police: float = 1.0) -> np.ndarray:
+                          echelle_police: float = 1.0,
+                          seulement_visibles: bool = False) -> np.ndarray:
     """Crée une COPIE de l'image d'affichage avec les annotations (pour
     sauvegarde PNG). `echelle_police` : cf. `overlay_objets_celebres`.
+    `seulement_visibles` : entourage seulement des objets détectés.
     Ne modifie PAS l'original."""
     if img_disp is None:
         return None
@@ -477,7 +549,8 @@ def generer_image_annotee(img_disp: np.ndarray, wcs, objets: List[ObjetCelebre],
     positions = []
     if annoter_objets and objets:
         positions = overlay_objets_celebres(img_ann, wcs, objets,
-                                            echelle_police=echelle_police)
+                                            echelle_police=echelle_police,
+                                            seulement_visibles=seulement_visibles)
     if annoter_etoiles and etoiles is not None:
         positions = overlay_etoiles_brillantes(img_ann, wcs, etoiles,
                                                mag_limite,

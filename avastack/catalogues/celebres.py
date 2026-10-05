@@ -4,26 +4,37 @@
 Format : HEALpix NESTED niveau 8, compatible avec le format « Siril HEALpixel Catalog »
 (128 octets d'en-tête + index uint32 cumulatif + enregistrements fixes).
 
-Sources VizieR (publiques, CC-BY 4.0 compatible) :
-  • VII/258  — Messier (110 objets)
-  • VII/118  — NGC 2000.0 (~13 200 objets)
-  • VII/260  — IC (~5 300 objets)
-  • J/ApJS/59/1  — Sharpless H II regions (Sh2, ~313)
-  • J/AJ/117/349 — Barnard dark nebulae (~350)
-  • ApJS/179/1   — LDN (Lynds Dark Nebulae, ~1800)
+Sources (publiques ; jalon 97, 05/10/2026) :
+  • OpenNGC (https://github.com/mattiaverga/OpenNGC, CC-BY-SA-4.0) — NGC+IC
+    fusionnés, types PROPRES, cross-ids Messier (colonne M), tailles
+    (MajAx en arcmin), noms communs ;
+  • VizieR miroir Harvard (CC-BY-4.0), au format VOTable — VII/20 (Sharpless
+    Sh2, coordonnées B1900), VII/220A (Barnard, B1875), VII/7A (Lynds LDN,
+    B1950) ; coordonnées ICRS prises dans les colonnes _RA.icrs/_DE.icrs de
+    VizieR (Barnard, LDN) ou converties par astropy (Sharpless).
+
+PIÈGES (05/10/2026) : VizieR Strasbourg répond « Making sure you're not a
+bot! » (Anubis) aux requêtes urllib ; le miroir Harvard rend les VOTables
+complets mais son asu-tsv tronque le flux à ~81 Ko et ne rend RIEN pour les
+trois tables ci-dessus. Les identifiants VII/258 (« catalogue Messier » du
+générateur d'origine) désignent en réalité un catalogue de QUASARS, et
+VII/260 n'existe pas en tant que table IC — d'où le .dat d'origine avec tous
+les objets mal classés en « nébuleuse diffuse ».
 
 Le module fournit :
-  - `telecharger_et_indexer(dossier)` : télécharge les CSV VizieR, écrit `celebres_healpix8.dat`
+  - `telecharger_et_indexer(dossier)` : télécharge OpenNGC + les VOTables,
+    écrit `celebres_healpix8.dat`
   - `cherche_celebres(ra, dec, rayon_deg)` → liste d'ObjetCelebre triés par proximité/éclat
 """
 
 import csv
-import gzip
 import math
 import os
 import re
 import struct
+import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -71,46 +82,57 @@ TYPE_MAP = {
     "cluster": 3, "association": 3,
 }
 
-VIZIER_BASE = "https://vizier.cds.unistra.fr/viz-bin/VizieR-3"
-CATALOGUES_VIZIER = [
-    ("messier.csv.gz", "VII/258/messier",
-     ["RAJ2000", "DEJ2000", "Name", "Type", "Vmag", "Size"],
-     {"Gx": "galaxie", "PN": "nebuleuse_planetaire", "Cl": "amas_ouvert",
-      "Gb": "amas_globulaire", "Nb": "nebuleuse_diffuse", "DNe": "nebuleuse_diffuse"}),
-    ("ngc2000.csv.gz", "VII/118/ngc2000",
-     ["RAJ2000", "DEJ2000", "NGC", "Type", "Vmag", "Size"],
-     {"Gx": "galaxie", "PN": "nebuleuse_planetaire", "Cl": "amas_ouvert",
-      "Gb": "amas_globulaire", "Nb": "nebuleuse_diffuse", "DNe": "nebuleuse_diffuse",
-      "Ast": "amas_ouvert", "OC": "amas_ouvert", "GC": "amas_globulaire"}),
-    ("ic.csv.gz", "VII/260/ic",
-     ["RAJ2000", "DEJ2000", "IC", "Type", "Vmag", "Size"],
-     {"Gx": "galaxie", "PN": "nebuleuse_planetaire", "Cl": "amas_ouvert",
-      "Gb": "amas_globulaire", "Nb": "nebuleuse_diffuse", "DNe": "nebuleuse_diffuse"}),
-    ("sharpless.csv.gz", "J/ApJS/59/table1",
-     ["RAJ2000", "DEJ2000", "Sh2", "Size"],
-     {"HII": "region_HII"}),
-    ("barnard.csv.gz", "J/AJ/117/349/table1",
-     ["RAJ2000", "DEJ2000", "Barnard", "Size"],
-     {"DNe": "nebuleuse_obscure"}),
-    ("ldn.csv.gz", "ApJS/179/table1",
-     ["RAJ2000", "DEJ2000", "LDN", "Size"],
-     {"DNe": "nebuleuse_obscure"}),
+# URL du CSV OpenNGC (NGC+IC fusionnés, colonne « ; » — ~4 Mo, mis à jour
+# régulièrement par son mainteneur ; licence CC-BY-SA-4.0 : CRÉDITER — cf.
+# INSTALLATION.md et PRIVACY.md).
+OPENNGC_URL = ("https://raw.githubusercontent.com/mattiaverga/OpenNGC/"
+               "master/database_files/NGC.csv")
+# Miroir Harvard (Strasbourg est derrière un anti-robot Anubis, cf. docstring).
+VIZIER_HARVARD_VOTABLE = "https://vizier.cfa.harvard.edu/viz-bin/votable"
+
+# Type OpenNGC → type AVAStack (noms français = clés de TYPE_MAP).
+OPENNGC_TYPES = {
+    "G": "galaxie", "GPair": "galaxie", "GTrpl": "galaxie",
+    "GGroup": "galaxie",
+    "OCl": "amas_ouvert", "*Ass": "amas_ouvert",        # NGC 206 = *Ass
+    "GCl": "amas_globulaire",
+    "PN": "nebuleuse_planetaire",
+    "HII": "region_HII", "EmN": "region_HII",
+    "Neb": "nebuleuse_diffuse", "RfN": "nebuleuse_diffuse",
+    "SNR": "nebuleuse_diffuse", "Cl+N": "nebuleuse_diffuse",  # M42 = Cl+N
+}
+# Types IGNORÉS : doublons de désignation (Dup), objets inexistants (NonEx),
+# novae, étoiles (déjà couvertes par Gaia côté affichage), objets non
+# classés (Other). JAMAIS de repli implicite — c'est le repli par défaut
+# « nebuleuse_diffuse » de l'ancien générateur qui noyait tout en « (Nb) ».
+OPENNGC_IGNORES = {"Dup", "NonEx", "Nova", "*", "**", "Other", ""}
+
+# Sh2 / Barnard / LDN : OpenNGC ne les couvre pas. (fichier cache, source
+# VizieR, colonne numéro, préfixe de désignation, type, colonnes RA/Dec —
+# _RA.icrs déjà converti par VizieR quand il existe, sinon conversion astropy
+# de l'équinoxe besselien —, colonne de taille : Diam en arcmin, ou Area en
+# deg² pour LDN → diamètre équivalent 2·√(Area/π)).
+SOURCES_VOTABLE = [
+    ("sharpless.tsv", "VII/20/catalog", "Sh2", "Sh2-", "region_HII",
+     "RA1900", "DE1900", "B1900", "Diam"),
+    ("barnard.tsv", "VII/220A/barnard", "Barn", "Barnard ", "nebuleuse_obscure",
+     "_RA.icrs", "_DE.icrs", None, "Diam"),
+    ("ldn.tsv", "VII/7A/ldn", "LDN", "LDN ", "nebuleuse_obscure",
+     "_RA.icrs", "_DE.icrs", None, "Area"),
 ]
 
 
-def _url_vizier(cat: str) -> str:
-    return f"{VIZIER_BASE}?-source={cat}&-out.max=unlimited&-out.form=CSV"
-
-
-def _telecharger_vizier(nom_fichier: str, catalogue: str, dossier: str, progression=None) -> str:
-    chemin = os.path.join(dossier, nom_fichier)
+def _telecharger_fichier(url: str, chemin: str, progression=None) -> str:
+    """Télécharge `url` vers `chemin` (écriture en .part puis renommé : un
+    catalogue ne se retrouve JAMAIS à moitié écrit). Cache : fichier déjà
+    présent et > 100 octets = réutilisé tel quel (rejouer la génération ne
+    re-télécharge rien)."""
     if os.path.isfile(chemin) and os.path.getsize(chemin) > 100:
         return chemin
-    os.makedirs(dossier, exist_ok=True)
-    url = _url_vizier(catalogue)
+    os.makedirs(os.path.dirname(chemin) or ".", exist_ok=True)
     req = urllib.request.Request(url, headers=_EN_TETES)
     tmp = chemin + ".part"
-    with urllib.request.urlopen(req, timeout=120) as rep, open(tmp, "wb") as f:
+    with urllib.request.urlopen(req, timeout=300) as rep, open(tmp, "wb") as f:
         total = rep.length or 0
         lu = 0
         while True:
@@ -120,63 +142,191 @@ def _telecharger_vizier(nom_fichier: str, catalogue: str, dossier: str, progress
             f.write(bloc)
             lu += len(bloc)
             if progression and total:
-                progression(nom_fichier, lu / total)
+                progression(os.path.basename(chemin), lu / total)
     os.replace(tmp, chemin)
     return chemin
+
+
+def _telecharger_openngc(dossier: str, progression=None) -> str:
+    return _telecharger_fichier(OPENNGC_URL, os.path.join(dossier, "openngc.csv"),
+                                progression)
+
+
+def _telecharger_votable(source: str, chemin: str, progression=None) -> str:
+    url = (f"{VIZIER_HARVARD_VOTABLE}?-source={urllib.parse.quote(source)}"
+           f"&-out.max=unlimited")
+    return _telecharger_fichier(url, chemin, progression)
 # ──────────────────────────────────────────────────────────────────────────
-# Parsing CSV → liste ObjetCelebre
+# Parsing OpenNGC (CSV « ; ») et VOTable Harvard → liste ObjetCelebre
 # ──────────────────────────────────────────────────────────────────────────
-def _lire_csv_gz(chemin: str, cols: List[str], type_map: dict, prefix: str) -> List[ObjetCelebre]:
+def _hms_vers_deg(txt: str) -> float:
+    """« 03 32 57.4 » (heures) → degrés. Tolérant aux formats courts
+    (« 16 26.0 » = heures/minutes sans secondes) et aux séparateurs « : »."""
+    parts = [float(p) for p in str(txt).replace(":", " ").split()]
+    while len(parts) < 3:
+        parts.append(0.0)
+    h, m, s = parts[:3]
+    return (h + m / 60.0 + s / 3600.0) * 15.0
+
+
+def _dms_vers_deg(txt: str) -> float:
+    """« +31 09 33 » → degrés signés (tolère les formats courts)."""
+    s = str(txt).strip()
+    signe = -1.0 if s.startswith("-") else 1.0
+    parts = [float(p) for p in s.lstrip("+-").replace(":", " ").split()]
+    while len(parts) < 3:
+        parts.append(0.0)
+    d, m, sec = parts[:3]
+    return signe * (d + m / 60.0 + sec / 3600.0)
+
+
+def _convertir_fk4(ra_deg: float, dec_deg: float, equinox: str):
+    """FK4 d'équinoxe besselien (ex. « B1900 ») → ICRS. astropy est déjà une
+    dépendance du projet (lecture FITS) ; import paresseux (générateur seul)."""
+    import astropy.units as u
+    from astropy.coordinates import SkyCoord
+    from astropy.time import Time
+    c = SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg, frame="fk4",
+                 equinox=Time(equinox))
+    icrs = c.icrs
+    return float(icrs.ra.deg), float(icrs.dec.deg)
+
+
+def _etiquette_xml(el) -> str:
+    """Nom local d'un élément XML (sans l'espace de noms VOTable)."""
+    return el.tag.split("}")[-1]
+
+
+def _lire_votable(chemin: str) -> List[dict]:
+    """VOTable Harvard → liste de dicts {nom de colonne: texte}. Une ligne
+    dont le nombre de <TD> diffère de l'en-tête est ignorée (robustesse)."""
+    racine = ET.parse(chemin).getroot()
+    noms = [el.get("name") or "" for el in racine.iter()
+            if _etiquette_xml(el) == "FIELD"]
+    lignes = []
+    for tr in (el for el in racine.iter() if _etiquette_xml(el) == "TR"):
+        vals = ["".join(td.itertext()).strip()
+                for td in tr if _etiquette_xml(td) == "TD"]
+        if len(vals) == len(noms):
+            lignes.append(dict(zip(noms, vals)))
+    return lignes
+
+def _designation_openngc(nom: str, m: str):
+    """« NGC0224 » + M=« 031 » → (« M 31 », [« NGC 224 »]) ; sans M →
+    (« NGC 224 », []). Suffixes lettres gardés (« NGC0186A » → « NGC 186A »).
+    Le nom Messier, quand il existe, devient la désignation
+    (score_designation : Messier d'abord)."""
+    correspond = re.fullmatch(r"(IC|NGC)\s*0*(\d+)([A-Z]?)", nom.strip())
+    prefixe = correspond.group(1)
+    suffixe = correspond.group(3)
+    numero = f"{correspond.group(2)}{suffixe}"
+    if m and m.strip().isdigit():
+        return f"M {int(m.strip())}", [f"{prefixe} {numero}"]
+    return f"{prefixe} {numero}", []
+
+
+def _lire_openngc(chemin: str) -> List[ObjetCelebre]:
     objets = []
-    with gzip.open(chemin, "rt", encoding="utf-8", errors="replace") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
+    with open(chemin, encoding="utf-8", errors="replace") as f:
+        for row in csv.DictReader(f, delimiter=";"):
             try:
-                ra = float(row.get(cols[0], "nan"))
-                dec = float(row.get(cols[1], "nan"))
-                if not (np.isfinite(ra) and np.isfinite(dec)):
+                type_raw = (row.get("Type") or "").strip()
+                if type_raw in OPENNGC_IGNORES:
                     continue
-                nom_col = cols[2]
-                nom = row.get(nom_col, "").strip()
-                if not nom:
+                type_obj = OPENNGC_TYPES.get(type_raw)
+                if type_obj is None:
+                    # Type inconnu : on saute (PAS de repli en
+                    # « nébuleuse diffuse » — piège de l'ancien .dat).
                     continue
-                designation = f"{prefix}{nom}"
-                type_raw = row.get(cols[3], "").strip()
-                type_obj = type_map.get(type_raw, "nebuleuse_diffuse")
+                nom_brut = (row.get("Name") or "").strip()
+                if " NED" in nom_brut:
+                    # Composante interne d'une galaxie (nœud NEDxx) : pas un
+                    # objet annotable en soi.
+                    continue
+                if not re.fullmatch(r"(IC|NGC)\s*0*\d+[A-Z]?", nom_brut):
+                    continue
+                ra = _hms_vers_deg(row.get("RA") or "")
+                dec = _dms_vers_deg(row.get("Dec") or "")
+                designation, aliases = _designation_openngc(
+                    row.get("Name") or "", row.get("M") or "")
+                for nom in (row.get("Common names") or "").split(","):
+                    nom = nom.strip()
+                    if nom and nom not in aliases and nom != designation:
+                        aliases.append(nom)
+                try:
+                    taille = max(0.0, float(row.get("MajAx") or 0.0))
+                except ValueError:
+                    taille = 0.0
                 mag_v = None
-                if len(cols) > 4 and cols[4] in row:
-                    v = row[cols[4]].strip()
-                    if v and v not in ("", "nan", "NaN"):
-                        try:
-                            mag_v = float(v)
-                        except ValueError:
-                            pass
-                size = 1.0
-                if len(cols) > 5 and cols[5] in row:
-                    s = row[cols[5]].strip()
-                    if s:
-                        try:
-                            size = float(s)
-                        except ValueError:
-                            pass
-                aliases = [designation]
-                if prefix != "M" and not designation.startswith("M"):
-                    if nom.isdigit():
-                        aliases.append(f"M{nom}")
-                hpix = healpix.ang2pix_nest(ra, dec, NIVEAU)
+                v = (row.get("V-Mag") or "").strip()
+                if v:
+                    try:
+                        mag_v = float(v)
+                    except ValueError:
+                        pass
                 objets.append(ObjetCelebre(
                     designation=designation,
                     aliases=aliases,
                     type_obj=type_obj,
                     mag_v=mag_v,
-                    size_arcmin=size,
+                    size_arcmin=taille,
                     ra_deg=ra,
                     dec_deg=dec,
-                    healpix8=int(hpix),
+                    healpix8=int(healpix.ang2pix_nest(ra, dec, NIVEAU)),
                 ))
             except Exception:
                 # Ignorer les lignes malformées
                 continue
+    return objets
+
+
+def _lire_nebuleuses_votable(chemin: str, colonne_num: str, prefixe: str,
+                             type_obj: str, ra_col: str, dec_col: str,
+                             equinox: Optional[str],
+                             colonne_taille: str) -> List[ObjetCelebre]:
+    """Sh2 / Barnard / LDN depuis un VOTable Harvard. Coordonnées : les
+    colonnes _RA.icrs/_DE.icrs de VizieR sont déjà en ICRS (Barnard B1875,
+    LDN B1950) ; sinon (Sharpless, B1900) conversion astropy FK4→ICRS.
+    Taille : Diam (arcmin) ou, à défaut (LDN : Area en deg²), diamètre
+    équivalent 2·√(Area/π) converti en arcmin."""
+    objets = []
+    for row in _lire_votable(chemin):
+        try:
+            numero = int((row.get(colonne_num) or "").strip())
+        except ValueError:
+            continue
+        ra_txt = (row.get(ra_col) or "").strip()
+        dec_txt = (row.get(dec_col) or "").strip()
+        if not (ra_txt and dec_txt):
+            continue
+        if ra_col == "_RA.icrs":
+            ra, dec = _hms_vers_deg(ra_txt), _dms_vers_deg(dec_txt)
+        else:
+            ra, dec = _convertir_fk4(_hms_vers_deg(ra_txt),
+                                     _dms_vers_deg(dec_txt), equinox)
+        try:
+            if colonne_taille == "Area":
+                area = float((row.get(colonne_taille) or "").strip())
+                taille = 2.0 * math.sqrt(max(0.0, area) / math.pi) * 60.0
+            else:
+                taille = max(0.0,
+                             float((row.get(colonne_taille) or "").strip()))
+        except ValueError:
+            taille = 0.0
+        designation = f"{prefixe}{numero}"
+        hpix = healpix.ang2pix_nest(ra, dec, NIVEAU)
+        objets.append(ObjetCelebre(
+            designation=designation,
+            aliases=[designation],
+            type_obj=type_obj,
+            mag_v=None,
+            size_arcmin=taille,
+            ra_deg=ra,
+            dec_deg=dec,
+            healpix8=int(hpix),
+        ))
+    return objets
+
 # ──────────────────────────────────────────────────────────────────────────
 # Écriture format binaire Siril-compatible
 # ──────────────────────────────────────────────────────────────────────────
@@ -236,18 +386,27 @@ def _ecrire_binaire(objets: List[ObjetCelebre], chemin: str):
 
 
 def _tous_les_objets(dossier: str, progression=None) -> List[ObjetCelebre]:
+    etapes = [("openngc.csv", "OpenNGC (NGC+IC+M)", None)]
+    etapes += [(f, s, r) for (f, s, *r) in SOURCES_VOTABLE]
+    n = len(etapes)
     tous = []
-    for i, (fname, cat, cols, tmap) in enumerate(CATALOGUES_VIZIER):
+    for i, (fname, label, rest) in enumerate(etapes):
         if progression:
-            progression(f"Téléchargement {fname}", i / len(CATALOGUES_VIZIER))
-        chemin = _telecharger_vizier(fname, cat, dossier, progression)
-        prefix = {"messier.csv.gz": "M", "ngc2000.csv.gz": "NGC", "ic.csv.gz": "IC",
-                  "sharpless.csv.gz": "Sh2-", "barnard.csv.gz": "Barnard",
-                  "ldn.csv.gz": "LDN"}[fname]
-        obj = _lire_csv_gz(chemin, cols, tmap, prefix)
-        tous.extend(obj)
+            progression(f"Téléchargement {label}", i / n)
+        chemin = os.path.join(dossier, fname)
+        if rest is None:
+            _telecharger_openngc(dossier, progression)
+            sous = _lire_openngc(chemin)
+        else:
+            (col, prefixe, type_obj, ra_col, dec_col, equinox, col_taille) = rest
+            _telecharger_votable(next(s for f, s, *r in SOURCES_VOTABLE
+                                      if f == fname), chemin, progression)
+            sous = _lire_nebuleuses_votable(chemin, col, prefixe, type_obj,
+                                            ra_col, dec_col, equinox,
+                                            col_taille)
+        tous.extend(sous)
         if progression:
-            progression(f"Parsing {fname}", (i + 1) / len(CATALOGUES_VIZIER))
+            progression(f"Parsing {label}", (i + 1) / n)
     return tous
 # ──────────────────────────────────────────────────────────────────────────
 # Lecture du fichier binaire (recherche par cône)

@@ -1,4 +1,4 @@
-﻿# AVANCEMENT.md — mémoire de travail à court terme
+# AVANCEMENT.md — mémoire de travail à court terme
 
 (Complète CLAUDE.md : état courant du développement et tâche en cours.
 **Gardé LÉGER** (consigne d'Alain, 18/09/2026, cf. CLAUDE.md) : le
@@ -9,166 +9,63 @@ dans le changelog du source et l'historique git.)
 
 ---
 
-## Session du 05/10/2026 -- jalon 96 bis (v2.55.1) -- « Annotations lisibles »
+## Session du 05/10/2026 — jalon 97 (v2.56.0) — Classification OpenNGC + objets visibles
 
 ### Contexte
-Retour d'Alain sur la capture M31 (04/10 au soir) : textes ILLISIBLES
-(plusieurs désignations superposées au même endroit), couleur cyan au lieu
-du jaune demandé, entourage en simple petit cercle fixe. Plan proposé puis
-VALIDÉ par Alain (P1-P4 + option A pour l'orientation des ellipses).
+Retours d'Alain sur la capture M31 annotée : TOUS les objets « (Nb) »
+(M31/M32/M110/NGC 206 classés « nébuleuse diffuse ») et NGC 206 entouré
+d'un mini cercle alors qu'il n'est pas résolu sur son image. Décisions
+d'Alain : source OpenNGC (crédits acceptés), objet non détecté →
+étiquette SANS entourage, case à cocher. Rappel : le catalogue célèbres
+est EMBARQUÉ dans l'application — pas de Zenodo pour lui.
 
-### Livré (v2.55.1, bancs TOUT AU VERT)
-1. **Jaune partout (RGB)** : le buffer d'affichage est RGB, les couleurs
-   étaient en BGR → le « jaune » s'affichait CYAN (piège des canaux). TOUT
-   est jaune RGB : entourages, textes, lignes de rappel, objets ET étoiles.
-2. **UNE étiquette par objet** : fonction partagée
-   `catalogues.celebres.deduplique_celebres()` (+ `score_designation`),
-   appliquée au chemin d'annotation (`_donnees_annotation`) ET à
-   `_objets_celestes_resolus()` (code dupliqué d'app.py supprimé). Le
-   catalogue brut renvoie M31 + NGC 224 + « 224 » + « Great Nebula in » aux
-   mêmes coordonnées (vérifié sur données réelles : 5 entrées → 2 objets).
-3. **Anti-chevauchement** : `_position_etiquette` empile VERTICALEMENT sous
-   la collision (fin du zigzag horizontal qui saturait à 8 essais).
-4. **Entourage cercle/ellipse** : taille RÉELLE via `size_arcmin` × WCS
-   (plancher 6 px, plafond 50 % de la plus grande dimension) ; forme +
-   orientation MESURÉES dans l'image par moments d'inertie (`_mesure_forme`,
-   option A validée — le catalogue n'a pas d'angle de position ; option B,
-   l'ajouter au .dat + régénérer Zenodo, ÉCARTÉE) ; rond (ratio ≥ 0,92) /
-   trop faible / trop petit → cercle de repli ; taille inconnue → petit
-   cercle 4 px. Étoiles : petit cercle jaune, étiquette « mag 3,4 »
-   (le « ★ » sortait « ? » : police Hershey sans ce glyphe).
-5. **Bancs** : `_test_annotations_overlay_jalon96.py` enrichi ([6] dédup,
-   [7] forme mesurée : angle 30°/ratio 0,40 retrouvés, rond → None,
-   [8] jaune RGB + plafond/demi-axe, [9] empilement vertical sans
-   chevauchement) ; non-régression save + dédup réelle M31/M32 rejouées
-   vertes ; coût 27 ms pour 10 objets à l'aperçu 1600×904.
+### Livré (v2.56.0, bancs TOUT AU VERT)
+1. GÉNÉRATEUR REFAIT (`catalogues/celebres.py`) : OpenNGC (GitHub,
+   CC-BY-SA-4.0 — types propres, colonne M, MajAx en arcmin, noms
+   communs) + VizieR miroir HARVARD au format VOTable pour Sh2 (VII/20,
+   B1900→ICRS par astropy), Barnard (VII/220A, _RA.icrs) et LDN (VII/7A,
+   _RA.icrs ; taille = 2·√(Area/π)). JAMAIS de repli de type implicite
+   (code inconnu → ignoré). 14 178 objets ; M31/M32/M110 = galaxie,
+   NGC 206 = amas ouvert (*Ass), M42 = Cl+N ; Sh2-155 désormais PRÉSENT
+   (l'ancien id J/ApJS/59 n'existait pas). `.dat` embarqué (.dat + .bz2)
+   et `.dat` installé remplacés.
+2. CASE « Seulement les objets visibles » (cochée par défaut, clé
+   `annoter_visibles`, var_annoter_visibles) : `_detecte_visibilite` —
+   signal = 95e percentile du disque lissé, fond = médiane de couronne,
+   visible si écart ≥ max(8 niveaux, 3·σ_MAD) ; l'ÉTIQUETTE reste
+   toujours, seul l'entourage est conditionné ; nébuleuses obscures
+   exemptées ; objets SANS taille connue sondés à 20 px
+   (RAYON_PROBE_INCONNU). Validé sur la VRAIE capture M31 d'Alain (pixels
+   d'annotation neutralisés) : NGC 206 = +5,2 niveaux (0,6σ) → rejeté ;
+   M110 = +77 (4,8σ) → entourage. Clé du cache `_annote_rendu` enrichie
+   (le pan invalide au basculement de la case).
+3. Bancs : `_test_catalogue_openngc_jalon97.py` NEUF ([1] types, [2]
+   désignations M/lettres/NED, [3] conversions HMS/DMS, [4] bout-en-bout
+   synthétique CSV+VOTables→.dat→dedup, [5] contrôle du .dat embarqué :
+   types, Sh2-155/Barnard 33/LDN 1622 aux bonnes positions) ;
+   `_test_annotations_overlay_jalon96.py` enrichi ([13] détection, [14]
+   overlay seulement_visibles) — TOUS VERTS ; save jalon96 + dedup
+   rejoués verts. Docs : crédits OpenNGC (CC-BY-SA) et VizieR dans
+   README/INSTALLATION/PRIVACY ; leçons CLAUDE.md (anti-robot Anubis de
+   Strasbourg, troncature asu-tsv ~81 Ko, ids VizieR exacts, VOTable,
+   pas de repli de type).
 
-### Suite — retours d'Alain sur sa capture M31 (v2.55.2, TOUT AU VERT)
-1. **« (?) » après les noms** : table inverse de type reconstruite en
-   français explicite (`TYPE_CODE_VERS_NOM`) — l'ancien dict inversé
-   faisait gagner « nebula », inconnu de `TYPE_ICON` → « ? » partout.
-2. **« 206 (?) »** : c'est **NGC 206** (nuage d'étoiles de M31, NGC 2000) ;
-   le générateur d'origine du .dat stockait les désignations NGC sans
-   préfixe et les beaux noms en alias seuls. Corrigé À LA LECTURE
-   (`_designations_lisibles`, répare le .dat installé sans régénération) :
-   « 221 »+« M  32 » → « M 32 », « 206 » → « NGC 206 », « M  31 » → « M 31 ».
-3. **Ellipse de M31 plus fine** : le crop de mesure couvre maintenant
-   l'étendue de l'objet (réduction INTER_AREA, poids clippés au p99), et
-   un prior de finesse par type (`TYPE_RATIO_MAX`) plafonne le ratio des
-   objets DÉBORDANTS (galaxie 0,45, nébuleuse diffuse 0,55…).
-   **NB** : le .dat d'origine classe M31 en « nébuleuse diffuse » (types
-   NGC 2000 mal mappés) — l'icône « (Nb) » reste imprécise ; correctif
-   structurel = régénérer le catalogue + Zenodo, à faire séparément.
-4. Bancs [10]/[11] ajoutés (types/désignations, mesure à l'échelle) — verts.
-
-### Suite 2 — taille d'écran constante (v2.55.3, TOUT AU VERT)
-1. **Textes minuscules à pleine résolution** : police fixe ~11 px DANS le
-   buffer (6000 px) → ~2 px à l'écran. Nouveau paramètre `echelle_police`
-   à travers toute la chaîne d'annotation ; `_render` calcule
-   `echelle = 1/échelle-écran` (jamais < 1, plafonné 12) → TAILLE À
-   L'ÉCRAN constante, aperçu comme pleine résolution, à tout zoom.
-2. **PNG compagnon** : même échelle que le dernier rendu à l'écran.
-3. **« Ne revient pas » au décochage** : cause trouvée — le cache VeraLux
-   n'avait PAS la résolution dans sa clé : le vieux résultat pleine
-   résolution resservait pour l'aperçu (même clé de réglages), l'écran
-   gardait l'image à textes minuscules. La FORME de la source entre dans
-   la clé (`_process_veralux`) → bascule = écran immédiat à la BONNE
-   résolution (image d'attente STF) pendant le recalcul.
-4. **Cache mono-slot de l'overlay** (`_annote_rendu`) : à pleine
-   résolution l'annotation recopie ~69 Mo par rendu ; le pan ne
-   re-dessine plus.
-5. Bancs [12] ajouté ; overlay, save, dedup réelle, VeraLux jalon 3 : verts.
-
-### PROCHAINE ACTION
-Alain teste le nouveau rendu à l'écran (jaune, une étiquette par objet,
-NGC 206 préfixé, ellipse de M31 plus fine). Si l'icône « (Nb) » de M31
-gêne : régénérer le catalogue célèbres (types NGC 2000 corrects) et
-mettre à jour Zenodo — décision à prendre avec Alain. Rien d'autre.
+### PAQUETS ET RELEASE v2.56.0 : PUBLIÉS (05/10/2026)
+Quatre paquets reconstruits sur le code du jalon 97 + correction IMPORTANTE
+des packers : ils n'embarquaient que les `.py` — le catalogue célèbres
+embarqué (`avastack/catalogues/data/celebres_healpix8.dat.bz2`) partait
+ABSENT des paquets ; ajouté PAR NOM dans les quatre routes (ZIP Windows,
+Inno `avastack.iss`, Linux, macOS) et le packer gelé PyInstaller, et
+VÉRIFIÉ dans chaque archive (ZIP/Linux/macOS : le fichier listé ; exe :
+ligne « Compressing: …data\celebres_healpix8.dat.bz2 » au build).
+`avastack-setup-2.56.0.exe` 12 619 872 o, SHA-256 `AF10E450…B93CE` ;
+`…-windows.zip` 14 968 890 o, `D874F8A9…76907` ; `…-linux.tar.gz`
+1 558 788 o, `17785B59…847ED` ; `…-macos.tar.gz` 1 556 455 o,
+`8D25D4E4…44305`. Tag annoté `v2.56.0` + release GitHub publiée avec les
+quatre paquets + `INSTALLATION.md`.
 
 ---
 
-
-## Session du 02/10/2026 — jalon 95b — sections pliables du panneau gauche
-
-### Résumé
-Toutes les sections du panneau de réglages (14 sections : Fichiers, Caméra,
-Cadence, Dossier, Composition, Calibration, Empilement, Fond/grain, Netteté,
-Affichage, Couleur, État calculs, Traitement externe, Sortie) sont
-**PLIABLES** via un en-tête cliquable (▼/▶). L'état est **persisté** dans
-`config.json` sous les clés `ui_section_<nom>` (bool).
-
-### Mécanique
-- Helper `_creer_section_pliable(parent, cle_section)` dans
-  `avastack/ui/app.py` (~ligne 1222) :
-  - Bouton d'en-tête `ttk.Button` (style Toolbutton, packé dans `parent`)
-  - Contenu dans `ttk.LabelFrame` (packé après le bouton, **librement
-    pack/unpack** — les sections du dessous remontent quand on plie)
-  - Variable `tk.BooleanVar` tracée → maj icône + pack/unpack du LabelFrame
-  - Persistance immédiate : `CONFIG[ui_section_<cle>] = bool` +
-    `sauver_config(CONFIG)`
-- Convention :
-  - `self.frm_<x>` = contenu interne (Frame pour les widgets enfants, **ne
-    change pas** — l'ancien code qui crée ses widgets dans `self.frm_camera`
-    continue de fonctionner)
-  - `self._lf_<x>` = LabelFrame externe (utilisé pour `pack(before=)` dans
-    `_maj_visibilite_cadres`)
-  - `self._lf_<x>._btn_header` = bouton d'en-tête (utilisé par `_maj_visibilite_cadres`)
-  - `self._lf_<x>._contenu_interne` = alias pour les bancs de test
-
-### Mapping des sections (mot clé)
-`SECTIONS_NOM_MAP` (dans la classe App) :
-
-| Clé mot | Titre affiché | Attribut `self` |
-|---------|---------------|-----------------|
-| `fichiers_travail` | Fichiers de travail et journal | `_lf_fichiers_travail` |
-| `camera` | Caméra | `_lf_camera` |
-| `cadence` | Cadence d'empilement | `_lf_cadence` |
-| `dossier_surveille` | Dossier surveillé | `_lf_dossier_surveille` |
-| `composition` | Composition multi-filtres | `_lf_composition` |
-| `calibration` | Calibration | `_lf_calibration` |
-| `empilement` | Empilement | `_lf_empilement` |
-| `fond_grain` | Fond et grain (AVANT étirement) | `_lf_fond_grain` |
-| `nette` | Netteté live (Richardson-Lucy) | `_lf_nette` |
-| `affichage` | Affichage (temps réel) | `_lf_affichage` |
-| `couleur` | Couleur de l'objet (APRÈS étirement) | `_lf_couleur` |
-| `etat_calculs` | État des calculs (live) | `_lf_etat_calculs` |
-| `traitement_externe` | Traitement externe (long) | `_lf_traitement_externe` |
-| `sortie` | Sortie | `_lf_sortie` |
-
-### Tests
-Bancs adaptés et tous verts :
-- `bancs/_test_ui_visibilite_jalon47.py` (helpers `section_visible()`,
-  `_titre_cadre()` qui gère les 3 cas : `text=` legacy, `labelwidget=`
-  dans le LabelFrame, bouton frère séparé)
-
-Bancs de non-régression (tous verts) :
-- `_test_ui_moteur_jalon41`
-- `_test_sharp_live_jalon12`
-- `_test_ergonomie_jalon52`
-- `_test_calib_compo_jalon53`
-- `_test_boost_rouge_jalon86`
-
-### Release
-- **Version** : `2.51.1`
-- **Tag GitHub** : `v2.51.1`
-- **URL** : https://github.com/darkvad/AVAStack/releases/tag/v2.51.1
-
-### Fichiers modifiés
-- `avastack/__init__.py` : bump `2.51.0` → `2.51.1`
-- `avastack/ui/app.py` : `_creer_section_pliable()`, `SECTIONS_NOM_MAP`,
-  refactor `_build_ui()` (14 sections), `_maj_visibilite_cadres()` adapté
-- `bancs/_test_ui_visibilite_jalon47.py` : helpers `section_visible()`,
-  `_titre_cadre()`, gestion des 3 cas de titre
-
-### Leçons (à reporter dans CLAUDE.md si pertinent)
-- **Le LabelFrame 1 + bouton d'en-tête séparé** est la SEULE façon d'obtenir
-  un vrai pliage (gain de place). L'utilisation de `labelwidget=` ne
-  fonctionne PAS : le LabelFrame reste packé, ne libère pas l'espace.
-- Quand on utilise `pack(before=)`, **la cible DOIT être déjà packée**.
-  Donc : packer le bouton d'en-tête AVANT, puis le LabelFrame avec
-  `after=btn`.
-
----
 
 ## Prochaine étape
 

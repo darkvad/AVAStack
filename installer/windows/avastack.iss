@@ -72,6 +72,7 @@ Source: "{#RepoRoot}\avastack\*.py"; DestDir: "{app}\avastack"; Flags: ignorever
 Source: "{#RepoRoot}\avastack\cameras\*.py"; DestDir: "{app}\avastack\cameras"; Flags: ignoreversion
 Source: "{#RepoRoot}\avastack\processing\*.py"; DestDir: "{app}\avastack\processing"; Flags: ignoreversion
 Source: "{#RepoRoot}\avastack\catalogues\*.py"; DestDir: "{app}\avastack\catalogues"; Flags: ignoreversion
+Source: "{#RepoRoot}\avastack\catalogues\data\celebres_healpix8.dat.bz2"; DestDir: "{app}\avastack\catalogues\data"; Flags: ignoreversion
 Source: "{#RepoRoot}\avastack\external\*.py"; DestDir: "{app}\avastack\external"; Flags: ignoreversion
 Source: "{#RepoRoot}\avastack\ui\*.py"; DestDir: "{app}\avastack\ui"; Flags: ignoreversion
 ; Ressources : l'icone de l'application (avastack/ressources.py la cherche dans

@@ -107,6 +107,12 @@ def fichiers_a_embarquer(racine):
             if nom.endswith(".py"):
                 chemin = os.path.join(dossier, nom)
                 ajouter(chemin, os.path.relpath(chemin, racine))
+    # Catalogue d'objets célèbres EMBARQUÉ (v2.56.0) : par NOM (pas un .py —
+    # le walk ci-dessus ne le voyait pas, le paquet sortait sans catalogue).
+    cat_data = os.path.join(racine, "avastack", "catalogues", "data",
+                            "celebres_healpix8.dat.bz2")
+    if os.path.isfile(cat_data):
+        ajouter(cat_data, os.path.relpath(cat_data, racine))
     ajouter(os.path.join(racine, "installer", "linux", "install_avastack.sh"),
             "installer/install_avastack.sh")
     ajouter(os.path.join(racine, "installer", "common", "avastack_setup.py"),

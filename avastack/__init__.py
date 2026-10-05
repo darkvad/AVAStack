@@ -17,9 +17,31 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.55.3"
+AVASTACK_VERSION = "2.56.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.56.0 : CLASSIFICATION DES OBJETS RÉPARÉE (catalogue OpenNGC) + N'ENTOURER
+#           QUE LES OBJETS RÉELLEMENT VISIBLES (retours d'Alain, 05/10/2026)
+#   - TOUS LES OBJETS « (Nb) » : cause trouvée par sondes réseau — le
+#     générateur d'origine du .dat embarqué pointait vers de MAUVAIS ids
+#     VizieR : « VII/258 » est un catalogue de QUASARS (pas Messier !),
+#     « VII/260 » n'existe pas en table IC, et le repli par défaut
+#     « nebuleuse_diffuse » noyait tout code inconnu. Nouvelles sources :
+#     OpenNGC (GitHub, CC-BY-SA-4.0 — types propres, cross-ids Messier,
+#     tailles, noms communs) + VizieR miroir HARVARD au format VOTable pour
+#     Sh2 (VII/20, B1900→ICRS par astropy), Barnard (VII/220A) et LDN
+#     (VII/7A) — VizieR Strasbourg répond « Making sure you're not a bot! »
+#     (Anubis) et l'asu-tsv de Harvard tronque à ~81 Ko ; le VOTable est
+#     complet. .dat embarqué RÉGÉNÉRÉ : 14 178 objets ; M31/M32/M110 =
+#     galaxie, NGC 206 = amas ouvert (*Ass), M42 = Cl+N.
+#   - CASE « Seulement les objets visibles » (cochée par défaut) : l'entourage
+#     n'est dessiné QUE si l'objet est détecté dans l'image affichée
+#     (`_detecte_visibilite` : 95e percentile du disque lissé vs médiane de
+#     la couronne ≥ max(8 niveaux, 3·σ_MAD)) — l'ÉTIQUETTE reste toujours ;
+#     nébuleuses obscures exemptées ; objets sans taille connue sondés à
+#     20 px (RAYON_PROBE_INCONNU). Mesuré sur la vraie capture M31 : NGC 206
+#     (+5 niveaux, 0,6σ) → plus d'entourage ; M110 (+77, 4,8σ) → entourage.
+#     La case entre dans la clé du cache du rendu (`_annote_rendu`).
 # v2.55.3 : ÉTIQUETTES À TAILLE D'ÉCRAN CONSTANTE EN PLEINE RÉSOLUTION +
 #           RETOUR IMMÉDIAT DE L'APERÇU AU DÉCOCHAGE (retours d'Alain, 05/10)
 #   - TEXTES HYPER PETITS À PLEINE RÉSOLUTION : la police des étiquettes était

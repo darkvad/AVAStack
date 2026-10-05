@@ -663,6 +663,38 @@ Pièges :
   l outil — toujours rechercher le fichier réellement produit, jamais
   présumer du nom exact.
 
+### VizieR / OpenNGC (catalogue « objets célèbres », jalon 97)
+
+- **VizieR Strasbourg répond une page anti-robot Anubis (« Making sure
+  you're not a bot! ») aux requêtes urllib** : tout téléchargement
+  automatique doit passer par le miroir Harvard (`vizier.cfa.harvard.edu`).
+- L'**asu-tsv de Harvard tronque le flux à ~81 Ko** (coupure silencieuse,
+  ~2 200 lignes) et ne rend RIEN (aucune colonne) pour certaines vieilles
+  tables (VII/20, VII/220A, VII/7A). La route fiable est le **VOTable**
+  (`/viz-bin/votable?-source=…`), complet.
+- Ids VizieR corrects : **VII/20** (Sharpless Sh2, B1900), **VII/220A**
+  (Barnard, B1875), **VII/7A/ldn** (Lynds LDN, B1950), **VII/118/ngc2000**
+  (NGC 2000, NGC+IC mélangés, numéros sans préfixe). **VII/258 est un
+  catalogue de QUASARS, PAS Messier ; VII/260 n'est pas l'IC** — l'ancien
+  générateur les utilisait (d'où le .dat tout « nébuleuse diffuse »).
+- Les tables VizieR fournissent souvent des colonnes **_RA.icrs/_DE.icrs**
+  déjà converties (Barnard B1875, LDN B1950) ; sinon conversion astropy
+  FK4(equinox=B1900) → ICRS (validée : Sh2-155 à 3′ de la position connue).
+- **OpenNGC** (GitHub `mattiaverga/OpenNGC`, **CC-BY-SA-4.0 → CRÉDITER**
+  dans README/INSTALLATION) est la source principale du catalogue célèbres
+  embarqué : NGC+IC fusionnés, types propres, colonne M (cross-ids
+  Messier), MajAx (arcmin), noms communs ; composantes « NEDxx » ignorées.
+- **JAMAIS de repli de type implicite** : un code de type inconnu doit être
+  IGNORÉ, pas classé « nébuleuse diffuse » (le repli de l'ancien générateur
+  noyait TOUTES les étiquettes en « (Nb) », constat Alain sur M31).
+- Le catalogue célèbres est **embarqué** (`avastack/catalogues/data/
+  celebres_healpix8.dat[.bz2]`) — la mise à jour = régénérer via
+  `telecharger_et_indexer` (les sources se mettent en cache : rejouer ne
+  re-télécharge rien), puis recompresser en .bz2 et remplacer le .dat
+  installé du dossier catalogues. **Pas de Zenodo** pour lui.
+- Le nom NGC/IC OpenNGC peut porter des suffixes : garder les lettres
+  (« NGC0186A » → « NGC 186A »), ignorer les composantes « NEDxx ».
+
 ### Pièges généraux des outils externes (leçons du projet pipeline siril)
 
 - **Détecter un échec par simple sous-chaîne du stdout ("erreur"/"échoué")

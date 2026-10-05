@@ -384,4 +384,10 @@ installateur n'écrase une version précédente.
 - Siril : `https://siril.org` — scripts officiels : `https://gitlab.com/free-astro/siril-scripts`
 - Base de profils SPCC : `https://gitlab.com/free-astro/siril-spcc-database`
 - Catalogue astrométrique Gaia DR3 de Siril (Zenodo) : enregistrement `14692304`
+- **OpenNGC** (source du catalogue d'objets célèbres embarqué, NGC+IC,
+  types, numéros Messier, tailles, noms communs) :
+  `https://github.com/mattiaverga/OpenNGC` — licence **CC-BY-SA-4.0**,
+  © Mattia Verga et contributeurs : l'attribution est requise et rendue ici.
+- **VizieR** (miroir Harvard ; Sharpless VII/20, Barnard VII/220A, Lynds
+  VII/7A — CC-BY-4.0) : `https://vizier.cfa.harvard.edu`
 - Catalogue SPCC local Gaia DR3 XP (Zenodo, 48 morceaux) : enregistrement `14738271`

@@ -788,6 +788,8 @@ class App:
             self.var_annoter_objets.set(bool(c.get("annoter_objets")))
         if "annoter_etoiles" in c:
             self.var_annoter_etoiles.set(bool(c.get("annoter_etoiles")))
+        if "annoter_visibles" in c:
+            self.var_annoter_visibles.set(bool(c.get("annoter_visibles")))
         if "annoter_sauvegarde" in c:
             self.var_annoter_sauvegarde.set(bool(c.get("annoter_sauvegarde")))
         v = c.get("seuil_mag_etoiles")
@@ -1840,11 +1842,6 @@ class App:
                         command=self._on_annoter).pack(side="left", padx=(6, 0))
         row_an2 = ttk.Frame(box)
         row_an2.pack(fill="x", pady=(2, 0))
-        self.var_annoter_sauvegarde = tk.BooleanVar(
-            value=bool(CONFIG.get("annoter_sauvegarde", True)))
-        ttk.Checkbutton(row_an2, text="PNG annoté à côté du FITS",
-                        variable=self.var_annoter_sauvegarde,
-                        command=self._on_annoter).pack(side="left")
         ttk.Label(row_an2, text="Seuil mag :").pack(side="left", padx=(6, 0))
         self.var_seuil_mag_etoiles = tk.StringVar(
             value=f"{float(CONFIG.get('seuil_mag_etoiles', 8.0)):.1f}")
@@ -1853,6 +1850,21 @@ class App:
         e_seuil.pack(side="left", padx=(2, 0))
         e_seuil.bind("<Return>", lambda ev: self._on_annoter())
         e_seuil.bind("<FocusOut>", lambda ev: self._on_annoter())
+        row_an3 = ttk.Frame(box)
+        row_an3.pack(fill="x", pady=(2, 0))
+        # v2.56.0 (demande d'Alain, 05/10/2026) : ne pas entourer ce qui
+        # n'est pas résolu sur l'image (ex. NGC 206) — l'étiquette reste,
+        # seul l'entourage est conditionné à la détection réelle.
+        self.var_annoter_visibles = tk.BooleanVar(
+            value=bool(CONFIG.get("annoter_visibles", True)))
+        ttk.Checkbutton(row_an3, text="Seulement les objets visibles",
+                        variable=self.var_annoter_visibles,
+                        command=self._on_annoter).pack(side="left")
+        self.var_annoter_sauvegarde = tk.BooleanVar(
+            value=bool(CONFIG.get("annoter_sauvegarde", True)))
+        ttk.Checkbutton(row_an3, text="PNG annoté à côté du FITS",
+                        variable=self.var_annoter_sauvegarde,
+                        command=self._on_annoter).pack(side="left", padx=(6, 0))
 
         # Jalon 70 — DONNÉES de l'astrométrie : l'application DIT où elle
         # cherche le catalogue Gaia DR3 de Siril, laisse choisir un autre
@@ -3303,6 +3315,7 @@ class App:
         (un seuil changé doit relire le catalogue) et rendu immédiat."""
         CONFIG["annoter_objets"] = bool(self.var_annoter_objets.get())
         CONFIG["annoter_etoiles"] = bool(self.var_annoter_etoiles.get())
+        CONFIG["annoter_visibles"] = bool(self.var_annoter_visibles.get())
         CONFIG["annoter_sauvegarde"] = bool(self.var_annoter_sauvegarde.get())
         CONFIG["seuil_mag_etoiles"] = self._seuil_mag()
         sauver_config(CONFIG)
@@ -3425,12 +3438,13 @@ class App:
         try:
             objets_act = bool(self.var_annoter_objets.get())
             etoiles_act = bool(self.var_annoter_etoiles.get())
+            visibles_act = bool(self.var_annoter_visibles.get())
         except (tk.TclError, AttributeError):
             return disp
         if not (objets_act or etoiles_act):
             return disp
         cle_cache = (id(disp), round(float(echelle_police), 3),
-                     objets_act, etoiles_act)
+                     objets_act, etoiles_act, visibles_act)
         c = getattr(self, "_annote_rendu", None)
         if c is not None and c[0] == cle_cache:
             return c[1]
@@ -3446,7 +3460,7 @@ class App:
         img_ann = annoter_mod.generer_image_annotee(
             img, wcs, objets, etoiles, self._seuil_mag(),
             annoter_objets=objets_act, annoter_etoiles=etoiles_act,
-            echelle_police=echelle_police)
+            echelle_police=echelle_police, seulement_visibles=visibles_act)
         if img_ann is None:
             return disp
         self._annote_rendu = (cle_cache, img_ann, disp)
@@ -3464,6 +3478,7 @@ class App:
                 return None, ""
             objets_act = bool(self.var_annoter_objets.get())
             etoiles_act = bool(self.var_annoter_etoiles.get())
+            visibles_act = bool(self.var_annoter_visibles.get())
         except (tk.TclError, AttributeError):
             return None, ""
         if not (objets_act or etoiles_act):
@@ -3489,7 +3504,7 @@ class App:
         img_ann = annoter_mod.generer_image_annotee(
             img, wcs, objets, etoiles, self._seuil_mag(),
             annoter_objets=objets_act, annoter_etoiles=etoiles_act,
-            echelle_police=echelle)
+            echelle_police=echelle, seulement_visibles=visibles_act)
         if img_ann is None:
             return None, ""
         sortie = os.path.splitext(chemin)[0] + "_annote.png"

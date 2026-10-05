@@ -63,6 +63,13 @@ bouton de téléchargement** dans l'application (« ⬇ Gaia », « ⬇ Spectres
 | 48 morceaux de spectres Gaia XP | `zenodo.org` |
 | Base de profils SPCC (`siril-spcc-database`) | `gitlab.com` |
 
+Le catalogue d'**objets célèbres** (étiquettes d'annotation) est
+**embarqué dans l'application** : il ne se télécharge pas, il est copié
+depuis l'installation vers le dossier des catalogues. Il a été régénéré
+hors ligne depuis [OpenNGC](https://github.com/mattiaverga/OpenNGC)
+(CC-BY-SA-4.0) et les catalogues VizieR VII/20, VII/220A et VII/7A
+(CC-BY-4.0, miroir Harvard).
+
 Ces requêtes sont des **lectures** : elles demandent un fichier et le reçoivent.
 **Rien n'est transmis** — ni vos images, ni vos réglages, ni une identification
 quelconque, au-delà de l'en-tête technique que ces sites exigent de tout client

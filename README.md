@@ -146,7 +146,11 @@ parlent aux vraies DLL constructeurs).
 bibliothèques tierces gardent leurs licences propres et ne sont **pas**
 redistribués par ce dépôt — notamment l'étirement **VeraLux**
 (`veralux_core_headless.py`, extrait de *VeraLux_HyperMetric_Stretch.py* v1.5.2
-de Riccardo Paterniti), sous **GPL-3.0-or-later**.
+de Riccardo Paterniti), sous **GPL-3.0-or-later**. Le catalogue d'objets
+célèbres embarqué est régénéré depuis **OpenNGC** (© Mattia Verga et
+contributeurs, **CC-BY-SA-4.0** — https://github.com/mattiaverga/OpenNGC)
+et les catalogues VizieR **VII/20 / VII/220A / VII/7A** (CC-BY-4.0,
+miroir Harvard) : ces données gardent leurs licences propres.
 
 Questions, anomalies, propositions : les **issues** de ce dépôt sont l'endroit
 indiqué — avec, si possible, la version (`barre de titre`), le journal

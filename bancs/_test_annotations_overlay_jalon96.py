@@ -270,6 +270,53 @@ rj = ann._rayon_entourage(WCS, obj_inconnu, H, W, echelle_police=4.0)
 verifie(abs(rj - 4.0 * ann.RAYON_CERCLE) < 1e-6,
         f"taille inconnue : le petit cercle suit l'échelle ({rj:.0f} px)")
 
+print("[13] détection de visibilité (_detecte_visibilite, v2.56.0)")
+fond40 = np.full((H, W, 3), 40, np.uint8)
+blob = fond40.copy()
+cv2.circle(blob, (180, 150), 60, 200, -1)      # objet nettement visible
+verifie(ann._detecte_visibilite(blob, 180.0, 150.0, 60.0),
+        "objet brillant sur fond plat → VISIBLE")
+verifie(not ann._detecte_visibilite(fond40, 180.0, 150.0, 60.0),
+        "fond plat (aucun objet) → PAS visible (pas de faux positif sur le grain)")
+faible = fond40.copy()
+cv2.circle(faible, (180, 150), 60, 45, -1)     # +5 niveaux : le cas NGC 206
+verifie(not ann._detecte_visibilite(faible, 180.0, 150.0, 60.0),
+        "objet +5 niveaux (NGC 206 mesuré : +5,2) → PAS visible")
+etoile = fond40.copy()
+etoile[150, 180] = 255                          # une étoile ponctuelle ne
+verifie(not ann._detecte_visibilite(etoile, 180.0, 150.0, 60.0),
+        "étoile ponctuelle (lissage) → PAS un objet détecté")
+verifie(ann._detecte_visibilite(fond40, 180.0, 150.0, 6.0),
+        "rayon < seuil de mesure → on ne tranche pas (True conservateur)")
+verifie(ann._detecte_visibilite(fond40, 180.0, 150.0, 400.0),
+        "rayon > plafond de mesure → on ne tranche pas (True conservateur)")
+
+print("[14] overlay `seulement_visibles` : étiquette TOUJOURS, entourage si détecté")
+oi = ObjetCelebre(designation="NGC 206", aliases=[], type_obj="amas_ouvert",
+                  mag_v=None, size_arcmin=0.0, ra_deg=RA0, dec_deg=DEC0,
+                  healpix8=0)
+toile_v = np.full((H, W, 3), 40, np.uint8)
+toile_c = np.full((H, W, 3), 40, np.uint8)
+rv = ann.overlay_objets_celebres(toile_v, WCS, [oi], seulement_visibles=True)
+rc = ann.overlay_objets_celebres(toile_c, WCS, [oi], seulement_visibles=False)
+n_v = int((toile_v != 40).any(axis=2).sum())
+n_c = int((toile_c != 40).any(axis=2).sum())
+verifie(bool(rv) and n_v > 0,
+        "objet invisible : l'ÉTIQUETTE reste dessinée")
+verifie(n_c > n_v,
+        f"objet invisible : le cercle n'est plus dessiné "
+        f"({n_v} px avec la case, {n_c} sans)")
+obj_vis = ObjetCelebre(designation="M 110", aliases=[], type_obj="galaxie",
+                       mag_v=8.1, size_arcmin=1.0, ra_deg=RA0, dec_deg=DEC0,
+                       healpix8=0)
+toile_o = np.full((H, W, 3), 40, np.uint8)
+cv2.circle(toile_o, (180, 150), 30, 200, -1)   # le cœur brillant de M 110
+ro = ann.overlay_objets_celebres(toile_o, WCS, [obj_vis],
+                                 seulement_visibles=True)
+n_o = int((toile_o != 40).any(axis=2).sum())
+verifie(n_o > n_v,
+        f"objet détecté : le cercle est DESSINÉ ({n_o} px > {n_v} px étiquette seule)")
+
 print()
 print("BANC TERMINÉ : " + ("TOUT AU VERT" if ok else "ÉCHEC — corriger avant de continuer"))
 sys.exit(0 if ok else 1)
