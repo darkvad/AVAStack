@@ -17,9 +17,33 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.54.1"
+AVASTACK_VERSION = "2.55.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.55.0 : ANNOTATION TEMPS-RÉEL DE L'IMAGE AFFICHÉE (JALON 96, ÉTAPES 5-6)
+#   - Deux cases INDÉPENDANTES dans le panneau Astrométrie :
+#     « Annoter objets célèbres » (catalogue célèbres embarqué) et
+#     « Étoiles brillantes » (catalogue Gaia DR3, seuil de magnitude
+#     configurable, défaut 8,0), + case « PNG annoté à côté du FITS »
+#     (défaut coché). Persistance : clés `annoter_objets`, `annoter_etoiles`,
+#     `annoter_sauvegarde`, `seuil_mag_etoiles`.
+#   - Overlay dessiné sur une COPIE du buffer d'affichage dans `_render`
+#     (UNIQUE point de passage : nouvelle image, réglage, zoom) — `_last_disp`
+#     reste PROPRE, les données brutes et les FITS ne sont JAMAIS annotés
+#     (linéarité photométrique préservée).
+#   - CORRECTION du module `processing/annotations.py` : il appelait
+#     `wcs.world_to_pixel(...)` — méthode qui N'EXISTE PAS dans ce projet (le
+#     WCS expose `vers_pixels(ra, dec)` → tableau (N, 2)) : chaque étiquette
+#     tombait sur une exception et RIEN ne se dessinait.
+#   - Nouveau `WcsEchelle` : l'aperçu est une réduction UNIFORME de la grille
+#     recadrée (facteur `_echelle_apercu` posé par le worker) — multiplier les
+#     coordonnées suffit, aucun re-solve, aucune hypothèse de projection.
+#   - Listes de ciel (objets + étoiles Gaia) en CACHE par (centre, champ,
+#     seuil) : la lecture du catalogue Gaia (≈ 1 Go) n'est JAMAIS refaite à
+#     chaque rendu ni sous le zoom.
+#   - PNG compagnon `<nom>_annote.png` écrit à côté du FITS par `_save`,
+#     `_save_asseen` et `_save_proc` — jamais d'exception propagée (un PNG
+#     compagnon ne doit pas faire échouer la sauvegarde du FITS).
 # v2.54.1 : CASE « DEBUG » DÉPLACÉE (FICHIERS DE TRAVAIL ET JOURNAL)
 #   - Demande d'Alain : la case « Debug » quitte le panneau Astrométrie et
 #     rejoint la PREMIÈRE section de la colonne de gauche

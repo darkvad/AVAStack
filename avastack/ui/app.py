@@ -110,6 +110,10 @@ from ..processing import veralux as veralux_moteur
 # chaque réempilement). Le worker ne touche jamais au catalogue lui-même
 # (processing → catalogues, jamais l'inverse : pas de cycle d'import).
 from ..processing import astrometrie as astro_mod
+# Jalon 96 (étapes 5-6) : annotation temps-réel de l'image AFFICHÉE — overlay
+# OpenCV (objets célèbres + étoiles Gaia) sur une COPIE du buffer, jamais sur
+# les données brutes ni dans les FITS (linéarité photométrique préservée).
+from ..processing import annotations as annoter_mod
 # Jalon 70 : CATALOGUES (dossier par OS, présence du catalogue astro, et
 # téléchargement Gaia DR3) — l'astrométrie interne en dépend, et son absence
 # doit être DITE (constat Linux du 27/09/2026 : échec silencieux).
@@ -390,6 +394,13 @@ class App:
         self._astro_actif = False        # case « Astrométrie » (instantané Tk)
         self._astro_indices = None       # (ra, dec, champ) validés (instantané)
         self._astro_name_proposed = False  # popup déjà proposée pour ce nom
+        # Jalon 96 (étapes 5-6) : annotation temps-réel de l'image AFFICHÉE
+        # (objets célèbres + étoiles brillantes). Les listes de ciel (objets,
+        # étoiles) sont mises en CACHE par (centre, champ, seuil) : la lecture
+        # du catalogue Gaia (≈ 1 Go) est trop lourde pour être refaite à
+        # chaque rendu, et a fortiori sous le zoom. Le WCS, lui, est recalculé
+        # à chaque rendu (une composition de matrice : négligeable).
+        self._annote_cache = None         # (clé, objets, etoiles) du champ
         self.var_debug = tk.BooleanVar(value=False)  # case « Debug général »
         # Champ SEUL (sans coordonnées) : saisi par l'utilisateur qui connaît sa
         # focale mais pas ses coordonnées — sert de `fov` indicatif au balayage
@@ -768,6 +779,20 @@ class App:
         if "astro_actif" in c:
             self.var_astro.set(bool(c.get("astro_actif")))
         self._on_astro()
+        # --- Jalon 96 : annotation temps-réel (objets célèbres / étoiles) —
+        # booléens EXPLICITES (une case décochée ne doit pas hériter d'un True
+        # d'une session précédente) ; seuil de magnitude borné à la relecture
+        # (une valeur aberrante en config ne doit pas noyer l'image).
+        if "annoter_objets" in c:
+            self.var_annoter_objets.set(bool(c.get("annoter_objets")))
+        if "annoter_etoiles" in c:
+            self.var_annoter_etoiles.set(bool(c.get("annoter_etoiles")))
+        if "annoter_sauvegarde" in c:
+            self.var_annoter_sauvegarde.set(bool(c.get("annoter_sauvegarde")))
+        v = c.get("seuil_mag_etoiles")
+        if isinstance(v, (int, float)) and not isinstance(v, bool) \
+                and 0.0 <= float(v) <= 20.0:
+            self.var_seuil_mag_etoiles.set(f"{float(v):.1f}")
         # --- Jalon 56 (étape 4) : photométrie (zéro-point Gaia) — booléen
         # EXPLICITE, comme les autres cases.
         if "photo_actif" in c:
@@ -1115,6 +1140,12 @@ class App:
         # pas persistée : elle vient de la mesure de seeing de la session.
         c["vl_sharp"] = bool(self.var_vl_sharp.get())
         c["vl_sharp_iterations"] = int(self.disp.vl_sharp_iterations)
+        # Jalon 96 : annotation temps-réel — booléens EXPLICITES (True comme
+        # False) et seuil de magnitude (les cases survivent à la session).
+        c["annoter_objets"] = bool(self.var_annoter_objets.get())
+        c["annoter_etoiles"] = bool(self.var_annoter_etoiles.get())
+        c["annoter_sauvegarde"] = bool(self.var_annoter_sauvegarde.get())
+        c["seuil_mag_etoiles"] = self._seuil_mag()
         sauver_config(c)
 
     # ------------------------------------------------------------ construction UI
@@ -1787,6 +1818,40 @@ class App:
         self.lbl_astro = ttk.Label(box, text="Astrométrie : —",
                                    foreground="#888888", wraplength=310)
         self.lbl_astro.pack(anchor="w", pady=(2, 0))
+
+        # Jalon 96 (étapes 5-6) : annotation temps-réel de l'image AFFICHÉE.
+        # Deux cases INDÉPENDANTES (l'une peut vivre seule) + seuil de
+        # magnitude des étoiles, et l'option du PNG compagnon à la sauvegarde.
+        # L'annotation exige un WCS résolu : tant que l'astrométrie n'est pas
+        # verte, rien n'est dessiné (la ligne d'état au-dessus le montre déjà).
+        # Persistance comme les autres cases (booléens EXPLICITES).
+        row_an = ttk.Frame(box)
+        row_an.pack(fill="x", pady=(4, 0))
+        self.var_annoter_objets = tk.BooleanVar(
+            value=bool(CONFIG.get("annoter_objets", False)))
+        ttk.Checkbutton(row_an, text="Annoter objets célèbres",
+                        variable=self.var_annoter_objets,
+                        command=self._on_annoter).pack(side="left")
+        self.var_annoter_etoiles = tk.BooleanVar(
+            value=bool(CONFIG.get("annoter_etoiles", False)))
+        ttk.Checkbutton(row_an, text="Étoiles brillantes",
+                        variable=self.var_annoter_etoiles,
+                        command=self._on_annoter).pack(side="left", padx=(6, 0))
+        row_an2 = ttk.Frame(box)
+        row_an2.pack(fill="x", pady=(2, 0))
+        self.var_annoter_sauvegarde = tk.BooleanVar(
+            value=bool(CONFIG.get("annoter_sauvegarde", True)))
+        ttk.Checkbutton(row_an2, text="PNG annoté à côté du FITS",
+                        variable=self.var_annoter_sauvegarde,
+                        command=self._on_annoter).pack(side="left")
+        ttk.Label(row_an2, text="Seuil mag :").pack(side="left", padx=(6, 0))
+        self.var_seuil_mag_etoiles = tk.StringVar(
+            value=f"{float(CONFIG.get('seuil_mag_etoiles', 8.0)):.1f}")
+        e_seuil = ttk.Entry(row_an2, textvariable=self.var_seuil_mag_etoiles,
+                            width=5)
+        e_seuil.pack(side="left", padx=(2, 0))
+        e_seuil.bind("<Return>", lambda ev: self._on_annoter())
+        e_seuil.bind("<FocusOut>", lambda ev: self._on_annoter())
 
         # Jalon 70 — DONNÉES de l'astrométrie : l'application DIT où elle
         # cherche le catalogue Gaia DR3 de Siril, laisse choisir un autre
@@ -3257,6 +3322,189 @@ class App:
         # l'application ne s'ouvrait pas (30 s de blocage observés sur la sonde
         # simulée du banc jalon 74).
         self._demander_mesures()
+
+    # ------------------------------------ jalon 96 : annotation temps-réel
+    def _seuil_mag(self):
+        """Seuil de magnitude des étoiles annotées (jalon 96), lu TOLÉRANT
+        (saisie invalide = valeur de config) et BORNÉ (0 à 20 : un seuil
+        aberrant ne doit pas noyer l'image d'étiquettes)."""
+        try:
+            v = float(str(self.var_seuil_mag_etoiles.get()).replace(",", "."))
+        except (tk.TclError, TypeError, ValueError):
+            v = float(CONFIG.get("seuil_mag_etoiles", 8.0))
+        return min(20.0, max(0.0, v))
+
+    def _on_annoter(self):
+        """Cases « Annoter objets célèbres » / « Étoiles brillantes » / seuil
+        de magnitude / PNG compagnon (jalon 96, étapes 5-6) : persistance
+        IMMÉDIATE (comme les autres cases), cache des listes de ciel INVALIDÉ
+        (un seuil changé doit relire le catalogue) et rendu immédiat."""
+        CONFIG["annoter_objets"] = bool(self.var_annoter_objets.get())
+        CONFIG["annoter_etoiles"] = bool(self.var_annoter_etoiles.get())
+        CONFIG["annoter_sauvegarde"] = bool(self.var_annoter_sauvegarde.get())
+        CONFIG["seuil_mag_etoiles"] = self._seuil_mag()
+        sauver_config(CONFIG)
+        self._annote_cache = None
+        self._refresh_preview()
+
+    def _forme_pleine(self, disp=None):
+        """Forme (h, w) PLEINE RÉSOLUTION de la grille recadrée affichée, ou
+        None. `stacker.cadre` = (y0, x0, y1, x1) du recadrage d'intersection :
+        la grille affichée en est le recadrage. Sans cadre, la copie pleine
+        résolution de l'empilement fait foi ; à défaut, l'aperçu RÉDUIT d'un
+        facteur uniforme `_echelle_apercu` (posé par le worker) est remonté.
+        → None si aucune de ces sources n'est disponible : JAMAIS de forme
+        devinée (l'annotation serait décalée)."""
+        st = self.stacker
+        if st is None:
+            return None
+        cadre = getattr(st, "cadre", None)
+        if cadre:
+            try:
+                y0, x0, y1, x1 = (int(v) for v in cadre)
+            except (TypeError, ValueError):
+                return None
+            if y1 - y0 > 0 and x1 - x0 > 0:
+                return (y1 - y0, x1 - x0)
+            return None
+        plein = getattr(self, "_stack_pleine_res", None)
+        if plein is not None:
+            h, w = plein.shape[:2]
+            return (int(h), int(w))
+        if disp is not None and not self._pleine_res_activee():
+            s = float(getattr(self, "_echelle_apercu", 1.0) or 1.0)
+            if 0.0 < s < 1.0:
+                h, w = disp.shape[:2]
+                return (int(round(h / s)), int(round(w / s)))
+        return None
+
+    def _wcs_affichage(self, disp):
+        """WCS du buffer AFFICHÉ, ou None (astrométrie non résolue, pas de
+        forme). Le WCS rendu est celui de la grille recadrée PLEINE
+        résolution, ENVELOPPÉ dans `WcsEchelle` : l'aperçu est une réduction
+        uniforme de cette grille, multiplier les coordonnées suffit."""
+        sa = self.suivi_astro
+        if sa is None or not getattr(sa, "resolu", False):
+            return None
+        if disp is None:
+            return None
+        st = self.stacker
+        cadre = getattr(st, "cadre", None) if st is not None else None
+        wcs, msg = sa.wcs_grille(cadre=cadre)
+        if wcs is None:
+            return None
+        forme = self._forme_pleine(disp)
+        if forme is None:
+            return None
+        ech = float(disp.shape[1]) / float(forme[1])
+        return annoter_mod.WcsEchelle(wcs, ech)
+
+    def _donnees_annotation(self, wcs, disp):
+        """Listes de ciel de l'annotation (objets célèbres + étoiles Gaia du
+        champ), mises en CACHE par (centre, champ, seuil) : la lecture du
+        catalogue Gaia (≈ 1 Go) est trop lourde pour un rendu par image, et a
+        fortiori sous le zoom. → (objets, etoiles) ; (None, None) si rien
+        d'exploitable (catalogue absent, champ vide)."""
+        sa = self.suivi_astro
+        ra = getattr(sa, "ra0", None)
+        dec = getattr(sa, "dec0", None)
+        if ra is None or dec is None:
+            return None, None
+        champ = getattr(sa, "champ", None)
+        seuil = self._seuil_mag()
+        objets_act = bool(self.var_annoter_objets.get())
+        etoiles_act = bool(self.var_annoter_etoiles.get())
+        rayon = max(0.5, float(champ)) if champ else 0.5
+        cle = (round(float(ra), 4), round(float(dec), 4), round(rayon, 3),
+               round(seuil, 2), objets_act, etoiles_act)
+        c = self._annote_cache
+        if c is not None and c[0] == cle:
+            return c[1], c[2]
+        objets = etoiles = None
+        if objets_act:
+            try:
+                objets = cat_mod.celebres.cherche_celebres(
+                    ra, dec, rayon) or None
+            except Exception:
+                objets = None
+        if etoiles_act:
+            forme = self._forme_pleine(disp)
+            if forme is not None:
+                try:
+                    etoiles, _msg = photo_mod.etoiles_catalogue(
+                        wcs, forme, limmag=seuil)
+                    etoiles = etoiles or None
+                except Exception:
+                    etoiles = None
+        self._annote_cache = (cle, objets, etoiles)
+        return objets, etoiles
+
+    def _annoter_image(self, disp):
+        """Copie de l'image affichée AVEC l'annotation (objets + étoiles), ou
+        l'image telle quelle si rien à dessiner. `_last_disp` reste SANS
+        annotation : le PNG compagnon et le zoom repartent de la version
+        propre, jamais d'une image déjà annotée (double étiquette)."""
+        if disp is None:
+            return disp
+        try:
+            objets_act = bool(self.var_annoter_objets.get())
+            etoiles_act = bool(self.var_annoter_etoiles.get())
+        except (tk.TclError, AttributeError):
+            return disp
+        if not (objets_act or etoiles_act):
+            return disp
+        wcs = self._wcs_affichage(disp)
+        if wcs is None:
+            return disp
+        objets, etoiles = self._donnees_annotation(wcs, disp)
+        if objets is None and etoiles is None:
+            return disp
+        img = np.ascontiguousarray(disp)
+        if img.ndim == 2:
+            img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+        return annoter_mod.generer_image_annotee(
+            img, wcs, objets, etoiles, self._seuil_mag(),
+            annoter_objets=objets_act, annoter_etoiles=etoiles_act)
+
+    def _sauver_png_annote(self, chemin):
+        """PNG annoté COMPAGNON à côté du FITS (jalon 96, étape 6) : copie du
+        buffer d'affichage courant (PROPRE) + étiquettes. → (chemin écrit,
+        message d'erreur) ; (None, "") si rien à écrire. AUCUNE exception
+        propagée : un PNG compagnon ne doit jamais faire échouer la
+        sauvegarde du FITS (linéarité photométrique préservée)."""
+        try:
+            if not (bool(CONFIG.get("annoter_sauvegarde", True))
+                    and self.var_annoter_sauvegarde.get()):
+                return None, ""
+            objets_act = bool(self.var_annoter_objets.get())
+            etoiles_act = bool(self.var_annoter_etoiles.get())
+        except (tk.TclError, AttributeError):
+            return None, ""
+        if not (objets_act or etoiles_act):
+            return None, ""
+        disp = getattr(self, "_last_disp", None)
+        if disp is None:
+            return None, ""
+        wcs = self._wcs_affichage(disp)
+        if wcs is None:
+            return None, ""
+        objets, etoiles = self._donnees_annotation(wcs, disp)
+        if objets is None and etoiles is None:
+            return None, ""
+        img = np.ascontiguousarray(disp)
+        if img.ndim == 2:
+            img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+        img_ann = annoter_mod.generer_image_annotee(
+            img, wcs, objets, etoiles, self._seuil_mag(),
+            annoter_objets=objets_act, annoter_etoiles=etoiles_act)
+        if img_ann is None:
+            return None, ""
+        sortie = os.path.splitext(chemin)[0] + "_annote.png"
+        try:
+            save_image(sortie, img_ann.astype(np.float32) / 255.0)
+        except Exception as exc:
+            return None, str(exc)
+        return sortie, ""
 
     def _spcc_osc(self):
         """Le TYPE choisi désigne-t-il un capteur COULEUR (OSC) ?"""
@@ -5871,6 +6119,9 @@ class App:
             initialfile=self._nom_cible_pour_sauvegarde())
         if path:
             self.save_request = path  # la sauvegarde est faite par le thread d'acquisition
+            # Jalon 96 (étape 6) : PNG annoté COMPAGNON, écrit à côté (le FITS
+            # linéaire, lui, part par le thread — deux fichiers indépendants).
+            _png, _msg = self._sauver_png_annote(path)
 
     def _gx_live_prete(self, titre):
         """Contrôle AVANT toute sauvegarde pleine résolution : si le retrait de
@@ -5986,6 +6237,8 @@ class App:
         if not path:
             return
         self.asseen_titre = "Enregistrer tel que vu"
+        # Jalon 96 (étape 6) : PNG annoté COMPAGNON, écrit à côté du FITS.
+        _png, _msg = self._sauver_png_annote(path)
         self.save_asseen_request = (path, vue, self._reglages_rendu(), False)
 
     def _save_traite_lineaire(self):
@@ -6723,6 +6976,9 @@ class App:
                 img, entete = borner_lineaire(self.proc_full,
                                               dict(self.proc_entete or {}))
                 save_image(path, img, entete=entete)
+                # Jalon 96 (étape 6) : PNG annoté COMPAGNON, écrit à côté du
+                # FITS (jamais dans le fichier : linéarité préservée).
+                _png, _msg = self._sauver_png_annote(path)
                 self._dire("Enregistrer", f"Résultat traité sauvegardé :\n{path}")
             except Exception as e:
                 self._signaler("Enregistrer", str(e))
@@ -9929,6 +10185,11 @@ class App:
         disp = self._last_disp
         if disp is None:
             return
+        # Jalon 96 (étape 5) : annotation temps-réel — overlay dessiné sur une
+        # COPIE du buffer, UNIQUE point de passage (tous les rendus : nouvelle
+        # image, réglage, zoom). `_last_disp` reste PROPRE : le PNG compagnon
+        # repart de la version sans annotation.
+        disp = self._annoter_image(disp)
         ih, iw = disp.shape[:2]
         cw = self.cv_img.winfo_width() or self.W_IMG
         ch = self.cv_img.winfo_height() or self.H_IMG

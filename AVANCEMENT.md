@@ -136,52 +136,39 @@ brute -> traitement (stretch, NR, etc.) -> buffer_affichage (uint16 RGB)
 
 ---
 
-### ÉTAT ACTUEL (04/10/2026 — fin de session, jalon 96 en cours, v2.54.1)
+### ÉTAT ACTUEL (04/10/2026 — jalon 96 TERMINÉ, v2.55.0)
 
-**JALON 96 (nom de cible + annotation temps-réel) — AVANCEMENT DE LA SESSION :**
+**JALON 96 (nom de cible + annotation temps-réel) — TOUT LIVRÉ :**
 
-✅ **Catalogue célèbres complet** : `celebres.py` (HEALpix 8), `telechargeur.py`
-   (catalogue **EMBARQUÉ** `avastack/catalogues/data/celebres_healpix8.dat.bz2`
-   235 Ko — le .dat décompressé 4,1 Mo est généré au premier usage, ignoré par
-   gitignore), bouton « ⬇ Célèbres » + `.gitignore` mis à jour
-✅ **Champ « Nom cible »** : `var_nom_cible_manual` + Entry dans panneau Empilement,
-   pré-rempli depuis l'en-tête FITS à chaque nouvelle brute (SEULEMENT quand
-   `camera.last_file` change, plus jamais à chaque tick — fin du DEBUG spam)
-✅ **Logique priorité** (règles d'Alain) : champ vide + FITS + astro non résolue →
-   FITS ; champ saisi → conservé jusqu'à la prochaine astrométrie ; astro résolue +
-   champ vide → adoption du match céleste ; astro + champ différent du match
-   céleste → popup de choix
-✅ **Popup à radio-boutons v2.54.0** : `_objets_celestes_resolus()` DÉDUPLIQUE par
-   position (~0,01°) — NGC 224 et M31 = même objet, meilleur nom par groupe
-   (score : Messier « M 31 » > NGC/IC préfixé > nombre nu/tronqué, espaces
-   collapsés) ; dialogue `_demander_nom_cible()` (jusqu'à 6 objets, libellé
-   nom — type · mag · taille) + « Garder « actuel » », OK/Annuler ; remplace
-   `messagebox.askyesno` (règle jalon 84 : banc dialogues TOUT AU VERT)
-✅ **Fix attributs ra0/dec0 v2.53.9** : `suivi_astro.ra`/`dec` n'existaient pas
-   (attributs réels : `ra0`/`dec0`) — le popup apparaissait jamais ; corrigé
-   aux 2 sites, popup VALIDÉE en réel chez Alain
-✅ **Popup à CHAQUE résolution v2.53.8** : transition non-résolu → résolu via
-   `_astro_was_resolved` ; reset `_astro_name_proposed` : désactivation
-   astrométrie, nouveaux indices (`_on_astro`), nouvelle résolution
-✅ **Case « Debug » déplacée v2.54.1** : du panneau Astrométrie vers la PREMIÈRE
-   section de la colonne de gauche (« Fichiers de travail et journal »), à côté
-   du bouton « Journal » (demande d'Alain)
-✅ **Nouvelle règle dans CLAUDE.md** : toute livraison/correction → mise à jour
-   AVANCEMENT.md (ÉTAT ACTUEL + version + changelog) dans la même réponse
-✅ **Bancs** : `_test_dedup_celebre_jalon96.py` NEUF (fichier RÉEL d'Alain :
-   5 entrées → 2 objets, « M 31 » gagne sur « 224 ») ; rejoués TOUS VERTS :
-   jalon 47 (UI visibilité), jalon 84 (dialogues), jalon 87 + 95 (UI robuste),
-   jalon 56 (astrométrie), jalon 56 photométrie, jalon 70 (catalogues),
-   jalon 76 (reset — TOUT PASSE)
-✅ **Version** : **2.54.1**, changelog en tête d'`avastack/__init__.py`
-
-❌ **RESTE À FAIRE (jalon 96, étapes 5-6)** :
-- Intégration de l'overlay dans `_refresh_image` / `_update_display`
-  (module `annotations.py` écrit : overlay complet + placement intelligent)
-- Cases à cocher UI (2 cases indépendantes [✓] Objets célèbres [✓] Étoiles
-  brillantes + seuil mag) + persistance config
-- PNG annoté à la sauvegarde (dans _save, _save_tel_que_vu, _save_proc)
-- Bancs de test annotations (overlay/save)
+✅ **Étapes 1-4** (catalogue célèbres embarqué, lecture FITS, champ « Nom cible »,
+   popup radio-boutons, déduplication céleste) : livrées en v2.54.1 — cf.
+   changelog d'`avastack/__init__.py`.
+✅ **Étape 5 (annotation temps-réel)** : deux cases INDÉPENDANTES dans le panneau
+   Astrométrie (« Annoter objets célèbres », « Étoiles brillantes » + seuil mag
+   défaut 8,0) + case « PNG annoté à côté du FITS » ; clés `annoter_objets` /
+   `annoter_etoiles` / `annoter_sauvegarde` / `seuil_mag_etoiles` persistées ;
+   overlay dessiné sur une COPIE du buffer dans `_render` (UNIQUE point de
+   passage : nouvelle image, réglage, zoom) — `_last_disp` reste PROPRE, brutes
+   et FITS JAMAIS annotés (linéarité photométrique préservée) ; listes de ciel
+   en CACHE par (centre, champ, seuil) — le catalogue Gaia (≈ 1 Go) n'est JAMAIS
+   relu à chaque rendu ni sous le zoom ; `WcsEchelle` : l'aperçu est une
+   réduction UNIFORME de la grille recadrée (facteur `_echelle_apercu` posé par
+   le worker), multiplier les coordonnées suffit — aucun re-solve.
+✅ **CORRECTION** : `processing/annotations.py` appelait `wcs.world_to_pixel(...)`
+   — méthode qui N'EXISTE PAS (le WCS du projet expose `vers_pixels(ra, dec)`)
+   : chaque étiquette tombait sur une exception et RIEN ne se dessinait.
+✅ **Étape 6 (PNG compagnon)** : `<nom>_annote.png` écrit à côté du FITS par
+   `_save`, `_save_asseen` et `_save_proc` — jamais d'exception propagée (un
+   PNG compagnon ne doit pas faire échouer la sauvegarde du FITS).
+✅ **PERFORMANCE (mesurée au banc)** : 53,8 → 8,3 ms pour 10 étiquettes à
+   l'aperçu 1600×904 — le fond semi-transparent de TOUTES les étiquettes est
+   posé en UNE passe (une copie + addWeighted) au lieu d'une par étiquette.
+✅ **Bancs NEUF, TOUT AU VERT** : `_test_annotations_overlay_jalon96.py` (15
+   vérifs), `_test_annotations_save_jalon96.py` (12 vérifs).
+✅ **Bancs rejoués TOUS VERTS** : jalon 56 (branchement astrométrie), jalon 56
+   photométrie, jalon 84 (dialogues), jalon 87 + 47 (interface robuste /
+   visibilité), jalon 74 (démarrage non bloquant), jalon 96 (déduplication).
+✅ **Version** : **2.55.0**, changelog en tête d'`avastack/__init__.py`
 
 ---
 
@@ -196,11 +183,11 @@ brute -> traitement (stretch, NR, etc.) -> buffer_affichage (uint16 RGB)
 ---
 
 ### PROCHAINE ACTION
-Jalon 96, **étapes 5-6** : intégration de l'overlay dans `_refresh_image` /
-`_update_display` (module `annotations.py` déjà écrit), cases à cocher UI
-([✓] Objets célèbres [✓] Étoiles brillantes + seuil mag) + persistance config,
-PNG annoté à la sauvegarde. Les étapes 1-4 (catalogue célèbres, lecture FITS,
-champ nom cible, popup radio-boutons) sont LIVRÉES en v2.54.1.
+Jalon 96 **TERMINÉ** (v2.55.0) — code + bancs verts. Reste à toi (Alain) :
+le TEST RÉEL — astrométrie résolue, cocher « Annoter objets célèbres » et/ou
+« Étoiles brillantes » (les étiquettes doivent suivre l'image, y compris sous
+le zoom), puis « Enregistrer » et vérifier le `<nom>_annote.png` à côté du
+FITS. Ensuite : rebuild des installateurs + release si tu veux publier.
 
 ---
 

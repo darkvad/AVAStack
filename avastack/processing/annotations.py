@@ -48,6 +48,48 @@ def _sanitize_texte(txt: str) -> str:
     return "".join(c if 32 <= ord(c) < 127 else "?" for c in txt)
 
 
+def _pixel_depuis_ciel(wcs, ra, dec):
+    """(ra, dec) en degrés → (x, y) pixel du buffer, via le WCS du projet.
+
+    Le WCS du projet (WcsTan / WcsCompose, cf. catalogues.solveur et
+    catalogues.propagation) expose `vers_pixels(ra, dec)` → tableau (N, 2) en
+    coordonnées tableau 0-based — il N'A PAS de méthode `world_to_pixel`
+    (piège de branchement : le module d'origine l'appelait et ne dessinait
+    donc JAMAIS rien, chaque étiquette tombant sur une exception)."""
+    p = np.asarray(wcs.vers_pixels(float(ra), float(dec)),
+                   dtype=np.float64).reshape(-1, 2)
+    return float(p[0, 0]), float(p[0, 1])
+
+
+class WcsEchelle:
+    """WCS d'un buffer RÉDUIT : `vers_pixels` rendu à l'échelle du buffer.
+
+    L'image affichée est souvent un APERÇU réduit (facteur `echelle` < 1) de
+    la grille décrite par le WCS (pleine résolution). La réduction est
+    uniforme (`cv2.resize`, fx = fy) : multiplier les coordonnées pixel par
+    `echelle` suffit — aucune hypothèse sur la projection, aucun re-solve."""
+
+    def __init__(self, wcs, echelle=1.0):
+        self.wcs = wcs
+        try:
+            e = float(echelle)
+        except (TypeError, ValueError):
+            e = 1.0
+        self.echelle = e if e > 0.0 else 1.0
+        self.forme = getattr(wcs, "forme", None)
+
+    def vers_pixels(self, ra, dec):
+        """Ciel (deg) → pixels du buffer (array (N, 2), 0-based)."""
+        p = np.asarray(self.wcs.vers_pixels(ra, dec),
+                       dtype=np.float64).reshape(-1, 2)
+        return p * self.echelle
+
+    def vers_radec(self, xy):
+        """Pixels du buffer (0-based) → (ra, dec) en degrés."""
+        xy = np.asarray(xy, dtype=np.float64).reshape(-1, 2) / self.echelle
+        return self.wcs.vers_radec(xy)
+
+
 def _position_etiquette(x: float, y: float, w_img: int, h_img: int,
                          taille_texte: Tuple[int, int], positions_prises: List[Tuple[int, int, int, int]],
                          decalage_x: int = 8, decalage_y: int = -8) -> Tuple[int, int]:
@@ -100,11 +142,11 @@ def overlay_objets_celebres(img_disp: np.ndarray, wcs, objets: List[ObjetCelebre
 
     h, w = img_disp.shape[:2]
     positions_prises = []
+    attends = []                      # (x, y, texte, tx, ty, tw, th) — 2e passe
 
     for obj in objets:
         try:
-            # Conversion monde → pixel via WCS
-            x, y = wcs.world_to_pixel(obj.ra_deg, obj.dec_deg)
+            x, y = _pixel_depuis_ciel(wcs, obj.ra_deg, obj.dec_deg)
         except Exception:
             continue
 
@@ -123,22 +165,30 @@ def overlay_objets_celebres(img_disp: np.ndarray, wcs, objets: List[ObjetCelebre
         # Position étiquette
         tx, ty = _position_etiquette(x, y, w, h, (tw, th), positions_prises)
 
-        # Trait de liaison objet → étiquette
-        cv2.line(img_disp, (int(x), int(y)), (tx, ty - th // 2), COULEUR_DEFAUT_TRAIT, EPAISSEUR_TRAIT, cv2.LINE_AA)
-
-        # Fond semi-transparent pour lisibilité (optionnel, léger)
-        overlay = img_disp.copy()
-        cv2.rectangle(overlay, (tx - 2, ty - th - 2), (tx + tw + 2, ty + 2), (0, 0, 0), -1)
-        cv2.addWeighted(overlay, 0.3, img_disp, 0.7, 0, img_disp)
-
-        # Texte
-        cv2.putText(img_disp, texte, (tx, ty), cv2.FONT_HERSHEY_SIMPLEX,
-                    TAILLE_POLICE_BASE, couleur, EPaisseUR_POLICE, cv2.LINE_AA)
-
-        # Cercle sur l'objet
-        cv2.circle(img_disp, (int(x), int(y)), RAYON_CERCLE, couleur, EPAISSEUR_CERCLE, cv2.LINE_AA)
-
+        # DEUX PASSES (jalon 96, mesure du banc : 53,8 ms pour 10 étiquettes
+        # à l'aperçu 1600×904) : le fond semi-transparent de TOUTES les
+        # étiquettes est posé en UNE seule copie + addWeighted (la copie du
+        # buffer ≈ 4,3 Mo payée par étiquette dominait tout le reste), puis
+        # traits/textes/cercles. L'ordre reste respecté : le fond est sous
+        # le texte.
+        attends.append((x, y, texte, tx, ty, tw, th))
         positions_prises.append((tx, ty - th, tw, th))
+
+    if attends:
+        overlay = img_disp.copy()
+        for _x, _y, _texte, tx, ty, tw, th in attends:
+            cv2.rectangle(overlay, (tx - 2, ty - th - 2), (tx + tw + 2, ty + 2),
+                          (0, 0, 0), -1)
+        cv2.addWeighted(overlay, 0.3, img_disp, 0.7, 0, img_disp)
+        del overlay
+        for x, y, texte, tx, ty, tw, th in attends:
+            cv2.line(img_disp, (int(x), int(y)), (tx, ty - th // 2),
+                     COULEUR_DEFAUT_TRAIT, EPAISSEUR_TRAIT, cv2.LINE_AA)
+            cv2.putText(img_disp, texte, (tx, ty), cv2.FONT_HERSHEY_SIMPLEX,
+                        TAILLE_POLICE_BASE, couleur, EPaisseUR_POLICE,
+                        cv2.LINE_AA)
+            cv2.circle(img_disp, (int(x), int(y)), RAYON_CERCLE, couleur,
+                       EPAISSEUR_CERCLE, cv2.LINE_AA)
 
     return positions_prises
 def overlay_etoiles_brillantes(img_disp: np.ndarray, wcs, etoiles: dict,
@@ -181,7 +231,7 @@ def overlay_etoiles_brillantes(img_disp: np.ndarray, wcs, etoiles: dict,
     max_labels = 50
     for i in range(min(len(ra_f), max_labels)):
         try:
-            x, y = wcs.world_to_pixel(float(ra_f[i]), float(dec_f[i]))
+            x, y = _pixel_depuis_ciel(wcs, float(ra_f[i]), float(dec_f[i]))
         except Exception:
             continue
 
