@@ -168,6 +168,11 @@ brute -> traitement (stretch, NR, etc.) -> buffer_affichage (uint16 RGB)
 ✅ **Bancs rejoués TOUS VERTS** : jalon 56 (branchement astrométrie), jalon 56
    photométrie, jalon 84 (dialogues), jalon 87 + 47 (interface robuste /
    visibilité), jalon 74 (démarrage non bloquant), jalon 96 (déduplication).
+✅ **TEST RÉEL D'ALAIN (04/10/2026) : « ça fonctionne »** — les étiquettes
+   suivent l'image, le PNG compagnon est écrit à côté du FITS. **MAIS** le
+   rendu GRAPHIQUE ne lui plaît pas (« la façon dont ça a été fait
+   graphiquement ne me plait pas ») — à instruire en SESSION NEUVE, cf.
+   prochaine action.
 ✅ **Version** : **2.55.0**, changelog en tête d'`avastack/__init__.py`
 
 ---
@@ -183,11 +188,11 @@ brute -> traitement (stretch, NR, etc.) -> buffer_affichage (uint16 RGB)
 ---
 
 ### PROCHAINE ACTION
-Jalon 96 **TERMINÉ** (v2.55.0) — code + bancs verts. Reste à toi (Alain) :
-le TEST RÉEL — astrométrie résolue, cocher « Annoter objets célèbres » et/ou
-« Étoiles brillantes » (les étiquettes doivent suivre l'image, y compris sous
-le zoom), puis « Enregistrer » et vérifier le `<nom>_annote.png` à côté du
-FITS. Ensuite : rebuild des installateurs + release si tu veux publier.
+Jalon 96 **LIVRÉ ET TESTÉ EN RÉEL** (04/10/2026, v2.55.0) : « ça fonctionne ».
+**SESSION NEUVE À OUVRIR** : le rendu GRAPHIQUE des annotations ne plaît PAS à
+Alain — à instruire à la reprise en demandant CE QUI ne plaît pas (couleurs,
+taille des étiquettes, fond semi-transparent, densité, libellés) **AVANT
+toute hypothèse**, puis redessiner. Rien d'autre en attente de l'agent.
 
 ---
 
