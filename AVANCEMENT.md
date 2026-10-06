@@ -9,7 +9,7 @@ dans le changelog du source et l'historique git.)
 
 ---
 
-## Session du 06/10/2026 — jalons 98 & 99 (v2.56.1) — Ordre des sections pliables réparé + habillage de la colonne de réglages
+## Session du 06/10/2026 — jalons 98 & 99 (v2.56.1 — TERMINÉ, PUBLIÉ, VALIDÉ EN RÉEL) — Ordre des sections pliables réparé + habillage de la colonne de réglages
 
 ### Contexte
 Retour d'Alain : « positionnement bizarre des sections suivant les zones
@@ -81,17 +81,17 @@ origin) + **release GitHub publiée** avec les quatre paquets +
 par l'API : 3 194 caractères, tirets longs et accents intacts) :
 https://github.com/darkvad/AVAStack/releases/tag/v2.56.1
 
-### PROCHAINE ÉTAPE — test réel d'Alain sur v2.56.1
-Choisir Dossier/Composition, replier/déplier des sections (le pli doit être
-respecté au changement de source), vérifier que « Fichiers » reste complet
-et qu'un changement de source marche même Fichiers replié. **Si « Fichiers »
-apparaît encore replié au lancement** : un clic sur son en-tête le rouvre
-DURABLEMENT (état persisté — un ancien repli enregistré dans config.json
-reste en l'état). Au passage (06/10) : la **soumission Microsoft Store
-v2.50.0 du 02/10 a été VALIDÉE le 03/10** et l'appli est **PUBLIÉE sur le
-Store** — enterrage fait dans `installer/windows/msix/SOUMISSION.md` § 8 ;
-reste ouvert, à l'occasion, le test « **installer depuis le Store** »
-(dernier test qui n'existe que par cette voie).
+### TEST RÉEL (Alain) : VALIDÉ (06/10/2026)
+Testé et validé : la colonne se range correctement au changement de source
+(Fichiers → Cadence → Dossier/Composition → Caméra → Calibration, « Fichiers
+de travail et journal » restant complet sous son en-tête), le pli des
+sections est respecté au changement de source, et changer de source marche
+même « Fichiers » replié (plus d'erreur au journal). Au passage (06/10) : la
+**soumission Microsoft Store v2.50.0 du 02/10 a été VALIDÉE le 03/10** et
+l'appli est **PUBLIÉE sur le Store** — enterrage fait dans
+`installer/windows/msix/SOUMISSION.md` § 8 ; reste ouvert, à l'occasion, le
+test « **installer depuis le Store** » (dernier test qui n'existe que par
+cette voie).
 
 ---
 
@@ -133,15 +133,14 @@ quatre paquets + `INSTALLATION.md`.
 
 ## Prochaine étape
 
-**TEST RÉEL D'ALAIN sur v2.56.1** : choisir Dossier surveillé /
-Composition (la colonne doit se ranger Fichiers → Cadence → Dossier ou
-Composition → Caméra…, « Fichiers de travail et journal » restant COMPLET
-sous son en-tête), replier/déplier des sections (le pli doit être
-respecté au changement de source), changer de source même avec «
-Fichiers » replié (plus d'erreur au journal). Puis reconstruction des
-quatre paquets + release v2.56.1 (à la charge de l'agent).
- **ÉTAT ACTUEL** : release `v2.56.1` publiée sur GitHub (tag annoté `v2.56.1` + release GitHub, quatre paquets + `INSTALLATION.md` — https://github.com/darkvad/AVAStack/releases/tag/v2.56.1). Repli : `v2.56.0` puis `v2.51.0` (publiées). Code courant : **v2.56.1** (jalons 98 & 99, bancs verts, EMPAQUETÉ ET PUBLIÉ).
- **PROCHAINE ÉTAPE** : test réel d'Alain sur v2.56.1 (ordre des sections, plis, changement de source).
+**TEST RÉEL D'ALAIN — v2.56.1 : VALIDÉ (06/10/2026, « testée et validée »).**
+La colonne se range correctement au changement de source, le pli des
+sections est respecté, changer de source marche même « Fichiers » replié.
+**RIEN EN ATTENTE DE L'AGENT** : les quatre paquets sont publiés et le code
+correspond au tag.
+ **ÉTAT DE FIN DE SESSION (06/10/2026)** : version stable de référence =
+**v2.56.1**, PUBLIÉE (release GitHub : https://github.com/darkvad/AVAStack/releases/tag/v2.56.1) ET VALIDÉE en réel. Repli : `v2.56.0` puis `v2.51.0` (publiées). Arbre propre, `origin/master` à jour.
+ **RESTE OUVERT, À L'OCCASION (à ton initiative, aucune urgence)** : ① le test « **installer depuis le Microsoft Store** » — dernier test qui n'existe que par cette voie (l'appli v2.50.0 y est publiée) ; ② la prochaine évolution de l'application (à décider ensemble).
 - **JALON PRÉCÉDENT (02/10/2026, jalon 88 — INSTALLATEUR WINDOWS EN PAQUET ZIP,
   CODE ÉCRIT, BANC VERT, EN ATTENTE DU TEST RÉEL).**
   **DÉCLENCHEUR** : un ami sous **Windows 11 famille** n'arrive pas à installer
