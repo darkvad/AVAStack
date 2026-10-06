@@ -9,7 +9,7 @@ dans le changelog du source et l'historique git.)
 
 ---
 
-## Session du 06/10/2026 — jalon 98 (v2.56.1) — Ordre des sections pliables réparé
+## Session du 06/10/2026 — jalons 98 & 99 (v2.56.1) — Ordre des sections pliables réparé + habillage de la colonne de réglages
 
 ### Contexte
 Retour d'Alain : « positionnement bizarre des sections suivant les zones
@@ -55,21 +55,43 @@ de travail », packé APRÈS son propre bouton d'en-tête.
   Sonde de martèlement jetable (26 combinaisons plis × sources ×
   allers-retours) : OK. Rejoués verts : jalon 52, 53, 87, 76, 80 —
   TOUT AU VERT.
+- **Jalon 99 — habillage des sections pliables** (choix d'Alain, variante
+  « B+ » de la maquette du 06/10) : en-tête en bouton Tk **classique** (fond
+  bleu très clair, texte bleu foncé gras — le thème ttk « vista » de Windows
+  ignore le fond des ttk.Button), cadre de contenu matérialisé par un
+  **porteur** à filet de 2 px (`highlightthickness`, PAS de padx : le filet
+  se trace hors du widget). AUCUN changement d'ordre ni de comportement.
+  `avastack/ui/app.py` seul (constantes `SECTION_*`, police des titres
+  dérivée de `TkDefaultFont`, `_creer_section_pliable`).
 - Version **2.56.1**, changelog en tête d'`avastack/__init__.py`.
 
-### PROCHAINE ÉTAPE
-Test réel par Alain (choisir Dossier/Composition, replier/déplier des
-sections, vérifier que « Fichiers » reste complet et qu'un changement de
-source marche même Fichiers replié). Puis reconstruction des QUATRE
-paquets v2.56.1 + release GitHub (à la charge de l'agent, comme les
-jalons précédents). **Si « Fichiers » apparaît encore replié au
-lancement** : un clic sur son en-tête le rouvre DURABLEMENT (état
-persisté — un ancien repli enregistré dans config.json reste en l'état).
-Au passage (06/10) : la **soumission Microsoft Store v2.50.0 du 02/10 a été
-VALIDÉE le 03/10** et l'appli est **PUBLIÉE sur le Store** — enterrage fait
-dans `installer/windows/msix/SOUMISSION.md` § 8 ; reste ouvert, à l'occasion,
-le test « **installer depuis le Store** » (dernier test qui n'existe que par
-cette voie).
+### PAQUETS ET RELEASE v2.56.1 : PUBLIÉS (06/10/2026)
+Quatre paquets construits depuis les sources des jalons 98 + 99 — vérifié
+après coup : `app.py` des paquets (ZIP + Linux + macOS) **identique au
+dépôt**, `__init__.py` identique, catalogue embarqué
+`celebres_healpix8.dat.bz2` présent dans les 3 archives ET dans le `.iss`
+(Inno, l'ignoreversion). Empreintes **relues par l'API GitHub : CONCORDENT**
+avec `INSTALLATION.md` :
+`avastack-setup-2.56.1.exe` 12 615 421 o, SHA-256 `1704C3BE…B3E4307F` ;
+`…-windows.zip` 14 972 590 o, `34CD01FB…AC89D0DB84` ; `…-linux.tar.gz`
+1 563 357 o, `94F31CB0…37359FBB10` ; `…-macos.tar.gz` 1 560 968 o,
+`B1C74101…8D8D90F8C17`. Tag annoté `v2.56.1` sur `e1f41f5` (présent sur
+origin) + **release GitHub publiée** avec les quatre paquets +
+`INSTALLATION.md` (notes = résumé « ce qui change » + habillage ; corps relu
+par l'API : 3 194 caractères, tirets longs et accents intacts) :
+https://github.com/darkvad/AVAStack/releases/tag/v2.56.1
+
+### PROCHAINE ÉTAPE — test réel d'Alain sur v2.56.1
+Choisir Dossier/Composition, replier/déplier des sections (le pli doit être
+respecté au changement de source), vérifier que « Fichiers » reste complet
+et qu'un changement de source marche même Fichiers replié. **Si « Fichiers »
+apparaît encore replié au lancement** : un clic sur son en-tête le rouvre
+DURABLEMENT (état persisté — un ancien repli enregistré dans config.json
+reste en l'état). Au passage (06/10) : la **soumission Microsoft Store
+v2.50.0 du 02/10 a été VALIDÉE le 03/10** et l'appli est **PUBLIÉE sur le
+Store** — enterrage fait dans `installer/windows/msix/SOUMISSION.md` § 8 ;
+reste ouvert, à l'occasion, le test « **installer depuis le Store** »
+(dernier test qui n'existe que par cette voie).
 
 ---
 
@@ -118,8 +140,8 @@ sous son en-tête), replier/déplier des sections (le pli doit être
 respecté au changement de source), changer de source même avec «
 Fichiers » replié (plus d'erreur au journal). Puis reconstruction des
 quatre paquets + release v2.56.1 (à la charge de l'agent).
- **ÉTAT ACTUEL** : release `v2.56.0` publiée sur GitHub (tag annoté + release GitHub, quatre paquets + `INSTALLATION.md` — https://github.com/darkvad/AVAStack/releases/tag/v2.56.0). Repli : `v2.51.0` (publiée). Code courant : **v2.56.1** (jalon 98, bancs verts, NON encore empaqueté).
- **PROCHAINE ÉTAPE** : test réel d'Alain sur v2.56.1 (ordre des sections, plis, changement de source), puis paquets + release v2.56.1.
+ **ÉTAT ACTUEL** : release `v2.56.1` publiée sur GitHub (tag annoté `v2.56.1` + release GitHub, quatre paquets + `INSTALLATION.md` — https://github.com/darkvad/AVAStack/releases/tag/v2.56.1). Repli : `v2.56.0` puis `v2.51.0` (publiées). Code courant : **v2.56.1** (jalons 98 & 99, bancs verts, EMPAQUETÉ ET PUBLIÉ).
+ **PROCHAINE ÉTAPE** : test réel d'Alain sur v2.56.1 (ordre des sections, plis, changement de source).
 - **JALON PRÉCÉDENT (02/10/2026, jalon 88 — INSTALLATEUR WINDOWS EN PAQUET ZIP,
   CODE ÉCRIT, BANC VERT, EN ATTENTE DU TEST RÉEL).**
   **DÉCLENCHEUR** : un ami sous **Windows 11 famille** n'arrive pas à installer
