@@ -139,7 +139,7 @@ sections est respecté, changer de source marche même « Fichiers » replié.
 **RIEN EN ATTENTE DE L'AGENT** : les quatre paquets sont publiés et le code
 correspond au tag.
  **ÉTAT DE FIN DE SESSION (06/10/2026)** : version stable de référence =
-**v2.56.1**, PUBLIÉE (release GitHub : https://github.com/darkvad/AVAStack/releases/tag/v2.56.1) ET VALIDÉE en réel. Repli : `v2.56.0` puis `v2.51.0` (publiées). Arbre propre, `origin/master` à jour.
+**v2.56.1**, PUBLIÉE (release GitHub : https://github.com/darkvad/AVAStack/releases/tag/v2.56.1) ET VALIDÉE en réel. Repli : `v2.56.1` puis `v2.56.0` (publiées ; décision d'Alain du 06/10/2026 : le repli pointe sur la dernière version **validée en réel**, en préparation de la prochaine version). Arbre propre, `origin/master` à jour.
  **RESTE OUVERT, À L'OCCASION (à ton initiative, aucune urgence)** : ① le test « **installer depuis le Microsoft Store** » — dernier test qui n'existe que par cette voie (l'appli v2.50.0 y est publiée) ; ② la prochaine évolution de l'application (à décider ensemble).
 - **JALON PRÉCÉDENT (02/10/2026, jalon 88 — INSTALLATEUR WINDOWS EN PAQUET ZIP,
   CODE ÉCRIT, BANC VERT, EN ATTENTE DU TEST RÉEL).**

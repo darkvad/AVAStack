@@ -376,7 +376,8 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
 
 ## 9. Repli si régression
 
-Le repli de référence est la **v2.56.0**. Les installateurs des versions
+Le repli de référence est la **v2.56.1** (la dernière version validée en
+réel). Les installateurs des versions
 antérieures restent à côté des nouveaux, dans `installer/windows/output/`,
 `installer/linux/output/` et `installer/macos/output/` : aucun nouveau
 installateur n'écrase une version précédente.
