@@ -404,6 +404,10 @@ construit ET signé (§ 1) ; les images sont dans `installer\windows\output\fich
 ## 8. Après la soumission (quoi surveiller)
 
 **SOUMISSION FAITE le 02/10/2026** (AVAStack **v2.50.0**, paquet MSIX).
+> **RÉSOLU le 06/10/2026 (mot d'Alain) — la soumission a été VALIDÉE le
+> lendemain (03/10/2026) et l'application est PUBLIÉE sur le Microsoft
+> Store.** La question de la résiliation est CLOSE : la soumission v2.50.0
+> reste telle quelle (l'application restera en l'état — cf. § 5-6).
 
 1. **Statut** : sur la page du produit, la soumission passe à **« In
    certification »**, puis à **« Published »** (ou « Certification failed »).

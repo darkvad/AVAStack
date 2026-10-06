@@ -40,6 +40,14 @@ personnel ne doit entrer dans le dépôt non plus (les `.dll`/`.so` constructeur
 de la racine ne sont PAS suivis : garder ainsi), et **les documents publics ne
 citent jamais le mainteneur** (cf. « Conventions non-négociables »).
 
+**Distribution** : quatre paquets + release GitHub à chaque jalon publié
+(ZIP Windows, installateur Inno, Linux, macOS) **ET l'application PUBLIÉE
+sur le Microsoft Store** (compte développeur Individuel ; dossier MSIX
+`installer/windows/msix/`, dossier-soumission `SOUMISSION.md`). Chaque
+version Store passe par la **certification** : cadence SÉPARÉE de celle de
+GitHub — le MSIX actuellement publié (soumission validée le 03/10/2026) est
+**v2.50.0** ; on n'y publie pas chaque jalon.
+
 ## AVANCEMENT.md — mémoire de session (court terme)
 
 `AVANCEMENT.md` (racine du dépôt) suit l'état courant du développement :
@@ -906,6 +914,33 @@ ce qui manquait n'était pas une correction mais une MESURE.
   LONGS pour le réveiller.
 
 ## Pièges (leçons du projet AVAStack)
+
+- **UNE ANCRE DE PACK (`pack(before=…/after=…)`) DOIT ÊTRE UN WIDGET TOUJOURS
+  GÉRÉ, ET JAMAIS UN CONTENEUR QUI SUIT SON PROPRE EN-TÊTE** (jalon 98,
+  retour d'Alain 06/10/2026 : « positionnement bizarre des sections »).
+  Depuis le jalon 95b, chaque section pliable de la colonne gauche est un
+  couple bouton d'en-tête + LabelFrame packé APRÈS lui ; ancrer un
+  replacement sur le LabelFrame d'une TELLE section insère les widgets
+  réaffichés ENTRE l'en-tête et son contenu — la section paraît coupée en
+  deux (elle « ressemble » à un repli sans l'être), et si elle est
+  réellement repliée l'ancre n'est plus gérée : Tk lève « TclError: window
+  … isn't packed » DANS le rappel (`_on_source_choisie`), ce qui AVORTE
+  silencieusement la suite du rappel (déconnexion caméra, détection,
+  réactivation des boutons). Règles : ① ancre = un widget dont la visibilité
+  ne dépend d'aucun mode (pour la colonne gauche : le bouton d'en-tête de
+  Caméra) ; ② quand on réaffiche une section pliable, CONSULTER son état
+  replié (`lf._var_etat`) au lieu de re-packer le contenu en bloc ; ③ un
+  banc qui vérifie un ordre de colonne doit lire l'ordre VRAI du pack
+  (`parent.pack_slaves()`, boutons ET LabelFrame) et PAS seulement les
+  LabelFrame — l'ordre des cadres pouvait sembler correct pendant que le
+  pack les entrelacait mal ; ④ rejouer le scénario avec la section ANCRE
+  repliée (c'est là que les TclError se cachent) ; ⑤ quand on CACHE une
+  section, tester l'en-tête AUSSI (`btn.winfo_manager()`) et pas seulement
+  le contenu — la branche « cacher » conditionnée au seul contenu ne
+  s'exécutait JAMAIS pour une section repliée (contenu déjà dépacké),
+  laissant son en-tête flotter à son ancienne position (jalon 98bis) ;
+  ⑥ de façon générale, couvrir au banc le cas « section repliée AU MOMENT
+  où elle devient inutile/utile » — c'est là que ce pack se désordonnait.
 
 - **SUR macOS, UNE BOÎTE DE DIALOGUE Tk SANS `parent` PEUT RESTER DERRIÈRE LA
   FENÊTRE PRINCIPALE — et l'application paraît alors insensible** (retour RÉEL

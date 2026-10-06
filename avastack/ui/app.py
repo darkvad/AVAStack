@@ -15,7 +15,7 @@ import traceback
 import numpy as np
 import cv2
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, font as tkfont
 from PIL import Image, ImageTk
 
 from ..compat import IS_MACOS, IS_WINDOWS
@@ -189,6 +189,21 @@ class App:
         "traitement_externe": "Traitement externe (long)",
         "sortie": "Sortie",
     }
+
+    # --- Jalon 99 : habillage des sections pliables (choix d'Alain, variante
+    # « B+ » de la maquette du 06/10/2026 : titres en évidence + cadre
+    # « un peu plus marqué ») ----------------------------------------------
+    # En-têtes en bouton Tk CLASSIQUE : le thème ttk « vista » de Windows
+    # ignore le fond des ttk.Button stylisés (constat réel sur la maquette :
+    # un texte blanc restait invisible sur fond ignoré) — un bouton classique
+    # rend exactement ce qui est demandé, sur les trois OS. Le cadre du
+    # contenu est un FILET posé par un porteur autour du LabelFrame (les
+    # couleurs ttk « bordercolor » ne sont pas honorées par le thème vista).
+    # AUCUN changement d'ordre ni de comportement : c'est l'habillage seul.
+    SECTION_TITRE_BG = "#dde7f5"          # fond d'en-tête (bleu très clair)
+    SECTION_TITRE_FG = "#1f3b63"          # texte d'en-tête (bleu foncé)
+    SECTION_TITRE_BG_ACTIF = "#cddcef"    # fond d'en-tête pendant le clic
+    SECTION_CADRE = "#9fb6d4"             # filet du cadre de contenu (2 px)
 
     # Débruitage live (jalon 9, remis le 16/09/2026) : libellés UI ↔ codes
     # internes (module avastack/processing/denoise.py, algorithmes locaux
@@ -1267,8 +1282,16 @@ class App:
         - cle_section : clé dans SECTIONS_NOM_MAP (ex: "camera")
         - Le titre affiché vient de SECTIONS_NOM_MAP[cle_section]
         - L'état est sauvé dans CONFIG["ui_section_<cle_section>"] (bool)
-        - Le LabelFrame (contenu) est packé dans parent quand ouvert.
-        - Le bouton d'en-tête reste TOUJOURS visible dans parent.
+        - Le CONTENEUR EXTERNE (porteur encadré) est packé dans parent quand
+          ouvert ; le bouton d'en-tête reste TOUJOURS visible dans parent.
+        Jalon 99 (choix d'Alain, variante « B+ » de la maquette du 06/10) :
+        en-tête en bouton Tk CLASSIQUE (fond bleu très clair, texte bleu
+        foncé gras — le thème ttk « vista » ignore le fond des ttk.Button)
+        et cadre du contenu matérialisé par un FILET de 2 px. Le widget
+        retourné en premier est le PORTEUR : c'est lui qui est packé/dépacké
+        (dans on_change et dans _maj_visibilite_cadres), la bordure suit
+        donc TOUJOURS le contenu qu'elle entoure ; le LabelFrame interne ne
+        sert plus qu'au rembourrage.
         """
         titre = self.SECTIONS_NOM_MAP.get(cle_section, cle_section)
         cle_config = f"ui_section_{cle_section}"
@@ -1277,6 +1300,13 @@ class App:
         etat_ouvert = tk.BooleanVar(
             value=bool(CONFIG.get(cle_config, defaut_ouvert))
         )
+
+        # Police des titres : dérivée de la police PAR DÉFAUT de la
+        # plateforme (Segoe UI sur Windows, équivalents ailleurs — jamais de
+        # fonte codée en dur), en gras.
+        if not hasattr(self, "_font_titre_section"):
+            self._font_titre_section = tkfont.nametofont("TkDefaultFont").copy()
+            self._font_titre_section.configure(weight="bold")
 
         # Bouton d'en-tête (cliquable) avec flèche ▼/▶ — TOUJOURS visible
         def maj_icone(*_):
@@ -1288,32 +1318,48 @@ class App:
             CONFIG[cle_config] = etat_ouvert.get()
             sauver_config(CONFIG)
 
-        btn = ttk.Button(
+        btn = tk.Button(
             parent,
             command=toggle,
-            style="Toolbutton",  # aspect plat, pas de relief 3D
-            takefocus=True,
+            anchor="w", relief="flat", bd=0, highlightthickness=0,
+            cursor="hand2",
+            bg=self.SECTION_TITRE_BG, fg=self.SECTION_TITRE_FG,
+            activebackground=self.SECTION_TITRE_BG_ACTIF,
+            activeforeground=self.SECTION_TITRE_FG,
+            font=self._font_titre_section, padx=6, pady=3,
         )
-        btn.bind("<Return>", toggle)
-        btn.bind("<space>", toggle)
+        # NB : PAS de binds <Return>/<space> explicites — un bouton Tk
+        # classique les gère NATIVEMENT quand il a le focus (les doubler
+        # ferait basculer la section deux fois).
         btn.pack(fill="x", pady=(3, 0))
         maj_icone()
 
-        # LabelFrame = conteneur du contenu (PAS labelwidget, PAS de titre)
-        # Il sera packé/dépacké selon l'état
-        lf = ttk.LabelFrame(parent, padding=6)
-        # Ne PAS packer ici — on le fait dans on_change selon l'état
+        # Porteur = conteneur EXTERNE de la section (c'est LUI qui est
+        # packé/dépacké) ; son filet de 2 px matérialise la section. Le
+        # LabelFrame interne ne sert plus qu'au rembourrage du contenu.
+        lf = tk.Frame(parent, bd=0, highlightthickness=2,
+                      highlightbackground=self.SECTION_CADRE)
+        # Jalon 99 bis : PAS de padx ici — la bordure highlight est tracée
+        # HORS du widget, padx ajouterait 2 px perdus pour le contenu (banc
+        # jalon 72 : des labels rognés de 4 px à cause de ce filet).
+        inter = ttk.LabelFrame(lf, padding=7)
+        inter.pack(fill="x")
 
         # Frame interne qui contiendra les vrais widgets
-        contenu = ttk.Frame(lf)
+        contenu = ttk.Frame(inter)
         contenu.pack(fill="x")
 
         # Callback quand la variable change (pour maj icône + pack/unpack du LF)
         def on_change(*_):
             maj_icone()
             if etat_ouvert.get():
-                # Packer le LabelFrame APRÈS le bouton dans parent
-                lf.pack(fill="x", pady=(0, 3), after=btn)
+                if btn.winfo_manager():
+                    # Packer le porteur APRÈS le bouton dans parent
+                    lf.pack(fill="x", pady=(0, 3), after=btn)
+                # sinon : la section est cachée par la source (jalon 98bis) —
+                # le pli est MÉMORISÉ dans var_etat et sera appliqué au
+                # prochain _maj_visibilite_cadres ; packer ici avec after=btn
+                # lèverait « TclError: isn't packed » (en-tête dépacké).
             else:
                 lf.pack_forget()
             # Force la mise à jour du scrollregion du canvas
@@ -1328,6 +1374,12 @@ class App:
         lf._contenu_interne = contenu
         # Stocker le bouton d'en-tête pour pouvoir le cacher avec le LabelFrame
         lf._btn_header = btn
+        # Jalon 98 : stocker la variable d'état (True = déplié) —
+        # `_maj_visibilite_cadres` doit RESPECTER l'état replié/déplié choisi
+        # par l'utilisateur quand elle réaffiche une section (avant, elle
+        # re-packait le contenu sans le consulter : une section repliée
+        # réapparaissait dépliée, avec sa flèche ▶ menteuse).
+        lf._var_etat = etat_ouvert
 
         return lf, contenu, etat_ouvert, btn
 
@@ -1678,9 +1730,9 @@ class App:
         # --- Calibration (ancre STABLE : les cadres commutables jalon 47 se
         # replacent toujours juste avant elle — l'ordre des cadres ne bouge
         # jamais, quel que soit le nombre d'allers-retours de source)
-        # NOTE : self.frm_calibration pointe vers le LABELFRAME (lf), pas le
-        # contenu — c'est l'ancre utilisée par _maj_visibilite_cadres pour
-        # pack(before=). Le contenu est directement dans `box`.
+        # NOTE : self.frm_calibration pointe vers le conteneur EXTERNE de la
+        # section (porteur encadré, jalon 99) — l'ancre de _maj_visibilite_cadres.
+        # Le contenu est directement dans `box` (alias frm_calibration_interne).
         self._lf_calibration, box, _, _ = self._creer_section_pliable(
             left, "calibration")
         self.frm_calibration = self._lf_calibration
@@ -5230,9 +5282,31 @@ class App:
         (pack_forget), on ne détruit RIEN : les valeurs saisies (dossier,
         rôles, gains…) sont conservées et la persistance ne change pas. Les
         cadres visibles sont replacés dans l'ordre canonique (rafale →
-        dossier → composition) juste avant l'ancre stable `frm_calibration` :
+        dossier → composition) JUSTE AVANT le cadre Caméra — son bouton
+        d'en-tête est TOUJOURS packé (la combobox de source et
+        Démarrer/Arrêter restent visibles en toutes circonstances) — :
         l'ordre général de la colonne ne bouge jamais. Thread UI seul
         (construction, _restaurer_config, _on_source_choisie).
+
+        Jalon 98 (retour d'Alain, 06/10/2026) — DEUX défauts de la v2.51.1
+        (jalon 95b) réparés ici :
+        ① l'ancienne ancre était le LabelFrame « Fichiers de travail »,
+        packé APRÈS son propre bouton d'en-tête : `pack(before=ancre)`
+        insérait donc Cadence/Dossier ENTRE ce bouton et son contenu,
+        coupant la section en deux (en-tête seul en haut, contenu orphelin
+        sous « Dossier surveillé » — elle PARAISSAIT repliée) ; pire, si la
+        section Fichiers était réellement repliée, l'ancre n'était plus
+        gérée et Tk levait « TclError: window … isn't packed », ABORTANT
+        tout le changement de source (pas de déconnexion caméra, pas de
+        détection SDK, « Démarrer » non réactivé). L'ancre est désormais le
+        bouton d'en-tête de Caméra, toujours géré — garde-fou : repli sur
+        un pack simple s'il ne l'était plus.
+        ② une section REPLIÉE par l'utilisateur (Cadence, Dossier ou
+        Composition) réapparaissait avec son contenu au simple changement
+        de source, avec sa flèche ▶ menteuse : l'état replié est maintenant
+        RESPECTÉ (`lf._var_etat`, posé par _creer_section_pliable) — la
+        visibilité de l'ENSEMBLE (bouton + contenu) suit la source, le pli
+        reste un choix de l'utilisateur.
 
         Note jalon 95 : `_lf_*` pointe vers le LabelFrame externe (utilisé
         pour pack/before). `frm_*` est le contenu interne (compat widgets)."""
@@ -5248,20 +5322,42 @@ class App:
             self.frm_ctrl_cam.pack(fill="x")
         visibles = ([self._lf_cadence, self._lf_dossier_surveille] if est_dossier else
                     [self._lf_cadence, self._lf_composition] if est_compo else [])
-        # Ancre stable : le LabelFrame Fichiers (toujours affiché, position fixe en haut)
-        ancre = self._lf_fichiers_travail
+        # Ancre stable (jalon 98) : le bouton d'en-tête de Caméra — TOUJOURS
+        # packé (la source et Démarrer/Arrêter restent visibles en toutes
+        # circonstances, jalon 47). Les cadres de la source s'insèrent AVANT
+        # lui : « Fichiers de travail » reste complet et, replié ou non, la
+        # ligne suivante ne lève JAMAIS « TclError: isn't packed ».
+        ancre = self._lf_camera._btn_header
         for cadre in (self._lf_cadence, self._lf_dossier_surveille, self._lf_composition):
             btn = getattr(cadre, "_btn_header", None)
             if cadre in visibles:
                 # Afficher le bouton d'en-tête AVANT le LabelFrame
                 # IMPORTANT : packer le bouton D'ABORD, puis le LF après (after=btn)
                 if btn:
-                    btn.pack(fill="x", pady=(3, 0), before=ancre)
-                # pack(before=) replace le cadre (déjà géré ou non) à la même
-                # place relative — appelé dans l'ordre canonique ci-dessus.
-                cadre.pack(fill="x", pady=(0, 3), after=btn if btn else ancre)
-            elif cadre.winfo_manager():
-                cadre.pack_forget()
+                    if ancre.winfo_manager():
+                        btn.pack(fill="x", pady=(3, 0), before=ancre)
+                    else:
+                        btn.pack(fill="x", pady=(3, 0))
+                # pack() replace le cadre (déjà géré ou non) à la même place
+                # relative — appelé dans l'ordre canonique ci-dessus. Jalon 98 :
+                # le contenu n'est re-packé que si la section est DÉPLIÉE —
+                # une section repliée par l'utilisateur reste repliée (bouton
+                # ▶ seul, sans contenu) au lieu de réapparaître dépliée.
+                var_etat = getattr(cadre, "_var_etat", None)
+                if var_etat is None or bool(var_etat.get()):
+                    cadre.pack(fill="x", pady=(0, 3), after=btn if btn else ancre)
+                elif cadre.winfo_manager():
+                    cadre.pack_forget()
+            elif cadre.winfo_manager() or (btn and btn.winfo_manager()):
+                # Jalon 98bis : cacher l'EN-TÊTE même si le contenu est déjà
+                # dépacké — une section REPLIÉE qui devient inutile à la
+                # source gardait sinon son en-tête planté à son ancienne
+                # position (winfo_manager() du porteur vide → branche jamais
+                # prise), flottant au milieu de la colonne jusqu'au prochain
+                # changement de source. Le constat d'Alain (« positionnement
+                # bizarre des sections selon les zones cliquées »).
+                if cadre.winfo_manager():
+                    cadre.pack_forget()
                 if btn:
                     btn.pack_forget()
         # Jalon 53 : les libellés dark/flat suivent la source (détail par
