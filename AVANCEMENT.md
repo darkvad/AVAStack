@@ -9,46 +9,88 @@ dans le changelog du source et l'historique git.)
 
 ---
 
-## Session du 05/10/2026 — jalon 97 (v2.56.0) — Classification OpenNGC + objets visibles
+## Session du 06/10/2026 — jalon 98 (v2.56.1) — Ordre des sections pliables réparé
 
 ### Contexte
-Retours d'Alain sur la capture M31 annotée : TOUS les objets « (Nb) »
-(M31/M32/M110/NGC 206 classés « nébuleuse diffuse ») et NGC 206 entouré
-d'un mini cercle alors qu'il n'est pas résolu sur son image. Décisions
-d'Alain : source OpenNGC (crédits acceptés), objet non détecté →
-étiquette SANS entourage, case à cocher. Rappel : le catalogue célèbres
-est EMBARQUÉ dans l'application — pas de Zenodo pour lui.
+Retour d'Alain : « positionnement bizarre des sections suivant les zones
+cliquées » (liste déroulante de source, déplier/replier). Analyse demandée
+SANS code d'abord : trois défauts trouvés et confirmés à l'exécution
+(script de diagnostic jetable), tous nés du jalon 95b (v2.51.1) — l'ancre
+de replacement de `_maj_visibilite_cadres` était le LabelFrame « Fichiers
+de travail », packé APRÈS son propre bouton d'en-tête.
+
+### Les quatre défauts (tous réparés)
+1. **Section « Fichiers de travail et journal » coupée en deux** : en mode
+   Dossier/Composition, Cadence et Dossier s'inséraient ENTRE l'en-tête
+   « Fichiers » et son contenu — contenu orphelin sous « Dossier
+   surveillé » ; la section PARAissait repliée (c'est ce qu'Alain voyait :
+   il n'avait jamais replié).
+2. **TclError « window … isn't packed »** : Fichiers réellement replié
+   (état persisté) + changement de source → exception dans
+   `_on_source_choisie` AVORTANT tout le reste (pas de déconnexion
+   caméra, pas de détection SDK, « Démarrer » non réactivé) — l'erreur
+   finit dans journal.txt (`report_callback_exception`).
+3. **Pli non respecté** : une section repliée réapparaissait avec son
+   contenu (flèche ▶ menteuse) au simple changement de source.
+4. **En-tête orphelin d'une section repliée devenue inutile** (trouvé par
+   la sonde de martèlement APRÈS les bancs verts — cf. leçon CLAUDE.md) :
+   la branche « cacher » de `_maj_visibilite_cadres` testait l'état du
+   CONTENU (déjà dépacké par le pli) → jamais prise pour une section
+   repliée : son EN-TÊTE restait planté à son ancienne position, flottant
+   au milieu de la colonne. + blindage de `on_change` (repli d'une section
+   cachée : plus de `pack(after=btn)` sur un en-tête dépacké).
+
+### Livré (v2.56.1)
+- `_creer_section_pliable` expose `lf._var_etat` (état replié/déplié).
+- `_maj_visibilite_cadres` : ancre déplacée sur le **bouton d'en-tête de
+  Caméra** (toujours packé — combobox de source et Démarrer/Arrêter
+  visibles en toutes circonstances) + garde-fou ; l'ordre devient
+  Fichiers → Cadence → Dossier/Composition → Caméra → Calibration et
+  « Fichiers » n'est plus jamais touché ; le contenu n'est re-packé QUE
+  si la section est dépliée (pli = choix de l'utilisateur).
+- Banc `_test_ui_visibilite_jalon47.py` : sections **[8] NEUVE** (9
+  vérifications) et **[8d]** (4 vérifications : l'en-tête d'une section
+  repliée disparaît quand la source la rend inutile, revient AVANT
+  Dossier au retour, toujours replié, contenu à sa place au redépliage).
+  Sonde de martèlement jetable (26 combinaisons plis × sources ×
+  allers-retours) : OK. Rejoués verts : jalon 52, 53, 87, 76, 80 —
+  TOUT AU VERT.
+- Version **2.56.1**, changelog en tête d'`avastack/__init__.py`.
+
+### PROCHAINE ÉTAPE
+Test réel par Alain (choisir Dossier/Composition, replier/déplier des
+sections, vérifier que « Fichiers » reste complet et qu'un changement de
+source marche même Fichiers replié). Puis reconstruction des QUATRE
+paquets v2.56.1 + release GitHub (à la charge de l'agent, comme les
+jalons précédents). **Si « Fichiers » apparaît encore replié au
+lancement** : un clic sur son en-tête le rouvre DURABLEMENT (état
+persisté — un ancien repli enregistré dans config.json reste en l'état).
+Au passage (06/10) : la **soumission Microsoft Store v2.50.0 du 02/10 a été
+VALIDÉE le 03/10** et l'appli est **PUBLIÉE sur le Store** — enterrage fait
+dans `installer/windows/msix/SOUMISSION.md` § 8 ; reste ouvert, à l'occasion,
+le test « **installer depuis le Store** » (dernier test qui n'existe que par
+cette voie).
+
+---
+
+## HISTORIQUE (05/10/2026, jalon 97, v2.56.0 — TERMINÉ, PUBLIÉE) —
+Classification OpenNGC + « Seulement les objets visibles » (retours
+d'Alain sur sa capture M31 annotée : objets « (Nb) », NGC 206 entouré à
+tort ; décision : OpenNGC crédité CC-BY-SA-4.0, pas d'entourage si
+l'objet n'est pas détecté).
 
 ### Livré (v2.56.0, bancs TOUT AU VERT)
-1. GÉNÉRATEUR REFAIT (`catalogues/celebres.py`) : OpenNGC (GitHub,
-   CC-BY-SA-4.0 — types propres, colonne M, MajAx en arcmin, noms
-   communs) + VizieR miroir HARVARD au format VOTable pour Sh2 (VII/20,
-   B1900→ICRS par astropy), Barnard (VII/220A, _RA.icrs) et LDN (VII/7A,
-   _RA.icrs ; taille = 2·√(Area/π)). JAMAIS de repli de type implicite
-   (code inconnu → ignoré). 14 178 objets ; M31/M32/M110 = galaxie,
-   NGC 206 = amas ouvert (*Ass), M42 = Cl+N ; Sh2-155 désormais PRÉSENT
-   (l'ancien id J/ApJS/59 n'existait pas). `.dat` embarqué (.dat + .bz2)
-   et `.dat` installé remplacés.
-2. CASE « Seulement les objets visibles » (cochée par défaut, clé
-   `annoter_visibles`, var_annoter_visibles) : `_detecte_visibilite` —
-   signal = 95e percentile du disque lissé, fond = médiane de couronne,
-   visible si écart ≥ max(8 niveaux, 3·σ_MAD) ; l'ÉTIQUETTE reste
-   toujours, seul l'entourage est conditionné ; nébuleuses obscures
-   exemptées ; objets SANS taille connue sondés à 20 px
-   (RAYON_PROBE_INCONNU). Validé sur la VRAIE capture M31 d'Alain (pixels
-   d'annotation neutralisés) : NGC 206 = +5,2 niveaux (0,6σ) → rejeté ;
-   M110 = +77 (4,8σ) → entourage. Clé du cache `_annote_rendu` enrichie
-   (le pan invalide au basculement de la case).
-3. Bancs : `_test_catalogue_openngc_jalon97.py` NEUF ([1] types, [2]
-   désignations M/lettres/NED, [3] conversions HMS/DMS, [4] bout-en-bout
-   synthétique CSV+VOTables→.dat→dedup, [5] contrôle du .dat embarqué :
-   types, Sh2-155/Barnard 33/LDN 1622 aux bonnes positions) ;
-   `_test_annotations_overlay_jalon96.py` enrichi ([13] détection, [14]
-   overlay seulement_visibles) — TOUS VERTS ; save jalon96 + dedup
-   rejoués verts. Docs : crédits OpenNGC (CC-BY-SA) et VizieR dans
-   README/INSTALLATION/PRIVACY ; leçons CLAUDE.md (anti-robot Anubis de
-   Strasbourg, troncature asu-tsv ~81 Ko, ids VizieR exacts, VOTable,
-   pas de repli de type).
+Générateur REFAIT (`catalogues/celebres.py`) : OpenNGC + VizieR miroir
+HARVARD en VOTable (Sh2 VII/20, Barnard VII/220A, LDN VII/7A) — JAMAIS de
+repli de type implicite ; 14 178 objets ; Sh2-155 présent. Case
+« Seulement les objets visibles » (`annoter_visibles`,
+`_detecte_visibilite`) : l'ÉTIQUETTE reste toujours, seul l'entourage est
+conditionné ; nébuleuses obscures exemptées ; clé du cache `_annote_rendu`
+enrichie. Bancs : `_test_catalogue_openngc_jalon97.py` NEUF (5 sections) +
+`_test_annotations_overlay_jalon96.py` enrichi ([13]/[14]) — TOUS VERTS.
+Docs : crédits OpenNGC/VizieR dans README/INSTALLATION/PRIVACY ; leçons
+CLAUDE.md (Anubis Strasbourg, asu-tsv tronqué ~81 Ko, ids VizieR exacts,
+VOTable, pas de repli de type).
 
 ### PAQUETS ET RELEASE v2.56.0 : PUBLIÉS (05/10/2026)
 Quatre paquets reconstruits sur le code du jalon 97 + correction IMPORTANTE
@@ -69,10 +111,15 @@ quatre paquets + `INSTALLATION.md`.
 
 ## Prochaine étape
 
-**RIEN.** Fonctionnalité livrée, testée, versionnée, publiée. Attendre
-prochain retour utilisateur (Alain).
- **ÉTAT ACTUEL** : release `v2.56.0` publiée sur GitHub (tag annoté + release GitHub, quatre paquets + `INSTALLATION.md` — https://github.com/darkvad/AVAStack/releases/tag/v2.56.0). Repli : `v2.51.0` (publiée).
- **PROCHAINE ÉTAPE** : attendre le retour d'usage d'Alain sur la v2.56.0 (classification « (Gx) », NGC 206 sans entourage) ; sinon poursuite roadmap.
+**TEST RÉEL D'ALAIN sur v2.56.1** : choisir Dossier surveillé /
+Composition (la colonne doit se ranger Fichiers → Cadence → Dossier ou
+Composition → Caméra…, « Fichiers de travail et journal » restant COMPLET
+sous son en-tête), replier/déplier des sections (le pli doit être
+respecté au changement de source), changer de source même avec «
+Fichiers » replié (plus d'erreur au journal). Puis reconstruction des
+quatre paquets + release v2.56.1 (à la charge de l'agent).
+ **ÉTAT ACTUEL** : release `v2.56.0` publiée sur GitHub (tag annoté + release GitHub, quatre paquets + `INSTALLATION.md` — https://github.com/darkvad/AVAStack/releases/tag/v2.56.0). Repli : `v2.51.0` (publiée). Code courant : **v2.56.1** (jalon 98, bancs verts, NON encore empaqueté).
+ **PROCHAINE ÉTAPE** : test réel d'Alain sur v2.56.1 (ordre des sections, plis, changement de source), puis paquets + release v2.56.1.
 - **JALON PRÉCÉDENT (02/10/2026, jalon 88 — INSTALLATEUR WINDOWS EN PAQUET ZIP,
   CODE ÉCRIT, BANC VERT, EN ATTENTE DU TEST RÉEL).**
   **DÉCLENCHEUR** : un ami sous **Windows 11 famille** n'arrive pas à installer

@@ -17,9 +17,58 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.56.0"
+AVASTACK_VERSION = "2.56.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.56.1 : COLONNE DE RÉGLAGES — SECTIONS PLIABLES ET CHANGEMENT DE SOURCE
+#           RÉPARES (jalon 98 ; retour d'Alain, 06/10/2026 : « positionnement
+#           bizarre des sections »)
+#   - SECTION « FICHIERS DE TRAVAIL ET JOURNAL » COUPÉE EN DEUX : depuis la
+#     v2.51.1 (jalon 95b), le replacement des cadres Cadence/Dossier/Composition
+#     dans `_maj_visibilite_cadres` s'ancrait sur le LabelFrame « Fichiers » —
+#     packé APRÈS son propre bouton d'en-tête : en mode Dossier/Composition,
+#     Cadence et Dossier s'inséraient ENTRE l'en-tête et le contenu, laissant
+#     le contenu orphelin sous « Dossier surveillé » (la section PARAISsait
+#     repliée alors qu'elle était ouverte). Ancre déplacée sur le bouton
+#     d'en-tête de Caméra (TOUJOURS packé — la combobox de source et
+#     Démarrer/Arrêter restent visibles en toutes circonstances) : l'ordre
+#     devient Fichiers → Cadence → Dossier/Composition → Caméra → Calibration
+#     et n'a plus jamais besoin de toucher à « Fichiers ».
+#   - TclError « window … isn't packed » AU CHANGEMENT DE SOURCE : si la
+#     section Fichiers était réellement repliée (état persisté), l'ancienne
+#     ancre n'était plus gérée et Tk levait l'exception DANS
+#     `_on_source_choisie` — ABORTANT tout le reste : pas de déconnexion
+#     caméra, pas de détection SDK, « ▶ Démarrer » non réactivé, cadres non
+#     replacés (l'erreur finissait dans journal.txt). Avec l'ancre Caméra
+#     (toujours gérée) + un garde-fou, changer de source est toujours sûr.
+#   - ÉTAT REPLIÉ RESPECTÉ : une section (Cadence, Dossier, Composition)
+#     repliée par l'utilisateur réapparaissait AVEC son contenu au simple
+#     changement de source, mais avec sa flèche ▶ (état incohérent).
+#     `_creer_section_pliable` expose désormais `lf._var_etat` et
+#     `_maj_visibilite_cadres` ne re-packe le contenu que si la section est
+#     dépliée : la visibilité de l'ENSEMBLE (bouton + contenu) suit la
+#     source, le pli reste un choix de l'utilisateur.
+#   - EN-TÊTE ORPHELIN D'UNE SECTION REPLIÉE DEVENUE INUTILE (trouvé par la
+#     sonde de martèlement APRÈS les bancs verts — le cas « section repliée
+#     AU MOMENT où elle devient inutile à la source » n'était couvert par
+#     AUCUN banc) : la branche « cacher » de `_maj_visibilite_cadres`
+#     testait `cadre.winfo_manager()` — l'état du CONTENU, déjà dépacké par
+#     le pli — donc ne s'exécutait JAMAIS pour une section repliée : son
+#     en-tête restait planté à son ancienne position, flottant au milieu de
+#     la colonne jusqu'au prochain changement de source (c'est la cause
+#     RÉELLE du « positionnement bizarre » constaté par Alain). La branche
+#     teste maintenant l'en-tête AUSSI (`btn.winfo_manager()`) ; et
+#     `on_change` (déplier/replier) ne tente plus `pack(after=btn)` quand
+#     l'en-tête est lui-même caché (le pli est mémorisé dans `var_etat` et
+#     appliqué au prochain changement de source).
+#   - Banc `_test_ui_visibilite_jalon47.py` : sections [8] (9 vérifications)
+#     et [8d] NEUVES (4 vérifications : l'en-tête d'une section repliée
+#     disparaît quand la source la rend inutile, revient AVANT Dossier au
+#     retour, toujours replié, contenu à sa place au redépliage) — ordre
+#     VRAI du pack (boutons + LabelFrame) en mode Dossier, pli de Cadence
+#     conservé au passage en Composition, changement de source sans
+#     exception avec Fichiers replié. Rejoués verts : jalons 52, 53, 87,
+#     76, 80 — TOUT AU VERT.
 # v2.56.0 : CLASSIFICATION DES OBJETS RÉPARÉE (catalogue OpenNGC) + N'ENTOURER
 #           QUE LES OBJETS RÉELLEMENT VISIBLES (retours d'Alain, 05/10/2026)
 #   - TOUS LES OBJETS « (Nb) » : cause trouvée par sondes réseau — le

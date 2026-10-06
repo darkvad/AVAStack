@@ -10,12 +10,20 @@ au choix courant :
   - le réglage de rafale (« Empiler les brutes ») sort des cadres dossier et
     composition où il était dupliqué (jalon 45) : UN SEUL cadre partagé ;
   - masquer ≠ détruire : les valeurs saisies survivent aux allers-retours ;
-  - l'ordre des cadres de la colonne ne change jamais (ancre Calibration) ;
+  - l'ordre des cadres de la colonne ne change jamais (ancre Caméra depuis
+    le jalon 98 — elle fut Calibration puis le LabelFrame « Fichiers », qui
+    coupait cette section en deux et plantait le changement de source si
+    elle était repliée) ;
   - [5bis] v2.48.0 : cet ordre SUIT la chaîne des traitements — « Fond et grain
     (AVANT étirement) » et « Netteté live » précèdent « Affichage (temps réel) »,
     qui précède « Couleur de l'objet (APRÈS étirement) » (demande d'Alain :
     « l'UI doit respecter l'ordre des traitements »), et chaque étape porte SES
     cases (la neutralisation et le bruit chromatique ont quitté le cadre couleur).
+  - [8] v2.56.1 (jalon 98) : avec les sections PLIABLES (jalon 95b), vérifie
+    l'ordre VRAI du pack (boutons d'en-tête + LabelFrame) : « Fichiers de
+    travail et journal » n'est jamais coupé de son contenu, changer de source
+    ne lève JAMAIS « TclError: isn't packed » même Fichiers replié, et une
+    section repliée par l'utilisateur RESTE repliée (flèche ▶ cohérente).
 
 Nécessite un affichage. Exécution : python bancs/_test_ui_visibilite_jalon47.py
 """
@@ -96,51 +104,21 @@ def section_visible(app, nom):
 
 
 def ordre_colonne(app):
-    """Cadres LabelFrame visibles de la colonne, dans l'ordre d'affichage."""
-    colonne = app.frm_calibration.master   # le frame défilable « left »
-    return [w for w in colonne.winfo_children()
-            if isinstance(w, ttk.LabelFrame) and est_packe(w)]
+    """Sections visibles de la colonne, dans l'ordre d'affichage — leurs
+    conteneurs externes (« porteurs » encadrés, jalon 99), identifiés par
+    leur attribut `_btn_header`."""
+    colonne = app._lf_fichiers_travail.master   # le frame défilable « left »
+    return [w for w in colonne.pack_slaves()
+            if hasattr(w, "_btn_header") and est_packe(w)]
 
 
-def _titre_cadre(lf):
-    """Récupère le titre d'un LabelFrame, qu'il soit en `text=` (legacy) ou
-    dans le labelwidget (pliable, jalon 95) ou dans un bouton d'en-tête séparé (nouveau jalon 95b)."""
-    # 1. Cas legacy : text= sur le LabelFrame
-    txt = lf.cget("text")
-    if txt:
-        return txt
-    # 2. Cas jalon 95 : labelwidget sur le LabelFrame (bouton intégré)
-    lw_name = lf.cget("labelwidget")
-    if lw_name:
-        try:
-            lw = lf.nametowidget(lw_name)
-            return lw.cget("text")
-        except (tk.TclError, KeyError):
-            pass
-    # 3. Nouveau cas jalon 95b : le bouton d'en-tête est un widget FRÈRE dans le parent,
-    # packé AVANT le LabelFrame. On cherche dans le parent le bouton qui précède.
-    try:
-        parent = lf.master
-        if parent:
-            # Chercher le bouton qui a ce LabelFrame comme "after" ou qui est juste avant
-            for w in parent.winfo_children():
-                if isinstance(w, ttk.Button):
-                    # Le bouton a le titre avec préfixe ▼/▶
-                    btn_text = w.cget("text")
-                    # Vérifier que ce bouton contrôle ce LabelFrame (pack after=btn)
-                    # Astuce : le bouton est packé AVANT le LF
-                    pass
-        # Fallback : chercher par proximité de pack
-        # Le bouton d'en-tête est le widget immédiatement avant le LF dans parent
-        children = list(parent.winfo_children())
-        idx = children.index(lf)
-        if idx > 0:
-            prev = children[idx - 1]
-            if isinstance(prev, ttk.Button):
-                return prev.cget("text")
-    except (tk.TclError, ValueError, AttributeError):
-        pass
-    return ""
+def _titre_cadre(section):
+    """Titre d'une section pliable : sur son bouton d'en-tête (attribut
+    `_btn_header`, posé par `_creer_section_pliable`)."""
+    btn = getattr(section, "_btn_header", None)
+    if btn is not None:
+        return str(btn.cget("text"))
+    return section.cget("text")
 
 
 ui.CONFIG = {}
@@ -325,6 +303,164 @@ if liste is not None:
     app._on_linear_fit()
     verifie(app._code_fit_methode() == "offset",
             "retour à « Offset seul (fond) » → offset")
+
+# ============ [8] jalon 98 : ordre du pack avec sections PLIABLES (jalon 95b)
+# Retour d'Alain (06/10/2026) : en mode Dossier, la section « Fichiers de
+# travail et journal » était COUPÉE EN DEUX par le replacement (en-tête en
+# haut, contenu orphelin sous « Dossier surveillé » — elle PARAISSAIT
+# repliée) ; et si elle était réellement repliée, le changement de source
+# levait « TclError: window … isn't packed » et AVORTAIT tout le reste
+# (déconnexion caméra, détection SDK, « Démarrer »). Une section repliée
+# réapparaissait en outre dépliée (flèche ▶ menteuse) au changement de
+# source. La séquence ci-dessous rejoue TROIS scénarios réels.
+print("[8] jalon 98 : ordre du pack, plis respectés, jamais de TclError")
+DOSSIER = "Dossier surveillé (brutes FITS/PNG/TIFF…)"
+COMPO = "Composition multi-dossiers (RGB/HOO/SHO/LRGB)"
+SIMULEE = "Simulée (démo)"
+colonne = app._lf_fichiers_travail.master   # le frame défilable « left »
+
+
+def seq_pack():
+    """Séquence packée de la colonne : (classe, texte) — boutons d'en-tête
+    ET conteneurs (l'ordre VRAI de l'affichage, pas seulement les cadres)."""
+    out = []
+    for w in colonne.pack_slaves():
+        try:
+            t = str(w.cget("text"))
+        except tk.TclError:
+            t = ""
+        if not t and w.winfo_class() in ("TLabelframe", "Labelframe", "Frame"):
+            t = "<contenu>"
+        out.append((w.winfo_class(), t))
+    return out
+
+
+def rang(seq, texte):
+    """Position d'un BOUTON D'EN-TÊTE dans la séquence (ttk ou Tk classique,
+    jalon 99) — -1 si absent."""
+    for i, (cls, t) in enumerate(seq):
+        if cls in ("TButton", "Button") and t.endswith(texte):
+            return i
+    return -1
+
+
+def visible_et_fleche(lf):
+    """(visible, flèche) d'une section pliable (jalon 95b)."""
+    try:
+        lf.pack_info()
+        visible = True
+    except tk.TclError:
+        visible = False
+    return visible, str(lf._btn_header.cget("text"))[:1]
+
+
+# [8a] mode Dossier : « Fichiers » COMPLET (contenu juste après son bouton),
+#      puis Cadence, Dossier, puis Caméra — l'ordre général est intact.
+app.var_source.set(DOSSIER)
+app._on_source_choisie()
+root.update()
+s = seq_pack()
+i_fic = rang(s, "Fichiers de travail et journal")
+verifie(i_fic >= 0 and s[i_fic + 1][1] == "<contenu>",
+        "mode Dossier : le contenu de « Fichiers de travail et journal » "
+        "suit IMMÉDIATEMENT son en-tête (section complète, pas coupée)")
+i_cam = rang(s, "Caméra")
+verifie(-1 < rang(s, "empilement") < rang(s, "Dossier surveillé")
+        < i_cam,
+        "ordre canonique rafale → dossier AVANT Caméra "
+        f"(Cadence={rang(s, 'empilement')}, "
+        f"Dossier={rang(s, 'Dossier surveillé')}, Caméra={i_cam})")
+
+# [8b] une section REPLIÉE reste repliée au changement de source (flèche ▶
+#      et contenu absent — plus de section « dépliée avec flèche ▶ »).
+app._lf_cadence._btn_header.invoke()          # replier Cadence
+root.update()
+app.var_source.set(COMPO)
+app._on_source_choisie()
+root.update()
+vis_cad, fleche_cad = visible_et_fleche(app._lf_cadence)
+verifie(not vis_cad and fleche_cad == "▶",
+        "Cadence repliée RESTE repliée (cachée, flèche ▶) après le passage "
+        "en Composition")
+verifie(section_visible(app, "compo"),
+        "la section Composition, elle, est bien affichée")
+s = seq_pack()
+verifie(-1 < rang(s, "empilement") < rang(s, "multi-filtres")
+        < rang(s, "Caméra"),
+        "l'ordre canonique rafale → composition est conservé (Cadence "
+        "repliée = son seul en-tête)")
+
+# [8c] « Fichiers » replié + changement de source : AUCUNE exception et le
+#      changement de source s'applique quand même ; au redépliage, tout
+#      revient à sa place.
+app._lf_fichiers_travail._btn_header.invoke()   # replier Fichiers
+root.update()
+erreur = None
+try:
+    app.var_source.set(DOSSIER)
+    app._on_source_choisie()
+    app.var_source.set(SIMULEE)
+    app._on_source_choisie()
+    root.update()
+except tk.TclError as e:
+    erreur = e
+verifie(erreur is None,
+        "Fichiers replié : changer de source ne lève PLUS « TclError: "
+        f"window … isn't packed » ({erreur})")
+vis_fic, _ = visible_et_fleche(app._lf_fichiers_travail)
+verifie(not vis_fic, "Fichiers replié reste replié après les changements "
+        "de source")
+app._lf_fichiers_travail._btn_header.invoke()   # redéplier Fichiers
+root.update()
+s = seq_pack()
+i_fic = rang(s, "Fichiers de travail et journal")
+verifie(i_fic >= 0 and s[i_fic + 1][1] == "<contenu>",
+        "au redépliage, le contenu de « Fichiers » retrouve sa place sous "
+        "son en-tête")
+verifie(not section_visible(app, "dossier")
+        and not section_visible(app, "compo")
+        and not section_visible(app, "rafale"),
+        "retour en caméra : dossier, composition et cadence cachés")
+
+# [8d] une section REPLIÉE qui devient INUTILE à la source : son en-tête
+#      doit DISPARAÎTRE (avant le jalon 98bis, l'en-tête restait planté à
+#      son ancienne position — flottant au milieu de la colonne — car la
+#      branche « cacher » testait l'état du CONTENU, déjà dépacké par le
+#      pli : le cas « repliée AU MOMENT où elle devient inutile » n'était
+#      jamais couvert).
+app.var_source.set(DOSSIER)
+app._on_source_choisie()
+root.update()
+if not app._lf_cadence._var_etat.get():         # [8b] a laissé Cadence repliée
+    app._lf_cadence._btn_header.invoke()        # repartir d'une section dépliée
+app._lf_cadence._btn_header.invoke()            # replier Cadence (en dossier)
+root.update()
+app.var_source.set(SIMULEE)
+app._on_source_choisie()
+root.update()
+s = seq_pack()
+verifie(rang(s, "empilement") == -1,
+        "section repliée devenue inutile : son EN-TÊTE disparaît aussi "
+        "(plus d'en-tête orphelin flottant dans la colonne)")
+app.var_source.set(DOSSIER)
+app._on_source_choisie()
+root.update()
+s = seq_pack()
+i_cad = rang(s, "empilement")
+i_dos = rang(s, "Dossier surveillé")
+vis_cad, fleche_cad = visible_et_fleche(app._lf_cadence)
+verifie(0 <= i_cad < i_dos,
+        f"au retour en Dossier, l'en-tête replié revient AVANT Dossier "
+        f"(Cadence={i_cad}, Dossier={i_dos})")
+verifie(not vis_cad and fleche_cad == "▶",
+        "et il est TOUJOURS replié (contenu caché, flèche ▶)")
+app._lf_cadence._btn_header.invoke()            # redéplier Cadence
+root.update()
+s = seq_pack()
+i_cad = rang(s, "empilement")
+verifie(0 <= i_cad and s[i_cad + 1][1] == "<contenu>" and i_cad < rang(s, "Dossier surveillé"),
+        "au redépliage, le contenu de Cadence revient sous son en-tête, "
+        "avant Dossier")
 
 root.destroy()
 print()

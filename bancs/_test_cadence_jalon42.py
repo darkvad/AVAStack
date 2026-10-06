@@ -224,8 +224,9 @@ verifie(len(app._cadence_cbs) == 1 and len(app._cadence_lbls) == 1,
         "une combobox + une étiquette (la duplication du jalon 45 est levée)")
 verifie(app._cadence_cbs[0] is app.cb_cadence,
         "l'unique combobox reste exposée comme cb_cadence (compatibilité)")
-verifie(app._cadence_lbls[0].master.cget("text") == "Cadence d'empilement",
-        "l'unique couple vit dans le cadre « Cadence d'empilement »")
+verifie("Cadence d'empilement" in str(app._lf_cadence._btn_header.cget("text")),
+        "l'unique couple vit dans la section pliable « Cadence d'empilement » "
+        "(jalon 95 : le titre vit sur le bouton d'en-tête)")
 app.var_cadence.set("toutes les 5 min")
 app._maj_lbl_cadence()
 verifie("5 min" in app._cadence_cbs[0].get(),
