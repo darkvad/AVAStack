@@ -1,0 +1,13 @@
+# Outils de DEVELOPPEMENT d'AVAStack (jamais des dependances d'execution :
+# celles-ci vivent dans requirements.txt). Introduits au jalon 100 du chantier
+# de refactoring (typage progressif + banc garde-fou).
+#
+# Installation :
+#   pip install -r requirements-dev.txt
+#
+# Aucune CI distante (decision d'Alain, 06/10/2026) : ces outils sont lances
+# A LA MAIN, par l'interpreteur du venv, notamment par le banc garde-fou
+# bancs/_test_refactoring_garde_fou.py — qui les IGNORE proprement s'ils sont
+# absents (skip gracieux, jamais un echec).
+pyright
+ruff

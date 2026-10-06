@@ -9,7 +9,46 @@ dans le changelog du source et l'historique git.)
 
 ---
 
-## Session du 06/10/2026 — jalons 98 & 99 (v2.56.1 — TERMINÉ, PUBLIÉ, VALIDÉ EN RÉEL) — Ordre des sections pliables réparé + habillage de la colonne de réglages
+## Session du 07/10/2026 — jalon 100 (v2.57.0 — LIVRÉ, BANC VERT) — OUTILLAGE + BANC GARDE-FOU DU REFACTORING
+
+### But du jalon
+Première étape du **chantier de refactoring** (`app.py` + typage intégré,
+roadmap des jalons 100→110 plus bas) : poser l'OUTILLAGE et le BANC
+GARDE-FOU — **sans toucher au code de l'application**.
+
+### Livré (v2.57.0)
+- **`pyproject.toml`** (neuf) : config `pyright` (mode `basic`, Python 3.14,
+  `stubPath = avastack/stubs`, `include = avastack`, exclusions venv/bancs/
+  installer) + config `ruff` (règles minimales E9/F). Aucune dépendance
+  d'exécution ; jamais embarqué par les installateurs.
+- **`requirements-dev.txt`** (neuf) : `pyright` + `ruff` — outils de DEV
+  SIGNALÉS, à installer à la main (aucune CI distante, décision d'Alain).
+- **`avastack/stubs/zwoasi.pyi` + `qhyccd.pyi`** (neufs) : stubs de typage des
+  deux SDK caméra OPTIONNELS, décrivant la surface RÉELLEMENT utilisée par
+  `cameras/zwo.py` et `cameras/qhy.py`. Fichiers de DEV, aucun comportement.
+- **`bancs/_test_refactoring_garde_fou.py`** (neuf ; banc de RÉFÉRENCE du
+  chantier, rejoué à CHAQUE jalon) : ① syntaxe de tous les `.py` du dépôt
+  (209 fichiers, 0 erreur) ; ② surface publique de `app.py` FIGÉE (75 symboles
+  = noms définis ∪ ré-exports du paquet) + résolution réelle des noms
+  consommés ; ③ hash SHA-256 d'un empilement simulé déterministe (kappa,
+  winsorized, kappa-RGB) ; ④ `pyright` 0 erreur sur liste blanche (vide à ce
+  stade → étape IGNORÉE proprement, pyright non installé).
+- Version **2.57.0**, changelog en tête d'`avastack/__init__.py`. **`app.py`
+  NON modifié** (aucun changement de comportement).
+
+### Vérifications
+- Garde-fou `_test_refactoring_garde_fou.py` : **TOUT AU VERT**.
+- Bancs d'interface rejoués verts : `_test_ui_visibilite_jalon47.py`,
+  `_test_config_jalon6.py`, `_test_journal_jalon73.py`,
+  `_test_ui_robuste_jalon87.py`.
+
+### Prochaine étape du chantier
+**Jalon 101** — typage rétroactif de `compat`, `config`, `delais`, `journal`,
+`ressources`, `travail`, `siril_ini` + entrée dans la liste blanche pyright.
+
+---
+
+## HISTORIQUE (06/10/2026, jalons 98 & 99, v2.56.1 — TERMINÉ, PUBLIÉ, VALIDÉ EN RÉEL) — Ordre des sections pliables réparé + habillage de la colonne de réglages
 
 ### Contexte
 Retour d'Alain : « positionnement bizarre des sections suivant les zones
@@ -133,6 +172,13 @@ quatre paquets + `INSTALLATION.md`.
 
 ## Prochaine étape
 
+**JALON 100 LIVRÉ (v2.57.0, 07/10/2026)** : outillage (`pyproject.toml`,
+`requirements-dev.txt`, stubs `avastack/stubs/`) + banc garde-fou — **banc
+VERT**, bancs d'interface rejoués verts, **`app.py` INCHANGÉ**. Version stable
+de référence = **v2.56.1** (dernière VALIDÉE en réel ; repli). **Prochaine
+action = jalon 101** (typage rétroactif de `compat`/`config`/`delais`/
+`journal`/`ressources`/`travail`/`siril_ini`).
+
 **TEST RÉEL D'ALAIN — v2.56.1 : VALIDÉ (06/10/2026, « testée et validée »).**
 La colonne se range correctement au changement de source, le pli des
 sections est respecté, changer de source marche même « Fichiers » replié.
@@ -141,6 +187,72 @@ correspond au tag.
  **ÉTAT DE FIN DE SESSION (06/10/2026)** : version stable de référence =
 **v2.56.1**, PUBLIÉE (release GitHub : https://github.com/darkvad/AVAStack/releases/tag/v2.56.1) ET VALIDÉE en réel. Repli : `v2.56.1` puis `v2.56.0` (publiées ; décision d'Alain du 06/10/2026 : le repli pointe sur la dernière version **validée en réel**, en préparation de la prochaine version). Arbre propre, `origin/master` à jour.
  **RESTE OUVERT, À L'OCCASION (à ton initiative, aucune urgence)** : ① le test « **installer depuis le Microsoft Store** » — dernier test qui n'existe que par cette voie (l'appli v2.50.0 y est publiée) ; ② la prochaine évolution de l'application (à décider ensemble).
+
+---
+
+## CHANTIER EN COURS — REFACTORING (découpage `app.py` + typage intégré) — ROADMAP (jalons 100+)
+
+**But** : réduire `avastack/ui/app.py` (10 591 lignes, objet monolithique :
+UI + orchestration + worker + persistance) en modules cohérents, et poser un
+**typage progressif INTÉGRÉ** — SANS AUCUN changement de comportement (rendu
+identique AU BIT). Travail étalé sur plusieurs sessions : chaque jalon est une
+étape TESTABLE et livrable seule.
+
+**Règles d'or du chantier (non négociables)** :
+- **Zéro régression de comportement** — refactoring = même code, même rendu.
+  Un jalon qui change le rendu (au bit) est REJETÉ.
+- **Un banc par jalon** — banc neuf + rejeu des bancs existants concernés
+  (TOUS VERTS), lancés par l'interpréteur du venv.
+- **Le garde-fou est LA référence** — `bancs/_test_refactoring_garde_fou.py`
+  (banc neuf du jalon 100) verrouille ① la syntaxe de tous les `.py`, ②
+  l'inventaire des symboles publics de `app.py`, ③ le hash d'un empilement
+  simulé, ④ `pyright` 0 erreur sur la LISTE BLANCHE des fichiers typés.
+  Rejoué À CHAQUE jalon : toute extraction qui casse l'API ou le rendu le fait
+  passer au rouge.
+- **Typage à la naissance** — tout module NOUVEAU (extraction) est annoté dès
+  sa création ; la liste blanche pyright grandit à chaque jalon.
+- **Une livraison = version + changelog + AVANCEMENT.md dans la même réponse** ;
+  commentaires et docstrings en FRANÇAIS.
+
+| Jalon | Objectif | Livrables | Banc(s) de vérification | Version |
+|---|---|---|---|---|
+| **100** ✅ | Outillage + garde-fou | `pyproject.toml` (pyright liste blanche + ruff) ; `requirements-dev.txt` (pyright, ruff — SIGNALÉS) ; `avastack/stubs/*.pyi` (zwoasi, qhyccd) ; `bancs/_test_refactoring_garde_fou.py` (neuf) | garde-fou VERT + bancs UI rejoués verts | v2.57.0 |
+| **101** | Typage fondation (rétroactif) | annotations de `compat`, `config`, `delais`, `journal`, `ressources`, `travail`, `siril_ini` + entrée liste blanche | garde-fou + `_test_config_jalon6.py`, `_test_journal_jalon73.py` | v2.57.1 |
+| **102** | `ui/constants.py` (typé) | extraire constantes/seuils/palettes de `app.py` | garde-fou + `_test_ui_visibilite_jalon47.py` | v2.58.0 |
+| **103** | `ui/widgets/` (typés) | `collapsible`, `histogram`, `niveaux`, `saturation`, `tooltip` | garde-fou + `_test_histo_jalon75.py`, `_test_dialogues_jalon84.py`, `_test_ui_visibilite_jalon47.py` | v2.58.1 |
+| **104** | `ui/config_ui.py` (typé) | extraction charger/sauver de la config UI | garde-fou + `_test_config_jalon6.py` | v2.58.2 |
+| **105a** | `ui/panels/` (1/3) sources (typés) | `files`, `camera`, `cadence`, `folder` | garde-fou + `_test_ui_visibilite_jalon47.py`, `_test_ui_robuste_jalon87.py` | v2.59.0 |
+| **105b** | `ui/panels/` (2/3) traitement (typés) | `compo`, `calib`, `stack`, `bgnoise`, `sharp` | idem + `_test_compo_ui_jalon19.py` | v2.59.1 |
+| **105c** | `ui/panels/` (3/3) sortie (typés) | `display`, `color`, `state`, `external`, `output` | idem + `_test_ui_moteur_jalon41.py`, `_test_sliders_jalon6.py` | v2.59.2 |
+| **106a** | `core/worker.py` (1/4) squelette | `core/config.py` (`WorkerConfig` typé), `AcquisitionWorker` délégué | garde-fou | v2.60.0 |
+| **106b** | `core/worker.py` (2/4) boucle | acquisition + reset / re-stack | garde-fou + `_test_restack_jalon16.py`, `_test_restack_compo_jalon20.py`, `_test_reset_empilement_jalon76.py` | v2.60.1 |
+| **106c** | `core/worker.py` (3/4) pilotage | roue / TEC / offset + cadence dossier | `_test_jalon17_filtre.py`, `_test_cadence_jalon42.py`, `_test_pilotage_jalon35.py` | v2.60.2 |
+| **106d** | `core/worker.py` (4/4) mesures | astrométrie + photométrie / SPCC | `_test_photometrie_jalon56.py`, `_test_astro_branchement_jalon56.py`, `_test_spcc_jalon58.py` | v2.60.3 |
+| **107** | `ui/renderer.py` (typé) | rendu affichage + histogrammes + annotations | `_test_histo_jalon75.py`, `_test_zoom_pleine_res_jalon68.py`, `_test_annotations_overlay_jalon96.py` | v2.61.0 |
+| **108** | `ui/saver.py` + `ui/external_runner.py` (typés) | sauvegardes + traitement externe | `_test_save_*`, `_test_graxpert_live_jalon4.py`, `_test_bxt_entete_jalon69.py` | v2.61.1 |
+| **109** | Typage `processing/` (rétroactif) | annotations des 16 modules de traitement | garde-fou + bancs traitement | v2.62.0 |
+| **110** | Typage `ui/app.py` résiduel + `ui/*` (rétroactif) | annotations finales | garde-fou + pyright 0 erreur | v2.62.1 |
+
+**Regroupement par session (indicatif)** :
+- **Session A** (faible risque) : 100, 101
+- **Session B** : 102, 103, 104
+- **Session C** : 105a, 105b, 105c
+- **Session D** (le gros morceau) : 106a → 106d
+- **Session E** : 107, 108
+- **Session F** : 109, 110
+
+**Décisions tranchées (06/10/2026)** : ① `pyright` + `ruff` **APPROUVÉS** en
+`requirements-dev.txt` (outils de dev, jamais dans `requirements.txt`) — le
+garde-fou les utilise s'ils sont présents (skip gracieux sinon) ; ② **CI GitHub
+NON retenue** — le garde-fou reste un banc lancé À LA MAIN (interpréteur du venv),
+rejoué à chaque jalon.
+
+**État : JALON 100 LIVRÉ** (v2.57.0 — outillage + banc garde-fou ; banc VERT et
+bancs d'interface rejoués verts, `app.py` INCHANGÉ). Prochaine action =
+**jalon 101** (typage rétroactif de `compat`/`config`/`delais`/`journal`/
+`ressources`/`travail`/`siril_ini` + entrée dans la liste blanche pyright).
+Repli de référence : **v2.56.1** (dernière version validée en réel).
+
 - **JALON PRÉCÉDENT (02/10/2026, jalon 88 — INSTALLATEUR WINDOWS EN PAQUET ZIP,
   CODE ÉCRIT, BANC VERT, EN ATTENTE DU TEST RÉEL).**
   **DÉCLENCHEUR** : un ami sous **Windows 11 famille** n'arrive pas à installer

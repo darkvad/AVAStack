@@ -17,9 +17,32 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.56.1"
+AVASTACK_VERSION = "2.57.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.57.0 : CHANTIER DE REFACTORING — OUTILLAGE ET BANC GARDE-FOU (jalon 100)
+#   - OUVERTURE DU CHANTIER « découpage de app.py + typage intégré » (décision
+#     d'architecture du 06/10/2026 ; roadmap des jalons 100→110 dans
+#     AVANCEMENT.md). RÈGLE DE FER : ZÉRO RÉGRESSION DE COMPORTEMENT — le rendu
+#     reste identique AU BIT ; un jalon qui change le rendu est REJETÉ.
+#   - OUTILLAGE DE DEV (jamais des dépendances d'exécution) : `pyproject.toml`
+#     (configuration `pyright` + `ruff`) et `requirements-dev.txt` (`pyright`,
+#     `ruff` — SIGNALÉS, à installer à la main : aucune CI distante, décision
+#     d'Alain). Aucun de ces fichiers n'est embarqué par les installateurs.
+#   - STUBS DE TYPAGE `avastack/stubs/` : `zwoasi.pyi` et `qhyccd.pyi` décrivent
+#     la surface des SDK caméra OPTIONNELS réellement utilisée (zwo.py / qhy.py),
+#     pour que le typage progressif ne les voie jamais comme « import inconnu ».
+#     Fichiers de DEV uniquement — aucun comportement changé.
+#   - BANC GARDE-FOU `bancs/_test_refactoring_garde_fou.py` (neuf) : LA référence
+#     du chantier, REJOUÉE à CHAQUE jalon. Il verrouille ① la syntaxe de TOUS
+#     les `.py` du dépôt, ② l'inventaire des symboles PUBLICS de `app.py`
+#     (détecte une extraction qui casse l'API), ③ le hash SHA-256 d'un
+#     empilement SIMULÉ déterministe (kappa, winsorized, kappa-RGB — le rendu
+#     figé AU BIT), ④ `pyright` 0 erreur sur la liste blanche des fichiers
+#     typés (IGNORÉ proprement tant que pyright n'est pas installé).
+#   - AUCUN changement de comportement : `app.py` n'est PAS modifié par ce
+#     jalon. Rejoués verts : garde-fou + bancs d'interface.
+
 # v2.56.1 : COLONNE DE RÉGLAGES — SECTIONS PLIABLES ET CHANGEMENT DE SOURCE
 #           RÉPARES (jalon 98 ; retour d'Alain, 06/10/2026 : « positionnement
 #           bizarre des sections »)

@@ -1,0 +1,39 @@
+# Outillage de DÉVELOPPEMENT d'AVAStack — jalon 100 du chantier de refactoring.
+#
+# Ce fichier ne contient AUCUNE dépendance d'exécution : celles-ci vivent dans
+# `requirements.txt` (numpy, opencv-python, pillow, astropy, qhyccd, zwoasi…).
+# Ici sont configurés les outils de DEV — `pyright` (typage progressif) et
+# `ruff` (garde-fous de code) — déclarés dans `requirements-dev.txt` et lances
+# À LA MAIN, par l'interpréteur du venv (aucune CI distante : décision d'Alain
+# du 06/10/2026). Ce fichier n'est JAMAIS embarqué par les installateurs.
+
+[tool.pyright]
+# Typage PROGRESSIF du chantier (jalons 100+). « basic » : les erreurs réelles
+# (symboles non résolus, mauvais arguments) sans le bruit du mode strict — le
+# chantier n'exige AUCUN changement de comportement, seulement un typage sûr.
+typeCheckingMode = "basic"
+pythonVersion = "3.14"
+# Stubs maison pour les SDK caméra OPTIONNELS (zwoasi, qhyccd) : sans eux,
+# pyright les voit comme « import inconnu » (faux positifs). Cf. avastack/stubs.
+stubPath = "avastack/stubs"
+include = ["avastack"]
+# Les bancs sont des scripts de vérification (pas du code livré), l'outillage
+# d'installateur est hors application, et le venv n'est pas du code du projet.
+exclude = ["venv", "bancs", "installer", "**/__pycache__"]
+# Une dépendance OPTIONNELLE absente (astropy, zwoasi, qhyccd…) est signalée
+# SANS casser : le code gère son absence par un repli documenté partout.
+reportMissingImports = "warning"
+reportMissingModuleSource = "warning"
+
+[tool.ruff]
+# Règles UNIQUEMENT tournées vers les vraies erreurs (cf. [tool.ruff.lint]) :
+# on ne reformate PAS le style du projet, on attrape des bugs.
+line-length = 100
+target-version = "py314"
+extend-exclude = ["venv", "installer"]
+
+[tool.ruff.lint]
+# E9 = erreurs de syntaxe ; F = pyflakes (noms non définis, imports inutilisés,
+# redéfinitions, f-strings cassées…). Volontairement MINIMAL : `ruff check`
+# doit rester un signal, pas un réquisitoire de style.
+select = ["E9", "F"]

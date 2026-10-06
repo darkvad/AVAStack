@@ -421,6 +421,32 @@ installé, documentations et pages constructeurs) :
   fichier de test peut avoir été réécrit depuis), relever le hash
   (`git rev-parse 'stash@{0}'`) et le consigner dans AVANCEMENT.md.
 
+## Décision d'architecture — décomposition de `avastack/ui/app.py` (06/10/2026)
+
+`avastack/ui/app.py` (10 591 lignes) est un objet monolithique (UI +
+orchestration + worker + persistance). DÉCISION : le découper par un chantier
+À PLUSIEURS SESSIONS (jalons 100+), sans changer le comportement observable.
+
+Cibles du découpage : `ui/constants.py`, `ui/widgets/`, `ui/config_ui.py`,
+`ui/panels/`, `ui/renderer.py`, `ui/saver.py`, `ui/external_runner.py`, et
+`core/worker.py` (+ `core/config.py`).
+
+**Règle du chantier — ZÉRO RÉGRESSION DE COMPORTEMENT** : le rendu reste
+identique AU BIT. Elle est garantie par un banc GARDE-FOU
+`bancs/_test_refactoring_garde_fou.py` (jalon 100) qui verrouille ① la syntaxe
+de tous les `.py`, ② l'inventaire des symboles publics de `app.py`, ③ le hash
+d'un empilement simulé, ④ `pyright` 0 erreur sur la liste blanche des fichiers
+typés. Ce banc est rejoué À CHAQUE jalon.
+
+**Typage progressif** : `pyright` + stubs, introduits au fil des jalons ; tout
+module NOUVEAU (issu d'une extraction) est typé dès sa création. `pyright` et
+`ruff` vivent dans `requirements-dev.txt` (outils de dev, JAMAIS dans
+`requirements.txt`). **Aucune CI distante** (décision d'Alain) : le garde-fou
+est un banc lancé à la main avec l'interpréteur du venv.
+
+Roadmap détaillée et état courant : `AVANCEMENT.md` (section « CHANTIER EN
+COURS — REFACTORING », jalons 100→110).
+
 ## Fichier tiers : veralux_core_headless.py (GPL-3.0-or-later)
 
 `veralux_core_headless.py` (moteur d étirement hyperbolique VeraLux, extrait
