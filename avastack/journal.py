@@ -38,6 +38,7 @@ import os
 import sys
 import time
 import traceback
+from typing import Any, Mapping
 
 # Rotation : au-delà, le journal courant devient `journal.txt.1` (un seul
 # fichier précédent conservé — de quoi voir le démarrage d'avant un plantage).
@@ -45,7 +46,7 @@ TAILLE_MAX = 1 << 20
 NOM_FICHIER = "journal.txt"
 
 
-def dossier_journal():
+def dossier_journal() -> str:
     """Dossier du journal = dossier de configuration (repli : dossier personnel).
 
     Import PARESSEUX de `config` : ce module doit rester importable même quand
@@ -57,12 +58,12 @@ def dossier_journal():
         return os.path.expanduser("~")
 
 
-def chemin_journal():
+def chemin_journal() -> str:
     """Chemin du journal (`<config>/journal.txt`)."""
     return os.path.join(dossier_journal(), NOM_FICHIER)
 
 
-def ecrire(ligne):
+def ecrire(ligne: object) -> bool:
     """Ajoute UNE ligne au journal. → True si écrite (jamais d'exception).
 
     Rotation AVANT écriture : un journal qui grossit sans fin finirait par
@@ -82,7 +83,7 @@ def ecrire(ligne):
         return False
 
 
-def note(etape, detail=""):
+def note(etape: object, detail: object = "") -> bool:
     """Écrit une ligne horodatée « étape — détail » (jamais d'exception)."""
     ligne = time.strftime("%Y-%m-%d %H:%M:%S") + "  " + str(etape)
     if detail:
@@ -90,7 +91,7 @@ def note(etape, detail=""):
     return ecrire(ligne)
 
 
-def etape(nom, detail=""):
+def etape(nom: object, detail: object = "") -> bool:
     """Marque le DÉBUT d'une étape qui peut toucher le disque (v2.38.11).
 
     POURQUOI : une étape qui se BLOQUE (montage réseau NAS injoignable, pare-feu
@@ -100,7 +101,7 @@ def etape(nom, detail=""):
     return note("étape", str(nom) + ((" — " + str(detail)) if detail else ""))
 
 
-def _libre(dossier):
+def _libre(dossier: str) -> str:
     """Espace libre du volume de `dossier`, en texte (« — » si illisible)."""
     try:
         from . import travail
@@ -109,7 +110,7 @@ def _libre(dossier):
         return "—"
 
 
-def trace_env():
+def trace_env() -> str:
     """Ce qu'il faut savoir devant un démarrage raté : version, Python, Tk, OS,
     exécutable, répertoire courant, dossier de travail et son espace libre.
 
@@ -149,7 +150,8 @@ def trace_env():
     return " · ".join(elements)
 
 
-def sans_affichage(exc=None, env=None):
+def sans_affichage(exc: BaseException | None = None,
+                   env: Mapping[str, str] | None = None) -> bool:
     """L'échec vient-il de l'ABSENCE de session graphique (bureau) ?
 
     Constat RÉEL d'Alain (Linux, 27/09/2026) : lancée par SSH — donc sans
@@ -179,7 +181,7 @@ def sans_affichage(exc=None, env=None):
     return "TclError" in txt and not os.environ.get("DISPLAY")
 
 
-def conseil_installation(exc=None):
+def conseil_installation(exc: BaseException | None = None) -> str:
     """Conseil ACTIONNABLE pour un échec de démarrage CONNU, sinon "".
 
     Deux cas nommés, ceux que le journal a réellement rencontrés :
@@ -207,7 +209,7 @@ def conseil_installation(exc=None):
     return ""
 
 
-def _emplacement(exc):
+def _emplacement(exc: BaseException) -> str:
     """« (fichier, ligne N) » du dernier cadre du traceback, ou ""."""
     try:
         tb = getattr(exc, "__traceback__", None)
@@ -221,7 +223,7 @@ def _emplacement(exc):
     return ""
 
 
-def erreur(contexte="", exc=None):
+def erreur(contexte: object = "", exc: BaseException | None = None) -> str:
     """Journalise une EXCEPTION (la courante par défaut) avec son traceback
     COMPLET, et renvoie un texte COURT — celui que `montrer()` affiche :
 
@@ -248,7 +250,9 @@ def erreur(contexte="", exc=None):
     return court
 
 
-def rapport_callback(type_exc, valeur, traceback_):
+def rapport_callback(type_exc: type[BaseException] | None,
+                     valeur: BaseException | None,
+                     traceback_: Any) -> None:
     """Remplace `Tk.report_callback_exception` : une erreur dans un RAPPEL
     d'interface (clic, curseur, touche) est JOURNALISÉE et IMPRIMÉE.
 
@@ -263,7 +267,7 @@ def rapport_callback(type_exc, valeur, traceback_):
         pass
 
 
-def montrer(titre, message):
+def montrer(titre: object, message: object) -> str:
     """Montre `message` à l'utilisateur : boîte Tk si possible, sinon `stderr`.
 
     → "boite", "stderr" ou "aucun" (la valeur sert aux bancs). POURQUOI une
@@ -309,7 +313,7 @@ def montrer(titre, message):
         return "aucun"
 
 
-def rapport_echec(exc, contexte="démarrage"):
+def rapport_echec(exc: BaseException, contexte: object = "démarrage") -> str:
     """Texte à MONTRER pour un échec fatal : CONSEIL (si la cause est connue),
     message court avec fichier et ligne, chemin du journal.
 
@@ -325,7 +329,7 @@ def rapport_echec(exc, contexte="démarrage"):
     return "\n\n".join(morceaux)
 
 
-def ouvrir():
+def ouvrir() -> str:
     """Ouvre le journal dans l'outil par défaut de l'OS.
     → "" si la commande est partie, sinon le message d'erreur (jamais
     d'exception : l'appelant l'affiche tel quel)."""

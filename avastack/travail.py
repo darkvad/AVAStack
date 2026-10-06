@@ -37,24 +37,24 @@ from .compat import IS_MACOS, IS_WINDOWS
 # Tous nos dossiers temporaires commencent par ce préfixe (framestore, chaîne
 # externe, GraXpert live, astrométrie, composition) : c'est ce qui permet de
 # reconnaître — et de nettoyer — les résidus d'une session morte.
-PREFIXE = "avastack_"
+PREFIXE: str = "avastack_"
 # Âge au-delà duquel un dossier `avastack_*` est un ORPHELIN (aucune session
 # d'empilement ne dure 6 h sans écrire : une frame est archivée au plus toutes
 # les secondes, et une chaîne externe toutes les minutes).
-AGE_ORPHELIN_H = 6.0
+AGE_ORPHELIN_H: float = 6.0
 # Marge appliquée à une écriture demandée (en-têtes, métadonnées, arrondis).
-MARGE = 1.20
+MARGE: float = 1.20
 # Part MAXIMALE du volume qu'AVAStack s'autorise à occuper (travail + frames) :
 # au-delà, c'est le système qui souffre (et /tmp en tmpfs étouffe la RAM).
-PART_MAX_VOLUME = 0.5
+PART_MAX_VOLUME: float = 0.5
 
 
-def dossier_temp_systeme():
+def dossier_temp_systeme() -> str:
     """Dossier temporaire du système (`$TMPDIR`, sinon `/tmp`…)."""
     return tempfile.gettempdir()
 
 
-def points_de_montage():
+def points_de_montage() -> list[tuple[str, str]]:
     """[(point de montage, type de système)] lus dans `/proc/mounts`.
 
     → [] sur Windows/macOS ou si `/proc` est absent (jamais d'exception) :
@@ -64,7 +64,7 @@ def points_de_montage():
             lignes = f.read().splitlines()
     except OSError:
         return []
-    out = []
+    out: list[tuple[str, str]] = []
     for ligne in lignes:
         champs = ligne.split()
         if len(champs) >= 3:
@@ -72,7 +72,7 @@ def points_de_montage():
     return out
 
 
-def est_tmpfs(chemin):
+def est_tmpfs(chemin: str) -> bool:
     """`chemin` est-il sur un volume de RAM (tmpfs) ?
 
     C'est LE critère qui manquait : sous Linux `/tmp` est souvent un tmpfs
@@ -88,12 +88,13 @@ def est_tmpfs(chemin):
 # par défaut ; un pare-feu qui filtre le NAS suffit). Constat RÉEL d'Alain,
 # 27/09/2026 : ses dossiers de couches R/G/B sont sur son NAS, `nftables`
 # filtrait ce NAS, et l'application ne s'ouvrait plus — sans un mot.
-TYPES_RESEAU = ("nfs", "nfs4", "cifs", "smb3", "smbfs", "sshfs", "fuse.sshfs",
-                "fuse.rclone", "glusterfs", "ceph", "9p", "afs", "davfs",
-                "fuse.gvfsd-fuse", "autofs")
+TYPES_RESEAU: tuple[str, ...] = (
+    "nfs", "nfs4", "cifs", "smb3", "smbfs", "sshfs", "fuse.sshfs",
+    "fuse.rclone", "glusterfs", "ceph", "9p", "afs", "davfs",
+    "fuse.gvfsd-fuse", "autofs")
 
 
-def type_systeme(chemin):
+def type_systeme(chemin: str) -> str:
     """Type de système de fichiers qui porte RÉELLEMENT `chemin` (point de
     montage le PLUS LONG qui le préfixe), ou "" si inconnu (Windows/macOS, ou
     `/proc/mounts` absent). Jamais d'exception."""
@@ -109,14 +110,14 @@ def type_systeme(chemin):
     return fstype
 
 
-def sur_montage_reseau(chemin):
+def sur_montage_reseau(chemin: str) -> bool:
     """`chemin` est-il sur un montage RÉSEAU (NAS : NFS, SMB, sshfs…) ?
     → bool, jamais d'exception. Sert à NE PAS balayer ces dossiers : un accès
     que le réseau (ou un pare-feu) bloque y attend indéfiniment."""
     return type_systeme(chemin) in TYPES_RESEAU
 
 
-def dossier_defaut():
+def dossier_defaut() -> str:
     """Dossier de travail par défaut : le temporaire du système, SAUF s'il vit
     en RAM — auquel cas un dossier de cache sur le disque (`~/.cache/avastack`,
     `XDG_CACHE_HOME` honoré). Constat du 27/09/2026 : avec `/tmp` en tmpfs de
@@ -129,7 +130,7 @@ def dossier_defaut():
     return os.path.join(base, "avastack")
 
 
-def dossier_travail():
+def dossier_travail() -> str:
     """Dossier de travail EFFECTIF, créé au besoin :
 
       1. le réglage `dossier_travail` de config.json (choix explicite de
@@ -162,7 +163,7 @@ def dossier_travail():
     return d
 
 
-def creer_dossier(prefixe=None):
+def creer_dossier(prefixe: str | None = None) -> str:
     """Crée un dossier temporaire DANS le dossier de travail (`mkdtemp`).
 
     À utiliser PARTOUT à la place de `tempfile.mkdtemp()` : c'est ce qui
@@ -171,7 +172,7 @@ def creer_dossier(prefixe=None):
     return tempfile.mkdtemp(prefix=prefixe or PREFIXE, dir=dossier_travail())
 
 
-def espace_libre(dossier):
+def espace_libre(dossier: str) -> int:
     """Octets libres du volume qui porte `dossier` (0 si illisible)."""
     try:
         return int(shutil.disk_usage(dossier).free)
@@ -179,7 +180,7 @@ def espace_libre(dossier):
         return 0
 
 
-def texte_octets(n):
+def texte_octets(n: float) -> str:
     """« 24,9 Mo », « 1,2 Go », « 512 o » — pour les messages utilisateur."""
     try:
         n = float(n)
@@ -191,7 +192,8 @@ def texte_octets(n):
     return "%d o" % int(n)
 
 
-def verifier_espace(dossier, octets, quoi="cette écriture"):
+def verifier_espace(dossier: str, octets: float,
+                    quoi: str = "cette écriture") -> tuple[bool, str]:
     """→ (True, "") si le volume peut recevoir `octets` (marge incluse),
     sinon (False, message CHIFFRÉ et actionnable).
 
@@ -223,7 +225,7 @@ def plafond_effectif(dossier, plafond_voulu, part=PART_MAX_VOLUME):
 
 
 
-def taille_dossier(chemin):
+def taille_dossier(chemin: str) -> int:
     """Somme des tailles des fichiers sous `chemin` (0 si illisible)."""
     total = 0
     for dossier, _sous, noms in os.walk(chemin, onerror=lambda _e: None):
@@ -235,7 +237,9 @@ def taille_dossier(chemin):
     return total
 
 
-def nettoyer_orphelins(age_h=AGE_ORPHELIN_H, dossiers=None, prefixe=PREFIXE):
+def nettoyer_orphelins(age_h: float = AGE_ORPHELIN_H,
+                       dossiers: list[str] | None = None,
+                       prefixe: str = PREFIXE) -> tuple[int, int]:
     """Supprime les dossiers `avastack_*` PLUS VIEUX que `age_h` heures.
 
     Une session d'empilement écrit en continu (frames, étapes d'outils) : un
@@ -251,7 +255,7 @@ def nettoyer_orphelins(age_h=AGE_ORPHELIN_H, dossiers=None, prefixe=PREFIXE):
         dossiers = [dossier_travail(), dossier_temp_systeme()]
     limite = time.time() - max(0.0, float(age_h)) * 3600.0
     n, octets = 0, 0
-    vus = set()
+    vus: set[str] = set()
     for racine in dossiers:
         try:
             noms = os.listdir(racine)
@@ -275,7 +279,7 @@ def nettoyer_orphelins(age_h=AGE_ORPHELIN_H, dossiers=None, prefixe=PREFIXE):
     return n, octets
 
 
-def ouvrir_chemin(chemin):
+def ouvrir_chemin(chemin: str) -> str:
     """Ouvre `chemin` (DOSSIER **ou FICHIER**) avec l'outil par défaut de l'OS.
     → "" si la commande est partie, sinon le message d'erreur (jamais
     d'exception : l'appelant l'affiche tel quel).
@@ -286,7 +290,9 @@ def ouvrir_chemin(chemin):
     travail)."""
     try:
         if IS_WINDOWS:
-            os.startfile(chemin)                 # noqa: S606 (Windows)
+            # os.startfile n'existe QUE sous Windows : ignore CIBLÉ pour un
+            # pyright lancé sur un autre OS (typeshed sans startfile).
+            os.startfile(chemin)  # noqa: S606 (Windows)  # pyright: ignore[reportAttributeAccessIssue]
         elif IS_MACOS:
             subprocess.Popen(["open", chemin])
         else:
@@ -296,7 +302,7 @@ def ouvrir_chemin(chemin):
         return str(exc)
 
 
-def ouvrir_dossier(chemin):
+def ouvrir_dossier(chemin: str) -> str:
     """Nom historique (v2.38.6) : ouvrir un dossier — cf. `ouvrir_chemin`."""
     return ouvrir_chemin(chemin)
 

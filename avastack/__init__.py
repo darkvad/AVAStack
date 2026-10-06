@@ -17,9 +17,26 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.57.0"
+AVASTACK_VERSION = "2.57.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.57.1 : CHANTIER DE REFACTORING — TYPAGE DE LA FONDATION (jalon 101)
+#   - TYPAGE RÉTROACTIF (annotations SEULES, AUCUN changement de comportement)
+#     des 7 modules de fondation : `compat`, `config`, `delais`, `journal`,
+#     `ressources`, `travail`, `siril_ini`. Paramètres, valeurs de retour et
+#     constantes sont annotés ; `delais.borne` devient GÉNÉRIQUE (TypeVar : le
+#     type rendu suit celui de `fn`).
+#   - `pyright` (mode `basic`) : 0 ERREUR sur ces 7 fichiers — ils entrent dans
+#     la LISTE BLANCHE du banc garde-fou (`FICHIERS_TYPES`), vérifiée désormais
+#     à CHAQUE jalon.
+#   - Les accès volontairement spécifiques à une plateforme (`os.sysconf`,
+#     `os.startfile`, `ctypes.windll`) et l'attribut RUNTIME `_avastack_icone`
+#     (Tk) portent un `# pyright: ignore[...]` CIBLÉ et commenté : ce ne sont
+#     pas des erreurs, seulement des noms absents du typeshed d'un autre OS.
+#   - Vérifications : banc garde-fou VERT (pyright 0 erreur sur la liste
+#     blanche) + bancs rejoués verts (`_test_config_jalon6.py`,
+#     `_test_journal_jalon73.py`).
+
 # v2.57.0 : CHANTIER DE REFACTORING — OUTILLAGE ET BANC GARDE-FOU (jalon 100)
 #   - OUVERTURE DU CHANTIER « découpage de app.py + typage intégré » (décision
 #     d'architecture du 06/10/2026 ; roadmap des jalons 100→110 dans

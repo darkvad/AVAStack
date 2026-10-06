@@ -104,10 +104,21 @@ HASH_WINSORIZED = "6b6d1bb7d884913a79db0023f43bb6759b17c52499247e9311ae75b86b0f9
 HASH_KAPPA_RGB = "a4ece0a2eb47a24dfd603071a18e5b1a9f590e818a5022c369a2475a4565682e"
 
 # [4] LISTE BLANCHE des fichiers typés (chemins RELATIFS à la racine). Elle
-# grandit à chaque jalon de typage (101 : compat/config/delais/journal/
-# ressources/travail/siril_ini ; puis les modules extraits…). Tant qu'elle est
-# vide, l'étape pyright est un no-op documenté.
-FICHIERS_TYPES = ()
+# grandit à chaque jalon de typage. Tant qu'elle est vide, l'étape pyright est
+# un no-op documenté.
+#   - Jalon 101 : la FONDATION (compat/config/delais/journal/ressources/
+#     travail/siril_ini) — pyright 0 erreur.
+#   - Jalons suivants : chaque module NOUVEAU (extrait de `app.py`) y entre dès
+#     sa création.
+FICHIERS_TYPES = (
+    "avastack/compat.py",
+    "avastack/config.py",
+    "avastack/delais.py",
+    "avastack/journal.py",
+    "avastack/ressources.py",
+    "avastack/travail.py",
+    "avastack/siril_ini.py",
+)
 
 
 # ============================================================================

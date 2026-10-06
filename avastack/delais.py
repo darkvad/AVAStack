@@ -23,11 +23,17 @@ retient pas la sortie du programme.
 """
 
 import threading
+from typing import Any, Callable, TypeVar
 
-DELAI_DEFAUT = 5.0
+DELAI_DEFAUT: float = 5.0
+
+# `borne` rend EXACTEMENT ce que rend `fn` (ou `defaut`) : le type de retour
+# est donc lié à celui de `fn` (TypeVar).
+_T = TypeVar("_T")
 
 
-def borne(fn, defaut=None, delai_s=DELAI_DEFAUT):
+def borne(fn: Callable[[], _T], defaut: _T | None = None,
+          delai_s: float = DELAI_DEFAUT) -> tuple[_T | None, bool]:
     """Exécute `fn()` dans un fil démon et rend `(valeur, abouti)`.
 
     - `abouti` vaut True si `fn` a rendu la main DANS le délai — y compris en
@@ -37,7 +43,7 @@ def borne(fn, defaut=None, delai_s=DELAI_DEFAUT):
       démon et l'application, elle, n'attend plus.
 
     Aucune exception ne remonte jamais : c'est une mesure, pas une action."""
-    boite = {"valeur": defaut, "fini": [False]}
+    boite: dict[str, Any] = {"valeur": defaut, "fini": [False]}
 
     def _travail():
         try:

@@ -35,18 +35,18 @@ import os
 from .compat import IS_MACOS, IS_WINDOWS
 
 # Clés utiles de l'ini (clé brute, sans groupe : les noms sont uniques).
-CLE_GRAXPERT = "graxpert_path"
-CLE_CATALOGUE_ASTRO = "catalogue_gaia_astro"
-CLE_CATALOGUE_PHOTO = "catalogue_gaia_photo"
+CLE_GRAXPERT: str = "graxpert_path"
+CLE_CATALOGUE_ASTRO: str = "catalogue_gaia_astro"
+CLE_CATALOGUE_PHOTO: str = "catalogue_gaia_photo"
 
 
-def dossiers_config_siril():
+def dossiers_config_siril() -> list[str]:
     """Dossiers de configuration de Siril, par OS (ordre d'essai).
 
     Doc Siril 1.4.4 « Preferences » : `~/.config/siril` (Linux, XDG respecté),
     `%LOCALAPPDATA%\\siril` (Windows), `~/Library/Application Support/
     org.free-astro.Siril/siril` (macOS)."""
-    out = []
+    out: list[str] = []
     if IS_WINDOWS:
         local = os.environ.get("LOCALAPPDATA")
         if local:
@@ -59,13 +59,13 @@ def dossiers_config_siril():
     return out
 
 
-def fichiers_ini():
+def fichiers_ini() -> list[str]:
     """Fichiers `config*.ini` existants, du plus RÉCENT au plus ancien.
 
     Siril nomme le sien `config<MAJ>.<MIN>.ini` (ex. `config.1.4.ini`) : le
     tri décroissant fait gagner la version la plus récente quand plusieurs
     cohabitent (mise à jour de Siril)."""
-    trouves = []
+    trouves: list[str] = []
     for d in dossiers_config_siril():
         try:
             trouves += glob.glob(os.path.join(d, "config*.ini"))
@@ -74,9 +74,9 @@ def fichiers_ini():
     return sorted(set(trouves), reverse=True)
 
 
-def _desescapage(valeur):
+def _desescapage(valeur: str) -> str:
     """Déséchaîne une valeur GKeyFile (`\\\\` → `\\`, `\\n`, `\\t`, `\\r`, `\\s`)."""
-    out = []
+    out: list[str] = []
     i = 0
     while i < len(valeur):
         c = valeur[i]
@@ -90,7 +90,7 @@ def _desescapage(valeur):
     return "".join(out)
 
 
-def lire_cle(cle):
+def lire_cle(cle: str) -> str | None:
     """Valeur de `cle` trouvée dans le premier ini qui la porte, ou None.
 
     Recherche SANS tenir compte du groupe (`[core]`…) : les clés qui nous
@@ -118,7 +118,7 @@ def lire_cle(cle):
     return None
 
 
-def lire_chemin(cle):
+def lire_chemin(cle: str) -> str | None:
     """Chemin cité par `cle` (déséchaîné, `~` développé) ou None.
 
     Ne teste PAS l'existence : l'appelant décide (une valeur peut désigner un
@@ -129,7 +129,7 @@ def lire_chemin(cle):
     return os.path.expanduser(valeur)
 
 
-def chemin_fichier(cle):
+def chemin_fichier(cle: str) -> str | None:
     """Chemin cité par `cle` s'il existe VRAIMENT comme fichier, sinon None.
 
     C'est ce qu'attend une détection d'exécutable : une valeur figée dans

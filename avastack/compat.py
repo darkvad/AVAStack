@@ -8,15 +8,15 @@ n'ait besoin de tester lui-meme la plateforme.
 import os
 import sys
 
-IS_WINDOWS = (os.name == "nt")
-IS_MACOS = (sys.platform == "darwin")
+IS_WINDOWS: bool = (os.name == "nt")
+IS_MACOS: bool = (sys.platform == "darwin")
 
 # Nom de bibliotheque du SDK ZWO selon l'OS (DLL Windows, .so Linux, .dylib macOS)
-ZWO_DLL_NAME = "ASICamera2.dll" if IS_WINDOWS else (
+ZWO_DLL_NAME: str = "ASICamera2.dll" if IS_WINDOWS else (
     "libASICamera2.dylib" if IS_MACOS else "libASICamera2.so")
 
 
-def memoire_libre():
+def memoire_libre() -> int | None:
     """Octets de mémoire PHYSIQUE encore disponibles, ou None si indéterminable.
 
     Trois implémentations sans AUCUNE dépendance, choisies ici pour qu'aucun
@@ -45,15 +45,21 @@ def memoire_libre():
 
             etat = _Etat()
             etat.dwLength = ctypes.sizeof(_Etat)
-            if not ctypes.windll.kernel32.GlobalMemoryStatusEx(
+            # ctypes.windll n'existe QUE sous Windows : ignore CIBLÉ pour un
+            # pyright lancé sur un autre OS (typeshed sans windll) — la ligne
+            # n'est réellement exécutée que sous Windows.
+            if not ctypes.windll.kernel32.GlobalMemoryStatusEx(  # pyright: ignore[reportAttributeAccessIssue]
                     ctypes.byref(etat)):
                 return None
             return int(etat.ullAvailPhys)
         if IS_MACOS:
-            return int(os.sysconf("SC_AVPHYS_PAGES")
-                       * os.sysconf("SC_PAGE_SIZE"))
+            # os.sysconf n'existe PAS sous Windows : pyright lancé là-bas
+            # (typeshed Windows) ne le connaît pas → ignore CIBLÉ ; le nom EST
+            # résolu sur macOS, seul OS où cette branche s'exécute.
+            return int(os.sysconf("SC_AVPHYS_PAGES")   # pyright: ignore[reportAttributeAccessIssue]
+                       * os.sysconf("SC_PAGE_SIZE"))   # pyright: ignore[reportAttributeAccessIssue]
         with open("/proc/meminfo", encoding="ascii", errors="replace") as f:
-            infos = {}
+            infos: dict[str, str] = {}
             for ligne in f:
                 cle, _, valeur = ligne.partition(":")
                 infos[cle.strip()] = valeur.strip()

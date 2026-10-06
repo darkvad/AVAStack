@@ -12,11 +12,12 @@ via charger_config() / sauver_config().
 
 import os
 import json
+from typing import Any
 
 from .compat import IS_WINDOWS, IS_MACOS
 
 
-def dossier_config():
+def dossier_config() -> str:
     """Dossier de configuration persistante, selon les conventions de l'OS.
     Cree si absent."""
     if IS_WINDOWS:
@@ -30,10 +31,10 @@ def dossier_config():
     return d
 
 
-CHEMIN_CONFIG = os.path.join(dossier_config(), "config.json")
+CHEMIN_CONFIG: str = os.path.join(dossier_config(), "config.json")
 
 
-def charger_config():
+def charger_config() -> dict[str, Any]:
     """Lit config.json → dict ({} si absent/corrompu)."""
     try:
         with open(CHEMIN_CONFIG, encoding="utf-8") as f:
@@ -43,7 +44,7 @@ def charger_config():
         return {}
 
 
-def sauver_config(d):
+def sauver_config(d: dict[str, Any]) -> None:
     """Écrit config.json (tolérant aux échecs : réglages non vitaux)."""
     try:
         with open(CHEMIN_CONFIG, "w", encoding="utf-8") as f:
@@ -54,12 +55,12 @@ def sauver_config(d):
 
 # Chargé une fois au démarrage — les commandes d'outils externes (module
 # external.detection) s'appuient dessus avant de lancer leur détection.
-CONFIG = charger_config()
+CONFIG: dict[str, Any] = charger_config()
 
 # ──────────────────────────────────────────────────────────────────────────
 # Clés de configuration par défaut (utilisées via CONFIG.get(cle, defaut))
 # ──────────────────────────────────────────────────────────────────────────
-DEFAUT_CONFIG = {
+DEFAUT_CONFIG: dict[str, Any] = {
     # Nom de cible automatique pour les boîtes d'enregistrement
     "nom_cible_auto": True,
     # Annotations temps-réel sur l'image affichée

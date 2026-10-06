@@ -12,20 +12,26 @@ le package (`_internal/assets` pour le package `_internal/avastack`), donc la
 MÊME formule fonctionne dans les deux cas — comme `cameras/sdk_loader`.
 """
 
+from __future__ import annotations
+
 import os
+from typing import TYPE_CHECKING
 
-DOSSIER = os.path.join(
+if TYPE_CHECKING:                        # typage SEUL : tkinter reste importé
+    import tkinter as tk                 # paresseusement, dans la fonction
+
+DOSSIER: str = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
-FICHIER_ICO = "avastack.ico"
-FICHIER_PNG = "avastack.png"
+FICHIER_ICO: str = "avastack.ico"
+FICHIER_PNG: str = "avastack.png"
 
 
-def chemin(nom):
+def chemin(nom: str) -> str:
     """Chemin d'une ressource (peut ne pas exister : jamais d'exception)."""
     return os.path.join(DOSSIER, nom)
 
 
-def poser_icone_fenetre(fenetre):
+def poser_icone_fenetre(fenetre: tk.Tk) -> bool:
     """Pose l'icône de la fenêtre principale (barre de titres + barre des tâches).
 
     Windows : le `.ico` multirésolution (net à toutes les tailles) ; ailleurs :
@@ -43,7 +49,9 @@ def poser_icone_fenetre(fenetre):
             fenetre.iconphoto(True, image)
             # Tk ne garde QUE l'objet passé : sans référence conservée, il est
             # collecté et l'icône disparaît (piège classique de `iconphoto`).
-            fenetre._avastack_icone = image
+            # Marqueur RUNTIME volontaire (garde l'image en vie) : pyright ne
+            # connaît pas cet attribut ajouté à la volée → ignore CIBLÉ.
+            fenetre._avastack_icone = image  # pyright: ignore[reportAttributeAccessIssue]
             return True
     except Exception:
         pass
