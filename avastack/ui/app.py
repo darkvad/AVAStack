@@ -10,6 +10,7 @@ import math
 import queue
 import threading
 import traceback
+from typing import Any, Callable
 
 import numpy as np
 import cv2
@@ -47,7 +48,7 @@ from ..cameras import (SimulatedCamera, OpenCVCamera, ZWOASICamera,
 # ici (surface publique figée).
 from ..cameras import SOURCES                            # noqa: F401 (ré-export)
 from ..cameras.base import FILTRES_ROUE
-from ..cameras.qhy import lister_via_sous_processus, tracer_evt
+from ..cameras.qhy import lister_via_sous_processus, tracer_evt  # noqa: F401 (ré-export)
 from ..processing import Calibrator, StarAligner, LiveStacker, DisplayProcessor
 from ..processing import alignment as align_mod
 # Jalon 103 : `display_mod` n'est plus utilisé DANS `app.py` (le tracé de
@@ -285,14 +286,15 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
     DN_EXT_LABELS = _const.DN_EXT_LABELS
     DN_EXT_CODES = _const.DN_EXT_CODES
 
-    def __init__(self, root):
-        self.root = root
+    def __init__(self, root: tk.Tk) -> None:
+        self.root: tk.Tk = root
         root.title(f"AVAStack v{AVASTACK_VERSION} — "
                    "live stacking (empilement temps réel)")
         root.geometry("1300x820")
         root.protocol("WM_DELETE_WINDOW", self._on_close)
 
-        self.camera = self.thread = None
+        self.camera = None
+        self.thread: threading.Thread | None = None
         self.cam_pilotee = None          # jalon 25 : caméra QHY pilotée (TEC/roue)
         # Jalon 26 (demande d'Alain) : la caméra est CONNECTÉE dès la
         # détection — les contrôles (roue, refroidissement, réglages) sont
@@ -300,11 +302,11 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # température) ; « ▶ Démarrer » ne lance plus que l'EMPILEMENT.
         self.empilement_on = False       # empilement en cours (pause sinon)
         self.empilement_start_request = False   # reset de session (worker)
-        self._connexion_busy = False     # une connexion (toute marque) en cours
-        self._connexion_result = None    # QHY : (cam|None, err|None) → _tick
+        self._connexion_busy: bool = False     # une connexion (toute marque) en cours
+        self._connexion_result: Any = None    # QHY : (cam|None, err|None) → _tick
         # Jalon 32 : résultat de connexion des AUTRES marques SDK (Player
         # One, SVBONY, ZWO, Touptek) → (source, cam|None, err|None) → _tick.
-        self._connexion_sdk_result = None
+        self._connexion_sdk_result: Any = None
         self._tec_dernier_t0 = 0.0       # cadence de relecture TEC (2 s)
         # Jalon 32 : DÉCISION D'ALAIN (20/09/2026) — la déconnexion est la
         # version SIMPLE (« ⏏ Déconnecter » referme la caméra directement
@@ -313,14 +315,14 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # worker + confirmation) est supprimée (elle restait sans effet).
         self._controles_sondes = False
         self._roue_ok = False            # roue détectée (worker → _tick)
-        self._tec_ok = False             # refroidissement détecté (idem)
+        self._tec_ok: bool = False             # refroidissement détecté (idem)
         # Jalon 31 : capacités détectées À LA CONNEXION → l'UI s'adapte
         # (plages expo/gain/offset/TEC réelles, roue aux slots réels).
         # None = sonde absente ou muette → valeurs par défaut conservées.
-        self.capacites = None
-        self._EXPO_DYN = None            # (min_ms, max_ms) réels, sinon None
-        self.tec_plage = None            # (min, max) °C réels, sinon None
-        self._filtres_dispo = FILTRES_ROUE
+        self.capacites: Any = None
+        self._EXPO_DYN: tuple[float, float] | None = None            # (min_ms, max_ms) réels, sinon None
+        self.tec_plage: tuple[float, float] | None = None            # (min, max) °C réels, sinon None
+        self._filtres_dispo: Any = FILTRES_ROUE
         self.filtre_courant = None       # nom du filtre en place (FITS FILTER)
         self.running = False
         self.q = queue.Queue(maxsize=2)
@@ -344,10 +346,10 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # « QHY (SDK) » n'affichait rien et le 1er « Démarrer » mourait en
         # crash natif). Le scan QHY est isolé en SOUS-PROCESSUS (un segfault
         # du SDK au scan ne doit jamais tuer l'application).
-        self._qhy_id = ""             # id de caméra détecté → QHYCamera
-        self._sdk_ids = None          # dernier scan réussi (liste d'ids)
-        self._detect_busy = False     # un scan est en cours (thread)
-        self._detect_result = None    # (source, ids|None, erreur|None) → _tick
+        self._qhy_id: str = ""             # id de caméra détecté → QHYCamera
+        self._sdk_ids: Any = None          # dernier scan réussi (liste d'ids)
+        self._detect_busy: bool = False     # un scan est en cours (thread)
+        self._detect_result: Any = None    # (source, ids|None, erreur|None) → _tick
         # Jalon 13 : alignement — info de la dernière frame (ligne d'état) et
         # rafraîchissement automatique de la référence (fréquence + compteurs).
         self.align_info = "—"
@@ -438,7 +440,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self.astro_couleur = "#888888"   # gris / vert (résolu) / ambre (souci)
         self._astro_actif = False        # case « Astrométrie » (instantané Tk)
         self._astro_indices = None       # (ra, dec, champ) validés (instantané)
-        self._astro_name_proposed = False  # popup déjà proposée pour ce nom
+        self._astro_name_proposed: bool = False  # popup déjà proposée pour ce nom
         # Jalon 96 (étapes 5-6) : annotation temps-réel de l'image AFFICHÉE
         # (objets célèbres + étoiles brillantes). Les listes de ciel (objets,
         # étoiles) sont mises en CACHE par (centre, champ, seuil) : la lecture
@@ -474,7 +476,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # valeurs ». Sans ce service, la mesure n'était tentée qu'à la prochaine
         # frame, qui n'arrive jamais en fin de source (cf.
         # _servir_demandes_sans_frame).
-        self._photo_demande = False
+        self._photo_demande: bool = False
         # Jalon 58 : SPCC ABSOLUE (calibration spectrophotométrique « à la
         # Siril ») — mesure SÉPARÉE, qui a besoin des profils CAPTEUR/FILTRES de
         # la base Siril et des spectres Gaia. Elle remplace les gains Gaia
@@ -487,7 +489,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._spcc_actif = False         # case « SPCC » (instantané Tk)
         self._spcc_essais = 0            # tentatives de mesure (session)
         self._spcc_dernier = 0.0         # instant de la dernière tentative
-        self._spcc_demande = False       # v2.37.0 : mesure redemandée par la case
+        self._spcc_demande: bool = False       # v2.37.0 : mesure redemandée par la case
         # Jalon 56 (étape 5) : CASE À PART, DÉCOCHÉE PAR DÉFAUT (opt-in demandé
         # par Alain, 23/09/2026) — c'est elle, et elle seule, qui fait écrire
         # les gains photométriques dans le stacker (donc qui CHANGE l'image).
@@ -509,7 +511,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # l'arrivée (fwhm, nb d'étoiles) ; le filtre compare à la médiane des
         # frames gardées (≥ 3 avant tout rejet, jamais de rejet sur mesure
         # impossible) ; compteur exposé dans les stats d'empilement.
-        self.rejeter_flou = True     # état lu par le thread worker (case UI)
+        self.rejeter_flou: bool = True     # état lu par le thread worker (case UI)
         self.floues_rejetees = 0     # frames rejetées par le filtre (session)
         self._fwhm_hist = []         # (fwhm, nb) des frames gardées — médianes
         self._fwhm_par_role = {}     # jalon 19 : historique PAR RÔLE en mode
@@ -555,10 +557,10 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self.msg_outils = None          # erreurs d'outil non bloquantes (chaîne par couche)
         self.dernier_applicatif = None  # AVAAPPLI du dernier fichier écrit (dialogue)
         self.ext_msg = "—"              # message d'état (écrit par le thread, lu par _tick)
-        self._ext_shown = None
-        self._vl_lbl_txt = "—"          # mémo du texte affiché dans lbl_vl
+        self._ext_shown: Any = None
+        self._vl_lbl_txt: str = "—"          # mémo du texte affiché dans lbl_vl
                                         # (jalon 40 : anti-spam du ⏳ à 30 ms)
-        self._vl_pb_active = False      # curseur de calcul actuellement visible
+        self._vl_pb_active: bool = False      # curseur de calcul actuellement visible
         # Jalon 42 : cadence d'empilement (sources dossier). `cadence_lecture`
         # = miroir thread-sûr (int écrit côté UI, lu par le worker) ;
         # `_prochaine_lecture`/`_prochain_scan` = état du worker seul ;
@@ -578,7 +580,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # part quand la rafale se tait (`RAFALE_QUIET_S`) ou que `RAFALE_MAX`
         # brutes se sont empilées depuis le dernier rendu.
         self._rendu_differ = None
-        self._rendu_differ_t = 0.0
+        self._rendu_differ_t: float = 0.0
         self._cadence_lbl_txt = None    # mémo du texte affiché dans lbl_cadence
         self._cadence_cbs = []          # combobox « Empiler les brutes » —
         self._cadence_lbls = []         # jalon 47 : UN SEUL exemplaire (cadre
@@ -594,20 +596,20 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # File des mesures de disque DIFFÉRÉES (v2.38.11) — créée AVANT
         # l'interface : `_restaurer_config` (appelée juste après la construction)
         # peut déjà en demander une, et elle doit rester BORNÉE.
-        self._mesures = queue.Queue()
-        self._mesure_en_cours = False
+        self._mesures: queue.Queue[Any] = queue.Queue()
+        self._mesure_en_cours: bool = False
         # v2.48.1 (retour macOS du 30/09/2026) : identifiant de la
         # replanification de `_tick` (ANNULABLE à la fermeture — un `after` en
         # attente qui se déclenche APRÈS `root.destroy()` lève « invalid command
         # name .!… » : la fenêtre est détruite, le rappel ne doit plus courir)
         # et signature de la dernière erreur de la boucle (écriture UNE fois par
         # épisode : un widget durablement détruit ne doit pas noyer le journal).
-        self._tick_id = None
-        self._tick_err_sig = None
+        self._tick_id: Any = None
+        self._tick_err_sig: Any = None
         # Variable pour le nom de cible manuel (utilisée dans panneaux Empilement et Astrométrie)
         self.var_nom_cible_manual = tk.StringVar(value="")
         # Suivi du dernier camera.last_file vu pour ne lire l'en-tête FITS qu'au changement
-        self._dernier_last_file = ""
+        self._dernier_last_file: str = ""
         journal.note("démarrage", "construction de l'interface")
         self._build_ui()
         journal.note("démarrage", "restauration de la configuration")
@@ -620,13 +622,13 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # sondes faites AVANT l'affichage → l'application ne s'ouvrait pas, sans
         # AUCUN message ni ligne de journal (la mesure de l'environnement, qui
         # précédait la première ligne, se bloquait aussi).
-        self._travail_recycle = (0, 0)
+        self._travail_recycle: tuple[int, int] = (0, 0)
         # Jalon 84 : le GUET DE GEL est ARMÉ après la mise en route (1 s) —
         # il ne doit pas compter la construction de la fenêtre. Il écrit au
         # journal dès que le fil d'interface dépasse `SEUIL_S` sans rendre la
         # main, avec la PILE de ce fil (retour réel macOS 27 : « les boutons ne
         # sont pas toujours cliquables »).
-        self.guet = reactivite_mod.Guet(self.root)
+        self.guet: reactivite_mod.Guet = reactivite_mod.Guet(self.root)
         self.root.after(1000, self.guet.demarrer)
         journal.note("démarrage", "prêt (mesures de disque différées, bornées)")
         self._planifier_tick(30)
@@ -653,7 +655,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
     # décochée, il couvre toute la plage (µs → max). Son libellé affiche la
     # borne max RÉELLE (2000 s sur Uranus-C Pro) au lieu du « 900 s » codé
     # en dur (point 1 du relevé d'Alain).
-    def _maj_libelle_expo_longue(self):
+    def _maj_libelle_expo_longue(self) -> None:
         """Libellé « Échelle longue (5 s – max) » : max = borne RÉELLE de la
         caméra si détectée, sinon 900 s (échelle fixe d'origine)."""
         hi = (self._EXPO_DYN[1] if self._EXPO_DYN is not None
@@ -662,7 +664,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             text=f"Échelle longue ({_fmt_expo(self._EXPO_LONG[0])} – "
                  f"{_fmt_expo(max(hi, self._EXPO_LONG[0]))})")
 
-    def _expo_bornes(self):
+    def _expo_bornes(self) -> tuple[float, float]:
         """Bornes actives du curseur log, coupure à 5 s (Alain, 20/09/2026) :
         case DÉCOCHÉE = min → 5 s, COCHÉE = 5 s → max — identique pour
         TOUTES les caméras (bornes natives ou échelles fixes d'origine)."""
@@ -676,19 +678,19 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             return (lo, hi)   # plage native d'un seul côté de 5 s : sans effet
         return self._EXPO_LONG if self.var_expo_longue.get() else self._EXPO_COURT
 
-    def _expo_depuis_pos(self, p):
+    def _expo_depuis_pos(self, p: float) -> float:
         """Curseur 0..1000 → ms (échelle logarithmique de l'échelle active)."""
         lo, hi = self._expo_bornes()
         p = min(max(float(p), 0.0), 1000.0)
         return lo * (hi / lo) ** (p / 1000.0)
 
-    def _pos_depuis_expo(self, ms):
+    def _pos_depuis_expo(self, ms: float) -> float:
         """ms → curseur 0..1000 (inverse du mapping ci-dessus, borné)."""
         lo, hi = self._expo_bornes()
         ms = min(max(float(ms), lo), hi)
         return 1000.0 * math.log(ms / lo) / math.log(hi / lo)
 
-    def _maj_expo(self, ms, replacer=True):
+    def _maj_expo(self, ms: float, replacer: bool=True) -> None:
         """Pose l'exposition réelle (ms bornées), l'affichage et la demande."""
         lo, hi = self._expo_bornes()
         ms = min(max(float(ms), lo), hi)
@@ -699,7 +701,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self.s_expo.set(self._pos_depuis_expo(ms))
         self._push_settings()
 
-    def _valider_expo(self, _e=None):
+    def _valider_expo(self, _e: Any=None) -> None:
         """Saisie directe de l'exposition (jalon 27) : accepte « 100 »,
         « 0,5 », « 12 ms », « 2 s », « 11 µs » — borne à l'échelle courante
         et BASCULE automatiquement d'échelle si la valeur déborde."""
@@ -727,20 +729,20 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self.var_expo_longue.set(False)
         self._maj_expo(ms)
 
-    def _on_echelle_expo(self):
+    def _on_echelle_expo(self) -> None:
         """Case « échelle longue » : garde la valeur réelle si elle reste
         dans la nouvelle échelle, sinon la ramène à la borne la plus proche
         (les deux échelles se touchent au pivot 5 s : aucune valeur ne saute,
         et 5 s est le PIVOT commun — atteignable des deux côtés)."""
         self._maj_expo(self.var_expo.get())
 
-    def _on_curseur_expo(self, v):
+    def _on_curseur_expo(self, v: float) -> None:
         self._maj_expo(self._expo_depuis_pos(v), replacer=False)
 
-    def _on_pas_expo(self, facteur):
+    def _on_pas_expo(self, facteur: float) -> None:
         self._maj_expo(self.var_expo.get() * facteur)
 
-    def _build_ui(self):
+    def _build_ui(self) -> None:
         main = ttk.PanedWindow(self.root, orient="horizontal")
         main.pack(fill="both", expand=True)
 
@@ -759,7 +761,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         canvas.bind("<Configure>",
                     lambda e: canvas.itemconfigure(win_id, width=max(330, e.width)))
 
-        def _wheel(event):
+        def _wheel(event: Any) -> None:
             w = self.root.winfo_containing(event.x_root, event.y_root)
             if w is None or not (w is canvas or str(w).startswith(str(left))):
                 return                                  # molette hors du panneau → ignorer
@@ -897,12 +899,12 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
 
     # --- Jalon 53 : dark/flat par couche (mode composition) ------------------
 
-    def _source_est_compo(self):
+    def _source_est_compo(self) -> bool:
         """True si la source choisie est la composition multi-dossiers —
         le ciblage dark/flat par rôle n'a de sens que là."""
         return self.var_source.get().startswith("Composition")
 
-    def _roles_actifs(self):
+    def _roles_actifs(self) -> list[str]:
         """Rôles remplis du cadre Composition (ordre des lignes, dédoublés)."""
         roles, vus = [], set()
         for v in self.var_compo_roles:
@@ -928,7 +930,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
     # Tous les dialogues passent par les aides ci-dessous — le banc
     # `_test_dialogues_jalon84.py` REFUSE tout appel direct résiduel : un seul
     # appel oublié ramènerait le défaut.
-    def _parent_dlg(self):
+    def _parent_dlg(self) -> tk.Tk | None:
         """Fenêtre parente des dialogues, ou None si la racine n'existe plus."""
         try:
             if self.root.winfo_exists():
@@ -937,7 +939,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             pass
         return None
 
-    def _kw_parent(self):
+    def _kw_parent(self) -> dict[str, Any]:
         """`{"parent": …}`, ou vide si la fenêtre n'existe plus.
 
         Jamais `parent=None` : Tk refuserait alors l'appel (chaîne vide reçue
@@ -945,15 +947,15 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         parent = self._parent_dlg()
         return {"parent": parent} if parent is not None else {}
 
-    def _demander_dossier(self, titre, depart=None):
+    def _demander_dossier(self, titre: str, depart: str | None=None) -> str:
         """Boîte « choisir un dossier », ATTACHÉE à la fenêtre (cf. plus haut)."""
-        opts = dict(title=titre)
+        opts: dict[str, Any] = dict(title=titre)
         opts.update(self._kw_parent())
         if depart:
             opts["initialdir"] = depart
         return filedialog.askdirectory(**opts)
 
-    def _demander_fichier(self, titre=None, filetypes=None, initialdir=None):
+    def _demander_fichier(self, titre: str | None=None, filetypes: Any=None, initialdir: str | None=None) -> str:
         """Boîte « ouvrir un fichier », ATTACHÉE à la fenêtre (cf. plus haut)."""
         opts = dict(self._kw_parent())
         if titre:
@@ -964,8 +966,8 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             opts["initialdir"] = initialdir
         return filedialog.askopenfilename(**opts)
 
-    def _enregistrer_sous(self, titre=None, defaultextension=None,
-                          filetypes=None, initialfile=None):
+    def _enregistrer_sous(self, titre: str | None=None, defaultextension: str | None=None,
+                          filetypes: Any=None, initialfile: str | None=None) -> str:
         """Boîte « enregistrer sous », ATTACHÉE à la fenêtre (cf. plus haut)."""
         opts = dict(self._kw_parent())
         if titre:
@@ -978,7 +980,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             opts["initialfile"] = initialfile
         return filedialog.asksaveasfilename(**opts)
 
-    def _proposer_nom_cible(self, suffixe="", extension="fits"):
+    def _proposer_nom_cible(self, suffixe: str="", extension: str="fits") -> str | None:
         r"""Nom de fichier initial suggéré pour les boîtes d'enregistrement,
         à partir du mot-clé FITS OBJECT (ou OBJNAME/TARGNAME/TARGET) de la
         DERNIÈRE brute lue — sans cette clé, l'utilisateur tape un nom à la
@@ -1130,19 +1132,19 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             journal.note("DEBUG", "_nom_cible_pour_sauvegarde: aucun nom trouvé")
         return None
 
-    def _dire(self, titre, message):
+    def _dire(self, titre: str, message: str) -> None:
         """Information ATTACHÉE à la fenêtre (jamais derrière elle)."""
         messagebox.showinfo(titre, message, **self._kw_parent())
 
-    def _avertir(self, titre, message):
+    def _avertir(self, titre: str, message: str) -> None:
         """Avertissement ATTACHÉ à la fenêtre (jamais derrière elle)."""
         messagebox.showwarning(titre, message, **self._kw_parent())
 
-    def _signaler(self, titre, message):
+    def _signaler(self, titre: str, message: str) -> None:
         """Erreur ATTACHÉE à la fenêtre (jamais derrière elle)."""
         messagebox.showerror(titre, message, **self._kw_parent())
 
-    def _choisir_cible(self, famille):
+    def _choisir_cible(self, famille: str) -> str | None:
         """Cible d'un chargement de master (`famille` = « dark »/« flat ») :
         → None si l'utilisateur annule ;
         → "unique" hors composition (pas de dialogue : aucun choix possible) ;
@@ -1157,7 +1159,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             return "unique"
         return self._dialogue_cible(famille, roles)
 
-    def _dialogue_cible(self, famille, roles):
+    def _dialogue_cible(self, famille: str, roles: Any) -> str | None:
         """Boîte modale « ce dark/flat s'applique à : » — Unique + les
         rôles actifs de la composition. → None si annulé (croix, Annuler),
         sinon "unique" ou le rôle choisi. Thread UI seul (wait_window) ;
@@ -1178,7 +1180,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                             variable=var).pack(anchor="w", padx=14)
         choix = []
 
-        def _valider():
+        def _valider() -> None:
             choix.append(var.get())
             dlg.destroy()
 
@@ -1212,7 +1214,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self._dlg = self._dlg_var = self._dlg_ok = None
         return choix[0] if choix else None
 
-    def _maj_libelles_calib(self):
+    def _maj_libelles_calib(self) -> None:
         """Détail COMPLET des masters chargés (jalon 53, retour d'Alain :
         « voir tous les darks chargés pour chaque couche et unique ») :
         l'unique PUIS chaque couche active de la composition (« — » si le
@@ -1224,7 +1226,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             return
         roles = self._roles_actifs() if self._source_est_compo() else []
 
-        def _lignes(titre, img, source, dico, sources):
+        def _lignes(titre: str, img: Any, source: Any, dico: Any, sources: Any) -> list[str]:
             if img is not None:
                 h, w = img.shape[:2]
                 nom = os.path.basename(source) if source else "?"
@@ -1252,8 +1254,8 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self.lbl_dark.config(text="\n".join(ld), foreground=coul_d)
         self.lbl_flat.config(text="\n".join(lf), foreground=coul_f)
 
-    def _add_slider(self, parent, label, var, frm, to, res, onchange=None,
-                    fmt="{:g}", saisie=False):
+    def _add_slider(self, parent: tk.Misc, label: str, var: Any, frm: float, to: float, res: float, onchange: Callable[[], Any] | None=None,
+                    fmt: str="{:g}", saisie: bool=False) -> ttk.Scale:
         """Curseur + étiquette de valeur + boutons « - »/« + » (demande
         d'Alain, jalon 6) : réglage FIN sans devoir viser à la souris.
         Un clic = ±1 pas (res), aligné sur la grille du curseur ; clic
@@ -1273,7 +1275,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                                 justify="right")
             lab_val.pack(side="right")
 
-            def valider(_e=None):
+            def valider(_e: Any=None) -> None:
                 try:
                     v = float(var_txt.get().strip().replace(",", "."))
                 except ValueError:
@@ -1290,37 +1292,37 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             lab_val = ttk.Label(head, text=fmt.format(var.get()))
             lab_val.pack(side="right")
 
-        def cmd(v):
+        def cmd(v: str) -> None:
             var.set(float(v))
             if saisie:
                 var_txt.set(fmt.format(float(v)))   # Entry (StringVar)
             else:
-                lab_val.config(text=fmt.format(float(v)))
+                lab_val.config(text=fmt.format(float(v)))  # pyright: ignore[reportCallIssue]
             if onchange:
                 onchange()
 
         ligne = ttk.Frame(row)
         ligne.pack(fill="x")
-        job = [None]                     # after() de la répétition en cours
+        job: list[Any] = [None]                     # after() de la répétition en cours
 
-        def pas(delta):
+        def pas(delta: float) -> None:
             v = var.get() + delta * res
             v = min(max(v, frm), to)                 # bornes
             v = frm + round((v - frm) / res) * res   # grille du curseur
             s.set(round(v, 6))   # s.set rappelle cmd() → var + label + onchange
 
-        def repeter(delta):
+        def repeter(delta: float) -> None:
             try:
                 pas(delta)
                 job[0] = ligne.after(80, lambda: repeter(delta))
             except tk.TclError:      # fenêtre détruite pendant l'appui
                 job[0] = None
 
-        def appui(delta):
+        def appui(delta: float) -> None:
             pas(delta)
             job[0] = ligne.after(400, lambda: repeter(delta))
 
-        def relache(_e=None):
+        def relache(_e: Any=None) -> None:
             if job[0] is not None:
                 try:
                     ligne.after_cancel(job[0])
@@ -1338,19 +1340,19 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             bouton.bind("<ButtonPress-1>", lambda _e, d=delta: appui(d))
             bouton.bind("<ButtonRelease-1>", relache)
             bouton.bind("<Leave>", relache)
-        s._pas = pas                 # accès pour les tests
-        s._boutons = (b_moins, b_plus)
-        s._row = row                 # reconstruction dynamique (jalon 31)
-        s._lbl_txt = label           # texte d'origine (idem)
+        s._pas = pas                 # accès pour les tests  # pyright: ignore[reportAttributeAccessIssue]
+        s._boutons = (b_moins, b_plus)  # pyright: ignore[reportAttributeAccessIssue]
+        s._row = row                 # reconstruction dynamique (jalon 31)  # pyright: ignore[reportAttributeAccessIssue]
+        s._lbl_txt = label           # texte d'origine (idem)  # pyright: ignore[reportAttributeAccessIssue]
         return s
 
     # ------------------------------------------------------------ callbacks UI
-    def _on_kappa(self):
+    def _on_kappa(self) -> None:
         self.kappa = {"Off": None, "2σ": 2.0, "3σ": 3.0, "4σ": 4.0, "5σ": 5.0}[self.var_kappa.get()]
         if self.stacker:
             self.stacker.k = self.kappa
 
-    def _on_rejet(self):
+    def _on_rejet(self) -> None:
         """Bascule de la méthode de rejet (kappa-sigma / Winsorized) et de
         la taille de la fenêtre de référence. Appliqué à chaud au stacker
         (l'accumulation en cours est préservée, seule la fenêtre est vidée)."""
@@ -1367,7 +1369,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self.stacker.set_rejet(method=self.rejet_methode,
                                    window=self.rejet_fenetre)
 
-    def _on_ref_refresh(self):
+    def _on_ref_refresh(self) -> None:
         """Jalon 13 : fréquence (en frames) du rafraîchissement auto de la
         référence d'alignement ; « jamais » = 0 (ancien comportement)."""
         v = self.var_ref_refresh.get()
@@ -1377,7 +1379,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self.ref_refresh = 20
         self._ref_frames = self._ref_bad = 0
 
-    def _on_wb(self):
+    def _on_wb(self) -> None:
         """Jalon 13 : équilibrage des canaux (auto) de l'empilement —
         répercuté sur l'empilement courant s'il existe."""
         if self.stacker:
@@ -1386,7 +1388,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._on_linear_fit()
         self._refresh_preview()
 
-    def _code_fit_methode(self):
+    def _code_fit_methode(self) -> str:
         """Libellé du menu « Méthode » → code interne du Linear Fit
         (thread principal uniquement ; le worker lit l'instantané)."""
         for lib, code in getattr(self, "FIT_METHODES", ()):
@@ -1394,7 +1396,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 return code
         return "offset"                        # inconnu → le plus doux
 
-    def _on_astro(self):
+    def _on_astro(self) -> None:
         """Jalon 56 : case « Astrométrie » + indices de la cible (AD, Dec,
         champ) — relus dans le thread Tk et transmis au worker par INSTANTANÉ
         (`_astro_indices`) : le worker n'a JAMAIS le droit de lire les
@@ -1452,7 +1454,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
     # hérite) — code repris VERBATIM (les lectures de `CONFIG` / `sauver_config`
     # passent par `_globals_app()`, interceptions des bancs préservées).
 
-    def _spcc_osc(self):
+    def _spcc_osc(self) -> bool:
         """Le TYPE choisi désigne-t-il un capteur COULEUR (OSC) ?"""
         try:
             return self.var_spcc_type.get() == self.SPCC_TYPE_OSC
@@ -1460,7 +1462,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             return False
 
     @staticmethod
-    def _spcc_defaut(cle, liste, osc):
+    def _spcc_defaut(cle: str, liste: Any, osc: bool) -> str:
         """Valeur posée quand la liste des profils change.
 
         En OSC, JAMAIS un filtre « au hasard » : le premier nom de la liste est
@@ -1480,7 +1482,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                     return n
         return liste[0] if liste else ""
 
-    def _on_spcc_type(self):
+    def _on_spcc_type(self) -> None:
         """Jalon 58 bis : le type de capteur change (mono ↔ couleur OSC).
 
         Les listes déroulantes suivent (capteurs, filtres) et — en OSC — c'est
@@ -1518,7 +1520,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             text=("Capteur OSC :" if osc else "Capteur :"))
         self._on_spcc()          # invalide la mesure et remet la vue à jour
 
-    def _on_spcc(self):
+    def _on_spcc(self) -> None:
         """Jalon 58 : case « SPCC (couleurs absolues) » — OPT-IN, décochée par
         défaut comme celle des gains Gaia. Cochée, elle fait ÉCRIRE dans le
         composite les coefficients spectrophotométriques (calculés par le
@@ -1543,7 +1545,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._rafraichir_rendu = True
         self._maj_spcc_vue()
 
-    def _spcc_profils(self):
+    def _spcc_profils(self) -> tuple[str, dict[str, str], str]:
         """Profils choisis dans l'UI → (capteur, {"R","G","B"}, blanc)."""
         v = getattr(self, "_spcc_vars", {})
         try:
@@ -1552,7 +1554,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         except Exception:
             return "", {}, ""
 
-    def _maj_spcc_vue(self):
+    def _maj_spcc_vue(self) -> None:
         """Libellé sous la case SPCC : dit ce qui est appliqué, ou pourquoi
         rien ne l'est — jamais muet quand la case est cochée."""
         if getattr(self, "lbl_spcc", None) is None:
@@ -1615,7 +1617,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self.lbl_spcc.config(text="SPCC : en attente de la mesure",
                              foreground="#c98a00")
 
-    def _maj_spcc_etat(self):
+    def _maj_spcc_etat(self) -> None:
         """Recopie la mesure SPCC dans la ligne dédiée (si le texte change)."""
         if self.spcc is None:
             return
@@ -1626,7 +1628,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self.spcc_couleur = ("#c98a00" if self.spcc.diag.get("avertissement")
                                  else "#1d7f1d")
 
-    def _on_photo_gains(self):
+    def _on_photo_gains(self) -> None:
         """Jalon 56 (étape 5) : case « Gains photométriques (Gaia) » — OPT-IN
         (décochée par défaut, choix d'Alain du 23/09/2026). C'est le SEUL
         réglage qui écrit les facteurs mesurés dans le stacker, donc qui change
@@ -1635,7 +1637,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._rafraichir_rendu = True
         self._maj_photo_vue()
 
-    def _maj_photo_gains_vue(self):
+    def _maj_photo_gains_vue(self) -> None:
         """Libellé SOUS la case des gains : dit ce qui est appliqué (ou
         pourquoi rien ne l'est) — jamais muet quand la case est cochée."""
         if getattr(self, "lbl_photo_gains", None) is None:
@@ -1668,7 +1670,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             text=f"Gains photométriques appliqués : {gains}",
             foreground="#1d7f1d")
 
-    def _on_photo(self):
+    def _on_photo(self) -> None:
         """Jalon 56 (étape 4) : case « Photométrie » — instantané pour le
         worker (jamais de lecture Tk hors du thread principal). Décocher remet
         la mesure à zéro et l'ANNONCE ; recocher relance une mesure (le worker
@@ -1690,7 +1692,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._rafraichir_rendu = True
         self._maj_photo_vue()
 
-    def _maj_photo_vue(self):
+    def _maj_photo_vue(self) -> None:
         """Affiche l'état de la photométrie CONNU CÔTÉ UI : soit la mesure
         (zéro-points par bande), soit la RAISON de son absence — jamais muet."""
         if getattr(self, "lbl_photo", None) is None:
@@ -1708,7 +1710,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self.lbl_photo.config(text=txt, foreground=col)
         self._maj_photo_gains_vue()      # le libellé des gains suit l'état
 
-    def _maj_astro_vue(self):
+    def _maj_astro_vue(self) -> None:
         """Affiche l'état de l'astrométrie CONNU CÔTÉ UI (avant toute
         tentative) : la ligne reflète la saisie ; la mesure (étoiles, rms,
         ″/px, chemin du solveur) arrive ensuite du worker par `astro_info`.
@@ -1731,7 +1733,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             txt, col = "Astrométrie : en attente d'indices", "#c98a00"
         self.lbl_astro.config(text=txt, foreground=col)
 
-    def _sonder_catalogues(self):
+    def _sonder_catalogues(self) -> tuple[Any, Any, str]:
         """SONDE le dossier des catalogues (accès disque) → `(dossier, état, err)`.
 
         Séparée de l'affichage (v2.38.11) : elle fait des `listdir`/`glob` sur des
@@ -1747,7 +1749,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         except Exception as exc:
             return (d, None, str(exc))
 
-    def _maj_cat_vue(self):
+    def _maj_cat_vue(self) -> None:
         """Ligne « Catalogues » (jalon 70) : dossier RÉELLEMENT utilisé par
         l'application, présence du catalogue astrométrique, nombre de chunks
         spectro (informatif : la SPCC et la photométrie s'en servent). Jamais de
@@ -1758,7 +1760,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         d, etat, err = self._sonder_catalogues()
         self._appliquer_cat_vue(d, etat, err)
 
-    def _appliquer_cat_vue(self, d, etat, err=""):
+    def _appliquer_cat_vue(self, d: Any, etat: Any, err: str="") -> None:
         """Affiche la ligne « Catalogues » (fil d'interface).
 
         `d` vide (ou `etat` None) = sonde NON aboutie : on le DIT au lieu de
@@ -1804,7 +1806,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             foreground=col)
 
     # ----------------------------------------------------------------- base SPCC
-    def _spcc_base_bornee(self):
+    def _spcc_base_bornee(self) -> tuple[bool, Any, bool]:
         """Lecture de la base SPCC pour construire les sélecteurs (jalon 58),
         BORNÉE (v2.38.11) → (dispo, noms, mesuré).
 
@@ -1813,7 +1815,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         vide = {"capteur": [], "filtres": [], "blancs": [],
                 "osc_capteurs": [], "osc_filtres": []}
 
-        def _lire():
+        def _lire() -> tuple[bool, Any, bool]:
             return (bool(spcc_mod.base_presente()), spcc_mod.noms_base(), True)
 
         dispo, noms, mesure = delais.borne(_lire, (False, vide, False),
@@ -1821,7 +1823,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             or (False, vide, False)
         return bool(dispo), (noms or vide), bool(mesure)
 
-    def _sonder_spcc_base(self):
+    def _sonder_spcc_base(self) -> tuple[str, Any, bool]:
         """SONDE la base de profils SPCC (accès disque) → (dossier, noms, dispo).
         Séparée de l'affichage pour tourner HORS du fil d'interface, bornée
         comme les autres sondes de disque."""
@@ -1831,11 +1833,11 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         except Exception:
             return ("", None, False)
 
-    def _maj_base_spcc_vue(self):
+    def _maj_base_spcc_vue(self) -> None:
         """Sonde ET affiche (geste de l'utilisateur : fin de téléchargement)."""
         self._appliquer_spcc_base_vue(*self._sonder_spcc_base())
 
-    def _appliquer_spcc_base_vue(self, dossier, noms, dispo):
+    def _appliquer_spcc_base_vue(self, dossier: Any, noms: Any, dispo: Any) -> None:
         """Ligne « Base SPCC » + SÉLECTEURS de la SPCC : dit où sont les profils
         et ce qu'ils contiennent, et (re)remplit les listes.
 
@@ -1884,7 +1886,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self._maj_spcc_vue()
 
     # --------------------------------------------- téléchargements (réseau)
-    def _boutons_dl(self):
+    def _boutons_dl(self) -> list[Any]:
         """Les boutons de TÉLÉCHARGEMENT : un SEUL transfert à la fois, donc
         tous neutralisés ensemble puis rendus ensemble (un bouton qui resterait
         gris, ou actif pendant un transfert, mentirait sur l'état réel)."""
@@ -1895,12 +1897,12 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                             getattr(self, "btn_spcc_base", None))
                 if b is not None]
 
-    def _regler_boutons_dl(self, actif):
+    def _regler_boutons_dl(self, actif: bool) -> None:
         for b in self._boutons_dl():
             b.state(["disabled"] if actif else ["!disabled"])
 
-    def _lancer_telechargement(self, quoi, dossier, fonction, quoi_texte,
-                               fin_texte):
+    def _lancer_telechargement(self, quoi: str, dossier: str, fonction: Callable[..., Any], quoi_texte: str,
+                               fin_texte: Callable[..., Any]) -> None:
         """Lance un transfert dans un THREAD dédié, suivi par la file `_cat_q`
         (le fil réseau ne touche JAMAIS un widget).
 
@@ -1922,7 +1924,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self.lbl_cat_etat.config(text=f"téléchargement {quoi_texte}…",
                                  foreground="#c98a00")
 
-        def travail():
+        def travail() -> None:
             try:
                 res = fonction(dossier, lambda nom, frac: self._cat_q.put(
                     ("progres", nom, float(frac), quoi)))
@@ -1932,7 +1934,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
 
         threading.Thread(target=travail, daemon=True).start()
 
-    def _champ_spectres(self):
+    def _champ_spectres(self) -> tuple[Any, Any, Any, str]:
         """Champ visé pour les spectres : les TROIS indices de la cible, tels
         qu'ils sont SAISIS (mêmes règles que l'astrométrie : rien n'est deviné).
         → (ra, dec, rayon_deg, message) ; rayon = demi-diagonale MAJORÉE
@@ -1944,9 +1946,9 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self.var_astro_champ.get().strip())
         if msg:
             return None, None, None, msg
-        return ra, dec, 0.8 * float(champ), ""
+        return ra, dec, 0.8 * float(champ), ""  # pyright: ignore[reportArgumentType]
 
-    def _telecharger_spectres(self):
+    def _telecharger_spectres(self) -> None:
         """⬇ Spectres (champ) : seulement les morceaux du catalogue Gaia XP qui
         couvrent le champ visé (100–300 Mo au lieu de 10,6 Go)."""
         ra, dec, rayon, msg = self._champ_spectres()
@@ -1975,7 +1977,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                  f"{', '.join(str(c) for c in chunks)} — les 343 flux "
                  f"336-1020 nm de la SPCC dans {dossier}")
 
-        def fin(res):
+        def fin(res: Any) -> str:
             n = sum(1 for _c, _p, tele in res if tele)
             return (f"spectres téléchargés : {len(res)} morceau(x) du champ "
                     f"({n} transféré(s)) — « ⬇ les 48 » aurait pris ≈ 10,6 Go")
@@ -1985,7 +1987,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             lambda d, prog: cat_mod.telecharger_chunks(d, chunks, prog),
             texte, fin)
 
-    def _telecharger_spectres_tous(self):
+    def _telecharger_spectres_tous(self) -> None:
         """⬇ les 48 : tout le catalogue spectral (≈ 10,6 Go) — pour un usage
         itinérant, sans savoir à l'avance ce qu'on visera."""
         try:
@@ -1996,7 +1998,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 foreground="#d04040")
             return
 
-        def fin(res):
+        def fin(res: Any) -> str:
             n = sum(1 for _c, _p, tele in res if tele)
             return (f"spectres : {len(res)}/48 morceaux présents dans {dossier} "
                     f"({n} transféré(s)) — la SPCC peut travailler sur tout le "
@@ -2008,7 +2010,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             "les 48 morceaux de spectres Gaia XP (≈ 10,6 Go — la reprise est "
             "automatique)", fin)
 
-    def _choisir_dossier_spcc(self):
+    def _choisir_dossier_spcc(self) -> None:
         """📂 Dossier SPCC : choisit et PERSISTE (config `chemin_spcc`) le dossier
         de la base de profils (capteurs, filtres, références de blanc)."""
         depart = delais.borne(cat_mod.spcc_db.dossier_ecriture,
@@ -2021,10 +2023,10 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         CONFIG[cat_mod.spcc_db.CLE_CONFIG] = d
         sauver_config(dict(CONFIG))
         # La mesure est BORNÉE : le dossier choisi peut être sur un NAS.
-        self._appliquer_spcc_base_vue(*delais.borne(
+        self._appliquer_spcc_base_vue(*delais.borne(  # pyright: ignore[reportOptionalIterable]
             self._sonder_spcc_base, ("", None, False), delais.DELAI_DEFAUT)[0])
 
-    def _telecharger_base_spcc(self):
+    def _telecharger_base_spcc(self) -> None:
         """⬇ Base SPCC : télécharge la base de profils du dépôt GitLab
         `siril-spcc-database` (quelques Mo, GPLv3) et l'installe dans le dossier
         SPCC — la SPCC n'exige alors plus ni Siril ni une calibration faite
@@ -2044,7 +2046,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         texte = ("la base de profils SPCC (capteurs, filtres, références de "
                  f"blanc) dans {dossier}")
 
-        def fin(res):
+        def fin(res: Any) -> str:
             _d, n, tele = res
             if not tele:
                 return (f"base SPCC : déjà complète dans {dossier} — rien à "
@@ -2057,7 +2059,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             lambda d, prog: cat_mod.telecharger_base_spcc(d, prog),
             texte, fin)
 
-    def _choisir_dossier_catalogues(self):
+    def _choisir_dossier_catalogues(self) -> None:
         """Choisit le dossier des catalogues et le PERSISTE (config
         `chemin_catalogues`). Un dossier VIDE est accepté : c'est là que le
         bouton ⬇ écrira."""
@@ -2081,7 +2083,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # dans la seconde, sans risquer d'attendre le NAS.
         self._demander_mesures()
 
-    def _telecharger_catalogue(self):
+    def _telecharger_catalogue(self) -> None:
         """Télécharge le catalogue astrométrique Gaia DR3 de Siril (≈ 1,1 Go
         compressé) dans le dossier des catalogues — thread DÉDIÉ : reprise
         après coupure et sha256 vérifié par le téléchargeur ; l'interface ne
@@ -2101,7 +2103,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             text=f"téléchargement du catalogue Gaia (≈ 1,1 Go) dans {d}…",
             foreground="#c98a00")
 
-        def travail():
+        def travail() -> None:
             try:
                 from ..catalogues import telechargeur as dl
 
@@ -2114,7 +2116,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
 
         threading.Thread(target=travail, daemon=True).start()
 
-    def _telecharger_celebres(self):
+    def _telecharger_celebres(self) -> None:
         """Télécharge le catalogue d'objets célèbres (Messier, NGC, IC, Sh2, Barnard, LDN)
         dans le dossier des catalogues — thread DÉDIÉ : reprise après coupure et sha256
         vérifié par le téléchargeur ; l'interface ne reçoit que des messages par file
@@ -2127,7 +2129,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 foreground="#d04040")
             return
 
-        def fin(res):
+        def fin(res: Any) -> str:
             chemin, telecharge = res
             if telecharge:
                 return f"catalogue d'objets célèbres téléchargé : {os.path.basename(chemin)}"
@@ -2138,7 +2140,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             lambda d, prog: cat_mod.telecharger_catalogue_celebres(d, prog),
             "du catalogue d'objets célèbres (≈ quelques Mo)", fin)
 
-    def _lire_indices_image(self):
+    def _lire_indices_image(self) -> None:
         """Jalon 56 : lit AD/Dec/champ depuis l'image COURANTE (dernière brute
         reçue ou dernier empilement linéaire sauvegardé) et pré-remplit les
         trois champs — l'utilisateur n'a plus qu'à valider (Entrée / FocusOut).
@@ -2187,7 +2189,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._astro_source = f"image {os.path.basename(chemin)}"
         self._maj_astro_vue()
 
-    def _on_linear_fit(self):
+    def _on_linear_fit(self) -> None:
         """Jalon 54 : case « Recalage colorimétrique (Linear Fit) » + menu
         « Méthode » — posés sur l'empilement COURANT (mono LiveStacker ou
         façade CompositeStacker, attributs communs) et appliqués au
@@ -2204,7 +2206,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         if getattr(self, "disp", None) is not None:
             self.disp.notify_new_stack()
 
-    def _maj_libelle_fit(self):
+    def _maj_libelle_fit(self) -> None:
         """Libellé des gains/offsets MESURÉS par le recalage (effectif sur
         le dernier mean() : R et B seulement, le vert est la référence)."""
         # v2.48.1 : « existe ENCORE » (créé ET pas détruit) plutôt que « a été
@@ -2227,17 +2229,17 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             text=f"Fit R ×{gr:.3f}{ob:+.4f} · B ×{gb:.3f}{obb:+.4f}",
             foreground="#1d7f1d")
 
-    def _on_rejeter_flou(self):
+    def _on_rejeter_flou(self) -> None:
         """Jalon 17 : active/désactive le filtre anti-brutes très défocalisées.
         Miroir thread-sûr (booléen Python écrit côté UI, lu par le thread
         d'acquisition) : jamais d'accès Tk depuis le worker."""
         self.rejeter_flou = bool(self.var_rejeter_flou.get())
 
-    def _on_cfa(self, *args):
+    def _on_cfa(self, *args) -> None:
         import avastack.images as _images
         _images.CFA_MODE = self.var_cfa.get()
 
-    def _on_auto(self):
+    def _on_auto(self) -> None:
         self.disp.auto = self.var_auto.get()
         if not self.disp.auto:  # fige les réglages sur les points calculés par l'auto
             self.var_black.set(round(self.disp.last_lo, 4))
@@ -2246,7 +2248,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self.scl_white.set(self.var_white.get())
         self._refresh_preview()
 
-    def _on_target_auto(self):
+    def _on_target_auto(self) -> None:
         """Cible de fond du STF : miroir thread-sûr + aperçu + ligne d'état.
 
         La cible est ÉCRITE dans le panneau d'histogramme (« cible du fond
@@ -2258,7 +2260,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self._maj_niveaux_vue()
         self._refresh_preview()
 
-    def _on_vl_target(self):
+    def _on_vl_target(self) -> None:
         """Fond visé de VeraLux : même logique que `_on_target_auto` (c'est le
         réglage d'Alain, 0,16 sur son M31 — il doit être celui qui s'affiche)."""
         self.disp.vl_target_bg = float(self.var_vl_target.get())
@@ -2266,7 +2268,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self._maj_niveaux_vue()
         self._refresh_preview()
 
-    def _on_moteur(self):
+    def _on_moteur(self) -> None:
         """Bascule du moteur d'étirement : STF intégré ou VeraLux (tiers).
         VeraLux est opt-in et n'écrit JAMAIS dans black/white/gamma : il
         produit sa propre image étirée, gamma/saturation s'appliquent après
@@ -2296,7 +2298,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self._maj_niveaux_vue()
         self._refresh_preview()
 
-    def _sync_vl_mode(self):
+    def _sync_vl_mode(self) -> None:
         """Répercute la combobox « Résolution du logD » (jalon 3) dans le
         DisplayProcessor et ajuste le libellé du bouton de verrouillage."""
         forcer = self.var_vl_mode_res.get() == "logD forcé"
@@ -2306,14 +2308,14 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self.btn_vl_lock.config(text="🔓 Déverrouiller (fond cible)" if forcer
                                      else "🔒 Verrouiller le logD résolu")
 
-    def _on_vl_mode(self):
+    def _on_vl_mode(self) -> None:
         """Changement de mode de résolution du logD (jalon 3) : « fond cible
         (auto) » = le moteur résout le logD à chaque nouvel empilement ;
         « logD forcé » = calcul direct déterministe et réactif."""
         self._sync_vl_mode()
         self._refresh_preview()
 
-    def _on_vl_lock(self):
+    def _on_vl_lock(self) -> None:
         """Bouton 🔒 (jalon 3) : capte le dernier logD résolu par le mode
         « fond cible » et bascule en « logD forcé » — déterministe et réactif
         (plus de résolution itérative). 🔓 : retour à la résolution auto."""
@@ -2334,7 +2336,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._sync_vl_mode()
         self._refresh_preview()
 
-    def _on_vl_graxpert(self):
+    def _on_vl_graxpert(self) -> None:
         """Case « GraXpert live » (jalon 4) : enchaîne stack → GraXpert →
         VeraLux dans le thread solveur, à chaque nouvel empilement. Refusé
         si la commande GraXpert n'est pas utilisable (placeholders) ou si son
@@ -2372,13 +2374,13 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 "#c98a00")
         self._refresh_preview()
 
-    def _on_vl_profil(self):
+    def _on_vl_profil(self) -> None:
         """Changement du profil capteur VeraLux : fait partie de la clé des
         réglages → le solveur relance la résolution au prochain rendu."""
         self.disp.vl_profil = self.var_vl_profil.get()
         self._refresh_preview()
 
-    def _sync_vl_graxpert_vue(self):
+    def _sync_vl_graxpert_vue(self) -> None:
         """GraXpert live ne s'applique QUE sur la vue « empilement » : en vue
         « traitée », l'image a déjà subi le traitement externe (GraXpert/BXT
         manuels via ⚡) — le relancer ferait un DEUXIÈME traitement. La case
@@ -2388,7 +2390,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         if actif != self.disp.vl_graxpert:
             self.disp.vl_graxpert = actif   # la clé change → re-résolution
 
-    def _on_vl_denoise(self):
+    def _on_vl_denoise(self) -> None:
         """Case/combobox/curseur du débruitage live : répercute méthode et
         force dans le solveur, puis re-résolution. Tolérant : une force
         saisie invalide (texte) est ignorée, la valeur précédente reste."""
@@ -2402,7 +2404,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._sync_vl_denoise_vue()
         self._refresh_preview()
 
-    def _sync_vl_denoise_vue(self):
+    def _sync_vl_denoise_vue(self) -> None:
         """Débruitage live = vue « empilement » uniquement (même règle que
         GraXpert live) : en vue « traitée », l'image a déjà subi le
         traitement externe — re-débruiter ferait un DEUXIÈME traitement.
@@ -2411,7 +2413,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         if actif != self.disp.vl_denoise:
             self.disp.vl_denoise = actif    # la clé change → re-résolution
 
-    def _on_vl_scnr(self):
+    def _on_vl_scnr(self) -> None:
         """Case SCNR (jalon 22) : répercute dans le solveur — la clé des
         réglages change → re-résolution. Vaut pour LES DEUX VUES (v2.48.1) : la
         chaîne couleur suit l'étirement et n'est plus dans la chaîne externe.
@@ -2424,7 +2426,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._sync_vl_scnr_vue()
         self._refresh_preview()
 
-    def _sync_vl_scnr_vue(self):
+    def _sync_vl_scnr_vue(self) -> None:
         """État SEUL (sans rendu) de la case SCNR — appelé par la case ET
         par _tick/_on_view.
 
@@ -2442,7 +2444,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         if actif != self.disp.vl_scnr:
             self.disp.vl_scnr = actif       # la clé change → re-résolution
 
-    def _on_vl_neutre(self):
+    def _on_vl_neutre(self) -> None:
         """Case « Neutraliser la couleur du fond » (v2.36.1) : le solveur
         VeraLux applique les gains AVANT l'étirement (le direct aussi :
         `disp.vl_neutre_fond` entre dans la clé des réglages → re-résolution).
@@ -2454,7 +2456,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._sync_vl_neutre_vue()
         self._refresh_preview()
 
-    def _sync_vl_neutre_vue(self):
+    def _sync_vl_neutre_vue(self) -> None:
         """Vue « empilement » uniquement : la neutralisation du fond est une
         correction PRÉ-étirement qui RESTE dans la chaîne externe ⚡ (indice 8
         du job) — le résultat ⚡ la porte déjà, la refaire à l'affichage ferait
@@ -2465,7 +2467,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         if actif != self.disp.vl_neutre_fond:
             self.disp.vl_neutre_fond = actif    # la clé change → re-résolution
 
-    def _on_vl_chroma(self):
+    def _on_vl_chroma(self) -> None:
         """Case/curseur « Réduire le bruit chromatique » (v2.37.0) : force lue
         (tolérante — une saisie invalide laisse la valeur précédente) et
         transportée au solveur VeraLux (10e/11e éléments du job), qui l'applique
@@ -2481,7 +2483,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._sync_vl_chroma_vue()
         self._refresh_preview()
 
-    def _sync_vl_chroma_vue(self):
+    def _sync_vl_chroma_vue(self) -> None:
         """État SEUL (sans rendu) de la case « Réduire le bruit chromatique » —
         vue « empilement » uniquement : comme la neutralisation du fond, cette
         correction PRÉ-étirement RESTE dans la chaîne externe ⚡ (indice 9 du
@@ -2491,7 +2493,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         if actif != self.disp.vl_chroma:
             self.disp.vl_chroma = actif      # la clé change → re-résolution
 
-    def _on_vl_preserve(self):
+    def _on_vl_preserve(self) -> None:
         """Case « Préserver la luminosité (L*) » (v2.48.0, jalon 85) : lue par la
         chaîne couleur APRÈS étirement — la clé des réglages change (solveur
         VeraLux relancé) et les modes STF/manuel sont refaits. Rendu IMMÉDIAT
@@ -2501,7 +2503,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self.disp.vl_preserve_luminance = bool(self.var_vl_preserve.get())
         self._refresh_preview()
 
-    def _on_vl_scnr_force(self):
+    def _on_vl_scnr_force(self) -> None:
         """Curseur « Force du SCNR » (v2.48.0) : 1,00 = formule historique des
         jalons 22/23 (AU BIT PRÈS), 0,00 = aucun effet. Entre les deux, une part
         de l'excès de vert est conservée — c'est à force < 1,00 que le « SCNR
@@ -2514,7 +2516,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             pass                            # saisie invalide : on garde
         self._refresh_preview()
 
-    def _on_vl_demagenta_force(self):
+    def _on_vl_demagenta_force(self) -> None:
         """Curseur « Force du démagenta » (v2.48.0) : part du magenta retirée
         (1,00 = formule historique des jalons 22/23, AU BIT PRÈS)."""
         try:
@@ -2524,7 +2526,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             pass
         self._refresh_preview()
 
-    def _on_vl_boost(self):
+    def _on_vl_boost(self) -> None:
         """Case « Boost du rouge (SII) — masqué à l'objet » (v2.48.0, jalon 86) :
         rendu IMMÉDIAT (leçon des cases couleur, jalon 39). La case entre dans la
         clé des réglages du solveur VeraLux (donc re-résolution) et dans les
@@ -2533,7 +2535,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._sync_vl_boost_vue()
         self._refresh_preview()
 
-    def _sync_vl_boost_vue(self):
+    def _sync_vl_boost_vue(self) -> None:
         """État SEUL (sans rendu) du boost du rouge. v2.48.1 : comme les autres
         corrections de couleur (elles suivent l'étirement, cf.
         `_sync_vl_scnr_vue`), le boost s'applique DANS LES DEUX VUES — la vue
@@ -2543,7 +2545,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         if actif != self.disp.vl_boost_rouge:
             self.disp.vl_boost_rouge = actif    # la clé change → re-résolution
 
-    def _on_vl_boost_force(self):
+    def _on_vl_boost_force(self) -> None:
         """Curseur « Force du boost » (v2.48.0, jalon 86) : 1,00 = identité AU BIT
         PRÈS (aucun pixel touché : le réglage peut rester en place sans rien
         changer), 3,00 = le doré mesuré sur l'empilement d'Alain, 4,00 = le
@@ -2557,7 +2559,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             pass                            # saisie invalide : on garde
         self._refresh_preview()
 
-    def _poser_rayon_chroma(self, scale):
+    def _poser_rayon_chroma(self, scale: Any) -> None:
         """Pose le rayon EFFECTIF du flou de chroma pour une image d'échelle
         `scale` (v2.37.4). Le réglage utilisateur (`self.rayon_chroma_ref`) est
         exprimé en pixels PLEINE RÉSOLUTION ; l'aperçu travaille, lui, sur une
@@ -2570,7 +2572,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self.disp.vl_chroma_rayon = couleurs_mod.rayon_chroma_apercu(
             scale, self.rayon_chroma_ref)
 
-    def _on_vl_chroma_rayon(self):
+    def _on_vl_chroma_rayon(self) -> None:
         """Curseur « Rayon de référence » du flou de chroma (v2.37.4, demande
         d'Alain) : rayon lu (tolérant — une saisie invalide laisse la valeur
         précédente), rayon effectif de l'aperçu reposé à SON échelle, et rendu
@@ -2588,12 +2590,12 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
     # `avastack/ui/renderer.py` (mixin `Renderer`, dont `App` hérite) — code
     # repris VERBATIM.
 
-    def _on_vl_demagenta(self):
+    def _on_vl_demagenta(self) -> None:
         """Case démagenta (jalon 22) : idem SCNR (jalon 39 : rendu immédiat)."""
         self._sync_vl_demagenta_vue()
         self._refresh_preview()
 
-    def _sync_vl_demagenta_vue(self):
+    def _sync_vl_demagenta_vue(self) -> None:
         """État SEUL (sans rendu) de la case démagenta. v2.48.1 : s'applique
         DANS LES DEUX VUES, comme les autres corrections de couleur qui suivent
         l'étirement (`_sync_vl_scnr_vue`)."""
@@ -2601,14 +2603,14 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         if actif != self.disp.vl_demagenta:
             self.disp.vl_demagenta = actif  # la clé change → re-résolution
 
-    def _on_vl_scnr_doux(self):
+    def _on_vl_scnr_doux(self) -> None:
         """Case SCNR doux (jalon 23) : idem SCNR — bruit seul, structure
         préservée (pensé pour les palettes narrowband). Jalon 39 : rendu
         immédiat."""
         self._sync_vl_scnr_doux_vue()
         self._refresh_preview()
 
-    def _sync_vl_scnr_doux_vue(self):
+    def _sync_vl_scnr_doux_vue(self) -> None:
         """État SEUL (sans rendu) de la case SCNR doux. v2.48.1 : s'applique
         DANS LES DEUX VUES, comme les autres corrections de couleur qui suivent
         l'étirement (`_sync_vl_scnr_vue`)."""
@@ -2616,7 +2618,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         if actif != self.disp.vl_scnr_doux:
             self.disp.vl_scnr_doux = actif  # la clé change → re-résolution
 
-    def _sync_vl_couleur_vue(self):
+    def _sync_vl_couleur_vue(self) -> None:
         """Chaîne couleur APRÈS étirement (jalon 22/23, déplacée après
         l'étirement au jalon 85 : SCNR, SCNR doux, démagenta, boost du rouge)
         ET corrections PRÉ-étirement (neutralisation du fond, bruit
@@ -2637,7 +2639,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._sync_vl_neutre_vue()          # v2.36.1 : fond neutre avant étirement
         self._sync_vl_chroma_vue()          # v2.37.0 : bruit chromatique
 
-    def _on_vl_sharp(self):
+    def _on_vl_sharp(self) -> None:
         """Case/curseur de la netteté live (jalon 12) : répercute les
         itérations dans le solveur (bornées par le module, plafond dur
         ITERATIONS_MAX), puis relance le rendu. Tolérant : une valeur
@@ -2660,7 +2662,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._maj_lbl_sharp()
         self._refresh_preview()
 
-    def _sync_vl_sharp_vue(self):
+    def _sync_vl_sharp_vue(self) -> None:
         """Netteté live = vue « empilement » uniquement (même règle que
         GraXpert/débruitage live) : en vue « traitée », l'image a déjà subi le
         traitement externe — la reteinter ferait un DEUXIÈME traitement. La
@@ -2669,7 +2671,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         if actif != self.disp.vl_sharp:
             self.disp.vl_sharp = actif      # la clé change → re-résolution
 
-    def _maj_lbl_sharp(self):
+    def _maj_lbl_sharp(self) -> None:
         """Étiquette du cadre « Netteté live » : dit l'état RÉEL, jamais une
         promesse — désactivée, ignorée en vue « traitée », refusée (raison
         donnée par le module) ou active (itérations + provenance de la PSF)."""
@@ -2688,7 +2690,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             coul = "#1d7f1d"
         self.lbl_sharp.config(text=txt, foreground=coul)
 
-    def _lbl_vl_texte(self, txt, coul):
+    def _lbl_vl_texte(self, txt: str, coul: str) -> None:
         """Écrit l'étiquette d'état VeraLux ET son mémo (jalon 40 : le ⏳
         de _maj_lbl_vl ne doit pas être reconfiguré 30 fois par seconde —
         tout autre écrivain de lbl_vl passe par ici pour garder le mémo
@@ -2696,7 +2698,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._vl_lbl_txt = txt
         self.lbl_vl.config(text=txt, foreground=coul)
 
-    def _maj_lbl_vl(self):
+    def _maj_lbl_vl(self) -> None:
         """État des calculs live à l'écran (jalons 40/41, demande d'Alain :
         matérialiser qu'un calcul tourne et qu'il est terminé). Le cadre
         « État des calculs » est INDÉPENDANT du moteur (jalon 41) :
@@ -2761,7 +2763,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         elif (not veralux) and self._vl_lbl_txt.startswith("⏳"):
             self._lbl_vl_texte("—", "#888888")   # calcul STF fini : repos
 
-    def _on_view(self):
+    def _on_view(self) -> None:
         """Bascule empilement ↔ résultat traité (stats d'étirement réinitialisées :
         les niveaux après GraXpert/BXT ne sont pas les mêmes)."""
         self.disp.reset()
@@ -2786,7 +2788,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
     # `avastack/ui/renderer.py` (mixin `Renderer`, dont `App` hérite) — code
     # repris VERBATIM.
 
-    def _push_settings(self):
+    def _push_settings(self) -> None:
         # Instantanés « thread-safe » (attributs simples lus par le worker) :
         # le worker n'a JAMAIS le droit de lire une variable Tk.
         self.expo_ms = float(self.var_expo.get())
@@ -2796,7 +2798,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self.pending_offset = float(self.var_offset.get())
 
     # --- cadence d'empilement (jalon 42, demande d'Alain) -------------------
-    def _brutes_en_attente(self):
+    def _brutes_en_attente(self) -> int:
         """Brutes détectées sur le disque mais pas encore lues (jalon 42) —
         sources dossier/composition uniquement ; 0 pour les autres."""
         cam = self.camera
@@ -2806,13 +2808,13 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             return int(getattr(cam, "pending", 0))
         return len(getattr(cam, "_pending", []))
 
-    def _cadence_dossier(self):
+    def _cadence_dossier(self) -> bool:
         """True si la cadence s'applique à la source courante (jalon 42) :
         dossier surveillé / composition multi-dossiers SEULEMENT — les
         files des caméras SDK ne doivent jamais s'accumuler (mémoire)."""
         return isinstance(self.camera, (FolderCamera, MultiFolderCamera))
 
-    def _autoriser_lecture(self):
+    def _autoriser_lecture(self) -> bool:
         """Décision de cadence (jalon 42) : True = le worker peut lire une
         brute maintenant. En surveillance de dossier, les brutes qui
         arrivent pendant la fenêtre d'attente RESTENT sur le disque (aucune
@@ -2835,7 +2837,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             return True
         return time.monotonic() >= self._prochaine_lecture
 
-    def _armer_cadence(self):
+    def _armer_cadence(self) -> None:
         """(Ré)arme la fenêtre de cadence (jalon 42/46) — appelé par le
         worker quand une brute vient d'être lue. La rafale SE TERMINE quand
         soit TOUTES les brutes détectées ont été lues (jalon 42), soit le
@@ -2848,7 +2850,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self._prochaine_lecture = time.monotonic() + self.cadence_lecture
             self._rafale_reste = self.RAFALE_MAX
 
-    def _on_cadence(self):
+    def _on_cadence(self) -> None:
         """Combobox « Empiler les brutes » (jalon 42) : répercute la cadence
         dans le worker (miroir thread-sûr : int écrit côté UI, lu par le
         worker — jamais d'accès Tk depuis le thread de travail)."""
@@ -2863,7 +2865,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
 
     # --- contrôles caméra QHY (jalon 25) : demandes posées ICI (thread Tk),
     # consommées par le thread de travail — jamais d'appel SDK depuis Tk.
-    def _adapter_ui_capacites(self, cap):
+    def _adapter_ui_capacites(self, cap: Any) -> None:
         """Jalon 31 — DEMANDE D'ALAIN (20/09/2026) : à la connexion d'une
         caméra (toute marque), l'UI est reconstruite avec les bornes RÉELLES
         détectées par le SDK — RIEN n'est câblé en dur. `cap` = objet
@@ -2961,14 +2963,14 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self.lbl_tec_lib.config(
                 text=f"Consigne °C ({t[0]:g} à {t[1]:g}) :")
 
-    def _on_filtre_choisi(self, _e=None):
+    def _on_filtre_choisi(self, _e: Any=None) -> None:
         try:
             n = FILTRES_ROUE.index(self.var_filtre.get())
         except ValueError:
             return
         self._filtre_demande = n
 
-    def _on_consigne_tec(self):
+    def _on_consigne_tec(self) -> None:
         try:
             t = float(self.var_tec_consigne.get().replace(",", "."))
         except ValueError:
@@ -2979,17 +2981,17 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         plage = self.tec_plage or (-30.0, 45.0)
         self._tec_demande = ("consigne", min(max(t, plage[0]), plage[1]))
 
-    def _on_arret_tec(self):
+    def _on_arret_tec(self) -> None:
         self._tec_demande = ("stop", None)
 
-    def _pick_dossier_compo(self, i):
+    def _pick_dossier_compo(self, i: int) -> None:
         d = self._demander_dossier(
             "Dossier des brutes « "
             + (self.var_compo_roles[i].get() or "rôle ?") + " »")
         if d:
             self.var_compo_dossiers[i].set(d)
 
-    def _detecter_filtres(self):
+    def _detecter_filtres(self) -> None:
         """Auto-détection (jalon 19) : pour chaque dossier rempli, lit le
         mot-clé FILTER du FITS le plus récent et applique le rôle
         correspondant. Override manuel ensuite : les menus déroulants
@@ -3034,7 +3036,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
     _SOURCES_SDK = ("QHY", "ZWO", "Player One", "Touptek", "SVBONY")
 
     # --- Jalon 47 : visibilité des cadres selon la source --------------------
-    def _maj_visibilite_cadres(self):
+    def _maj_visibilite_cadres(self) -> None:
         """N'afficher que les cadres UTILES à la source choisie (demande
         d'ergonomie d'Alain, jalon 47 : « la partie droite est surchargée » —
         la colonne de réglages à gauche de l'image) :
@@ -3092,7 +3094,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # circonstances, jalon 47). Les cadres de la source s'insèrent AVANT
         # lui : « Fichiers de travail » reste complet et, replié ou non, la
         # ligne suivante ne lève JAMAIS « TclError: isn't packed ».
-        ancre = self._lf_camera._btn_header
+        ancre = self._lf_camera._btn_header  # pyright: ignore[reportAttributeAccessIssue]
         for cadre in (self._lf_cadence, self._lf_dossier_surveille, self._lf_composition):
             btn = getattr(cadre, "_btn_header", None)
             if cadre in visibles:
@@ -3130,7 +3132,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         if hasattr(self, "lbl_dark"):
             self._maj_libelles_calib()
 
-    def _on_source_choisie(self, *_):
+    def _on_source_choisie(self, *_) -> None:
         """Sélection d'une source : auto-détection si source « SDK ».
         Une caméra connectée est d'abord déconnectée (jalon 26 : la
         connexion appartient à la source ; pour une QHY, la reconnexion
@@ -3177,7 +3179,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             # tourne plus, au moment du « ▶ Démarrer ».
             self.btn_start.config(state="normal")
 
-    def _detecter_camera(self):
+    def _detecter_camera(self) -> None:
         """Lance la détection (thread : ne jamais bloquer l'UI)."""
         if self.camera is not None:
             self._dire(
@@ -3198,13 +3200,13 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             threading.Thread(target=self._detect_sdk_local,
                              args=(source,), daemon=True).start()
 
-    def _detect_qhy(self):
+    def _detect_qhy(self) -> None:
         """Scan QHY DANS UN SOUS-PROCESSUS isolé (le résultat est consommé
         par _tick côté thread UI ; aucun appel Tk depuis ce thread)."""
         ids, err = lister_via_sous_processus()
         self._detect_result = ("QHY", ids, err)
 
-    def _detect_sdk_local(self, source):
+    def _detect_sdk_local(self, source: str) -> None:
         """Scan des autres marques, in-process (sans DLL → RuntimeError
         propre ; lister() des modules attrape déjà les exceptions)."""
         cls = (PlayerOneCamera if source.startswith("Player One")
@@ -3221,7 +3223,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         except Exception as e:
             self._detect_result = (source, None, str(e))
 
-    def _connecter_qhy(self):
+    def _connecter_qhy(self) -> None:
         """CONNEXION de la caméra QHY (jalon 26, thread dédié) : ouverture
         SANS empilement — le sondage des contrôles (roue/TEC), l'application
         des réglages et le refroidissement deviennent possibles AVANT le
@@ -3248,7 +3250,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         except Exception as e:
             self._connexion_result = (None, str(e))
 
-    def _connecter_sdk(self, source):
+    def _connecter_sdk(self, source: str) -> None:
         """CONNEXION des caméras SDK NON-QHY (jalon 32, thread dédié — le
         même modèle que QHY, jalon 26) : ouverture SANS empilement ; le
         résultat (source, cam, err) est consommé par _tick, qui détecte les
@@ -3269,7 +3271,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         except Exception as e:
             self._connexion_sdk_result = (source, None, str(e))
 
-    def _installer_camera_connectee(self, cam, source):
+    def _installer_camera_connectee(self, cam: Any, source: str) -> None:
         """Après une CONNEXION RÉUSSIE (thread Tk seul) : pose la caméra,
         détecte les capacités (curseurs aux bornes réelles, roue aux slots
         réels, TEC borné — jalon 31 pour QHY, jalon 32 pour les autres),
@@ -3315,7 +3317,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                                            daemon=True)
             self.thread.start()
 
-    def _connexion_terminee(self, etat, cam, err):
+    def _connexion_terminee(self, etat: Any, cam: Any, err: Any) -> None:
         """Consommation du résultat de connexion (thread Tk seul) : état
         des lignes de contrôles + message d'état. Un échec réactive le
         bouton (on peut resscanner) ; un succès active « ▶ Démarrer » et
@@ -3339,7 +3341,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             text="Caméra connectée — réglez (filtre, refroidissement, "
                  "gain…) puis « ▶ Démarrer » pour empiler.")
 
-    def _make_camera(self, key):
+    def _make_camera(self, key: str) -> Any:
         if key.startswith("Simulée"):
             return SimulatedCamera()
         if key.startswith("Dossier"):
@@ -3365,14 +3367,14 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         return ZWOASICamera()
 
     # --- Jalon 19 phase 3 : composition multi-filtres ------------------------
-    def _on_compo(self):
+    def _on_compo(self) -> None:
         """Choix de la composition → pré-remplit les rôles des 4 lignes."""
         roles = roles_de(self.var_compo.get())
         for i in range(4):
             self.var_compo_roles[i].set(roles[i] if i < len(roles) else "")
         self._maj_compo_info()
 
-    def _on_compo_roles(self, *_):
+    def _on_compo_roles(self, *_) -> None:
         """Changement manuel d'un rôle (override de la détection) → la
         composition se DÉDUIT des rôles remplis (sens inverse : les
         dossiers contraignent la composition). Pas de correspondance
@@ -3384,7 +3386,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self.var_compo.set(comp)
         self._maj_compo_info()
 
-    def _maj_compo_info(self):
+    def _maj_compo_info(self) -> None:
         """Ligne d'aide : mapping de la composition ; la radio « Canal L »
         n'est active qu'en LRGB (inutile ailleurs)."""
         nom = self.var_compo.get()
@@ -3405,12 +3407,12 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self.rb_l_deg.config(state=etat)
         self._maj_libelles_calib()   # jalon 53 : le détail suit les rôles
 
-    def _pick_folder(self):
+    def _pick_folder(self) -> None:
         d = self._demander_dossier("Dossier où arrivent les brutes")
         if d:
             self.var_folder.set(d)
 
-    def _lire_roles_dossiers(self):
+    def _lire_roles_dossiers(self) -> Any:
         """Couples (rôle, dossier) des lignes remplies (au démarrage).
         Lève une erreur claire sur un remplissage incohérent : rôle sans
         dossier, rôle en double, dossier sans rôle, tout vide."""
@@ -3438,7 +3440,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                                "(rôle + dossier)")
         return pairs
 
-    def _on_norm_commune(self):
+    def _on_norm_commune(self) -> None:
         """v2.36.0 — case « Normalisation commune des canaux » (option, décision
         d'Alain du 25/09/2026). Posée sur l'empilement courant et appliquée dès
         le prochain rendu ; l'instantané `_norm_commune` est celui que lit le
@@ -3451,7 +3453,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._refresh_preview()
         self.disp.notify_new_stack()
 
-    def _lire_gains(self):
+    def _lire_gains(self) -> dict[str, float]:
         """Gains R/G/B saisis (texte → float, virgule acceptée, défaut 1.0,
         borné 0..10). Appelé côté THREAD PRINCIPAL seulement (variables Tk) ;
         le thread worker consomme l'instantané `_compo_gains`."""
@@ -3464,7 +3466,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             gains[canal] = min(10.0, max(0.0, v))
         return gains
 
-    def _start(self):
+    def _start(self) -> None:
         """« ▶ Démarrer » = lancer l'EMPILEMENT (jalon 26).
 
         La caméra est déjà connectée (dès la détection) : ce bouton ne fait
@@ -3518,7 +3520,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # Jalon 19 : mode composition si la source est multi-dossiers — la
         # composition est déduite des rôles configurés (choix UI en phase 3).
         self._mode_compo = isinstance(cam, MultiFolderCamera)
-        self._compo_nom = (composition_pour_roles(cam.roles)
+        self._compo_nom = (composition_pour_roles(cam.roles)  # pyright: ignore[reportAttributeAccessIssue]
                            if self._mode_compo else None)
         # Jalon 19 phase 3 : gains + radio « Canal L » instantanés POUR LE
         # THREAD (le worker n'a jamais le droit de lire les variables Tk).
@@ -3548,7 +3550,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # Jalon 19 : mode composition si la source est multi-dossiers — la
         # composition est déduite des rôles configurés (choix UI en phase 3).
         self._mode_compo = isinstance(cam, MultiFolderCamera)
-        self._compo_nom = (composition_pour_roles(cam.roles)
+        self._compo_nom = (composition_pour_roles(cam.roles)  # pyright: ignore[reportAttributeAccessIssue]
                            if self._mode_compo else None)
         # Jalon 19 phase 3 : gains + radio « Canal L » instantanés POUR LE
         # THREAD (le worker n'a jamais le droit de lire les variables Tk).
@@ -3571,7 +3573,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self.btn_start.config(state="disabled")
         self.btn_stop.config(state="normal")
 
-    def _stop(self):
+    def _stop(self) -> None:
         """« ■ Arrêter » = PAUSE de l'empilement (jalon 26) : le worker
         reste actif (il continue de piloter la caméra — TEC, filtre,
         réglages) mais n'empile plus ; la caméra reste connectée et le
@@ -3586,7 +3588,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             text="Empilement arrêté — caméra connectée, refroidissement "
                  "maintenu.")
 
-    def _reinit_etat_session(self):
+    def _reinit_etat_session(self) -> None:
         """Remises à zéro d'une SESSION NEUVE — communes à « ▶ Démarrer » et à
         « Réinitialiser l'empilement » (v2.41.0 : extraites de `_start`).
 
@@ -3683,7 +3685,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._prochaine_lecture = 0.0
         self._rafale_reste = self.RAFALE_MAX
 
-    def _effacer_indices_astro(self):
+    def _effacer_indices_astro(self) -> None:
         """Efface les INDICES d'astrométrie (AD, Dec, champ°) — décision d'Alain
         du 28/09/2026 : quand la source de FICHIERS change de CIBLE (autre
         dossier, autres rôles), les coordonnées de l'ancienne cible sont de
@@ -3712,7 +3714,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self.astro_couleur = "#888888"
         self._maj_astro_vue()
 
-    def _reset_empilement(self):
+    def _reset_empilement(self) -> None:
         """« Réinitialiser l'empilement » — remise à zéro RÉELLE (v2.41.0).
 
         Constat réel d'Alain (28/09/2026) : « quand j'ai fini avec une cible, je
@@ -3776,7 +3778,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             texte += "\nIndices d'astrométrie effacés (nouvelle cible)."
         self.lbl_status.config(text=texte)
 
-    def _resume_source_fichiers(self):
+    def _resume_source_fichiers(self) -> str:
         """Décrit, pour la ligne d'état, la source de FICHIERS qui sera ouverte
         au prochain « ▶ Démarrer » — jamais un silence sur ce qui sera lu
         (leçon du jalon 70 : une donnée absente ou une décision implicite doit
@@ -3804,7 +3806,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             return txt
         return "sur la source « %s »" % src
 
-    def _source_fichiers_obsolete(self):
+    def _source_fichiers_obsolete(self) -> bool:
         """True si la source de FICHIERS connectée ne correspond PLUS à ce que
         montre l'interface (v2.41.0) : d'autres dossier(s), un autre rôle, ou
         l'option « Empiler aussi les images déjà présentes » qui a changé.
@@ -3841,7 +3843,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 or bool(cam.process_existing) != attendu)
 
     @staticmethod
-    def _meme_dossier(a, b):
+    def _meme_dossier(a: str, b: str) -> bool:
         """Deux textes désignent-ils le même dossier ? Comparaison ABSOLUE et
         normalisée pour la casse : « C:\\brutes\\cible1 », « c:/brutes/cible1 »
         et « C:\\brutes\\cible1\\ » sont bien le même dossier — sans cela, une
@@ -3852,7 +3854,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         kb = os.path.normcase(os.path.abspath(os.path.expanduser(b)))
         return ka == kb
 
-    def _refermer_source_fichiers(self):
+    def _refermer_source_fichiers(self) -> bool:
         """Referme la source de FICHIERS connectée (« Dossier surveillé » ou
         « Composition ») — v2.41.0. Le prochain « ▶ Démarrer » la rouvrira avec
         la configuration AFFICHÉE (nouveau dossier compris).
@@ -3880,7 +3882,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
     # vers `avastack/ui/renderer.py` (mixin `Renderer`, dont `App` hérite) —
     # code repris VERBATIM.
 
-    def _deconnecter_camera(self):
+    def _deconnecter_camera(self) -> None:
         """« ⏏ Déconnecter » (jalon 26) : referme la caméra — le TEC est
         coupé avant (un refroidissement laissé en régulation continue de
         consommer du courant et de givrer)."""
@@ -3918,7 +3920,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._qhy_id = ""
         self.lbl_status.config(text="Caméra déconnectée.")
 
-    def _on_close(self):
+    def _on_close(self) -> None:
         self._sauver_config_app()
         # Déconnexion SIMPLE (version du 19/09, décision d'Alain du
         # 20/09/2026) : le worker est arrêté D'ABORD (running=False, jonction
@@ -3973,7 +3975,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
     # `avastack/ui/saver.py` (mixin `Saver`, dont `App` hérite) — code
     # repris VERBATIM.
 
-    def _load_dark(self):
+    def _load_dark(self) -> None:
         # Jalon 53 : la couche se choisit AU CLIC (boîte « ce dark
         # s'applique à : ») — hors composition, cible unique directe.
         cible = self._choisir_cible("dark")
@@ -3994,7 +3996,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             except Exception as e:
                 self._signaler("Dark", str(e))
 
-    def _load_flat(self):
+    def _load_flat(self) -> None:
         # Jalon 53 : cible INDÉPENDANTE de celle des darks (ex. flat par
         # filtre et dark unique, ou l'inverse).
         cible = self._choisir_cible("flat")
@@ -4015,19 +4017,19 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             except Exception as e:
                 self._signaler("Flat", str(e))
 
-    def _clear_calib(self):
+    def _clear_calib(self) -> None:
         self.calib.clear()
         self._maj_libelles_calib()
 
     # ------------------------------------------------------------ traitement externe
-    def _champs_outils(self):
+    def _champs_outils(self) -> tuple[tuple[Any, Any, str], ...]:
         """Les trois (variable Tk, libellé, nom) du cadre « Traitement externe »."""
         return ((self.var_cmd_graxpert, self.lbl_etat_graxpert, "GraXpert"),
                 (self.var_cmd_graxpert_dn, self.lbl_etat_gx_dn,
                  "GraXpert (débruitage)"),
                 (self.var_cmd_bxt, self.lbl_etat_bxt, "BlurXTerminator"))
 
-    def _sonder_outils(self, commandes):
+    def _sonder_outils(self, commandes: Any) -> list[tuple[Any, Any, Any]]:
         """SONDE les trois outils (accès disque) → [(nom, manque, binaire)].
 
         `commandes` est un instantané [(nom, texte)] pris côté Tk (v2.38.11) :
@@ -4040,7 +4042,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             etats.append((nom, manque, "" if manque else gx_live.binaire_de(cmd)))
         return etats
 
-    def _maj_etat_outils(self, *_a):
+    def _maj_etat_outils(self, *_a) -> None:
         """Affiche l'état de DÉTECTION des outils externes (v2.38.5).
 
         Constat d'Alain (27/09/2026, installateur Linux) : « la détection de
@@ -4058,7 +4060,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                      for var, _lbl, nom in self._champs_outils()]
         self._appliquer_etats_outils(self._sonder_outils(commandes))
 
-    def _appliquer_etats_outils(self, etats):
+    def _appliquer_etats_outils(self, etats: Any) -> None:
         """Affiche [(nom, manque, binaire)] — thread d'interface seulement."""
         for (_var, lbl, nom), (_n, manque, binaire) in zip(self._champs_outils(),
                                                            etats):
@@ -4069,7 +4071,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 lbl.config(text=f"✔ {nom} : {binaire}", foreground="#1d7f1d")
 
     # ------------------------------------ mesures de disque DIFFÉRÉES (v2.38.11)
-    def _annoncer_mesures(self):
+    def _annoncer_mesures(self) -> None:
         """Pose les libellés « mesure en cours… » AVANT les sondes différées.
 
         L'utilisateur voit ainsi que l'application regarde — et si une sonde ne
@@ -4084,16 +4086,16 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self.lbl_cat_dossier.config(text="Catalogues : mesure en cours…",
                                         foreground="#888888")
 
-    def _commandes_outils(self):
+    def _commandes_outils(self) -> list[tuple[str, str]]:
         """Instantané [(nom, texte)] des trois commandes, pris CÔTÉ TK."""
         return [(nom, var.get().strip())
                 for var, _lbl, nom in self._champs_outils()]
 
-    def _premieres_mesures(self):
+    def _premieres_mesures(self) -> None:
         """Mesures de disque du démarrage, HORS du fil d'interface (v2.38.11)."""
         self._demander_mesures(nettoyage=True)
 
-    def _demander_mesures(self, nettoyage=False):
+    def _demander_mesures(self, nettoyage: bool=False) -> None:
         """Lance les sondes de disque dans un FIL DÉMON, chacune bornée à 5 s.
 
         POURQUOI (constat RÉEL du 27/09/2026) : une sonde sur un dossier monté
@@ -4107,8 +4109,8 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._mesure_en_cours = True
         commandes = self._commandes_outils()
 
-        def _fond():
-            msg = {}
+        def _fond() -> None:
+            msg: dict[str, Any] = {}
             try:
                 if nettoyage:
                     journal.etape("nettoyage des résidus de session")
@@ -4132,7 +4134,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 else:
                     msg["commandes"] = {}
                 journal.etape("état des outils externes")
-                a_sonder = [(nom, (msg["commandes"].get(cle) or txt).strip())
+                a_sonder = [(nom, (msg["commandes"].get(cle) or txt).strip())  # pyright: ignore[reportOptionalMemberAccess]
                             for cle, nom, txt in (
                                 ("cmd_graxpert", "GraXpert", commandes[0][1]),
                                 ("cmd_graxpert_dn", "GraXpert (débruitage)",
@@ -4158,7 +4160,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         threading.Thread(target=_fond, daemon=True,
                          name="mesures-disque").start()
 
-    def _commandes_rafraichies(self, commandes, detectes):
+    def _commandes_rafraichies(self, commandes: Any, detectes: Any) -> dict[str, Any]:
         """Re-détection (v2.38.5, déplacée ici en v2.38.11) : une commande dont
         l'EXÉCUTABLE a disparu est corrigée — le binaire est repris de la
         détection, les OPTIONS de l'utilisateur sont CONSERVÉES
@@ -4177,7 +4179,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 out[cle] = gx_live.remplacer_binaire(txt, det)
         return out
 
-    def _appliquer_mesures(self, msg):
+    def _appliquer_mesures(self, msg: Any) -> None:
         """Applique les résultats d'une salve de mesures (fil d'interface)."""
         self._mesure_en_cours = False
         # Commandes corrigées par la re-détection (binaire retrouvé/disparu) :
@@ -4205,7 +4207,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         if spcc_base:
             self._appliquer_spcc_base_vue(*spcc_base)
 
-    def _sonder_travail(self):
+    def _sonder_travail(self) -> tuple[str, Any, bool]:
         """SONDE le dossier de travail (accès disque) → (dossier, libre, ram).
 
         Séparée de l'affichage pour pouvoir tourner HORS du thread d'interface,
@@ -4218,7 +4220,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             return ("", -1, False)
         return (d, travail.espace_libre(d), travail.est_tmpfs(d))
 
-    def _maj_travail_vue(self):
+    def _maj_travail_vue(self) -> None:
         """Ligne « dossier de travail » (v2.38.6) : le dossier RÉELLEMENT utilisé
         pour les fichiers lourds (frames archivées, FITS des outils), son espace
         libre, et l'alerte « en RAM » s'il s'agit d'un tmpfs.
@@ -4234,7 +4236,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         d, libre, ram = self._sonder_travail()
         self._appliquer_travail_vue(d, libre, ram)
 
-    def _appliquer_travail_vue(self, d, libre, ram):
+    def _appliquer_travail_vue(self, d: str, libre: Any, ram: Any) -> None:
         """Affiche la ligne (thread d'interface). `libre = -1` : espace NON mesuré
         (accès disque bloqué — montage réseau NAS ?) : on le DIT."""
         if getattr(self, "lbl_travail", None) is None:
@@ -4264,7 +4266,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                     f"({travail.texte_octets(recy[1])})")
         self.lbl_travail.config(text=txt, foreground=col)
 
-    def _choisir_dossier_travail(self):
+    def _choisir_dossier_travail(self) -> None:
         """Choisit le dossier de travail et le PERSISTE (config
         `dossier_travail`) : c'est là que vont les frames archivées et les FITS
         des outils externes. Le volume choisi peut être un disque de données."""
@@ -4290,7 +4292,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                "saturer en pleine session — un disque vaut mieux."
                if travail.est_tmpfs(d) else ""))
 
-    def _ouvrir_dossier_travail(self):
+    def _ouvrir_dossier_travail(self) -> None:
         """Ouvre le dossier de travail dans le gestionnaire de fichiers : c'est
         là que se trouvent les fichiers CONSERVÉS après l'échec d'une chaîne
         externe (FITS d'entrée, sorties d'étape, journal `outils_sortie.txt`
@@ -4301,7 +4303,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self._avertir("Dossier de travail",
                           f"Impossible d'ouvrir « {d} » :\n{err}")
 
-    def _ouvrir_journal(self):
+    def _ouvrir_journal(self) -> None:
         """Ouvre le JOURNAL de l'application (v2.38.7) : démarrages, erreurs
         d'interface, échecs journalisés — c'est LE fichier à regarder (et à
         envoyer) quand quelque chose ne va pas, en particulier quand la fenêtre
@@ -4329,7 +4331,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
     # `avastack/ui/external_runner.py` (mixin `ExternalRunner`, dont `App`
     # hérite) — code repris VERBATIM.
 
-    def _score_qualite(self, img):
+    def _score_qualite(self, img: np.ndarray) -> tuple[float | None, int]:
         """Mesure qualité d'une brute pour le filtre jalon 17 :
         (fwhm, nb) — FWHM médiane (px) et nombre d'étoiles exploitables de
         `stars.mesurer_seeing` (jalon 10, ~15 ms ; la couleur est traitée par
@@ -4351,7 +4353,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         return (float(fwhm) if fwhm is not None else None), \
             int(mes.get("nb") or 0)
 
-    def _filtre_floue(self, frame, role=None):
+    def _filtre_floue(self, frame: np.ndarray, role: str | None=None) -> Any:
         """Décision du filtre jalon 17 pour la frame calibrée `frame` :
         → message de rejet ("" si la frame est gardée ou filtre désactivé).
         En mode composition (jalon 19, `role` fourni), la médiane de
@@ -4400,7 +4402,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         return rejeter
 
     # -------------------------------------- jalon 16 : re-stack (Siril)
-    def _score_frame(self, img):
+    def _score_frame(self, img: np.ndarray) -> int:
         """Score qualité d'une brute (esprit Siril) : nombre d'étoiles
         détectées sur le canal vert. Une brute très défocalisée en détecte
         peu (les étoiles larges sortent des critères de forme de stars.py) —
@@ -4415,7 +4417,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             return 0
 
     # ------------------------------------ jalon 56 : astrométrie de l'empilement
-    def _maj_astro_etat(self):
+    def _maj_astro_etat(self) -> None:
         """Recopie l'état du suivi (étoiles, rms, ″/px, propagations) dans la
         ligne dédiée — seulement si le texte change : Tk relit `astro_info`
         ~20×/s, inutile de réécrire la même chaîne."""
@@ -4471,14 +4473,14 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                                 journal.note("DEBUG", f"Exception popup: {e}")
                 self._astro_name_proposed = True
 
-    def _demander_nom_cible(self, objets, current: str) -> str | None:
+    def _demander_nom_cible(self, objets: Any, current: str) -> str | None:
         """Dialogue « Nom de cible détecté » : radio-boutons listant les objets
         célèbres trouvés par l'astrométrie (meilleur présélectionné) + l'option
         « garder l'actuel » quand le champ est déjà rempli. Retourne le nom
         choisi, l'actuel si gardé, ou None (annulé)."""
         import tkinter as tk
 
-        def libelle(o) -> str:
+        def libelle(o: Any) -> str:
             nom = self._sanitize_nom(o.designation)
             bouts = [nom, o.type_obj]
             if o.mag_v is not None:
@@ -4514,9 +4516,9 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                            value=current, variable=var,
                            justify="left").pack(anchor="w")
 
-        resultat = {"nom": None}
+        resultat: dict[str, Any] = {"nom": None}
 
-        def valider():
+        def valider() -> None:
             resultat["nom"] = var.get()
             dlg.destroy()
 
@@ -4534,7 +4536,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         return nom
 
     # -------------------------------- jalon 56 (étape 4) : photométrie
-    def _mettre_a_jour_nom_depuis_fits(self):
+    def _mettre_a_jour_nom_depuis_fits(self) -> None:
         """Si le champ « Nom cible » est vide, tente de le remplir depuis
         l'en-tête FITS de la dernière brute (camera.last_file).
         Appelée seulement quand camera.last_file change (nouvelle brute)."""
@@ -4556,7 +4558,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 journal.note("DEBUG", f"Exception lecture FITS: {e}")
             pass
 
-    def _maj_photo_etat(self):
+    def _maj_photo_etat(self) -> None:
         """Recopie la mesure (zéro-points par bande) dans la ligne dédiée —
         seulement si le texte change."""
         if self.photometrie is None:
@@ -4577,13 +4579,13 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
     # `avastack/ui/saver.py` (mixin `Saver`, dont `App` hérite) — code
     # repris VERBATIM.
 
-    def _definir_reference(self, img):
+    def _definir_reference(self, img: np.ndarray) -> None:
         """Remplace la référence d'alignement ET mesure son score (le score
         de la référence sert de seuil au déclencheur auto du re-stack)."""
         self.aligner.set_reference(img)
         self._ref_score = self._score_frame(img)
 
-    def _vider_archive(self):
+    def _vider_archive(self) -> None:
         """Vide l'archive temporaire ET le score parallèle (les deux listes
         doivent toujours avoir le même ordre — jalon 16). En mode compo
         (jalon 19), vide aussi les archives PAR RÔLE."""
@@ -4593,7 +4595,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         for arch in self.archives.values():
             arch.vider()
 
-    def _meilleure_archive(self):
+    def _meilleure_archive(self) -> tuple[Any, Any, Any]:
         """→ (idx, chemin, score) de la meilleure brute archivée, ou
         (None, None, None) si l'archive est vide ou incohérente."""
         if not self._scores or len(self._scores) != len(self.archive.chemins):
@@ -4601,7 +4603,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         idx = int(np.argmax(self._scores))
         return idx, self.archive.chemins[idx], int(self._scores[idx])
 
-    def _meilleure_archive_compo(self):
+    def _meilleure_archive_compo(self) -> Any:
         """Jalon 20 (mode compo) → (rôle, idx, chemin, score) de la meilleure
         brute archivée, TOUS RÔLES confondus — les scores sont mesurés sur le
         CANAL EXTRAIT de chaque rôle (la même mesure que l'alignement), donc
@@ -4617,7 +4619,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 meilleur = (role, idx, arch.chemins[idx], int(scores[idx]))
         return meilleur
 
-    def _veut_restack(self):
+    def _veut_restack(self) -> bool:
         """Déclencheur AUTO (esprit Siril) : la meilleure brute archivée bat
         nettement la référence courante (marge RESTACK_MARGE en étoiles).
         Surtout utile quand l'ANCRE initiale était médiocre ; une fois la
@@ -4642,7 +4644,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             return False
         return score >= RESTACK_MARGE * self._ref_score
 
-    def _do_restack(self, raison):
+    def _do_restack(self, raison: str) -> str:
         """Re-ancre l'alignement sur la MEILLEURE brute archivée et recalcule
         TOUT l'empilement depuis l'archive (équivalent live du choix de
         référence de Siril). S'exécute dans le thread worker (quelques
@@ -4730,7 +4732,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         return (f"re-stack {n_ok}/{self.archive.n} frames · réf. = brute "
                 f"#{idx} ({score} étoiles, {raison})")
 
-    def _narrowband_ha(self):
+    def _narrowband_ha(self) -> bool:
         """Jalon 21 (décision d'Alain) : composition narrowband contenant le
         rôle Ha (HOO, SHO). Dans ce mode : l'ancre initiale est TOUJOURS une
         brute Ha, et l'alignement se fait par TRIANGLES seuls (ORB s'apparie
@@ -4738,7 +4740,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         return bool(self._mode_compo and self._compo_nom
                     and "Ha" in roles_de(self._compo_nom))
 
-    def _do_restack_compo(self, raison, ancre_role=None, ancre_idx=None):
+    def _do_restack_compo(self, raison: str, ancre_role: str | None=None, ancre_idx: int | None=None) -> str:
         """Jalon 20 — re-stack en mode COMPOSITION multi-filtres. La
         meilleure brute archivée, TOUS RÔLES confondus, devient la
         référence de l'aligneur PARTAGÉ (même repère pour toutes les
@@ -4857,8 +4859,8 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 f"{role_ref}#{idx} ({score} étoiles, {raison})")
 
     # ------------------------------------ jalon 18 : re-stack VISIBLE (UX)
-    def _noter_restack(self, n_ok, n_avant, n_arch, score, ref_score_avant,
-                       detail, echec=False):
+    def _noter_restack(self, n_ok: int, n_avant: int, n_arch: int, score: Any, ref_score_avant: Any,
+                       detail: str, echec: bool=False) -> None:
         """Signale un re-stack (jalon 18 — retour réel d'Alain sur le jalon 16 :
         « pas simple de voir le restack ») : ligne d'état DÉDIÉE horodatée
         avec le GAIN (frames récupérées vs l'ancien empilement, rapport du
@@ -4890,7 +4892,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self.restack_hist.insert(0, self.restack_info)
         del self.restack_hist[RESTACK_HIST_MAX:]
 
-    def _montrer_restack_hist(self):
+    def _montrer_restack_hist(self) -> None:
         """Bouton « ⓘ » : historique horodaté des re-stacks de la session
         (fenêtre modale, la plus récente en premier)."""
         lignes = self.restack_hist or ["(aucun re-stack cette session)"]
@@ -4902,7 +4904,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
     # ------------------------------------------------------------ thread d'acquisition
     # --- contrôles caméra QHY (jalon 25) : appelés UNIQUEMENT depuis le
     # thread de travail (les appels SDK ne sont jamais faits côté Tk).
-    def _appliquer_filtre_demande(self):
+    def _appliquer_filtre_demande(self) -> None:
         """Change le filtre si une demande est en attente. Protocole de la
         décision d'Alain (le changement ARRÊTE puis REPREND l'acquisition) :
         stop_live → déplacement + attente de fin (≤ 25 s) → begin_live →
@@ -4939,7 +4941,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 pass
             self._filtre_info = (f"Filtre {nom} : {e}", "#d04040")
 
-    def _appliquer_demande_tec(self):
+    def _appliquer_demande_tec(self) -> None:
         """Consigne de régulation ou arrêt du TEC — demande posée par le
         thread Tk, exécutée ICI (thread de travail), résultat → _tick."""
         dem = self._tec_demande
@@ -4956,7 +4958,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         except Exception as e:
             self._tec_info = (f"TEC : {e}", "#d04040")
 
-    def _sonder_controles(self):
+    def _sonder_controles(self) -> None:
         """Sondage des contrôles (roue à filtres / refroidissement) après
         la CONNEXION — plus besoin d'attendre une frame (jalon 26 : on doit
         pouvoir refroidir et choisir le filtre AVANT d'empiler). Toutes les
@@ -4983,7 +4985,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
     # (`_worker_pilotage`, `_worker_cadence_dossier`). Le jalon 106d découpera
     # « mesures ».
 
-    def _pousser_rendu(self):
+    def _pousser_rendu(self) -> None:
         """Jalon 55 : recalcule le composite/empilement courant (un réglage
         a changé SANS nouvelle brute — mode dossier consommé) et le pousse à
         l'UI : même chaîne que la fin de boucle (recadrage/fit inclus dans
@@ -5040,7 +5042,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         except queue.Full:
             pass
 
-    def _servir_demandes_sans_frame(self):
+    def _servir_demandes_sans_frame(self) -> None:
         """v2.37.0 — demandes de l'utilisateur qui NE dépendent PAS d'une
         nouvelle brute, servies par le worker même quand aucune frame n'est
         lisible ou que l'empilement est en pause.
@@ -5072,13 +5074,13 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self._pousser_rendu()              # le texte de mesure part à l'UI
 
     @staticmethod
-    def _histogrammes(img, plage=None):
+    def _histogrammes(img: np.ndarray, plage: Any=None) -> Any:
         """(conservé pour les bancs et les diagnostics) Histogrammes R/V/B
         d'une image — relais de `App._hist_canaux`, jalon 75."""
         return App._hist_canaux(img, plage)
 
     # ------------------------------------------------------------ rafraîchissement UI
-    def _planifier_tick(self, delai=30):
+    def _planifier_tick(self, delai: int=30) -> None:
         """Replanifie la boucle d'interface en MÉMORISANT l'identifiant `after`
         (v2.48.1).
 
@@ -5093,7 +5095,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self._tick_id = None            # fenêtre détruite : rien à faire
 
     @staticmethod
-    def _widget_vivant(w):
+    def _widget_vivant(w: Any) -> bool:
         """True si `w` est un widget Tk encore VALIDE (v2.48.1).
 
         `winfo exists` est la SEULE interrogation qui ne lève pas sur un widget
@@ -5107,7 +5109,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         except tk.TclError:
             return False
 
-    def _tick(self):
+    def _tick(self) -> None:
         """Boucle d'interface : rafraîchissements + consommation des files.
 
         v2.48.1 (retour macOS du 30/09/2026) : le CORPS est protégé et la
@@ -5128,7 +5130,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         finally:
             self._planifier_tick(30)
 
-    def _journal_erreur_tick(self, titre):
+    def _journal_erreur_tick(self, titre: str) -> None:
         """Écrit l'erreur de la boucle d'interface UNE fois par épisode.
 
         Un widget durablement détruit ferait 33 exceptions par seconde : sans
@@ -5140,7 +5142,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._tick_err_sig = sig
         journal.erreur(titre)
 
-    def _tick_corps(self):
+    def _tick_corps(self) -> None:
         # Jalon 84 : BATTEMENT pour le guet de gel — la PREUVE que le fil
         # d'interface rend la main (deux affectations, aucun coût mesurable).
         guet = getattr(self, "guet", None)
@@ -5563,7 +5565,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
     # chantier de refactoring vers `avastack/ui/renderer.py` (mixin `Renderer`,
     # dont `App` hérite) — code repris VERBATIM.
 
-    def _update_status(self, st):
+    def _update_status(self, st: Any) -> None:
         arc = f"Archive (re-stack) : {st.get('archive', 0)}"
         if st.get("archive_err"):
             arc += f" — {st['archive_err']}"
@@ -5645,7 +5647,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                      if st.get("crop_w") else "")))
 
 
-def activer_fenetre(root):
+def activer_fenetre(root: tk.Tk) -> bool:
     """macOS : met la fenêtre AU PREMIER PLAN et lui donne le focus (jalon 84).
 
     POURQUOI (retour RÉEL d'un testeur sous macOS 27 « Golden Gate »,
@@ -5675,7 +5677,7 @@ def activer_fenetre(root):
     return True
 
 
-def main():
+def main() -> None:
     """Point d'entrée : ouvre la fenêtre principale.
 
     v2.38.7 : `report_callback_exception` est remplacé par le journal — une

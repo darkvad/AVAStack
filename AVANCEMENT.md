@@ -9,65 +9,53 @@ dans le changelog du source et l'historique git.)
 
 ---
 
-## Session du 07/10/2026 — jalon 109 (v2.62.0 — LIVRÉ, COMMITÉ/POUSSÉ) — typage rétroactif de `processing/` (les 16 modules de traitement)
+## Session du 07/10/2026 — jalon 110 (v2.62.1 — LIVRÉ) — typage rétroactif du résidu de `ui/` (`ui/app.py` + `ui/reactivite.py`)
 
 ### But du jalon
-Premier des DEUX typages rétroactifs qui closent le **chantier de refactoring**
-(100→110) : annoter **les 16 modules de traitement** de `avastack/processing/` —
-annotations SEULES, AUCUN changement de comportement (rendu identique AU BIT).
-Suite du chantier d'extraction (106–108, `core/` + `ui/`) ; le second typage
-rétroactif (`ui/app.py` résiduel + `ui/*`, jalon 110) vient ensuite.
+Second et DERNIER des deux typages rétroactifs qui closent le **chantier de
+refactoring** (100→110) : annoter le **résidu de l'interface** — l'objet `App`
+resté dans `avastack/ui/app.py` et ses helpers, ainsi que les derniers modules
+`ui/*` (`reactivite.py`, `ui/__init__`) — annotations SEULES, AUCUN changement
+de comportement (rendu identique AU BIT).
 
-### Livré (v2.62.0)
-- Annotations SEULES sur les **16 modules** de `avastack/processing/` :
-  `calibration`, `framestore`, `veralux`, `denoise`, `sharpness`, `stars`,
-  `annotations`, `astrometrie`, `photometrie`, `composition`, `couleurs`,
-  `alignment`, `stacking`, `spcc`, `display` et le `__init__` (ré-exports
-  déclarés par `__all__`, comme `catalogues/__init__.py` — supprime 9 F401).
-- paramètres, valeurs de retour et attributs annotés (`np.ndarray`, `dict[...]`,
-  `tuple[...] | None`, PEP 604 `X | None`) — même style que la fondation (101).
-- **8 modules à 0 erreur pyright par la seule annotation** ; les 8 autres
-  (alignment, annotations, astrometrie, denoise, display, photometrie, spcc,
-  stacking — **86 erreurs au départ**) l'ont été avec des **ignores CIBLÉS**,
-  documentés et justifiés : surcharges OpenCV (`estimateAffinePartial2D`,
-  `fastNlMeansDenoising`, `ORB_create`), `np.float32(liste)` (rend bien un
-  ndarray, pyright voit un scalaire), stub astropy (`hd[0].header`),
-  rétrécissement Optionnel (pyright ne suit pas un attribut à travers une
-  variable booléenne) et **tampons de travail préalloués typés `Any`**
-  (`LiveStacker._moy/_sig/…`) — décision assumée, comme `Any` pour l'état
-  interne de `core/worker.py`.
-- **4 avertissements ruff PRÉEXISTANTS neutralisés par `# noqa`** (aucun
-  changement de comportement), comme `i_etape` au jalon 108 : ré-exports du
-  `__init__`, `import sys` inutilisé de `denoise`, variable `ic` de
-  `photometrie`, `scnr_actif`/`sd_actif`/`dm_actif` de `display`.
-- `__init__.py` : `__all__` ajouté (ré-exports publics figés) ; pointeurs :
-  changelog (`avastack/__init__.py`, **v2.62.0**), liste blanche du garde-fou
-  (**46 fichiers**).
+### Livré (v2.62.1)
+- Annotations SEULES sur `avastack/ui/app.py` (**217 fonctions** — `App` et ses
+  helpers), `avastack/ui/reactivite.py` (guet de gel) et le paquet `ui/__init__`.
+- Paramètres, valeurs de retour et les **29 attributs d'instance PROPRES** à
+  `app.py` annotés (`np.ndarray`, `dict[str, Any]`, `tuple[...] | None`, PEP 604).
+  Les **~139 autres attributs** étaient DÉJÀ déclarés par les mixins extraits
+  (`ui/panels/*`, `ui/renderer.py`, `ui/saver.py`…) — l'interface typée d'`App`
+  (analyse : seuls 29 attributs restaient propres à `app.py`).
+- **33 erreurs pyright préexistantes** résorbées par annotations + **ignores
+  CIBLÉS** documentés : attributs posés sur des widgets Tk (`Scale._pas/_boutons/
+  `_row/_lbl_txt`, `Frame._btn_header`), `cam.roles` (caméras SDK), surcharge
+  `config`, `float(... | None)`, dépaquetage d'un `delais.borne(...)[0]`
+  Optionnel, et 3 `dict` locaux désormais typés (`job`, `msg`, `resultat`).
+- **1 avertissement ruff PRÉEXISTANT neutralisé par `# noqa`** (ré-export de
+  `tracer_evt` par `app.py`, comme `i_etape` au jalon 108).
+- Liste blanche du garde-fou portée à **49 fichiers** ; pointeur changelog
+  (`avastack/__init__.py`, **v2.62.1**).
 
 ### Vérifications
-- Garde-fou `_test_refactoring_garde_fou.py` : **TOUT AU VERT** (surface **75**,
-  hash au bit, **pyright 0/46**).
-- `ruff` : `avastack/processing/` **All checks passed**.
-- Bancs traitement rejoués verts (07/10/2026) : `_test_align_jalon13.py`,
-  `_test_align_jalon15.py`, `_test_stars_jalon10.py`, `_test_rl_jalon11.py`,
-  `_test_sharp_live_jalon12.py`, `_test_dn_local_jalon8.py`,
-  `_test_denoise_live_jalon9.py`, `_test_calib_compo_jalon53.py`,
-  `_test_composition_jalon19.py`, `_test_couleurs_jalon22.py`,
-  `_test_couleur_luminance_jalon85.py`, `_test_boost_rouge_jalon86.py`,
-  `_test_chroma_structure_jalon67.py`, `_test_photometrie_jalon56.py`,
-  `_test_spcc_jalon58.py`, `_test_spcc_osc.py`, `_test_propagation_jalon56.py`,
-  `_test_fit_canaux_jalon54.py`, `_test_rejet_satellites_jalon6.py`,
-  `_test_veralux_jalon1.py`, `_test_veralux_jalon2.py`, `_test_veralux_jalon3.py`,
-  `_test_crop_intersection.py`, `_test_norm_commune_jalon61.py`,
-  `_test_histo_jalon75.py`, `_test_gradient_couche_jalon24.py`,
-  `_test_annotations_overlay_jalon96.py`. ⚠ `_test_chroma_nr_jalon63.py` et
-  `_test_chroma_halo_jalon65.py` : ÉCHECS **PRÉEXISTANTS** (chaîne « solveur
-  VeraLux », écart max 1.0) — reproduits À L'IDENTIQUE sur la version d'origine
-  (`git stash`) → **NON imputables au typage**.
+- Garde-fou `_test_refactoring_garde_fou.py` : **TOUT AU VERT** (syntaxe,
+  surface **75** symboles, hash au bit, **pyright 0/49**).
+- `ruff` : `avastack/ui/` et `avastack/processing/` **All checks passed**.
+- Bancs UI rejoués verts : `_test_ui_jalon5`, `_test_sliders_jalon6`,
+  `_test_histo_jalon75`, `_test_config_jalon6`, `_test_ui_visibilite_jalon47`,
+  `_test_dialogues_jalon84`, `_test_ui_robuste_jalon87`,
+  `_test_etat_calcul_jalon40`, `_test_zoom_pleine_res_jalon68`,
+  `_test_annotations_overlay_jalon96`, `_test_save_asseen_jalon5`,
+  `_test_graxpert_live_jalon4`, `_test_ui_robuste_v2_48_3`. ⚠ `_test_rafale_
+  fin_rendu_jalon80` (section [6] bout-en-bout, sensible au timing) : ÉCHEC
+  **PRÉEXISTANT** — reproduit À L'IDENTIQUE sur la version d'origine
+  (`git checkout`) → NON imputable au typage.
+- **CLÔTURE du chantier de refactoring (100→110)** : le résidu de `ui/app.py`
+  et les derniers modules `ui/` sont typés.
 
-### Prochaine étape du chantier
-**Jalon 110** — typage rétroactif de `ui/app.py` résiduel + `ui/*` : annotations
-finales ; vérif : garde-fou + pyright 0 erreur (v2.62.1).
+### Prochaine étape
+**Chantier de refactoring TERMINÉ (100→110).** Retour à la feuille de route
+« produit » : en attente d'essais réels (paquet ZIP chez le testeur,
+installateurs Windows/macOS) — cf. sections précédentes.
 
 ---
 
@@ -450,7 +438,7 @@ identique AU BIT). Travail étalé sur plusieurs sessions : chaque jalon est une
 | **107** | `ui/renderer.py` (typé) | rendu affichage + histogrammes + annotations | `_test_histo_jalon75.py`, `_test_zoom_pleine_res_jalon68.py`, `_test_annotations_overlay_jalon96.py` | v2.61.0 |
 | **108** ✅ | `ui/saver.py` + `ui/external_runner.py` (typés) | sauvegardes + traitement externe | `_test_save_*`, `_test_graxpert_live_jalon4.py`, `_test_bxt_entete_jalon69.py` | v2.61.1 |
 | **109** ✅ | Typage `processing/` (rétroactif) | annotations des 16 modules de traitement | garde-fou + bancs traitement | v2.62.0 |
-| **110** | Typage `ui/app.py` résiduel + `ui/*` (rétroactif) | annotations finales | garde-fou + pyright 0 erreur | v2.62.1 |
+| **110** ✅ | Typage `ui/app.py` résiduel + `ui/*` (rétroactif) | annotations finales | garde-fou + pyright 0 erreur | v2.62.1 |
 
 **Regroupement par session (indicatif)** :
 - **Session A** (faible risque) : 100, 101, 102
@@ -466,14 +454,15 @@ garde-fou les utilise s'ils sont présents (skip gracieux sinon) ; ② **CI GitH
 NON retenue** — le garde-fou reste un banc lancé À LA MAIN (interpréteur du venv),
 rejoué à chaque jalon.
 
-**État : JALON 109 LIVRÉ, COMMITÉ/POUSSÉ (v2.62.0)** — les **16 modules** de
-`avastack/processing/` sont TYPÉS (annotations SEULES, comportement inchangé AU
-BIT). 86 erreurs pyright résorbées, garde-fou VERT (surface 75, hash au bit,
-**pyright 0/46**), `ruff` PROPRE sur `processing/`, bancs traitement VERTS.
-Prochaine action = **jalon 110** (typage rétroactif de `ui/app.py` résiduel +
-`ui/*`, v2.62.1). Dernière version **validée en réel** : **v2.61.1** (108,
-testée par Alain) ; dernière **release publiée** : **v2.56.1** ; MSIX Store :
-**v2.50.0**.
+**État : JALON 110 LIVRÉ (v2.62.1) — CHANTIER DE REFACTORING TERMINÉ (100→110).**
+Le **résidu de l'interface** (`avastack/ui/app.py` — 217 fonctions —,
+`avastack/ui/reactivite.py` et `ui/__init__`) est TYPÉ (annotations SEULES,
+comportement inchangé AU BIT). 33 erreurs pyright résorbées, garde-fou VERT
+(surface 75, hash au bit, **pyright 0/49**), `ruff` PROPRE sur `ui/` et
+`processing/`, bancs UI VERTS (1 échec PRÉEXISTANT : `_test_rafale_fin_rendu_`
+`jalon80`, section [6], timing). Dernière version **validée en réel** :
+**v2.61.1** (108, testée par Alain) ; dernière **release publiée** : **v2.56.1** ;
+MSIX Store : **v2.50.0**.
 
 - **JALON PRÉCÉDENT (02/10/2026, jalon 88 — INSTALLATEUR WINDOWS EN PAQUET ZIP,
   CODE ÉCRIT, BANC VERT, EN ATTENTE DU TEST RÉEL).**

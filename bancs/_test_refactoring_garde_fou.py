@@ -181,6 +181,14 @@ FICHIERS_TYPES = (
     "avastack/processing/stacking.py",
     "avastack/processing/stars.py",
     "avastack/processing/veralux.py",
+    # Jalon 110 (chantier de refactoring) : TYPAGE RÉTROACTIF du RÉSIDU de `ui/`
+    # — l'objet `App` et ses helpers (`ui/app.py`, annotations SEULES, aucun
+    # changement de comportement), le GUET DE GEL du fil d'interface
+    # (`ui/reactivite.py`) et le paquet `ui/__init__`. Clôt le chantier (100→110) :
+    # la surface publique de `app.py` reste figée à 75 symboles.
+    "avastack/ui/__init__.py",
+    "avastack/ui/app.py",
+    "avastack/ui/reactivite.py",
 )
 
 

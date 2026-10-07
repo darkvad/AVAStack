@@ -31,6 +31,7 @@ import sys
 import threading
 import time
 import traceback
+from typing import Any
 
 from .. import journal
 
@@ -42,19 +43,19 @@ MAX_RAPPORTS = 5       # plafond par session (le journal ne doit pas exploser)
 class Guet:
     """Surveille le fil d'interface depuis un fil démon (cf. docstring)."""
 
-    def __init__(self, racine=None, seuil=SEUIL_S):
-        self.racine = racine            # fenêtre Tk (pour savoir si l'on vit)
-        self.seuil = float(seuil)
-        self.actif = False
-        self.battements = 0             # preuves de vie reçues
-        self.rapports = []              # [(retard_s, pile)] — lu par les bancs
-        self._dernier = time.monotonic()
-        self._fil = threading.get_ident()   # fil d'interface = celui qui bat
-        self._stop = threading.Event()
-        self._episode = False           # un rapport par gel
+    def __init__(self, racine: Any = None, seuil: float = SEUIL_S) -> None:
+        self.racine: Any = racine      # fenêtre Tk (pour savoir si l'on vit)
+        self.seuil: float = float(seuil)
+        self.actif: bool = False
+        self.battements: int = 0        # preuves de vie reçues
+        self.rapports: list[tuple[float, str]] = []   # lu par les bancs
+        self._dernier: float = time.monotonic()
+        self._fil: int = threading.get_ident()   # fil d'interface = celui qui bat
+        self._stop: threading.Event = threading.Event()
+        self._episode: bool = False     # un rapport par gel
 
     # ------------------------------------------------------- fil d'interface
-    def battement(self):
+    def battement(self) -> None:
         """Posé par la boucle d'interface : c'est la preuve qu'elle vit.
 
         Appelé DES MILLIERS de fois par session : il ne fait que deux
@@ -63,12 +64,12 @@ class Guet:
         self.battements += 1
         self._episode = False
 
-    def retard(self):
+    def retard(self) -> float:
         """Secondes écoulées depuis le dernier battement (bancs et veille)."""
         return time.monotonic() - self._dernier
 
     # ------------------------------------------------------------- pilotage
-    def demarrer(self):
+    def demarrer(self) -> bool:
         """Lance le fil de surveillance. → True si (re)lancé, False sinon.
 
         Deux refus, tous deux MESURÉS au jalon 84 :
@@ -91,7 +92,7 @@ class Guet:
                          name="guet-interface").start()
         return True
 
-    def fenetre_visible(self):
+    def fenetre_visible(self) -> bool:
         """La fenêtre surveillée est-elle réellement AFFICHÉE ? (jamais d'exception)"""
         if self.racine is None:
             return True
@@ -100,12 +101,12 @@ class Guet:
         except Exception:
             return False
 
-    def arreter(self):
+    def arreter(self) -> None:
         self._stop.set()
         self.actif = False
 
     # ---------------------------------------------------------------- veille
-    def _veille(self):
+    def _veille(self) -> None:
         while not self._stop.is_set():
             time.sleep(PERIODE_S)
             try:
@@ -113,7 +114,7 @@ class Guet:
             except Exception:        # ce fil ne doit JAMAIS tuer l'appli
                 pass
 
-    def _tour(self):
+    def _tour(self) -> None:
         if not self.actif or self._episode:
             return
         retard = self.retard()
@@ -132,7 +133,7 @@ class Guet:
             "ci-dessous qui désigne le responsable) — pile du fil :%s%s"
             % (retard, os.linesep, pile))
 
-    def pile_fil_interface(self):
+    def pile_fil_interface(self) -> str:
         """Pile du fil d'interface, lue SANS sa coopération (`sys._current_frames`).
 
         C'est le cœur du diagnostic : elle nomme la fonction dans laquelle

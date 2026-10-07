@@ -18,9 +18,38 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.62.0"
+AVASTACK_VERSION = "2.62.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.62.1 : CHANTIER DE REFACTORING — TYPAGE RÉTROACTIF du RÉSIDU de `ui/`
+#   (jalon 110 — clôture du chantier 100→110)
+#   - ANNOTATIONS SEULES (aucun changement de comportement, rendu identique AU
+#     BIT) sur `avastack/ui/app.py` (l'objet `App` — 217 fonctions — et ses
+#     helpers), `avastack/ui/reactivite.py` (guet de gel du fil d'interface) et
+#     le paquet `ui/__init__`. Paramètres, valeurs de retour et les 29 attributs
+#     d'instance PROPRES à `app.py` annotés (`np.ndarray`, `dict[...]`,
+#     `tuple[...] | None`, PEP 604) — les ~139 autres attributs étaient déjà
+#     DÉCLARÉS par les mixins extraits (`ui/panels/*`, `ui/renderer.py`…), qui
+#     font office d'interface typée pour `App`.
+#   - 33 erreurs pyright préexistantes résorbées par annotations + ignores
+#     CIBLÉS documentés (motif des jalons 103/107/108/109) : attributs posés sur
+#     des widgets Tk (`Scale._pas/_boutons/_row/_lbl_txt`, `Frame._btn_header`),
+#     `cam.roles` (caméras SDK sans cet attribut dans le stub), surcharge
+#     `config`, `float(... | None)`, dépaquetage d'un `delais.borne(...)[0]`
+#     Optionnel, et 3 `dict` locaux désormais typés (`job`, `msg`, `resultat`).
+#   - 1 avertissement ruff PRÉEXISTANT neutralisé par un commentaire `noqa`
+#     ciblé (ré-export de `tracer_evt` par `app.py`, comme `i_etape` au jalon 108).
+#   - GARDE-FOU (jalon 100) : liste blanche portée à 49 fichiers ; TOUT AU VERT
+#     (syntaxe, surface publique 75 symboles, hash d'empilement au bit,
+#     **pyright 0 erreur / 49 fichiers**). `ruff` : `ui/` + `processing/` PROPRES.
+#   - BANCS UI rejoués VERTS (ui 5, sliders 6, histo 75, config 6, visibilité 47,
+#     dialogues 84, robuste 87, état calcul 40, zoom pleine res 68, annotations
+#     overlay 96, save as-seen 5, graxpert live 4, robuste v2.48.3). ÉCHEC
+#     PRÉEXISTANT de `_test_rafale_fin_rendu_jalon80` (section [6] bout-en-bout,
+#     sensible au timing) : reproduit À L'IDENTIQUE sur la version d'origine
+#     (git checkout) — NON imputable au typage.
+#   - CLÔTURE du chantier de refactoring (100→110) : le résidu de `ui/app.py` et
+#     les derniers modules `ui/` sont typés.
 # v2.62.0 : CHANTIER DE REFACTORING — TYPAGE RÉTROACTIF de `processing/`
 #   (jalon 109, les 16 modules de traitement)
 #   - ANNOTATIONS SEULES (aucun changement de comportement, rendu identique AU
