@@ -57,6 +57,12 @@ de comportement (rendu identique AU BIT).
 « produit » : en attente d'essais réels (paquet ZIP chez le testeur,
 installateurs Windows/macOS) — cf. sections précédentes.
 
+### Clôture de session (07/10/2026)
+Règles de codage du chantier **gravées dans `CLAUDE.md`** (nouvelle section
+« Règles de codage (permanentes — issues du chantier 100→110) ») : elles
+s'appliquent désormais à TOUTE modification ou ajout de code, pour éviter un
+futur refactoring lourd. Jalon 110 commité et poussé (`b6e58c8`).
+
 ---
 
 ## HISTORIQUE (07/10/2026, jalon 107, v2.61.0 — LIVRÉ, TESTÉ EN RÉEL, COMMITÉ/POUSSÉ) — `ui/renderer.py` (rendu + annotation)

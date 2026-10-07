@@ -447,6 +447,66 @@ est un banc lancé à la main avec l'interpréteur du venv.
 Roadmap détaillée et état courant : `AVANCEMENT.md` (section « CHANTIER EN
 COURS — REFACTORING », jalons 100→110).
 
+**Chantier TERMINÉ (v2.62.1, jalon 110)** : `core/`, `ui/` et `processing/` sont
+entièrement typés. Les règles de codage qui en découlent — désormais valables
+pour TOUT code futur — sont dans la section « Règles de codage » ci-dessous.
+
+## Règles de codage (permanentes — issues du chantier 100→110)
+
+Règles mises en œuvre pendant le chantier de refactoring (jalons 100→110) et
+désormais **appliquées SYSTÉMATIQUEMENT à toute modification ou ajout de code**,
+pour ne plus avoir à refaire un tel chantier. Elles complètent la « Décision
+d'architecture » et les « Conventions non-négociables » ci-dessus.
+
+- **Zéro régression de comportement** : toute modification garde le rendu
+  identique AU BIT. Le banc GARDE-FOU `bancs/_test_refactoring_garde_fou.py` est
+  rejoué après CHAQUE changement — ① syntaxe de tous les `.py`, ② surface
+  publique de `app.py`, ③ hash d'un empilement simulé, ④ `pyright` 0 erreur sur
+  la liste blanche. Avant d'imputer un échec de banc à une modification, le
+  REPRODUIRE sur la version d'origine (`git checkout` sur le fichier) : un échec
+  fautif existe parfois déjà (échecs PRÉEXISTANTS, cf. AVANCEMENT.md).
+- **Typage systématique** : tout module NOUVEAU et tout code AJOUTÉ est typé —
+  paramètres, valeurs de retour ET attributs d'instance. `pyright` reste à
+  **0 erreur** sur la liste blanche (`FICHIERS_TYPES` du garde-fou) ; un module
+  typé ajouté y entre IMMÉDIATEMENT. `pyright` et `ruff` sont des outils de DEV
+  (`requirements-dev.txt`), JAMAIS des dépendances d'exécution.
+- **Style d'annotation** : PEP 604 `X | None` (jamais `Optional[...]`) ; types
+  `np.ndarray`, `dict[...]`, `tuple[...] | None` ; `self` n'est JAMAIS annoté ;
+  `Any` assumé et commenté pour l'ÉTAT INTERNE vivant, les tampons de travail
+  préalloués et les attributs non inférables ; constantes de module et attributs
+  d'instance annotés.
+- **Interfaces typées par les mixins** : les attributs PARTAGÉS (widgets Tk,
+  variables Tk, état) sont DÉCLARÉS dans le mixin qui les crée (`ui/panels/*`,
+  `ui/renderer.py`, `ui/saver.py`, `core/worker.py`…) — déclarations SEULES,
+  aucune valeur, aucune logique ; `app.py` ne (re)déclare que ses attributs
+  PROPRES. C'est ce qui évite les redéclarations pyright entre `App` et ses
+  mixins.
+- **Ignores CIBLÉS, jamais globaux** : un faux positif pyright (surcharges
+  OpenCV/Tk, attribut posé dynamiquement sur un widget, stub absent, `np.float32`
+  d'une liste) se règle par `# pyright: ignore[<règle>]` SUR LA LIGNE concernée,
+  avec un commentaire qui dit POURQUOI. Jamais de `# type: ignore` nu, jamais
+  d'ignore au niveau du fichier.
+- **Jamais casser la surface publique** : les symboles ré-exportés par `app.py`
+  (API consommée par le reste du projet et les bancs) RESTENT exportés ; un
+  import devenu inutilisé DANS le fichier reste en RÉ-EXPORT marqué
+  `# noqa: F401 (ré-export)`. De même, un avertissement `ruff` PRÉEXISTANT se
+  neutralise par `# noqa`, JAMAIS en supprimant le code (motifs `i_etape`,
+  `tracer_evt`).
+- **Extraire par mixin, VERBATIM** : un découpage se fait par mixins dont `App`
+  hérite — méthodes reprises AU CARACTÈRE PRÈS, `self` reste l'instance `App`
+  (comportement inchangé AU BIT) ; les lectures/écritures de `CONFIG` /
+  `sauver_config` passent par `_globals_app()` (résolution TARDIVE) pour
+  préserver l'interception des bancs.
+- **Vérifier avant de conclure** : `ast.parse` après CHAQUE édition ; après un
+  jalon, rejouer le garde-fou + les bancs du domaine touché ; `ruff check` propre
+  sur les dossiers typés. Fins de ligne CRLF (dépôt sous Windows,
+  `core.autocrlf=true`, jamais de BOM ajouté) ; commentaires et docstrings en
+  FRANÇAIS ; ne pas reformater le style existant (ruff ne vérifie que E9 et F).
+- **Livrer de façon traçable** : bump `AVASTACK_VERSION` + entrée de changelog
+  (`avastack/__init__.py`) + mise à jour d'`AVANCEMENT.md`, dans la même
+  réponse ; toute dépendance Python nouvelle est signalée à Alain (cf.
+  « Conventions non-négociables »).
+
 ## Fichier tiers : veralux_core_headless.py (GPL-3.0-or-later)
 
 `veralux_core_headless.py` (moteur d étirement hyperbolique VeraLux, extrait
