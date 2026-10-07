@@ -17,9 +17,48 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.59.0"
+AVASTACK_VERSION = "2.59.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.59.1 : CHANTIER DE REFACTORING — `ui/panels/` (jalon 105b, vague « traitement »)
+#   - Cinq modules NEUFS (TYPÉS) dans `avastack/ui/panels/` : la DEUXIÈME vague
+#     d'extraction de la COLONNE GAUCHE, sous forme de mixins dont `App` HÉRITE
+#     (méthodes reprises VERBATIM — `self` reste l'instance `App`, séquence de
+#     pose et comportement inchangés AU BIT) :
+#       · `compo.py` — `PanneauComposition` : « Composition multi-filtres » ;
+#       · `calib.py` — `PanneauCalibration` : « Calibration » ;
+#       · `stack.py` — `PanneauEmpilement` : « Empilement » (stats, seeing,
+#         re-stack, astrométrie + annotation, catalogues & données SPCC,
+#         photométrie, SPCC, rejet, équilibrage des canaux, Linear Fit, filtre
+#         anti-brutes floues) ;
+#       · `bgnoise.py` — `PanneauFondGrain` : « Fond et grain » ;
+#       · `sharp.py` — `PanneauNette` : « Netteté live ».
+#     `_build_ui` appelle désormais `self._poser_panneau_*` (9 appels) ;
+#     `avastack/ui/app.py` : 9 509 → 8 922 lignes.
+#   - `stack.py` lit `CONFIG` par RÉSOLUTION TARDIVE (`_globals_app()`, motif du
+#     correctif du jalon 105a dans `ui/widgets/collapsible.py`) : les mocks des
+#     bancs (`ui.CONFIG`) restent EFFECTIFS et le vrai config.json n'est jamais
+#     écrit pendant un test. En production, comportement IDENTIQUE (même objet).
+#   - `ROLES` n'est plus utilisé DANS `app.py` (le panneau Composition a migré
+#     vers `ui/panels/compo.py`) mais reste RÉ-EXPORTÉ (`# noqa: F401`) :
+#     surface publique INCHANGÉE (75 symboles).
+#   - `pyright` 0 ERREUR sur les 20 fichiers typés ; `ruff` : seuls les
+#     2 avertissements PRÉEXISTANTS de `app.py` (`tracer_evt`, `i_etape`).
+#   - Vérifications : garde-fou VERT ; bancs rejoués verts —
+#     `_test_compo_ui_jalon19.py`, `_test_sharp_live_jalon12.py`,
+#     `_test_ui_visibilite_jalon47.py`, `_test_config_jalon6.py`,
+#     `_test_annotations_overlay_jalon96.py`, `_test_norm_commune_jalon61.py`,
+#     `_test_spcc_osc.py`, `_test_ui_robuste_jalon87.py`,
+#     `_test_sliders_jalon6.py`, `_test_ui_moteur_jalon41.py`,
+#     `_test_reset_empilement_jalon76.py`, `_test_restack_jalon16.py`,
+#     `_test_restack_compo_jalon20.py`, `_test_histo_jalon75.py`,
+#     `_test_zoom_pleine_res_jalon68.py`, `_test_dialogues_jalon84.py`,
+#     `_test_couleur_luminance_jalon85.py`, `_test_ergonomie_jalon52.py`,
+#     `_test_cadence_jalon42.py`, `_test_capacites_ui_jalon32.py`,
+#     `_test_expo_affichage_jalon34.py`. (`_test_rafale_fin_rendu_jalon80.py`
+#     présente un échec de TIMING PRÉEXISTANT — reproduit sur l'arbre pristine,
+#     indépendant de cette extraction.)
+#
 # v2.59.0 : CHANTIER DE REFACTORING — `ui/panels/` (jalon 105a, vague « sources »)
 #   - Quatre modules NEUFS (TYPÉS) + `__init__.py` dans `avastack/ui/panels/` :
 #     la première vague d'extraction de la COLONNE GAUCHE, sous forme de mixins

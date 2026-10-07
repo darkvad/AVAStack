@@ -47,10 +47,14 @@ from ..processing import alignment as align_mod
 # ici pour ne pas rompre la surface publique figée de `app.py` (surveillée par
 # le banc garde-fou, qui compte les noms importés du paquet `avastack`).
 from ..processing import display as display_mod           # noqa: F401 (ré-export)
-from ..processing.composition import (COMPOSITIONS, ROLES,
-                                      CompositeStacker, extraire_canal,
-                                      composition_pour_roles, role_de_filtre,
-                                      roles_de)
+from ..processing.composition import (COMPOSITIONS, CompositeStacker,
+                                      extraire_canal, composition_pour_roles,
+                                      role_de_filtre, roles_de)
+# Jalon 105b : `ROLES` n'est plus utilisé DANS `app.py` (le panneau
+# « Composition multi-filtres » vit désormais dans `ui/panels/compo.py`) mais
+# reste RÉ-EXPORTÉ ici pour ne pas rompre la surface publique figée de `app.py`
+# (banc garde-fou, qui compte les noms importés du paquet `avastack`).
+from ..processing.composition import ROLES               # noqa: F401 (ré-export)
 # Jalon 104 : `MODES_L` n'est plus utilisé DANS `app.py` (restauration de la
 # composition migrée vers `ui/config_ui.py`) mais reste RÉ-EXPORTÉ ici pour ne
 # pas rompre la surface publique figée de `app.py` (banc garde-fou).
@@ -104,6 +108,18 @@ from .panels.camera import PanneauCamera as _PanneauCamera, _fmt_expo
 from .panels.cadence import PanneauCadence as _PanneauCadence
 from .panels.folder import PanneauDossierSurveille as _PanneauDossierSurveille
 
+# Jalon 105b (chantier de refactoring) : la 2e vague de PANNEAUX de la
+# colonne gauche — les panneaux « traitement » — vit aussi dans
+# `avastack/ui/panels/` (modules TYPÉS, mixins dont `App` HÉRITE, méthodes
+# VERBATIM). `stack.py` lit `CONFIG` par résolution TARDIVE (`_globals_app`)
+# pour préserver l'interception des bancs (`ui.CONFIG`), comme le correctif
+# du jalon 105a dans `ui/widgets/collapsible.py`.
+from .panels.compo import PanneauComposition as _PanneauComposition
+from .panels.calib import PanneauCalibration as _PanneauCalibration
+from .panels.stack import PanneauEmpilement as _PanneauEmpilement
+from .panels.bgnoise import PanneauFondGrain as _PanneauFondGrain
+from .panels.sharp import PanneauNette as _PanneauNette
+
 from ..processing import denoise as denoiser_local
 from ..processing import couleurs as couleurs_mod
 from ..processing import composition as composition_mod
@@ -139,12 +155,18 @@ from ..external.detection import (
 
 class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
           _PanneauFichiers, _PanneauCamera, _PanneauCadence,
-          _PanneauDossierSurveille):
+          _PanneauDossierSurveille, _PanneauComposition,
+          _PanneauCalibration, _PanneauEmpilement, _PanneauFondGrain,
+          _PanneauNette):
     # Jalon 105a (chantier de refactoring) : `App` hérite AUSSI des mixins des
     # PANNEAUX « sources » extraits de cet objet vers `avastack/ui/panels/`
     # (fichiers de travail, caméra, cadence, dossier surveillé). `self` reste
     # l'instance `App` : l'ordre de pose des widgets et le comportement sont
     # inchangés AU BIT.
+    # Jalon 105b (chantier de refactoring) : `App` hérite EN PLUS des mixins des
+    # PANNEAUX « traitement » extraits vers `avastack/ui/panels/` (composition,
+    # calibration, empilement, fond et grain, netteté live). Mêmes garanties :
+    # `self` reste l'instance `App`, pose et comportement inchangés AU BIT.
     # Jalon 102 (chantier de refactoring) : les constantes de l'interface ont
     # été EXTRAITES dans `avastack/ui/constants.py` (typé). On ne conserve ici
     # que des RÉ-EXPOSITIONS en attributs de classe, pour que `App.<NOM>` et
@@ -709,638 +731,29 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # source, jalon 47).
         self._poser_panneau_dossier_surveille(left)
 
-        # --- Composition multi-filtres (jalon 19) : 1 à 4 dossiers surveillés,
-        # un RÔLE (filtre) par dossier ; le composite temps réel combine les
-        # empilements par rôle selon la composition choisie.
-        # NOTE jalon 95 : self.frm_compo = contenu interne (compat widgets),
-        # self._lf_composition = LabelFrame externe (pour pack/before).
-        self._lf_composition, self.frm_compo, _, _ = self._creer_section_pliable(
-            left, "composition")
-        box = self.frm_compo
-        row_c = ttk.Frame(self.frm_compo)
-        row_c.pack(fill="x")
-        ttk.Label(row_c, text="Composition :").pack(side="left")
-        self.var_compo = tk.StringVar(value="HOO")
-        cb_compo = ttk.Combobox(row_c, textvariable=self.var_compo,
-                                state="readonly", width=8,
-                                values=list(COMPOSITIONS))
-        cb_compo.pack(side="left", padx=4)
-        cb_compo.bind("<<ComboboxSelected>>", lambda e: self._on_compo())
-        self.lbl_compo_info = ttk.Label(box, text="", foreground="#666666")
-        self.lbl_compo_info.pack(anchor="w")
-        # 4 lignes fixes : rôle (filtre) + dossier. Une ligne sans rôle = non
-        # utilisée ; le remplissage des rôles CONTRAINT la composition
-        # (cf. _on_compo_roles), la composition pré-remplit les rôles.
-        self.var_compo_roles = [tk.StringVar(value="") for _ in range(4)]
-        self.var_compo_dossiers = [tk.StringVar(value="") for _ in range(4)]
-        for i in range(4):
-            row = ttk.Frame(box)
-            row.pack(fill="x", pady=1)
-            cb_role = ttk.Combobox(row, textvariable=self.var_compo_roles[i],
-                                   state="readonly", width=5,
-                                   values=list(ROLES))
-            cb_role.pack(side="left")
-            cb_role.bind("<<ComboboxSelected>>", self._on_compo_roles)
-            ttk.Entry(row, textvariable=self.var_compo_dossiers[i]).pack(
-                side="left", fill="x", expand=True, padx=(4, 0))
-            ttk.Button(row, text="…", width=3,
-                       command=lambda i=i: self._pick_dossier_compo(i)
-                       ).pack(side="left", padx=(4, 0))
-        # Radio « Canal L » (utile en LRGB quand le dossier L est vide) :
-        # L synthétisé = luminance du composite (combine identité) ;
-        # dégradé = composite RGB pur (décisions d'Alain, 18/09/2026).
-        row_l = ttk.Frame(box)
-        row_l.pack(fill="x", pady=(4, 0))
-        ttk.Label(row_l, text="Canal L (si dossier L vide) :").pack(side="left")
-        self.var_compo_mode_l = tk.StringVar(value="synthetise")
-        self.rb_l_syn = ttk.Radiobutton(row_l, text="Synthétisé",
-                                        value="synthetise",
-                                        variable=self.var_compo_mode_l)
-        self.rb_l_deg = ttk.Radiobutton(row_l, text="Dégradé RGB",
-                                        value="degrade",
-                                        variable=self.var_compo_mode_l)
-        self.rb_l_syn.pack(side="left", padx=(6, 0))
-        self.rb_l_deg.pack(side="left", padx=(6, 0))
-        # Gains R/G/B du composite : multiplicatifs APRÈS la normalisation
-        # linéaire par canal — réglage à chaud de l'équilibre colorimétrique
-        # (appliqués au composite dès la frame suivante, cf. _tick).
-        row_g = ttk.Frame(box)
-        row_g.pack(fill="x", pady=(4, 0))
-        ttk.Label(row_g, text="Gains R/G/B :").pack(side="left")
-        self.var_compo_gains = {canal: tk.StringVar(value="1.0")
-                                for canal in ("R", "G", "B")}
-        for canal in ("R", "G", "B"):
-            ttk.Entry(row_g, textvariable=self.var_compo_gains[canal],
-                      width=5).pack(side="left", padx=(4, 0))
-        ttk.Button(box, text="🔎 Détecter les filtres (FITS FILTER)",
-                   command=self._detecter_filtres).pack(fill="x", pady=(6, 0))
-        # --- v2.36.0 : NORMALISATION COMMUNE DES CANAUX (option, décision
-        # d'Alain du 25/09/2026). Décrivée en clair : c'est un changement de
-        # comportement visible (fond et grain), pas un réglage cosmétique.
-        self.var_norm_commune = tk.BooleanVar(value=False)
-        ttk.Checkbutton(box, text="Normalisation commune des canaux",
-                        variable=self.var_norm_commune,
-                        command=self._on_norm_commune).pack(anchor="w",
-                                                            pady=(6, 0))
-        ttk.Label(box, text=(
-            "Décoché : chaque canal est calé sur SES percentiles, avec SON point "
-            "noir — le fond du composite suit alors son propre bruit : empiler "
-            "plus ne réduit plus le grain du fond, et il reste coloré. "
-            "Coché : les trois canaux partagent la MÊME ÉCHELLE (celle du vert) "
-            "et aucun point noir n'est soustrait → le fond garde son niveau "
-            "physique (son grain diminue enfin en 1/√n) et les coefficients SPCC "
-            "s'appliquent sur la base où ils ont été mesurés. Le fond garde sa "
-            "couleur physique (bleu-rouge) : la neutraliser avec l'équilibrage "
-            "des canaux ou le recalage colorimétrique."),
-            foreground="#888888", wraplength=310).pack(anchor="w")
-        # Jalon 45/47 : le choix de cadence est COMMUN aux deux modes —
-        # voir le cadre unique `frm_rafale` (plus de combobox ici).
-        self._on_compo()    # pré-remplit les lignes de rôle de la compo par défaut
+        # --- Composition multi-filtres (panneau extrait au jalon 105b dans
+        # `avastack/ui/panels/compo.py` ; jalon 19).
+        self._poser_panneau_compo(left)
 
-        # --- Calibration (ancre STABLE : les cadres commutables jalon 47 se
-        # replacent toujours juste avant elle — l'ordre des cadres ne bouge
-        # jamais, quel que soit le nombre d'allers-retours de source)
-        # NOTE : self.frm_calibration pointe vers le conteneur EXTERNE de la
-        # section (porteur encadré, jalon 99) — l'ancre de _maj_visibilite_cadres.
-        # Le contenu est directement dans `box` (alias frm_calibration_interne).
-        self._lf_calibration, box, _, _ = self._creer_section_pliable(
-            left, "calibration")
-        self.frm_calibration = self._lf_calibration
-        self.frm_calibration_interne = box  # alias pratique pour les sous-widgets
-        ttk.Button(box, text="Charger un dark…", command=self._load_dark).pack(fill="x", pady=1)
-        ttk.Button(box, text="Charger un flat…", command=self._load_flat).pack(fill="x", pady=1)
-        ttk.Button(box, text="Effacer calibration",
-                   command=self._clear_calib).pack(fill="x", pady=1)
-        self.lbl_dark = ttk.Label(box, text="Dark : —", foreground="#888888")
-        self.lbl_dark.pack(anchor="w")
-        self.lbl_flat = ttk.Label(box, text="Flat : —", foreground="#888888")
-        self.lbl_flat.pack(anchor="w")
-        # Jalon 53 : chaque dark et chaque flat peut viser UN rôle (filtre)
-        # du cadre Composition — le choix se fait AU CLIC sur « Charger un
-        # dark/flat… » (boîte « ce dark s'applique à : »), jamais avant
-        # (retour d'Alain : plus intuitif). Les libellés détaillent TOUT ce
-        # qui est chargé : l'unique PUIS chaque couche active (— si le
-        # master de cette couche manque), cf. _maj_libelles_calib.
+        # --- Calibration (panneau extrait au jalon 105b dans
+        # `avastack/ui/panels/calib.py` ; ancre STABLE des cadres commutables
+        # du jalon 47).
+        self._poser_panneau_calibration(left)
 
-        # --- Empilement
-        self._lf_empilement, box, _, _ = self._creer_section_pliable(
-            left, "empilement")
-        self.lbl_stats = ttk.Label(box, text="Frames : 0\nPixels rejetés (σ) : 0"
-                                             "\nFrames non alignées : 0\nAlign. : —")
-        self.lbl_stats.pack(anchor="w", pady=(0, 3))
-        # Jalon 10 : seeing live (FWHM médiane + nombre d'étoiles) — mesure
-        # faite par le thread d'acquisition sur l'aperçu, toutes les 3 s.
-        self.lbl_seeing = ttk.Label(box, text="Seeing (FWHM) : —",
-                                    foreground="#888888")
-        self.lbl_seeing.pack(anchor="w", pady=(0, 3))
-        # Champ « Nom cible » (reprend la valeur saisissable du panneau Astrométrie)
-        row_nom = ttk.Frame(box)
-        row_nom.pack(fill="x", pady=(2, 0))
-        ttk.Label(row_nom, text="Nom cible :").pack(side="left", padx=(6, 0))
-        # self.var_nom_cible_manual existe déjà (créé dans le panneau Astrométrie)
-        ttk.Entry(row_nom, textvariable=self.var_nom_cible_manual, width=30).pack(side="left", padx=(2, 0), fill="x", expand=True)
-        rowf = ttk.Frame(box)
-        rowf.pack(fill="x", pady=2)
-        # v2.41.0 : ce bouton fait une VRAIE remise à zéro (cf.
-        # _reset_empilement) — il ne se contente plus de poser un drapeau que
-        # le worker ne lisait qu'en TRAITANT une frame (constat d'Alain,
-        # 28/09/2026 : « il faudrait que le bouton réinitialiser réinitialise
-        # vraiment »).
-        ttk.Button(rowf, text="Réinitialiser l'empilement",
-                   command=self._reset_empilement
-                   ).pack(side="left", expand=True, fill="x", padx=1)
-        ttk.Button(rowf, text="Réf. = empilement",
-                   command=lambda: setattr(self, "ref_request", True)
-                   ).pack(side="left", expand=True, fill="x", padx=1)
-        # Jalon 13 : rafraîchissement AUTOMATIQUE de la référence
-        # d'alignement — la dérive lente (flexure, erreur périodique)
-        # éloigne les frames de la référence initiale et l'appariement
-        # dégénère ; une référence jeune (l'empilement courant) suit.
-        # « jamais » = ancien comportement (référence figée).
-        rowr = ttk.Frame(box)
-        rowr.pack(fill="x", pady=2)
-        ttk.Label(rowr, text="Rafraîchir la référence (frames) :").pack(side="left")
-        self.var_ref_refresh = tk.StringVar(value="20")
-        self.cb_ref_refresh = ttk.Combobox(
-            rowr, textvariable=self.var_ref_refresh, state="readonly", width=6,
-            values=["jamais", "10", "20", "30", "50"])
-        self.cb_ref_refresh.pack(side="left", padx=4)
-        self.cb_ref_refresh.bind("<<ComboboxSelected>>",
-                                 lambda e: self._on_ref_refresh())
-        # Jalon 16 : re-stack « à la Siril » — re-ancre l'alignement sur la
-        # meilleure brute archivée (score = nb d'étoiles) et RECALCULE tout
-        # l'empilement depuis l'archive. Déclencheur auto : une brute bat
-        # nettement la référence courante ; ce bouton force le recalcul.
-        ttk.Button(box, text="⟳ Re-stacker (meilleure brute)",
-                   command=lambda: setattr(self, "restack_request", True)
-                   ).pack(fill="x", pady=2)
-        # Jalon 18 : ligne d'état DÉDIÉE au re-stack (retour réel d'Alain :
-        # « pas simple de voir le restack » — le message de la ligne
-        # d'alignement est écrasé par la frame suivante) + bouton « ⓘ » =
-        # historique horodaté des re-stacks de la session. Gris = rien,
-        # vert = re-stack réussi, ambre = échec.
-        row_rs = ttk.Frame(box)
-        row_rs.pack(fill="x", pady=(2, 0))
-        # v2.38.10 : le bouton « ⓘ » est posé EN PREMIER (`side="right"`) et le
-        # texte prend ce qui reste. POURQUOI : `pack` alloue dans l'ordre de
-        # pose et ABANDONNE le widget qui ne trouve plus de place — mesuré sur
-        # cette ligne, un message de re-stack long (≈110 caractères) faisait
-        # disparaître le bouton ⓘ (requête 28 px, allocation 0). Posé en
-        # premier, il ne peut plus être sacrifié ; le texte, lui, est rogné.
-        ttk.Button(row_rs, text="ⓘ", width=3,
-                   command=self._montrer_restack_hist).pack(side="right",
-                                                            padx=(4, 0))
-        self.lbl_restack = ttk.Label(row_rs, text="Re-stack : —",
-                                     foreground="#888888", wraplength=250)
-        self.lbl_restack.pack(side="left", fill="x", expand=True)
-        # Jalon 56 : ASTROMÉTRIE de l'empilement — case + indices de la cible.
-        # Le solveur interne résout l'astrométrie UNE fois sur l'empilement
-        # (ces indices l'y aident), puis le WCS est PROPAGÉ à chaque
-        # réempilement. En mode dossier, les champs peuvent rester VIDES : des
-        # indices sont alors lus dans l'en-tête des brutes (OBJCTRA/OBJCTDEC).
-        # Interprétation : « 0h42m44s » ou « 00 42 44 » = HEURES (« 0.7123h »
-        # aussi) ; un décimal nu (« 10.68333 ») = DEGRÉS. La ligne d'état
-        # rappelle les indices retenus — aucune interprétation silencieuse.
-        # v2.38.10 : TROIS lignes au lieu d'une. Mesure (constat d'Alain,
-        # 27/09/2026 : « le champ et le bouton pour récupérer les coordonnées
-        # depuis les brutes ne sont pas visibles sans agrandir la colonne ») :
-        # les huit widgets de cette ligne demandaient ≈490 px pour 318 px
-        # disponibles → `pack` ABANDONNAIT les deux derniers, le champ
-        # « champ° » et le bouton 📷, sans aucun message. Une ligne de contrôles
-        # à taille FIXE ne sait pas se replier : elle se répartit sur plusieurs
-        # lignes (la case d'abord, puis AD/Dec, puis champ° + le bouton 📷).
-        row_a = ttk.Frame(box)
-        row_a.pack(fill="x", pady=(4, 0))
-        self.var_astro = tk.BooleanVar(value=False)
-        ttk.Checkbutton(row_a, text="Astrométrie", variable=self.var_astro,
-                        command=self._on_astro).pack(side="left")
-        row_ad = ttk.Frame(box)
-        row_ad.pack(fill="x", pady=(2, 0))
-        ttk.Label(row_ad, text="AD :").pack(side="left", padx=(6, 0))
-        self.var_astro_ra = tk.StringVar(value="")
-        e_ra = ttk.Entry(row_ad, textvariable=self.var_astro_ra, width=11)
-        e_ra.pack(side="left", padx=(2, 0))
-        ttk.Label(row_ad, text="Dec :").pack(side="left", padx=(4, 0))
-        self.var_astro_dec = tk.StringVar(value="")
-        e_dec = ttk.Entry(row_ad, textvariable=self.var_astro_dec, width=11)
-        e_dec.pack(side="left", padx=(2, 0))
-        row_ch = ttk.Frame(box)
-        row_ch.pack(fill="x", pady=(2, 0))
-        ttk.Label(row_ch, text="champ° :").pack(side="left", padx=(6, 0))
-        self.var_astro_champ = tk.StringVar(value="")
-        e_ch = ttk.Entry(row_ch, textvariable=self.var_astro_champ, width=6)
-        e_ch.pack(side="left", padx=(2, 0))
-        # Bouton : lire AD/Dec/champ depuis l'image courante (dernière brute
-        # reçue ou dernier empilement sauvegardé) — remplit les trois champs.
-        ttk.Button(row_ch, text="📷", width=3,
-                   command=self._lire_indices_image).pack(side="left",
-                                                          padx=(6, 0))
-        # Les champs sont relus à la VALIDATION (Entrée / sortie du champ) —
-        # pas à chaque frappe : un indice à moitié tapé serait refusé pour rien.
-        for e in (e_ra, e_dec, e_ch):
-            e.bind("<Return>", lambda ev: self._on_astro())
-            e.bind("<FocusOut>", lambda ev: self._on_astro())
-        self.lbl_astro = ttk.Label(box, text="Astrométrie : —",
-                                   foreground="#888888", wraplength=310)
-        self.lbl_astro.pack(anchor="w", pady=(2, 0))
+        # --- Empilement (panneau extrait au jalon 105b dans
+        # `avastack/ui/panels/stack.py` : stats, seeing, re-stack, astrométrie
+        # + annotation, catalogues & données SPCC, photométrie, SPCC, rejet,
+        # équilibrage des canaux, Linear Fit, filtre flou).
+        self._poser_panneau_empilement(left)
 
-        # Jalon 96 (étapes 5-6) : annotation temps-réel de l'image AFFICHÉE.
-        # Deux cases INDÉPENDANTES (l'une peut vivre seule) + seuil de
-        # magnitude des étoiles, et l'option du PNG compagnon à la sauvegarde.
-        # L'annotation exige un WCS résolu : tant que l'astrométrie n'est pas
-        # verte, rien n'est dessiné (la ligne d'état au-dessus le montre déjà).
-        # Persistance comme les autres cases (booléens EXPLICITES).
-        row_an = ttk.Frame(box)
-        row_an.pack(fill="x", pady=(4, 0))
-        self.var_annoter_objets = tk.BooleanVar(
-            value=bool(CONFIG.get("annoter_objets", False)))
-        ttk.Checkbutton(row_an, text="Annoter objets célèbres",
-                        variable=self.var_annoter_objets,
-                        command=self._on_annoter).pack(side="left")
-        self.var_annoter_etoiles = tk.BooleanVar(
-            value=bool(CONFIG.get("annoter_etoiles", False)))
-        ttk.Checkbutton(row_an, text="Étoiles brillantes",
-                        variable=self.var_annoter_etoiles,
-                        command=self._on_annoter).pack(side="left", padx=(6, 0))
-        row_an2 = ttk.Frame(box)
-        row_an2.pack(fill="x", pady=(2, 0))
-        ttk.Label(row_an2, text="Seuil mag :").pack(side="left", padx=(6, 0))
-        self.var_seuil_mag_etoiles = tk.StringVar(
-            value=f"{float(CONFIG.get('seuil_mag_etoiles', 8.0)):.1f}")
-        e_seuil = ttk.Entry(row_an2, textvariable=self.var_seuil_mag_etoiles,
-                            width=5)
-        e_seuil.pack(side="left", padx=(2, 0))
-        e_seuil.bind("<Return>", lambda ev: self._on_annoter())
-        e_seuil.bind("<FocusOut>", lambda ev: self._on_annoter())
-        row_an3 = ttk.Frame(box)
-        row_an3.pack(fill="x", pady=(2, 0))
-        # v2.56.0 (demande d'Alain, 05/10/2026) : ne pas entourer ce qui
-        # n'est pas résolu sur l'image (ex. NGC 206) — l'étiquette reste,
-        # seul l'entourage est conditionné à la détection réelle.
-        self.var_annoter_visibles = tk.BooleanVar(
-            value=bool(CONFIG.get("annoter_visibles", True)))
-        ttk.Checkbutton(row_an3, text="Seulement les objets visibles",
-                        variable=self.var_annoter_visibles,
-                        command=self._on_annoter).pack(side="left")
-        self.var_annoter_sauvegarde = tk.BooleanVar(
-            value=bool(CONFIG.get("annoter_sauvegarde", True)))
-        ttk.Checkbutton(row_an3, text="PNG annoté à côté du FITS",
-                        variable=self.var_annoter_sauvegarde,
-                        command=self._on_annoter).pack(side="left", padx=(6, 0))
+        # --- Fond et grain (panneau extrait au jalon 105b dans
+        # `avastack/ui/panels/bgnoise.py` ; AVANT étirement).
+        self._poser_panneau_fond_grain(left)
 
-        # Jalon 70 — DONNÉES de l'astrométrie : l'application DIT où elle
-        # cherche le catalogue Gaia DR3 de Siril, laisse choisir un autre
-        # dossier (config `chemin_catalogues`), et le télécharge (1,1 Go,
-        # reprise + sha256 vérifié). Sans catalogue, l'astrométrie interne ne
-        # peut pas aboutir : le dire ici évite l'échec silencieux constaté
-        # sous Linux le 27/09/2026.
-        # v2.38.10 : DEUX lignes (le chemin, puis les boutons). MESURE : le
-        # libellé du chemin, insécable (un chemin n'a pas d'espace, donc
-        # `wraplength` ne le replie PAS), prenait toute la ligne → avec un chemin
-        # long comme `~/.local/share/siril`, `pack` ABANDONNAIT 📂 et « ⬇ Gaia ».
-        # Le texte est en plus BORNÉ en caractères (`width`), ce qui garantit
-        # qu'il ne peut plus manger la ligne.
-        row_cat = ttk.Frame(box)
-        row_cat.pack(fill="x", pady=(2, 0))
-        self.lbl_cat_dossier = ttk.Label(row_cat, text="Catalogues : —",
-                                         foreground="#888888", width=44,
-                                         anchor="w")
-        self.lbl_cat_dossier.pack(side="left")
-        row_cat_b = ttk.Frame(box)
-        row_cat_b.pack(fill="x", pady=(2, 0))
-        ttk.Button(row_cat_b, text="📂 Dossier", width=12,
-                   command=self._choisir_dossier_catalogues).pack(side="left",
-                                                                  padx=(6, 0))
-        self.btn_cat_dl = ttk.Button(row_cat_b, text="⬇ Gaia", width=9,
-                                     command=self._telecharger_catalogue)
-        self.btn_cat_dl.pack(side="left", padx=(4, 0))
-        self.btn_celebres_dl = ttk.Button(row_cat_b, text="⬇ Célèbres", width=10,
-                                          command=self._telecharger_celebres)
-        self.btn_celebres_dl.pack(side="left", padx=(4, 0))
-        self.lbl_cat_etat = ttk.Label(box, text="", foreground="#888888",
-                                      wraplength=310)
-        self.lbl_cat_etat.pack(anchor="w")
-        # Jalon 77 — LES DONNÉES DE LA SPCC SANS SIRIL. Mesure d'un besoin : il
-        # manquait DEUX jeux de données (les 48 morceaux de spectres Gaia XP,
-        # dont la fonction de téléchargement n'était branchée nulle part, et la
-        # base de profils de capteurs/filtres, qui n'était LUE que chez Siril) :
-        # sans eux, la SPCC exigeait Siril installé. Chacun a SA ligne, avec
-        # DEUX boutons au plus (règle de mise en page v2.38.9 : `pack` abandonne
-        # silencieusement le widget qui ne tient plus) et un état qui DIT ce qui
-        # est présent — jamais de bouton muet.
-        row_sp = ttk.Frame(box)
-        row_sp.pack(fill="x", pady=(4, 0))
-        self.btn_spectres = ttk.Button(row_sp, text="⬇ Spectres (champ)",
-                                       width=17,
-                                       command=self._telecharger_spectres)
-        self.btn_spectres.pack(side="left", padx=(6, 0))
-        self.btn_spectres_tous = ttk.Button(row_sp, text="⬇ les 48", width=9,
-                                            command=self._telecharger_spectres_tous)
-        self.btn_spectres_tous.pack(side="left", padx=(4, 0))
-        row_sp2 = ttk.Frame(box)
-        row_sp2.pack(fill="x", pady=(2, 0))
-        self.btn_spcc_base = ttk.Button(row_sp2, text="⬇ Base SPCC", width=13,
-                                        command=self._telecharger_base_spcc)
-        self.btn_spcc_base.pack(side="left", padx=(6, 0))
-        self.btn_spcc_dos = ttk.Button(row_sp2, text="📂 Dossier SPCC", width=15,
-                                       command=self._choisir_dossier_spcc)
-        self.btn_spcc_dos.pack(side="left", padx=(4, 0))
-        self.lbl_base_spcc = ttk.Label(box, text="", foreground="#888888",
-                                       wraplength=310)
-        self.lbl_base_spcc.pack(anchor="w")
-        # File de la conversation réseau → UI (le thread de téléchargement n'a
-        # PAS le droit de toucher un widget : il ne pose que des messages ici).
-        self._cat_q = queue.Queue()
-        self._cat_dl_actif = False
-        # v2.38.11 : la ligne « Catalogues » (dossier + présence du catalogue)
-        # demande des `listdir`/`glob` sur des dossiers qui peuvent être sur un
-        # NAS : plus de sonde ICI (avant l'affichage). Le fil de mesures la
-        # remplit APRÈS l'ouverture, borné ; l'appel direct reste pour un geste
-        # de l'utilisateur (bouton 📂, téléchargement terminé).
-        # Jalon 56 (étape 4) : PHOTOMÉTRIE — zéro-point instrumental par BANDE,
-        # mesuré sur l'empilement via le WCS (appariement mutuel des étoiles au
-        # catalogue Gaia de Siril). Case SÉPARÉE et cochée par défaut : la
-        # mesure n'a AUCUN effet sur l'image (l'application aux gains est
-        # l'étape 5) — la décocher arrête simplement la mesure et son état.
-        row_p = ttk.Frame(box)
-        row_p.pack(fill="x", pady=(2, 0))
-        self.var_photo = tk.BooleanVar(value=True)
-        ttk.Checkbutton(row_p, text="Photométrie (zéro-point Gaia)",
-                        variable=self.var_photo,
-                        command=self._on_photo).pack(side="left")
-        self.lbl_photo = ttk.Label(box, text="Photométrie : —",
-                                   foreground="#888888", wraplength=310)
-        self.lbl_photo.pack(anchor="w", pady=(2, 0))
-        # Jalon 56 (étape 5) : APPLICATION des gains photométriques au
-        # composite — case SÉPARÉE, DÉCOCHÉE PAR DÉFAUT (opt-in d'Alain) : la
-        # mesure ci-dessus n'a aucun effet tant que celle-ci n'est pas cochée.
-        # Elle n'agit qu'en COMPOSITION (un gain global en mono n'a pas de sens
-        # et déréglerait VeraLux, qui travaille en valeurs absolues).
-        row_pg = ttk.Frame(box)
-        row_pg.pack(fill="x", pady=(2, 0))
-        self.var_photo_gains = tk.BooleanVar(value=False)
-        ttk.Checkbutton(row_pg, text="Gains photométriques (Gaia)",
-                        variable=self.var_photo_gains,
-                        command=self._on_photo_gains).pack(side="left")
-        self.lbl_photo_gains = ttk.Label(box, text="", foreground="#888888")
-        self.lbl_photo_gains.pack(anchor="w")
-        # Jalon 58 : SPCC ABSOLUE « à la Siril » — case SÉPARÉE, DÉCOCHÉE PAR
-        # DÉFAUT (opt-in, même choix qu'Alain pour les gains Gaia) : elle
-        # remplace les gains Gaia par des coefficients calculés à partir des
-        # SPECTRES Gaia et des PROFILS capteur/filtres de la base Siril. Sans
-        # cette base (non installée), la case est désactivée et le dit — jamais
-        # une valeur inventée.
-        row_sx = ttk.Frame(box)
-        row_sx.pack(fill="x", pady=(4, 0))
-        # Jalon 77 : la base de profils peut vivre AILLEURS que chez Siril (copie
-        # d'AVAStack téléchargée, dossier choisi) — et ce dossier peut être sur
-        # un NAS. La lecture qui remplit les sélecteurs est donc BORNÉE
-        # (v2.38.11 : aucune mesure de disque ne doit retenir l'ouverture) ; la
-        # sonde différée `_sonder_spcc_base` corrige l'affichage quand elle a
-        # répondu, et la fin d'un téléchargement relit tout.
-        self._spcc_dispo, self._spcc_noms, _mesure = self._spcc_base_bornee()
-        self.var_spcc = tk.BooleanVar(value=False)
-        self.chk_spcc = ttk.Checkbutton(
-            row_sx, text="SPCC (couleurs absolues)",
-            variable=self.var_spcc, command=self._on_spcc)
-        self.chk_spcc.pack(side="left")
-        if not self._spcc_dispo:
-            self.chk_spcc.state(["disabled"])
-        self._spcc_vars = {}
-        self._spcc_lbls = {}
-        self._spcc_cbs = {}
-        # v2.40.0 : TYPE de capteur — la SPCC n'est PAS réservée au mono
-        # multi-bandes (constat d'Alain, 28/09/2026 : « la case SPCC dit que
-        # c'est que pour du mono multibande, alors que SPCC fonctionne en
-        # couleurs dans Siril — il faut juste lui dire que c'est un capteur
-        # couleur et le choisir »). Ligne AJOUTÉE au-dessus des cinq autres :
-        # aucune ligne ne disparaît (règle de mise en page v2.38.9).
-        ligne_t = ttk.Frame(box)
-        ligne_t.pack(fill="x")
-        ttk.Label(ligne_t, text="Type de capteur :", width=19).pack(side="left")
-        self.var_spcc_type = tk.StringVar(value=self.SPCC_TYPE_MONO)
-        cbt = ttk.Combobox(ligne_t, textvariable=self.var_spcc_type,
-                           state="readonly", width=26,
-                           values=[self.SPCC_TYPE_MONO, self.SPCC_TYPE_OSC])
-        cbt.pack(side="left", fill="x", expand=True)
-        cbt.bind("<<ComboboxSelected>>", lambda e: self._on_spcc_type())
-        for cle, etiquette, defaut, largeur in (
-                ("capteur", "Capteur", "Sony IMX585", 26),
-                ("fr", "Filtre R", "QHYCCD MiniCam8M Red", 26),
-                ("fg", "Filtre G", "QHYCCD MiniCam8M Green", 26),
-                ("fb", "Filtre B", "QHYCCD MiniCam8M Blue", 26),
-                ("blanc", "Référence de blanc", "Average Spiral Galaxy", 30)):
-            ligne = ttk.Frame(box)
-            ligne.pack(fill="x")
-            lbl = ttk.Label(ligne, text=f"{etiquette} :", width=19)
-            lbl.pack(side="left")
-            self._spcc_lbls[cle] = lbl
-            valeurs = self._spcc_noms.get(
-                {"capteur": "capteur", "fr": "filtres", "fg": "filtres",
-                 "fb": "filtres", "blanc": "blancs"}[cle], [])
-            v = tk.StringVar(value=defaut)
-            cb = ttk.Combobox(ligne, textvariable=v, state="readonly",
-                              width=largeur, values=valeurs or [defaut])
-            cb.pack(side="left", fill="x", expand=True)
-            cb.bind("<<ComboboxSelected>>", lambda e: self._on_spcc())
-            if not valeurs:
-                cb.state(["disabled"])
-            self._spcc_vars[cle] = v
-            self._spcc_cbs[cle] = cb
-        self.lbl_spcc = ttk.Label(box, text="", foreground="#888888",
-                                  wraplength=330, justify="left")
-        self.lbl_spcc.pack(anchor="w")
-        ttk.Label(box, text="Rejet kappa-sigma :").pack(anchor="w")
-        self.var_kappa = tk.StringVar(value="3σ")
-        cb = ttk.Combobox(box, textvariable=self.var_kappa, state="readonly", width=8,
-                          values=["Off", "2σ", "3σ", "4σ", "5σ"])
-        cb.pack(anchor="w")
-        cb.bind("<<ComboboxSelected>>", lambda e: self._on_kappa())
-        # Méthode de rejet : kappa-sigma séquentiel (rapide, historique) ou
-        # Winsorized (adaptation live du Winsorized Sigma Clipping de
-        # PixInsight) — médiane/MAD d'une fenêtre glissante de frames
-        # alignées, robuste aux traînées de satellites/météores.
-        ttk.Label(box, text="Méthode de rejet :").pack(anchor="w")
-        self.var_rejet = tk.StringVar(value="kappa-sigma (rapide)")
-        self.cb_rejet = ttk.Combobox(box, textvariable=self.var_rejet, state="readonly",
-                                     width=24,
-                                     values=["kappa-sigma (rapide)",
-                                             "Winsorized (satellites)"])
-        self.cb_rejet.pack(anchor="w")
-        self.cb_rejet.bind("<<ComboboxSelected>>", lambda e: self._on_rejet())
-        rowwin = ttk.Frame(box)
-        rowwin.pack(fill="x", pady=2)
-        ttk.Label(rowwin, text="Fenêtre de référence (frames) :").pack(side="left")
-        self.var_fenetre = tk.StringVar(value=str(self.rejet_fenetre))
-        self.cb_fenetre = ttk.Combobox(rowwin, textvariable=self.var_fenetre,
-                                       state="disabled", width=3,
-                                       values=["4", "6", "8", "12", "16"])
-        self.cb_fenetre.pack(side="left", padx=4)
-        self.cb_fenetre.bind("<<ComboboxSelected>>", lambda e: self._on_rejet())
-        # Jalon 13 : équilibrage des canaux (auto) — les capteurs couleur ont
-        # 2 sites verts sur 4 (matrice de Bayer) et une réponse spectrale
-        # déséquilibrée : l'empilement brut domine dans le vert (constat réel
-        # NGC7023). Gains LINÉAIRES par canal égalisant le FOND du ciel (la
-        # couleur des objets est préservée) ; tout ce qui sort de
-        # l'empilement est équilibré (affichage, histogramme, sauvegardes,
-        # traitements externes).
-        self.var_wb = tk.BooleanVar(value=True)
-        ttk.Checkbutton(box, text="Équilibrage des canaux (auto)",
-                        variable=self.var_wb, command=self._on_wb
-                        ).pack(anchor="w", pady=(2, 0))
-        self.var_wb_force = tk.DoubleVar(value=1.0)
-        self._add_slider(box, "Force de l'équilibrage",
-                         self.var_wb_force, 0.0, 1.0, 0.05, self._on_wb, "{:.2f}")
-        # Jalon 54 : recalage colorimétrique « Linear Fit » — R et B alignés
-        # sur le VERT par une droite Gain + Offset (mesurée sur le composite
-        # linéaire, réf. = vert). Neutralise le masque coloré (fond bleu dans
-        # les poussières de M31, constat réel d'Alain) qui surgit à
-        # l'étirement quand les fonds des filtres diffèrent. Appliqué au
-        # composite (visu ET sauvegardes — le fichier linéaire reste un
-        # float32 simple). DÉCOCHÉE par défaut (décision d'Alain) ; le
-        # libellé montre les gains/offsets MESURÉS (règle : le réglage relu
-        # n'est pas le réglage appliqué — seul l'effet physique prouve).
-        self.var_fit = tk.BooleanVar(value=False)
-        ttk.Checkbutton(box, text="Recalage colorimétrique (Linear Fit)",
-                        variable=self.var_fit,
-                        command=self._on_linear_fit).pack(anchor="w")
-        # Jalon 54b (retour du test réel d'Alain) : le GAIN fondé sur le
-        # rapport des bruits amplifie halos/bruit du canal bleu d'une image
-        # OSC déjà équilibrée → aspect flou/décalé à l'étirement. DÉFAUT =
-        # OFFSET SEUL (le fond) ; le gain reste disponible (palettes
-        # narrowband, équivalent du Linear Fit d'APP).
-        self.FIT_METHODES = (("Offset seul (fond)", "offset"),
-                             ("Gain + offset", "gain_offset"))
-        row_fm = ttk.Frame(box)
-        row_fm.pack(fill="x")
-        ttk.Label(row_fm, text="Méthode :").pack(side="left")
-        self.var_fit_methode = tk.StringVar(value="Offset seul (fond)")
-        self.cb_fit_methode = ttk.Combobox(
-            row_fm, textvariable=self.var_fit_methode, state="readonly",
-            width=17, values=[lib for lib, _ in self.FIT_METHODES])
-        self.cb_fit_methode.pack(side="left", padx=4)
-        self.cb_fit_methode.bind("<<ComboboxSelected>>",
-                                 lambda e: self._on_linear_fit())
-        self.lbl_fit = ttk.Label(box, text="", foreground="#888888")
-        self.lbl_fit.pack(anchor="w")
-        self._on_linear_fit()
-        # Jalon 17 : filtre anti-brutes TRÈS défocalisées — rejet d'office
-        # (décision d'Alain), cette case le désactive (les frames passent
-        # comme avant le jalon 17 ; le compteur de rejets reste affiché).
-        self.var_rejeter_flou = tk.BooleanVar(value=True)
-        ttk.Checkbutton(box, text="Rejeter les frames floues (auto)",
-                        variable=self.var_rejeter_flou,
-                        command=self._on_rejeter_flou).pack(anchor="w")
-
-        # --- v2.48.0 (jalon 85) : L'ORDRE DES CADRES SUIT L'ORDRE DES TRAITEMENTS
-        # (demande d'Alain : « l'UI doit respecter l'ordre des traitements »).
-        # Le cadre couleur du jalon 22 MÉLANGEAIT deux étapes de la chaîne : les
-        # corrections AVANT l'étirement (neutralisation du fond, réduction du bruit
-        # chromatique — appliquées par le solveur « après la neutralisation et juste
-        # avant l'étirement », cf. display.py) et celles APRÈS (SCNR, SCNR doux,
-        # démagenta, préservation de L*). Il est donc SCINDÉ, et la colonne suit
-        # désormais la chaîne réelle :
-        #   Fond et grain (AVANT étirement) → neutralisation + bruit chromatique ;
-        #   Netteté live (AVANT étirement)  → Richardson-Lucy ;
-        #   Affichage (temps réel)          → l'étirement lui-même + gamma/saturation ;
-        #   Couleur de l'objet (APRÈS)      → SCNR / SCNR doux / démagenta (L*, R*).
-        # Aucun réglage, aucune clé de configuration et aucun comportement ne
-        # changent : seuls les PARENTS de ces widgets (donc leur place à l'écran)
-        # changent, et l'ordre affiché devient l'ordre appliqué.
-        # NOTE jalon 95 : self.frm_fond reste le CONTENU INTERNE (pour les
-        # widgets enfants). Le LabelFrame externe est self._lf_fond_grain.
-        self._lf_fond_grain, self.frm_fond, _, _ = self._creer_section_pliable(
-            left, "fond_grain")
-        # --- v2.36.1 : NEUTRALISATION DE LA COULEUR DU FOND avant étirement ---
-        # Constat d'Alain (25/09/2026) : le fond restait bleu à l'écran (et le
-        # PNG était franchement bleu, pour une autre raison : canaux permutés).
-        # COCHÉE PAR DÉFAUT : ce n'est pas un choix esthétique mais la
-        # correction d'un défaut de rendu (l'ancre de VeraLux transforme
-        # quelques pour cent d'écart de ciel en fond franchement coloré).
-        # Décocher = ancien rendu.
-        self.var_vl_neutre = tk.BooleanVar(value=True)
-        ttk.Checkbutton(self.frm_fond,
-                        text="Neutraliser la couleur du fond (live)",
-                        variable=self.var_vl_neutre,
-                        command=self._on_vl_neutre).pack(anchor="w")
-        ttk.Label(self.frm_fond,
-                  text="Égalise les 3 canaux sur la MÉDIANE DE LA MOITIÉ SOMBRE, "
-                       "juste avant l'étirement. Les gains RÉELLEMENT appliqués "
-                       "sont annoncés dans « État des calculs (live) » : c'est "
-                       "cette mesure qu'il faut lire, jamais un exemple chiffré.",
-                  foreground="#888888", wraplength=310).pack(anchor="w")
-
-        # --- v2.37.0 : RÉDUCTION DU BRUIT CHROMATIQUE (opt-in, DÉCOCHÉE par
-        # défaut — choix d'Alain, 25/09/2026 : « oui pour la réduction de bruit
-        # chromatique (j'allais te demander un équivalent de SCNR pour le bleu de
-        # toute façon) et case décochée par défaut »). Justification MESURÉE sur
-        # ses empilements M31 (41 et 115 frames) : le grain du fond est équilibré
-        # en R/G (0,90) mais B/G reste à ~1,17 — la SPCC applique K_B/K_G = 1,32,
-        # et un gain multiplicatif amplifie le bruit du canal qu'il monte. Elle
-        # lisse la CHROMA (YCrCb) en laissant la LUMINANCE intacte : ni le niveau
-        # ni le contraste du fond ne bougent, seulement le grain coloré.
-        self.var_vl_chroma = tk.BooleanVar(value=False)
-        ttk.Checkbutton(self.frm_fond,
-                        text="Réduire le bruit chromatique (live)",
-                        variable=self.var_vl_chroma,
-                        command=self._on_vl_chroma).pack(anchor="w")
-        self.var_vl_chroma_force = tk.DoubleVar(value=0.5)
-        self._add_slider(self.frm_fond, "Force du bruit chromatique",
-                         self.var_vl_chroma_force, 0.0, 1.0, 0.05,
-                         self._on_vl_chroma, "{:.2f}")
-        ttk.Label(self.frm_fond,
-                  text="Lisse la COULEUR du grain (YCrCb) sans toucher à la "
-                       "luminance : un gain par canal (SPCC en tête) amplifie le "
-                       "bruit du canal qu'il monte — mesuré : B/G 1,17 → ~1,00. "
-                       "Force = part du bruit chromatique retirée.",
-                  foreground="#888888", wraplength=310).pack(anchor="w")
-        # --- v2.37.4 : RAYON DE RÉFÉRENCE du flou de chroma (demande d'Alain,
-        # 26/09/2026 : « pour la visu live, mets à disposition le réglage du rayon
-        # de référence pour pouvoir faire des tests »). Exprimé en pixels PLEINE
-        # RÉSOLUTION : l'aperçu de l'appli le ramène à sa propre échelle
-        # (`couleurs.rayon_chroma_apercu`) pour rester fidèle aux fichiers, et la
-        # chaîne EXTERNE comme la sauvegarde « tel que vu » l'utilisent tel quel.
-        self.var_vl_chroma_rayon = tk.DoubleVar(value=couleurs_mod.RAYON_CHROMA_DEFAUT)
-        self._add_slider(self.frm_fond, "Rayon de référence (px pleine rés.)",
-                         self.var_vl_chroma_rayon, 0.5, 8.0, 0.25,
-                         self._on_vl_chroma_rayon, "{:.2f}")
-        ttk.Label(self.frm_fond,
-                  text="Rayon du flou qui lisse la couleur : plus grand = grain "
-                       "coloré mieux retiré, mais couleur des étoiles plus "
-                       "étalée (halo de couleur). L'aperçu applique ce rayon à "
-                       "SON échelle, les fichiers à la pleine résolution — "
-                       "l'écran reste fidèle au fichier.",
-                  foreground="#888888", wraplength=310).pack(anchor="w")
-
-        # --- Netteté live (jalon 12) : cadre INDÉPENDANT du moteur
-        # d'étirement (demande d'Alain) — Richardson-Lucy s'applique AVANT
-        # l'étirement, en STF/manuel comme en VeraLux. Position dans la
-        # chaîne : après le débruitage (on lisse d'abord, on restaure
-        # ensuite), avant l'étirement. PSF = seeing mesuré (jalon 10) ; la
-        # netteté est calculée dans un thread dédié, jamais dans l'UI.
-        # v2.48.0 (jalon 85) : ce cadre a été REMONTÉ ici, avant « Affichage » —
-        # son titre dit « avant étirement » depuis le jalon 12, mais il était
-        # affiché APRÈS le cadre qui porte l'étirement (demande d'Alain : « l'UI
-        # doit respecter l'ordre des traitements »). Aucun comportement ne
-        # change : seule la place dans la colonne.
-        # NOTE jalon 95 : self.frm_sharp reste le CONTENU INTERNE (pour les
-        # widgets enfants). Le LabelFrame externe est self._lf_nette.
-        self._lf_nette, self.frm_sharp, _, _ = self._creer_section_pliable(
-            left, "nette")
-        self.var_vl_sharp = tk.BooleanVar(value=False)
-        ttk.Checkbutton(self.frm_sharp, text="Netteté live (avant étirement)",
-                        variable=self.var_vl_sharp,
-                        command=self._on_vl_sharp).pack(anchor="w")
-        self.var_vl_sharp_iter = tk.DoubleVar(
-            value=float(nettete_live.ITERATIONS_DEFAUT))
-        self.scl_sharp = self._add_slider(
-            self.frm_sharp, "Itérations (3-5 = réglage utile)",
-            self.var_vl_sharp_iter, 1.0,
-            float(nettete_live.ITERATIONS_MAX), 1.0,
-            self._on_vl_sharp, "{:.0f}")
-        self.lbl_sharp = ttk.Label(self.frm_sharp, text="Netteté désactivée",
-                                   foreground="#888888", wraplength=310)
-        self.lbl_sharp.pack(anchor="w", pady=(2, 0))
+        # --- Netteté live (panneau extrait au jalon 105b dans
+        # `avastack/ui/panels/sharp.py` ; AVANT étirement, indépendant du
+        # moteur d'étirement).
+        self._poser_panneau_nette(left)
 
         # --- Affichage
         self._lf_affichage, box, _, _ = self._creer_section_pliable(

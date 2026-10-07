@@ -115,6 +115,9 @@ HASH_KAPPA_RGB = "a4ece0a2eb47a24dfd603071a18e5b1a9f590e818a5022c369a2475a456568
 #   - Jalon 105a : les PANNEAUX « sources » de la colonne gauche —
 #     `ui/panels/files.py`, `ui/panels/camera.py`, `ui/panels/cadence.py`,
 #     `ui/panels/folder.py` (mixins dont `App` hérite).
+#   - Jalon 105b : les PANNEAUX « traitement » de la colonne gauche —
+#     `ui/panels/compo.py`, `ui/panels/calib.py`, `ui/panels/stack.py`,
+#     `ui/panels/bgnoise.py`, `ui/panels/sharp.py` (mixins dont `App` hérite).
 #   - Jalons suivants : chaque module NOUVEAU (extrait de `app.py`) y entre dès
 #     sa création.
 FICHIERS_TYPES = (
@@ -133,6 +136,11 @@ FICHIERS_TYPES = (
     "avastack/ui/panels/camera.py",
     "avastack/ui/panels/cadence.py",
     "avastack/ui/panels/folder.py",
+    "avastack/ui/panels/compo.py",
+    "avastack/ui/panels/calib.py",
+    "avastack/ui/panels/stack.py",
+    "avastack/ui/panels/bgnoise.py",
+    "avastack/ui/panels/sharp.py",
 )
 
 
