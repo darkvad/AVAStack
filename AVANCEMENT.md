@@ -53,9 +53,40 @@ de comportement (rendu identique AU BIT).
   et les derniers modules `ui/` sont typés.
 
 ### Prochaine étape
-**Chantier de refactoring TERMINÉ (100→110).** Retour à la feuille de route
-« produit » : en attente d'essais réels (paquet ZIP chez le testeur,
-installateurs Windows/macOS) — cf. sections précédentes.
+**v2.62.1 PUBLIÉE** (quatre paquets + release GitHub + MSIX Store reconstruit).
+Restent ouverts, à l'initiative du mainteneur (tests réels) : le paquet ZIP chez
+le testeur Windows 11, l'installateur `.exe` sur une machine **sans Python**,
+l'essai **macOS**, et — nouvelle étape ouverte — la **resoumission du MSIX
+v2.62.1 au Microsoft Store** (l'application publiée y est encore la v2.50.0 ;
+le MSIX v2.62.1.0 est supérieur, donc acceptable à la soumission).
+
+### PAQUETS ET RELEASE v2.62.1 : PUBLIÉS (07/10/2026)
+Les **quatre** installateurs reconstruits depuis le code du jalon 110 (v2.62.1)
++ le **paquet Store (MSIX)** reconstruit sur le paquet **gelé PyInstaller**,
+avec l'identité réelle de Partner Center (la même que la v2.50.0) — **les
+valeurs d'identité (Name / Publisher / GUID) ne sont PAS écrites ici** (règle du
+dépôt : aucune donnée de compte) :
+- `installer/windows/output/avastack-setup-2.62.1.exe` — 12 595 844 o,
+  SHA-256 `1DD68D4E…E46040AAA2` ;
+- `installer/windows/output/avastack-setup-2.62.1-windows.zip` — 15 036 183 o,
+  `2F8F1823…7782E2CD` ;
+- `installer/linux/output/avastack-setup-2.62.1-linux.tar.gz` — 1 606 063 o,
+  `E5EC3522…5A387EC8F` ;
+- `installer/macos/output/avastack-setup-2.62.1-macos.tar.gz` — 1 603 634 o,
+  `0BBD49A6…63500486`.
+- Gelé (base du MSIX) : `avastack-frozen-2.62.1-windows.zip` — 102,7 Mo,
+  `4AF8B784…7A0738DF` (dossier 251 Mo).
+- MSIX Store **SIGNE** : `avastack-2.62.1-windows.msix` — 112 355 891 o,
+  `166A4522…9CA9811A` (certificat auto-signé, sujet = Publisher Partner
+  Center ; version MSIX **2.62.1.0** > 2.50.0.0 publiée → resoumettable).
+Vérifié après coup : `avastack/ui/app.py` des paquets (ZIP + Linux + macOS)
+**identique au dépôt** (LF-normalisé), `celebres_healpix8.dat.bz2` présent et
+identique, les **4 DLL** constructeurs dans le ZIP, **aucun** binaire
+constructeur dans les tars. Bancs des packers rejoués VERTS
+(`_test_installeur_windows_zip_jalon88`, `_test_installeur_macos_jalon78`,
+`_test_msix_jalon92`, `_test_installeurs_empreinte_jalon89`). Tag annoté
+`v2.62.1` + **release GitHub publiée** avec les quatre paquets + `INSTALLATION.md`
+(tailles/empreintes mises à jour v2.56.1 → v2.62.1).
 
 ### Clôture de session (07/10/2026)
 Règles de codage du chantier **gravées dans `CLAUDE.md`** (nouvelle section
