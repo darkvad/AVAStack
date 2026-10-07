@@ -157,6 +157,11 @@ FICHIERS_TYPES = (
     # Jalon 107 (chantier de refactoring) : le RENDU D'AFFICHAGE et l'ANNOTATION
     # extraits de `app.py` — `ui/renderer.py` (mixin `Renderer` dont `App` hérite).
     "avastack/ui/renderer.py",
+    # Jalon 108 (chantier de refactoring) : les SAUVEGARDES et les EN-TÊTES FITS
+    # de sortie (`ui/saver.py`) et le TRAITEMENT EXTERNE (`ui/external_runner.py`)
+    # extraits de `app.py` — mixins `Saver` / `ExternalRunner` dont `App` hérite.
+    "avastack/ui/saver.py",
+    "avastack/ui/external_runner.py",
 )
 
 

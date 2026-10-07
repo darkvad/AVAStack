@@ -9,72 +9,85 @@ dans le changelog du source et l'historique git.)
 
 ---
 
-## Session du 07/10/2026 — jalon 107 (v2.61.0 — LIVRÉ, TESTÉ EN RÉEL, COMMITÉ/POUSSÉ) — `ui/renderer.py` (rendu + annotation)
+## Session du 07/10/2026 — jalon 108 (v2.61.1 — LIVRÉ, TESTÉ EN RÉEL, COMMITÉ/POUSSÉ) — `ui/saver.py` + `ui/external_runner.py` (sauvegardes + traitement externe)
 
 ### But du jalon
-Treizième étape du **chantier de refactoring** : extraire de `ui/app.py` le
-**rendu d'affichage à l'écran ET l'annotation** — tout ce qui DESSINE sur le
-Canvas d'image `cv_img` — vers `avastack/ui/renderer.py` (module TYPÉ, mixin
-`Renderer` dont `App` HÉRITE), en méthodes reprises **VERBATIM**, SANS aucun
-changement de comportement (rendu identique AU BIT). Le worker était la DERNIÈRE
-étape de `core/` (106a→d) ; ici commence la chaîne d'affichage
-(`ui/renderer.py` → `ui/saver.py` → typage rétroactif, jalons 107→110).
+Quatorzième étape du **chantier de refactoring** : extraire de `ui/app.py` les
+**sauvegardes (fichiers)** ET le **traitement externe** vers DEUX modules TYPÉS,
+sous forme de mixins dont `App` HÉRITE — méthodes reprises **VERBATIM**, SANS
+aucun changement de comportement. Suite de `ui/renderer.py` (jalon 107) :
+`ui/saver.py` + `ui/external_runner.py` closent la chaîne d'extraction ; viennent
+ensuite les typages rétroactifs (jalons 109→110).
 
-### Livré (v2.61.0)
-- **`avastack/ui/renderer.py`** — module NEUF (TYPÉ), mixin **`Renderer`** :
-  - **sélection de source** : `_src_pleine_res`, `_src_rendu`,
-    `_pleine_res_activee`, `_on_vl_pleine_res` ;
-  - **chaîne d'affichage UNIQUE** (jalon 75) : `_rendre_et_afficher`,
-    `_refresh_preview` ;
-  - **dessin + gestes du Canvas** : `_show_image`, `_render`, `_on_wheel_zoom`,
-    `_zoom_at`, `_on_img_press` / `_on_img_drag` / `_on_img_release` /
-    `_on_img_dblclick`, `_vider_ecran` ;
-  - **annotation temps-réel** (jalon 96) : `_seuil_mag`, `_on_annoter`,
-    `_forme_pleine`, `_wcs_affichage`, `_donnees_annotation`, `_annoter_image`,
-    `_sauver_png_annote`.
-- `ui/app.py` : `App` hérite de `_Renderer` (import + entrée de classes de base) ;
-  chaque méthode extraite est remplacée par un **commentaire-pointeur**.
-  L'HISTOGRAMME (tracé 2 bandes + barres de niveaux) était DÉJÀ extrait au jalon
-  103 (`ui/widgets/histogram.py`) : `_maj_histogrammes` y reste, appelé par la
-  chaîne d'affichage.
-- **PIÈGE D'ISOLATION** : l'annotation LIT/ÉCRIT `CONFIG` (seuil de magnitude,
-  cases « annoter… ») et appelle `sauver_config` ; les bancs les interceptent via
-  `ui.CONFIG` / `ui.sauver_config` → ces globals sont résolus **TARDIVEMENT**
-  (`_globals_app()`, motif des jalons 104/105a). `cat_mod` / `photo_mod` sont au
-  contraire mutés EN PLACE par les bancs → import direct conservé.
-- **Typage** : `_donnees_annotation` (→ `tuple[Any, Any]`) et `_annoter_image`
-  (→ `Any`) sont annotées ; 2 ignores CIBLÉS
-  `# pyright: ignore[reportArgumentType]` sur les appels `generer_image_annotee`
-  (`objets` / `etoiles` peuvent être None SÉPARÉMENT, le paramètre est typé trop
-  étroit — motif du chantier).
-- Pointeurs : changelog (`avastack/__init__.py`, **v2.61.0**), docstring de
-  `renderer.py`, liste blanche du garde-fou (+ `ui/renderer.py`, **28 fichiers**).
+### Livré (v2.61.1)
+- **`avastack/ui/saver.py`** — module NEUF (TYPÉ), mixin **`Saver`** : tout ce qui
+  ÉCRIT un fichier — `_save`, `_save_canaux`, `_save_asseen`,
+  `_save_traite_lineaire`, `_save_proc` ; la capture des réglages
+  (`_reglages_rendu`) et le contrôle GraXpert live (`_gx_live_prete`) ; le THREAD
+  pleine résolution (`_save_asseen_thread`, `_couches_brutes`,
+  `_couches_pleine_resolution`) ; les **en-têtes FITS de sortie**
+  (`_entete_reglages`, `_entete_externe`, `_astro_entete_sauvegarde`).
+- **`avastack/ui/external_runner.py`** — module NEUF (TYPÉ), mixin
+  **`ExternalRunner`** : le TRAITEMENT EXTERNE (GraXpert / BlurXTerminator, en
+  thread séparé) — `_request_ext`, `_pick_exe`, `_set_ext_msg`, `_run_external`,
+  `_run_external_compo`, `_compo_couches_traitees`, `_ext_run_cmd`, `_fin_ext_tmp`.
+- `ui/app.py` : `App` hérite de `_Saver` et `_ExternalRunner` ; chaque méthode
+  extraite est remplacée par un **commentaire-pointeur**.
+- **PIÈGE D'ISOLATION ÉCARTÉ** : AUCUNE méthode déplacée ne lit `CONFIG` /
+  `sauver_config` ni le module `journal` au niveau module (le banc qui REMPLACE
+  `ui.journal` — `_test_ui_robuste_jalon87.py` — est vert) → pas de
+  `_globals_app()`. Les dépendances de module (`gx_live`, `travail`,
+  `composition_mod`, `couleurs_mod`, `denoiser_local`, `nettete_live`,
+  `save_image`, `borner_lineaire`, `find_output`, `auto_unflip`,
+  `commande_avec_strength`) sont importées à l'IDENTIQUE : les bancs qui patchent
+  leurs ATTRIBUTS (`ui.gx_live.appliquer`, `travail.espace_libre`…) restent
+  EFFECTIFS (vérifié).
+- **Typage** : `reglages` (`_reglages_rendu`) et `ent` (`_entete_externe`) annotés
+  `dict[str, Any]` ; 2 ignores CIBLÉS
+  `# pyright: ignore[reportOptionalMemberAccess]` sur `self.spcc.coefficients` et
+  `self.photometrie.gains` (pyright ne rétrécit pas ces attributs à travers la
+  variable booléenne `spcc_ok`/`gaia_ok`).
+- `app.py` : imports devenus inutilisés conservés en **ré-export** (`# noqa: F401`,
+  surface figée) ; `import shutil` retiré (plus employé). `external_runner.py`
+  porte le MÊME avertissement préexistant `i_etape` (F841), marqué `noqa`.
+- Pointeurs : changelog (`avastack/__init__.py`, **v2.61.1**), docstrings des deux
+  modules, liste blanche du garde-fou (+ `ui/saver.py`, `ui/external_runner.py`,
+  **30 fichiers**).
 
 ### Vérifications
 - Garde-fou `_test_refactoring_garde_fou.py` : **TOUT AU VERT** (surface **75**,
-  hash au bit, **pyright 0/28**).
-- `ruff` : `avastack/ui/renderer.py` **All checks passed** ; `avastack/ui/app.py`
-  aux **seuls 2 avertissements PRÉEXISTANTS** (`tracer_evt`, `i_etape`). `app.py`
-  a perdu l'import `PIL` (`Image`/`ImageTk`, plus employés) et `annoter_mod` y
-  reste en **ré-export** (`# noqa: F401`) pour garder la surface à 75 symboles.
-- Bancs rejoués verts (07/10/2026) : `_test_histo_jalon75.py`,
-  `_test_zoom_pleine_res_jalon68.py`, `_test_pleine_res_traitee_jalon69.py`,
-  `_test_annotations_overlay_jalon96.py`, `_test_annotations_save_jalon96.py`,
-  `_test_perf_reactivite_jalon79.py`, `_test_ui_robuste_v2_48_3.py`,
-  `_test_reset_empilement_jalon76.py`. ⚠ lancer ces bancs SÉQUENTIELLEMENT
-  (`_test_reset_empilement_jalon76.py` a une course connue avec le worker quand
-  plusieurs bancs Tk tournent en parallèle).
-- **TEST RÉEL D'ALAIN : OK** (v2.61.0, 07/10/2026) — application fonctionnelle. Le
-  ressenti « barres d'histogramme moins réactives » venait du **plein écran +
-  annotations cochées** (l'overlay est recalculé à chaque geste), **sans lien**
-  avec le jalon : les méthodes du chemin de rendu sont identiques AU CARACTÈRE
-  PRÈS à la v2.60.3, et le coût d'un geste mesuré est identique (49-57 ms contre
-  53-69 ms — bruit de mesure).
+  hash au bit, **pyright 0/30**).
+- `ruff` : `saver.py` et `external_runner.py` **All checks passed** ; `app.py` au
+  **seul avertissement PRÉEXISTANT** (`tracer_evt`).
+- Bancs rejoués verts (07/10/2026) : `_test_save_asseen_jalon5.py`,
+  `_test_save_brute_jalon59.py`, `_test_save_lineaire_echelle.py`,
+  `_test_save_lineaire_fix.py`, `_test_save_rgb_axes.py`,
+  `_test_graxpert_live_jalon4.py`, `_test_bxt_entete_jalon69.py`,
+  `_test_gx_lot_externe_jalon83.py`, `_test_denoise_live_jalon9.py`,
+  `_test_sharp_live_jalon12.py`, `_test_etat_calcul_jalon40.py`,
+  `_test_annotations_save_jalon96.py`, `_test_ui_robuste_jalon87.py`,
+  `_test_ui_robuste_v2_48_3.py`, `_test_demarrage_non_bloquant_jalon74.py`,
+  `_test_reset_empilement_jalon76.py`. ⚠ `_test_espace_jalon72.py` : UN échec de
+  placement de boutons, **PRÉEXISTANT** (reproduit à l'identique avec l'`app.py`
+  d'origine — sans lien avec le jalon).
+- **TEST RÉEL D'ALAIN : OK** (v2.61.1, 07/10/2026) — application testée
+  complètement et validée (sauvegardes + traitement externe).
 
 ### Prochaine étape du chantier
-**Jalon 108** — `ui/saver.py` + `ui/external_runner.py` (typés) : sauvegardes +
-traitement externe ; bancs `_test_save_*`, `_test_graxpert_live_jalon4.py`,
-`_test_bxt_entete_jalon69.py` (v2.61.1).
+**Jalon 109** — typage rétroactif de `processing/` : annotations des 16 modules de
+traitement ; vérif : garde-fou + bancs traitement (v2.62.0).
+
+---
+
+## HISTORIQUE (07/10/2026, jalon 107, v2.61.0 — LIVRÉ, TESTÉ EN RÉEL, COMMITÉ/POUSSÉ) — `ui/renderer.py` (rendu + annotation)
+
+Module NEUF (TYPÉ) `avastack/ui/renderer.py` (mixin `Renderer`, dont `App` hérite) :
+tout ce qui DESSINE sur le Canvas `cv_img` est extrait de `app.py` en méthodes
+VERBATIM — sélection de source, chaîne d'affichage unique, dessin + gestes du
+Canvas, annotation temps-réel (jalon 96). PIÈGE D'ISOLATION : `CONFIG` /
+`sauver_config` lus/écrits via `_globals_app()` (résolution TARDIVE) → les
+interceptions des bancs (`ui.CONFIG`, `ui.sauver_config`) restent EFFECTIVES.
+Surface 75, pyright 0/28, garde-fou VERT ; **TEST RÉEL OK** (v2.61.0).
 
 ---
 
@@ -443,7 +456,7 @@ identique AU BIT). Travail étalé sur plusieurs sessions : chaque jalon est une
 | **106c** ✅ | `core/worker.py` (3/4) pilotage | roue / TEC / offset + cadence dossier | `_test_jalon17_filtre.py`, `_test_cadence_jalon42.py`, `_test_pilotage_jalon35.py` | v2.60.2 |
 | **106d** ✅ | `core/worker.py` (4/4) mesures | astrométrie + photométrie / SPCC | `_test_photometrie_jalon56.py`, `_test_astro_branchement_jalon56.py`, `_test_spcc_jalon58.py` | v2.60.3 |
 | **107** | `ui/renderer.py` (typé) | rendu affichage + histogrammes + annotations | `_test_histo_jalon75.py`, `_test_zoom_pleine_res_jalon68.py`, `_test_annotations_overlay_jalon96.py` | v2.61.0 |
-| **108** | `ui/saver.py` + `ui/external_runner.py` (typés) | sauvegardes + traitement externe | `_test_save_*`, `_test_graxpert_live_jalon4.py`, `_test_bxt_entete_jalon69.py` | v2.61.1 |
+| **108** ✅ | `ui/saver.py` + `ui/external_runner.py` (typés) | sauvegardes + traitement externe | `_test_save_*`, `_test_graxpert_live_jalon4.py`, `_test_bxt_entete_jalon69.py` | v2.61.1 |
 | **109** | Typage `processing/` (rétroactif) | annotations des 16 modules de traitement | garde-fou + bancs traitement | v2.62.0 |
 | **110** | Typage `ui/app.py` résiduel + `ui/*` (rétroactif) | annotations finales | garde-fou + pyright 0 erreur | v2.62.1 |
 
@@ -461,14 +474,14 @@ garde-fou les utilise s'ils sont présents (skip gracieux sinon) ; ② **CI GitH
 NON retenue** — le garde-fou reste un banc lancé À LA MAIN (interpréteur du venv),
 rejoué à chaque jalon.
 
-**État : JALON 106d LIVRÉ, TESTÉ EN RÉEL, COMMITÉ/POUSSÉ (v2.60.3)** — les
-« mesures » (astrométrie + photométrie / SPCC) sont rapatriées dans
-`core/worker.py` (8 méthodes de calcul VERBATIM + `_worker_mesures`), l'affichage
-restant dans `app.py`. Le worker est TERMINÉ (4/4). Surface publique inchangée
-(75 symboles), pyright 0 erreur sur 27 fichiers, garde-fou VERT. Prochaine action
-= **jalon 107** (`ui/renderer.py`). Dernière version **validée en réel** :
-**v2.60.3** (106d) ; dernière **release publiée** : **v2.56.1** ; MSIX Store :
-**v2.50.0**.
+**État : JALON 108 LIVRÉ, TESTÉ EN RÉEL, COMMITÉ/POUSSÉ (v2.61.1)** — les
+SAUVEGARDES (+ en-têtes FITS de sortie) vivent dans `ui/saver.py` et le
+TRAITEMENT EXTERNE dans `ui/external_runner.py` (mixins `Saver` /
+`ExternalRunner`, dont `App` hérite, méthodes VERBATIM). Surface publique
+inchangée (75 symboles), pyright 0 erreur sur 30 fichiers, garde-fou VERT.
+Prochaine action = **jalon 109** (typage rétroactif de `processing/`). Dernière
+version **validée en réel** : **v2.61.1** (108) ; dernière **release publiée** :
+**v2.56.1** ; MSIX Store : **v2.50.0**.
 
 - **JALON PRÉCÉDENT (02/10/2026, jalon 88 — INSTALLATEUR WINDOWS EN PAQUET ZIP,
   CODE ÉCRIT, BANC VERT, EN ATTENTE DU TEST RÉEL).**

@@ -18,9 +18,51 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.61.0"
+AVASTACK_VERSION = "2.61.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.61.1 : CHANTIER DE REFACTORING — `ui/saver.py` + `ui/external_runner.py`
+#   (jalon 108, sauvegardes + traitement externe)
+#   - DEUX modules NEUFS (TYPÉS) extraits de `app.py`, sous forme de mixins dont
+#     `App` HÉRITE (méthodes VERBATIM, `self` reste l'instance `App`,
+#     comportement inchangé AU BIT) :
+#       · `ui/saver.py` (mixin `Saver`) — tout ce qui ÉCRIT un fichier : `_save`,
+#         `_save_canaux`, `_save_asseen`, `_save_traite_lineaire`, `_save_proc`,
+#         la capture des réglages (`_reglages_rendu`), le contrôle GraXpert live
+#         (`_gx_live_prete`), le THREAD pleine résolution (`_save_asseen_thread`,
+#         `_couches_brutes`, `_couches_pleine_resolution`) et les EN-TÊTES FITS de
+#         sortie (`_entete_reglages`, `_entete_externe`,
+#         `_astro_entete_sauvegarde`) ;
+#       · `ui/external_runner.py` (mixin `ExternalRunner`) — le TRAITEMENT EXTERNE
+#         (GraXpert / BlurXTerminator, thread séparé) : `_request_ext`, `_pick_exe`,
+#         `_set_ext_msg`, `_run_external`, `_run_external_compo`,
+#         `_compo_couches_traitees`, `_ext_run_cmd`, `_fin_ext_tmp`.
+#   - PIÈGE D'ISOLATION ÉCARTÉ : aucune méthode déplacée ne lit `CONFIG` /
+#     `sauver_config` ni le module `journal` au niveau module (le banc qui
+#     REMPLACE `ui.journal` a été rejoué vert) → AUCUN `_globals_app()` requis.
+#     Les dépendances de module (`gx_live`, `travail`, `composition_mod`,
+#     `couleurs_mod`, `denoiser_local`, `nettete_live`, `save_image`,
+#     `borner_lineaire`, `find_output`, `auto_unflip`, `commande_avec_strength`)
+#     sont importées à l'IDENTIQUE : les bancs qui patchent leurs ATTRIBUTS
+#     (`ui.gx_live.appliquer`, `travail.espace_libre`…) restent EFFECTIFS.
+#   - `app.py` : les imports devenus inutilisés sont conservés en RÉ-EXPORT
+#     (`# noqa: F401`) → surface publique INCHANGÉE (75 symboles, banc garde-fou) ;
+#     `import shutil` retiré (plus employé). `external_runner.py` porte le MÊME
+#     avertissement préexistant `i_etape` (F841), désormais marqué `noqa`.
+#   - Vérifications : garde-fou VERT (surface 75, hash au bit, pyright 0 erreur
+#     sur 30 fichiers typés) ; `ruff` : `saver.py` et `external_runner.py`
+#     PROPRES, `app.py` au seul avertissement PRÉEXISTANT (`tracer_evt`) ; bancs
+#     rejoués verts — `_test_save_asseen_jalon5.py`, `_test_save_brute_jalon59.py`,
+#     `_test_save_lineaire_echelle.py`, `_test_save_lineaire_fix.py`,
+#     `_test_save_rgb_axes.py`, `_test_graxpert_live_jalon4.py`,
+#     `_test_bxt_entete_jalon69.py`, `_test_gx_lot_externe_jalon83.py`,
+#     `_test_denoise_live_jalon9.py`, `_test_sharp_live_jalon12.py`,
+#     `_test_etat_calcul_jalon40.py`, `_test_annotations_save_jalon96.py`,
+#     `_test_ui_robuste_jalon87.py`, `_test_ui_robuste_v2_48_3.py`,
+#     `_test_demarrage_non_bloquant_jalon74.py`, `_test_reset_empilement_jalon76.py`.
+#     ⚠ `_test_espace_jalon72.py` : UN échec de placement de boutons, PRÉEXISTANT
+#     (reproduit à l'IDENTIQUE avec l'`app.py` d'origine — sans lien avec ce jalon).
+#
 # v2.61.0 : CHANTIER DE REFACTORING — `ui/renderer.py` (jalon 107, rendu + annotation)
 #   - Module NEUF (TYPÉ) `avastack/ui/renderer.py` (mixin `Renderer`, dont `App`
 #     HÉRITE) : tout ce qui DESSINE sur le Canvas d'image `cv_img` quitte
