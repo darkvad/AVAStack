@@ -17,9 +17,32 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.57.1"
+AVASTACK_VERSION = "2.58.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.58.0 : CHANTIER DE REFACTORING — `ui/constants.py` (jalon 102)
+#   - PREMIER module de l'UI EXTRAIT de `app.py` : `avastack/ui/constants.py`
+#     (TYPÉ) regroupe toutes les CONSTANTES de l'interface — seuils, palettes,
+#     listes de choix (géométrie de la fenêtre et de l'histogramme, types SPCC,
+#     sections pliables et leur habillage, débruitage live/externe, cadences,
+#     plafond de rafale, topologie de re-stack, caméras « pilotées », filtre
+#     anti-brutes très défocalisées). Les commentaires explicatifs migrent
+#     AVEC les valeurs.
+#   - `app.py` les RÉ-EXPOSE à l'identique — SURFACE PUBLIQUE INCHANGÉE (vérifiée
+#     par le banc garde-fou : 75 symboles, aucun écart) : les constantes de
+#     MODULE (SCORE_MAX_ETOILES, CAMERAS_PILOTEES, FLU_*, FWHM_*, RESTACK_*) sont
+#     ré-importées telles quelles ; les constantes de CLASSE de `App`
+#     (W_IMG/HIST_*/SPCC_TYPE_*/SECTIONS_NOM_MAP/SECTION_*/VL_DN_*/CADENCES/
+#     RAFALE_*/DN_EXT_*) restent des attributs de classe, alimentés par l'alias
+#     privé `_const` — `App.<NOM>` et `self.<NOM>` restent valides.
+#   - ZÉRO changement de comportement : aucune ligne de logique modifiée, rendu
+#     identique AU BIT (hash d'empilement du banc garde-fou inchangé).
+#   - `avastack/ui/constants.py` entre dans la LISTE BLANCHE du banc garde-fou ;
+#     `pyright` (mode `basic`) : 0 ERREUR sur les 8 fichiers typés.
+#   - Vérifications : banc garde-fou VERT + `_test_ui_visibilite_jalon47.py`,
+#     `_test_cadence_jalon42.py`, `_test_histo_jalon75.py`,
+#     `_test_rafale_fin_rendu_jalon80.py`, `_test_spcc_osc.py` rejoués verts.
+#
 # v2.57.1 : CHANTIER DE REFACTORING — TYPAGE DE LA FONDATION (jalon 101)
 #   - TYPAGE RÉTROACTIF (annotations SEULES, AUCUN changement de comportement)
 #     des 7 modules de fondation : `compat`, `config`, `delais`, `journal`,

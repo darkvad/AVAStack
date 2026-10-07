@@ -44,29 +44,23 @@ from ..processing.composition import (COMPOSITIONS, MODES_L, ROLES,
                                       roles_de)
 from ..processing.framestore import ArchiveFrames
 
-# --- Jalon 16 : re-stack sur la meilleure référence (esprit Siril) ----------
-# Chaque brute archivée reçoit un score qualité (nb d'étoiles détectées sur
-# le canal vert). Si une brute bat nettement la référence courante, on
-# ré-ancre dessus et on RECALCULE tout l'empilement depuis l'archive ;
-# le bouton « ⟳ Re-stacker (meilleure brute) » force le recalcul.
-SCORE_MAX_ETOILES = 200    # plafond de détection pour le score qualité
-RESTACK_MARGE = 1.5        # une brute doit battre la référence de ce facteur
-RESTACK_MIN_FRAMES = 5     # pas de re-stack auto avant ce nb de frames archivées
-RESTACK_CADENCE = 10       # nb de frames archivées entre deux re-stacks auto
-RESTACK_HIST_MAX = 12      # entrées conservées dans l'historique de session (jalon 18)
+# Jalon 102 (chantier de refactoring) : les CONSTANTES de l'interface (seuils,
+# palettes, listes de choix) vivent désormais dans `avastack/ui/constants.py`
+# (module TYPÉ). Deux modes de ré-exposition, pour que la surface publique de
+# `app.py` reste INCHANGÉE :
+#   - les constantes de MODULE ci-dessous sont ré-exportées ici (leur nom reste
+#     offert directement par `avastack.ui.app.<NOM>`) ;
+#   - les constantes de CLASSE de `App` sont, elles, ré-exposées plus bas en
+#     attributs de classe alimentés par l'alias privé `_const` (cf. `class App`).
+from . import constants as _const
+from .constants import (CAMERAS_PILOTEES, FLU_MIN_REF, FLU_NB_FRAC,
+                        FWHM_ABS_MIN, FWHM_MARGE, RESTACK_CADENCE,
+                        RESTACK_HIST_MAX, RESTACK_MARGE, RESTACK_MIN_FRAMES,
+                        SCORE_MAX_ETOILES)
 
-# --- Jalon 35 : caméras « pilotées » (sondage roue/TEC, demandes de consigne)
-# TOUTES les caméras SDK, pas seulement QHY (correctif du point 3 de l'item
-# 2d, retour réel d'Alain du 20/09/2026, setup 2 : sur la POA Uranus-C Pro
-# les contrôles TEC s'affichaient — bornes de consigne détectées — mais les
-# boutons ❄ restaient GRISÉS). Cause : `cam_pilotee` était resté QHY-only
-# depuis le jalon 25, donc le sondage lire_refroidissement() du worker
-# n'était JAMAIS lancé pour les autres marques — les implémentations du
-# jalon 33 étaient saines mais jamais appelées. Les no-ops de CameraBase
-# garantissent qu'une marque sans roue/TEC (ZWO, Touptek) reste sans effet :
-# sondage → None → boutons ❄ grisés, combobox filtre désactivée.
-CAMERAS_PILOTEES = (QHYCamera, PlayerOneCamera, SVBonyCamera,
-                    ZWOASICamera, TouptekCamera)
+# (Caméras « pilotées » — jalon 35 — et filtre anti-brutes très défocalisées —
+# jalon 17 — : leurs constantes vivent désormais dans `constants.py` et sont
+# ré-exportées via l'import ci-dessus.)
 
 
 def _fmt_expo(ms):
@@ -88,16 +82,6 @@ def _fmt_expo(ms):
         return f"{s:.2f}".rstrip("0").rstrip(".") + " s"
     return f"{round(s):_}".replace("_", "\u202f") + " s"
 
-# --- Jalon 17 : filtre anti-brutes TRÈS défocalisées (AVANT l'empilement) ---
-# Constat réel d'Alain (17/09/2026, après le jalon 15) : « ça a l'air OK sauf
-# sur des brutes très défocalisées » — elles passent l'alignement (les
-# triangles s'y retrouvent) mais dégradent l'empilement. Rejet AUTOMATIQUE
-# d'office, case « Rejeter les frames floues (auto) » pour désactiver
-# (décision d'Alain). Critères RELATIFS à la médiane des frames gardées.
-FLU_MIN_REF = 3      # ≥ 3 frames gardées avant le 1er rejet possible
-FLU_NB_FRAC = 0.5    # score étoiles < 0,5× la médiane → « effondré »
-FWHM_MARGE = 2.0     # FWHM > 2× la médiane → frame très floue
-FWHM_ABS_MIN = 3.0   # …et soi-même > 3 px (rien à rejeter en très courte focale)
 from ..processing import denoise as denoiser_local
 from ..processing import couleurs as couleurs_mod
 from ..processing import composition as composition_mod
@@ -132,128 +116,45 @@ from ..external.detection import (
 
 
 class App:
-    # H_HIST reste la hauteur de RÉFÉRENCE du panneau d'histogramme ; depuis le
-    # jalon 75 la hauteur réellement utilisée est `_hauteur_hist()` (deux
-    # bandes, ou une seule — voir HIST_MODES).
-    W_IMG, H_IMG, W_HIST, H_HIST = 840, 560, 840, 110
+    # Jalon 102 (chantier de refactoring) : les constantes de l'interface ont
+    # été EXTRAITES dans `avastack/ui/constants.py` (typé). On ne conserve ici
+    # que des RÉ-EXPOSITIONS en attributs de classe, pour que `App.<NOM>` et
+    # `self.<NOM>` restent valides (API inchangée, comportement identique).
+    W_IMG, H_IMG, W_HIST, H_HIST = (_const.W_IMG, _const.H_IMG,
+                                    _const.W_HIST, _const.H_HIST)
 
-    # Jalon 75 : le panneau d'histogramme porte désormais DEUX bandes —
-    # « Brut (linéaire) » (diagnostic : fond, clipping, dominante — c'est
-    # l'axe du GRAND histogramme de SharpCap) et « Sortie du moteur » (l'image
-    # telle que l'étirement la rend, AVANT les barres : c'est là que vivent
-    # les 3 barres Noir/Médian/Blanc, comme dans le MINI-histogramme de
-    # SharpCap, qui agit « on the display only »). Le sélecteur permet de
-    # n'afficher qu'une bande : l'image regagne alors la place, et une bande
-    # unique est plus confortable à régler.
-    HIST_MODES = (("Les deux", "les_deux"),
-                  ("Brut (linéaire)", "brut"),
-                  ("Sortie du moteur", "sortie"))
-    HIST_CODES = tuple(code for _, code in HIST_MODES)
-    HIST_LABELS = dict((code, lib) for lib, code in HIST_MODES)
-    HIST_POINTS = 400000     # échantillon des histogrammes : le COÛT ne dépend
-                             # donc pas de la résolution (mesuré ~10 ms en
-                             # aperçu comme en pleine résolution, contre ~55 ms
-                             # pour l'ancien calcul sur toute l'image)
-    HIST_MARGE = 7           # marge de l'axe « sortie » (px) : une barre à
-                             # 0 % ou 100 % reste attrapable à la souris
-    HIST_PRISE = 7           # rayon de prise d'une barre (px)
-    HIST_RANG_PX = 16        # pas vertical entre deux RANGS d'étiquettes —
-                             # mesuré : le texte fait 15 px de haut, un pas de
-                             # 11 px faisait donc chevaucher deux rangs voisins
-                             # (défaut trouvé par le banc, pas à l'œil)
+    HIST_MODES = _const.HIST_MODES
+    HIST_CODES = _const.HIST_CODES
+    HIST_LABELS = _const.HIST_LABELS
+    HIST_POINTS = _const.HIST_POINTS
+    HIST_MARGE = _const.HIST_MARGE
+    HIST_PRISE = _const.HIST_PRISE
+    HIST_RANG_PX = _const.HIST_RANG_PX
 
-    # Jalon 58 bis (v2.40.0) : SPCC COULEUR (capteur OSC). Le TYPE de capteur
-    # est un choix EXPLICITE : en mono, trois filtres R/G/B ; en couleur, UN
-    # capteur OSC et son filtre (LPF). Constat d'Alain (28/09/2026) : « la
-    # case SPCC dit que c'est que pour du mono multibande, alors que SPCC
-    # fonctionne en images couleurs dans Siril — il faut juste lui dire que
-    # c'est un capteur couleur et le choisir ».
-    SPCC_TYPE_MONO = "Mono (filtres R/G/B)"
-    SPCC_TYPE_OSC = "Couleur (OSC)"
+    SPCC_TYPE_MONO = _const.SPCC_TYPE_MONO
+    SPCC_TYPE_OSC = _const.SPCC_TYPE_OSC
 
-    # --- Jalon 95 : sections pliables dans la colonne gauche (persistées)
-    # Clés CONFIG : "ui_section_<nom_normalisé>" → bool (True = ouvert)
-    SECTIONS_NOM_MAP = {
-        "fichiers_travail": "Fichiers de travail et journal",
-        "camera": "Caméra",
-        "cadence": "Cadence d'empilement",
-        "dossier_surveille": "Dossier surveillé",
-        "composition": "Composition multi-filtres",
-        "calibration": "Calibration",
-        "empilement": "Empilement",
-        "fond_grain": "Fond et grain (AVANT étirement)",
-        "nette": "Netteté live (Richardson-Lucy)",
-        "affichage": "Affichage (temps réel)",
-        "couleur": "Couleur de l'objet (APRÈS étirement)",
-        "etat_calculs": "État des calculs (live)",
-        "traitement_externe": "Traitement externe (long)",
-        "sortie": "Sortie",
-    }
+    SECTIONS_NOM_MAP = _const.SECTIONS_NOM_MAP
 
-    # --- Jalon 99 : habillage des sections pliables (choix d'Alain, variante
-    # « B+ » de la maquette du 06/10/2026 : titres en évidence + cadre
-    # « un peu plus marqué ») ----------------------------------------------
-    # En-têtes en bouton Tk CLASSIQUE : le thème ttk « vista » de Windows
-    # ignore le fond des ttk.Button stylisés (constat réel sur la maquette :
-    # un texte blanc restait invisible sur fond ignoré) — un bouton classique
-    # rend exactement ce qui est demandé, sur les trois OS. Le cadre du
-    # contenu est un FILET posé par un porteur autour du LabelFrame (les
-    # couleurs ttk « bordercolor » ne sont pas honorées par le thème vista).
-    # AUCUN changement d'ordre ni de comportement : c'est l'habillage seul.
-    SECTION_TITRE_BG = "#dde7f5"          # fond d'en-tête (bleu très clair)
-    SECTION_TITRE_FG = "#1f3b63"          # texte d'en-tête (bleu foncé)
-    SECTION_TITRE_BG_ACTIF = "#cddcef"    # fond d'en-tête pendant le clic
-    SECTION_CADRE = "#9fb6d4"             # filet du cadre de contenu (2 px)
+    SECTION_TITRE_BG = _const.SECTION_TITRE_BG
+    SECTION_TITRE_FG = _const.SECTION_TITRE_FG
+    SECTION_TITRE_BG_ACTIF = _const.SECTION_TITRE_BG_ACTIF
+    SECTION_CADRE = _const.SECTION_CADRE
 
-    # Débruitage live (jalon 9, remis le 16/09/2026) : libellés UI ↔ codes
-    # internes (module avastack/processing/denoise.py, algorithmes locaux
-    # sans IA). NLM en premier = défaut (tests réels d'Alain : plus homogène
-    # que les ondelettes). Le débruitage GraXpert IA reste en TRAITEMENT
-    # EXTERNE (plusieurs minutes par image — jamais en live).
-    VL_DN_METHODES = (("nlm", "Non-local means"),
-                      ("ondelettes", "Ondelettes à trous"))
-    VL_DN_LABELS = dict(VL_DN_METHODES)    # code → libellé (restauration)
-    VL_DN_CODES = {lib: code for code, lib in VL_DN_METHODES}
+    VL_DN_METHODES = _const.VL_DN_METHODES
+    VL_DN_LABELS = _const.VL_DN_LABELS
+    VL_DN_CODES = _const.VL_DN_CODES
 
-    # Cadence d'empilement (jalon 42, demande d'Alain) : en surveillance de
-    # dossier, à quelle fréquence les brutes sont lues/empilées. Les brutes
-    # qui arrivent pendant la fenêtre d'attente RESTENT sur le disque (aucune
-    # perte) puis sont drainées en rafale à l'échéance — le solveur VeraLux
-    # ne relance qu'une fois par rafale (dernier job gagnant) au lieu d'à
-    # CHAQUE brute : c'est ce qui évite le sablier permanent avec la chaîne
-    # lourde (gradient/débruitage live).
-    CADENCES = (("dès réception", 0), ("toutes les 5 s", 5),
-                ("toutes les 15 s", 15), ("toutes les 30 s", 30),
-                ("toutes les 1 min", 60), ("toutes les 5 min", 300))
-    CADENCE_CODES = dict(CADENCES)         # libellé → secondes
-    CADENCE_LABELS = {s: l for l, s in CADENCES}   # secondes → libellé
+    CADENCES = _const.CADENCES
+    CADENCE_CODES = _const.CADENCE_CODES
+    CADENCE_LABELS = _const.CADENCE_LABELS
 
-    # Jalon 46 (retour d'Alain : dossiers déjà REMPLIS d'acquisitions
-    # d'autres soirées) : plafond de rafale. Sans lui, la première rafale
-    # devait vider TOUT le backlog d'un coup (des centaines de fichiers →
-    # sablier en continu pendant des minutes au démarrage). Avec le plafond,
-    # chaque rafale empile AU PLUS RAFALE_MAX brutes ; le reste attend les
-    # rafales suivantes (aucune perte — les fichiers restent sur le disque).
-    RAFALE_MAX = 10
+    RAFALE_MAX = _const.RAFALE_MAX
+    RAFALE_QUIET_S = _const.RAFALE_QUIET_S
 
-    # Jalon 80 (demande d'Alain, 29/09/2026) : rendu déclenché en FIN de
-    # rafale, pas sur sa PREMIÈRE brute. `RAFALE_QUIET_S` = silence à partir
-    # duquel la rafale est considérée terminée : une rafale de dossier lit ses
-    # brutes en continu (le temps d'aligner et d'empiler entre deux fichiers,
-    # jamais un creux de plusieurs dixièmes de seconde), puis le worker repart
-    # au scan ou à la fenêtre de cadence. 0,35 s couvre le pas de `_tick`
-    # (30 ms) sans retarder perceptiblement une session à une brute par minute.
-    RAFALE_QUIET_S = 0.35
-
-    # Débruitage du TRAITEMENT EXTERNE (jalon 8, remis le 16/09/2026) :
-    # mêmes algorithmes locaux que le live (ondelettes/NLM) ET le débruitage
-    # GraXpert IA (lent) — au choix, force commune 0..1. En externe, les
-    # algorithmes locaux tournent EN MÉMOIRE entre les étapes subprocess.
-    DN_EXT_METHODES = (("graxpert", "GraXpert (IA, lent)"),
-                       ("ondelettes", "Ondelettes à trous"),
-                       ("nlm", "Non-local means"))
-    DN_EXT_LABELS = dict(DN_EXT_METHODES)  # code → libellé (restauration)
-    DN_EXT_CODES = {lib: code for code, lib in DN_EXT_METHODES}
+    DN_EXT_METHODES = _const.DN_EXT_METHODES
+    DN_EXT_LABELS = _const.DN_EXT_LABELS
+    DN_EXT_CODES = _const.DN_EXT_CODES
 
     def __init__(self, root):
         self.root = root
