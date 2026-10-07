@@ -14,7 +14,19 @@ pour le typage statique (`pyright`) — aucune valeur, aucune logique.
 import tkinter as tk
 from tkinter import ttk, font as tkfont
 
-from ...config import CONFIG, sauver_config
+
+def _globals_app():
+    """Globals du module d'application `avastack.ui.app` — résolution TARDIVE.
+
+    POURQUOI (jalon 105a, écho du jalon 104) : les bancs remplacent
+    `avastack.ui.app.CONFIG` et `.sauver_config` pour INTERCEPTER le vrai
+    config.json (ne jamais l'écrire pendant un test). Or la section pliable lit
+    son état persisté (`ui_section_*`) ET l'écrit au pliage/dépliage : lire ces
+    globals au MOMENT DE L'APPEL préserve cette interception. En production,
+    c'est le MÊME objet que `avastack.config.CONFIG` /
+    `avastack.config.sauver_config` (d'où un comportement identique AU BIT)."""
+    from .. import app as _app              # import TARDIF (évite le cycle)
+    return _app
 
 
 class SectionsPliables:
@@ -55,7 +67,7 @@ class SectionsPliables:
 
         # Variable d'état (persistée)
         etat_ouvert = tk.BooleanVar(
-            value=bool(CONFIG.get(cle_config, defaut_ouvert))
+            value=bool(_globals_app().CONFIG.get(cle_config, defaut_ouvert))
         )
 
         # Police des titres : dérivée de la police PAR DÉFAUT de la
@@ -71,9 +83,12 @@ class SectionsPliables:
 
         def toggle(*_):
             etat_ouvert.set(not etat_ouvert.get())
-            # Persistance immédiate
-            CONFIG[cle_config] = etat_ouvert.get()
-            sauver_config(CONFIG)
+            # Persistance immédiate (globals de l'APPLICATION — cf.
+            # `_globals_app` : l'interception des bancs reste effective, le vrai
+            # config.json n'est jamais écrit pendant un test).
+            _app = _globals_app()
+            _app.CONFIG[cle_config] = etat_ouvert.get()
+            _app.sauver_config(_app.CONFIG)
 
         btn = tk.Button(
             parent,

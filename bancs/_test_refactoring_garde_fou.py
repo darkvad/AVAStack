@@ -112,6 +112,9 @@ HASH_KAPPA_RGB = "a4ece0a2eb47a24dfd603071a18e5b1a9f590e818a5022c369a2475a456568
 #   - Jalon 103 : les widgets de l'UI extraits, `ui/widgets/collapsible.py` et
 #     `ui/widgets/histogram.py` (mixins dont `App` hérite).
 #   - Jalon 104 : la persistance de la config de l'UI — `ui/config_ui.py`.
+#   - Jalon 105a : les PANNEAUX « sources » de la colonne gauche —
+#     `ui/panels/files.py`, `ui/panels/camera.py`, `ui/panels/cadence.py`,
+#     `ui/panels/folder.py` (mixins dont `App` hérite).
 #   - Jalons suivants : chaque module NOUVEAU (extrait de `app.py`) y entre dès
 #     sa création.
 FICHIERS_TYPES = (
@@ -126,6 +129,10 @@ FICHIERS_TYPES = (
     "avastack/ui/widgets/collapsible.py",
     "avastack/ui/widgets/histogram.py",
     "avastack/ui/config_ui.py",
+    "avastack/ui/panels/files.py",
+    "avastack/ui/panels/camera.py",
+    "avastack/ui/panels/cadence.py",
+    "avastack/ui/panels/folder.py",
 )
 
 

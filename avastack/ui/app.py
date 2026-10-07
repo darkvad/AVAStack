@@ -25,11 +25,19 @@ from .. import journal
 from .. import ressources
 from .. import travail
 from ..config import CONFIG, sauver_config
-from ..images import (CFA_MODE, borner_lineaire, lire_filtre_fits,
+from ..images import (borner_lineaire, lire_filtre_fits,
                       load_image, save_image, find_output, auto_unflip)
-from ..cameras import (SOURCES, SimulatedCamera, OpenCVCamera, ZWOASICamera,
+# Jalon 105a : `CFA_MODE` n'est plus utilisé DANS `app.py` (le panneau « Dossier
+# surveillé » vit désormais dans `ui/panels/folder.py`) mais reste RÉ-EXPORTÉ
+# ici pour ne pas rompre la surface publique figée (banc garde-fou).
+from ..images import CFA_MODE                            # noqa: F401 (ré-export)
+from ..cameras import (SimulatedCamera, OpenCVCamera, ZWOASICamera,
                        FolderCamera, MultiFolderCamera, QHYCamera,
                        PlayerOneCamera, TouptekCamera, SVBonyCamera)
+# Jalon 105a : `SOURCES` n'est plus utilisé DANS `app.py` (le panneau
+# « Caméra » vit désormais dans `ui/panels/camera.py`) mais reste RÉ-EXPORTÉ
+# ici (surface publique figée).
+from ..cameras import SOURCES                            # noqa: F401 (ré-export)
 from ..cameras.base import FILTRES_ROUE
 from ..cameras.qhy import lister_via_sous_processus, tracer_evt
 from ..processing import Calibrator, StarAligner, LiveStacker, DisplayProcessor
@@ -82,25 +90,19 @@ from .widgets.histogram import PanneauHistogramme as _PanneauHistogramme
 # dont `App` hérite — méthodes VERBATIM, alias PRIVÉ `_` (hors surface publique).
 from .config_ui import ConfigUI as _ConfigUI
 
-
-def _fmt_expo(ms):
-    """Format d'affichage d'une exposition en ms : µs / ms / s selon l'ordre
-    de grandeur (le curseur log couvre 11 µs → 3600 s selon la caméra).
-
-    Jamais de notation scientifique (retour réel d'Alain, 20/09/2026 :
-    « 2e+03 s » illisible) : au-delà de 10 s la valeur est arrondie à
-    l'entier — le pas réel de la caméra est ≥ 1 ms, le dixième de seconde
-    n'a plus de sens — et les milliers sont séparés par une espace fine
-    insécable (« 2 000 s », « 20 000 s »)."""
-    ms = float(ms)
-    if ms < 1.0:
-        return f"{ms * 1000.0:.0f} µs"
-    if ms < 1000.0:
-        return f"{ms:.1f} ms" if ms < 100.0 else f"{ms:.0f} ms"
-    s = ms / 1000.0
-    if s < 10.0:
-        return f"{s:.2f}".rstrip("0").rstrip(".") + " s"
-    return f"{round(s):_}".replace("_", "\u202f") + " s"
+# Jalon 105a (chantier de refactoring) : les PANNEAUX « sources » de la colonne
+# gauche (fichiers de travail, caméra, cadence, dossier surveillé) vivent
+# désormais dans `avastack/ui/panels/` (modules TYPÉS), sous forme de mixins
+# dont `App` HÉRITE — méthodes VERBATIM, alias PRIVÉS `_` (hors surface
+# publique de `app.py`, motif des jalons 102/103/104). `_fmt_expo` (formateur
+# d'exposition µs/ms/s, compagnon du panneau Caméra) est déplacé dans
+# `panels/camera.py` et RÉ-IMPORTÉ ici : les méthodes d'exposition de `app.py`
+# (`_maj_expo`, `_valider_expo`…) continuent de l'utiliser, et
+# `avastack.ui.app._fmt_expo` reste résolvable (usage des bancs).
+from .panels.files import PanneauFichiers as _PanneauFichiers
+from .panels.camera import PanneauCamera as _PanneauCamera, _fmt_expo
+from .panels.cadence import PanneauCadence as _PanneauCadence
+from .panels.folder import PanneauDossierSurveille as _PanneauDossierSurveille
 
 from ..processing import denoise as denoiser_local
 from ..processing import couleurs as couleurs_mod
@@ -135,7 +137,14 @@ from ..external.detection import (
     commande_avec_strength, detecter_outils)
 
 
-class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI):
+class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
+          _PanneauFichiers, _PanneauCamera, _PanneauCadence,
+          _PanneauDossierSurveille):
+    # Jalon 105a (chantier de refactoring) : `App` hérite AUSSI des mixins des
+    # PANNEAUX « sources » extraits de cet objet vers `avastack/ui/panels/`
+    # (fichiers de travail, caméra, cadence, dossier surveillé). `self` reste
+    # l'instance `App` : l'ordre de pose des widgets et le comportement sont
+    # inchangés AU BIT.
     # Jalon 102 (chantier de refactoring) : les constantes de l'interface ont
     # été EXTRAITES dans `avastack/ui/constants.py` (typé). On ne conserve ici
     # que des RÉ-EXPOSITIONS en attributs de classe, pour que `App.<NOM>` et
@@ -679,213 +688,26 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI):
                 except tk.TclError:
                     pass
 
-        # --- Fichiers de travail et journal (v2.38.9) : EN HAUT de la colonne.
-        # POURQUOI CE DÉPLACEMENT : cette ligne est un indicateur GLOBAL (où vont
-        # les fichiers lourds — frames archivées, FITS des outils — et combien
-        # d'espace reste) et le POINT D'ENTRÉE du diagnostic (journal). Elle vivait
-        # en premières lignes du cadre « Traitement externe (long) », donc à 75 %
-        # de la hauteur d'une colonne DÉFILANTE (y≈2421 px sur 3218 px de
-        # contenu) : constat RÉEL d'Alain (27/09/2026) « pas de chemin pour temp
-        # et pas de bouton journal ». Mesure : les trois boutons ne tenaient pas
-        # sur une ligne (cadre 318 px = texte 243 + « Ouvrir » 43 + « 📂 » 28) et
-        # le troisième — « Journal » — n'était même pas AFFICHÉ
-        # (`winfo_ismapped()` = 0). D'où DEUX lignes : le texte, puis les boutons.
-        self._lf_fichiers_travail, box, _, _ = self._creer_section_pliable(
-            left, "fichiers_travail")
-        self.lbl_travail = ttk.Label(box, text="—", foreground="#888888",
-                                     wraplength=300)
-        self.lbl_travail.pack(anchor="w", fill="x")
-        rowtr = ttk.Frame(box)
-        rowtr.pack(fill="x", pady=(3, 0))
-        ttk.Button(rowtr, text="📂 Dossier", width=12,
-                   command=self._choisir_dossier_travail).pack(side="left")
-        ttk.Button(rowtr, text="Ouvrir", width=8,
-                   command=self._ouvrir_dossier_travail
-                   ).pack(side="left", padx=(4, 0))
-        ttk.Button(rowtr, text="Journal", width=8,
-                   command=self._ouvrir_journal).pack(side="left", padx=(4, 0))
-        # Case « Debug » (v2.54.1, demande d'Alain : déplacée du panneau
-        # Astrométrie) — à côté du bouton « Journal », logique : les logs
-        # DEBUG vont dans le journal, le réglage vit à côté de son bouton.
-        ttk.Checkbutton(rowtr, text="Debug",
-                        variable=self.var_debug).pack(side="left", padx=(8, 0))
+        # --- Fichiers de travail et journal : EN HAUT de la colonne (v2.38.9 —
+        # panneau extrait au jalon 105a dans `avastack/ui/panels/files.py`, qui
+        # porte le « pourquoi ce placement »).
+        self._poser_panneau_fichiers_travail(left)
 
-        # --- Caméra : la SOURCE + Démarrer/Arrêter sont TOUJOURS visibles ;
-        # les contrôles propres à la caméra (exposition, gain, roue, TEC,
-        # détection SDK…) vont dans un sous-cadre qui n'apparaît QUE pour une
-        # source caméra (jalon 47 : en dossier/composition, la colonne ne
-        # montre que ce qui sert au choix en cours — cf.
-        # _maj_visibilite_cadres).
-        self._lf_camera, box, _, _ = self._creer_section_pliable(left, "camera")
-        self.frm_ctrl_cam = ttk.Frame(box)
-        # Jalon 52 (demande d'Alain, 21/09/2026) : le CHOIX DE SOURCE doit
-        # être EN HAUT DU CADRE DÈS LE LANCEMENT. Avant, frm_ctrl_cam était
-        # packé en premier : le choix était SOUS les contrôles ; choisir
-        # « Dossier » (frm_ctrl_cam caché) le faisait remonter — mieux — et
-        # au retour caméra il RESTAIT en haut (le re-pack de
-        # _maj_visibilite_cadres réappend frm_ctrl_cam à la fin) : la place
-        # du choix dépendait de l'histoire de la session. En packant le choix
-        # et Démarrer/Arrêter AVANT frm_ctrl_cam (pack différé ci-dessous),
-        # l'ordre est stable et identique quel que soit le va-et-vient.
-        self.var_source = tk.StringVar(value=SOURCES[0])
-        self.cb_source = ttk.Combobox(box, textvariable=self.var_source,
-                                      values=SOURCES, state="readonly",
-                                      width=28)
-        self.cb_source.pack(fill="x", pady=2)
-        self.cb_source.bind("<<ComboboxSelected>>", self._on_source_choisie)
-        rowbtn = ttk.Frame(box)
-        rowbtn.pack(fill="x", pady=1)
-        self.btn_start = ttk.Button(rowbtn, text="▶ Démarrer", command=self._start)
-        self.btn_start.pack(side="left", expand=True, fill="x", padx=1)
-        self.btn_stop = ttk.Button(rowbtn, text="■ Arrêter", command=self._stop,
-                                   state="disabled")
-        self.btn_stop.pack(side="left", expand=True, fill="x", padx=1)
-        # Jalon 52 : les contrôles caméra APRÈS le choix + Démarrer/Arrêter
-        # (le pack_forget/pack de _maj_visibilite_cadres réappend frm_ctrl_cam
-        # en fin d'ordre : sa place ne bouge donc jamais).
-        self.frm_ctrl_cam.pack(fill="x")
-        self.var_expo = tk.DoubleVar(value=100.0)
-        self.var_gain = tk.DoubleVar(value=30.0)
-        self.var_offset = tk.DoubleVar(value=10.0)
-        # Contrôles caméra QHY (jalon 25 — demandes d'Alain du 19/09/2026) :
-        # exposition log 11 µs → 5 s (case → 1 s à 900 s) ; gain 0 → 175
-        # (unités SDK QHY) ; refroidissement (consigne, lecture, arrêt) ;
-        # roue à filtres intégrée (0 = cran noir « Dark », puis LRGBSHO).
-        self.var_expo_longue = tk.BooleanVar(value=False)
-        self.var_tec_consigne = tk.StringVar(value="-10")
-        self.var_filtre = tk.StringVar(value=FILTRES_ROUE[0])
-        self._tec_dernier = None          # (temp, pwm, consigne) → _tick
-        self._tec_demande = None          # ("consigne", °C) | ("stop", None)
-        self._tec_info = None             # texte d'état TEC (thread → _tick)
-        self._filtre_demande = None       # index de position 0..N-1
-        self._filtre_info = None          # texte d'état roue (thread → _tick)
-        self._roue_ok = False             # roue détectée (worker → _tick)
-        # --- Exposition : curseur log dédié (11 µs – 5 s / 1 s – 900 s) ---
-        # Jalon 27 (demande d'Alain) : zone de saisie en PLUS du curseur
-        # (formats acceptés : « 100 », « 0,5 », « 12 ms », « 2 s », « 11 µs »).
-        rowe = ttk.Frame(self.frm_ctrl_cam)
-        rowe.pack(fill="x", pady=1)
-        heade = ttk.Frame(rowe)
-        heade.pack(fill="x")
-        ttk.Label(heade, text="Exposition").pack(side="left")
-        self.var_expo_saisie = tk.StringVar(value=_fmt_expo(100.0))
-        self.entry_expo = ttk.Entry(heade, textvariable=self.var_expo_saisie,
-                                    width=10, justify="right")
-        self.entry_expo.pack(side="right", padx=(0, 4))
-        self.entry_expo.bind("<Return>", self._valider_expo)
-        self.entry_expo.bind("<FocusOut>", self._valider_expo)
-        self.lbl_expo = ttk.Label(heade, text="")
-        self.lbl_expo.pack(side="right")
-        lignee = ttk.Frame(rowe)
-        lignee.pack(fill="x")
-        b_em = ttk.Button(lignee, text="-", width=3, takefocus=False,
-                          command=lambda: self._on_pas_expo(1 / 1.25))
-        b_em.pack(side="left")
-        self.s_expo = ttk.Scale(lignee, from_=0, to=1000,
-                                value=self._pos_depuis_expo(100.0),
-                                command=self._on_curseur_expo)
-        self.s_expo.pack(side="left", fill="x", expand=True, padx=3)
-        b_ep = ttk.Button(lignee, text="+", width=3, takefocus=False,
-                          command=lambda: self._on_pas_expo(1.25))
-        b_ep.pack(side="left")
-        self.chk_expo_longue = ttk.Checkbutton(
-            self.frm_ctrl_cam, text="", variable=self.var_expo_longue,
-            command=self._on_echelle_expo)
-        self._maj_libelle_expo_longue()   # libellé = bornes réelles (jalon 34)
-        self.chk_expo_longue.pack(anchor="w")
-        self.sl_gain = self._add_slider(
-            self.frm_ctrl_cam, "Gain (0 – 175)", self.var_gain, 0.0, 175.0, 1.0,
-            self._push_settings, "{:.0f}", saisie=True)
-        self.sl_offset = self._add_slider(
-            self.frm_ctrl_cam, "Offset (0 – 255)", self.var_offset, 0.0, 255.0, 1.0,
-            self._push_settings, "{:.0f}", saisie=True)
-        # --- Roue à filtres intégrée (active si la roue répond, cf. worker)
-        rowf = ttk.Frame(self.frm_ctrl_cam)
-        rowf.pack(fill="x", pady=(2, 0))
-        ttk.Label(rowf, text="Filtre :").pack(side="left")
-        self.cb_filtre = ttk.Combobox(rowf, textvariable=self.var_filtre,
-                                      state="disabled", width=7,
-                                      values=list(FILTRES_ROUE))
-        self.cb_filtre.pack(side="left", padx=4)
-        self.cb_filtre.bind("<<ComboboxSelected>>", self._on_filtre_choisi)
-        self.lbl_filtre = ttk.Label(rowf, text="", foreground="#888888")
-        self.lbl_filtre.pack(side="left", padx=(2, 0))
-        # --- Refroidissement TEC (consigne + lectures + arrêt) -----------
-        rowt = ttk.Frame(self.frm_ctrl_cam)
-        rowt.pack(fill="x", pady=(2, 0))
-        self.lbl_tec_lib = ttk.Label(rowt, text="Consigne °C :")
-        self.lbl_tec_lib.pack(side="left")
-        ttk.Entry(rowt, textvariable=self.var_tec_consigne, width=5
-                  ).pack(side="left", padx=(4, 4))
-        self.btn_tec_on = ttk.Button(rowt, text="❄ Réguler",
-                                     command=self._on_consigne_tec,
-                                     state="disabled")
-        self.btn_tec_on.pack(side="left", padx=(0, 2))
-        self.btn_tec_off = ttk.Button(rowt, text="⏹ Arrêter",
-                                      command=self._on_arret_tec,
-                                      state="disabled")
-        self.btn_tec_off.pack(side="left")
-        self.lbl_tec = ttk.Label(self.frm_ctrl_cam, text="Capteur : — · TEC : —",
-                                 foreground="#888888")
-        self.lbl_tec.pack(anchor="w")
-        # Détection des caméras « SDK constructeur » (correctif du
-        # 19/09/2026 : aucune info au choix de la source). Le scan QHY
-        # tourne dans un SOUS-PROCESSUS isolé : un segfault du SDK ne tue
-        # jamais l'application (message clair à la place).
-        rowd = ttk.Frame(self.frm_ctrl_cam)
-        rowd.pack(fill="x", pady=(2, 0))
-        ttk.Button(rowd, text="🔎 Détecter", width=12,
-                   command=self._detecter_camera).pack(side="left")
-        self.lbl_detect = ttk.Label(rowd, text="", foreground="#666666")
-        self.lbl_detect.pack(side="left", padx=(6, 0))
-        # Jalon 52 (demande d'Alain, 21/09/2026) : « ⏏ Déconnecter » sur SA
-        # PROPRE ligne, sous « 🔎 Détecter ». Sur la même ligne (side="right"),
-        # un long libellé de caméra détectée (« Touptek : connectée (…) ») le
-        # poussait hors de la colonne : il fallait élargir la colonne pour
-        # l'atteindre. Une ligne dédiée le rend toujours visible.
-        self.btn_deconnect = ttk.Button(self.frm_ctrl_cam,
-                                        text="⏏ Déconnecter", width=12,
-                                        command=self._deconnecter_camera,
-                                        state="disabled")
-        self.btn_deconnect.pack(anchor="w", pady=(2, 0))
+        # --- Caméra : panneau extrait au jalon 105a (`avastack/ui/panels/
+        # camera.py`). La SOURCE + Démarrer/Arrêter restent TOUJOURS visibles ;
+        # les contrôles caméra vivent dans frm_ctrl_cam (visible seulement pour
+        # une source caméra, jalon 47 — cf. `_maj_visibilite_cadres`).
+        self._poser_panneau_camera(left)
 
-        # --- Jalon 47 : le réglage de RAFALE (« Empiler les brutes »,
-        # jalons 42/45) sort des cadres « Dossier surveillé » et
-        # « Composition multi-filtres » où il était DUPLIQUÉ : UN SEUL cadre
-        # « Cadence d'empilement », visible uniquement pour ces deux sources
-        # (sans objet pour une vraie caméra) — cf. _maj_visibilite_cadres.
-        # NOTE jalon 95 : self.frm_rafale = contenu interne (compat widgets),
-        # self._lf_cadence = LabelFrame externe (pour pack/before).
-        self._lf_cadence, self.frm_rafale, _, _ = self._creer_section_pliable(
-            left, "cadence")
-        self._creer_cadence(self.frm_rafale)
+        # --- Cadence d'empilement (panneau extrait au jalon 105a dans
+        # `avastack/ui/panels/cadence.py` ; jalon 47 : UN SEUL cadre, partagé
+        # par « Dossier surveillé » et « Composition multi-filtres »).
+        self._poser_panneau_cadence(left)
 
-        # --- Dossier surveillé (visible uniquement pour cette source, jalon 47)
-        # NOTE jalon 95 : idem, self.frm_dossier = contenu interne.
-        self._lf_dossier_surveille, self.frm_dossier, _, _ = self._creer_section_pliable(
-            left, "dossier_surveille")
-        row = ttk.Frame(self.frm_dossier)
-        row.pack(fill="x")
-        self.var_folder = tk.StringVar(value="")
-        ttk.Entry(row, textvariable=self.var_folder).pack(side="left", fill="x", expand=True)
-        ttk.Button(row, text="…", width=3, command=self._pick_folder).pack(side="left", padx=(4, 0))
-        self.var_process_existing = tk.BooleanVar(value=True)
-        ttk.Checkbutton(self.frm_dossier,
-                        text="Empiler aussi les images déjà présentes",
-                        variable=self.var_process_existing).pack(anchor="w")
-        rowc = ttk.Frame(self.frm_dossier)
-        rowc.pack(fill="x", pady=(3, 0))
-        ttk.Label(rowc, text="Brutes capteur couleur :").pack(side="left")
-        self.var_cfa = tk.StringVar(value=CFA_MODE)
-        ttk.Combobox(rowc, textvariable=self.var_cfa, state="readonly", width=6,
-                     values=["Auto", "RGGB", "BGGR", "GRBG", "GBRG", "Non"]
-                     ).pack(side="left", padx=(4, 0))
-        self.var_cfa.trace_add("write", self._on_cfa)
-        # Jalon 42/45 : la cadence d'empilement (« Empiler les brutes ») est
-        # DÉPLACÉE hors de ce cadre (jalon 47) — un seul exemplaire partagé
-        # par dossier surveillé et composition, cf. frm_rafale ci-dessus.
-        self.lbl_last = ttk.Label(self.frm_dossier, text="Dernier fichier : —")
-        self.lbl_last.pack(anchor="w")
+        # --- Dossier surveillé (panneau extrait au jalon 105a dans
+        # `avastack/ui/panels/folder.py` ; visible uniquement pour cette
+        # source, jalon 47).
+        self._poser_panneau_dossier_surveille(left)
 
         # --- Composition multi-filtres (jalon 19) : 1 à 4 dossiers surveillés,
         # un RÔLE (filtre) par dossier ; le composite temps réel combine les
@@ -4274,64 +4096,9 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI):
         if self.cadence_lecture <= 0:
             self._prochaine_lecture = 0.0   # « dès réception » : plus de fenêtre
 
-    def _creer_cadence(self, parent):
-        """Ligne « Empiler les brutes » (jalon 42 ; jalon 47 : UN SEUL
-        exemplaire, dans le cadre dédié « Cadence d'empilement » — fini la
-        duplication du jalon 45 dans les cadres dossier ET composition ; le
-        choix reste commun, la cadence s'applique aux DEUX sources dossier
-        car le worker la porte). L'étiquette (jalon 44) montre l'état du
-        throttling en direct : « prochaine rafale dans Xs · N brute(s) en
-        attente » (fenêtre armée), « rafale en cours » (drain), « — » (dès
-        réception ou pas encore de source)."""
-        if not hasattr(self, "var_cadence"):
-            self.var_cadence = tk.StringVar(value="dès réception")
-        row = ttk.Frame(parent)
-        row.pack(fill="x", pady=(3, 0))
-        ttk.Label(row, text="Empiler les brutes :").pack(side="left")
-        cb = ttk.Combobox(row, textvariable=self.var_cadence,
-                          state="readonly", width=16,
-                          values=[lib for lib, _ in self.CADENCES])
-        cb.pack(side="left", padx=(4, 0))
-        cb.bind("<<ComboboxSelected>>", lambda e: self._on_cadence())
-        self._cadence_cbs.append(cb)
-        if not hasattr(self, "cb_cadence"):
-            self.cb_cadence = cb            # compatibilité (première créée)
-        lbl = ttk.Label(parent, text="—")
-        lbl.pack(anchor="w")
-        self._cadence_lbls.append(lbl)
-        if not hasattr(self, "lbl_cadence"):
-            self.lbl_cadence = lbl          # compatibilité (première créée)
-
-    def _maj_lbl_cadence(self):
-        """État de la cadence affiché EN DIRECT (jalon 44) : pendant la
-        fenêtre d'attente, « prochaine rafale dans Xs · N brute(s) en
-        attente » (ambre) — la preuve visible que le throttling retient les
-        brutes ; à l'échéance, « rafale en cours · N » (vert) pendant le
-        drain ; « — » = dès réception OU pas encore de source connectée
-        (jalon 45 : ne plus afficher « sans objet » avant la connexion —
-        constat d'Alain) ; cadence posée sur une source non dossier →
-        « sans objet ». Thread UI seul (appelé par _tick)."""
-        if self.camera is None:
-            txt, coul = "—", "#888888"      # pas encore de source : au repos
-        elif self.cadence_lecture > 0 and self._cadence_dossier():
-            attente = self._brutes_en_attente()
-            reste = self._prochaine_lecture - time.monotonic()
-            if reste > 0:
-                txt = (f"prochaine rafale dans {reste:.0f} s · "
-                       f"{attente} brute(s) en attente")
-                coul = "#c98a00"
-            else:
-                txt = f"rafale en cours · {attente} brute(s) en attente"
-                coul = "#1d7f1d"
-        elif self.cadence_lecture > 0:
-            txt = "cadence : sans objet (source non dossier)"
-            coul = "#888888"
-        else:
-            txt, coul = "—", "#888888"
-        if txt != self._cadence_lbl_txt:
-            self._cadence_lbl_txt = txt
-            for lbl in self._cadence_lbls:
-                lbl.config(text=txt, foreground=coul)
+    # `_creer_cadence` et `_maj_lbl_cadence` ont été EXTRAITS au jalon 105a du
+    # chantier de refactoring vers `avastack/ui/panels/cadence.py` (mixin
+    # `PanneauCadence`, dont `App` hérite) — code repris VERBATIM.
 
     # --- contrôles caméra QHY (jalon 25) : demandes posées ICI (thread Tk),
     # consommées par le thread de travail — jamais d'appel SDK depuis Tk.

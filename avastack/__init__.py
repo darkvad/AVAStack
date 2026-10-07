@@ -17,9 +17,47 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.58.2"
+AVASTACK_VERSION = "2.59.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.59.0 : CHANTIER DE REFACTORING — `ui/panels/` (jalon 105a, vague « sources »)
+#   - Quatre modules NEUFS (TYPÉS) + `__init__.py` dans `avastack/ui/panels/` :
+#     la première vague d'extraction de la COLONNE GAUCHE, sous forme de mixins
+#     dont `App` HÉRITE (méthodes reprises VERBATIM — `self` reste l'instance
+#     `App`, séquence de pose et comportement inchangés AU BIT) :
+#       · `files.py` — `PanneauFichiers` : « Fichiers de travail et journal » ;
+#       · `camera.py` — `PanneauCamera` : « Caméra » (+ `_fmt_expo`, déplacé) ;
+#       · `cadence.py` — `PanneauCadence` : « Cadence d'empilement »
+#         (`_creer_cadence` et `_maj_lbl_cadence` déplacés avec lui) ;
+#       · `folder.py` — `PanneauDossierSurveille` : « Dossier surveillé ».
+#     `_build_ui` appelle désormais `self._poser_panneau_*` (4 appels) ;
+#     `avastack/ui/app.py` : 9 733 → 9 509 lignes.
+#   - `_fmt_expo` (formateur d'exposition µs/ms/s) déplacé dans
+#     `panels/camera.py` et RÉ-IMPORTÉ par `app.py` (ses méthodes `_maj_expo` /
+#     `_valider_expo` l'utilisent, et `avastack.ui.app._fmt_expo` reste
+#     résolvable — banc jalon 34). `SOURCES` et `CFA_MODE` ne sont plus utilisés
+#     DANS `app.py` (leurs panneaux ont migré) mais restent RÉ-EXPORTÉS
+#     (`# noqa: F401`) : surface publique INCHANGÉE (75 symboles).
+#   - TROU D'ISOLATION DE BANC CORRIGÉ (cause d'un échec PRÉEXISTANT de
+#     `_test_ui_visibilite_jalon47.py` constaté sur une machine dont le
+#     config.json a des sections repliées) : `ui/widgets/collapsible.py` lit et
+#     écrit désormais `CONFIG` / `sauver_config` via les GLOBALS de
+#     `avastack.ui.app` (`_globals_app()`, motif du jalon 104) au lieu de
+#     l'import direct — les mocks `ui.CONFIG` / `ui.sauver_config` des bancs
+#     redeviennent EFFECTIFS et le vrai config.json n'est plus écrit pendant un
+#     test. En production, comportement IDENTIQUE (même objet / même dict).
+#   - `pyright` 0 ERREUR sur les 15 fichiers typés ; `ruff` : seuls les
+#     2 avertissements PRÉEXISTANTS de `app.py` (`tracer_evt`, `i_etape`).
+#   - Vérifications : garde-fou VERT ; bancs rejoués verts —
+#     `_test_cadence_jalon42.py`, `_test_expo_affichage_jalon34.py`,
+#     `_test_ui_visibilite_jalon47.py`, `_test_ui_robuste_jalon87.py`,
+#     `_test_config_jalon6.py`, `_test_ergonomie_jalon52.py`,
+#     `_test_capacites_ui_jalon32.py`, `_test_compo_ui_jalon19.py`,
+#     `_test_histo_jalon75.py`, `_test_dialogues_jalon84.py`,
+#     `_test_zoom_pleine_res_jalon68.py`, `_test_rafale_fin_rendu_jalon80.py`,
+#     `_test_norm_commune_jalon61.py`, `_test_spcc_osc.py`.
+#
+
 # v2.58.2 : CHANTIER DE REFACTORING — `ui/config_ui.py` (jalon 104)
 #   - Module NEUF (TYPÉ) `avastack/ui/config_ui.py` extrait de `app.py` : mixin
 #     `ConfigUI` dont `App` HÉRITE, regroupant la PERSISTANCE de la config de

@@ -9,51 +9,67 @@ dans le changelog du source et l'historique git.)
 
 ---
 
-## Session du 07/10/2026 — jalon 104 (v2.58.2 — LIVRÉ, BANC VERT) — `ui/config_ui.py` TYPÉ
+## Session du 07/10/2026 — jalon 105a (v2.59.0 — LIVRÉ, BANC VERT, TESTÉ EN RÉEL) — `ui/panels/` vague « sources »
 
 ### But du jalon
-Cinquième étape du **chantier de refactoring** : extraire de `app.py` la
-**persistance de la config de l'interface** (`_restaurer_config` +
-`_sauver_config_app`) dans un module **`ui/config_ui.py` typé**, sous forme de
-mixin — SANS aucun changement de comportement.
+Sixième étape du **chantier de refactoring** : extraire de `app.py` la
+**construction des 4 panneaux « sources » de la colonne gauche** dans un paquet
+**`ui/panels/` typé**, sous forme de mixins — SANS aucun changement de
+comportement.
 
-### Livré (v2.58.2)
-- `avastack/ui/config_ui.py` **NEUF (typé)** : mixin `ConfigUI` dont `App`
-  **hérite** — `_restaurer_config` (restauration au démarrage) et
-  `_sauver_config_app` (écriture à la fermeture). Méthodes reprises
-  **VERBATIM**. `app.py` : **10 297 → 9 733 lignes**.
-- Interface déclarée pour le typage : 134 membres (`var_*` en `tk.Variable`,
-  constantes, widgets, état, 32 méthodes de l'hôte en `Callable[..., Any]`).
-- Import en **alias privé** `_ConfigUI` (surface publique inchangée, 75
-  symboles). Import `MODES_L` retiré de `app.py` mais **ré-exporté** (`# noqa`,
-  il était dans la surface figée).
-- **PIÈGE RÉSOLU — interceptions de bancs** : ~40 bancs remplacent
-  `avastack.ui.app.sauver_config` (et certains `.CONFIG`) pour intercepter le
-  VRAI `config.json`. Les méthodes vivant désormais dans `config_ui.py`, elles
-  lisent ces globals par **résolution TARDIVE** (`_globals_app().CONFIG` /
-  `.sauver_config`, import tardif du module d'application) → l'interception des
-  bancs reste effective (sinon : le vrai config.json serait écrit pendant les
-  bancs).
-- **Micro-réécritures ÉQUIVALENTES** pour `pyright` (comportement inchangé) :
-  `isinstance(_hm, str) and _hm in HIST_CODES` (clé `hist_mode`) ; clé `kappa`
-  `None if v is None else float(v)` (`v is None` ⟺ `etiquette == "Off"`).
-- `config_ui.py` entre dans la **LISTE BLANCHE** → **pyright 0 erreur sur 11
-  fichiers**.
+### Livré (v2.59.0)
+- `avastack/ui/panels/` **NEUF** (`__init__.py` + 4 modules TYPÉS), mixins dont
+  `App` **hérite** — méthodes reprises **VERBATIM** :
+  - `files.py` → `PanneauFichiers` (`_poser_panneau_fichiers_travail`) ;
+  - `camera.py` → `PanneauCamera` (`_poser_panneau_camera`) + `_fmt_expo` ;
+  - `cadence.py` → `PanneauCadence` (`_poser_panneau_cadence`, `_creer_cadence`,
+    `_maj_lbl_cadence`) ;
+  - `folder.py` → `PanneauDossierSurveille` (`_poser_panneau_dossier_surveille`).
+- `_build_ui` : les 4 blocs inline (~205 lignes) deviennent 4 appels
+  `self._poser_panneau_*`. `app.py` : **9 733 → 9 509 lignes**.
+- `_fmt_expo` (formateur d'exposition µs/ms/s) déplacé dans
+  `panels/camera.py` et **RÉ-IMPORTÉ** par `app.py` (ses méthodes `_maj_expo` /
+  `_valider_expo` l'utilisent ; `avastack.ui.app._fmt_expo` reste résolvable —
+  banc jalon 34). `SOURCES` / `CFA_MODE` ne sont plus utilisés DANS `app.py`
+  mais restent RÉ-EXPORTÉS (`# noqa: F401`) : surface publique inchangée (75).
+- **PIÈGE RÉSOLU — trou d'isolation de banc** : `ui/widgets/collapsible.py`
+  lisait/écrivait `CONFIG` / `sauver_config` par import DIRECT (le VRAI
+  `avastack.config`) ; les mocks des bancs (`ui.CONFIG`, `ui.sauver_config`)
+  étaient donc SANS EFFET sur l'état des sections. Conséquences : un banc qui
+  clique les en-têtes (`_btn_header.invoke()`) ÉCRIVAIT le vrai `config.json`,
+  et `_test_ui_visibilite_jalon47.py` ÉCHOUAIT sur toute machine dont le
+  config.json a une section repliée (échec **PRÉEXISTANT**, prouvé par `git
+  stash`). Corrigé à la racine : résolution TARDIVE via `_globals_app()` (motif
+  du jalon 104) → comportement IDENTIQUE en production (même objet/dict).
 
 ### Vérifications
 - Garde-fou `_test_refactoring_garde_fou.py` : **TOUT AU VERT** (surface 75,
-  hash au bit, pyright 0/11).
-- Bancs rejoués verts : `_test_config_jalon6.py`, `_test_histo_jalon75.py`,
-  `_test_ui_visibilite_jalon47.py`, `_test_spcc_osc.py`,
-  `_test_cadence_jalon42.py`, `_test_compo_ui_jalon19.py`,
-  `_test_couleurs_jalon22.py`, `_test_zoom_pleine_res_jalon68.py`,
-  `_test_norm_commune_jalon61.py`, `_test_dn_jalon7.py`.
-- `ruff` sur `config_ui.py` : **All checks passed**. `app.py` : ses **2
-  avertissements PRÉEXISTANTS** (rien de neuf).
+  hash au bit, **pyright 0/15**).
+- Bancs rejoués verts : `_test_cadence_jalon42.py`,
+  `_test_expo_affichage_jalon34.py`, `_test_ui_visibilite_jalon47.py`,
+  `_test_ui_robuste_jalon87.py`, `_test_config_jalon6.py`,
+  `_test_ergonomie_jalon52.py`, `_test_capacites_ui_jalon32.py`,
+  `_test_compo_ui_jalon19.py`, `_test_histo_jalon75.py`,
+  `_test_dialogues_jalon84.py`, `_test_zoom_pleine_res_jalon68.py`,
+  `_test_rafale_fin_rendu_jalon80.py`, `_test_norm_commune_jalon61.py`,
+  `_test_spcc_osc.py`. `config.json` réel : **mtime inchangé** (bancs désormais
+  hermétiques).
+- `ruff` sur `panels/` + `collapsible.py` : **All checks passed**. `app.py` :
+  ses **2 avertissements PRÉEXISTANTS** (rien de neuf).
+- **TEST RÉEL D'ALAIN : OK** (v2.59.0, 07/10/2026).
 
 ### Prochaine étape du chantier
-**Jalon 105a** — `ui/panels/` (1/3, sources, typés) : `files`, `camera`,
-`cadence`, `folder`.
+**Jalon 105b** — `ui/panels/` (2/3, traitement, typés) : `compo`, `calib`,
+`stack`, `bgnoise`, `sharp`.
+
+---
+
+## HISTORIQUE (07/10/2026, jalon 104, v2.58.2 — LIVRÉ, TESTÉ EN RÉEL) — `ui/config_ui.py` TYPÉ
+
+Persistance de la config de l'interface (`_restaurer_config` +
+`_sauver_config_app`) extraite en mixin typé ; lecture des globals d'`app.py`
+par **résolution TARDIVE** (interception des ~40 bancs préservée), import
+`MODES_L` ré-exporté, pyright 0/11, garde-fou vert. **TEST RÉEL D'ALAIN : OK.**
 
 ---
 
@@ -221,26 +237,27 @@ quatre paquets + `INSTALLATION.md`.
 
 ## Prochaine étape
 
-**JALON 104 LIVRÉ (v2.58.2, 07/10/2026)** : `avastack/ui/config_ui.py` (TYPÉ) —
-mixin `ConfigUI` : restauration + sauvegarde de la config de l'interface ;
-**surface publique INCHANGÉE (75 symboles)**, **pyright 0 erreur sur 11
-fichiers**, **banc garde-fou VERT**, bancs rejoués verts, **aucun changement de
-comportement**.
+**JALON 105a LIVRÉ (v2.59.0, 07/10/2026)** : `avastack/ui/panels/` (TYPÉ) —
+vague « sources » (fichiers de travail, caméra, cadence, dossier surveillé)
+extraite de `app.py` sous forme de mixins ; **surface publique INCHANGÉE (75
+symboles)**, **pyright 0 erreur sur 15 fichiers**, **banc garde-fou VERT**,
+bancs rejoués verts, **aucun changement de comportement**. Au passage, **trou
+d'isolation de banc corrigé** dans `ui/widgets/collapsible.py` (résolution
+tardive de `CONFIG`/`sauver_config`).
 
-**Prochaine action = jalon 105a** (`ui/panels/` 1/3, sources, typés :
-`files`, `camera`, `cadence`, `folder`).
+**Prochaine action = jalon 105b** (`ui/panels/` 2/3, traitement, typés :
+`compo`, `calib`, `stack`, `bgnoise`, `sharp`).
 
-**Reste à faire à ton initiative, sans urgence** : ① le **TEST RÉEL** de la
-v2.58.2 ; ② le test « installer depuis le Microsoft Store ».
+**Reste à faire à ton initiative, sans urgence** : le test « **installer depuis
+le Microsoft Store** » (seul test qui n'existe que par cette voie).
 
 **ÉTAT DE FIN DE SESSION (07/10/2026)** : le chantier de refactoring (jalons
-100 → 102, jusqu'à **v2.58.0**) est **COMMITÉ et POUSSÉ** sur `origin/master`.
-Version stable de référence / repli = **v2.56.1** — dernière version à la fois
-**PUBLIÉE** (release GitHub :
-https://github.com/darkvad/AVAStack/releases/tag/v2.56.1) ET **validée en
-réel** ; les jalons 100-102 ne sont PAS des releases (aucun paquet construit ;
-le MSIX publié sur le Store reste **v2.50.0**). Repli : `v2.56.1` puis
-`v2.56.0`. Arbre propre, `origin/master` à jour.
+100 → 105a) est **COMMITÉ et POUSSÉ** sur `origin/master`, **arbre propre**.
+Dernière version **validée en réel** = **v2.59.0** ; dernière **release GitHub
+publique** = **v2.56.1**
+(https://github.com/darkvad/AVAStack/releases/tag/v2.56.1) ; MSIX publié sur le
+Store = **v2.50.0** (les jalons 100-105a ne sont PAS des releases : aucun paquet
+construit).
 
 **RESTE OUVERT, À L'OCCASION (à ton initiative, aucune urgence)** : ① le test
 « **installer depuis le Microsoft Store** » — dernier test qui n'existe que par
@@ -280,7 +297,7 @@ identique AU BIT). Travail étalé sur plusieurs sessions : chaque jalon est une
 | **102** ✅ | `ui/constants.py` (typé) | constantes/seuils/palettes extraits de `app.py` (surface publique inchangée) + entrée liste blanche | garde-fou + `_test_ui_visibilite_jalon47.py`, `_test_cadence_jalon42.py`, `_test_histo_jalon75.py`, `_test_rafale_fin_rendu_jalon80.py`, `_test_spcc_osc.py` | v2.58.0 |
 | **103** ✅ | `ui/widgets/` (typés) | `collapsible.py` + `histogram.py` (histogramme + niveaux + saturation ; `tooltip` inexistant → abandonné, décision 07/10) | garde-fou + `_test_histo_jalon75.py`, `_test_dialogues_jalon84.py`, `_test_ui_visibilite_jalon47.py` | v2.58.1 |
 | **104** ✅ | `ui/config_ui.py` (typé) | extraction charger/sauver de la config UI | garde-fou + `_test_config_jalon6.py` | v2.58.2 |
-| **105a** | `ui/panels/` (1/3) sources (typés) | `files`, `camera`, `cadence`, `folder` | garde-fou + `_test_ui_visibilite_jalon47.py`, `_test_ui_robuste_jalon87.py` | v2.59.0 |
+| **105a** ✅ | `ui/panels/` (1/3) sources (typés) | `files`, `camera`, `cadence`, `folder` | garde-fou + `_test_ui_visibilite_jalon47.py`, `_test_ui_robuste_jalon87.py` | v2.59.0 |
 | **105b** | `ui/panels/` (2/3) traitement (typés) | `compo`, `calib`, `stack`, `bgnoise`, `sharp` | idem + `_test_compo_ui_jalon19.py` | v2.59.1 |
 | **105c** | `ui/panels/` (3/3) sortie (typés) | `display`, `color`, `state`, `external`, `output` | idem + `_test_ui_moteur_jalon41.py`, `_test_sliders_jalon6.py` | v2.59.2 |
 | **106a** | `core/worker.py` (1/4) squelette | `core/config.py` (`WorkerConfig` typé), `AcquisitionWorker` délégué | garde-fou | v2.60.0 |
@@ -306,11 +323,12 @@ garde-fou les utilise s'ils sont présents (skip gracieux sinon) ; ② **CI GitH
 NON retenue** — le garde-fou reste un banc lancé À LA MAIN (interpréteur du venv),
 rejoué à chaque jalon.
 
-**État : JALON 104 LIVRÉ** (v2.58.2 — `ui/config_ui.py` TYPÉ : restauration +
-sauvegarde de la config de l'interface extraites de `app.py`, surface publique
-inchangée, pyright 0 erreur sur 11 fichiers ; banc garde-fou VERT). Prochaine
-action = **jalon 105a** (`ui/panels/` sources, typés). Repli de référence :
-**v2.56.1** (dernière version validée en réel).
+**État : JALON 105a LIVRÉ, TESTÉ EN RÉEL** (v2.59.0 — `ui/panels/` TYPÉ, vague
+« sources » extraite de `app.py` : fichiers de travail, caméra, cadence, dossier
+surveillé ; surface publique inchangée, pyright 0 erreur sur 15 fichiers ; banc
+garde-fou VERT). Prochaine action = **jalon 105b** (`ui/panels/` traitement,
+typés). Dernière version **validée en réel** : **v2.59.0** ; dernière **release
+publiée** : **v2.56.1** ; MSIX Store : **v2.50.0**.
 
 - **JALON PRÉCÉDENT (02/10/2026, jalon 88 — INSTALLATEUR WINDOWS EN PAQUET ZIP,
   CODE ÉCRIT, BANC VERT, EN ATTENTE DU TEST RÉEL).**
