@@ -18,13 +18,14 @@ Deux méthodes de rejet :
 
 import os
 import threading
+from typing import Any
 
 import numpy as np
 
 # Taille (en valeurs) des bandes de lignes traitées d'un coup en mode
 # winsorized : borne la mémoire des temporaires de np.median/np.abs
 # (surchargeable par les tests pour forcer le multi-bandes).
-_CHUNK_PX = 4_000_000
+_CHUNK_PX: int = 4_000_000
 
 # --- Jalon 79 : parallélisme du cœur d'empilement ---------------------------
 # Nombre de BANDES de lignes traitées en parallèle (voir `_en_parallele`).
@@ -33,14 +34,14 @@ _CHUNK_PX = 4_000_000
 # mémoire et les cœurs sont partagés avec l'interface, les solveurs et
 # l'archivage — saturer les 12 cœurs ne rendrait pas l'application plus
 # rapide, seulement moins réactive.
-_THREADS = max(1, min(4, (os.cpu_count() or 4) - 2))
+_THREADS: int = max(1, min(4, (os.cpu_count() or 4) - 2))
 # Sous ce nombre de pixels, une seule bande : le découpage (et le fil) coûte
 # plus qu'il ne rapporte, et les petits bancs doivent rester strictement
 # séquentiels (résultats identiques à l'ancien code).
-_SEUIL_PARALLELE = 1_500_000
+_SEUIL_PARALLELE: int = 1_500_000
 
 
-def _en_parallele(bandes, travail):
+def _en_parallele(bandes: list[tuple[int, int]], travail: Any) -> None:
     """Exécute `travail(i, debut, fin)` sur chaque bande de lignes, dans un fil
     par bande dès qu'il y en a plusieurs. Les grandes opérations numpy libèrent
     le GIL : les bandes calculent réellement en parallèle (mesuré ×3,3 sur une
@@ -62,11 +63,11 @@ def _en_parallele(bandes, travail):
 # et quelques pixels d'hale à l'intersection suffisent à perturber le
 # modèle de fond de GraXpert (leçon du pipeline astromatix : recadrage à
 # l'intersection RÉELLE, jamais au ras du bord).
-_MARGE_CROP = 3
+_MARGE_CROP: int = 3
 
 # Le recadrage n'a de sens qu'au-delà de ce nombre minimal de pixels par
 # côté (sinon on garde l'image entière plutôt qu'un timbre-poste).
-_CROP_MIN_COTE = 16
+_CROP_MIN_COTE: int = 16
 
 
 # --- Équilibrage des canaux (jalon 13) ---------------------------------------
@@ -78,11 +79,13 @@ _CROP_MIN_COTE = 16
 # bas), pas les objets — la couleur de la nébulose est donc préservée.
 # Géométrique moyenne = flux total conservé ; gains bornés contre les
 # extrêmes (canal quasi noir → amplification folle interdite).
-WB_PERCENTILE = 20.0
-WB_GAIN_MIN, WB_GAIN_MAX = 0.25, 4.0
+WB_PERCENTILE: float = 20.0
+WB_GAIN_MIN: float = 0.25
+WB_GAIN_MAX: float = 4.0
 
 
-def gains_equilibre(img, cadre=None):
+def gains_equilibre(img: np.ndarray,
+                    cadre: Any = None) -> np.ndarray | None:
     """Gains (r, v, b) égalisant le fond des 3 canaux de `img` ((H, W, 3) ou
     (C, H, W)). Stats sur la zone recadrée si `cadre` est fourni (les bords
     jamais couverts par les frames alignées y sont à zéro et fausseraient
@@ -128,11 +131,12 @@ def gains_equilibre(img, cadre=None):
 # (points noir/blanc communs aux 3 canaux) et VeraLux (préserve les
 # ratios) amplifient sinon le décalage en un MASQUE coloré (constat réel
 # d'Alain : fond bleu dans les poussières de M31).
-FIT_GAIN_MIN, FIT_GAIN_MAX = 0.25, 4.0     # mêmes bornes que l'équilibrage
-FIT_MODES = ("gain_offset", "offset")
+FIT_GAIN_MIN: float = 0.25
+FIT_GAIN_MAX: float = 4.0                   # mêmes bornes que l'équilibrage
+FIT_MODES: tuple[str, ...] = ("gain_offset", "offset")
 
 
-def stats_canaux(rgb):
+def stats_canaux(rgb: np.ndarray) -> dict[str, Any] | None:
     """Stats (médiane, σ_robuste = MAD × 1,4826) des 3 canaux d'une image
     couleur, layouts (H, W, 3) ou (3, H, W) — quart central sous-
     échantillonné ×4 (largement suffisant ; évite les bords jamais couverts
@@ -161,7 +165,8 @@ def stats_canaux(rgb):
     return {"med": tuple(med), "sigma": tuple(sig)}
 
 
-def aligner_canaux(rgb, mode="offset"):
+def aligner_canaux(rgb: np.ndarray, mode: str = "offset"
+                   ) -> tuple[np.ndarray, dict[str, Any] | None]:
     """Recalage « Linear Fit » : R et B recalés sur le VERT (référence).
       gain_X   = σ_G / σ_X, borné [FIT_GAIN_MIN, FIT_GAIN_MAX] — 1.0 en
                  mode « offset » (recalage du fond seul, DÉFAUT — retour
@@ -204,7 +209,7 @@ def aligner_canaux(rgb, mode="offset"):
     return res.astype(np.float32, copy=False), diag
 
 
-def quad_alignement(M, shape):
+def quad_alignement(M: Any, shape: Any) -> np.ndarray:
     """Coins (x, y) de l'image `shape` transformés par la matrice affine
     `M` (2×3, celle de cv2.warpAffine) — le quadrilatère couvert par la
     frame alignée, dans le repère de l'image cible (H, W). Accepte (H, W),
@@ -222,12 +227,12 @@ def quad_alignement(M, shape):
     return pts
 
 
-def _aire_signee(poly):
+def _aire_signee(poly: np.ndarray) -> float:
     x, y = poly[:, 0], poly[:, 1]
     return 0.5 * float(np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y))
 
 
-def _clip_poly(suj, clip):
+def _clip_poly(suj: Any, clip: Any) -> np.ndarray | None:
     """Sutherland–Hodgman : clippe le polygone convexe `suj` par le
     polygone convexe `clip` (numpy (n, 2)). Renvoie numpy (m, 2) ou None
     si l'intersection est vide."""
@@ -260,7 +265,9 @@ def _clip_poly(suj, clip):
     return np.array(res, np.float64)
 
 
-def cadre_intersection(poly, marge=_MARGE_CROP, min_cote=_CROP_MIN_COTE):
+def cadre_intersection(poly: Any, marge: int = _MARGE_CROP,
+                       min_cote: int = _CROP_MIN_COTE
+                       ) -> tuple[int, int, int, int] | None:
     """Rectangle (y0, x0, y1, x1) englobant STRICTEMENT l'intérieur du
     polygone (arrondi vers l'intérieur + marge de sécurité), ou None si le
     polygone est dégénéré ou trop petit pour valoir un recadrage."""
@@ -275,7 +282,7 @@ def cadre_intersection(poly, marge=_MARGE_CROP, min_cote=_CROP_MIN_COTE):
     return (y0, x0, y1, x1)
 
 
-def _gains_canaux(img, gains):
+def _gains_canaux(img: np.ndarray, gains: Any = None) -> np.ndarray:
     """Gains R/G/B (dict « R »/« G »/« B ») sur une image couleur, quel que soit
     l'ordre des axes — (H, W, 3) comme (3, H, W). Délégation à
     `composition.appliquer_gains` par import LOCAL (composition importe ce
@@ -296,28 +303,29 @@ def _gains_canaux(img, gains):
 class LiveStacker:
     """Moyenne glissante + rejet kappa-sigma ou Winsorized (fenêtre glissante)."""
 
-    METHODES = ("kappa", "winsorized")
+    METHODES: tuple[str, ...] = ("kappa", "winsorized")
 
-    def __init__(self, shape, k=3.0, warmup=5, method="kappa", window=8):
-        self.shape = shape
-        self.k = k
-        self.warmup = warmup
-        self.method = method if method in self.METHODES else "kappa"
-        self.window = max(3, int(window))
+    def __init__(self, shape: Any, k: float | None = 3.0, warmup: int = 5,
+                 method: str = "kappa", window: int = 8) -> None:
+        self.shape: Any = shape
+        self.k: float | None = k
+        self.warmup: int = warmup
+        self.method: str = method if method in self.METHODES else "kappa"
+        self.window: int = max(3, int(window))
         # Équilibrage des canaux (jalon 13) : désactivé au niveau module —
         # l'interface l'active (config persistée) ; les tests existants
         # voient donc l'ancien comportement.
-        self.wb_auto = False
-        self.wb_force = 1.0
+        self.wb_auto: bool = False
+        self.wb_force: float = 1.0
         # Recalage colorimétrique « Linear Fit » (jalon 54) : désactivé au
         # niveau module — l'interface l'active (config persistée) ; les tests
         # existants voient l'ancien comportement. Mode « offset » PAR DÉFAUT
         # (retour du test réel d'Alain, 21/09/2026 : le gain fondé sur le
         # rapport des bruits amplifie halos/bruit bleus d'une image OSC
         # équilibrée → aspect flou/décalé ; le gain reste en option UI).
-        self.linear_fit = False
-        self.linear_fit_mode = "offset"
-        self.fit_diag = None              # gains/offsets mesurés (UI)
+        self.linear_fit: bool = False
+        self.linear_fit_mode: str = "offset"
+        self.fit_diag: Any = None         # gains/offsets mesurés (UI)
         # Jalon 58 bis (v2.40.0) : gains R/G/B par CANAL du composite — c'est
         # ici que la SPCC (capteur couleur/OSC) corrige une source COULEUR
         # (« mode dossier » d'une caméra OSC) : en composition, ces gains sont
@@ -325,30 +333,34 @@ class LiveStacker:
         # couleur simple, il n'y avait AUCUN chemin pour les appliquer, d'où
         # l'ajout. Appliqués AVANT l'équilibrage et le recalage, comme
         # `corrections_couleur` (gains → équilibrage → Linear Fit).
-        self.gains = None
+        self.gains: Any = None
         self.reset()
 
-    def reset(self):
-        self.sum = np.zeros(self.shape, np.float64)
-        self.sumsq = np.zeros(self.shape, np.float64)
-        self.wsum = np.zeros(self.shape, np.float64)
-        self.n = 0
-        self.rejected_total = 0
-        self._buf = None       # fenêtre glissante (mode winsorized)
-        self._nbuf = 0
-        self._rejeu = False    # rejeu du warmup déjà effectué ?
+    def reset(self) -> None:
+        self.sum: np.ndarray = np.zeros(self.shape, np.float64)
+        self.sumsq: np.ndarray = np.zeros(self.shape, np.float64)
+        self.wsum: np.ndarray = np.zeros(self.shape, np.float64)
+        self.n: int = 0
+        self.rejected_total: int = 0
+        self._buf: Any = None       # fenêtre glissante (winsorized)
+        self._nbuf: int = 0
+        self._rejeu: bool = False    # rejeu du warmup déjà effectué ?
         # Jalon 79 : tampons de travail préalloués (cf. `_tampons`) — libérés
         # ici, réalloués à la première frame de la nouvelle géométrie ; et la
         # moyenne mémoïsée (cf. `_moyenne_brute`) n'a plus cours.
-        self._moy = self._sig = self._dif = self._pix = self._masq = None
-        self._memo_moy = None
-        self._poly = None      # intersection géométrique des zones couvertes
-        self.cadre = None      # rectangle (y0, x0, y1, x1) du recadrage
-        self._wb_cache = None  # (clé, gains) de l'équilibrage des canaux
-        self._fit_cache = None  # (clé, (image, diag)) du recalage Linear Fit
-        self.fit_diag = None
+        self._moy: Any = None
+        self._sig: Any = None
+        self._dif: Any = None
+        self._pix: Any = None
+        self._masq: Any = None
+        self._memo_moy: Any = None
+        self._poly: np.ndarray | None = None      # intersection des zones
+        self.cadre: tuple[int, int, int, int] | None = None   # recadrage
+        self._wb_cache: Any = None  # (clé, gains) de l'équilibrage des canaux
+        self._fit_cache: Any = None  # (clé, (image, diag)) du recalage Linear Fit
+        self.fit_diag: Any = None
 
-    def note_alignement(self, M):
+    def note_alignement(self, M: Any) -> None:
         """Met à jour l'intersection géométrique des zones couvertes avec la
         matrice d'alignement `M` de la frame qui vient d'être empilée
         (équivalent live du `-framing=min` de Siril : l'intersection RÉELLE
@@ -369,7 +381,8 @@ class LiveStacker:
             self._poly = p
         self.cadre = cadre_intersection(self._poly)
 
-    def set_rejet(self, method=None, window=None):
+    def set_rejet(self, method: str | None = None,
+                  window: int | None = None) -> None:
         """Change de méthode / de taille de fenêtre à chaud, sans perdre
         l'accumulation : seule la fenêtre de référence est vidée (elle se
         remplit à nouveau, le rejet redevient effectif dès qu'elle est
@@ -388,7 +401,7 @@ class LiveStacker:
             self._nbuf = 0
             self._rejeu = False
 
-    def add(self, frame):
+    def add(self, frame: np.ndarray) -> None:
         """Empile une frame (jalon 79) : tampons de travail PRÉALLOUÉS, calcul
         élémentaire en float32, et accumulations comme SEUIL DE REJET en
         float64 — les mathématiques et jusqu'aux valeurs accumulées sont
@@ -405,7 +418,7 @@ class LiveStacker:
         self.n += 1
 
     # ------------------------------------- jalon 79 : mémoire et parallélisme
-    def _tampons(self, forme):
+    def _tampons(self, forme: Any) -> None:
         """Tampons de travail PRÉALLOUÉS, une fois par géométrie (jalon 79).
         Le coût de `add` venait des tableaux float64 créés à chaque frame : sur
         8,4 Mpx, 325 ms en warmup dont l'essentiel en allocation (le même calcul
@@ -419,7 +432,7 @@ class LiveStacker:
         self._pix = np.empty(forme, np.float32)     # frame masquée (poids 0/1)
         self._masq = np.empty(forme, bool)          # pixels rejetés
 
-    def _bandes(self):
+    def _bandes(self) -> list[tuple[int, int]]:
         """Bornes de lignes des bandes de travail. Plusieurs bandes = plusieurs
         fils (cf. `_en_parallele`) ; une seule pour les petites images, où le
         découpage coûterait plus qu'il ne rapporte — et où les bancs doivent
@@ -435,7 +448,8 @@ class LiveStacker:
         bornes.append((bornes[-1][1] if bornes else 0, h))
         return bornes
 
-    def _masque_rejet(self, f, bandes):
+    def _masque_rejet(self, f: np.ndarray,
+                      bandes: Any) -> np.ndarray | None:
         """Masque des pixels REJETÉS de la frame courante (True = rejeté), ou
         None quand rien n'est rejeté (k désactivé, ou warmup).
 
@@ -454,7 +468,7 @@ class LiveStacker:
         self.rejected_total += int(np.count_nonzero(self._masq))
         return self._masq
 
-    def _masque_kappa(self, f, a, b):
+    def _masque_kappa(self, f: np.ndarray, a: int, b: int) -> None:
         """Kappa-sigma séquentiel sur les lignes [a, b) — relecture EXACTE de
         l'ancien code, les opérations étant simplement faites en place :
             moyenne = sum / max(wsum, 1e-9)
@@ -470,14 +484,15 @@ class LiveStacker:
         np.subtract(sig, dif, out=sig)          # variance
         np.maximum(sig, 1e-12, out=sig)
         np.sqrt(sig, out=sig)
-        np.multiply(sig, self.k, out=sig)       # seuil k·σ
+        np.multiply(sig, self.k, out=sig)       # seuil k·σ  # pyright: ignore[reportCallIssue, reportArgumentType]
         # |frame − moyenne| : la frame float32 est promue en float64 par le
         # calcul lui-même (casting unsafe) → mêmes valeurs qu'avant, au bit.
         np.subtract(f[a:b], moy, out=dif, casting="unsafe")
         np.abs(dif, out=dif)
         np.greater(dif, sig, out=self._masq[a:b])
 
-    def _cumuler(self, f, masque, a, b):
+    def _cumuler(self, f: np.ndarray, masque: np.ndarray | None,
+                 a: int, b: int) -> None:
         """Cumule la frame `f` sur les lignes [a, b) : chaque bande n'écrit que
         dans SES lignes. Les CARRÉS sont calculés en float64 — le produit de
         deux float32 y est EXACT — donc `sumsq` est bit à bit celui de l'ancien
@@ -502,7 +517,8 @@ class LiveStacker:
         np.add(car, scar, out=car)
         np.add(poi, mb, out=poi, casting="unsafe")
 
-    def mean(self, recadre=True, corrections=True):
+    def mean(self, recadre: bool = True,
+             corrections: bool = True) -> np.ndarray | None:
         """Moyenne pondérée courante. `recadre=False` renvoie l'accumulation
         COMPLÈTE, sans le recadrage d'intersection — réservé à la référence
         d'alignement (jalon 13) : la référence doit rester dans le MÊME repère
@@ -530,7 +546,7 @@ class LiveStacker:
             crop = img[y0:y1, x0:x1, ...]
         return self._recaler_fit(crop) if corrections else crop
 
-    def _moyenne_brute(self):
+    def _moyenne_brute(self) -> np.ndarray:
         """Moyenne pondérée de l'accumulation (sum / wsum), en float32 —
         MÉMOÏSÉE sur `n` (jalon 79).
 
@@ -550,7 +566,7 @@ class LiveStacker:
         self._memo_moy = (self.n, img)
         return img
 
-    def _recaler_fit(self, img):
+    def _recaler_fit(self, img: np.ndarray) -> np.ndarray:
         """Recalage colorimétrique « Linear Fit » (jalon 54) : R et B
         alignés sur le VERT (gain + offset), APRÈS l'équilibrage WB et le
         recadrage — visu et sauvegardes uniquement (la référence
@@ -573,7 +589,7 @@ class LiveStacker:
         self.fit_diag = diag
         return out if diag is not None else img
 
-    def _equilibrer(self, img):
+    def _equilibrer(self, img: np.ndarray) -> np.ndarray:
         """Équilibrage des canaux (auto, jalon 13) : gains par canal dérivés
         du FOND de l'accumulation, mis en cache (recalculés une seule fois
         par frame empilée — `mean()` est appelée ~20×/s mais `n` ne change
@@ -596,7 +612,8 @@ class LiveStacker:
         return img * gains[:, None, None]    # (C, H, W) : piège du broadcast
 
     # ------------------------------------------------------------- rejet
-    def _masque_winsorized(self, f, bandes):
+    def _masque_winsorized(self, f: np.ndarray,
+                           bandes: Any) -> np.ndarray | None:
         """Rejet contre la médiane/MAD de la fenêtre glissante (PixInsight).
 
         σ_robuste = 1.4826 × MAD (équivalent gaussien de l'écart-type
@@ -638,7 +655,8 @@ class LiveStacker:
         self.rejected_total += int(np.count_nonzero(self._masq))
         return self._masq
 
-    def _winsorized_bande(self, buf, rejets, i, a, b, rejeu):
+    def _winsorized_bande(self, buf: np.ndarray, rejets: list[int],
+                          i: int, a: int, b: int, rejeu: bool) -> None:
         """Médiane/MAD de la fenêtre sur les lignes [a, b), puis masque de rejet
         de la frame courante — code IDENTIQUE à celui d'avant, découpé en chunks
         de `_CHUNK_PX` valeurs pour borner les temporaires de np.median."""
@@ -664,7 +682,7 @@ class LiveStacker:
                 rejets[i] += int(passe.sum())
             np.copyto(self._masq[d:e], hors[-1])           # frame courante
 
-    def _push_buf(self, frame):
+    def _push_buf(self, frame: np.ndarray) -> None:
         """Insère la frame dans la fenêtre glissante (buffer circulaire)."""
         if self._buf is None or self._buf.shape[1:] != frame.shape:
             self._buf = np.zeros((self.window,) + frame.shape, np.float32)

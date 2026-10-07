@@ -31,6 +31,7 @@ jamais dépendre du processing (cycle d'import), l'inverse est permis.
 """
 
 import math
+from typing import Any
 
 import numpy as np
 
@@ -39,27 +40,28 @@ from ..catalogues.telechargeur import etat_local
 from ..processing import stars as _stars
 
 # --- Réglages (surchargeables par les bancs) ---------------------------------
-RAYON_APPARIEMENT_PX = 2.5   # tolérance d'appariement (px) : le WCS est bon à
+RAYON_APPARIEMENT_PX: float = 2.5   # tolérance d'appariement (px) : le WCS est bon à
                              # quelques dixièmes de px ; 2,5 px couvre la
                              # distorsion résiduelle sans apparier à tort
-MIN_ETOILES = 8              # en dessous : aucun facteur (mesure non fiable)
-MAG_MARGE_SATURATION = 0.5   # étoiles à moins de 0,5 mag de la plus brillante
+MIN_ETOILES: int = 8              # en dessous : aucun facteur (mesure non fiable)
+MAG_MARGE_SATURATION: float = 0.5   # étoiles à moins de 0,5 mag de la plus brillante
                              # détectée : écartées (cœur de PSF non linéaire)
-GAIN_MIN, GAIN_MAX = 0.25, 4.0   # mêmes bornes que l'équilibrage/Linear Fit
-SIGMA_REJET = 3.0            # rejet robuste des résidus (MAD)
-PLANCHER_SIGMA_MAG = 0.05    # plancher du seuil de rejet (mag) : sur des
+GAIN_MIN: float = 0.25
+GAIN_MAX: float = 4.0        # mêmes bornes que l'équilibrage/Linear Fit
+SIGMA_REJET: float = 3.0            # rejet robuste des résidus (MAD)
+PLANCHER_SIGMA_MAG: float = 0.05    # plancher du seuil de rejet (mag) : sur des
                              # mesures parfaites le MAD vaut 0 et plus aucune
                              # aberration ne serait retirée
-BORD_MARGE_PX = 12.0         # étoiles trop près du bord : flux tronqué
-RAYON_FLUX_PX = 3.0          # rayon d'ouverture du flux (px)
-ANNEAU_FOND = (5.0, 8.0)     # anneau de mesure du fond local (px)
-MAX_ETOILES_PHOTO = 300      # étoiles les plus brillantes analysées
-MAX_ESSAIS = 4               # tentatives de mesure par session (réessais
-                             # espacés : un empilement plus profond aide)
-DELAI_ESSAI_S = 20.0         # délai minimal entre deux tentatives
+BORD_MARGE_PX: float = 12.0         # étoiles trop près du bord : flux tronqué
+RAYON_FLUX_PX: float = 3.0          # rayon d'ouverture du flux (px)
+ANNEAU_FOND: tuple[float, float] = (5.0, 8.0)   # anneau de fond local (px)
+MAX_ETOILES_PHOTO: int = 300        # étoiles les plus brillantes analysées
+MAX_ESSAIS: int = 4                 # tentatives de mesure par session (réessais
+                                    # espacés : un empilement plus profond aide)
+DELAI_ESSAI_S: float = 20.0         # délai minimal entre deux tentatives
 
 
-def canal_photometrique(img):
+def canal_photometrique(img: np.ndarray) -> np.ndarray:
     """Canal utilisé pour DÉTECTER les étoiles : vert si couleur (même
     convention que l'alignement et le solveur), tel quel en mono. → (H, W)
     float32."""
@@ -73,8 +75,9 @@ def canal_photometrique(img):
     raise ValueError(f"image de rang inattendu : {a.shape}")
 
 
-def flux_ouverture(mono, positions, rayon=RAYON_FLUX_PX,
-                   anneau=ANNEAU_FOND):
+def flux_ouverture(mono: np.ndarray, positions: np.ndarray,
+                   rayon: float = RAYON_FLUX_PX,
+                   anneau: tuple[float, float] = ANNEAU_FOND) -> np.ndarray:
     """Flux de chaque étoile par OUVERTURE, en unités de l'image.
 
     Somme du disque `rayon` MOINS le fond local : médiane de l'anneau
@@ -121,7 +124,9 @@ def flux_ouverture(mono, positions, rayon=RAYON_FLUX_PX,
     return out
 
 
-def etoiles_image(img, max_etoiles=MAX_ETOILES_PHOTO):
+def etoiles_image(img: np.ndarray,
+                  max_etoiles: int = MAX_ETOILES_PHOTO
+                  ) -> tuple[np.ndarray, np.ndarray, str]:
     """Étoiles de l'image : positions (N, 2) et FLUX par ouverture.
     → (positions, flux, message) ; listes vides + raison si rien d'exploitable.
     Réutilise `processing.stars.detecter_positions` (le détecteur du projet,
@@ -148,7 +153,9 @@ def etoiles_image(img, max_etoiles=MAX_ETOILES_PHOTO):
     return pos, flux, ""
 
 
-def etoiles_catalogue(wcs, forme, dossier=None, limmag=None, spectres=False):
+def etoiles_catalogue(wcs: Any, forme: Any, dossier: str | None = None,
+                      limmag: float | None = None,
+                      spectres: bool = False) -> tuple[dict[str, Any], str]:
     """Étoiles Gaia du CHAMP décrit par `wcs` → (dict {"ra","dec","g"}, message).
 
     `spectres=True` (jalon 58, SPCC) : interroge le catalogue SPECTROPHOTO-
@@ -164,7 +171,7 @@ def etoiles_catalogue(wcs, forme, dossier=None, limmag=None, spectres=False):
     if wcs is None:
         return {}, "WCS absent (astrométrie non résolue)"
     try:
-        h, w = (tuple(int(v) for v in forme) if forme
+        h, w = (tuple(int(v) for v in forme) if forme  # pyright: ignore[reportAssignmentType]
                 else tuple(getattr(wcs, "forme", ()) or ()))
     except (TypeError, ValueError):
         return {}, f"forme inutilisable ({forme})"
@@ -219,7 +226,9 @@ def etoiles_catalogue(wcs, forme, dossier=None, limmag=None, spectres=False):
     return out, f"{len(et['ra'])} étoiles de catalogue (r={rayon:.3f}°)"
 
 
-def apparier(pos_px, wcs, cat, rayon_px=RAYON_APPARIEMENT_PX):
+def apparier(pos_px: np.ndarray, wcs: Any, cat: dict[str, Any],
+             rayon_px: float = RAYON_APPARIEMENT_PX
+             ) -> tuple[dict[str, Any], str]:
     """Appariement MUTUEL étoiles-image ↔ étoiles-catalogue via le WCS.
 
     MUTUEL = la même paire est la plus proche des DEUX côtés (règle de
@@ -267,7 +276,9 @@ def apparier(pos_px, wcs, cat, rayon_px=RAYON_APPARIEMENT_PX):
                  f"(médiane {float(np.median(out['d_px'])):.2f} px)")
 
 
-def zero_point(mag, flux, sigma=SIGMA_REJET):
+def zero_point(mag: np.ndarray, flux: np.ndarray,
+               sigma: float = SIGMA_REJET
+               ) -> tuple[float | None, float | None, int, str]:
     """Zéro-point instrumental d'une bande : ZP = mag_catalogue +
     2,5·log10(flux_image), estimé par MÉDIANE avec rejet robuste (MAD).
 
@@ -301,7 +312,8 @@ def zero_point(mag, flux, sigma=SIGMA_REJET):
     return med, rms, int(len(z)), ""
 
 
-def gains_depuis_zp(zp_par_bande):
+def gains_depuis_zp(zp_par_bande: dict[str, float | None]
+                    ) -> tuple[dict[str, float], str]:
     """Gain RELATIF par bande depuis les zéro-points → ({bande: gain}, message).
 
     Physique : une étoile de magnitude m donne flux_b = 10^(0,4·(ZP_b − m)) ;
@@ -343,28 +355,30 @@ class Photometrie:
     `catalogue` est INJECTABLE (bancs : catalogue factice, aucun Gaia requis) ;
     par défaut `etoiles_catalogue` (catalogue Siril réel)."""
 
-    def __init__(self, catalogue=None, dossier=None, limmag=None):
-        self._catalogue = catalogue or etoiles_catalogue
-        self.dossier = dossier
-        self.limmag = limmag
+    def __init__(self, catalogue: Any = None, dossier: str | None = None,
+                 limmag: float | None = None) -> None:
+        self._catalogue: Any = catalogue or etoiles_catalogue
+        self.dossier: str | None = dossier
+        self.limmag: float | None = limmag
         self.reset()
 
-    def reset(self):
+    def reset(self) -> None:
         """Session neuve : aucune mesure, aucun facteur."""
-        self.zp = {}               # bande → zéro-point instrumental
-        self.gains = {}            # bande → gain relatif (étape 5)
-        self.bandes = {}           # bande → dict complet (n, rms, d_px…)
-        self.n_paires = 0
-        self.derniere_erreur = ""
-        self.mesures = 0           # nombre de mesures réussies (session)
-        self._motif = []           # bandes écartées et pourquoi (dernière mesure)
+        self.zp: dict[str, float] = {}       # bande → zéro-point instrumental
+        self.gains: dict[str, float] = {}    # bande → gain relatif (étape 5)
+        self.bandes: dict[str, dict[str, Any]] = {}   # bande → dict complet
+        self.n_paires: int = 0
+        self.derniere_erreur: str = ""
+        self.mesures: int = 0                # nombre de mesures réussies (session)
+        self._motif: list[str] = []          # bandes écartées et pourquoi
 
     @property
-    def valide(self):
+    def valide(self) -> bool:
         """Une mesure exploitable est disponible ?"""
         return bool(self.gains)
 
-    def mesurer(self, canaux, wcs, forme=None):
+    def mesurer(self, canaux: dict[str, Any], wcs: Any, forme: Any = None
+                ) -> tuple[dict[str, Any] | None, str]:
         """Mesure les zéro-points puis les gains relatifs. → (dict|None, message).
 
         `canaux` : {bande: image 2D}. La forme de référence est celle du PREMIER
@@ -410,7 +424,7 @@ class Photometrie:
                 continue
             pos_b, flux_b = pos[garde], flux[garde]
             ap, msg_ap = apparier(pos_b, wcs, cat)
-            ia, ic = ap["ia"], ap["ic"]
+            ia, ic = ap["ia"], ap["ic"]  # noqa: F841 (ic préexistant, conservé)
             if len(ia) == 0:
                 motif.append(f"{b} : {msg_ap}")
                 continue
@@ -418,7 +432,7 @@ class Photometrie:
             if zp is None:
                 motif.append(f"{b} : {msg_zp}")
                 continue
-            detail[b] = {"zp": float(zp), "rms_mag": float(rms), "n": int(n),
+            detail[b] = {"zp": float(zp), "rms_mag": float(rms), "n": int(n),  # pyright: ignore[reportArgumentType]
                          "n_mutuels": int(len(ia)),
                          "d_px": float(np.median(ap["d_px"])),
                          "mag_min": float(np.min(ap["mag"])),
@@ -438,7 +452,7 @@ class Photometrie:
         return {"bandes": dict(detail), "gains": dict(gains),
                 "n_paires": self.n_paires, "motif": list(motif)}, msg_g
 
-    def texte_resume(self):
+    def texte_resume(self) -> str:
         """Ligne d'état : zéro-points et gains mesurés par bande, en clair.
         "" si aucune mesure exploitable."""
         if not self.bandes:

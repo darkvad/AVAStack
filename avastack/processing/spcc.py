@@ -38,17 +38,18 @@ ni à l'UI, ce qui le rend directement testable au banc.
 """
 
 import numpy as np
+from typing import Any
 
 # Grille spectrale Gaia DR3 xp_sampled : 336 → 1020 nm par pas de 2 nm
 # (343 points — identique à DTYPE_XPSAMP de catalogues/siril_cat.py).
-GRILLE_WL = np.arange(336.0, 1021.0, 2.0)
-XPSAMPLED_LEN = GRILLE_WL.size          # 343
+GRILLE_WL: np.ndarray = np.arange(336.0, 1021.0, 2.0)
+XPSAMPLED_LEN: int = GRILLE_WL.size          # 343
 # Indice de normalisation utilisé par Siril (xps->y[82] → 500 nm) : facteur
 # PAR ÉTOILE, conservé pour la fidélité du modèle.
-INDICE_NORM = 82
+INDICE_NORM: int = 82
 
 
-def sur_grille(wl, val):
+def sur_grille(wl: Any, val: Any) -> np.ndarray:
     """Courbe (nm, valeurs) → valeurs sur `GRILLE_WL`, interpolées
     linéairement et RAMENÉES À ZÉRO hors de son domaine mesuré.
 
@@ -65,7 +66,7 @@ def sur_grille(wl, val):
     return out
 
 
-def reponse_canal(capteur, filtre):
+def reponse_canal(capteur: Any, filtre: Any) -> np.ndarray:
     """Réponse d'un canal : QE du capteur × transmission du filtre, sur la
     grille xp_sampled. `capteur` et `filtre` sont des couples (wl, val) issus
     de `catalogues.spcc_db.courbe` (le filtre peut être None : mode
@@ -76,7 +77,7 @@ def reponse_canal(capteur, filtre):
     return r
 
 
-def spectre_reference(wl, val):
+def spectre_reference(wl: Any, val: Any) -> np.ndarray:
     """Spectre de RÉFÉRENCE DE BLANC prêt à intégrer : interpolation sur la
     grille spectrale PUIS conversion en comptage de photons, exactement comme
     les spectres d'ÉTOILES (× λ).
@@ -91,7 +92,7 @@ def spectre_reference(wl, val):
     return sur_grille(wl, val) * GRILLE_WL
 
 
-def photons(spectres):
+def photons(spectres: Any) -> np.ndarray:
     """Flux Gaia (N, 343) — W·m⁻²·nm⁻¹ — → comptage de PHOTONS RELATIF.
 
     Siril (`flux_to_relcount`) multiplie par λ (un photon de grande longueur
@@ -111,7 +112,7 @@ def photons(spectres):
                         s[:, INDICE_NORM:INDICE_NORM + 1])
 
 
-def _trapeze(y, x, axis=-1):
+def _trapeze(y: Any, x: Any, axis: int = -1) -> Any:
     """Intégration par trapèzes, COMPATIBLE numpy 1 ET 2.
 
     PIÈGE RÉEL (constaté par Alain le 24/09/2026, Python 3.14 + numpy récent) :
@@ -120,11 +121,11 @@ def _trapeze(y, x, axis=-1):
     'trapz' » (erreur attrapée proprement, mais aucune calibration). On prend
     donc `trapezoid` quand il existe, `trapz` sinon : les deux donnent le même
     résultat au bit près (même algorithme)."""
-    f = getattr(np, "trapezoid", None) or getattr(np, "trapz", None)
+    f: Any = getattr(np, "trapezoid", None) or getattr(np, "trapz", None)
     return f(y, x, axis=axis)
 
 
-def flux_par_canal(spectres, reponses):
+def flux_par_canal(spectres: Any, reponses: Any) -> np.ndarray:
     """Intégrale (trapèzes) de réponse × spectre par canal.
     → (N, 3) float64 : [R, G, B] ; NaN si une intégrale est nulle ou non
     finie (canal inexploitable — jamais une valeur inventée)."""
@@ -140,7 +141,7 @@ def flux_par_canal(spectres, reponses):
     return out
 
 
-def ratios(flux, canaux=(0, 2)):
+def ratios(flux: Any, canaux: tuple[int, int] = (0, 2)) -> np.ndarray:
     """Ratios d'un tableau (N, 3) par rapport au VERT → (N, 2) [R/G, B/G].
     Lignes inexploitables (NaN) → NaN."""
     f = np.asarray(flux, dtype=np.float64)
@@ -149,7 +150,7 @@ def ratios(flux, canaux=(0, 2)):
     return out
 
 
-def regression_mediane(x, y):
+def regression_mediane(x: Any, y: Any) -> tuple[float, float, float]:
     """Régression linéaire ROBUSTE par médianes répétées (Siegel 1982),
     celle de Siril (`repeated_median_fit`, src/algos/fitting.c, lu le
     24/09/2026) :
@@ -180,7 +181,8 @@ def regression_mediane(x, y):
     return ordonnee, pente, ecart
 
 
-def coefficients(crg, cbg, irg, ibg, wrg, wbg):
+def coefficients(crg: Any, cbg: Any, irg: Any, ibg: Any, wrg: Any,
+                 wbg: Any) -> tuple[np.ndarray, dict[str, Any]]:
     """Coefficients SPCC (R, G, B) — formules de Siril :
         k_R = 1/(a_RG + b_RG·wrg) ; k_G = 1 ; k_B = 1/(a_BG + b_BG·wbg)
     puis division par le plus grand (le vert reste à 1, comme Siril).
@@ -209,7 +211,8 @@ def coefficients(crg, cbg, irg, ibg, wrg, wbg):
     return k, diag
 
 
-def erreur_ratios(crg, cbg, irg, ibg):
+def erreur_ratios(crg: Any, cbg: Any, irg: Any, ibg: Any
+                  ) -> tuple[np.ndarray, np.ndarray, int]:
     """Erreur résiduelle des ratios image vs catalogue, en MAGNITUDES
     équivalentes (log10) — c'est la mesure OBJECTIVE de la qualité de
     couleur, celle que la SPCC minimise. → (rms (2,), mediane (2,), n)."""
@@ -230,7 +233,7 @@ def erreur_ratios(crg, cbg, irg, ibg):
     return rms, med, int(bon.sum())
 
 
-def coherence_bandes(noms_fil):
+def coherence_bandes(noms_fil: Any) -> list[str]:
     """Contrôle de COHÉRENCE des trois profils de filtres → liste d'avis.
 
     Constat réel (24/09/2026, capture d'Alain) : l'UI affichait « Filtre R :
@@ -250,7 +253,7 @@ def coherence_bandes(noms_fil):
     return avis
 
 
-def mode_bandes(capteur, filtres):
+def mode_bandes(capteur: Any, filtres: Any) -> str:
     """« osc » (capteur couleur) ou « mono » (trois filtres R/G/B) — pour un
     appelant qui ne le SAIT pas (l'interface, elle, le sait : type choisi).
 
@@ -268,7 +271,7 @@ def mode_bandes(capteur, filtres):
     return "mono"
 
 
-def coherence_osc(capteur, filtre):
+def coherence_osc(capteur: Any, filtre: Any) -> list[str]:
     """Contrôle de COHÉRENCE d'un couple capteur COULEUR / filtre LPF → list
     d'avertissements (vide = rien à dire).
 
@@ -285,7 +288,7 @@ def coherence_osc(capteur, filtre):
     return avis
 
 
-def _type_ok(entree, *types):
+def _type_ok(entree: Any, *types: str) -> bool:
     """L'entrée est-elle du TYPE attendu ? `type` absent : accepté (base plus
     ancienne). Utile car dossier et `type` du JSON ne concordent pas toujours :
     la base de Siril range quelques objets `OSC_FILTER` dans le dossier
@@ -295,7 +298,7 @@ def _type_ok(entree, *types):
     return (not t) or t in types
 
 
-def _sans_canal(nom):
+def _sans_canal(nom: str) -> str:
     """« sony imx585 red » → « sony imx585 » (suffixe de canal retiré). La base
     nomme les trois entrées d'un capteur couleur « … R/G/B » : choisir le
     capteur par son MODÈLE doit réunir ses trois canaux, quelle que soit la
@@ -307,7 +310,7 @@ def _sans_canal(nom):
 
 
 # --- Capteurs COULEUR (OSC) : trois canaux dans un seul fichier --------------
-def capteur_osc(nom):
+def capteur_osc(nom: Any) -> tuple[Any, Any]:
     """Capteur COULEUR de la base (« Sony IMX585 ») → (nom du modèle,
     {canal: entrée}) ou (None, None) si le nom ne désigne pas un capteur OSC.
 
@@ -347,7 +350,7 @@ def capteur_osc(nom):
     return modele, canaux
 
 
-def filtre_osc(nom):
+def filtre_osc(nom: Any) -> tuple[Any, Any]:
     """Filtre COULEUR de la base (LPF devant un capteur OSC) → (nom,
     {canal: entrée}) — ou (None, None). Un filtre OSC est SOIT une courbe
     unique (LPF, « No filter » : canal vide), SOIT un jeu par canal ; les deux
@@ -377,7 +380,7 @@ def filtre_osc(nom):
     return None, None
 
 
-def _courbe_de(entree):
+def _courbe_de(entree: Any) -> tuple[Any, Any] | None:
     """Courbe (wl, val) d'une entrée de `spcc_db.lister` (ou None)."""
     from ..catalogues import spcc_db as DB
     try:
@@ -386,7 +389,7 @@ def _courbe_de(entree):
         return None
 
 
-def reponses_osc(capteur, filtre):
+def reponses_osc(capteur: Any, filtre: Any) -> tuple[Any, Any, str]:
     """Réponses R/G/B d'un capteur COULEUR : QE du canal × transmission du
     filtre (LPF), sur la grille xp_sampled → ([3 courbes (343,)] en comptage de
     photons, [3 noms], erreur "" ; (None, None, message) sinon).
@@ -420,7 +423,7 @@ def reponses_osc(capteur, filtre):
     return reponses, noms, ""
 
 
-def base_presente():
+def base_presente() -> bool:
     """La base SPCC de Siril est-elle installée (profils de capteurs, de
     filtres et références de blanc lisibles) ? L'UI s'en sert pour activer ou
     non sa case : sans base, aucune SPCC n'est possible — et le dire est plus
@@ -432,7 +435,7 @@ def base_presente():
         return False
 
 
-def _uniques(valeurs):
+def _uniques(valeurs: Any) -> list[str]:
     """Liste SANS DOUBLON, ordre de première apparition (les capteurs OSC de
     la base apparaissent 3 fois — un objet par canal)."""
     vus, out = set(), []
@@ -443,7 +446,7 @@ def _uniques(valeurs):
     return out
 
 
-def noms_base():
+def noms_base() -> dict[str, list[str]]:
     """Noms des profils de la base Siril, pour peupler les sélecteurs de l'UI
     → {"capteur": [...], "filtres": [...], "blancs": [...],
         "osc_capteurs": [...], "osc_filtres": [...]} (listes vides si la base
@@ -476,9 +479,9 @@ def noms_base():
 
 # --- Mesure sur une image réelle (orchestration réutilisable) ----------------
 # Réglages surchargeables par les bancs (même convention que photometrie).
-RAYON_FLUX_PX = 3.0          # rayon d'ouverture du flux (px)
-ANNEAU_FOND = (5.0, 8.0)     # anneau de mesure du fond local (px)
-MAX_ETOILES = 1200           # étoiles les plus brillantes analysées.
+RAYON_FLUX_PX: float = 3.0          # rayon d'ouverture du flux (px)
+ANNEAU_FOND: tuple[float, float] = (5.0, 8.0)   # anneau de fond local (px)
+MAX_ETOILES: int = 1200             # étoiles les plus brillantes analysées.
                              # PIÈGE MESURÉ (24/09/2026, empilement réel
                              # d'Alain) : avec 150 ou 300 étoiles, la pente de
                              # régression s'EFFONDRE (0,52 / 0,58 pour R/G) et
@@ -488,21 +491,23 @@ MAX_ETOILES = 1200           # étoiles les plus brillantes analysées.
                              # ce qui écrase leur contraste de couleur. La
                              # pente ne se stabilise (0,82 / 0,78) qu'à partir
                              # de ~900 étoiles.
-MARGE_SATURATION = 1.5       # écart (mag) à l'étoile la plus brillante :
+MARGE_SATURATION: float = 1.5       # écart (mag) à l'étoile la plus brillante :
                              # cœur de PSF non linéaire → mesure fausse. 0,5 mag
                              # ne suffisait pas (les étoiles les plus brillantes
                              # restaient dans l'échantillon) ; 1,5 mag écarte
                              # franchement la zone comprimée.
-CIEL_PUR_SIGMA = 3.0         # écarte les étoiles posées sur un objet ÉTENDU
+CIEL_PUR_SIGMA: float = 3.0         # écarte les étoiles posées sur un objet ÉTENDU
                              # (halo de galaxie dans l'anneau → flux biaisé)
-SIGMA_MAX = 0.5              # dispersion (mag) au-delà de laquelle la mesure
+SIGMA_MAX: float = 0.5              # dispersion (mag) au-delà de laquelle la mesure
                              # est considérée non significative
-PENTE_MINI, PENTE_MAXI = 0.5, 1.5   # pente de régression attendue : hors de
+PENTE_MINI: float = 0.5
+PENTE_MAXI: float = 1.5   # pente de régression attendue : hors de
                              # ces bornes, le modèle de bandes ne décrit pas
                              # l'image (Siril avertit dans ce cas)
 
 
-def fond_local(img, positions, anneau=ANNEAU_FOND):
+def fond_local(img: Any, positions: Any,
+               anneau: tuple[float, float] = ANNEAU_FOND) -> np.ndarray:
     """Fond local (médiane de l'anneau) sous chaque étoile → (N,) float64.
     NaN si l'anneau sort de l'image. L'anneau plutôt qu'un fond global : sur
     une image à gradient, un fond global est faux — et ici la valeur sert à
@@ -532,8 +537,8 @@ def fond_local(img, positions, anneau=ANNEAU_FOND):
     return out
 
 
-def mesures_etoiles(canaux, positions, rayon=RAYON_FLUX_PX,
-                    anneau=ANNEAU_FOND):
+def mesures_etoiles(canaux: Any, positions: Any, rayon: float = RAYON_FLUX_PX,
+                    anneau: tuple[float, float] = ANNEAU_FOND) -> np.ndarray:
     """Flux par canal pour les MÊMES positions (ouvertures identiques, seul
     moyen d'obtenir des ratios de couleur comparables) → (N, 3) float64,
     NaN quand une ouverture est inexploitable."""
@@ -549,7 +554,7 @@ def mesures_etoiles(canaux, positions, rayon=RAYON_FLUX_PX,
 
 
 
-def _profil(entree, categorie, nom):
+def _profil(entree: Any, categorie: str, nom: Any) -> tuple[Any, Any]:
     """Profil de la base SPCC depuis un nom OU une entrée déjà résolue.
     → (nom, couple (wl, val)) ; (None, None) si introuvable."""
     from ..catalogues import spcc_db as DB
@@ -562,11 +567,15 @@ def _profil(entree, categorie, nom):
     return (e["nom"], DB.courbe(e)) if e is not None else (None, None)
 
 
-def coefficients_spcc(canaux, wcs, capteur, filtres, blanc, dossier=None,
-                      forme=None, rayon=RAYON_FLUX_PX, anneau=ANNEAU_FOND,
-                      max_etoiles=MAX_ETOILES, ciel_pur=CIEL_PUR_SIGMA,
-                      catalogue=None, reponses=None, spectre_blanc=None,
-                      mode=None):
+def coefficients_spcc(canaux: Any, wcs: Any, capteur: Any, filtres: Any,
+                      blanc: Any, dossier: Any = None,
+                      forme: Any = None, rayon: float = RAYON_FLUX_PX,
+                      anneau: tuple[float, float] = ANNEAU_FOND,
+                      max_etoiles: int = MAX_ETOILES,
+                      ciel_pur: float = CIEL_PUR_SIGMA,
+                      catalogue: Any = None, reponses: Any = None,
+                      spectre_blanc: Any = None, mode: Any = None
+                      ) -> tuple[np.ndarray | None, dict[str, Any]]:
     """SPCC de bout en bout sur l'empilement → (coefficients (3,), diag).
 
     `canaux` : {"R": image 2D, "G": …, "B": …} ; `wcs` : WCS résolu de la
@@ -582,7 +591,7 @@ def coefficients_spcc(canaux, wcs, capteur, filtres, blanc, dossier=None,
     mag — ce que Siril annonce par « solution imprécise, corrigez le
     gradient »). Aucune exception ne sort d'ici : un échec est un diag avec
     « erreur »."""
-    diag = {"erreur": "", "avertissement": ""}
+    diag: dict[str, Any] = {"erreur": "", "avertissement": ""}
     try:
         # --- 1. profils capteur / filtres / référence de blanc ------------
         # `reponses` / `spectre_blanc` : injection directe (bancs) — court-
@@ -745,9 +754,9 @@ def coefficients_spcc(canaux, wcs, capteur, filtres, blanc, dossier=None,
 
 
 # --- Session SPCC (état pour l'application) ---------------------------------
-MAX_ESSAIS = 3               # tentatives de mesure par session (le catalogue
+MAX_ESSAIS: int = 3          # tentatives de mesure par session (le catalogue
                              # spectral est lourd : 48 chunks à lire)
-DELAI_ESSAI_S = 25.0         # délai minimal entre deux tentatives
+DELAI_ESSAI_S: float = 25.0  # délai minimal entre deux tentatives
 
 
 class SessionSpcc:
@@ -758,33 +767,35 @@ class SessionSpcc:
     Aucune exception ne remonte : un échec est `(None, message)` et
     `derniere_erreur`."""
 
-    def __init__(self, catalogue=None):
-        self._catalogue = catalogue
+    def __init__(self, catalogue: Any = None) -> None:
+        self._catalogue: Any = catalogue
         self.reset()
 
-    def reset(self):
+    def reset(self) -> None:
         """Session neuve : aucun coefficient, aucun diagnostic."""
-        self.coefficients = None       # (3,) float64 [R, G, B]
-        self.diag = {}
-        self.mesures = 0
-        self.derniere_erreur = ""
+        self.coefficients: Any = None   # (3,) float64 [R, G, B]
+        self.diag: dict[str, Any] = {}
+        self.mesures: int = 0
+        self.derniere_erreur: str = ""
 
     @property
-    def valide(self):
+    def valide(self) -> bool:
         """Des coefficients exploitables sont-ils disponibles ?"""
         return (self.coefficients is not None
                 and bool(np.all(np.isfinite(self.coefficients)))
                 and bool(np.all(self.coefficients > 0.0)))
 
-    def gains(self, roles=("R", "G", "B")):
+    def gains(self, roles: Any = ("R", "G", "B")) -> dict[str, float]:
         """Gains par RÔLE pour le composite → dict (vide si non valide).
         C'est l'interface attendue par `CompositeStacker.gains_roles`."""
         if not self.valide:
             return {}
         return {r: float(c) for r, c in zip(roles, self.coefficients)}
 
-    def mesurer(self, canaux, wcs, capteur, filtres, blanc, dossier=None,
-                forme=None, reponses=None, spectre_blanc=None, mode=None):
+    def mesurer(self, canaux: Any, wcs: Any, capteur: Any, filtres: Any,
+                blanc: Any, dossier: Any = None, forme: Any = None,
+                reponses: Any = None, spectre_blanc: Any = None,
+                mode: Any = None) -> tuple[Any, str]:
         """SPCC sur les canaux R/G/B courants → (résultat|None, message).
 
         `canaux` doit contenir les trois bandes R, G et B sur la MÊME grille
@@ -820,7 +831,7 @@ class SessionSpcc:
         return ({"coefficients": self.coefficients.tolist(), "diag": diag},
                 texte_resume(k, diag))
 
-    def texte_resume(self):
+    def texte_resume(self) -> str:
         """Ligne d'état pour l'UI ("" si rien à dire)."""
         if not self.valide:
             return (f"SPCC : {self.derniere_erreur}" if self.derniere_erreur
@@ -828,7 +839,7 @@ class SessionSpcc:
         return texte_resume(self.coefficients, self.diag)
 
 
-def texte_resume(k, diag):
+def texte_resume(k: Any, diag: Any) -> str:
     """Ligne d'état en clair pour l'UI (jamais vide si `diag` est renseigné)."""
     if not np.all(np.isfinite(k)):
         return f"SPCC indisponible : {diag.get('erreur') or 'échec inconnu'}"

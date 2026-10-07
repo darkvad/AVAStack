@@ -31,17 +31,19 @@ import os
 import shutil
 import time
 
+import numpy as np
+
 from .. import travail
 from ..images import save_image
 
 # Une frame archivée au plus toutes les `ARCHIVE_INTERVALLE_S` secondes.
-ARCHIVE_INTERVALLE_S = 1.0
+ARCHIVE_INTERVALLE_S: float = 1.0
 # Plafond de taille VOULU du dossier d'archive (20 Go ≈ 3 h de frames RGB
 # float32 8 Mpx à 120 s de pose) : il n'est JAMAIS dépassé, mais il est
 # abaissé à la moitié de l'espace libre réel (cf. `plafond_effectif`) — un
 # volume de 4,6 Go ne doit pas être rempli à 100 %.
-ARCHIVE_MAX_OCTETS = 20 * 1024 ** 3
-PREFIXE_DOSSIER = "avastack_frames_"
+ARCHIVE_MAX_OCTETS: int = 20 * 1024 ** 3
+PREFIXE_DOSSIER: str = "avastack_frames_"
 
 
 class ArchiveFrames:
@@ -49,18 +51,18 @@ class ArchiveFrames:
     float32, ordre d'arrivée). `n` = nombre de frames archivées ; `erreur`
     non vide = archivage arrêté (message à exposer, jamais une exception)."""
 
-    def __init__(self, max_octets=ARCHIVE_MAX_OCTETS,
-                 intervalle_s=ARCHIVE_INTERVALLE_S):
-        self.max_octets = max(1, int(max_octets))
-        self.intervalle_s = max(0.0, float(intervalle_s))
-        self.dossier = None      # créé à la première frame archivée
-        self.chemins = []        # chemins écrits, dans l'ordre d'arrivée
-        self.n = 0
-        self.erreur = ""         # non vide = archivage arrêté
-        self._t0 = None          # monotonic du dernier archivage (débit)
-        self._taille = 0         # somme des tailles de fichiers (octets)
+    def __init__(self, max_octets: int = ARCHIVE_MAX_OCTETS,
+                 intervalle_s: float = ARCHIVE_INTERVALLE_S) -> None:
+        self.max_octets: int = max(1, int(max_octets))
+        self.intervalle_s: float = max(0.0, float(intervalle_s))
+        self.dossier: str | None = None    # créé à la première frame archivée
+        self.chemins: list[str] = []        # chemins écrits, ordre d'arrivée
+        self.n: int = 0
+        self.erreur: str = ""               # non vide = archivage arrêté
+        self._t0: float | None = None       # monotonic du dernier archivage
+        self._taille: int = 0               # somme des tailles (octets)
 
-    def ajouter(self, frame):
+    def ajouter(self, frame: np.ndarray) -> str | None:
         """Archive une frame calibrée → chemin écrit, ou None (limite de
         débit, erreur d'écriture, ou plafond atteint). `frame` n'est PAS
         modifiée ; aucune exception n'est propagée (l'empilement continue)."""
@@ -96,7 +98,7 @@ class ArchiveFrames:
             self.erreur = f"écriture impossible ({exc}) : archivage arrêté"
             return None
 
-    def vider(self):
+    def vider(self) -> None:
         """Supprime le dossier temporaire et réinitialise l'archive."""
         if self.dossier:
             shutil.rmtree(self.dossier, ignore_errors=True)

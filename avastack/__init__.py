@@ -18,9 +18,45 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.61.1"
+AVASTACK_VERSION = "2.62.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.62.0 : CHANTIER DE REFACTORING — TYPAGE RÉTROACTIF de `processing/`
+#   (jalon 109, les 16 modules de traitement)
+#   - ANNOTATIONS SEULES (aucun changement de comportement, rendu identique AU
+#     BIT) sur tout le paquet `avastack/processing/` : `calibration`,
+#     `framestore`, `veralux`, `denoise`, `sharpness`, `stars`, `annotations`,
+#     `astrometrie`, `photometrie`, `composition`, `couleurs`, `alignment`,
+#     `stacking`, `spcc`, `display` et le `__init__` (ré-exports déclarés par
+#     `__all__`, comme `catalogues/__init__.py`).
+#   - paramètres, valeurs de retour et attributs d'instance annotés ; types
+#     `numpy` (`np.ndarray`), `dict[...]`, `tuple[...] | None`, PEP 604
+#     (`X | None`) — même style que la fondation (jalon 101) et `core`/`ui`.
+#   - 8 modules se sont typés à 0 ERREUR pyright par la seule annotation ;
+#     les 8 autres (alignment, annotations, astrometrie, denoise, display,
+#     photometrie, spcc, stacking — 86 erreurs au départ) l'ont été avec des
+#     ignores CIBLÉS et documentés : surcharges OpenCV (`estimateAffinePartial2D`,
+#     `fastNlMeansDenoising`, `ORB_create`), `np.float32(liste)` (rend bien un
+#     ndarray, pyright voit un scalaire), stub astropy (`hd[0].header`),
+#     rétrécissement Optionnel (pyright ne suit pas les attributs à travers une
+#     variable booléenne) et TAMPONS DE TRAVAIL préalloués typés `Any`.
+#   - 4 avertissements ruff PRÉEXISTANTS neutralisés par `# noqa` (aucun
+#     changement de comportement), comme `i_etape` au jalon 108 : ré-exports du
+#     `__init__` (résolus par `__all__`), `import sys` inutilisé de `denoise`,
+#     variable `ic` de `photometrie`, `scnr_actif`/`sd_actif`/`dm_actif` de
+#     `display`.
+#   - GARDE-FOU (jalon 100) : liste blanche portée à 46 fichiers ; TOUT AU VERT
+#     (syntaxe, surface publique 75 symboles, hash d'empilement au bit,
+#     **pyright 0 erreur / 46 fichiers typés**). `ruff` : `processing/` PROPRE.
+#   - BANCS DE TRAITEMENT rejoués VERTS (align 13/15, stars 10, RL 11,
+#     sharp live 12, dn local 8, denoise live 9, calib compo 53, composition 19,
+#     couleurs 22, luminance 85, boost rouge 86, chroma structure 67, photométrie
+#     56, spcc 58/58bis, propagation 56, fit canaux 54, rejet satellites 6,
+#     veralux 1/2/3, crop intersection, norm commune 61, histo 75, gradient
+#     couche 24, annotations overlay 96). ÉCHECS PRÉEXISTANTS de
+#     `_test_chroma_nr_jalon63` / `_test_chroma_halo_jalon65` (chaîne « solveur
+#     VeraLux ») : reproduits À L'IDENTIQUE sur la version d'origine (git stash)
+#     — NON imputables au typage.
 # v2.61.1 : CHANTIER DE REFACTORING — `ui/saver.py` + `ui/external_runner.py`
 #   (jalon 108, sauvegardes + traitement externe)
 #   - DEUX modules NEUFS (TYPÉS) extraits de `app.py`, sous forme de mixins dont

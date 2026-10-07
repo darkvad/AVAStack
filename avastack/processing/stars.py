@@ -34,43 +34,44 @@ toujours renvoyé à l'affichage).
 """
 
 import math
+from typing import Any
 
 import numpy as np
 import cv2
 
 # Seuil de détection, en σ au-dessus du fond (k). 8σ : les étoiles d'un
 # empilement le dépassent largement, le bruit non.
-SEUIL_SIGMA = 8.0
+SEUIL_SIGMA: float = 8.0
 # En dessous de ce nombre d'étoiles exploitables, la mesure est signalée
 # comme PEU FIABLE (message renvoyé) — pour la netteté ce sera le seuil
 # sous lequel elle ne s'applique pas.
-MIN_ETOILES = 3
+MIN_ETOILES: int = 3
 # Plafond d'étoiles conservées (tri par éclat DÉCROISSANT : les plus
 # brillantes d'abord). Borne le coût sur un champ très riche.
-MAX_ETOILES = 200
+MAX_ETOILES: int = 200
 # Filtres de forme, en pixels de l'image.
-AIRE_MIN = 2          # < 2 px au-dessus de 8σ : pixel chaud ou bruit
-AIRE_MAX = 400        # > 400 px : nébulosité / amas, pas une étoile
-SIGMA_MIN = 0.4       # plus étroit que ça : échantillonnage impossible
-SIGMA_MAX = 8.0       # plus large : l'objet n'est pas une étoile isolée
+AIRE_MIN: int = 2          # < 2 px au-dessus de 8σ : pixel chaud ou bruit
+AIRE_MAX: int = 400        # > 400 px : nébulosité / amas, pas une étoile
+SIGMA_MIN: float = 0.4     # plus étroit que ça : échantillonnage impossible
+SIGMA_MAX: float = 8.0     # plus large : l'objet n'est pas une étoile isolée
 # Ellipticité max : |σx − σy| / σ. Au-delà : étoile filée (suivi), tilt…
-ELLIPTICITE_MAX = 0.35
+ELLIPTICITE_MAX: float = 0.35
 # Fenêtre de mesure : elle SUIT la taille apparente de l'étoile. Fenêtre
 # FIXE = piège constaté au 1er essai (test du jalon 10 : ÉCHEC) : une fenêtre
 # de ±9 px autour d'une étoile de σ ≈ 1,2 px surestimait la FWHM de 170 %,
 # le bruit du fond (±9 px = 361 pixels !) pesant alors autant que les ailes
 # de l'étoile dans les moments.
-_DEMI_MIN = 5         # demi-fenêtre minimale (px)
-_DEMI_MAX = 24        # demi-fenêtre maximale (px)
-_PROFIL_DR = 0.25     # pas du profil radial (px)
+_DEMI_MIN: int = 5         # demi-fenêtre minimale (px)
+_DEMI_MAX: int = 24        # demi-fenêtre maximale (px)
+_PROFIL_DR: float = 0.25   # pas du profil radial (px)
 # 2·√(2·ln 2) : passage σ gaussien ↔ FWHM.
-FWHM_PAR_SIGMA = 2.3548200450309493
+FWHM_PAR_SIGMA: float = 2.3548200450309493
 # Sous-échantillonnage du calcul de fond : la médiane d'un quart de million
 # de pixels suffit largement et la mesure reste ≪ 1 ms.
-MAX_PX_FOND = 262144
+MAX_PX_FOND: int = 262144
 
 
-def _luminance(img):
+def _luminance(img: np.ndarray) -> np.ndarray:
     """Luminance float32 d'une image mono (H,W) ou couleur (H,W,3).
 
     PIÈGE (leçon du projet) : toute fonction image doit être vérifiée sur
@@ -87,7 +88,7 @@ def _luminance(img):
     raise ValueError(f"image de dimensions inattendues : {a.shape}")
 
 
-def _fond_bruit(luma):
+def _fond_bruit(luma: np.ndarray) -> tuple[float, float]:
     """(fond, bruit) d'une luminance, par médiane / 1,4826·MAD — robustes
     aux étoiles et structures (qui restent minoritaires). Sous-échantillonné
     pour rester instantané même en pleine résolution."""
@@ -98,7 +99,9 @@ def _fond_bruit(luma):
     return med, 1.4826 * float(np.median(np.abs(s - med)))
 
 
-def _mesure_etoile(luma, x, y, bw, bh, fond, bruit):
+def _mesure_etoile(luma: np.ndarray, x: int, y: int, bw: int, bh: int,
+                   fond: float, bruit: float
+                   ) -> tuple[float, float, float] | None:
     """Mesure d'UNE étoile : (σ, FWHM, ellipticité) en px, ou None si
     l'objet ne ressemble pas à une étoile mesurable/isolée.
 
@@ -194,7 +197,9 @@ def _mesure_etoile(luma, x, y, bw, bh, fond, bruit):
     return None                                # pas de retombée : trop large
 
 
-def mesurer_seeing(img, seuil_sigma=SEUIL_SIGMA, max_etoiles=MAX_ETOILES):
+def mesurer_seeing(img: np.ndarray, seuil_sigma: float = SEUIL_SIGMA,
+                   max_etoiles: int = MAX_ETOILES
+                   ) -> tuple[dict[str, Any], str]:
     """Détecte les étoiles de `img` et mesure la PSF (seeing).
 
     Renvoie (dict, message) :
@@ -264,17 +269,19 @@ def mesurer_seeing(img, seuil_sigma=SEUIL_SIGMA, max_etoiles=MAX_ETOILES):
         return {}, str(exc)
 
 
-def sigma_depuis_fwhm(fwhm):
+def sigma_depuis_fwhm(fwhm: float) -> float:
     """σ gaussien (px) correspondant à une FWHM (px) — PSF de la netteté."""
     return max(float(fwhm), 0.0) / FWHM_PAR_SIGMA
 
 
-def fwhm_depuis_sigma(sigma):
+def fwhm_depuis_sigma(sigma: float) -> float:
     """FWHM (px) correspondant à un σ gaussien (px)."""
     return FWHM_PAR_SIGMA * max(float(sigma), 0.0)
 
 
-def detecter_positions(img, max_etoiles=MAX_ETOILES, seuil_sigma=SEUIL_SIGMA):
+def detecter_positions(img: np.ndarray, max_etoiles: int = MAX_ETOILES,
+                       seuil_sigma: float = SEUIL_SIGMA
+                       ) -> tuple[np.ndarray, str]:
     """Positions (centroïdes) des étoiles les plus brillantes — prérequis de
     l'ALIGNEMENT par étoiles (jalon 13) : sur un champ pauvre en étoiles et
     riche en nébulosité (C8 à 1280 mm, constat réel du 17/09/2026), les

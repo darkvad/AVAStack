@@ -17,7 +17,7 @@ import math
 
 import cv2
 import numpy as np
-from typing import List, Tuple, Optional
+from typing import Any, List, Optional, Tuple
 
 from ..catalogues import ObjetCelebre
 
@@ -30,28 +30,28 @@ from ..catalogues import ObjetCelebre
 # les couleurs sont donc définies en RGB, PAS à la mode OpenCV BGR. Le
 # premier jet définissait le « jaune » en BGR : il s'affichait CYAN (et le
 # « cyan » des étoiles s'affichait jaune).
-JAUNE = (255, 255, 0)                     # RGB — demandé par Alain pour TOUT
-COULEUR_DEFAUT_OBJET = JAUNE              # objets célèbres
-COULEUR_DEFAUT_ETOILE = JAUNE             # étoiles brillantes
-EPAISSEUR_TRAIT = 1
-EPAISSEUR_CERCLE = 1
-RAYON_CERCLE = 4                          # repli : taille angulaire inconnue
-TAILLE_POLICE_BASE = 0.4
-EPaisseUR_POLICE = 1
-MARGE_BORD = 10  # pixels
+JAUNE: Tuple[int, int, int] = (255, 255, 0)   # RGB — demandé par Alain pour TOUT
+COULEUR_DEFAUT_OBJET: Tuple[int, int, int] = JAUNE    # objets célèbres
+COULEUR_DEFAUT_ETOILE: Tuple[int, int, int] = JAUNE   # étoiles brillantes
+EPAISSEUR_TRAIT: int = 1
+EPAISSEUR_CERCLE: int = 1
+RAYON_CERCLE: int = 4                     # repli : taille angulaire inconnue
+TAILLE_POLICE_BASE: float = 0.4
+EPaisseUR_POLICE: int = 1
+MARGE_BORD: int = 10  # pixels
 # Entourage « selon la forme » (demande d'Alain, 04/10/2026) :
-RAYON_ENTOURAGE_MIN_PX = 6.0   # sous ce rayon l'entourage est invisible
-PLAFOND_DEMI_AXE = 0.5         # demi-axe ≤ 50 % de la plus grande dimension
-                               # (M31 fait 190′ : sans plafond, l'entourage
-                               # déborde de l'écran dès qu'on zoome)
-RAYON_MESURE_MIN_PX = 12.0     # en dessous, la mesure de forme n'est pas fiable
-PLAFOND_MESURE_PX = 300.0      # le crop de mesure est borné (coût maîtrisé)
+RAYON_ENTOURAGE_MIN_PX: float = 6.0    # sous ce rayon l'entourage est invisible
+PLAFOND_DEMI_AXE: float = 0.5          # demi-axe ≤ 50 % de la plus grande
+                                       # dimension (M31 fait 190′ : sans plafond,
+                                       # l'entourage déborde de l'écran au zoom)
+RAYON_MESURE_MIN_PX: float = 12.0      # en dessous, la mesure n'est pas fiable
+PLAFOND_MESURE_PX: float = 300.0       # le crop de mesure est borné (coût maîtrisé)
 # Finesse MAXIMALE du ratio d'axes pour un objet DÉBORDANT de l'entourage
 # (taille réelle > plafond 50 %) : la mesure ne voit qu'une PARTIE de
 # l'objet — le bulbe rond d'une galaxie fausse le ratio vers rond (constat
 # Alain sur M31, 05/10/2026 : « l'ellipse devrait être plus fine »). Clamps
 # par type, appliqués SEULEMENT aux objets plus grands que l'entourage.
-TYPE_RATIO_MAX = {
+TYPE_RATIO_MAX: dict[str, float] = {
     "galaxie": 0.45,
     "nebuleuse_diffuse": 0.55,
     "region_HII": 0.55,
@@ -69,15 +69,15 @@ TYPE_RATIO_MAX = {
 # neutralisés) : NGC 206 = +5,2 niveaux (0,6σ) → rejeté ; M110 = +77
 # (4,8σ) et M32 → détectés. Les nébuleuses obscures sont exemptées (aucun
 # excès positif à détecter — elles sont obscures par nature).
-SEUIL_VISIBILITE_SIGMA = 3.0
-SEUIL_VISIBILITE_NIVEAU = 8.0
+SEUIL_VISIBILITE_SIGMA: float = 3.0
+SEUIL_VISIBILITE_NIVEAU: float = 8.0
 # Objets SANS taille angulaire connue (ex. NGC 206) : l'entourage est un
 # petit cercle 4 px, trop petit pour la détection — on sonde alors un
 # rayon fixe pour trancher (visible ou pas).
-RAYON_PROBE_INCONNU = 20.0
+RAYON_PROBE_INCONNU: float = 20.0
 
 # Codes de type objet → icône 1 lettre
-TYPE_ICON = {
+TYPE_ICON: dict[str, str] = {
     "galaxie": "Gx",
     "nebuleuse_diffuse": "Nb",
     "nebuleuse_planetaire": "Pn",
@@ -91,7 +91,7 @@ def _sanitize_texte(txt: str) -> str:
     return "".join(c if 32 <= ord(c) < 127 else "?" for c in txt)
 
 
-def _pixel_depuis_ciel(wcs, ra, dec):
+def _pixel_depuis_ciel(wcs: Any, ra: float, dec: float) -> Tuple[float, float]:
     """(ra, dec) en degrés → (x, y) pixel du buffer, via le WCS du projet.
 
     Le WCS du projet (WcsTan / WcsCompose, cf. catalogues.solveur et
@@ -112,22 +112,22 @@ class WcsEchelle:
     uniforme (`cv2.resize`, fx = fy) : multiplier les coordonnées pixel par
     `echelle` suffit — aucune hypothèse sur la projection, aucun re-solve."""
 
-    def __init__(self, wcs, echelle=1.0):
-        self.wcs = wcs
+    def __init__(self, wcs: Any, echelle: float = 1.0) -> None:
+        self.wcs: Any = wcs
         try:
             e = float(echelle)
         except (TypeError, ValueError):
             e = 1.0
-        self.echelle = e if e > 0.0 else 1.0
-        self.forme = getattr(wcs, "forme", None)
+        self.echelle: float = e if e > 0.0 else 1.0
+        self.forme: Any = getattr(wcs, "forme", None)
 
-    def vers_pixels(self, ra, dec):
+    def vers_pixels(self, ra: float, dec: float) -> np.ndarray:
         """Ciel (deg) → pixels du buffer (array (N, 2), 0-based)."""
         p = np.asarray(self.wcs.vers_pixels(ra, dec),
                        dtype=np.float64).reshape(-1, 2)
         return p * self.echelle
 
-    def vers_radec(self, xy):
+    def vers_radec(self, xy: Any) -> np.ndarray:
         """Pixels du buffer (0-based) → (ra, dec) en degrés."""
         xy = np.asarray(xy, dtype=np.float64).reshape(-1, 2) / self.echelle
         return self.wcs.vers_radec(xy)
@@ -180,7 +180,8 @@ def _rects_chevauchent(r1: Tuple[int, int, int, int],
                 r1[1] + r1[3] <= r2[1] or r2[1] + r2[3] <= r1[1])
 
 
-def _demi_axe_pixels(wcs, ra, dec, taille_arcmin) -> float:
+def _demi_axe_pixels(wcs: Any, ra: float, dec: float,
+                     taille_arcmin: float) -> float:
     """Demi-grand axe EN PIXELS d'un objet de taille angulaire donnée : la
     distance est mesurée dans le buffer en projetant DEUX points séparés
     d'un demi-diamètre — robuste à l'échelle et à la rotation, y compris à
@@ -206,7 +207,7 @@ def _demi_axe_pixels(wcs, ra, dec, taille_arcmin) -> float:
         return 0.0
 
 
-def _rayon_entourage(wcs, obj: ObjetCelebre, h: int, w: int,
+def _rayon_entourage(wcs: Any, obj: ObjetCelebre, h: int, w: int,
                      echelle_police: float = 1.0) -> float:
     """Rayon/demi-grand axe de l'entourage (px) : taille angulaire du
     catalogue convertie par le WCS, bornée — plancher lisible, plafond
@@ -288,8 +289,9 @@ def _mesure_forme(img_disp: np.ndarray, x: float, y: float,
 
 
 def _dessine_entourage(img_disp: np.ndarray, x: float, y: float,
-                       rayon: float, forme, couleur: Tuple[int, int, int],
-                       echelle_police: float = 1.0):
+                       rayon: float, forme: Optional[Tuple[float, float]],
+                       couleur: Tuple[int, int, int],
+                       echelle_police: float = 1.0) -> None:
     """Entourage d'un objet : ELLIPSE orientée si la forme mesurée est
     allongée (angle + ratio RÉELS mesurés sur l'image), CERCLE sinon
     (objet rond, mesure non fiable, ou taille angulaire inconnue)."""
@@ -345,7 +347,8 @@ def _detecte_visibilite(img_disp: np.ndarray, x: float, y: float,
             >= max(SEUIL_VISIBILITE_NIVEAU, SEUIL_VISIBILITE_SIGMA * sigma))
 
 
-def overlay_objets_celebres(img_disp: np.ndarray, wcs, objets: List[ObjetCelebre],
+def overlay_objets_celebres(img_disp: np.ndarray, wcs: Any,
+                            objets: List[ObjetCelebre],
                             couleur: Tuple[int, int, int] = COULEUR_DEFAUT_OBJET,
                             echelle_police: float = 1.0,
                             seulement_visibles: bool = False) -> List[Tuple[int, int, int, int]]:
@@ -448,10 +451,10 @@ def overlay_objets_celebres(img_disp: np.ndarray, wcs, objets: List[ObjetCelebre
                                    echelle_police=e)
 
     return positions_prises
-def overlay_etoiles_brillantes(img_disp: np.ndarray, wcs, etoiles: dict,
+def overlay_etoiles_brillantes(img_disp: np.ndarray, wcs: Any, etoiles: dict,
                                mag_limite: float = 8.0,
                                couleur: Tuple[int, int, int] = COULEUR_DEFAUT_ETOILE,
-                               positions_prises: List[Tuple[int, int, int, int]] = None,
+                               positions_prises: Optional[List[Tuple[int, int, int, int]]] = None,
                                echelle_police: float = 1.0) -> List[Tuple[int, int, int, int]]:
     """Dessine les noms des étoiles brillantes (Gaia) sur l'image d'affichage.
     `etoiles` : dict retourné par CatalogueSiril.extraire() avec clés 'ra', 'dec', 'g'.
@@ -534,7 +537,8 @@ def overlay_etoiles_brillantes(img_disp: np.ndarray, wcs, etoiles: dict,
     return positions_prises
 
 
-def generer_image_annotee(img_disp: np.ndarray, wcs, objets: List[ObjetCelebre],
+def generer_image_annotee(img_disp: np.ndarray, wcs: Any,
+                          objets: List[ObjetCelebre],
                           etoiles: dict, mag_limite: float = 8.0,
                           annoter_objets: bool = True, annoter_etoiles: bool = True,
                           echelle_police: float = 1.0,

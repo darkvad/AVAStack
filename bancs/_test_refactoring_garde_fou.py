@@ -162,6 +162,25 @@ FICHIERS_TYPES = (
     # extraits de `app.py` — mixins `Saver` / `ExternalRunner` dont `App` hérite.
     "avastack/ui/saver.py",
     "avastack/ui/external_runner.py",
+    # Jalon 109 (chantier de refactoring) : TYPAGE RÉTROACTIF du paquet
+    # `processing/` — les 16 modules de traitement (annotations SEULES, aucun
+    # changement de comportement), pour que le cœur du pipeline soit typé.
+    "avastack/processing/__init__.py",
+    "avastack/processing/alignment.py",
+    "avastack/processing/annotations.py",
+    "avastack/processing/astrometrie.py",
+    "avastack/processing/calibration.py",
+    "avastack/processing/composition.py",
+    "avastack/processing/couleurs.py",
+    "avastack/processing/denoise.py",
+    "avastack/processing/display.py",
+    "avastack/processing/framestore.py",
+    "avastack/processing/photometrie.py",
+    "avastack/processing/sharpness.py",
+    "avastack/processing/spcc.py",
+    "avastack/processing/stacking.py",
+    "avastack/processing/stars.py",
+    "avastack/processing/veralux.py",
 )
 
 

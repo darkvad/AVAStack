@@ -33,27 +33,27 @@ entière). Renvoie toujours une copie float32 — l'image d'entrée n'est
 jamais modifiée.
 """
 
-import sys
+import sys  # noqa: F401  (import préexistant, conservé verbatim)
 
 import numpy as np
 import cv2
 
 # Niveaux d'échelle de la transformée à trous (5 = fino à ~32 px de large).
-_NIVEAUX = 5
+_NIVEAUX: int = 5
 # Anti-léopard : seuls les N niveaux FINS (échelles 1, 2 px) sont
 # seuillés — le bruit fin vit dans les petites échelles ; les niveaux
 # plus grossiers (4 px et au-delà) contiennent déjà de la structure
 # réelle sur des images astro (retour test réel d'Alain : le niveau
 # 4 px suffit à créer un léger moutonnement). L'ondelette est donc
 # l'option DOUCE ; le NLM est l'option « forte » (défaut).
-_NIVEAUX_FINES = 2
+_NIVEAUX_FINES: int = 2
 # Noyau B3-spline 1D de la starlet (interpolant, reconstruction exacte).
-_B3 = np.array([1.0, 4.0, 6.0, 4.0, 1.0], dtype=np.float64) / 16.0
+_B3: np.ndarray = np.array([1.0, 4.0, 6.0, 4.0, 1.0], dtype=np.float64) / 16.0
 
-METHODS = ("ondelettes", "nlm")
+METHODS: tuple[str, ...] = ("ondelettes", "nlm")
 
 
-def _noyau_1d(niveau):
+def _noyau_1d(niveau: int) -> np.ndarray:
     """Noyau 1D B3-spline « dilaté » : coefficients espacés de 2^niveau
     (principe de l'algorithme à trous — aucune sous-échantillonnage)."""
     d = 2 ** int(niveau)
@@ -62,21 +62,21 @@ def _noyau_1d(niveau):
     return k
 
 
-def _etage(c_prev, niveau):
+def _etage(c_prev: np.ndarray, niveau: int) -> np.ndarray:
     """Convolution séparable (lignes puis colonnes) au niveau donné.
     cv2.sepFilter2D est natif et multithread ; bordures réfléchies."""
     k = _noyau_1d(niveau)
     return cv2.sepFilter2D(c_prev, -1, k, k, borderType=cv2.BORDER_REFLECT)
 
 
-def _mad_sigma(x):
+def _mad_sigma(x: np.ndarray) -> float:
     """Estimation robuste du bruit : 1,4826 × MAD (médiane de |x - médiane|).
     Robuste aux structures (étoiles, nébulosités) qui restent minoritaires."""
     m = np.median(x)
     return 1.4826 * float(np.median(np.abs(x - m)))
 
 
-def estimer_sigma(img):
+def estimer_sigma(img: np.ndarray) -> float:
     """Estime le sigma du bruit d'une image [0..1] via la 1re couche de
     détail de la starlet (cette couche est dominée par le bruit fin)."""
     data = np.asarray(img, dtype=np.float32)
@@ -84,7 +84,7 @@ def estimer_sigma(img):
     return min(max(_mad_sigma(w), 1e-9), 1.0)
 
 
-def _ondelettes(img, force):
+def _ondelettes(img: np.ndarray, force: float) -> np.ndarray:
     """Débruitage par seuillage k-sigma de la transformée à trous.
 
     ANTI-LÉOPARD (retour de test réel d'Alain, 15/09/2026 — la 1re version
@@ -128,7 +128,7 @@ def _ondelettes(img, force):
     return data - retires
 
 
-def _nlm(img, force):
+def _nlm(img: np.ndarray, force: float) -> np.ndarray:
     """Non-local Means. h TOTAL = (0.3 + 1.0·force) × sigma estimé (unités
     16 bits ; force 0.5 → h ≈ 0.8σ), appliqué en DEUX passes faibles
     (0.6·h puis 0.4·h).
@@ -164,16 +164,20 @@ def _nlm(img, force):
     u16 = np.rint(u16 * 65535.0).astype(np.uint16)
     u16 = np.ascontiguousarray(u16)
     # Passe 1 (la plus forte) puis passe 2 (finition) — cf. docstring.
-    d = cv2.fastNlMeansDenoising(
-        u16, h=np.array([0.6 * h], dtype=np.float32),
+    # `h` en TABLEAU numpy est REQUIS pour la surcharge 16 bits (cf. PIÈGE
+    # OpenCV 5) : les ignores pyright ci-dessous sont CIBLÉS sur cette
+    # réalité — le stub de cv2 ne déclare que la surcharge `Sequence[float]`.
+    d = cv2.fastNlMeansDenoising(  # pyright: ignore[reportCallIssue]
+        u16, h=np.array([0.6 * h], dtype=np.float32),  # pyright: ignore[reportArgumentType]
         templateWindowSize=5, searchWindowSize=15, normType=cv2.NORM_L1)
-    d = cv2.fastNlMeansDenoising(
-        d, h=np.array([0.4 * h], dtype=np.float32),
+    d = cv2.fastNlMeansDenoising(  # pyright: ignore[reportCallIssue]
+        d, h=np.array([0.4 * h], dtype=np.float32),  # pyright: ignore[reportArgumentType]
         templateWindowSize=5, searchWindowSize=15, normType=cv2.NORM_L1)
     return d.astype(np.float32) / 65535.0
 
 
-def denoiser(img, methode, force=0.5):
+def denoiser(img: np.ndarray, methode: str,
+             force: float = 0.5) -> tuple[np.ndarray, str]:
     """Point d'entrée unique : débruite img par la méthode demandée.
 
     methode : "ondelettes" ou "nlm" (cf. METHODS). force : 0..1.

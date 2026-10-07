@@ -77,6 +77,7 @@ Ce qu'il fait :
 """
 
 import math
+from typing import Any
 
 import numpy as np
 import cv2
@@ -84,25 +85,25 @@ import cv2
 from . import stars
 
 # Itérations : 3-5 = réglage utile (cf. banc d'essai), 10 = plafond DUR.
-ITERATIONS_DEFAUT = 5
-ITERATIONS_MAX = 10
+ITERATIONS_DEFAUT: int = 5
+ITERATIONS_MAX: int = 10
 # Rayon du noyau gaussien, en σ (4 σ ≈ 99,99 % du flux).
-_RAYON_SIGMA = 4.0
+_RAYON_SIGMA: float = 4.0
 # Garde-fou de la division de Richardson-Lucy : le rapport observation /
 # estimation peut s'emballer sur un pixel isolé ; 1e3 ne bride aucun cas
 # réel (un pixel 1000× plus fort que son estimation reste astronomique).
-_RATIO_MAX = 1.0e3
+_RATIO_MAX: float = 1.0e3
 # Gain maximal ré-appliqué aux canaux couleur. Le gain utile mesuré est
 # ×2,4 à 5 it (réglage recommandé) et ~×4 à 10 it sur une étoile brillante :
 # 8 ne bride donc AUCUN réglage utile, il protège seulement le fond d'un
 # pixel aberrant (division par une luminance quasi nulle).
-_GAIN_MAX = 8.0
+_GAIN_MAX: float = 8.0
 # Sous ce niveau de luminance, la couleur locale n'est pas définie
 # (pixel noir, masque) : le gain reste NEUTRE (1).
-_LUMA_MIN = 1e-6
+_LUMA_MIN: float = 1e-6
 
 
-def _luminance(img):
+def _luminance(img: np.ndarray) -> np.ndarray:
     """Luminance float32 d'une image mono (H,W) ou couleur (H,W,3).
 
     Même pondération Rec.601 que `stars._luminance` (recopiée ici : les
@@ -119,7 +120,7 @@ def _luminance(img):
     raise ValueError(f"image de dimensions inattendues : {a.shape}")
 
 
-def _noyau_gaussien(sigma_px):
+def _noyau_gaussien(sigma_px: float) -> np.ndarray:
     """Noyau 1D gaussien NORMALISÉ (somme = 1 → RL conserve le flux)."""
     s = max(float(sigma_px), 1e-3)
     demi = max(1, int(math.ceil(_RAYON_SIGMA * s)))
@@ -128,7 +129,7 @@ def _noyau_gaussien(sigma_px):
     return k / k.sum()
 
 
-def _convoluer(x, noyau):
+def _convoluer(x: np.ndarray, noyau: np.ndarray) -> np.ndarray:
     """Convolution SÉPARABLE (lignes puis colonnes) : cv2.sepFilter2D est
     natif et multithread — c'est ce qui met RL 5 it à 74 ms sur 1,6 Mpx.
     Bordures réfléchies (aucune marche artificielle au bord de l'aperçu)."""
@@ -136,7 +137,8 @@ def _convoluer(x, noyau):
                            borderType=cv2.BORDER_REFLECT)
 
 
-def _rl_luminance(luma, sigma_px, iterations):
+def _rl_luminance(luma: np.ndarray, sigma_px: float,
+                  iterations: int) -> np.ndarray:
     """Richardson-Lucy sur une luminance 2D, non négative.
 
     u ← u · [(d / (u ⊛ P)) ⊛ P] : P étant gaussienne (donc SYMÉTRIQUE), sa
@@ -156,7 +158,8 @@ def _rl_luminance(luma, sigma_px, iterations):
     return est
 
 
-def _appliquer_gain(img, luma, luma_dec):
+def _appliquer_gain(img: np.ndarray, luma: np.ndarray,
+                    luma_dec: np.ndarray) -> np.ndarray:
     """Ré-applique le gain de luminance déconvoluée à l'image d'origine.
 
     Mono (H,W) : le produit rend directement la luminance déconvoluée.
@@ -177,8 +180,10 @@ def _appliquer_gain(img, luma, luma_dec):
 
 
 
-def deconvoluer(img, fwhm=None, iterations=ITERATIONS_DEFAUT,
-                seuil_sigma=stars.SEUIL_SIGMA, mesure=None):
+def deconvoluer(img: np.ndarray, fwhm: float | None = None,
+                iterations: int = ITERATIONS_DEFAUT,
+                seuil_sigma: float = stars.SEUIL_SIGMA,
+                mesure: dict[str, Any] | None = None) -> tuple[np.ndarray, str]:
     """Point d'entrée de la netteté : Richardson-Lucy sur `img` (LINÉAIRE).
 
     `fwhm`      : FWHM de la PSF en px. None → elle est MESURÉE sur l'image
@@ -228,7 +233,9 @@ def deconvoluer(img, fwhm=None, iterations=ITERATIONS_DEFAUT,
             fwhm = mesure["fwhm"]
 
         try:
-            fwhm_px = float(fwhm)
+            # pyright ne sait pas que `fwhm` est non-None après la garde
+            # `mesure.get("fwhm") is None` ci-dessus → ignore CIBLÉ.
+            fwhm_px = float(fwhm)  # pyright: ignore[reportArgumentType]
         except (TypeError, ValueError):
             return source, (f"FWHM invalide : {fwhm!r} "
                             "(nombre de pixels attendu)")

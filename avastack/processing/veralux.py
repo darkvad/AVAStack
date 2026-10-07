@@ -24,6 +24,7 @@ Règles de sécurité (leçons des tentatives précédentes, cf. AVANCEMENT.md) 
 
 import os
 import sys
+from typing import Any
 
 import numpy as np
 
@@ -37,27 +38,27 @@ if _RACINE not in sys.path:
 
 try:
     from veralux_core_headless import SENSOR_PROFILES, solve_and_stretch
-    MOTEUR_DISPONIBLE = True
-    _ERREUR_IMPORT = ""
+    MOTEUR_DISPONIBLE: bool = True
+    _ERREUR_IMPORT: str = ""
 except ImportError as exc:            # moteur absent/corrompu : l'appli doit
     SENSOR_PROFILES = {}              # continuer à fonctionner en STF
     MOTEUR_DISPONIBLE = False
     _ERREUR_IMPORT = str(exc)
 
-PROFIL_PAR_DEFAUT = "Rec.709 (Recommended)"
+PROFIL_PAR_DEFAUT: str = "Rec.709 (Recommended)"
 
-MODE_TARGET_BG = "target_bg"   # résolution automatique du logD pour amener
-                               # le fond du ciel à target_bg
-MODE_LOG_D = "log_d"           # logD imposé : déterministe, réactif, sans
-                               # résolution itérative
+MODE_TARGET_BG: str = "target_bg"   # résolution automatique du logD pour
+                                    # amener le fond du ciel à target_bg
+MODE_LOG_D: str = "log_d"           # logD imposé : déterministe, réactif,
+                                    # sans résolution itérative
 
-TARGET_BG_PAR_DEFAUT = 0.20
-LOG_D_PAR_DEFAUT = 2.0
-PROTECT_B_PAR_DEFAUT = 6.0
-CONVERGENCE_POWER_PAR_DEFAUT = 3.5
+TARGET_BG_PAR_DEFAUT: float = 0.20
+LOG_D_PAR_DEFAUT: float = 2.0
+PROTECT_B_PAR_DEFAUT: float = 6.0
+CONVERGENCE_POWER_PAR_DEFAUT: float = 3.5
 
 
-def normaliser_lin(img):
+def normaliser_lin(img: np.ndarray) -> np.ndarray:
     """Ramène une image LINÉAIRE dans [0, 1] par UN SEUL facteur global.
 
     v2.37.2 — CORRECTIF DU CŒUR « CRAMÉ ». L'empilement vit en mémoire à une
@@ -93,24 +94,27 @@ def normaliser_lin(img):
     return img
 
 
-def profils_disponibles():
+def profils_disponibles() -> tuple[str, ...]:
     """Clés de SENSOR_PROFILES (liste des profils capteur du moteur)."""
     return tuple(SENSOR_PROFILES.keys()) if MOTEUR_DISPONIBLE else ()
 
 
-def profil_existe(nom):
+def profil_existe(nom: str) -> bool:
     return MOTEUR_DISPONIBLE and nom in SENSOR_PROFILES
 
 
-def moteur_disponible():
+def moteur_disponible() -> bool:
     return MOTEUR_DISPONIBLE
 
 
-def etirer(img, mode=MODE_TARGET_BG, target_bg=TARGET_BG_PAR_DEFAUT,
-           log_d=LOG_D_PAR_DEFAUT, profil=PROFIL_PAR_DEFAUT,
-           protect_b=PROTECT_B_PAR_DEFAUT,
-           convergence_power=CONVERGENCE_POWER_PAR_DEFAUT,
-           use_adaptive_anchor=True, color_grip=1.0, shadow_convergence=0.0):
+def etirer(img: np.ndarray, mode: str = MODE_TARGET_BG,
+           target_bg: float = TARGET_BG_PAR_DEFAUT,
+           log_d: float = LOG_D_PAR_DEFAUT, profil: str = PROFIL_PAR_DEFAUT,
+           protect_b: float = PROTECT_B_PAR_DEFAUT,
+           convergence_power: float = CONVERGENCE_POWER_PAR_DEFAUT,
+           use_adaptive_anchor: bool = True, color_grip: float = 1.0,
+           shadow_convergence: float = 0.0,
+           ) -> tuple[np.ndarray, float, dict[str, Any]]:
     """Applique l'étirement hyperbolique VeraLux à une image linéaire.
 
     img     : (H, W) mono ou (H, W, 3) RGB, float, valeurs linéaires à une

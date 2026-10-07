@@ -45,6 +45,7 @@ import os
 import re
 import shutil
 import time
+from typing import Any
 
 import numpy as np
 
@@ -58,37 +59,39 @@ from .. import travail
 
 try:
     from astropy.io import fits
-    FITS_OK = True
+    FITS_OK: bool = True
 except ImportError:                       # astropy absent : pas de FITS
     FITS_OK = False
 
 # --- Politique de résolution (le worker s'y réfère, les bancs la vérifient) --
-ASTRO_MIN_FRAMES = 3        # pas de tentative avant ce nombre de frames empilées
-ASTRO_ESSAI_DELAI_S = 20.0      # délai minimal entre deux tentatives…
-ASTRO_ESSAI_DELAI_MAX_S = 300.0  # …CROISSANT avec le nombre d'essais (backoff),
+ASTRO_MIN_FRAMES: int = 3   # pas de tentative avant ce nombre de frames empilées
+ASTRO_ESSAI_DELAI_S: float = 20.0      # délai minimal entre deux tentatives…
+ASTRO_ESSAI_DELAI_MAX_S: float = 300.0  # …CROISSANT avec le nombre d'essais (backoff),
                                  # plafonné : 20 s, 40 s, 60 s… au lieu de
                                  # brûler tout le quota en deux minutes
-ASTRO_MAX_ESSAIS = 20       # plafond LARGE : un empilement bien plus profond
+ASTRO_MAX_ESSAIS: int = 20  # plafond LARGE : un empilement bien plus profond
                             # n'a plus la même chance. Constat réel d'Alain
                             # (23/09/2026) : avec un plafond de 6 et un délai
                             # fixe, les essais étaient épuisés en ~2 min (sur un
                             # empilement encore trop court) puis PLUS AUCUNE
                             # tentative, même à 33 frames — session perdue.
-ASTRO_ESSAI_DOUBLEMENT = True   # un empilement qui a DOUBLÉ de profondeur
+ASTRO_ESSAI_DOUBLEMENT: bool = True   # un empilement qui a DOUBLÉ de profondeur
                                 # justifie un essai IMMÉDIAT : c'est une
                                 # information réellement nouvelle (32 frames
                                 # après 16, ce n'est plus la même mesure)
-ASTRO_CHAMP_MIN, ASTRO_CHAMP_MAX = 0.05, 30.0   # bornes du champ indicé (°)
-ASTRO_MAX_AVEUGLES = 2      # plafond des balayages ASTAP (session) — LENTS
-ASTRO_ASTAP_TIMEOUT_S = 90.0    # délai d'un balayage (borné pour le live)
+ASTRO_CHAMP_MIN: float = 0.05
+ASTRO_CHAMP_MAX: float = 30.0   # bornes du champ indicé (°)
+ASTRO_MAX_AVEUGLES: int = 2      # plafond des balayages ASTAP (session) — LENTS
+ASTRO_ASTAP_TIMEOUT_S: float = 90.0    # délai d'un balayage (borné pour le live)
 
 # Séparateurs des coordonnées sexagésimales (« 41d16'09" », « 0h42m44s »,
 # « 00 42 44 », « 0:42:44 ») — l'espace en fait partie : les logiciels
 # d'acquisition écrivent OBJCTRA/OBJCTDEC ainsi.
-_SEP_SEXAG = re.compile(r"[hHdD°dmMsS:'\s]+")
+_SEP_SEXAG: re.Pattern[str] = re.compile(r"[hHdD°dmMsS:'\s]+")
 
 
-def analyser_angle(txt, en_heures=None):
+def analyser_angle(txt: Any, en_heures: bool | None = None
+                   ) -> tuple[float | None, str]:
     """« 41.26917 », « 41d16m09s », « 0h42m44.3s », « 00 42 44 » → degrés.
     → (valeur en degrés, message) ; (None, message clair) si illisible.
 
@@ -119,7 +122,8 @@ def analyser_angle(txt, en_heures=None):
     return v, ""
 
 
-def analyser_indices(ra_txt, dec_txt, champ_txt):
+def analyser_indices(ra_txt: Any, dec_txt: Any, champ_txt: Any
+                     ) -> tuple[float | None, float | None, float | None, str]:
     """Indices de la cible saisis dans l'UI → (ra_deg, dec_deg, champ_deg,
     message). Message NON VIDE = refus, avec la cause exacte (toujours
     affichée : l'utilisateur voit ainsi comment sa saisie a été comprise)."""
@@ -142,7 +146,7 @@ def analyser_indices(ra_txt, dec_txt, champ_txt):
     return ra % 360.0, dec, champ, ""
 
 
-def analyser_champ(txt):
+def analyser_champ(txt: Any) -> tuple[float | None, str]:
     """Champ indicatif SEUL (« 2.6 », largeur est-ouest en degrés) →
     (valeur, message). Sert au REPLI ASTAP quand les coordonnées sont
     inconnues mais que l'échantillonnage l'est (une focale se connaît
@@ -157,7 +161,8 @@ def analyser_champ(txt):
     return v, ""
 
 
-def champ_depuis_optique(focale_mm, pixel_um, n_pixels):
+def champ_depuis_optique(focale_mm: Any, pixel_um: Any,
+                         n_pixels: Any) -> float | None:
     """Largeur du champ (degrés, est-ouest) d'un capteur : échelle de
     206,265 ″/rad (même formule que _diag_solve_reel.py) → None si l'un des
     paramètres est absent ou nul (jamais de division par zéro)."""
@@ -170,7 +175,7 @@ def champ_depuis_optique(focale_mm, pixel_um, n_pixels):
     return 206.265 * p * n / f / 3600.0
 
 
-def _valeur_entete(entete, noms):
+def _valeur_entete(entete: Any, noms: Any) -> str | None:
     """Première valeur non vide parmi `noms` (str), sinon None."""
     for nom in noms:
         v = entete.get(nom)
@@ -182,7 +187,8 @@ def _valeur_entete(entete, noms):
     return None
 
 
-def indices_entete_fits(chemin):
+def indices_entete_fits(chemin: Any
+                        ) -> tuple[float | None, float | None, float | None, str]:
     """Indices (ra_deg, dec_deg, champ_deg, message) lus dans l'en-tête d'une
     BRUTE FITS — ou (None, None, None, raison).
 
@@ -201,7 +207,9 @@ def indices_entete_fits(chemin):
         return None, None, None, "source sans en-tête FITS (PNG/TIFF)"
     try:
         with fits.open(chemin) as hd:
-            entete = hd[0].header
+            # astropy renvoie `hd[0]` typé HDUList par son stub : l'accès
+            # `.header` est valide à l'exécution → ignore CIBLÉ.
+            entete = hd[0].header  # pyright: ignore[reportAttributeAccessIssue]
     except Exception as exc:
         return None, None, None, f"en-tête illisible ({exc})"
 
@@ -258,7 +266,7 @@ def indices_entete_fits(chemin):
     return ra % 360.0, dec, champ, f"indices lus dans l'en-tête ({source})"
 
 
-def nom_objet_entete_fits(chemin):
+def nom_objet_entete_fits(chemin: Any) -> str | None:
     """Nom d'objet lu dans l'en-tête FITS (OBJECT, OBJNAME, TARGNAME, TARGET).
     Retourne le premier non-vide, ou None si aucun n'est présent.
     JAMAIS d'invention — si absent, l'appelant gère le repli (catalogue, saisie)."""
@@ -268,7 +276,8 @@ def nom_objet_entete_fits(chemin):
         return None
     try:
         with fits.open(chemin) as hd:
-            entete = hd[0].header
+            # cf. `indices_entete_fits` : stub astropy → ignore CIBLÉ.
+            entete = hd[0].header  # pyright: ignore[reportAttributeAccessIssue]
     except Exception:
         return None
     # Ordre de priorité : conventions N.I.N.A., MaxIm DL, ACP, APT, SGP...
@@ -279,10 +288,15 @@ def nom_objet_entete_fits(chemin):
     return None
 
 
-def resoudre_aveugle_astap(img, fov_deg=0.0, ra0=None, dec0=None,
-                           rayon_deg=None, chemin_astap=None,
-                           timeout=ASTRO_ASTAP_TIMEOUT_S, dossier=None,
-                           garder=False):
+def resoudre_aveugle_astap(img: np.ndarray, fov_deg: float = 0.0,
+                           ra0: float | None = None, dec0: float | None = None,
+                           rayon_deg: float | None = None,
+                           chemin_astap: Any = None,
+                           timeout: float = ASTRO_ASTAP_TIMEOUT_S,
+                           dossier: str | None = None,
+                           garder: bool = False
+                           ) -> tuple[Any, float | None, float | None,
+                                      float | None, str]:
     """Résolution ASTAP SANS AUCUN INDICE (« aveugle ») sur une image EN MÉMOIRE.
 
     Décision d'Alain (23/09/2026) : quand ni la saisie ni l'en-tête des brutes
@@ -338,7 +352,11 @@ def resoudre_aveugle_astap(img, fov_deg=0.0, ra0=None, dec0=None,
         wcs, msg = _resoudre_astap(chemin, ra0=ra0, dec0=dec0,
                                    rayon_deg=rayon_deg, fov_deg=fov_h,
                                    chemin_astap=chemin_astap,
-                                   timeout=timeout, dossier_sortie=tmp)
+                                   # `timeout` d'astap.py est déduit `int` (défaut
+                                   # 300) : notre délai est un float en secondes,
+                                   # sans incidence → ignore CIBLÉ.
+                                   timeout=timeout,  # pyright: ignore[reportArgumentType]
+                                   dossier_sortie=tmp)
     except Exception as exc:          # un wrapper ne doit jamais remonter
         wcs, msg = None, f"exception ASTAP ({exc})"
     if not garder and propre:
@@ -394,16 +412,19 @@ class SuiviAstrometrie:
     `solveur` est INJECTABLE (bancs : solveur factice, aucun catalogue requis) ;
     par défaut le solveur interne du jalon 56 (étape 2)."""
 
-    def __init__(self, solveur=None, dossier=None, limmag=None):
-        self._solveur = solveur or _resoudre_interne
-        self.dossier = dossier            # dossier des catalogues (None = défaut)
-        self.limmag = limmag              # magnitude limite du catalogue
+    def __init__(self, solveur: Any = None, dossier: Any = None,
+                 limmag: float | None = None) -> None:
+        self._solveur: Any = solveur or _resoudre_interne
+        self.dossier: Any = dossier       # dossier des catalogues (None = défaut)
+        self.limmag: float | None = limmag  # magnitude limite du catalogue
         # Indices de la cible : posés AVANT reset() car un reset de SESSION les
         # conserve (la case reste cochée, les valeurs saisies aussi).
-        self.ra0 = self.dec0 = self.champ = None
+        self.ra0: float | None = None
+        self.dec0: float | None = None
+        self.champ: float | None = None
         self.reset()
 
-    def effacer_indices(self):
+    def effacer_indices(self) -> None:
         """Indices de la cible EFFACÉS — indices ET WCS oubliés.
 
         Distinct de `reset()` : celui-ci CONSERVE les indices (même cible, on
@@ -418,24 +439,24 @@ class SuiviAstrometrie:
         self.reset()
 
     # -- cycle de vie ---------------------------------------------------------
-    def reset(self):
+    def reset(self) -> None:
         """Session neuve (ou case décochée) : indices CONSERVÉS, WCS oublié."""
-        self.wcs = None                   # WcsTan de la grille de référence
-        self.matrice = np.eye(2, 3)       # grille courante → grille du solve
-        self.info = {}                    # dict d'info du solveur
-        self.essais = 0                   # tentatives de résolution (session)
-        self.propagations = 0             # propagations réussies
-        self.derniere_erreur = ""
+        self.wcs: Any = None              # WcsTan de la grille de référence
+        self.matrice: np.ndarray = np.eye(2, 3)   # grille courante → grille du solve
+        self.info: dict[str, Any] = {}    # dict d'info du solveur
+        self.essais: int = 0              # tentatives de résolution (session)
+        self.propagations: int = 0        # propagations réussies
+        self.derniere_erreur: str = ""
         # Jalon 70 : cause de DONNÉES (catalogue astrométrique absent) — quand
         # elle est posée, les essais s'arrêtent : ce n'est pas l'image qui est
         # en cause, et répéter 20 fois le même échec ne l'aurait pas résolu.
-        self.donnees_absentes = ""
-        self._dernier_essai = 0.0
-        self._n_dernier_essai = 0         # profondeur de l'empilement essayée
+        self.donnees_absentes: str = ""
+        self._dernier_essai: float = 0.0
+        self._n_dernier_essai: int = 0    # profondeur de l'empilement essayée
                                           # (un doublement justifie un essai
                                           # immédiat : information neuve)
 
-    def indice(self, ra_deg, dec_deg, champ_deg):
+    def indice(self, ra_deg: float, dec_deg: float, champ_deg: float) -> bool:
         """Pose (ou remplace) les indices de la cible → True s'ils ont CHANGÉ.
 
         Des indices DIFFÉRENTS rendent le WCS résolu caduc (autre cible, autre
@@ -459,18 +480,19 @@ class SuiviAstrometrie:
         return True
 
     @property
-    def pret(self):
+    def pret(self) -> bool:
         """Indices de la cible renseignés (rien d'autre n'est nécessaire pour
         tenter une résolution) ?"""
         return (self.ra0 is not None and self.dec0 is not None
                 and self.champ is not None)
 
     @property
-    def resolu(self):
+    def resolu(self) -> bool:
         """Un WCS exploitable est disponible ?"""
         return self.wcs is not None
 
-    def peut_essayer(self, n_frames, maintenant=None):
+    def peut_essayer(self, n_frames: int,
+                     maintenant: float | None = None) -> bool:
         """Une tentative de résolution a-t-elle un sens MAINTENANT ?
 
         Politique (corrigée le 23/09/2026 après un constat réel d'Alain) :
@@ -506,7 +528,7 @@ class SuiviAstrometrie:
         delai = min(ASTRO_ESSAI_DELAI_S * self.essais, ASTRO_ESSAI_DELAI_MAX_S)
         return (t - self._dernier_essai) >= delai
 
-    def raison_attente(self):
+    def raison_attente(self) -> str:
         """Pourquoi aucune résolution n'est possible maintenant (texte court à
         afficher : jamais de silence sur l'absence de WCS)."""
         if self.resolu:
@@ -530,7 +552,8 @@ class SuiviAstrometrie:
         return ""
 
     # -- repli : adopter un WCS résolu ailleurs (ASTAP) ----------------------
-    def adopter(self, wcs, forme, methode="astap"):
+    def adopter(self, wcs: Any, forme: Any,
+                methode: str = "astap") -> tuple[bool, str]:
         """Adopte un WCS DÉJÀ RÉSOLU ailleurs — REPLI ASTAP (décision d'Alain :
         « ASTAP = référence indépendante/repli »). Les indices (centre du champ,
         largeur) sont EXTRAITS du WCS, et la propagation s'appliquera ensuite
@@ -573,7 +596,8 @@ class SuiviAstrometrie:
         return True, self.texte_resume()
 
     # -- résolution -----------------------------------------------------------
-    def resoudre_sur(self, img, n_frames=None):
+    def resoudre_sur(self, img: np.ndarray,
+                     n_frames: int | None = None) -> tuple[bool, str]:
         """Résout l'astrométrie de `img` — la GRILLE COMPLÈTE de l'empilement
         (`stacker.mean(recadre=False)`, le repère de l'aligneur). → (True/False,
         message) ; compte la tentative, ne lève JAMAIS.
@@ -617,7 +641,7 @@ class SuiviAstrometrie:
         return True, self.texte_resume()
 
     # -- propagation ----------------------------------------------------------
-    def propager(self, M):
+    def propager(self, M: Any) -> tuple[bool, str]:
         """La grille de l'empilement vient de changer (RÉEMPILEMENT : la
         nouvelle référence d'alignement est une brute archivée, son repère
         pixel n'est pas celui de l'ancienne grille).
@@ -651,7 +675,8 @@ class SuiviAstrometrie:
         return True, ""
 
     # -- WCS d'une grille donnée ---------------------------------------------
-    def wcs_grille(self, cadre=None, forme=None):
+    def wcs_grille(self, cadre: Any = None, forme: Any = None
+                   ) -> tuple[Any, str]:
         """WCS de la grille VISÉE (vue et sauvegardes) → (WCS ou None, message).
 
         `cadre` = (y0, x0, y1, x1) du recadrage d'intersection (None ou vide =
@@ -679,7 +704,8 @@ class SuiviAstrometrie:
             return None, str(msg or "propagation refusée")
         return w, ""
 
-    def mots_cles(self, cadre=None, forme=None):
+    def mots_cles(self, cadre: Any = None, forme: Any = None
+                  ) -> tuple[dict[str, Any], str]:
         """Mots-clés FITS WCS (CTYPE/CRVAL/CRPIX/CD…) de la grille visée, prêts
         pour `save_image(..., entete=...)`. → (dict, message) ; dict VIDE si
         l'astrométrie n'est pas résolue (jamais de mot-clé inventé).
@@ -703,7 +729,7 @@ class SuiviAstrometrie:
             return {}, f"mots-clés WCS indisponibles ({exc})"
 
     # -- état (ligne dédiée de l'UI) ------------------------------------------
-    def texte_resume(self):
+    def texte_resume(self) -> str:
         """Ligne d'état de l'astrométrie RÉSOLUE : étoiles, rms, échelle,
         chemin retenu par le solveur, propagations — et les INDICES retenus
         (l'utilisateur voit ainsi comment sa saisie a été comprise).

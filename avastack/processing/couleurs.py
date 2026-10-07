@@ -39,6 +39,7 @@ SCNR (`amount`, `preserve_luminance`).
 """
 import numpy as np
 import cv2
+from typing import Any
 
 from . import denoise as _denoise
 
@@ -51,10 +52,11 @@ from . import denoise as _denoise
 # verrait des millions de pixels retouchés par l'aller-retour Lab alors que le
 # SCNR ne les change pas de façon résolue : la remise de L* cesserait d'être
 # une non-régression pour devenir une retouche silencieuse.
-SEUIL_REMISE_LUMINANCE = 1e-6
+SEUIL_REMISE_LUMINANCE: float = 1e-6
 
 
-def _restaurer_luminance(avant, apres, masque):
+def _restaurer_luminance(avant: np.ndarray, apres: np.ndarray,
+                         masque: Any) -> np.ndarray:
     """Rend à chaque pixel du masque sa L* CIE (Lab, D65) d'AVANT.
 
     C'est la « préservation de la luminosité » de Siril / PixInsight
@@ -92,7 +94,8 @@ def _restaurer_luminance(avant, apres, masque):
     return out
 
 
-def scnr(img, amount=1.0, preserve_luminance=True):
+def scnr(img: np.ndarray, amount: float = 1.0,
+         preserve_luminance: bool = True) -> np.ndarray:
     """Retrait du vert (SCNR « moyenne neutre ») : G = min(G, (R+B)/2).
 
     amount             : 0..1 — part de l'excès de vert retirée
@@ -125,7 +128,8 @@ def scnr(img, amount=1.0, preserve_luminance=True):
     return out
 
 
-def demagenta(img, amount=1.0, preserve_luminance=True):
+def demagenta(img: np.ndarray, amount: float = 1.0,
+              preserve_luminance: bool = True) -> np.ndarray:
     """Suppression du magenta : négatif → SCNR → retour au positif.
 
     Le magenta (R et B > G) devient un excès de vert dans le négatif, que
@@ -157,17 +161,20 @@ def demagenta(img, amount=1.0, preserve_luminance=True):
 # --- Boost du ROUGE (SII) masqué à l'objet (v2.48.0, jalon 86) ----------------
 # Bornes du curseur : 1,00 = identité EXACTE (aucun pixel touché), 4,00 = le
 # maximum utile mesuré. Entre les deux, le doré arrive progressivement.
-BOOST_ROUGE_MIN, BOOST_ROUGE_MAX = 1.0, 4.0
-BOOST_ROUGE_DEFAUT = 3.0
+BOOST_ROUGE_MIN: float = 1.0
+BOOST_ROUGE_MAX: float = 4.0
+BOOST_ROUGE_DEFAUT: float = 3.0
 # Centiles de LUMINANCE qui définissent le masque : poids 0 (fond) sous le 40e
 # centile, poids 1 (objet) au-delà du 97e. Sur l'empilement SHO réel d'Alain
 # (NGC 2237, 55 frames) les 25 % de pixels les plus sombres — le fond — tombent
 # tous SOUS le 40e centile : leur poids est donc exactement nul et ils ressortent
 # identiques au pixel près, à ×1,5 comme à ×4,0.
-BOOST_ROUGE_CENTILE_BAS, BOOST_ROUGE_CENTILE_HAUT = 40.0, 97.0
+BOOST_ROUGE_CENTILE_BAS: float = 40.0
+BOOST_ROUGE_CENTILE_HAUT: float = 97.0
 
 
-def boost_rouge(img, force=BOOST_ROUGE_DEFAUT, preserve_luminance=False):
+def boost_rouge(img: np.ndarray, force: float = BOOST_ROUGE_DEFAUT,
+                preserve_luminance: bool = False) -> np.ndarray:
     """Boost du ROUGE pondéré par la luminance — le « boost SII » qui manquait
     au SHO (v2.48.0, jalon 86).
 
@@ -227,7 +234,8 @@ def boost_rouge(img, force=BOOST_ROUGE_DEFAUT, preserve_luminance=False):
     return out
 
 
-def gains_fond(img, garde=0.10):
+def gains_fond(img: np.ndarray,
+               garde: float = 0.10) -> tuple[float, ...] | None:
     """Gains par canal (R, G, B) qui NEUTRALISENT LA COULEUR DU FOND d'une image
     couleur — ou None si l'image ne s'y prête pas (mono, canal vide).
 
@@ -265,7 +273,8 @@ def gains_fond(img, garde=0.10):
                                            1.0 - garde, 1.0 + garde))
 
 
-def neutraliser_fond(img, force=1.0, garde=0.10):
+def neutraliser_fond(img: np.ndarray, force: float = 1.0,
+                     garde: float = 0.10) -> np.ndarray:
     """Neutralise la COULEUR DU FOND (gains par canal) — « background
     neutralization », à appliquer JUSTE AVANT l'étirement.
 
@@ -305,9 +314,9 @@ def neutraliser_fond(img, force=1.0, garde=0.10):
 # Rayon de flou de RÉFÉRENCE, en pixels PLEINE RÉSOLUTION (la valeur validée par
 # Alain sur ses empilements) ; PLANCHER_CHROMA borne l'échelle de normalisation
 # de la chroma (fraction de la luminance médiane de l'image).
-RAYON_CHROMA_DEFAUT = 3.0
-RAYON_CHROMA_MIN = 0.2
-PLANCHER_CHROMA = 0.25
+RAYON_CHROMA_DEFAUT: float = 3.0
+RAYON_CHROMA_MIN: float = 0.2
+PLANCHER_CHROMA: float = 0.25
 # v2.37.5 : SEUIL de STRUCTURE du flou de chroma, en σ du bruit de luminance
 # (σ estimé sur place par MAD de l'écart à son propre flou gaussien), et FORME
 # de la transition. Mesuré au banc jalon 67 : sur le FOND (écart ≈ 1 σ) le poids
@@ -315,11 +324,12 @@ PLANCHER_CHROMA = 0.25
 # ×0,19 sur son empilement, contre ×0,16 pour la v2.37.4) ; sur une ÉTOILE le
 # poids tombe à 0,5 dès 3 σ, 0,045 à 5 σ et 0,0007 à 10 σ → plus d'anneau
 # (mesuré 1,96 sans chroma → 4,63 v2.37.4 → 2,00 v2.37.5).
-SEUIL_STRUCTURE_CHROMA = 3.0
-EXPOSANT_STRUCTURE_CHROMA = 6.0
+SEUIL_STRUCTURE_CHROMA: float = 3.0
+EXPOSANT_STRUCTURE_CHROMA: float = 6.0
 
 
-def rayon_chroma_apercu(scale, rayon=RAYON_CHROMA_DEFAUT):
+def rayon_chroma_apercu(scale: Any,
+                        rayon: float = RAYON_CHROMA_DEFAUT) -> float:
     """Rayon de flou ÉQUIVALENT pour une image RÉDUITE (aperçu) de facteur
     `scale` (< 1) — le rayon de référence reste exprimé, lui, en pixels PLEINE
     RÉSOLUTION.
@@ -349,7 +359,8 @@ def rayon_chroma_apercu(scale, rayon=RAYON_CHROMA_DEFAUT):
     return max(RAYON_CHROMA_MIN, float(rayon) * min(1.0, s))
 
 
-def _poids_structure(lum, flou, ecart_min):
+def _poids_structure(lum: Any, flou: Any,
+                     ecart_min: Any) -> np.ndarray | None:
     """Poids 1.0 sur le FOND (grain seul) → 0.0 sur une STRUCTURE (étoile, bord).
 
     POURQUOI (v2.37.5, constat d'Alain du 26/09/2026 : « les étoiles moyennes
@@ -397,7 +408,8 @@ def _poids_structure(lum, flou, ecart_min):
                 EXPOSANT_STRUCTURE_CHROMA)))).astype(np.float32)
 
 
-def reduire_bruit_chroma(img, force=0.5, rayon=RAYON_CHROMA_DEFAUT):
+def reduire_bruit_chroma(img: np.ndarray, force: float = 0.5,
+                         rayon: float = RAYON_CHROMA_DEFAUT) -> np.ndarray:
     """Réduit le BRUIT CHROMATIQUE d'une image couleur (v2.37.0) — le
     « chroma noise reduction », équivalent d'un SCNR généralisé.
 
@@ -518,7 +530,7 @@ def reduire_bruit_chroma(img, force=0.5, rayon=RAYON_CHROMA_DEFAUT):
     return np.maximum(out, np.float32(0.0)).astype(np.float32)
 
 
-def canal_mort(img):
+def canal_mort(img: np.ndarray) -> str | None:
     """→ nom du canal entièrement vide ('R', 'G' ou 'B') d'une image
     couleur, ou None si les trois canaux portent des données (ou si img
     est monochrome).
@@ -536,7 +548,8 @@ def canal_mort(img):
     return None
 
 
-def scnr_doux(img, k=3.0, amount=1.0, preserve_luminance=True):
+def scnr_doux(img: np.ndarray, k: float = 3.0, amount: float = 1.0,
+              preserve_luminance: bool = True) -> np.ndarray:
     """SCNR doux borné par le bruit (jalon 23) : ne retire que l'excès de
     vert DE L'ORDRE DU BRUIT, jamais la structure.
 

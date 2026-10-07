@@ -36,6 +36,7 @@ il est utilisé quoi qu'il arrive.
 """
 
 import numpy as np
+from typing import Any
 
 # Réutilisation SANS modification du socle d'empilement (jalon 15) : la
 # façade multi-rôles tient la MÊME géométrie d'intersection (les helpers
@@ -45,12 +46,12 @@ from .stacking import (LiveStacker, _aire_signee, _clip_poly,
                        aligner_canaux, gains_equilibre)
 
 # Rôles possibles d'un dossier (un rôle = un filtre).
-ROLES = ("L", "R", "G", "B", "Ha", "O3", "S2")
+ROLES: tuple[str, ...] = ("L", "R", "G", "B", "Ha", "O3", "S2")
 
 # Canal(x) d'une brute COULEUR (H, W, 3) à extraire pour chaque rôle.
 # "luma" = luminance pondérée ; un tuple = moyenne des canaux listés.
-_POIDS_LUMA = (0.299, 0.587, 0.114)          # R, G, B (cf. sharpness.py)
-CANAUX_CFA = {
+_POIDS_LUMA: tuple[float, float, float] = (0.299, 0.587, 0.114)   # R, G, B
+CANAUX_CFA: dict[str, Any] = {
     "L": "luma",                             # luminance d'une brute couleur
     "R": (0,), "Ha": (0,), "S2": (0,),       # signal dans le rouge
     "G": (1,),
@@ -60,7 +61,7 @@ CANAUX_CFA = {
 
 # Compositions : rôles attendus (ordre = ordre de saisie dans l'UI),
 # rôles optionnels, mapping vers les canaux du composite.
-COMPOSITIONS = {
+COMPOSITIONS: dict[str, dict[str, Any]] = {
     "Mono": {"roles": ("L",), "optionnels": ()},
     "HOO":  {"roles": ("Ha", "O3"), "optionnels": (),
              "canaux_rgb": {"R": ("Ha",), "G": ("O3",), "B": ("O3",)}},
@@ -73,22 +74,22 @@ COMPOSITIONS = {
              "luminance": ("L",)},
 }
 
-MODES_L = ("synthetise", "degrade")          # radio « Canal L » (L vide)
+MODES_L: tuple[str, ...] = ("synthetise", "degrade")   # radio « Canal L » (L vide)
 
 
-def roles_de(composition):
+def roles_de(composition: str) -> tuple[str, ...]:
     """Rôles attendus d'une composition (dans l'ordre de saisie UI)."""
     return COMPOSITIONS[composition]["roles"]
 
 
-def roles_optionnels(composition):
+def roles_optionnels(composition: str) -> tuple[str, ...]:
     """Rôles qui peuvent rester vides sans bloquer la composition."""
     return COMPOSITIONS[composition]["optionnels"]
 
 # Alias usuels du mot-clé FITS FILTER (jalon 19) : N.I.N.A., APT, SGP, ASI
 # Air et les roues à filtres écrivent des graphies différentes du même
 # filtre. Clés NORMALISÉES (majuscules, séparateurs supprimés à la lecture).
-FILTRES_USUELS = {
+FILTRES_USUELS: dict[str, str] = {
     "HA": "Ha", "HALPHA": "Ha", "H": "Ha",
     "OIII": "O3", "O3": "O3", "O": "O3",
     "SII": "S2", "S2": "S2", "S": "S2",
@@ -100,7 +101,7 @@ FILTRES_USUELS = {
 }
 
 
-def role_de_filtre(filtre):
+def role_de_filtre(filtre: Any) -> str | None:
     """Rôle (ROLES) correspondant à la valeur du mot-clé FITS FILTER
     (« Ha », « H-alpha », « OIII », « Red », « L »…), ou None si non reconnu
     (le dossier garde alors son rôle déclaré à la main)."""
@@ -115,7 +116,7 @@ def role_de_filtre(filtre):
 
 
 # ------------------------------------------------------------ extraction ---
-def extraire_canal(img, role):
+def extraire_canal(img: np.ndarray, role: str) -> np.ndarray:
     """Carte 2D float32 du rôle depuis une brute/empilement du dossier :
     mono (H, W) → telle quelle ; couleur (H, W, 3) → canal(x) du rôle
     (CANAUX_CFA : moyenne si plusieurs, luma pondérée pour L).
@@ -134,14 +135,15 @@ def extraire_canal(img, role):
 
 
 # ------------------------------------------------------- normalisation ----
-def _echantillon(img, cible=512 * 512):
+def _echantillon(img: np.ndarray, cible: int = 512 * 512) -> np.ndarray:
     """Sous-échantillonnage régulier (~`cible` pixels) : les percentiles
     restent représentatifs à coût constant, même en 16 Mpx."""
     pas = max(1, int(round(np.sqrt(img.size / float(cible)))))
     return img[::pas, ::pas]
 
 
-def bornes_normalisation(img, lo_pct=0.25, hi_pct=99.7):
+def bornes_normalisation(img: np.ndarray, lo_pct: float = 0.25,
+                         hi_pct: float = 99.7) -> tuple[float, float]:
     """Bornes (lo, hi) robustes d'un canal (percentiles bas/haut).
     Public : permet à l'app de les FIGER (composite stable entre deux
     frames) avant d'appeler composer()."""
@@ -153,7 +155,9 @@ def bornes_normalisation(img, lo_pct=0.25, hi_pct=99.7):
     return lo, hi
 
 
-def normaliser(img, lo=None, hi=None, lo_pct=0.25, hi_pct=99.7):
+def normaliser(img: np.ndarray, lo: float | None = None,
+               hi: float | None = None, lo_pct: float = 0.25,
+               hi_pct: float = 99.7) -> np.ndarray:
     """Normalisation LINÉAIRE [lo..hi] → 0..1, SANS clip : les étoiles
     brillantes restent > 1 (l'empilement reste linéaire, convention du
     projet). bornes figées = composite stable entre deux frames.
@@ -169,7 +173,7 @@ def normaliser(img, lo=None, hi=None, lo_pct=0.25, hi_pct=99.7):
 
 
 # ------------------------------------------------------------- composer ---
-def _channel_de(norm, roles, forme):
+def _channel_de(norm: Any, roles: Any, forme: Any) -> np.ndarray:
     """Moyenne des rôles normalisés alimentant un canal ; absent → zéros
     (canal neutre, la composition ne plante jamais sur un dossier vide).
 
@@ -185,13 +189,14 @@ def _channel_de(norm, roles, forme):
     return np.mean(dispo, axis=0)
 
 
-def _luma(rgb):
+def _luma(rgb: np.ndarray) -> np.ndarray:
     """Luminance pondérée d'un composite (H, W, 3)."""
     return (_POIDS_LUMA[0] * rgb[..., 0] + _POIDS_LUMA[1] * rgb[..., 1]
             + _POIDS_LUMA[2] * rgb[..., 2])
 
 
-def _echelle_commune(canaux, spec, lo_pct, hi_pct):
+def _echelle_commune(canaux: Any, spec: Any, lo_pct: float,
+                     hi_pct: float) -> float | None:
     """ÉCHELLE partagée par les trois rôles du composite : l'amplitude
     (p99,7 − p0,25) du rôle qui alimente le canal VERT — référence habituelle
     des travaux couleur, comme le recalage « Linear Fit » qui cale R et B sur G
@@ -234,9 +239,10 @@ def _echelle_commune(canaux, spec, lo_pct, hi_pct):
     return None
 
 
-def composer(canaux, composition, bornes=None,
-             normaliser_canal=True, mode_l="synthetise",
-             lo_pct=0.25, hi_pct=99.7, normalisation_commune=False):
+def composer(canaux: Any, composition: str, bornes: Any = None,
+             normaliser_canal: bool = True, mode_l: str = "synthetise",
+             lo_pct: float = 0.25, hi_pct: float = 99.7,
+             normalisation_commune: bool = False) -> np.ndarray | None:
     """Composite linéaire d'une composition.
 
     canaux   : dict rôle → carte 2D float32 (empilement du rôle), ou None
@@ -343,7 +349,8 @@ def composer(canaux, composition, bornes=None,
 # Ordre validé par Alain (décision (c)) : ... → débruitage → CORRECTIONS
 # (gains + équilibrage + recalage) → netteté/chaîne couleur → étirement.
 
-def appliquer_gains_canaux(img, gains, force=1.0):
+def appliquer_gains_canaux(img: np.ndarray, gains: Any,
+                           force: float = 1.0) -> np.ndarray:
     """Multiplie chaque canal d'un composite par un gain par CANAL
     (séquence de 3, ordre R/G/B). `force` < 1 atténue la correction
     (`gains ** force`, comme l'équilibrage à force partielle). → COPIE ;
@@ -363,7 +370,7 @@ def appliquer_gains_canaux(img, gains, force=1.0):
     return (a * g.reshape(1, 1, 3)).astype(np.float32)
 
 
-def appliquer_gains(img, gains):
+def appliquer_gains(img: np.ndarray, gains: Any) -> np.ndarray:
     """Applique des gains R/G/B (dict 'R'/'G'/'B' → facteur) à un composite
     (H, W, 3). → COPIE (ou l'image telle quelle si rien à faire) ; no-op sur
     une image qui n'est pas un composite couleur."""
@@ -379,7 +386,8 @@ def appliquer_gains(img, gains):
     return appliquer_gains_canaux(a, np.array(g, np.float32))
 
 
-def appliquer_equilibrage(img, cadre=None, force=1.0):
+def appliquer_equilibrage(img: np.ndarray, cadre: Any = None,
+                          force: float = 1.0) -> np.ndarray:
     """Équilibrage des canaux (« auto », jalon 13) appliqué à un COMPOSITE :
     gains dérivés du FOND (percentile bas), force < 1 → correction partielle.
     → COPIE ; no-op si l'image n'est pas un composite couleur ou si le fond
@@ -395,8 +403,11 @@ def appliquer_equilibrage(img, cadre=None, force=1.0):
     return appliquer_gains_canaux(a, gains, force)
 
 
-def corrections_couleur(img, gains=None, wb_auto=False, wb_force=1.0,
-                        cadre=None, linear_fit=False, linear_fit_mode="offset"):
+def corrections_couleur(img: np.ndarray, gains: Any = None,
+                        wb_auto: bool = False, wb_force: float = 1.0,
+                        cadre: Any = None, linear_fit: bool = False,
+                        linear_fit_mode: str = "offset"
+                        ) -> tuple[np.ndarray, Any]:
     """CHAÎNE DES CORRECTIONS DE COULEUR d'un composite (décision (c)) :
     gains (manuels × SPCC/Gaia) → équilibrage des canaux (auto) → recalage
     colorimétrique « Linear Fit ». SANS état ni cache : utilisable telle
@@ -416,7 +427,7 @@ def corrections_couleur(img, gains=None, wb_auto=False, wb_force=1.0,
 
 
 # ------------------------------------------------------ façade worker -----
-def composition_pour_roles(roles):
+def composition_pour_roles(roles: Any) -> str | None:
     """Composition correspondant à un ensemble de rôles (jalon 19, phase 2 :
     SANS choix UI encore, le worker la déduit des dossiers configurés).
     Correspondance EXACTE d'abord ; sinon la première composition dont les
@@ -457,25 +468,25 @@ class CompositeStacker:
       comme LiveStacker.mean(recadre=False) en mono (jalon 13).
     """
 
-    def __init__(self, composition, k=3.0, warmup=5, method="kappa",
-                 window=8):
+    def __init__(self, composition: str, k: float | None = 3.0, warmup: int = 5,
+                 method: str = "kappa", window: int = 8) -> None:
         if composition not in COMPOSITIONS:
             raise ValueError(f"Composition inconnue : {composition!r}")
-        self.composition = composition
-        self._k = k
-        self.warmup = warmup
-        self._method = method if method in LiveStacker.METHODES else "kappa"
-        self._window = max(3, int(window))
-        self._wb_auto = False
-        self._wb_force = 1.0
-        self.gains = None                 # gains R/G/B (UI, phase 3)
+        self.composition: str = composition
+        self._k: float | None = k
+        self.warmup: int = warmup
+        self._method: str = method if method in LiveStacker.METHODES else "kappa"
+        self._window: int = max(3, int(window))
+        self._wb_auto: bool = False
+        self._wb_force: float = 1.0
+        self.gains: Any = None            # gains R/G/B (UI, phase 3)
         # Jalon 56 (étape 5) : gains PHOTOMÉTRIQUES par rôle (zéro-point Gaia,
         # mesuré par processing/photometrie). Posés par le worker depuis la
         # mesure de la SESSION ; vide = AUCUNE correction (défaut : la mesure
         # seule n'a jamais touché l'image). Appliqués aux CARTES DE RÔLE dans
         # `moyennes()` — donc au composite ET aux couches transmises au solveur
         # live, en un seul point : les deux vues restent cohérentes.
-        self.gains_roles = {}
+        self.gains_roles: dict[str, Any] = {}
         # v2.36.0 — OPTION (décision d'Alain, 25/09/2026) : normalisation
         # COMMUNE des canaux. Défaut False = comportement historique (chaque
         # rôle calé sur SES percentiles). True : les trois rôles partagent les
@@ -484,71 +495,72 @@ class CompositeStacker:
         # l'intégration) et le grain cesse d'être coloré. Le fond gardant sa
         # couleur, sa neutralisation relève des offsets du recalage colorimétrique
         # (ou de GraXpert live, par couche) — comme les B0/B1/B2 de Siril.
-        self.normalisation_commune = False
-        self.mode_l = "synthetise"        # radio « Canal L » (UI, phase 3)
+        self.normalisation_commune: bool = False
+        self.mode_l: str = "synthetise"   # radio « Canal L » (UI, phase 3)
         # Recalage colorimétrique « Linear Fit » (jalon 54) : appliqué au
         # COMPOSITE SEUL — JAMAIS aux couches (le solveur live re-fait la
         # recomposition depuis les couches brutes et ré-applique le recalage
         # lui-même, réglage transporté dans disp.vl_compo). Mode « offset »
         # PAR DÉFAUT (retour du test réel d'Alain : le gain fondé sur le
         # rapport des bruits amplifie halos/bruit bleus d'une image OSC).
-        self.linear_fit = False
-        self.linear_fit_mode = "offset"
-        self.fit_diag = None              # gains/offsets mesurés (UI)
-        self._fit_cache = None
+        self.linear_fit: bool = False
+        self.linear_fit_mode: str = "offset"
+        self.fit_diag: Any = None              # gains/offsets mesurés (UI)
+        self._fit_cache: Any = None
         # v2.34.5 : cache de l'équilibrage des canaux appliqué au COMPOSITE
         # (la case n'agissait qu'en mono : no-op sur une carte 2D de rôle).
-        self._wb_cache_comp = None
-        self.role_courant = None          # rôle de la frame en cours d'ajout
-        self.stackers = {}                # rôle → LiveStacker (canaux 2D)
-        self._shape = None                # forme des canaux (posée au 1er add)
-        self._poly = None                 # intersection GLOBALE des couvertures
-        self.cadre = None                 # cadre commun (y0, x0, y1, x1)
+        self._wb_cache_comp: Any = None
+        self.role_courant: Any = None     # rôle de la frame en cours d'ajout
+        self.stackers: dict[str, LiveStacker] = {}   # rôle → LiveStacker (2D)
+        self._shape: Any = None           # forme des canaux (posée au 1er add)
+        self._poly: Any = None            # intersection GLOBALE des couvertures
+        self.cadre: Any = None            # cadre commun (y0, x0, y1, x1)
         # Jalon 79 : mémoire du COMPOSITE BRUT (avant corrections de couleur) et
         # bornes de normalisation figées — cf. `mean_avec_canaux`.
-        self._memo_compo = None           # (clé, composite)
-        self._bornes_cache = None         # (n, {rôle: (lo, hi)})
+        self._memo_compo: Any = None      # (clé, composite)
+        self._bornes_cache: Any = None    # (n, {rôle: (lo, hi)})
 
     # -- attributs répercutés sur tous les stackers (existants ET futurs) ---
     @property
-    def k(self):
+    def k(self) -> float | None:
         return self._k
 
     @k.setter
-    def k(self, v):
+    def k(self, v: Any) -> None:
         self._k = v
         for s in self.stackers.values():
             s.k = v
 
     @property
-    def wb_auto(self):
+    def wb_auto(self) -> bool:
         return self._wb_auto
 
     @wb_auto.setter
-    def wb_auto(self, v):
+    def wb_auto(self, v: Any) -> None:
         self._wb_auto = bool(v)
         for s in self.stackers.values():
             s.wb_auto = self._wb_auto
 
     @property
-    def wb_force(self):
+    def wb_force(self) -> float:
         return self._wb_force
 
     @wb_force.setter
-    def wb_force(self, v):
+    def wb_force(self, v: Any) -> None:
         self._wb_force = float(v)
         for s in self.stackers.values():
             s.wb_force = self._wb_force
 
     @property
-    def method(self):
+    def method(self) -> str:
         return self._method
 
     @property
-    def window(self):
+    def window(self) -> int:
         return self._window
 
-    def set_rejet(self, method=None, window=None):
+    def set_rejet(self, method: str | None = None,
+                  window: int | None = None) -> None:
         """Change la méthode / fenêtre de rejet à chaud, sur tous les rôles
         (accumulations préservées — cf. LiveStacker.set_rejet)."""
         if method is not None and method in LiveStacker.METHODES:
@@ -560,19 +572,19 @@ class CompositeStacker:
 
     # -- compteurs (somme sur les rôles) ------------------------------------
     @property
-    def shape(self):
+    def shape(self) -> Any:
         return self._shape
 
     @property
-    def n(self):
+    def n(self) -> int:
         return sum(s.n for s in self.stackers.values())
 
     @property
-    def rejected_total(self):
+    def rejected_total(self) -> int:
         return sum(s.rejected_total for s in self.stackers.values())
 
     # -- accumulation --------------------------------------------------------
-    def _stacker_de(self, role):
+    def _stacker_de(self, role: str) -> LiveStacker:
         s = self.stackers.get(role)
         if s is None:                     # 1re frame de ce rôle
             s = LiveStacker(self._shape, k=self._k, warmup=self.warmup,
@@ -582,7 +594,7 @@ class CompositeStacker:
             self.stackers[role] = s
         return s
 
-    def add(self, frame, role=None):
+    def add(self, frame: np.ndarray, role: str | None = None) -> None:
         """Empile `frame` (canal 2D du rôle) dans le stacker de son rôle.
         Le rôle vient de l'argument ou de `role_courant` (posé par le worker)."""
         role = role or self.role_courant
@@ -593,7 +605,7 @@ class CompositeStacker:
             self._shape = tuple(frame.shape)
         self._stacker_de(role).add(frame)
 
-    def note_alignement(self, M):
+    def note_alignement(self, M: Any) -> None:
         """Intersection GLOBALE des zones couvertes (tous rôles confondus —
         même repère, aligneur partagé) : le cadre commun appliqué à CHAQUE
         moyenne de rôle avant composer(), garantissant des formes identiques.
@@ -611,7 +623,7 @@ class CompositeStacker:
             self._poly = p
         self.cadre = cadre_intersection(self._poly)
 
-    def reset(self):
+    def reset(self) -> None:
         """Vide TOUT (tous rôles + cadre commun)."""
         self.stackers.clear()
         self._poly = None
@@ -627,13 +639,13 @@ class CompositeStacker:
         self._bornes_cache = None         # jalon 79 : bornes figées par frame
 
     # -- lecture du composite -------------------------------------------------
-    def _recadrer(self, img):
+    def _recadrer(self, img: np.ndarray) -> np.ndarray:
         if self.cadre is None:
             return img
         y0, x0, y1, x1 = self.cadre
         return img[y0:y1, x0:x1]
 
-    def moyennes(self, recadre=True):
+    def moyennes(self, recadre: bool = True) -> dict[str, np.ndarray]:
         """{rôle: carte 2D float32 de l'empilement du rôle} — recadrées au
         cadre COMMUN si `recadre` (formes identiques, exigence de composer()).
         Matière de l'état par canal et des futures sauvegardes par canal.
@@ -651,10 +663,12 @@ class CompositeStacker:
             if s.n == 0:
                 continue
             m = s.mean(recadre=False)     # accumulation complète, même repère
-            out[role] = self._recadrer(m) if recadre else m
+            # `s.mean()` n'est None que si `s.n == 0` (exclu ci-dessus) :
+            # pyright ne le sait pas → ignore CIBLÉ.
+            out[role] = self._recadrer(m) if recadre else m  # pyright: ignore[reportArgumentType]
         return out
 
-    def gains_effectifs(self):
+    def gains_effectifs(self) -> dict[str, float]:
         """Gains R/G/B du composite : gains MANUELS (UI) × gains
         PHOTOMÉTRIQUES convertis de RÔLE en CANAL (jalon 56, étape 5).
 
@@ -686,7 +700,9 @@ class CompositeStacker:
             gains[canal] = float(gains.get(canal, 1.0)) * g
         return gains
 
-    def mean_avec_canaux(self, recadre=True, corrections=True):
+    def mean_avec_canaux(self, recadre: bool = True, corrections: bool = True
+                         ) -> tuple[np.ndarray | None,
+                                    dict[str, np.ndarray] | None]:
         """(composite, {rôle: carte 2D}) en UNE passe de moyennes (jalon 24) :
         le worker a besoin des DEUX à chaque nouvel empilement (composite pour
         l'affichage, couches pour le traitement par couche du solveur live) —
@@ -757,7 +773,7 @@ class CompositeStacker:
             comp = self._appliquer_corrections(comp)
         return comp, canaux
 
-    def _bornes_par_role(self, canaux, n):
+    def _bornes_par_role(self, canaux: Any, n: int) -> Any:
         """Bornes (lo, hi) de normalisation de chaque rôle, FIGÉES pour la frame
         courante (jalon 79) : `composer()` les recalcule sinon à chaque appel,
         alors qu'elles ne dépendent que de l'accumulation (donc de `n`) — c'est
@@ -771,7 +787,7 @@ class CompositeStacker:
         self._bornes_cache = (n, bornes)
         return bornes
 
-    def _appliquer_corrections(self, comp):
+    def _appliquer_corrections(self, comp: np.ndarray) -> np.ndarray:
         """Chaîne des corrections de couleur du composite (chantier
         24/09/2026, décision (b)/(c)) — MÊME ordre que `corrections_couleur` :
         gains effectifs (manuels × SPCC/Gaia) → équilibrage des canaux →
@@ -787,7 +803,7 @@ class CompositeStacker:
             comp = self._recaler_fit(comp)         # → case DÉCOCHÉE = brut
         return comp
 
-    def _equilibrer_composite(self, comp):
+    def _equilibrer_composite(self, comp: np.ndarray) -> np.ndarray:
         """Équilibrage des canaux du COMPOSITE (jalon 13 appliqué au composite,
         v2.34.5) : gains par canal dérivés du FOND (percentile bas), mis en
         cache par (frames totales, force, cadre) — `mean()` est appelée ~20×/s
@@ -804,7 +820,7 @@ class CompositeStacker:
             self._wb_cache_comp = (cle, gains)
         return appliquer_gains_canaux(comp, gains, self.wb_force)
 
-    def _recaler_fit(self, comp):
+    def _recaler_fit(self, comp: np.ndarray) -> np.ndarray:
         """Recalage « Linear Fit » du composite (jalon 54) : cf.
         CompositeStacker.linear_fit. Cache par (frames totales, GAINS EFFECTIFS,
         mode L, mode) : les stats du composite dépendent de l'accumulation ET
@@ -828,7 +844,8 @@ class CompositeStacker:
         self.fit_diag = diag
         return out if diag is not None else comp
 
-    def mean(self, recadre=True, corrections=True):
+    def mean(self, recadre: bool = True,
+             corrections: bool = True) -> np.ndarray | None:
         """Composite LINÉAIRE courant (composer : normalisation par canal,
         puis — si `corrections` — les corrections de couleur de la chaîne de
         sortie), recadré au cadre commun si `recadre`. → (H, W, 3) float32
@@ -839,7 +856,7 @@ class CompositeStacker:
         comp, _ = self.mean_avec_canaux(recadre=recadre, corrections=corrections)
         return comp
 
-    def etat(self):
+    def etat(self) -> str:
         """État par canal « Ha: 12 · O3: 9 » (frames EMPILÉES par rôle, dans
         l'ordre de la composition ; rôles vides absents)."""
         ordre = list(roles_de(self.composition))

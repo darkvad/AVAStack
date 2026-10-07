@@ -35,6 +35,7 @@ aberrant : l'histogramme d'un champ presque vide peut élire un pic parasite) �
 le chemin TRIANGLES, global par construction, s'en passe."""
 
 import itertools
+from typing import Any
 
 import numpy as np
 import cv2
@@ -42,35 +43,36 @@ import cv2
 from . import stars as _stars
 
 # Garde-fous géométriques d'une matrice d'alignement acceptable.
-ECHELLE_MIN, ECHELLE_MAX = 0.9, 1.1
-ANGLE_MAX_DEG = 10.0
+ECHELLE_MIN: float = 0.9
+ECHELLE_MAX: float = 1.1
+ANGLE_MAX_DEG: float = 10.0
 # Phase : la SSD doit baisser d'au moins cette fraction pour être acceptée.
-PHASE_GAIN_MIN = 0.10
+PHASE_GAIN_MIN: float = 0.10
 # Inliers minimum du chemin ÉTOILES (jalon 13) : 6 suffit parce que chaque
 # estimation est CONTRE-VÉRIFIÉE par appariements mutuels (un champ croisé
 # entre deux nuits ne partage que 6-7 étoiles brillantes — constat réel du
 # dossier NGC 4565) ; le contre-test élimine les pics parasites du vote.
-INLIERS_ETOILES = 6
+INLIERS_ETOILES: int = 6
 # On n'aligne que sur les étoiles LES PLUS BRILLANTES : les objets faibles
 # (nœuds de galaxie, fragments de nébulosité, blobs de bruit) ont des
 # centroïdes instables qui dispersent le vote — constat réel : avec 200
 # « étoiles » le vote échoue, avec 60 brillantes il tombe juste
 # (16/16 appariements mutuels, échelle 1,000).
-MAX_ALIGN_ETOILES = 60
+MAX_ALIGN_ETOILES: int = 60
 
 # --- Appariement par TRIANGLES (jalon 15, esprit Siril / astrometry.net) ----
 # Chaque triangle des plus brillantes est décrit par deux rapports de côtés
 # INVARIANTS (indépendants de la translation, rotation ET échelle) ; les
 # triangles appariés donnent une transformation candidate, exacte sur 3
 # sommets, scorée par le nombre d'étoiles rapprochées sur la liste complète.
-TRI_N_MAX = 12          # triangles construits sur les N plus brillantes
-TRI_TOL = 0.02          # tolérance sur les rapports de côtés (bruit de centroïde)
-TRI_PAIRS_MAX = 2000    # plafond de paires candidates évaluées (champs riches)
-TRI_INLIERS_MIN = 6     # correspondances requises (même exigence que « étoiles »)
-TRI_RAYON = 3.0         # rayon d'appariement d'une étoile après transformée (px)
+TRI_N_MAX: int = 12          # triangles construits sur les N plus brillantes
+TRI_TOL: float = 0.02        # tolérance sur les rapports de côtés (centroïde)
+TRI_PAIRS_MAX: int = 2000    # plafond de paires candidates évaluées
+TRI_INLIERS_MIN: int = 6     # correspondances requises (même exigence qu'étoiles)
+TRI_RAYON: float = 3.0       # rayon d'appariement d'une étoile après transformée
 
 
-def _M_valide(M):
+def _M_valide(M: Any) -> bool:
     """Garde-fous géométriques (échelle + angle) d'une matrice 2×3."""
     a, b = float(M[0, 0]), float(M[1, 0])
     ech = float(np.hypot(a, b))
@@ -81,14 +83,14 @@ def _M_valide(M):
     return bool(np.isfinite(M).all())
 
 
-def infos_M(M):
+def infos_M(M: Any) -> tuple[float, float, float, float]:
     """→ (angle °, échelle, dx, dy) d'une matrice 2×3 (warpAffine)."""
     a, b = float(M[0, 0]), float(M[1, 0])
     return (float(np.degrees(np.arctan2(b, a))), float(np.hypot(a, b)),
             float(M[0, 2]), float(M[1, 2]))
 
 
-def canal_alignement(img):
+def canal_alignement(img: np.ndarray) -> np.ndarray:
     """Canal sur lequel TOUT l'alignement travaille (esprit Siril, jalon 15) :
     le VERT pour une image couleur — 2 sites verts sur 4 dans la matrice
     Bayer, pleine résolution, aucun artefact d'interpolation de
@@ -107,7 +109,8 @@ def canal_alignement(img):
     raise ValueError(f"image de rang inattendu : {a.shape}")
 
 
-def _invariants_triangles(pts, n_max=TRI_N_MAX):
+def _invariants_triangles(pts: Any, n_max: int = TRI_N_MAX
+                          ) -> tuple[Any, Any, Any]:
     """Triangles CANONIQUES des `n_max` plus brillantes de `pts` ((N, 2),
     trié par éclat décroissant — c'est l'ordre de `stars.detecter_positions`).
 
@@ -147,30 +150,36 @@ def _invariants_triangles(pts, n_max=TRI_N_MAX):
 
 
 class StarAligner:
-    def __init__(self, n_features=1000, ratio=0.75, min_matches=8, min_inliers=8):
-        self.orb = cv2.ORB_create(nfeatures=n_features, fastThreshold=8)
-        self.bf = cv2.BFMatcher(cv2.NORM_HAMMING)
-        self.ratio, self.min_matches, self.min_inliers = ratio, min_matches, min_inliers
+    def __init__(self, n_features: int = 1000, ratio: float = 0.75,
+                 min_matches: int = 8, min_inliers: int = 8) -> None:
+        self.orb: Any = cv2.ORB_create(nfeatures=n_features, fastThreshold=8)  # pyright: ignore[reportAttributeAccessIssue]
+        self.bf: Any = cv2.BFMatcher(cv2.NORM_HAMMING)
+        self.ratio: float = ratio
+        self.min_matches: int = min_matches
+        self.min_inliers: int = min_inliers
         # Jalon 21 (décision d'Alain) : compositions narrowband (HOO/SHO) —
         # TRIANGLES d'abord, ORB écarté. Jalon 21b : repli « étoiles » puis
         # phase (retour réel : trop de refus quand le canal narrowband montre
         # peu d'étoiles).
-        self.triangles_seuls = False
+        self.triangles_seuls: bool = False
         self.reset()
 
-    def reset(self):
-        self.ref_kp = self.ref_des = self.ref_gray = None
-        self.ref_pos = None        # centroïdes d'étoiles de la référence
-        self._last_t = None        # dernière translation acceptée (continuité)
-        self._ref_lo = self._ref_hi = None   # bornes de normalisation partagées
-        self.dernier = None        # info du dernier alignement (UI, jalon 13)
+    def reset(self) -> None:
+        self.ref_kp: Any = None
+        self.ref_des: Any = None
+        self.ref_gray: Any = None
+        self.ref_pos: np.ndarray | None = None   # centroïdes de la référence
+        self._last_t: Any = None     # dernière translation acceptée
+        self._ref_lo: Any = None     # bornes de normalisation partagées
+        self._ref_hi: Any = None
+        self.dernier: Any = None     # info du dernier alignement (UI, jalon 13)
 
-    def _noter(self, M, methode):
+    def _noter(self, M: Any, methode: str) -> None:
         """Mémorise la dernière décision d'alignement pour la ligne d'état."""
         ang, _ech, dx, dy = infos_M(M)
         self.dernier = {"methode": methode, "dx": dx, "dy": dy, "angle": ang}
 
-    def set_reference(self, img):
+    def set_reference(self, img: np.ndarray) -> None:
         canal = canal_alignement(img)     # vert (couleur) / tel quel (mono)
         f = canal.astype(np.float32)
         # Bornes de normalisation de la RÉFÉRENCE, réutilisées pour CHAQUE
@@ -186,7 +195,7 @@ class StarAligner:
             canal, max_etoiles=MAX_ALIGN_ETOILES)
         self._last_t = None
 
-    def _norm8(self, img, lo=None, hi=None):
+    def _norm8(self, img: Any, lo: Any = None, hi: Any = None) -> np.ndarray:
         mono = canal_alignement(img)
         f = mono.astype(np.float32)
         if lo is None or hi is None:      # pas de bornes partagées : locale
@@ -195,7 +204,7 @@ class StarAligner:
             hi = lo + 1e-6
         return (np.clip((f - lo) / (hi - lo), 0, 1) * 255).astype(np.uint8)
 
-    def _raffiner_centroides(self, frame, M):
+    def _raffiner_centroides(self, frame: Any, M: Any) -> tuple[Any, int]:
         """RAFFINEMENT SOUS-PIXEL par centroïdes d'étoiles (jalon 57).
 
         POURQUOI : ORB ne localise ses points qu'à ~0,5-1 px et le consensus
@@ -257,7 +266,7 @@ class StarAligner:
             return M, 0
         return M2, int(mutuel.sum())
 
-    def compute(self, frame):
+    def compute(self, frame: np.ndarray) -> tuple[Any, bool]:
         """→ (M 2x3, confiant)  M transforme la frame courante vers la référence."""
         # Jalon 21 (HOO/SHO) : TRIANGLES d'abord, ORB ÉCARTÉ (descripteurs de
         # gradients qui s'apparient mal d'un filtre à l'autre). Jalon 21b
@@ -285,9 +294,11 @@ class StarAligner:
                 if len(pair) == 2 and pair[0].distance < self.ratio * pair[1].distance]
         if len(good) < self.min_matches:
             return self._sans_orb(frame, g)
-        src = np.float32([kp[m.trainIdx].pt for m in good])           # frame courante
-        dst = np.float32([self.ref_kp[m.queryIdx].pt for m in good])  # référence
-        M, inl = cv2.estimateAffinePartial2D(src, dst, method=cv2.RANSAC,
+        # np.float32(liste) rend bien un ndarray (N, 2) — pyright, lui, voit un
+        # scalaire float32 : ignores CIBLÉS (idem cv2.estimateAffinePartial2D).
+        src = np.float32([kp[m.trainIdx].pt for m in good])  # pyright: ignore[reportArgumentType]
+        dst = np.float32([self.ref_kp[m.queryIdx].pt for m in good])  # pyright: ignore[reportArgumentType]
+        M, inl = cv2.estimateAffinePartial2D(src, dst, method=cv2.RANSAC,  # pyright: ignore[reportCallIssue, reportArgumentType]
                                              ransacReprojThreshold=2.0, maxIters=5000)
         if M is None or inl is None:
             return self._sans_orb(frame, g)
@@ -307,7 +318,7 @@ class StarAligner:
         return M, True
 
     # ------------------------------------------------------------ jalon 13
-    def _sans_orb(self, frame, g):
+    def _sans_orb(self, frame: Any, g: Any) -> tuple[Any, bool]:
         """ORB indisponible ou non concluant : TRIANGLES (jalon 15, appariement
         global), puis centroïdes d'étoiles (vote + continuité), puis
         corrélation de phase honnête, sinon refus — JAMAIS un « alignement »
@@ -321,7 +332,7 @@ class StarAligner:
         return self._phase(g)
 
     # ------------------------------------------------------------ jalon 15
-    def _triangles(self, frame):
+    def _triangles(self, frame: Any) -> tuple[Any, bool]:
         """Appariement GLOBAL par similitude de triangles (esprit Siril /
         astrometry.net) : chaque paire de triangles candidats (référence,
         frame) fournit une transformation candidate exacte sur ses 3 sommets,
@@ -406,7 +417,7 @@ class StarAligner:
         self._noter(M, "triangles")
         return M, True
 
-    def _etoiles(self, frame):
+    def _etoiles(self, frame: np.ndarray) -> tuple[Any, bool]:
         """Alignement par centroïdes d'étoiles : vote de translation (lissé)
         autour de la dérive prédite, RANSAC affine, contre-test d'appariements
         mutuels, puis raffinement sur les inliers.
@@ -492,7 +503,7 @@ class StarAligner:
         self._noter(M, "étoiles")
         return M, True
 
-    def _phase(self, g):
+    def _phase(self, g: np.ndarray) -> tuple[Any, bool]:
         """Corrélation de phase HONNÊTE (jalon 13) : Hann + retrait de la
         médiane, puis acceptation SEULEMENT si la SSD s'améliore nettement
         et que la translation reste dans ±40 px — sinon refus."""

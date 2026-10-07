@@ -12,21 +12,21 @@ from ..images import load_image
 
 
 class Calibrator:
-    def __init__(self):
-        self.dark = None
-        self.flat = None
+    def __init__(self) -> None:
+        self.dark: np.ndarray | None = None
+        self.flat: np.ndarray | None = None
         # Jalon 53 : masters PAR RÔLE (filtre) — {rôle: image}. Un rôle
         # absent des dictionnaires = pas de master dédié → repli sur le
         # dark/flat unique ci-dessus. Les `*_sources` mémorisent le fichier
         # d'origine de chaque master (affichage dans l'UI).
-        self.darks = {}
-        self.flats = {}
-        self.dark_source = None
-        self.flat_source = None
-        self.darks_sources = {}
-        self.flats_sources = {}
+        self.darks: dict[str, np.ndarray] = {}
+        self.flats: dict[str, np.ndarray] = {}
+        self.dark_source: str | None = None
+        self.flat_source: str | None = None
+        self.darks_sources: dict[str, str] = {}
+        self.flats_sources: dict[str, str] = {}
 
-    def load_dark(self, path, role=None):
+    def load_dark(self, path: str, role: str | None = None) -> None:
         img = load_image(path)
         if role is None:
             self.dark = img
@@ -35,7 +35,7 @@ class Calibrator:
             self.darks[role] = img
             self.darks_sources[role] = path
 
-    def load_flat(self, path, role=None):
+    def load_flat(self, path: str, role: str | None = None) -> None:
         img = load_image(path)
         if role is None:
             self.flat = img
@@ -44,7 +44,7 @@ class Calibrator:
             self.flats[role] = img
             self.flats_sources[role] = path
 
-    def clear(self):
+    def clear(self) -> None:
         self.dark = self.flat = None
         self.darks.clear()
         self.flats.clear()
@@ -52,7 +52,7 @@ class Calibrator:
         self.darks_sources.clear()
         self.flats_sources.clear()
 
-    def apply(self, img, role=None):
+    def apply(self, img: np.ndarray, role: str | None = None) -> np.ndarray:
         # Jalon 53 : master DU RÔLE d'abord, repli sur l'unique — pour les
         # darks ET les flats indépendamment (ex. dark par filtre + flat
         # unique, ou l'inverse).

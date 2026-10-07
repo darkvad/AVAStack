@@ -2,6 +2,7 @@
 """Étirement temps réel : auto STF façon PixInsight, manuel, ou VeraLux (tiers)."""
 
 import threading
+from typing import Any
 
 import numpy as np
 import cv2
@@ -43,13 +44,14 @@ from . import veralux as _veralux
 # même pas exécuté) → aucun changement du rendu tant qu'on ne touche à rien.
 
 
-def mtf(x, m):
+def mtf(x: Any, m: float) -> np.ndarray:
     """Midtones Transfer Function : x, m ∈ [0,1] (MTF de PixInsight/STF)."""
     m = min(max(m, 0.001), 0.98)
     return np.clip(((m - 1.0) * x) / ((2.0 * m - 1.0) * x - m), 0.0, 1.0)
 
 
-def niveaux_actifs(noir=0.0, median=0.5, blanc=1.0):
+def niveaux_actifs(noir: float = 0.0, median: float = 0.5,
+                   blanc: float = 1.0) -> bool:
     """True si l'étage de niveaux CHANGE quelque chose (sinon on l'ignore :
     le rendu par défaut est alors strictement celui d'avant le jalon 75)."""
     return (abs(float(noir)) > 1e-6
@@ -57,7 +59,8 @@ def niveaux_actifs(noir=0.0, median=0.5, blanc=1.0):
             or abs(float(blanc) - 1.0) > 1e-6)
 
 
-def niveaux(x, noir=0.0, median=0.5, blanc=1.0):
+def niveaux(x: Any, noir: float = 0.0, median: float = 0.5,
+            blanc: float = 1.0) -> Any:
     """Étage « niveaux » : recadrage [noir, blanc] puis MTF médian.
 
     x : image [0..1] (étirée), noir/blanc dans [0,1] avec noir < blanc.
@@ -73,11 +76,13 @@ def niveaux(x, noir=0.0, median=0.5, blanc=1.0):
     return mtf(y, float(median))
 
 
-def couleur_apres_etirement(x, actif=(False, False, False), force_scnr=1.0,
-                            force_demagenta=1.0, preserve_luminance=True,
-                            boost_rouge=False,
-                            force_boost=_couleurs.BOOST_ROUGE_DEFAUT,
-                            boost_preserve_luminance=False):
+def couleur_apres_etirement(x: Any, actif: Any = (False, False, False),
+                            force_scnr: float = 1.0,
+                            force_demagenta: float = 1.0,
+                            preserve_luminance: bool = True,
+                            boost_rouge: bool = False,
+                            force_boost: float = _couleurs.BOOST_ROUGE_DEFAUT,
+                            boost_preserve_luminance: bool = False) -> Any:
     """Chaîne couleur APRÈS l'étirement (v2.48.0, jalons 85/86) : SCNR classique
     → SCNR doux (bruit seul) → démagenta → boost du rouge (SII) masqué à
     l'objet, dans cet ordre.
@@ -128,14 +133,14 @@ def couleur_apres_etirement(x, actif=(False, False, False), force_scnr=1.0,
     return x
 
 
-def saturation_actifs(gains):
+def saturation_actifs(gains: Any) -> bool:
     """True si la saturation par canal change quelque chose (1,0 = neutre)."""
     if gains is None:
         return False
     return any(abs(float(v) - 1.0) > 1e-3 for v in gains)
 
 
-def saturation_canaux(x, gains):
+def saturation_canaux(x: Any, gains: Any) -> np.ndarray:
     """Saturation PAR COULEUR (R/V/B) — par SECTEUR DE TEINTE.
 
     POURQUOI CE N'EST PAS « c_c = Y + k_c·(c − Y) » (1re écriture, rejetée le
@@ -244,7 +249,7 @@ class DisplayProcessor:
     lui-même. Refus explicite (image inchangée + raison, jamais de no-op
     silencieux) si le module juge la déconvolution sans objet.
     """
-    def __init__(self):
+    def __init__(self) -> None:
         self.auto = True
         self.sigma_k = 2.8            # coupure des ombres, en σ SOUS la médiane
         self.target = 0.25            # luminosité cible du fond du ciel après MTF
@@ -270,7 +275,7 @@ class DisplayProcessor:
         # Jalon 75 : médian résolu du dernier rendu auto (repère de la bande
         # « brut » de l'histogramme : lo + m·(hi − lo)).
         self.last_m = 0.5
-        self._stats = None            # (médiane, σ, p99.9) lissées — anti-pompage
+        self._stats: Any = None       # (médiane, σ, p99.9) lissées — anti-pompage
         self._ema = 0.25              # réactivité : 0 = figé, 1 = instantané
         # Jalon 79 : mémoire de la SORTIE DU MOTEUR d'étirement STF/manuel
         # (image avant niveaux/gamma/saturation), cf. `_moteur_stf`. Évite de
@@ -321,7 +326,7 @@ class DisplayProcessor:
         # BRUTES (contrat jalon 54). La netteté reste SUR LE COMPOSITE (PSF
         # identique pour toutes les couches, meilleur SNR après débruitage,
         # moitié moins de calcul).
-        self.vl_compo = None
+        self.vl_compo: Any = None
         self._gx_couches = {}         # rôle → (clé, couche après gradient)
         self._dn_couches = {}         # rôle → (clé, couche après débruitage)
                                       # (caches du thread solveur SEUL, un par
@@ -433,7 +438,7 @@ class DisplayProcessor:
         self._vl_src = None           # dernière image soumise (comparaison d'objet)
         self._vl_key = None           # clé des réglages du dernier calcul lancé
         self._vl_result = None        # (clé, image étirée) du dernier calcul TERMINÉ
-        self._vl_job = None           # (copie image, params, clé) en attente
+        self._vl_job: Any = None      # (copie image, params, clé) en attente
         self._vl_pending = False      # un calcul est en cours
         self._vl_force = False        # un NOUVEL empilement attend la résolution
         self._vl_lock = threading.Lock()
@@ -450,7 +455,7 @@ class DisplayProcessor:
         self._vl_thread = threading.Thread(target=self._vl_worker, daemon=True)
         self._vl_thread.start()
 
-    def reset(self):
+    def reset(self) -> None:
         """Oublie les stats lissées et le cache VeraLux (nouvelle session /
         changement de vue) : le prochain process() relance une résolution."""
         self._stats = None
@@ -458,7 +463,7 @@ class DisplayProcessor:
         self._dn_cache = None         # …et le résultat du débruitage live
         self._gx_couches = {}         # …et les caches PAR COUCHE (jalon 24)
         self._dn_couches = {}
-        self.vl_compo = None          # couches de composition (obsolètes)
+        self.vl_compo: Any = None     # couches de composition (obsolètes)
         with self._sh_lock:           # …et celui de la netteté live (jalon 12) :
             self._sh_result = None    # un autre empilement ou une autre vue ne
             self._sh_soumis = None    # doit jamais réutiliser un résultat
@@ -478,7 +483,7 @@ class DisplayProcessor:
             self._vl_result = None
             self._vl_force = True
 
-    def reprendre_auto(self):
+    def reprendre_auto(self) -> None:
         """▶ « Reprendre » (jalon 75) : l'étirement automatique repart. Les
         stats lissées sont OUBLIÉES pour que le prochain rendu reparte de
         l'image courante (saut visible, assumé et annoncé à l'écran) — sinon
@@ -488,19 +493,19 @@ class DisplayProcessor:
         self._memo_moteur = None      # jalon 79 : la clé contient les stats
 
     @staticmethod
-    def _mtf(x, m):
+    def _mtf(x: Any, m: float) -> np.ndarray:
         """Midtones Transfer Function : x, m ∈ [0,1] (alias de `mtf`, jalon 75)."""
         return mtf(x, m)
 
     @staticmethod
-    def _solve_m(x, t):
+    def _solve_m(x: Any, t: float) -> float:
         """m tel que MTF(x, m) = t — inversion exacte de la MTF."""
         x = min(max(x, 1e-4), 0.9999)
         m = x * (1.0 - t) / (t + x - 2.0 * t * x)
         return min(max(m, 0.001), 0.98)
 
     @staticmethod
-    def _calc_stats(img):
+    def _calc_stats(img: np.ndarray) -> tuple[float, float, float]:
         """Statistiques d'étirement (médiane, σ robuste MAD, p99.9) d'une
         image linéaire — fonction PURE : aucune mutation d'état (le
         sous-échantillonnage la garde rapide même en pleine résolution)."""
@@ -510,7 +515,8 @@ class DisplayProcessor:
         sigma = max(float(np.median(np.abs(s - med))) * 1.4826, 1e-8)  # σ robuste (MAD)
         return med, sigma, float(np.percentile(s, 99.9))
 
-    def _auto_params(self, img, live=True):
+    def _auto_params(self, img: np.ndarray,
+                     live: bool = True) -> tuple[float, float, float]:
         # Jalon 75 : étirement GELÉ (bouton ⏹ « Figer ») — les stats ne se
         # recalculent plus ET n'avancent plus : l'image ne « respire » plus du
         # tout, et les barres de l'histogramme deviennent les seules à agir.
@@ -549,7 +555,7 @@ class DisplayProcessor:
         return lo, hi, m
 
     # ------------------------------------ jalon 79 : mémoire du moteur d'étirement
-    def _cle_moteur(self, img):
+    def _cle_moteur(self, img: np.ndarray) -> Any:
         """Clé des réglages qui déterminent la SORTIE DU MOTEUR STF/manuel :
         dimensions, mode auto/manuel, points noir et blanc, gel, k des ombres,
         cible de fond et STATS courantes. Tout ce qui n'y figure pas — gamma,
@@ -559,7 +565,7 @@ class DisplayProcessor:
                 float(self.white), bool(self.fige), self.sigma_k, self.target,
                 None if self._stats is None else tuple(self._stats))
 
-    def _moteur_stf(self, img, live=True):
+    def _moteur_stf(self, img: np.ndarray, live: bool = True) -> np.ndarray:
         """Sortie du moteur d'étirement STF ou manuel, MÉMOÏSÉE quand rien n'a
         changé (jalon 79).
 
@@ -601,7 +607,7 @@ class DisplayProcessor:
                                  self.last_m)
         return x
 
-    def notify_new_stack(self):
+    def notify_new_stack(self) -> None:
         """Signale qu'un NOUVEL empilement vient d'être produit (une frame de
         plus a été empilée) : le thread solveur relance la résolution. Le
         rythme des frames (≥ 1 s, souvent bien plus) EST le cooldown — aucun
@@ -610,13 +616,13 @@ class DisplayProcessor:
         with self._vl_lock:
             self._vl_force = True
 
-    def vl_en_cours(self):
+    def vl_en_cours(self) -> bool:
         """True si le thread solveur VeraLux a un calcul en marche (jalon 40 :
         l'UI affiche alors l'étape courante `vl_stage` + un curseur animé).
         Lecture thread-sûre (booléen écrit sous verrou par le worker)."""
         return self._vl_pending
 
-    def _vl_params(self):
+    def _vl_params(self) -> Any:
         """Clé de hachage des réglages de la chaîne PRÉ-ÉTIREMENT VeraLux —
         GraXpert live, débruitage live, netteté live (jalon 12), SCNR et
         démagenta (jalon 22), plus les paramètres d'étirement : bouger
@@ -644,7 +650,7 @@ class DisplayProcessor:
                 round(float(self.vl_chroma_force), 2),
                 round(float(self.vl_chroma_rayon), 2))  # v2.37.3 (résolution)
 
-    def _vl_worker(self):
+    def _vl_worker(self) -> None:
         """Thread solveur : enchaîne — si activés — GraXpert live (jalon 4)
         PUIS le débruitage local (jalon 9 : algorithmes numpy/OpenCV, aucun
         subprocess) PUIS la netteté live (jalon 12 : Richardson-Lucy, numpy/
@@ -682,9 +688,9 @@ class DisplayProcessor:
             # (6 éléments = tout False) pour compatibilité des tests qui
             # fabriquent des jobs jalon 9/12.
             coul = job[6] if len(job) > 6 else ()
-            scnr_actif = bool(coul[0]) if len(coul) > 0 else False
-            sd_actif = bool(coul[1]) if len(coul) > 1 else False
-            dm_actif = bool(coul[2]) if len(coul) > 2 else False
+            scnr_actif = bool(coul[0]) if len(coul) > 0 else False  # noqa: F841
+            sd_actif = bool(coul[1]) if len(coul) > 1 else False  # noqa: F841
+            dm_actif = bool(coul[2]) if len(coul) > 2 else False  # noqa: F841
             # v2.48.0 (jalon 85) : force du SCNR, force du démagenta et
             # préservation de la luminosité (3 éléments suivants du sous-tuple,
             # déballage TOLÉRANT : les jobs antérieurs n'en ont pas → 1,0/1,0/
@@ -992,14 +998,15 @@ class DisplayProcessor:
                 self.vl_new = True
                 self.vl_stage = ""        # calcul terminé — jalon 40
 
-    def sh_en_cours(self):
+    def sh_en_cours(self) -> bool:
         """True si le solveur de netteté DÉDIÉ (modes STF/manuel, jalon 12)
         a un calcul en marche — jalon 41 : le cadre « État des calculs »
         est visible dans les DEUX modes, l'UI affiche ⏳ + curseur pendant
         la déconvolution STF/manuel aussi."""
         return self._sh_pending
 
-    def _process_veralux(self, img, live=True):
+    def _process_veralux(self, img: np.ndarray,
+                         live: bool = True) -> np.ndarray:
         """Chemin VeraLux : rend le dernier résultat terminé (ou le STF en
         image d'attente) et soumet un calcul si l'image ou les réglages ont
         changé. Jamais bloquant : aucun calcul ici, seulement une copie.
@@ -1069,7 +1076,7 @@ class DisplayProcessor:
         return self._mtf(np.clip((img - lo) / (hi - lo), 0.0, 1.0), m)
 
     # ------------------------------------------- netteté live (jalon 12)
-    def _sh_key(self):
+    def _sh_key(self) -> Any:
         """Clé des réglages de la netteté : itérations + FWHM de la PSF
         utilisée (celle du seeing mesuré au jalon 10, None si l'app doit
         mesurer elle-même) — une nouvelle mesure de seeing relance donc la
@@ -1079,7 +1086,7 @@ class DisplayProcessor:
         return (int(self.vl_sharp_iterations),
                 None if f is None else round(float(f), 2))
 
-    def _sh_worker(self):
+    def _sh_worker(self) -> None:
         """Thread solveur DÉDIÉ à la netteté des modes STF/manuel.
 
         Le mode VeraLux l'applique dans son propre solveur (après GraXpert et
@@ -1117,7 +1124,7 @@ class DisplayProcessor:
                 self._sh_result = (key, source, nette)
             self.sh_msg, self.sh_new = err, True
 
-    def _process_nettete(self, img):
+    def _process_nettete(self, img: np.ndarray) -> Any:
         """Netteté des modes STF/manuel (le mode VeraLux est traité dans
         `_vl_worker`) : rend l'image nette si un résultat correspond EXACTEMENT
         à l'image courante, sinon l'image d'attente (inchangée) et soumet le
@@ -1152,7 +1159,8 @@ class DisplayProcessor:
         return img
 
     @staticmethod
-    def _gamma_saturation(x, rgb, gamma, saturation):
+    def _gamma_saturation(x: Any, rgb: bool, gamma: float,
+                          saturation: float) -> Any:
         """Gamma et saturation COMMUNS — appliqués après l'étirement, quel que
         soit le mode (STF, manuel, VeraLux). Factorisés pour que le rendu
         « tel que vu » de la sauvegarde (jalon 5) soit strictement identique
@@ -1161,7 +1169,8 @@ class DisplayProcessor:
         return DisplayProcessor._finition(x, rgb, gamma, saturation, None)
 
     @staticmethod
-    def _finition(x, rgb, gamma, saturation, sat_canaux=None):
+    def _finition(x: Any, rgb: bool, gamma: float, saturation: float,
+                  sat_canaux: Any = None) -> Any:
         """Dernières retouches d'écran, dans un ordre FIXE : gamma →
         saturation globale → saturation PAR COULEUR (jalon 75).
         Appliquées après l'étirement ET après l'étage de niveaux, quel que
@@ -1177,12 +1186,12 @@ class DisplayProcessor:
             x = saturation_canaux(x, sat_canaux)
         return np.clip(x, 0.0, 1.0)
 
-    def _veralux_actif(self):
+    def _veralux_actif(self) -> bool:
         """True si le chemin VeraLux est RÉELLEMENT utilisé (moteur choisi ET
         disponible) — c'est ce qui décide où la netteté est appliquée."""
         return self.stretch == "veralux" and _veralux.moteur_disponible()
 
-    def process(self, img, live=True):
+    def process(self, img: np.ndarray, live: bool = True) -> np.ndarray:
         img = img.astype(np.float32, copy=False)
         # Netteté live (jalon 12) : AVANT l'étirement, quel que soit le
         # moteur. En mode VeraLux elle est déjà appliquée par le solveur
@@ -1231,7 +1240,8 @@ class DisplayProcessor:
         return (x * 255).astype(np.uint8)
 
     # ------------------------------------------------------------- jalon 5
-    def rendu_pleine_resolution(self, img, reglages=None):
+    def rendu_pleine_resolution(self, img: np.ndarray,
+                                reglages: Any = None) -> np.ndarray:
         """Rendu « tel que vu » (jalon 5) d'une image LINÉAIRE PLEINE
         résolution — empilement complet ou résultat traité — pour la
         sauvegarde « 💾 Enregistrer tel que vu ». Reproduit l'étirement
@@ -1266,7 +1276,8 @@ class DisplayProcessor:
                 log_d = r("vl_log_d_resolu", self.vl_log_d_resolu)
             else:
                 log_d = None
-            params = dict(profil=r("vl_profil", self.vl_profil),
+            params: dict[str, Any] = dict(
+                          profil=r("vl_profil", self.vl_profil),
                           # v2.38.0 : le FOND CIBLE de l'étape de sortie du moteur
                           # est transmis DANS LES DEUX MODES. Il ne l'était que
                           # lorsque le logD restait à résoudre : une fois le logD
