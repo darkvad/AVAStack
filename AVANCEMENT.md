@@ -9,55 +9,61 @@ dans le changelog du source et l'historique git.)
 
 ---
 
-## Session du 07/10/2026 — jalon 103 (v2.58.1 — LIVRÉ, BANC VERT) — `ui/widgets/` TYPÉS
+## Session du 07/10/2026 — jalon 104 (v2.58.2 — LIVRÉ, BANC VERT) — `ui/config_ui.py` TYPÉ
 
 ### But du jalon
-Quatrième étape du **chantier de refactoring** et **PREMIERS WIDGETS de l'UI
-extraits** : sortir de `app.py` les sections pliables ET le panneau
-d'histogramme (+ niveaux + saturation) dans des modules TYPÉS — SANS aucun
-changement de comportement.
+Cinquième étape du **chantier de refactoring** : extraire de `app.py` la
+**persistance de la config de l'interface** (`_restaurer_config` +
+`_sauver_config_app`) dans un module **`ui/config_ui.py` typé**, sous forme de
+mixin — SANS aucun changement de comportement.
 
-### Décision de découpage (avec Alain, 07/10/2026)
-La roadmap prévoyait 5 widgets (`collapsible`, `histogram`, `niveaux`,
-`saturation`, `tooltip`). Constat sur le code réel : `tooltip` **N'EXISTE PAS**
-(aucune infobulle dans l'application) → **abandonné** ; `saturation` n'est
-qu'UNE méthode et `histogram`/`niveaux` sont **étroitement intriqués** →
-regroupés. **Retenu : 2 modules.**
-
-### Livré (v2.58.1)
-- `avastack/ui/widgets/` **NEUF (paquet typé)** :
-  - `collapsible.py` — mixin `SectionsPliables` : `_creer_section_pliable`
-    (sections pliables persistées, jalons 95/98/99).
-  - `histogram.py` — mixin `PanneauHistogramme` : tracé + gestes de
-    l'histogramme, étage de NIVEAUX (barres Noir/Médian/Blanc, gel/reprise de
-    l'auto) et SATURATION par couleur R/V/B (jalon 75).
-- Méthodes reprises **VERBATIM** ; `App` **hérite** des mixins (`class
-  App(_SectionsPliables, _PanneauHistogramme)`), avec alias **privés** `_` pour
-  ne PAS changer la surface publique. `self` reste l'instance `App` → `App.<m>`,
-  `self.<m>` et le patch `App._maj_histogrammes = …` restent valides.
-- `app.py` : **SURFACE PUBLIQUE INCHANGÉE (75 symboles)**. `display_mod` reste
-  **ré-exporté** (`# noqa: F401`, il faisait partie de la surface figée) ; les
-  imports `tkfont` et `display_mod` DANS le code sont eux nettoyés (devenus
-  inutiles après extraction). `app.py` : **11 006 → 10 286 lignes**.
-- **Seul écart au verbatim** : `App.HIST_POINTS` → `HIST_POINTS` (importé de
-  `constants`) dans le `@staticmethod _hist_canaux` (le nom `App` n'existe pas
-  dans le mixin) — valeur identique, comportement inchangé.
-- Les 2 nouveaux modules entrent dans la **LISTE BLANCHE** → **pyright 0 erreur
-  sur 10 fichiers**.
+### Livré (v2.58.2)
+- `avastack/ui/config_ui.py` **NEUF (typé)** : mixin `ConfigUI` dont `App`
+  **hérite** — `_restaurer_config` (restauration au démarrage) et
+  `_sauver_config_app` (écriture à la fermeture). Méthodes reprises
+  **VERBATIM**. `app.py` : **10 297 → 9 733 lignes**.
+- Interface déclarée pour le typage : 134 membres (`var_*` en `tk.Variable`,
+  constantes, widgets, état, 32 méthodes de l'hôte en `Callable[..., Any]`).
+- Import en **alias privé** `_ConfigUI` (surface publique inchangée, 75
+  symboles). Import `MODES_L` retiré de `app.py` mais **ré-exporté** (`# noqa`,
+  il était dans la surface figée).
+- **PIÈGE RÉSOLU — interceptions de bancs** : ~40 bancs remplacent
+  `avastack.ui.app.sauver_config` (et certains `.CONFIG`) pour intercepter le
+  VRAI `config.json`. Les méthodes vivant désormais dans `config_ui.py`, elles
+  lisent ces globals par **résolution TARDIVE** (`_globals_app().CONFIG` /
+  `.sauver_config`, import tardif du module d'application) → l'interception des
+  bancs reste effective (sinon : le vrai config.json serait écrit pendant les
+  bancs).
+- **Micro-réécritures ÉQUIVALENTES** pour `pyright` (comportement inchangé) :
+  `isinstance(_hm, str) and _hm in HIST_CODES` (clé `hist_mode`) ; clé `kappa`
+  `None if v is None else float(v)` (`v is None` ⟺ `etiquette == "Off"`).
+- `config_ui.py` entre dans la **LISTE BLANCHE** → **pyright 0 erreur sur 11
+  fichiers**.
 
 ### Vérifications
-- Garde-fou `_test_refactoring_garde_fou.py` : **TOUT AU VERT** (surface 75
-  symboles inchangée, hash d'empilement au bit, pyright 0/10).
-- Bancs rejoués verts : `_test_histo_jalon75.py` (TOUT PASSE),
-  `_test_ui_visibilite_jalon47.py` (TOUT PASSE), `_test_dialogues_jalon84.py`
-  (TOUT AU VERT), `_test_perf_reactivite_jalon79.py` (TOUT PASSE).
-- `ruff check` sur les 3 fichiers `widgets/` : **All checks passed**. `app.py`
-  conserve ses **2 avertissements PRÉEXISTANTS** (F401 `tracer_evt`, F841
-  `i_etape`) — rien de neuf.
+- Garde-fou `_test_refactoring_garde_fou.py` : **TOUT AU VERT** (surface 75,
+  hash au bit, pyright 0/11).
+- Bancs rejoués verts : `_test_config_jalon6.py`, `_test_histo_jalon75.py`,
+  `_test_ui_visibilite_jalon47.py`, `_test_spcc_osc.py`,
+  `_test_cadence_jalon42.py`, `_test_compo_ui_jalon19.py`,
+  `_test_couleurs_jalon22.py`, `_test_zoom_pleine_res_jalon68.py`,
+  `_test_norm_commune_jalon61.py`, `_test_dn_jalon7.py`.
+- `ruff` sur `config_ui.py` : **All checks passed**. `app.py` : ses **2
+  avertissements PRÉEXISTANTS** (rien de neuf).
 
 ### Prochaine étape du chantier
-**Jalon 104** — `ui/config_ui.py` (typé) : extraction charger/sauver de la
-config UI.
+**Jalon 105a** — `ui/panels/` (1/3, sources, typés) : `files`, `camera`,
+`cadence`, `folder`.
+
+---
+
+## HISTORIQUE (07/10/2026, jalon 103, v2.58.1 — LIVRÉ, TESTÉ EN RÉEL) — `ui/widgets/` TYPÉS
+
+Premiers widgets de l'UI extraits en **mixins typés** : `collapsible.py`
+(sections pliables) + `histogram.py` (histogramme + niveaux + saturation) ;
+`tooltip` inexistant → abandonné, `niveaux`/`saturation` regroupés (décision
+07/10). Surface publique inchangée (75 symboles), pyright 0/10, garde-fou vert.
+**TEST RÉEL D'ALAIN : OK.**
 
 ---
 
@@ -215,19 +221,17 @@ quatre paquets + `INSTALLATION.md`.
 
 ## Prochaine étape
 
-**JALON 103 LIVRÉ (v2.58.1, 07/10/2026)** : `avastack/ui/widgets/` (TYPÉS,
-premiers widgets de l'UI extraits) — `collapsible.py` (sections pliables) +
-`histogram.py` (histogramme + niveaux + saturation) ; **surface publique
-INCHANGÉE (75 symboles)**, **pyright 0 erreur sur 10 fichiers**, **banc
-garde-fou VERT**, bancs rejoués verts, **aucun changement de comportement**.
+**JALON 104 LIVRÉ (v2.58.2, 07/10/2026)** : `avastack/ui/config_ui.py` (TYPÉ) —
+mixin `ConfigUI` : restauration + sauvegarde de la config de l'interface ;
+**surface publique INCHANGÉE (75 symboles)**, **pyright 0 erreur sur 11
+fichiers**, **banc garde-fou VERT**, bancs rejoués verts, **aucun changement de
+comportement**.
 
-**Prochaine action = jalon 104** (`ui/config_ui.py` typé : charger/sauver de la
-config UI). ⚠ `tooltip` (roadmap) N'EXISTE PAS dans le code → abandonné ;
-`niveaux`/`saturation` regroupés dans `histogram.py` (décision du 07/10/2026).
+**Prochaine action = jalon 105a** (`ui/panels/` 1/3, sources, typés :
+`files`, `camera`, `cadence`, `folder`).
 
 **Reste à faire à ton initiative, sans urgence** : ① le **TEST RÉEL** de la
-v2.58.1 (ouvrir l'application : sections pliables et histogramme/niveaux doivent
-être strictement identiques) ; ② le test « installer depuis le Microsoft Store ».
+v2.58.2 ; ② le test « installer depuis le Microsoft Store ».
 
 **ÉTAT DE FIN DE SESSION (07/10/2026)** : le chantier de refactoring (jalons
 100 → 102, jusqu'à **v2.58.0**) est **COMMITÉ et POUSSÉ** sur `origin/master`.
@@ -275,7 +279,7 @@ identique AU BIT). Travail étalé sur plusieurs sessions : chaque jalon est une
 | **101** ✅ | Typage fondation (rétroactif) | annotations de `compat`, `config`, `delais`, `journal`, `ressources`, `travail`, `siril_ini` + entrée liste blanche | garde-fou + `_test_config_jalon6.py`, `_test_journal_jalon73.py` | v2.57.1 |
 | **102** ✅ | `ui/constants.py` (typé) | constantes/seuils/palettes extraits de `app.py` (surface publique inchangée) + entrée liste blanche | garde-fou + `_test_ui_visibilite_jalon47.py`, `_test_cadence_jalon42.py`, `_test_histo_jalon75.py`, `_test_rafale_fin_rendu_jalon80.py`, `_test_spcc_osc.py` | v2.58.0 |
 | **103** ✅ | `ui/widgets/` (typés) | `collapsible.py` + `histogram.py` (histogramme + niveaux + saturation ; `tooltip` inexistant → abandonné, décision 07/10) | garde-fou + `_test_histo_jalon75.py`, `_test_dialogues_jalon84.py`, `_test_ui_visibilite_jalon47.py` | v2.58.1 |
-| **104** | `ui/config_ui.py` (typé) | extraction charger/sauver de la config UI | garde-fou + `_test_config_jalon6.py` | v2.58.2 |
+| **104** ✅ | `ui/config_ui.py` (typé) | extraction charger/sauver de la config UI | garde-fou + `_test_config_jalon6.py` | v2.58.2 |
 | **105a** | `ui/panels/` (1/3) sources (typés) | `files`, `camera`, `cadence`, `folder` | garde-fou + `_test_ui_visibilite_jalon47.py`, `_test_ui_robuste_jalon87.py` | v2.59.0 |
 | **105b** | `ui/panels/` (2/3) traitement (typés) | `compo`, `calib`, `stack`, `bgnoise`, `sharp` | idem + `_test_compo_ui_jalon19.py` | v2.59.1 |
 | **105c** | `ui/panels/` (3/3) sortie (typés) | `display`, `color`, `state`, `external`, `output` | idem + `_test_ui_moteur_jalon41.py`, `_test_sliders_jalon6.py` | v2.59.2 |
@@ -302,10 +306,10 @@ garde-fou les utilise s'ils sont présents (skip gracieux sinon) ; ② **CI GitH
 NON retenue** — le garde-fou reste un banc lancé À LA MAIN (interpréteur du venv),
 rejoué à chaque jalon.
 
-**État : JALON 103 LIVRÉ** (v2.58.1 — `ui/widgets/` TYPÉS : sections pliables
-et panneau d'histogramme + niveaux + saturation extraits de `app.py`, surface
-publique inchangée, pyright 0 erreur sur 10 fichiers ; banc garde-fou VERT).
-Prochaine action = **jalon 104** (`ui/config_ui.py` typé). Repli de référence :
+**État : JALON 104 LIVRÉ** (v2.58.2 — `ui/config_ui.py` TYPÉ : restauration +
+sauvegarde de la config de l'interface extraites de `app.py`, surface publique
+inchangée, pyright 0 erreur sur 11 fichiers ; banc garde-fou VERT). Prochaine
+action = **jalon 105a** (`ui/panels/` sources, typés). Repli de référence :
 **v2.56.1** (dernière version validée en réel).
 
 - **JALON PRÉCÉDENT (02/10/2026, jalon 88 — INSTALLATEUR WINDOWS EN PAQUET ZIP,

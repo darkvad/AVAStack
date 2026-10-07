@@ -17,9 +17,25 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.58.1"
+AVASTACK_VERSION = "2.58.2"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.58.2 : CHANTIER DE REFACTORING — `ui/config_ui.py` (jalon 104)
+#   - Module NEUF (TYPÉ) `avastack/ui/config_ui.py` extrait de `app.py` : mixin
+#     `ConfigUI` dont `App` HÉRITE, regroupant la PERSISTANCE de la config de
+#     l'interface — `_restaurer_config` (chargement/restauration au démarrage)
+#     et `_sauver_config_app` (écriture à la fermeture). Méthodes reprises
+#     VERBATIM (`self` reste l'instance `App`) → comportement inchangé AU BIT.
+#   - DEUX micro-réécritures ÉQUIVALENTES pour satisfaire `pyright` (aucun
+#     changement de comportement) : `isinstance(_hm, str) and _hm in HIST_CODES`
+#     (clé `hist_mode`) et `None if v is None else float(v)` (`v is None` ⟺
+#     `etiquette == "Off"`).
+#   - Surface publique de `app.py` INCHANGÉE (75 symboles) ; import en alias
+#     PRIVÉ `_ConfigUI` ; import `MODES_L` retiré de `app.py` (devenu inutile).
+#     `pyright` 0 ERREUR sur les 11 fichiers typés.
+#   - Vérifications : garde-fou VERT + `_test_config_jalon6.py`,
+#     `_test_histo_jalon75.py`, `_test_ui_visibilite_jalon47.py` rejoués verts.
+#
 # v2.58.1 : CHANTIER DE REFACTORING — `ui/widgets/` (jalon 103)
 #   - DEUX modules de l'UI extraits de `app.py` (TYPÉS), sous forme de « mixins »
 #     dont `App` HÉRITE — méthodes reprises VERBATIM (`self` reste l'instance
