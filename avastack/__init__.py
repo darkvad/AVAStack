@@ -18,9 +18,36 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.60.0"
+AVASTACK_VERSION = "2.60.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.60.1 : CHANTIER DE REFACTORING — `core/worker.py` (jalon 106b, boucle)
+#   - `_worker` reste l'ORCHESTRATEUR de la boucle du thread d'acquisition ;
+#     ses blocs cohérents sont découpés en sous-méthodes TYPÉES reprises
+#     VERBATIM (comportement inchangé AU BIT) :
+#       · `_worker_reinitialiser` — remise à zéro de session (« ▶ Démarrer » /
+#         « Réinitialiser l'empilement »), servie en TÊTE de boucle ;
+#       · `_worker_empiler_frame` — traitement d'une brute (filtre
+#         défocalisation, archivage, (re)création de l'empileur, alignement,
+#         empilement) ; renvoie `(sauter, last_good, stack)` ;
+#       · `_worker_restack` — re-stack « à la Siril » (bouton ou auto) ;
+#         renvoie `(fait, stack)`.
+#   - Le SEAM `WorkerConfig` (`core/config.py`) est CONSOMMÉ : `kappa`,
+#     `rejet_methode` et `rejet_fenetre` sont lus sur un instantané construit
+#     au POINT D'USAGE (`WorkerConfig.depuis(self)`) — AUCUN code ajouté sur le
+#     chemin de la boucle, donc le profil temporel du worker est IDENTIQUE.
+#   - Le seam a révélé un `k` typé trop étroit (`LiveStacker`/`CompositeStacker`
+#     annoncent `k: float` mais acceptent `None` — kappa « Off », usage des
+#     bancs et de `app.py`) : 2 ignores `# pyright: ignore[reportArgumentType]`
+#     CIBLÉS (motif du chantier).
+#   - Vérifications : garde-fou VERT (surface 75, hash au bit, pyright 0/27) ;
+#     `ruff` « All checks passed » ; bancs rejoués verts —
+#     `_test_restack_jalon16.py`, `_test_restack_compo_jalon20.py`,
+#     `_test_reset_empilement_jalon76.py`. Étapes suivantes (106c/106d) :
+#     « pilotage » (roue/TEC/offset + cadence dossier) et « mesures »
+#     (astrométrie/photométrie/SPCC).
+#
+
 # v2.60.0 : CHANTIER DE REFACTORING — `core/worker.py` (jalon 106a, squelette)
 #   - Nouveau paquet TYPÉ `avastack/core/` : `config.py` (`WorkerConfig`,
 #     dataclass gelé des paramètres du worker : rejet kappa-sigma, cadence de

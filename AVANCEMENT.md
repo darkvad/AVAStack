@@ -9,54 +9,53 @@ dans le changelog du source et l'historique git.)
 
 ---
 
-## Session du 07/10/2026 — jalon 106a (v2.60.0 — LIVRÉ, TESTÉ EN RÉEL) — `core/worker.py` (1/4, squelette)
+## Session du 07/10/2026 — jalon 106b (v2.60.1 — LIVRÉ, TESTÉ EN RÉEL) — `core/worker.py` (2/4, boucle)
 
 ### But du jalon
-Neuvième étape du **chantier de refactoring** : extraire de `app.py` la **boucle du
-thread d'acquisition** (`_worker`, **782 lignes**) dans le paquet **`avastack/core/`**
-typé, sous forme de mixin — SANS aucun changement de comportement. Première des quatre
-étapes du worker (106a squelette → 106b boucle → 106c pilotage → 106d mesures).
+Dixième étape du **chantier de refactoring** : découper la **boucle du thread
+d'acquisition** (`_worker`, dans `core/worker.py`) en sous-méthodes TYPÉES
+« boucle » — **acquisition + reset / re-stack** — et **CONSOMMER le seam
+`WorkerConfig`** (posé au 106a), SANS aucun changement de comportement. Deuxième
+des quatre étapes du worker (106a squelette → **106b boucle** → 106c pilotage →
+106d mesures).
 
-### Livré (v2.60.0)
-- Paquet **NEUF** `avastack/core/` :
-  - `config.py` → **`WorkerConfig`** (dataclass gelé, TYPÉ) : paramètres du worker
-    (kappa, méthode/fenêtre de rejet, cadence de lecture, instantanés expo/gain/offset) ;
-    `WorkerConfig.depuis(app)` construit l'instantané (le « seam » sera consommé à
-    partir de 106b — la boucle lit encore ces valeurs sur `self`, résultat identique).
-  - `worker.py` → **`AcquisitionWorker`** (mixin TYPÉ) : la méthode `_worker` reprise
-    **VERBATIM** (`self` reste l'instance `App`), + les **138 déclarations** de typage
-    des membres de l'hôte. `App` **hérite** de `_AcquisitionWorker`.
-- `app.py` : la méthode `_worker` est remplacée par un commentaire-pointeur ;
-  **8 473 → 7 703 lignes**.
-- **PIÈGE D'ISOLATION résolu** : `ArchiveFrames`, `RESTACK_MIN_FRAMES` et
-  `RESTACK_CADENCE` sont **monkeypatchés par les bancs** (via `ui.<nom>`) → lus par
-  **résolution TARDIVE `_globals_app()`** (recette de `collapsible.py` / `stack.py`).
-- **pyright** : `_worker` s'appuie sur des gardes d'EXÉCUTION invisibles à pyright
-  (`isinstance(self.camera, QHYCamera)` narrow un membre `Any` ; garde du re-stack sur
-  une variable locale `stack`) → **17 ignores `# pyright: ignore[...]` CIBLÉS** (motif
-  du jalon 103, `collapsible.py`).
-- `RESTACK_CADENCE`/`RESTACK_MIN_FRAMES` plus utilisés DANS `app.py` mais **ré-exportés**
-  (`# noqa: F401`) : surface publique INCHANGÉE (**75 symboles**).
+### Livré (v2.60.1)
+- `core/worker.py` — `_worker` reste l'**ORCHESTRATEUR** de la boucle ; trois
+  sous-méthodes extraites **VERBATIM** (retrait d'indentation 12→8) :
+  - **`_worker_reinitialiser`** : remise à zéro de session (« ▶ Démarrer » /
+    « Réinitialiser l'empilement »), servie en TÊTE de boucle (même en pause) ;
+  - **`_worker_empiler_frame(frame, role, last_good, t0)`** : traitement d'une
+    brute calibrée (filtre défocalisation → archivage → (re)création de
+    l'empileur → alignement → empilement). Renvoie `(sauter, last_good, stack)`
+    (`sauter` = brute rejetée → `continue` du tour suivant) ;
+  - **`_worker_restack`** : re-stack « à la Siril » (bouton ou auto). Renvoie
+    `(fait, stack)` (affichage immédiat).
+- **Seam `WorkerConfig` CONSOMMÉ** : `kappa` / `rejet_methode` / `rejet_fenetre`
+  sont lus sur un instantané `WorkerConfig.depuis(self)` construit **au POINT
+  D'USAGE** (`_worker_empiler_frame`) et NON en tête de boucle — **aucun code
+  ajouté sur le chemin de la boucle** (indispensable : un `cfg` en tête de tour
+  décalait la course du banc 76, mesuré 2/13 d'échec ; au point d'usage → 0/10).
+- **DÉCOUVERTE du seam** : `cfg.kappa` est typé `float | None` (kappa « Off »),
+  or `LiveStacker`/`CompositeStacker` annoncent `k: float` (mais acceptent
+  `None` à l'exécution — usage des bancs et de `app.py`) → **2 ignores
+  `# pyright: ignore[reportArgumentType]` CIBLÉS** sur les 2 créations d'empileur.
+- Pointeurs mis à jour : changelog (`avastack/__init__.py`, **v2.60.1**),
+  docstrings de `core/worker.py`, `core/config.py`, `core/__init__.py`,
+  commentaire-pointeur de `app.py`.
 
 ### Vérifications
-- Garde-fou `_test_refactoring_garde_fou.py` : **TOUT AU VERT** (surface 75, hash au bit,
-  **pyright 0/27**).
-- Bancs du worker rejoués verts : `_test_reset_empilement_jalon76.py` (lance le VRAI
-  worker), `_test_restack_jalon16.py`, `_test_restack_compo_jalon20.py`,
-  `_test_restack_visu_jalon18.py`, `_test_compo_worker_jalon19.py`,
-  `_test_narrowband_ha_jalon21.py`, `_test_cadence_jalon42.py`, `_test_jalon17_filtre.py`,
-  `_test_astro_branchement_jalon56.py`, `_test_save_asseen_jalon5.py`, `_test_ui_jalon5.py`,
-  `_test_config_jalon6.py`, `_test_ui_robuste_jalon87.py`, `_test_ui_visibilite_jalon47.py`
-  (les bancs qui patchent `RESTACK_*`/`ArchiveFrames` valident DIRECTEMENT l'isolation).
-- `ruff` : `avastack/core/` **All checks passed** ; `app.py` : **2 préexistants**
-  (`tracer_evt`, `i_etape`).
-- **TEST RÉEL D'ALAIN : OK** (v2.60.0, 07/10/2026 — empilement + re-stack en
-  multi-dossier RGB).
+- Garde-fou `_test_refactoring_garde_fou.py` : **TOUT AU VERT** (surface **75**,
+  hash au bit, **pyright 0/27**).
+- `ruff avastack/core/` : **All checks passed**.
+- Bancs rejoués verts : `_test_restack_jalon16.py`, `_test_restack_compo_jalon20.py`,
+  `_test_reset_empilement_jalon76.py`. Banc 76 rejoué **10×** après correctif :
+  **0 échec**.
+- **TEST RÉEL D'ALAIN : OK** (v2.60.1, 07/10/2026).
 
 ### Prochaine étape du chantier
-**Jalon 106b** — `core/worker.py` (2/4, boucle) : découper la boucle en
-« boucle » (acquisition + reset / re-stack) ; bancs `_test_restack_jalon16.py`,
-`_test_restack_compo_jalon20.py`, `_test_reset_empilement_jalon76.py`.
+**Jalon 106c** — `core/worker.py` (3/4, pilotage) : découper « pilotage »
+(roue / TEC / offset + cadence dossier) ; bancs `_test_jalon17_filtre.py`,
+`_test_cadence_jalon42.py`, `_test_pilotage_jalon35.py` (v2.60.2).
 
 ---
 
@@ -313,30 +312,28 @@ quatre paquets + `INSTALLATION.md`.
 
 ## Prochaine étape
 
-**JALON 106a LIVRÉ, TESTÉ EN RÉEL (v2.60.0, 07/10/2026)** : paquet NEUF
-`avastack/core/` — `config.py` (`WorkerConfig` typé) et `worker.py`
-(`AcquisitionWorker`, mixin dont `App` hérite) ; la boucle du thread
-d'acquisition (`_worker`, 782 lignes) quitte `app.py` pour `core/worker.py`,
-reprise VERBATIM ; **surface publique INCHANGÉE (75 symboles)**, **pyright 0
-erreur sur 27 fichiers**, **garde-fou VERT**, bancs du worker rejoués verts,
-**aucun changement de comportement**. Isolation `_globals_app()` pour
-`ArchiveFrames`/`RESTACK_*` (patchés par les bancs). **TEST RÉEL : OK** (stack +
-re-stack multi-dossier RGB).
+**JALON 106b LIVRÉ, TESTÉ EN RÉEL (v2.60.1, 07/10/2026)** : la partie
+« boucle » de `_worker` (acquisition + reset / re-stack) est découpée en
+sous-méthodes TYPÉES VERBATIM (`_worker_empiler_frame`, `_worker_reinitialiser`,
+`_worker_restack`) et le SEAM `WorkerConfig` est CONSOMMÉ (kappa / méthode /
+fenêtre lus sur l'instantané, construit AU POINT D'USAGE) ; **surface publique
+INCHANGÉE (75 symboles)**, **pyright 0 erreur sur 27 fichiers**, **garde-fou
+VERT**, **aucun changement de comportement**.
 
-**Prochaine action = jalon 106b** (`core/worker.py` 2/4, boucle : acquisition +
-reset / re-stack).
+**Prochaine action = jalon 106c** (`core/worker.py` 3/4, pilotage : roue / TEC /
+offset + cadence dossier).
 
 **Reste à faire à ton initiative, sans urgence** : le test « **installer depuis
 le Microsoft Store** » (seul test qui n'existe que par cette voie).
 
 **ÉTAT DE FIN DE SESSION (07/10/2026)** : le chantier de refactoring (jalons
-100 → 106a) est **COMMITÉ et POUSSÉ** sur `origin/master`, **arbre propre**.
-Dernière version **validée en réel** = **v2.60.0** (jalon 106a testé et validé
-par Alain : empilement + re-stack en multi-dossier RGB). Dernière
-**release GitHub publique** = **v2.56.1**
-(https://github.com/darkvad/AVAStack/releases/tag/v2.56.1) ; MSIX publié sur le
-Store = **v2.50.0** (les jalons 100-106a ne sont PAS des releases : aucun paquet
-construit).
+100 → 106b) est **COMMITÉ et POUSSÉ** sur `origin/master`, **arbre propre**.
+**Jalon 106b = v2.60.1, TESTÉ ET VALIDÉ EN RÉEL par Alain** (empilement +
+re-stack, bouton « Réinitialiser l'empilement », réglages de rejet kappa). Dernière
+version **validée en réel** = **v2.60.1**. Dernière **release GitHub publique** =
+**v2.56.1** (https://github.com/darkvad/AVAStack/releases/tag/v2.56.1) ; MSIX
+publié sur le Store = **v2.50.0** (les jalons 100-106b ne sont PAS des releases :
+aucun paquet construit).
 
 **RESTE OUVERT, À L'OCCASION (à ton initiative, aucune urgence)** : ① le test
 « **installer depuis le Microsoft Store** » — dernier test qui n'existe que par
@@ -380,7 +377,7 @@ identique AU BIT). Travail étalé sur plusieurs sessions : chaque jalon est une
 | **105b** ✅ | `ui/panels/` (2/3) traitement (typés) | `compo`, `calib`, `stack`, `bgnoise`, `sharp` | garde-fou + `_test_compo_ui_jalon19.py`, `_test_ui_visibilite_jalon47.py` | v2.59.1 |
 | **105c** ✅ | `ui/panels/` (3/3) sortie (typés) | `display`, `color`, `state`, `external`, `output` | idem + `_test_ui_moteur_jalon41.py`, `_test_sliders_jalon6.py` | v2.59.2 |
 | **106a** ✅ | `core/worker.py` (1/4) squelette | `core/config.py` (`WorkerConfig` typé), `AcquisitionWorker` (mixin VERBATIM, `App` en hérite) | garde-fou | v2.60.0 |
-| **106b** | `core/worker.py` (2/4) boucle | acquisition + reset / re-stack | garde-fou + `_test_restack_jalon16.py`, `_test_restack_compo_jalon20.py`, `_test_reset_empilement_jalon76.py` | v2.60.1 |
+| **106b** ✅ | `core/worker.py` (2/4) boucle | acquisition + reset / re-stack | garde-fou + `_test_restack_jalon16.py`, `_test_restack_compo_jalon20.py`, `_test_reset_empilement_jalon76.py` | v2.60.1 |
 | **106c** | `core/worker.py` (3/4) pilotage | roue / TEC / offset + cadence dossier | `_test_jalon17_filtre.py`, `_test_cadence_jalon42.py`, `_test_pilotage_jalon35.py` | v2.60.2 |
 | **106d** | `core/worker.py` (4/4) mesures | astrométrie + photométrie / SPCC | `_test_photometrie_jalon56.py`, `_test_astro_branchement_jalon56.py`, `_test_spcc_jalon58.py` | v2.60.3 |
 | **107** | `ui/renderer.py` (typé) | rendu affichage + histogrammes + annotations | `_test_histo_jalon75.py`, `_test_zoom_pleine_res_jalon68.py`, `_test_annotations_overlay_jalon96.py` | v2.61.0 |
@@ -402,12 +399,12 @@ garde-fou les utilise s'ils sont présents (skip gracieux sinon) ; ② **CI GitH
 NON retenue** — le garde-fou reste un banc lancé À LA MAIN (interpréteur du venv),
 rejoué à chaque jalon.
 
-**État : JALON 106a LIVRÉ, TESTÉ EN RÉEL (v2.60.0)** — `avastack/core/` (TYPÉ)
-créé : `WorkerConfig` (`config.py`) + `AcquisitionWorker` (mixin, `worker.py`,
-boucle `_worker` VERBATIM) ; surface publique inchangée (75 symboles), pyright 0
-erreur sur 27 fichiers, garde-fou VERT. Prochaine action = **jalon 106b**
-(`core/worker.py` 2/4, boucle). Dernière version **validée en réel** :
-**v2.60.0** (106a) ; dernière **release publiée** :
+**État : JALON 106b LIVRÉ, TESTÉ EN RÉEL (v2.60.1)** — `_worker` découpé en
+`_worker_empiler_frame` / `_worker_reinitialiser` / `_worker_restack` (VERBATIM)
+et SEAM `WorkerConfig` CONSOMMÉ ; surface publique inchangée (75 symboles),
+pyright 0 erreur sur 27 fichiers, garde-fou VERT. Prochaine action = **jalon
+106c** (`core/worker.py` 3/4, pilotage). Dernière version **validée en réel** :
+**v2.60.1** (106b) ; dernière **release publiée** :
 **v2.56.1** ; MSIX Store : **v2.50.0**.
 
 - **JALON PRÉCÉDENT (02/10/2026, jalon 88 — INSTALLATEUR WINDOWS EN PAQUET ZIP,

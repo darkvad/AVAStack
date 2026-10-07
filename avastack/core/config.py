@@ -9,10 +9,10 @@ multi-dossiers) et instantanés thread-safe des réglages caméra (exposition, g
 offset).
 
 Aucun changement de comportement : ce dataclass est la DÉCLARATION typée du
-« seam » qui sera alimenté et consommé à partir du jalon 106b (aujourd'hui la
-boucle lit encore ces valeurs directement sur `self`, pour un résultat
-IDENTIQUE AU BIT). Il documente l'interface du worker et entre dans la liste
-blanche de `pyright`.
+« seam » qui est CONSOMMÉ depuis le jalon 106b — le rejet kappa-sigma
+(`kappa` / `rejet_methode` / `rejet_fenetre`) est lu sur l'instantané dans
+`_worker_empiler_frame`, pour un résultat IDENTIQUE AU BIT. Il documente
+l'interface du worker et figure dans la liste blanche de `pyright`.
 """
 
 from dataclasses import dataclass
@@ -39,9 +39,9 @@ class WorkerConfig:
         """Instantané des paramètres de travail à partir de l'hôte (`App`).
 
         Lecture DIRECTE sur l'instance, tolérante à l'absence (comme partout
-        dans le worker) : appelée par le thread d'acquisition à partir du jalon
-        106b — la boucle lit aujourd'hui ces valeurs sur `self` (même
-        résultat)."""
+        dans le worker) : appelée par le thread d'acquisition depuis le jalon
+        106b (`_worker_empiler_frame`) — même résultat que la lecture directe
+        sur `self`."""
         offset = getattr(app, "pending_offset", 0.0)
         return cls(
             kappa=getattr(app, "kappa", None),

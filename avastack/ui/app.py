@@ -6805,8 +6805,10 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
 
     # Jalon 106a : la boucle du thread d'acquisition (`_worker`) vit
     # désormais dans `avastack/core/worker.py` (mixin `AcquisitionWorker`,
-    # dont `App` hérite — méthode reprise VERBATIM). Les jalons 106b/106c/
-    # 106d la découperont en « boucle » / « pilotage » / « mesures ».
+    # dont `App` hérite — méthode reprise VERBATIM). Jalon 106b : la partie
+    # « boucle » (acquisition + reset / re-stack) est découpée en sous-méthodes
+    # (`_worker_empiler_frame`, `_worker_reinitialiser`, `_worker_restack`).
+    # Les jalons 106c/106d découperont « pilotage » / « mesures ».
 
     def _pousser_rendu(self):
         """Jalon 55 : recalcule le composite/empilement courant (un réglage

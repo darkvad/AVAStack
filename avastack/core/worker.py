@@ -4,10 +4,18 @@
 Extrait de `avastack/ui/app.py` au jalon 106a du chantier de refactoring : la
 méthode `_worker` (boucle du thread d'acquisition) est reprise VERBATIM dans le
 mixin `AcquisitionWorker`, dont `App` HÉRITE — `self` reste l'instance `App`,
-donc le comportement est inchangé AU BIT. Étapes 106b/106c/106d : la boucle sera
-découpée en sous-méthodes « boucle » (acquisition + reset/re-stack), « pilotage »
-(roue/TEC/offset + cadence dossier) et « mesures » (astrométrie/photométrie/
-SPCC), et l'état propre au worker sera rapatrié ici.
+donc le comportement est inchangé AU BIT.
+
+Jalon 106b : `_worker` reste l'ORCHESTRATEUR de la boucle ; ses blocs cohérents
+« acquisition » (traitement d'une brute), « reset » de session et « re-stack »
+sont découpés en sous-méthodes (`_worker_empiler_frame`, `_worker_reinitialiser`,
+`_worker_restack`), reprises VERBATIM. Le SEAM `WorkerConfig` (`config.py`) est
+CONSOMMÉ par le worker : `_worker_empiler_frame` lit `kappa`/`rejet_methode`/
+`rejet_fenetre` sur un instantané `cfg` construit au POINT D'USAGE (aucun ajout
+au chemin de la boucle : comportement identique AU BIT).
+Étapes 106c/106d : « pilotage » (roue/TEC/offset + cadence dossier) et
+« mesures » (astrométrie/photométrie/SPCC) seront à leur tour découpés, et
+l'état propre au worker sera rapatrié ici.
 
 PIÈGE ÉVITÉ : trois globals de `avastack.ui.app` sont MONKEYPATCHÉS par les bancs
 (`ui.ArchiveFrames` ; `ui.RESTACK_MIN_FRAMES`/`ui.RESTACK_CADENCE`) : ils sont
@@ -30,6 +38,7 @@ from ..images import borner_lineaire, save_image
 from ..processing import StarAligner, LiveStacker
 from ..processing import stars as seeing_live
 from ..processing.composition import CompositeStacker, extraire_canal
+from .config import WorkerConfig
 
 
 def _globals_app():
@@ -247,96 +256,11 @@ class AcquisitionWorker:
             # simple côté thread Tk fonctionne) — le worker ne ferme plus
             # jamais la caméra lui-même.)
 
-            # Jalon 26 : « ▶ Démarrer » (empilement_start_request) → RESET
-            # COMPLET de session exécuté ICI (thread de travail) — l'UI ne
-            # touche jamais aux objets vivants du worker. Purge d'abord des
-            # frames restées dans la file du SDK (sessions précédentes /
-            # attente caméra connectée).
-            # v2.41.0 : « Réinitialiser l'empilement » (reset_request) emprunte
-            # EXACTEMENT le même chemin — et il est servi ICI, en TÊTE de
-            # boucle, donc MÊME EMPILEMENT EN PAUSE. Avant, ce drapeau n'était lu
-            # qu'en TRAITANT une frame : cliquer « Réinitialiser » à l'arrêt ne
-            # réinitialisait RIEN (constat d'Alain, 28/09/2026 : « il faudrait
-            # que le bouton réinitialiser réinitialise vraiment ») et la session
-            # suivante repartait sur l'empilement de la cible précédente. Seule
-            # différence entre les deux : « Réinitialiser » ne RELANCE pas
-            # l'empilement (il reste en pause).
-            if self.empilement_start_request or self.reset_request:
-                demarrer = bool(self.empilement_start_request)
-                self.empilement_start_request = self.reset_request = False
-                self.empilement_on = False
-                self.aligner = StarAligner()
-                self.stacker = None
-                self.disp.reset()          # stats d'affichage repartent de zéro
-                self._vl_frames = None     # le 1er empilement relancera le solveur
-                self._rendu_differ = None  # jalon 80 : aucun rendu en attente
-                self.bad_frames, self.fps = 0, 0.0
-                self.floues_rejetees = 0   # jalon 17 : compteur de session
-                self._fwhm_hist = []       # jalon 17 : mesures de session neuve
-                self._fwhm_par_role = {}   # jalon 19 : idem, PAR RÔLE (compo)
-                self.seeing, self.seeing_msg = None, ""   # jalon 10
-                self._seeing_t0 = 0.0      # → dès la 1re frame
-                self.disp.vl_seeing = None   # jalon 12 : PSF de session neuve
-                self.show_stack = None
-                self.last_show = None
-                self._session += 1         # invalide tout traitement externe en vol
-                self._vider_archive()      # jalon 15/16 : archive de session neuve
-                self.restack_request = False
-                self._ref_score = self._ancre_score = None
-                self._ancre_idx = None
-                self._ancre_role = None
-                self._restack_depuis = 0
-                self.restack_info = ""     # jalon 18 : état dédié de session neuve
-                self.restack_couleur = "#888888"
-                self.restack_total = 0
-                self.restack_hist = []
-                # Jalon 56 : astrométrie de session neuve — indices conservés
-                # (ils viennent de l'UI/instantané), WCS oublié.
-                self.suivi_astro.reset()
-                self.astro_info = ""
-                self.astro_couleur = "#888888"
-                self._astro_wcs_secours = None
-                self._astro_aveugles = 0
-                self._astro_dernier_aveugle = 0.0
-                self._astro_fov_essayes = set()
-                self._astro_balayage = None
-                self._astro_source = ""
-                # Jalon 56 (étape 4) : photométrie de session neuve.
-                self.photometrie.reset()  # pyright: ignore[reportOptionalMemberAccess]
-                self.photo_info = ""
-                self.photo_couleur = "#888888"
-                self._photo_essais = 0
-                self._photo_dernier = 0.0
-                self._photo_gains_pose = {}
-                # Jalon 58 : SPCC de session neuve (mêmes raisons).
-                if getattr(self, "spcc", None) is not None:
-                    self.spcc.reset()  # pyright: ignore[reportOptionalMemberAccess]
-                self.spcc_info = ""
-                self.spcc_couleur = "#888888"
-                self._spcc_essais = 0
-                self._spcc_dernier = 0.0
-                self.proc_show = self.proc_full = None
-                self.proc_entete = None           # v2.38.3
-                self.proc_new = False
-                self.save_asseen_request = None   # sauvegarde « tel que vu » annulée
-                self.asseen_busy = False
-                self.asseen_result = None
-                self.ext_request = False
-                self.ext_busy = False
-                self.ext_state = "idle"
-                self.ext_t0 = None
-                self._ext_popup = False
-                self.zoom, self.view_cx, self.view_cy = 1.0, None, None
-                self._last_disp = None
-                self.q = queue.Queue(maxsize=2)
-                if isinstance(self.camera, QHYCamera):
-                    # Purge de la file du SDK UNIQUEMENT pour un flux live
-                    # (les sources « dossier » consommeraient de VRAIES
-                    # frames — jamais jetées).
-                    t_purge = time.monotonic()
-                    while time.monotonic() - t_purge < 0.3:
-                        self.camera.read()
-                self.empilement_on = demarrer   # « Réinitialiser » ne démarre pas
+            # Jalon 106b : remise à zéro de session (boutons « ▶ Démarrer »
+            # et « Réinitialiser l'empilement ») — servie en TÊTE de boucle,
+            # donc MÊME EMPILEMENT EN PAUSE. Corps extrait dans
+            # `_worker_reinitialiser` (repris VERBATIM).
+            self._worker_reinitialiser()
 
             # v2.41.0 : la SOURCE peut avoir été REFERMÉE par l'interface
             # (« Réinitialiser l'empilement » sur une source de fichiers,
@@ -621,161 +545,17 @@ class AcquisitionWorker:
             self._a_lu_une_frame = True   # jalon 42 : une brute vient d'être lue
             self._rafale_reste -= 1       # jalon 46 : budget de rafale consommé
 
-            # Jalon 17 : filtre anti-brutes TRÈS DÉFOCALISÉES — AVANT tout le
-            # reste (une frame rejetée n'est ni archivée ni empilable, donc
-            # jamais ramenée par un re-stack). Rejet d'office, case pour
-            # désactiver (décision d'Alain). La mesure (~15 ms) est presque
-            # rien devant une pose de 120 s. La frame rejetée est comptée,
-            # signalée sur la ligne d'alignement, et le worker respire (au
-            # plus 20 analyses/s) sans empiler ni déclencher de re-calage.
-            verdict = self._filtre_floue(frame, role=role)
-            if verdict:
-                self.floues_rejetees += 1
-                self.align_info = verdict
-                time.sleep(max(0.0, 1.0 / 20.0 - (time.perf_counter() - t0)))
-                continue
-
-            # Jalon 15 : chaque frame calibrée est archivée (dossier temp de
-            # session, garde-fous débit/taille) — matière du futur re-stack
-            # « à la Siril » (recalcul sur une meilleure référence). Aucun
-            # échec d'archivage n'interrompt l'empilement (erreur exposée).
-            # Jalon 19 : extraction du CANAL du rôle (mono → tel quel ; CFA
-            # débayerisé → canal dominant du rôle, CANAUX_CFA). Tout le reste
-            # du flux (référence, alignement, empilement) travaille sur ce
-            # canal 2D — le repère reste COMMUN (aligneur unique, décision
-            # tranchée du 18/09/2026).
-            img_travail = (extraire_canal(frame, role)
-                           if self._mode_compo else frame)
-            if self.stacker is not None \
-                    and self.stacker.shape != img_travail.shape:
-                # changement de géométrie : les frames archivées (autre
-                # taille) ne sont plus ré-empilables → archive neuve
-                self._vider_archive()
-            if self._mode_compo:          # archive PAR RÔLE (re-stack jalon 20)
-                chemin_archive = self.archives.setdefault(
-                    role, _globals_app().ArchiveFrames()).ajouter(frame)
-            else:
-                chemin_archive = self.archive.ajouter(frame)
-            if chemin_archive is not None:
-                if self._mode_compo:
-                    # Jalon 20 : score qualité PAR RÔLE — mesuré sur le CANAL
-                    # EXTRAIT (img_travail, la même image que l'alignement),
-                    # donc comparable d'une couche à l'autre pour choisir la
-                    # meilleure brute TOUS RÔLES confondus.
-                    self._scores_par_role.setdefault(role, []).append(
-                        self._score_frame(img_travail))
-                    self._restack_depuis += 1
-                else:
-                    # Jalon 16 : score qualité (nb d'étoiles détectées, canal
-                    # vert) de chaque brute archivée — matière du choix de
-                    # référence à la Siril (meilleure référence + re-stack).
-                    self._scores.append(self._score_frame(frame))
-                    self._restack_depuis += 1
-
-            # (re)création de l'empilement / nouvelle référence — SEULEMENT
-            # si la frame a passé le filtre jalon 17 (une brute très floue ne
-            # doit jamais devenir la référence d'alignement ni créer
-            # l'empilement — c'est le défaut que le filtre élimine).
-            # Jalon 21 (décision d'Alain) : HOO/SHO — l'ancre initiale est
-            # TOUJOURS une brute Ha. Tant qu'aucune brute Ha n'est arrivée,
-            # les frames des autres rôles (déjà archivées) ne créent PAS
-            # l'empilement ; à la 1re Ha, l'ancre est posée sur elle et les
-            # frames archivées entre-temps sont rejouées (via
-            # _do_restack_compo, exactement comme un re-stack).
-            deja_rejoue = False
-            if (self._mode_compo and self._narrowband_ha()
-                    and self.stacker is None and role != "Ha"):
-                self.align_info = ("en attente d'une brute Ha "
-                                   "(référence d'alignement)…")
-            # v2.41.0 : `reset_request` n'est PLUS lu ici — la remise à zéro
-            # complète est servie en TÊTE de boucle (donc même en pause) ; la
-            # laisser ici la consommerait sans refaire le reste (archive,
-            # compteurs, mesures). Ne reste donc que le vrai changement de
-            # géométrie.
-            elif (self.stacker is None
-                    or self.stacker.shape != img_travail.shape):
-                etait_vide = self.stacker is None
-                if self._mode_compo:       # façade multi-rôles : un stacker
-                    self.stacker = CompositeStacker(   # par rôle, mean() =
-                        self._compo_nom,   # composite (cadre commun)
-                        k=self.kappa, method=self.rejet_methode,
-                        window=self.rejet_fenetre)
-                    # Jalon 19 phase 3 : gains + canal L posés dès la
-                    # création (instantanés tenus à jour par _tick).
-                    self.stacker.gains = dict(self._compo_gains or {})
-                    self.stacker.mode_l = self._compo_mode_l
-                    self.stacker.normalisation_commune = bool(
-                        self._norm_commune)          # v2.36.0 (option)
-                else:
-                    self.stacker = LiveStacker(img_travail.shape, k=self.kappa,
-                                               method=self.rejet_methode,
-                                               window=self.rejet_fenetre)
-                self.stacker.wb_auto = bool(self.var_wb.get())
-                self.stacker.wb_force = float(self.var_wb_force.get())
-                # Jalon 54 : recalage « Linear Fit » posé dès la création —
-                # via l'INSTANTANÉ (le worker n'a jamais le droit de lire
-                # les variables Tk) ; les changements de la case passent
-                # par _on_linear_fit (thread principal).
-                self.stacker.linear_fit = bool(self._fit_actif)
-                self.stacker.linear_fit_mode = self._fit_mode
-                self.aligner.reset()
-                # Jalon 21 : HOO/SHO → TRIANGLES seuls pour toute la session.
-                self.aligner.triangles_seuls = self._narrowband_ha()
-                self._definir_reference(img_travail)
-                self.disp.reset()          # stats d'affichage repartent de zéro
-                # Jalon 21 : 1re brute Ha → ancre + rejeu des frames
-                # archivées entre-temps (les autres rôles arrivés avant).
-                if (etait_vide and self._mode_compo and self._narrowband_ha()
-                        and role == "Ha"
-                        and self.archives.get(role, _globals_app().ArchiveFrames()).n > 0):
-                    idx_ancre = len(self.archives[role].chemins) - 1
-                    self._ancre_role, self._ancre_idx = role, idx_ancre
-                    info = self._do_restack_compo(
-                        f"ancre {role} (démarrage)", ancre_role=role,
-                        ancre_idx=idx_ancre)
-                    if info:
-                        self.align_info = info
-                    deja_rejoue = True
-
-            stack = None
+            # Jalon 106b : traitement complet de la brute calibrée (filtre
+            # défocalisation, archivage, (re)création de l'empilement,
+            # alignement et empilement) — extrait dans
+            # `_worker_empiler_frame`. `sauter` = brute REJETÉE (très
+            # défocalisée) : le tour suivant reprend sans empiler ni pousser
+            # d'image.
             canaux = None
-            if self.stacker is not None and not deja_rejoue:
-                M, ok = self.aligner.compute(img_travail)
-                if ok:
-                    aligned = cv2.warpAffine(img_travail, M,
-                                             (img_travail.shape[1],
-                                              img_travail.shape[0]),
-                                             flags=cv2.INTER_LINEAR)
-                    if self._mode_compo:       # routage vers le stacker du rôle
-                        self.stacker.role_courant = role
-                    self.stacker.add(aligned)
-                    self.stacker.note_alignement(M)   # intersection des zones
-                    last_good = aligned
-                    self._ref_bad = 0
-                else:
-                    self.bad_frames += 1
-                    self._ref_bad += 1
-                    # Jalon 13 : dossier MIXÉ (brutes de plusieurs nuits, p.ex.
-                    # TargetSchedulerSequence de NINA) — si TOUT refuse alors que
-                    # l'empilement est quasi vide (≤ 2 frames), la référence
-                    # (1re frame, autre nuit — ou une ancre faussée) ne convient
-                    # à rien : on la recale sur la frame courante. Sûr : ≤ 2
-                    # frames d'ancien repère dans l'accumulation seront rejetées
-                    # ensuite par la médiane Winsorized (dilution). (Jalon 17 :
-                    # la frame courante a déjà passé le filtre défocalisation.)
-                    if self.stacker.n <= 2 and self._ref_bad >= 3:
-                        self._definir_reference(frame)
-                        self._ref_frames = self._ref_bad = 0
-                self._ref_frames += 1
-                # Jalon 13 : ligne d'état de l'alignement (Δ, θ, méthode ou refus).
-                if ok and self.aligner.dernier:
-                    d = self.aligner.dernier
-                    self.align_info = (f"Δ=({d['dx']:+.1f},{d['dy']:+.1f}) px · "
-                                       f"θ {d['angle']:+.2f}° · {d['methode']}")
-                elif not ok:
-                    self.align_info = "refus (frame non empilée)"
-
-                stack = self.stacker.mean()
+            sauter, last_good, stack = self._worker_empiler_frame(
+                frame, role, last_good, t0)
+            if sauter:
+                continue
 
             # Jalon 13 : rafraîchissement AUTOMATIQUE de la référence — la
             # dérive lente éloigne les frames de la référence initiale et
@@ -798,28 +578,12 @@ class AcquisitionWorker:
                 # décalait silencieusement tout l'empilement de (y0, x0))
                 self._definir_reference(self.stacker.mean(recadre=False))  # pyright: ignore[reportOptionalMemberAccess]
 
-            # Jalon 16 : re-stack sur la MEILLEURE brute archivée (choix de
-            # référence à la Siril) — auto si une brute bat nettement la
-            # référence courante (marge en étoiles), ou sur bouton. Le
-            # recalcul rejoue TOUTES les frames archivées : celles qui
-            # avaient refusé avec l'ancienne référence ont une seconde chance.
-            # Jalon 20 : le re-stack s'applique AUSSI au mode compo — la
-            # meilleure brute, TOUS RÔLES confondus, re-ancre l'aligneur
-            # PARTAGÉ et toutes les couches sont recalculées depuis les
-            # archives PAR RÔLE (chaque couche a ses mauvaises frames).
-            n_arch = (sum(a.n for a in self.archives.values())
-                      if self._mode_compo else self.archive.n)
-            if (self.stacker is not None and (
-                    self.restack_request
-                    or (n_arch >= _globals_app().RESTACK_MIN_FRAMES
-                        and self._restack_depuis >= _globals_app().RESTACK_CADENCE
-                        and self._veut_restack()))):
-                raison = "bouton" if self.restack_request else "auto"
-                self.restack_request = False
-                info = self._do_restack(raison)
-                if info:
-                    self.align_info = info
-                    stack = self.stacker.mean()   # affichage immédiat
+            # Jalon 106b : re-stack « à la Siril » (bouton ou auto) — extrait
+            # dans `_worker_restack` ; renvoie le nouvel empilement pour
+            # l'affichage immédiat quand un re-stack a eu lieu.
+            fait, st_restack = self._worker_restack()
+            if fait:
+                stack = st_restack
 
             # Jalon 56 : astrométrie de l'empilement — APRÈS le re-stack (le
             # WCS doit décrire la grille COURANTE : la propagation vient d'y
@@ -971,3 +735,294 @@ class AcquisitionWorker:
                 self._armer_cadence()
                 self._a_lu_une_frame = False
             time.sleep(max(0.0, 1.0 / 20.0 - (time.perf_counter() - t0)))
+
+    def _worker_reinitialiser(self):
+        """Remise à zéro de session — servie en TÊTE de boucle (jalon 106b).
+
+        Corps repris VERBATIM de `_worker` (commentaire d'origine conservé :
+        jalons 26 et 26b), découpé en sous-méthode par le jalon 106b. Seule
+        différence entre « ▶ Démarrer » et « Réinitialiser » : le second ne
+        RELANCE pas l'empilement (il reste en pause)."""
+        if not (self.empilement_start_request or self.reset_request):
+            return
+        demarrer = bool(self.empilement_start_request)
+        self.empilement_start_request = self.reset_request = False
+        self.empilement_on = False
+        self.aligner = StarAligner()
+        self.stacker = None
+        self.disp.reset()          # stats d'affichage repartent de zéro
+        self._vl_frames = None     # le 1er empilement relancera le solveur
+        self._rendu_differ = None  # jalon 80 : aucun rendu en attente
+        self.bad_frames, self.fps = 0, 0.0
+        self.floues_rejetees = 0   # jalon 17 : compteur de session
+        self._fwhm_hist = []       # jalon 17 : mesures de session neuve
+        self._fwhm_par_role = {}   # jalon 19 : idem, PAR RÔLE (compo)
+        self.seeing, self.seeing_msg = None, ""   # jalon 10
+        self._seeing_t0 = 0.0      # → dès la 1re frame
+        self.disp.vl_seeing = None   # jalon 12 : PSF de session neuve
+        self.show_stack = None
+        self.last_show = None
+        self._session += 1         # invalide tout traitement externe en vol
+        self._vider_archive()      # jalon 15/16 : archive de session neuve
+        self.restack_request = False
+        self._ref_score = self._ancre_score = None
+        self._ancre_idx = None
+        self._ancre_role = None
+        self._restack_depuis = 0
+        self.restack_info = ""     # jalon 18 : état dédié de session neuve
+        self.restack_couleur = "#888888"
+        self.restack_total = 0
+        self.restack_hist = []
+        # Jalon 56 : astrométrie de session neuve — indices conservés
+        # (ils viennent de l'UI/instantané), WCS oublié.
+        self.suivi_astro.reset()
+        self.astro_info = ""
+        self.astro_couleur = "#888888"
+        self._astro_wcs_secours = None
+        self._astro_aveugles = 0
+        self._astro_dernier_aveugle = 0.0
+        self._astro_fov_essayes = set()
+        self._astro_balayage = None
+        self._astro_source = ""
+        # Jalon 56 (étape 4) : photométrie de session neuve.
+        self.photometrie.reset()  # pyright: ignore[reportOptionalMemberAccess]
+        self.photo_info = ""
+        self.photo_couleur = "#888888"
+        self._photo_essais = 0
+        self._photo_dernier = 0.0
+        self._photo_gains_pose = {}
+        # Jalon 58 : SPCC de session neuve (mêmes raisons).
+        if getattr(self, "spcc", None) is not None:
+            self.spcc.reset()  # pyright: ignore[reportOptionalMemberAccess]
+        self.spcc_info = ""
+        self.spcc_couleur = "#888888"
+        self._spcc_essais = 0
+        self._spcc_dernier = 0.0
+        self.proc_show = self.proc_full = None
+        self.proc_entete = None           # v2.38.3
+        self.proc_new = False
+        self.save_asseen_request = None   # sauvegarde « tel que vu » annulée
+        self.asseen_busy = False
+        self.asseen_result = None
+        self.ext_request = False
+        self.ext_busy = False
+        self.ext_state = "idle"
+        self.ext_t0 = None
+        self._ext_popup = False
+        self.zoom, self.view_cx, self.view_cy = 1.0, None, None
+        self._last_disp = None
+        self.q = queue.Queue(maxsize=2)
+        if isinstance(self.camera, QHYCamera):
+            # Purge de la file du SDK UNIQUEMENT pour un flux live
+            # (les sources « dossier » consommeraient de VRAIES
+            # frames — jamais jetées).
+            t_purge = time.monotonic()
+            while time.monotonic() - t_purge < 0.3:
+                self.camera.read()
+        self.empilement_on = demarrer   # « Réinitialiser » ne démarre pas
+
+    def _worker_empiler_frame(self, frame, role, last_good, t0):
+        """Traite une brute CALIBRÉE : filtre défocalisation, archivage,
+        (re)création de l'empilement, alignement et empilement (jalon 106b).
+
+        Corps repris VERBATIM de `_worker`. Consomme le « seam » `WorkerConfig`
+        (bâti ICI, au point d'usage, pour ne rien ajouter au chemin de la
+        boucle) : le rejet kappa-sigma (kappa, méthode, fenêtre) est lu sur
+        l'instantané `cfg` à la création des empileurs — résultat identique AU
+        BIT. Renvoie `(sauter, last_good, stack)` : `sauter` = brute REJETÉE
+        (très défocalisée), le tour suivant reprend sans empiler ; sinon `stack`
+        est la moyenne courante (None si l'alignement a refusé la frame)."""
+        # Jalon 106b : instantané typé des paramètres de travail (seam
+        # `WorkerConfig`) — construit ici seulement, pour laisser le chemin de
+        # la boucle strictement inchangé.
+        cfg = WorkerConfig.depuis(self)
+        # Jalon 17 : filtre anti-brutes TRÈS DÉFOCALISÉES — AVANT tout le
+        # reste (une frame rejetée n'est ni archivée ni empilable, donc
+        # jamais ramenée par un re-stack). Rejet d'office, case pour
+        # désactiver (décision d'Alain). La mesure (~15 ms) est presque
+        # rien devant une pose de 120 s. La frame rejetée est comptée,
+        # signalée sur la ligne d'alignement, et le worker respire (au
+        # plus 20 analyses/s) sans empiler ni déclencher de re-calage.
+        verdict = self._filtre_floue(frame, role=role)
+        if verdict:
+            self.floues_rejetees += 1
+            self.align_info = verdict
+            time.sleep(max(0.0, 1.0 / 20.0 - (time.perf_counter() - t0)))
+            return True, last_good, None
+
+        # Jalon 15 : chaque frame calibrée est archivée (dossier temp de
+        # session, garde-fous débit/taille) — matière du futur re-stack
+        # « à la Siril » (recalcul sur une meilleure référence). Aucun
+        # échec d'archivage n'interrompt l'empilement (erreur exposée).
+        # Jalon 19 : extraction du CANAL du rôle (mono → tel quel ; CFA
+        # débayerisé → canal dominant du rôle, CANAUX_CFA). Tout le reste
+        # du flux (référence, alignement, empilement) travaille sur ce
+        # canal 2D — le repère reste COMMUN (aligneur unique, décision
+        # tranchée du 18/09/2026).
+        img_travail = (extraire_canal(frame, role)
+                       if self._mode_compo else frame)
+        if self.stacker is not None \
+                and self.stacker.shape != img_travail.shape:
+            # changement de géométrie : les frames archivées (autre
+            # taille) ne sont plus ré-empilables → archive neuve
+            self._vider_archive()
+        if self._mode_compo:          # archive PAR RÔLE (re-stack jalon 20)
+            chemin_archive = self.archives.setdefault(
+                role, _globals_app().ArchiveFrames()).ajouter(frame)
+        else:
+            chemin_archive = self.archive.ajouter(frame)
+        if chemin_archive is not None:
+            if self._mode_compo:
+                # Jalon 20 : score qualité PAR RÔLE — mesuré sur le CANAL
+                # EXTRAIT (img_travail, la même image que l'alignement),
+                # donc comparable d'une couche à l'autre pour choisir la
+                # meilleure brute TOUS RÔLES confondus.
+                self._scores_par_role.setdefault(role, []).append(
+                    self._score_frame(img_travail))
+                self._restack_depuis += 1
+            else:
+                # Jalon 16 : score qualité (nb d'étoiles détectées, canal
+                # vert) de chaque brute archivée — matière du choix de
+                # référence à la Siril (meilleure référence + re-stack).
+                self._scores.append(self._score_frame(frame))
+                self._restack_depuis += 1
+
+        # (re)création de l'empilement / nouvelle référence — SEULEMENT
+        # si la frame a passé le filtre jalon 17 (une brute très floue ne
+        # doit jamais devenir la référence d'alignement ni créer
+        # l'empilement — c'est le défaut que le filtre élimine).
+        # Jalon 21 (décision d'Alain) : HOO/SHO — l'ancre initiale est
+        # TOUJOURS une brute Ha. Tant qu'aucune brute Ha n'est arrivée,
+        # les frames des autres rôles (déjà archivées) ne créent PAS
+        # l'empilement ; à la 1re Ha, l'ancre est posée sur elle et les
+        # frames archivées entre-temps sont rejouées (via
+        # _do_restack_compo, exactement comme un re-stack).
+        deja_rejoue = False
+        if (self._mode_compo and self._narrowband_ha()
+                and self.stacker is None and role != "Ha"):
+            self.align_info = ("en attente d'une brute Ha "
+                               "(référence d'alignement)…")
+        # v2.41.0 : `reset_request` n'est PLUS lu ici — la remise à zéro
+        # complète est servie en TÊTE de boucle (donc même en pause) ; la
+        # laisser ici la consommerait sans refaire le reste (archive,
+        # compteurs, mesures). Ne reste donc que le vrai changement de
+        # géométrie.
+        elif (self.stacker is None
+                or self.stacker.shape != img_travail.shape):
+            etait_vide = self.stacker is None
+            # Jalon 106b : `kappa` peut valoir None (« Off ») — les empileurs
+            # l'acceptent À L'EXÉCUTION (bancs et `app.py` l'emploient) mais
+            # pyright lit leurs `k` typés `float` : ignores CIBLÉS sur les 2
+            # appels ci-dessous.
+            if self._mode_compo:       # façade multi-rôles : un stacker
+                self.stacker = CompositeStacker(   # par rôle, mean() =
+                    self._compo_nom,   # composite (cadre commun)
+                    k=cfg.kappa, method=cfg.rejet_methode,  # pyright: ignore[reportArgumentType]
+                    window=cfg.rejet_fenetre)
+                # Jalon 19 phase 3 : gains + canal L posés dès la
+                # création (instantanés tenus à jour par _tick).
+                self.stacker.gains = dict(self._compo_gains or {})
+                self.stacker.mode_l = self._compo_mode_l
+                self.stacker.normalisation_commune = bool(
+                    self._norm_commune)          # v2.36.0 (option)
+            else:
+                self.stacker = LiveStacker(img_travail.shape, k=cfg.kappa,  # pyright: ignore[reportArgumentType]
+                                           method=cfg.rejet_methode,
+                                           window=cfg.rejet_fenetre)
+            self.stacker.wb_auto = bool(self.var_wb.get())
+            self.stacker.wb_force = float(self.var_wb_force.get())
+            # Jalon 54 : recalage « Linear Fit » posé dès la création —
+            # via l'INSTANTANÉ (le worker n'a jamais le droit de lire
+            # les variables Tk) ; les changements de la case passent
+            # par _on_linear_fit (thread principal).
+            self.stacker.linear_fit = bool(self._fit_actif)
+            self.stacker.linear_fit_mode = self._fit_mode
+            self.aligner.reset()
+            # Jalon 21 : HOO/SHO → TRIANGLES seuls pour toute la session.
+            self.aligner.triangles_seuls = self._narrowband_ha()
+            self._definir_reference(img_travail)
+            self.disp.reset()          # stats d'affichage repartent de zéro
+            # Jalon 21 : 1re brute Ha → ancre + rejeu des frames
+            # archivées entre-temps (les autres rôles arrivés avant).
+            if (etait_vide and self._mode_compo and self._narrowband_ha()
+                    and role == "Ha"
+                    and self.archives.get(role, _globals_app().ArchiveFrames()).n > 0):
+                idx_ancre = len(self.archives[role].chemins) - 1
+                self._ancre_role, self._ancre_idx = role, idx_ancre
+                info = self._do_restack_compo(
+                    f"ancre {role} (démarrage)", ancre_role=role,
+                    ancre_idx=idx_ancre)
+                if info:
+                    self.align_info = info
+                deja_rejoue = True
+
+        stack = None
+        if self.stacker is not None and not deja_rejoue:
+            M, ok = self.aligner.compute(img_travail)
+            if ok:
+                aligned = cv2.warpAffine(img_travail, M,
+                                         (img_travail.shape[1],
+                                          img_travail.shape[0]),
+                                         flags=cv2.INTER_LINEAR)
+                if self._mode_compo:       # routage vers le stacker du rôle
+                    self.stacker.role_courant = role
+                self.stacker.add(aligned)
+                self.stacker.note_alignement(M)   # intersection des zones
+                last_good = aligned
+                self._ref_bad = 0
+            else:
+                self.bad_frames += 1
+                self._ref_bad += 1
+                # Jalon 13 : dossier MIXÉ (brutes de plusieurs nuits, p.ex.
+                # TargetSchedulerSequence de NINA) — si TOUT refuse alors que
+                # l'empilement est quasi vide (≤ 2 frames), la référence
+                # (1re frame, autre nuit — ou une ancre faussée) ne convient
+                # à rien : on la recale sur la frame courante. Sûr : ≤ 2
+                # frames d'ancien repère dans l'accumulation seront rejetées
+                # ensuite par la médiane Winsorized (dilution). (Jalon 17 :
+                # la frame courante a déjà passé le filtre défocalisation.)
+                if self.stacker.n <= 2 and self._ref_bad >= 3:
+                    self._definir_reference(frame)
+                    self._ref_frames = self._ref_bad = 0
+            self._ref_frames += 1
+            # Jalon 13 : ligne d'état de l'alignement (Δ, θ, méthode ou refus).
+            if ok and self.aligner.dernier:
+                d = self.aligner.dernier
+                self.align_info = (f"Δ=({d['dx']:+.1f},{d['dy']:+.1f}) px · "
+                                   f"θ {d['angle']:+.2f}° · {d['methode']}")
+            elif not ok:
+                self.align_info = "refus (frame non empilée)"
+
+            stack = self.stacker.mean()
+        return False, last_good, stack
+
+    def _worker_restack(self):
+        """Re-stack sur la meilleure brute archivée — bouton ou AUTO (106b).
+
+        Corps repris VERBATIM de `_worker` (jalons 16 et 20). Renvoie
+        `(fait, stack)` : `fait` True quand un re-stack a eu lieu (bouton
+        consommé) ; `stack` est alors la moyenne recalculée (affichage
+        immédiat), sinon None."""
+        # Jalon 16 : re-stack sur la MEILLEURE brute archivée (choix de
+        # référence à la Siril) — auto si une brute bat nettement la
+        # référence courante (marge en étoiles), ou sur bouton. Le
+        # recalcul rejoue TOUTES les frames archivées : celles qui
+        # avaient refusé avec l'ancienne référence ont une seconde chance.
+        # Jalon 20 : le re-stack s'applique AUSSI au mode compo — la
+        # meilleure brute, TOUS RÔLES confondus, re-ancre l'aligneur
+        # PARTAGÉ et toutes les couches sont recalculées depuis les
+        # archives PAR RÔLE (chaque couche a ses mauvaises frames).
+        n_arch = (sum(a.n for a in self.archives.values())
+                  if self._mode_compo else self.archive.n)
+        if (self.stacker is not None and (
+                self.restack_request
+                or (n_arch >= _globals_app().RESTACK_MIN_FRAMES
+                    and self._restack_depuis >= _globals_app().RESTACK_CADENCE
+                    and self._veut_restack()))):
+            raison = "bouton" if self.restack_request else "auto"
+            self.restack_request = False
+            info = self._do_restack(raison)
+            if info:
+                self.align_info = info
+                return True, self.stacker.mean()   # affichage immédiat
+        return False, None
