@@ -9,7 +9,7 @@ dans le changelog du source et l'historique git.)
 
 ---
 
-## Session du 07/10/2026 — jalon 105c (v2.59.2 — CODE LIVRÉ, BANCS VERTS, TEST RÉEL EN ATTENTE) — `ui/panels/` vague « sortie »
+## Session du 07/10/2026 — jalon 105c (v2.59.2 — LIVRÉ, TESTÉ EN RÉEL) — `ui/panels/` vague « sortie »
 
 ### But du jalon
 Huitième étape du **chantier de refactoring** : extraire de `app.py` la
@@ -58,7 +58,7 @@ comportement. Dernière vague de `ui/panels/` (3/3).
   `_test_annotations_overlay_jalon96.py`.
 - `ruff` sur `panels/` + `app.py` : **seuls les 2 avertissements PRÉEXISTANTS**
   d'`app.py` (`tracer_evt`, `i_etape`).
-- **TEST RÉEL D'ALAIN : EN ATTENTE** (v2.59.2).
+- **TEST RÉEL D'ALAIN : OK** (v2.59.2, 07/10/2026).
 
 ### Prochaine étape du chantier
 **Jalon 106a** — `core/worker.py` (1/4, squelette) : `core/config.py`
@@ -262,13 +262,13 @@ quatre paquets + `INSTALLATION.md`.
 
 ## Prochaine étape
 
-**JALON 105c — CODE LIVRÉ, BANCS VERTS (v2.59.2, 07/10/2026),
-TEST RÉEL D'ALAIN EN ATTENTE** : `avastack/ui/panels/` (TYPÉ) — vague
-« sortie » (affichage, couleur de l'objet, état des calculs, traitement
-externe, sortie) extraite de `app.py` sous forme de mixins ; **surface publique
-INCHANGÉE (75 symboles)**, **pyright 0 erreur sur 25 fichiers**, **banc
-garde-fou VERT**, bancs rejoués verts, **aucun changement de comportement**.
-Aucun de ces 5 panneaux ne lit `CONFIG` (pas de résolution tardive requise).
+**JALON 105c LIVRÉ, TESTÉ EN RÉEL (v2.59.2, 07/10/2026)** : `avastack/ui/panels/`
+(TYPÉ) — vague « sortie » (affichage, couleur de l'objet, état des calculs,
+traitement externe, sortie) extraite de `app.py` sous forme de mixins ;
+**surface publique INCHANGÉE (75 symboles)**, **pyright 0 erreur sur 25
+fichiers**, **banc garde-fou VERT**, bancs rejoués verts, **aucun changement de
+comportement**. Aucun de ces 5 panneaux ne lit `CONFIG` (pas de résolution
+tardive requise). **`ui/panels/` est TERMINÉ (3/3).**
 
 **Prochaine action = jalon 106a** (`core/worker.py` 1/4, squelette :
 `core/config.py` `WorkerConfig` typé, `AcquisitionWorker` délégué).
@@ -276,10 +276,10 @@ Aucun de ces 5 panneaux ne lit `CONFIG` (pas de résolution tardive requise).
 **Reste à faire à ton initiative, sans urgence** : le test « **installer depuis
 le Microsoft Store** » (seul test qui n'existe que par cette voie).
 
-**ÉTAT (07/10/2026)** : le chantier de refactoring (jalons 100 → 105c) est
-**COMMITÉ et POUSSÉ** sur `origin/master`, **arbre propre**. Dernière version
-**validée en réel** = **v2.59.1** (la v2.59.2 — jalon 105c — attend le TEST RÉEL
-d'Alain) ; dernière **release GitHub publique** = **v2.56.1**
+**ÉTAT DE FIN DE SESSION (07/10/2026)** : le chantier de refactoring (jalons
+100 → 105c) est **COMMITÉ et POUSSÉ** sur `origin/master`, **arbre propre**.
+Dernière version **validée en réel** = **v2.59.2** (jalon 105c testé et validé
+par Alain, 07/10/2026) ; dernière **release GitHub publique** = **v2.56.1**
 (https://github.com/darkvad/AVAStack/releases/tag/v2.56.1) ; MSIX publié sur le
 Store = **v2.50.0** (les jalons 100-105c ne sont PAS des releases : aucun paquet
 construit).
@@ -348,13 +348,13 @@ garde-fou les utilise s'ils sont présents (skip gracieux sinon) ; ② **CI GitH
 NON retenue** — le garde-fou reste un banc lancé À LA MAIN (interpréteur du venv),
 rejoué à chaque jalon.
 
-**État : JALON 105c — CODE LIVRÉ, BANCS VERTS (v2.59.2)** (`ui/panels/` TYPÉ,
-vague « sortie » extraite de `app.py` : affichage, couleur de l'objet, état des
-calculs, traitement externe, sortie ; surface publique inchangée, pyright 0
-erreur sur 25 fichiers ; banc garde-fou VERT). **TEST RÉEL D'ALAIN EN ATTENTE.**
-Prochaine action = **jalon 106a** (`core/worker.py` squelette). Dernière version
-**validée en réel** : **v2.59.1** ; dernière **release publiée** :
-**v2.56.1** ; MSIX Store : **v2.50.0**.
+**État : JALON 105c LIVRÉ, TESTÉ EN RÉEL (v2.59.2)** — `ui/panels/` TERMINÉ
+(3/3) : vague « sortie » extraite de `app.py` (affichage, couleur de l'objet,
+état des calculs, traitement externe, sortie ; surface publique inchangée,
+pyright 0 erreur sur 25 fichiers ; banc garde-fou VERT). Prochaine action =
+**jalon 106a** (`core/worker.py` squelette). Dernière version **validée en
+réel** : **v2.59.2** ; dernière **release publiée** : **v2.56.1** ; MSIX Store :
+**v2.50.0**.
 
 - **JALON PRÉCÉDENT (02/10/2026, jalon 88 — INSTALLATEUR WINDOWS EN PAQUET ZIP,
   CODE ÉCRIT, BANC VERT, EN ATTENTE DU TEST RÉEL).**
