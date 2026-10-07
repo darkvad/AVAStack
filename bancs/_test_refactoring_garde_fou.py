@@ -109,6 +109,8 @@ HASH_KAPPA_RGB = "a4ece0a2eb47a24dfd603071a18e5b1a9f590e818a5022c369a2475a456568
 #   - Jalon 101 : la FONDATION (compat/config/delais/journal/ressources/
 #     travail/siril_ini) — pyright 0 erreur.
 #   - Jalon 102 : le premier module de l'UI extrait, `ui/constants.py`.
+#   - Jalon 103 : les widgets de l'UI extraits, `ui/widgets/collapsible.py` et
+#     `ui/widgets/histogram.py` (mixins dont `App` hérite).
 #   - Jalons suivants : chaque module NOUVEAU (extrait de `app.py`) y entre dès
 #     sa création.
 FICHIERS_TYPES = (
@@ -120,6 +122,8 @@ FICHIERS_TYPES = (
     "avastack/travail.py",
     "avastack/siril_ini.py",
     "avastack/ui/constants.py",
+    "avastack/ui/widgets/collapsible.py",
+    "avastack/ui/widgets/histogram.py",
 )
 
 

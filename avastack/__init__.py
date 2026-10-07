@@ -17,9 +17,28 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.58.0"
+AVASTACK_VERSION = "2.58.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.58.1 : CHANTIER DE REFACTORING — `ui/widgets/` (jalon 103)
+#   - DEUX modules de l'UI extraits de `app.py` (TYPÉS), sous forme de « mixins »
+#     dont `App` HÉRITE — méthodes reprises VERBATIM (`self` reste l'instance
+#     `App`), donc AUCUN changement de comportement : le rendu est identique AU
+#     BIT.
+#       · `avastack/ui/widgets/collapsible.py` — `SectionsPliables` :
+#         `_creer_section_pliable` (sections pliables persistées, jalons 95/98/99).
+#       · `avastack/ui/widgets/histogram.py` — `PanneauHistogramme` : tracé et
+#         gestes de l'histogramme, étage de niveaux (barres Noir/Médian/Blanc,
+#         gel/reprise de l'auto) et saturation par couleur R/V/B (jalon 75).
+#   - `App` hérite des deux mixins (`class App(SectionsPliables,
+#     PanneauHistogramme)`) : `App.<méthode>` et `self.<méthode>` restent valides
+#     (les bancs qui font `App._hist_canaux(...)`, `App._maj_histogrammes = …` ou
+#     `app._draw_hist()` fonctionnent à l'identique).
+#   - SURFACE PUBLIQUE de `app.py` INCHANGÉE (75 symboles, vérifiée par le banc
+#     garde-fou). `pyright` (mode `basic`) : 0 ERREUR sur les 10 fichiers typés.
+#   - Vérifications : banc garde-fou VERT + `_test_histo_jalon75.py`,
+#     `_test_dialogues_jalon84.py`, `_test_ui_visibilite_jalon47.py` rejoués verts.
+#
 # v2.58.0 : CHANTIER DE REFACTORING — `ui/constants.py` (jalon 102)
 #   - PREMIER module de l'UI EXTRAIT de `app.py` : `avastack/ui/constants.py`
 #     (TYPÉ) regroupe toutes les CONSTANTES de l'interface — seuils, palettes,
