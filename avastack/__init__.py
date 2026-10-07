@@ -11,15 +11,44 @@ AVAStack.py) :
   avastack.images       — E/S image, débayerisation, utilitaires outils externes
   avastack.cameras      — sources d'images (simulée, dossier, OpenCV, ZWO)
   avastack.processing   — calibration, alignement, empilement, affichage
+  avastack.core         — worker d'acquisition (mixin) + config (WorkerConfig)
   avastack.external     — détection + enchaînement des outils CLI (GraXpert/BXT)
   avastack.ui           — interface Tkinter
 Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.59.2"
+AVASTACK_VERSION = "2.60.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.60.0 : CHANTIER DE REFACTORING — `core/worker.py` (jalon 106a, squelette)
+#   - Nouveau paquet TYPÉ `avastack/core/` : `config.py` (`WorkerConfig`,
+#     dataclass gelé des paramètres du worker : rejet kappa-sigma, cadence de
+#     lecture, instantanés expo/gain/offset) et `worker.py` (mixin
+#     `AcquisitionWorker` dont `App` HÉRITE).
+#   - La BOUCLE du thread d'acquisition (`_worker`, 782 lignes) quitte `app.py`
+#     pour `avastack/core/worker.py`, reprise VERBATIM (`self` reste l'instance
+#     `App`) : comportement inchangé AU BIT. `app.py` : 8 473 → 7 703 lignes.
+#   - PIÈGE D'ISOLATION : `ArchiveFrames`, `RESTACK_MIN_FRAMES` et
+#     `RESTACK_CADENCE` sont MONKEYPATCHÉS par les bancs (via `ui.<nom>`) → lus
+#     par RÉSOLUTION TARDIVE (`_globals_app()`), comme `ui/widgets/collapsible.py`
+#     et `ui/panels/stack.py` : l'interception des bancs reste EFFECTIVE.
+#   - `_worker` s'appuie sur des GARDES D'EXÉCUTION que `pyright` ne voit pas
+#     (garde sur variable locale `stack`, `isinstance(self.camera, QHYCamera)`
+#     qui narrow un attribut `Any`) : ignores `# pyright: ignore[...]` CIBLÉS sur
+#     les 17 accès concernés (motif du jalon 103, `collapsible.py`).
+#   - Vérifications : surface publique INCHANGÉE (75 symboles) ; garde-fou VERT
+#     (pyright 0 erreur sur 27 fichiers typés, hash au bit) ; bancs du worker
+#     rejoués verts — `_test_reset_empilement_jalon76.py`,
+#     `_test_restack_jalon16.py`, `_test_restack_compo_jalon20.py`,
+#     `_test_restack_visu_jalon18.py`, `_test_compo_worker_jalon19.py`,
+#     `_test_narrowband_ha_jalon21.py`, `_test_cadence_jalon42.py`,
+#     `_test_jalon17_filtre.py`, `_test_astro_branchement_jalon56.py`,
+#     `_test_save_asseen_jalon5.py`, `_test_ui_jalon5.py`,
+#     `_test_config_jalon6.py`, `_test_ui_robuste_jalon87.py`,
+#     `_test_ui_visibilite_jalon47.py`. Étapes suivantes (106b/106c/106d) :
+#     découpage de la boucle en « boucle » / « pilotage » / « mesures ».
+#
 # v2.59.2 : CHANTIER DE REFACTORING — `ui/panels/` (jalon 105c, vague « sortie »)
 #   - Cinq modules NEUFS (TYPÉS) dans `avastack/ui/panels/` : la TROISIÈME vague
 #     d'extraction de la COLONNE GAUCHE, sous forme de mixins dont `App` HÉRITE

@@ -149,6 +149,11 @@ FICHIERS_TYPES = (
     "avastack/ui/panels/state.py",
     "avastack/ui/panels/external.py",
     "avastack/ui/panels/output.py",
+    # Jalon 106a (chantier de refactoring) : le paquet `core/` — `WorkerConfig`
+    # (`config.py`) et le THREAD D'ACQUISITION (`worker.py`, mixin
+    # `AcquisitionWorker` dont `App` hérite).
+    "avastack/core/config.py",
+    "avastack/core/worker.py",
 )
 
 
