@@ -154,6 +154,9 @@ FICHIERS_TYPES = (
     # `AcquisitionWorker` dont `App` hérite).
     "avastack/core/config.py",
     "avastack/core/worker.py",
+    # Jalon 107 (chantier de refactoring) : le RENDU D'AFFICHAGE et l'ANNOTATION
+    # extraits de `app.py` — `ui/renderer.py` (mixin `Renderer` dont `App` hérite).
+    "avastack/ui/renderer.py",
 )
 
 

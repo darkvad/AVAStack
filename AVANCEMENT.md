@@ -9,55 +9,85 @@ dans le changelog du source et l'historique git.)
 
 ---
 
-## Session du 07/10/2026 — jalon 106d (v2.60.3 — LIVRÉ, TESTÉ EN RÉEL, COMMITÉ/POUSSÉ) — `core/worker.py` (4/4, mesures)
+## Session du 07/10/2026 — jalon 107 (v2.61.0 — LIVRÉ, TESTÉ EN RÉEL, COMMITÉ/POUSSÉ) — `ui/renderer.py` (rendu + annotation)
 
 ### But du jalon
-Douzième étape du **chantier de refactoring** et DERNIÈRE du worker : rapatrier
-les « **mesures** » (astrométrie + photométrie / SPCC) de `ui/app.py` vers
-`core/worker.py` (mixin `AcquisitionWorker`), en méthodes de CALCUL TYPÉES
-reprises **VERBATIM**, SANS aucun changement de comportement. Dernière des quatre
-étapes du worker (106a squelette → 106b boucle → 106c pilotage → **106d mesures**).
+Treizième étape du **chantier de refactoring** : extraire de `ui/app.py` le
+**rendu d'affichage à l'écran ET l'annotation** — tout ce qui DESSINE sur le
+Canvas d'image `cv_img` — vers `avastack/ui/renderer.py` (module TYPÉ, mixin
+`Renderer` dont `App` HÉRITE), en méthodes reprises **VERBATIM**, SANS aucun
+changement de comportement (rendu identique AU BIT). Le worker était la DERNIÈRE
+étape de `core/` (106a→d) ; ici commence la chaîne d'affichage
+(`ui/renderer.py` → `ui/saver.py` → typage rétroactif, jalons 107→110).
 
-### Livré (v2.60.3)
-- `core/worker.py` — **huit méthodes de CALCUL** déplacées VERBATIM depuis
-  `app.py` : `_astro_tour`, `_astro_aveugle`, `_photo_tour`, `_photo_canaux`,
-  `_source_rgb` (static), `_spcc_tour`, `_astro_indices_entete`,
-  `_astro_propager_restack` ; plus la sous-méthode **`_worker_mesures`** (le bloc
-  d'appel de `_worker` — astrométrie → photométrie → SPCC —, servi APRÈS le
-  re-stack et AVANT la construction de l'état poussé à l'UI).
-- Imports ajoutés (`astro_mod` / `photo_mod` / `spcc_mod`) ; déclarations d'hôtes
-  `Any` complétées (`_astro_actif`, `_astro_bases`, `_astro_champ_seul`,
-  `_astro_indices`, `_astro_msg_indices`, `_photo_actif`, `_spcc_dispo`, +
-  méthodes `_maj_astro_etat` / `_maj_photo_etat` / `_maj_spcc_etat` /
-  `_maj_spcc_vue` / `_spcc_osc` / `_spcc_profils`) ; `Any` de `_astro_tour`,
-  `_photo_tour`, `_source_rgb`, `_spcc_tour` retirés (devenus méthodes réelles).
-- **FRONTIÈRE « mesures » / « affichage » (décision)** : l'AFFICHAGE reste dans
-  `ui/app.py` — `_maj_astro_etat` / `_maj_photo_etat` (état montré + dialogue du
-  nom de cible), `_maj_*_vue`, `_demander_nom_cible`,
-  `_mettre_a_jour_nom_depuis_fits`, profils SPCC (`_spcc_osc` / `_spcc_profils`),
-  et les helpers d'en-tête FITS de sortie (`_entete_reglages`, `_entete_externe`,
-  `_astro_entete_sauvegarde`) — ces derniers relèvent du **jalon 108**
-  (`saver.py`). Le worker MESURE, l'interface montre.
-- Pointeurs mis à jour : changelog (`avastack/__init__.py`, **v2.60.3**),
-  docstrings de `core/worker.py` (module), `core/__init__.py`, `core/config.py`,
-  commentaire-pointeur de `app.py`.
+### Livré (v2.61.0)
+- **`avastack/ui/renderer.py`** — module NEUF (TYPÉ), mixin **`Renderer`** :
+  - **sélection de source** : `_src_pleine_res`, `_src_rendu`,
+    `_pleine_res_activee`, `_on_vl_pleine_res` ;
+  - **chaîne d'affichage UNIQUE** (jalon 75) : `_rendre_et_afficher`,
+    `_refresh_preview` ;
+  - **dessin + gestes du Canvas** : `_show_image`, `_render`, `_on_wheel_zoom`,
+    `_zoom_at`, `_on_img_press` / `_on_img_drag` / `_on_img_release` /
+    `_on_img_dblclick`, `_vider_ecran` ;
+  - **annotation temps-réel** (jalon 96) : `_seuil_mag`, `_on_annoter`,
+    `_forme_pleine`, `_wcs_affichage`, `_donnees_annotation`, `_annoter_image`,
+    `_sauver_png_annote`.
+- `ui/app.py` : `App` hérite de `_Renderer` (import + entrée de classes de base) ;
+  chaque méthode extraite est remplacée par un **commentaire-pointeur**.
+  L'HISTOGRAMME (tracé 2 bandes + barres de niveaux) était DÉJÀ extrait au jalon
+  103 (`ui/widgets/histogram.py`) : `_maj_histogrammes` y reste, appelé par la
+  chaîne d'affichage.
+- **PIÈGE D'ISOLATION** : l'annotation LIT/ÉCRIT `CONFIG` (seuil de magnitude,
+  cases « annoter… ») et appelle `sauver_config` ; les bancs les interceptent via
+  `ui.CONFIG` / `ui.sauver_config` → ces globals sont résolus **TARDIVEMENT**
+  (`_globals_app()`, motif des jalons 104/105a). `cat_mod` / `photo_mod` sont au
+  contraire mutés EN PLACE par les bancs → import direct conservé.
+- **Typage** : `_donnees_annotation` (→ `tuple[Any, Any]`) et `_annoter_image`
+  (→ `Any`) sont annotées ; 2 ignores CIBLÉS
+  `# pyright: ignore[reportArgumentType]` sur les appels `generer_image_annotee`
+  (`objets` / `etoiles` peuvent être None SÉPARÉMENT, le paramètre est typé trop
+  étroit — motif du chantier).
+- Pointeurs : changelog (`avastack/__init__.py`, **v2.61.0**), docstring de
+  `renderer.py`, liste blanche du garde-fou (+ `ui/renderer.py`, **28 fichiers**).
 
 ### Vérifications
 - Garde-fou `_test_refactoring_garde_fou.py` : **TOUT AU VERT** (surface **75**,
-  hash au bit, **pyright 0/27**).
-- `ruff avastack/core/` : **All checks passed**.
-- Bancs rejoués verts (07/10/2026) : `_test_photometrie_jalon56.py`,
-  `_test_astro_branchement_jalon56.py`, `_test_spcc_jalon58.py`,
-  `_test_spcc_osc.py`, `_test_reset_empilement_jalon76.py`,
-  `_test_jalon17_filtre.py`, `_test_save_brute_jalon59.py`,
-  `_test_bxt_entete_jalon69.py`, `_test_norm_commune_jalon61.py`.
-- **TEST RÉEL D'ALAIN : OK** (v2.60.3, 07/10/2026) — l'application se comporte
-  comme en v2.60.2 (détection caméra, empilement).
+  hash au bit, **pyright 0/28**).
+- `ruff` : `avastack/ui/renderer.py` **All checks passed** ; `avastack/ui/app.py`
+  aux **seuls 2 avertissements PRÉEXISTANTS** (`tracer_evt`, `i_etape`). `app.py`
+  a perdu l'import `PIL` (`Image`/`ImageTk`, plus employés) et `annoter_mod` y
+  reste en **ré-export** (`# noqa: F401`) pour garder la surface à 75 symboles.
+- Bancs rejoués verts (07/10/2026) : `_test_histo_jalon75.py`,
+  `_test_zoom_pleine_res_jalon68.py`, `_test_pleine_res_traitee_jalon69.py`,
+  `_test_annotations_overlay_jalon96.py`, `_test_annotations_save_jalon96.py`,
+  `_test_perf_reactivite_jalon79.py`, `_test_ui_robuste_v2_48_3.py`,
+  `_test_reset_empilement_jalon76.py`. ⚠ lancer ces bancs SÉQUENTIELLEMENT
+  (`_test_reset_empilement_jalon76.py` a une course connue avec le worker quand
+  plusieurs bancs Tk tournent en parallèle).
+- **TEST RÉEL D'ALAIN : OK** (v2.61.0, 07/10/2026) — application fonctionnelle. Le
+  ressenti « barres d'histogramme moins réactives » venait du **plein écran +
+  annotations cochées** (l'overlay est recalculé à chaque geste), **sans lien**
+  avec le jalon : les méthodes du chemin de rendu sont identiques AU CARACTÈRE
+  PRÈS à la v2.60.3, et le coût d'un geste mesuré est identique (49-57 ms contre
+  53-69 ms — bruit de mesure).
 
 ### Prochaine étape du chantier
-**Jalon 107** — `ui/renderer.py` (typé) : rendu d'affichage + histogrammes +
-annotations ; bancs `_test_histo_jalon75.py`, `_test_zoom_pleine_res_jalon68.py`,
-`_test_annotations_overlay_jalon96.py` (v2.61.0). Le worker est TERMINÉ (4/4).
+**Jalon 108** — `ui/saver.py` + `ui/external_runner.py` (typés) : sauvegardes +
+traitement externe ; bancs `_test_save_*`, `_test_graxpert_live_jalon4.py`,
+`_test_bxt_entete_jalon69.py` (v2.61.1).
+
+---
+
+## HISTORIQUE (07/10/2026, jalon 106d, v2.60.3 — LIVRÉ, TESTÉ EN RÉEL, COMMITÉ/POUSSÉ) — `core/worker.py` (4/4, mesures)
+
+Huit méthodes de CALCUL VERBATIM (astrométrie + photométrie / SPCC) rapatriées de
+`app.py` vers le mixin `AcquisitionWorker` : `_astro_tour`, `_astro_aveugle`,
+`_photo_tour`, `_photo_canaux`, `_source_rgb`, `_spcc_tour`,
+`_astro_indices_entete`, `_astro_propager_restack` + sous-méthode
+`_worker_mesures` (servie APRÈS le re-stack, AVANT l'état poussé à l'UI).
+L'AFFICHAGE des mesures reste dans `app.py` (`_maj_*_etat` / `_maj_*_vue`).
+Surface 75, pyright 0/27, garde-fou VERT ; bancs 56/58/osc/76/17/59/69/61 verts ;
+**TEST RÉEL OK** (v2.60.3).
 
 ---
 

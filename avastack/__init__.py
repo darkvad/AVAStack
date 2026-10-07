@@ -18,9 +18,35 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.60.3"
+AVASTACK_VERSION = "2.61.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.61.0 : CHANTIER DE REFACTORING — `ui/renderer.py` (jalon 107, rendu + annotation)
+#   - Module NEUF (TYPÉ) `avastack/ui/renderer.py` (mixin `Renderer`, dont `App`
+#     HÉRITE) : tout ce qui DESSINE sur le Canvas d'image `cv_img` quitte
+#     `app.py`, repris VERBATIM (comportement inchangé AU BIT) — la SÉLECTION DE
+#     SOURCE (`_src_pleine_res`, `_src_rendu`, `_pleine_res_activee`,
+#     `_on_vl_pleine_res`), la CHAÎNE D'AFFICHAGE UNIQUE (`_rendre_et_afficher`,
+#     `_refresh_preview`), le DESSIN et les GESTES du Canvas (`_show_image`,
+#     `_render`, zoom / pan, `_vider_ecran`) et l'ANNOTATION temps-réel du
+#     jalon 96 (`_seuil_mag`, `_on_annoter`, `_forme_pleine`, `_wcs_affichage`,
+#     `_donnees_annotation`, `_annoter_image`, `_sauver_png_annote`).
+#   - PIÈGE D'ISOLATION : l'annotation LIT/ÉCRIT `CONFIG` (seuil de magnitude,
+#     cases « annoter… ») et appelle `sauver_config` ; les bancs les interceptent
+#     via `ui.CONFIG` / `ui.sauver_config` → ces globals sont résolus TARDIVEMENT
+#     (`_globals_app()`, motif des jalons 104/105a) : l'interception reste
+#     EFFECTIVE et le vrai config.json n'est jamais écrit pendant un test.
+#   - `app.py` : `Image` / `ImageTk` (Pillow) RETIRÉS (plus employés depuis que
+#     `_render` a migré) ; `annoter_mod` conservé en RÉ-EXPORT (`# noqa: F401`),
+#     la surface publique reste INCHANGÉE (75 symboles, banc garde-fou).
+#   - Vérifications : garde-fou VERT (surface 75, hash au bit, pyright 0 erreur
+#     sur 28 fichiers typés) ; `ruff` : `renderer.py` PROPRE, `app.py` aux
+#     2 avertissements PRÉEXISTANTS (`tracer_evt`, `i_etape`) ; bancs rejoués
+#     verts —
+#     `_test_histo_jalon75.py`, `_test_zoom_pleine_res_jalon68.py`,
+#     `_test_pleine_res_traitee_jalon69.py`, `_test_annotations_overlay_jalon96.py`,
+#     `_test_annotations_save_jalon96.py`.
+#
 # v2.60.3 : CHANTIER DE REFACTORING — `core/worker.py` (jalon 106d, mesures)
 #   - Les MESURES (astrométrie + photométrie / SPCC) rejoignent le mixin : les
 #     méthodes de CALCUL reprises VERBATIM de `ui/app.py` — `_astro_tour`,
