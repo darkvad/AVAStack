@@ -15,7 +15,8 @@ Aucun changement de comportement : ce dataclass est la DÉCLARATION typée du
 (découpage « pilotage ») n'ajoute AUCUNE lecture sur le chemin de la boucle :
 `cadence_lecture` reste lu DIRECTEMENT par le worker (leçon du 106b). Le
 dataclass documente l'interface du worker et figure dans la liste blanche de
-`pyright`.
+`pyright`. Le jalon 106d (mesures) n'y touche pas : les bornes astro / photo /
+SPCC restent lues via leurs modules (`astro_mod` / `photo_mod` / `spcc_mod`).
 """
 
 from dataclasses import dataclass

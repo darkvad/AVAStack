@@ -9,51 +9,67 @@ dans le changelog du source et l'historique git.)
 
 ---
 
-## Session du 07/10/2026 — jalon 106c (v2.60.2 — LIVRÉ, TESTÉ EN RÉEL) — `core/worker.py` (3/4, pilotage)
+## Session du 07/10/2026 — jalon 106d (v2.60.3 — LIVRÉ, TESTÉ EN RÉEL, COMMITÉ/POUSSÉ) — `core/worker.py` (4/4, mesures)
 
 ### But du jalon
-Onzième étape du **chantier de refactoring** : découper les deux blocs de
-« **pilotage** » de la boucle du thread d'acquisition (`_worker`, dans
-`core/worker.py`) en sous-méthodes TYPÉES VERBATIM, SANS aucun changement de
-comportement. Troisième des quatre étapes du worker (106a squelette → 106b
-boucle → **106c pilotage** → 106d mesures).
+Douzième étape du **chantier de refactoring** et DERNIÈRE du worker : rapatrier
+les « **mesures** » (astrométrie + photométrie / SPCC) de `ui/app.py` vers
+`core/worker.py` (mixin `AcquisitionWorker`), en méthodes de CALCUL TYPÉES
+reprises **VERBATIM**, SANS aucun changement de comportement. Dernière des quatre
+étapes du worker (106a squelette → 106b boucle → 106c pilotage → **106d mesures**).
 
-### Livré (v2.60.2)
-- `core/worker.py` — deux sous-méthodes extraites **VERBATIM** (retrait
-  d'indentation 12→8) :
-  - **`_worker_pilotage`** : sondage des contrôles à la connexion, demandes
-    filtre / refroidissement (`_appliquer_filtre_demande` /
-    `_appliquer_demande_tec`), relecture périodique du TEC (2 s), réglages
-    expo/gain (`pending_settings`) et OFFSET (`pending_offset`). Servi en
-    **TÊTE de boucle**, MÊME EMPILEMENT EN PAUSE (règle du jalon 26) ;
-  - **`_worker_cadence_dossier`** : pause sur une source FICHIERS (le bloc
-    historique qui portait `continue`) + scan périodique de la cadence
-    (`_cadence_dossier`). **Renvoie `True`** quand le tour doit se TERMINER
-    sans rien lire → l'appelant fait `continue`.
-- **Seam `WorkerConfig` NON consommé sur ce chemin** (décision) : le bloc
-  pilotage vit en TÊTE de boucle et le bloc cadence tourne à CHAQUE tour ; or
-  la **leçon du 106b** est qu'AUCUN code ne doit être ajouté sur le chemin de
-  la boucle (un instantané en tête de tour décalait la course du banc 76).
-  `rejet_*` reste consommé par `_worker_empiler_frame` ; `cadence_lecture` reste
-  lu DIRECTEMENT. Conséquence : profil temporel du worker **identique**.
-- Pointeurs mis à jour : changelog (`avastack/__init__.py`, **v2.60.2**),
-  docstrings de `core/worker.py`, `core/config.py`, `core/__init__.py`,
+### Livré (v2.60.3)
+- `core/worker.py` — **huit méthodes de CALCUL** déplacées VERBATIM depuis
+  `app.py` : `_astro_tour`, `_astro_aveugle`, `_photo_tour`, `_photo_canaux`,
+  `_source_rgb` (static), `_spcc_tour`, `_astro_indices_entete`,
+  `_astro_propager_restack` ; plus la sous-méthode **`_worker_mesures`** (le bloc
+  d'appel de `_worker` — astrométrie → photométrie → SPCC —, servi APRÈS le
+  re-stack et AVANT la construction de l'état poussé à l'UI).
+- Imports ajoutés (`astro_mod` / `photo_mod` / `spcc_mod`) ; déclarations d'hôtes
+  `Any` complétées (`_astro_actif`, `_astro_bases`, `_astro_champ_seul`,
+  `_astro_indices`, `_astro_msg_indices`, `_photo_actif`, `_spcc_dispo`, +
+  méthodes `_maj_astro_etat` / `_maj_photo_etat` / `_maj_spcc_etat` /
+  `_maj_spcc_vue` / `_spcc_osc` / `_spcc_profils`) ; `Any` de `_astro_tour`,
+  `_photo_tour`, `_source_rgb`, `_spcc_tour` retirés (devenus méthodes réelles).
+- **FRONTIÈRE « mesures » / « affichage » (décision)** : l'AFFICHAGE reste dans
+  `ui/app.py` — `_maj_astro_etat` / `_maj_photo_etat` (état montré + dialogue du
+  nom de cible), `_maj_*_vue`, `_demander_nom_cible`,
+  `_mettre_a_jour_nom_depuis_fits`, profils SPCC (`_spcc_osc` / `_spcc_profils`),
+  et les helpers d'en-tête FITS de sortie (`_entete_reglages`, `_entete_externe`,
+  `_astro_entete_sauvegarde`) — ces derniers relèvent du **jalon 108**
+  (`saver.py`). Le worker MESURE, l'interface montre.
+- Pointeurs mis à jour : changelog (`avastack/__init__.py`, **v2.60.3**),
+  docstrings de `core/worker.py` (module), `core/__init__.py`, `core/config.py`,
   commentaire-pointeur de `app.py`.
 
 ### Vérifications
 - Garde-fou `_test_refactoring_garde_fou.py` : **TOUT AU VERT** (surface **75**,
   hash au bit, **pyright 0/27**).
 - `ruff avastack/core/` : **All checks passed**.
-- Bancs rejoués verts : `_test_jalon17_filtre.py` (exerce vraiment la boucle),
-  `_test_cadence_jalon42.py`, `_test_pilotage_jalon35.py`,
-  `_test_reset_empilement_jalon76.py` (rejoué **4×** : 0 échec).
-- **TEST RÉEL D'ALAIN : OK** (v2.60.2, 07/10/2026) — la détection caméra se lance
-  et ne trouve rien (aucune caméra branchée), sans erreur au journal.
+- Bancs rejoués verts (07/10/2026) : `_test_photometrie_jalon56.py`,
+  `_test_astro_branchement_jalon56.py`, `_test_spcc_jalon58.py`,
+  `_test_spcc_osc.py`, `_test_reset_empilement_jalon76.py`,
+  `_test_jalon17_filtre.py`, `_test_save_brute_jalon59.py`,
+  `_test_bxt_entete_jalon69.py`, `_test_norm_commune_jalon61.py`.
+- **TEST RÉEL D'ALAIN : OK** (v2.60.3, 07/10/2026) — l'application se comporte
+  comme en v2.60.2 (détection caméra, empilement).
 
 ### Prochaine étape du chantier
-**Jalon 106d** — `core/worker.py` (4/4, mesures) : découper « mesures »
-(astrométrie + photométrie / SPCC) ; bancs `_test_photometrie_jalon56.py`,
-`_test_astro_branchement_jalon56.py`, `_test_spcc_jalon58.py` (v2.60.3).
+**Jalon 107** — `ui/renderer.py` (typé) : rendu d'affichage + histogrammes +
+annotations ; bancs `_test_histo_jalon75.py`, `_test_zoom_pleine_res_jalon68.py`,
+`_test_annotations_overlay_jalon96.py` (v2.61.0). Le worker est TERMINÉ (4/4).
+
+---
+
+## HISTORIQUE (07/10/2026, jalon 106c, v2.60.2 — LIVRÉ, TESTÉ EN RÉEL) — `core/worker.py` (3/4, pilotage)
+
+Deux blocs de « pilotage » extraits VERBATIM de `_worker` : **`_worker_pilotage`**
+(roue/TEC/offset/réglages, en TÊTE de boucle, même empilement en pause) et
+**`_worker_cadence_dossier`** (pause source FICHIERS + scan de cadence ; renvoie
+`True` pour terminer le tour). Seam `WorkerConfig` NON consommé sur ce chemin
+(leçon du 106b). Surface 75, pyright 0/27, garde-fou VERT ; **TEST RÉEL OK**.
+Bancs : `_test_jalon17_filtre.py`, `_test_cadence_jalon42.py`,
+`_test_pilotage_jalon35.py`, `_test_reset_empilement_jalon76.py` (×4).
 
 ---
 
@@ -327,28 +343,28 @@ quatre paquets + `INSTALLATION.md`.
 
 ## Prochaine étape
 
-**JALON 106c LIVRÉ, BANCS VERTS (v2.60.2, 07/10/2026)** : les deux blocs de
-« pilotage » de `_worker` sont découpés en sous-méthodes TYPÉES VERBATIM
-(`_worker_pilotage` — roue/TEC/offset/réglages, en TÊTE de boucle ;
-`_worker_cadence_dossier` — pause source FICHIERS + scan de cadence, renvoie
-`True` pour terminer le tour) ; **surface publique INCHANGÉE (75 symboles)**,
-**pyright 0 erreur sur 27 fichiers**, **garde-fou VERT**, **aucun changement de
-comportement**. Le seam `WorkerConfig` n'est PAS consommé sur ce chemin (leçon
-du 106b : pas de code AJOUTÉ sur le chemin de la boucle).
+**JALON 106d LIVRÉ, BANCS VERTS (v2.60.3, 07/10/2026)** : les « mesures »
+(astrométrie + photométrie / SPCC) sont rapatriées de `ui/app.py` vers
+`core/worker.py` — huit méthodes de CALCUL VERBATIM (`_astro_tour`,
+`_astro_aveugle`, `_photo_tour`, `_photo_canaux`, `_source_rgb`, `_spcc_tour`,
+`_astro_indices_entete`, `_astro_propager_restack`) + sous-méthode
+`_worker_mesures` ; **surface publique INCHANGÉE (75 symboles)**, **pyright 0
+erreur sur 27 fichiers**, **garde-fou VERT**, **aucun changement de
+comportement**. L'AFFICHAGE (`_maj_*_etat` / `_maj_*_vue`, dialogues, en-têtes
+FITS de sortie = jalon 108) reste dans `app.py`. Le worker est TERMINÉ (4/4).
 
-**Prochaine action = jalon 106d** (`core/worker.py` 4/4, mesures : astrométrie +
-photométrie / SPCC).
+**Prochaine action = jalon 107** (`ui/renderer.py` : rendu + histogrammes +
+annotations).
 
 **Reste à faire à ton initiative, sans urgence** : le test « **installer depuis
 le Microsoft Store** » (seul test qui n'existe que par cette voie).
 
-**ÉTAT DE FIN DE SESSION (07/10/2026)** : le chantier de refactoring (jalons
-100 → 106c) est **COMMITÉ et POUSSÉ** sur `origin/master`. **Jalon 106c =
-v2.60.2, TESTÉ ET VALIDÉ EN RÉEL par Alain** (la détection caméra se lance et ne
-trouve rien : aucune caméra branchée). Dernière version **validée en réel** =
-**v2.60.2**. Dernière **release GitHub publique** = **v2.56.1**
+**ÉTAT DU CHANTIER (07/10/2026)** : le refactoring (jalons 100 → 106d) couvre
+désormais TOUT le worker. **Jalon 106d = v2.60.3 : TESTÉ ET VALIDÉ EN RÉEL par
+Alain, COMMITÉ et POUSSÉ** sur `origin/master`. Dernière version **validée en
+réel** = **v2.60.3** (106d). Dernière **release GitHub publique** = **v2.56.1**
 (https://github.com/darkvad/AVAStack/releases/tag/v2.56.1) ; MSIX publié sur le
-Store = **v2.50.0** (les jalons 100-106c ne sont PAS des releases : aucun paquet
+Store = **v2.50.0** (les jalons 100-106d ne sont PAS des releases : aucun paquet
 construit).
 
 **RESTE OUVERT, À L'OCCASION (à ton initiative, aucune urgence)** : ① le test
@@ -395,7 +411,7 @@ identique AU BIT). Travail étalé sur plusieurs sessions : chaque jalon est une
 | **106a** ✅ | `core/worker.py` (1/4) squelette | `core/config.py` (`WorkerConfig` typé), `AcquisitionWorker` (mixin VERBATIM, `App` en hérite) | garde-fou | v2.60.0 |
 | **106b** ✅ | `core/worker.py` (2/4) boucle | acquisition + reset / re-stack | garde-fou + `_test_restack_jalon16.py`, `_test_restack_compo_jalon20.py`, `_test_reset_empilement_jalon76.py` | v2.60.1 |
 | **106c** ✅ | `core/worker.py` (3/4) pilotage | roue / TEC / offset + cadence dossier | `_test_jalon17_filtre.py`, `_test_cadence_jalon42.py`, `_test_pilotage_jalon35.py` | v2.60.2 |
-| **106d** | `core/worker.py` (4/4) mesures | astrométrie + photométrie / SPCC | `_test_photometrie_jalon56.py`, `_test_astro_branchement_jalon56.py`, `_test_spcc_jalon58.py` | v2.60.3 |
+| **106d** ✅ | `core/worker.py` (4/4) mesures | astrométrie + photométrie / SPCC | `_test_photometrie_jalon56.py`, `_test_astro_branchement_jalon56.py`, `_test_spcc_jalon58.py` | v2.60.3 |
 | **107** | `ui/renderer.py` (typé) | rendu affichage + histogrammes + annotations | `_test_histo_jalon75.py`, `_test_zoom_pleine_res_jalon68.py`, `_test_annotations_overlay_jalon96.py` | v2.61.0 |
 | **108** | `ui/saver.py` + `ui/external_runner.py` (typés) | sauvegardes + traitement externe | `_test_save_*`, `_test_graxpert_live_jalon4.py`, `_test_bxt_entete_jalon69.py` | v2.61.1 |
 | **109** | Typage `processing/` (rétroactif) | annotations des 16 modules de traitement | garde-fou + bancs traitement | v2.62.0 |
@@ -415,13 +431,13 @@ garde-fou les utilise s'ils sont présents (skip gracieux sinon) ; ② **CI GitH
 NON retenue** — le garde-fou reste un banc lancé À LA MAIN (interpréteur du venv),
 rejoué à chaque jalon.
 
-**État : JALON 106c LIVRÉ, TESTÉ EN RÉEL (v2.60.2)** — `_worker` découpé en
-`_worker_pilotage` / `_worker_cadence_dossier` (VERBATIM), en plus des
-sous-méthodes du 106b ; le seam `WorkerConfig` n'est PAS étendu sur le chemin de
-la boucle (leçon du 106b) ; surface publique inchangée (75 symboles), pyright 0
-erreur sur 27 fichiers, garde-fou VERT. Prochaine action = **jalon 106d**
-(`core/worker.py` 4/4, mesures). Dernière version **validée en réel** :
-**v2.60.2** (106c) ; dernière **release publiée** : **v2.56.1** ; MSIX Store :
+**État : JALON 106d LIVRÉ, TESTÉ EN RÉEL, COMMITÉ/POUSSÉ (v2.60.3)** — les
+« mesures » (astrométrie + photométrie / SPCC) sont rapatriées dans
+`core/worker.py` (8 méthodes de calcul VERBATIM + `_worker_mesures`), l'affichage
+restant dans `app.py`. Le worker est TERMINÉ (4/4). Surface publique inchangée
+(75 symboles), pyright 0 erreur sur 27 fichiers, garde-fou VERT. Prochaine action
+= **jalon 107** (`ui/renderer.py`). Dernière version **validée en réel** :
+**v2.60.3** (106d) ; dernière **release publiée** : **v2.56.1** ; MSIX Store :
 **v2.50.0**.
 
 - **JALON PRÉCÉDENT (02/10/2026, jalon 88 — INSTALLATEUR WINDOWS EN PAQUET ZIP,

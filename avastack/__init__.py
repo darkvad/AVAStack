@@ -18,9 +18,25 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.60.2"
+AVASTACK_VERSION = "2.60.3"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.60.3 : CHANTIER DE REFACTORING — `core/worker.py` (jalon 106d, mesures)
+#   - Les MESURES (astrométrie + photométrie / SPCC) rejoignent le mixin : les
+#     méthodes de CALCUL reprises VERBATIM de `ui/app.py` — `_astro_tour`,
+#     `_astro_aveugle`, `_photo_tour`, `_photo_canaux`, `_source_rgb`,
+#     `_spcc_tour`, `_astro_indices_entete`, `_astro_propager_restack`. Le bloc
+#     d'appel de `_worker` devient la sous-méthode `_worker_mesures` (servi APRÈS
+#     le re-stack, AVANT la construction de l'état poussé à l'UI).
+#   - L'AFFICHAGE reste dans `ui/app.py` (méthodes `_maj_*_etat` / `_maj_*_vue`,
+#     dialogues de nom de cible, helpers d'en-tête FITS de sortie — ceux-ci
+#     relevant du jalon 108 `saver.py`) : séparation « mesures » / « affichage ».
+#     Les appels `app._astro_tour(...)` des bancs restent valides (héritage).
+#   - Vérifications : garde-fou VERT (surface 75, hash au bit, pyright 0/27) ;
+#     `ruff` ; bancs rejoués verts — `_test_photometrie_jalon56.py`,
+#     `_test_astro_branchement_jalon56.py`, `_test_spcc_jalon58.py`, plus
+#     `_test_bxt_entete_jalon69.py` et `_test_norm_commune_jalon61.py`.
+#
 # v2.60.2 : CHANTIER DE REFACTORING — `core/worker.py` (jalon 106c, pilotage)
 #   - Les deux blocs de « PILOTAGE » de `_worker` sont découpés en sous-méthodes
 #     TYPÉES reprises VERBATIM (comportement inchangé AU BIT) :

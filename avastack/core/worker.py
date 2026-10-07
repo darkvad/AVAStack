@@ -21,9 +21,16 @@ boucle, MÊME EMPILEMENT EN PAUSE) et `_worker_cadence_dossier` (pause sur une
 source FICHIERS + scan périodique de cadence ; renvoie True quand le tour doit
 se terminer sans rien lire). Aucun paramètre du seam n'est lu sur ce chemin : la
 leçon du 106b interdit d'AJOUTER du code sur le chemin de la boucle (un
-instantané en tête de tour décalait la course du banc 76). Étape 106d :
-« mesures » (astrométrie/photométrie/SPCC) à découper, et l'état propre au
-worker sera rapatrié ici.
+instantané en tête de tour décalait la course du banc 76).
+
+Jalon 106d : la dernière famille, les « MESURES » (astrométrie + photométrie /
+SPCC), rejoint le mixin — les méthodes de CALCUL (`_astro_tour`, `_astro_aveugle`,
+`_photo_tour`, `_photo_canaux`, `_source_rgb`, `_spcc_tour`,
+`_astro_indices_entete`, `_astro_propager_restack`) sont reprises VERBATIM de
+`ui/app.py`, et l'appel groupé de `_worker` devient `_worker_mesures` (servi
+APRÈS le re-stack, AVANT la construction de l'état poussé). L'AFFICHAGE reste
+dans `ui/app.py` (méthodes `_maj_*_etat` / `_maj_*_vue`, dialogues de nom de
+cible, helpers d'en-tête FITS de sortie) : le worker MESURE, l'interface montre.
 
 PIÈGE ÉVITÉ : trois globals de `avastack.ui.app` sont MONKEYPATCHÉS par les bancs
 (`ui.ArchiveFrames` ; `ui.RESTACK_MIN_FRAMES`/`ui.RESTACK_CADENCE`) : ils sont
@@ -46,6 +53,12 @@ from ..images import borner_lineaire, save_image
 from ..processing import StarAligner, LiveStacker
 from ..processing import stars as seeing_live
 from ..processing.composition import CompositeStacker, extraire_canal
+# Jalon 106d : les MESURES (astrométrie / photométrie / SPCC) sont désormais
+# CALCULÉES ici — mêmes modules d'appui que `ui/app.py` (aucun cycle : `core`
+# importe `processing`, jamais l'inverse).
+from ..processing import astrometrie as astro_mod
+from ..processing import photometrie as photo_mod
+from ..processing import spcc as spcc_mod
 from .config import WorkerConfig
 
 
@@ -66,8 +79,9 @@ class AcquisitionWorker:
 
     # Interface attendue sur l'hôte (`App`) — DÉCLARATIONS de typage seulement.
     # Ce sont les membres de `self` (l'instance `App`) que la boucle lit/écrit ;
-    # regroupés ici pour le typage statique (`pyright`). L'étape 106d
-    # remplacera ces `Any` par des types précis à mesure du découpage.
+    # regroupés ici pour le typage statique (`pyright`). Après le jalon 106d
+    # (mesures rapatriées), il ne reste ici que l'interface VIVANTE de l'hôte —
+    # un typage plus fin viendra au jalon 110 (typage rétroactif d'`app.py`).
     _a_lu_une_frame: Any
     _ancre_idx: Any
     _ancre_role: Any
@@ -75,13 +89,17 @@ class AcquisitionWorker:
     _appliquer_demande_tec: Any
     _appliquer_filtre_demande: Any
     _armer_cadence: Any
+    _astro_actif: Any
     _astro_aveugles: Any
     _astro_balayage: Any
+    _astro_bases: Any
+    _astro_champ_seul: Any
     _astro_dernier_aveugle: Any
     _astro_entete_sauvegarde: Any
     _astro_fov_essayes: Any
+    _astro_indices: Any
+    _astro_msg_indices: Any
     _astro_source: Any
-    _astro_tour: Any
     _astro_wcs_secours: Any
     _autoriser_lecture: Any
     _cadence_dossier: Any
@@ -105,11 +123,11 @@ class AcquisitionWorker:
     _mode_compo: Any
     _narrowband_ha: Any
     _norm_commune: Any
+    _photo_actif: Any
     _photo_dernier: Any
     _photo_essais: Any
     _photo_gains_actif: Any
     _photo_gains_pose: Any
-    _photo_tour: Any
     _pleine_res_activee: Any
     _poser_rayon_chroma: Any
     _pousser_rendu: Any
@@ -130,11 +148,10 @@ class AcquisitionWorker:
     _servir_demandes_sans_frame: Any
     _session: Any
     _sonder_controles: Any
-    _source_rgb: Any
     _spcc_actif: Any
     _spcc_dernier: Any
+    _spcc_dispo: Any
     _spcc_essais: Any
-    _spcc_tour: Any
     _stack_pleine_res: Any
     _tec_dernier: Any
     _tec_dernier_t0: Any
@@ -206,6 +223,18 @@ class AcquisitionWorker:
     view_cx: Any
     view_cy: Any
     zoom: Any
+
+    # Jalon 106d : méthodes de l'HÔTE (`App`, encore dans `ui/app.py`) appelées
+    # par les MESURES rapatriées — l'AFFICHAGE de l'état (`_maj_*_etat`), la vue
+    # SPCC (`_maj_spcc_vue`) et les profils SPCC (`_spcc_osc` / `_spcc_profils`).
+    # `Any` : elles ne sont PAS dans le mixin (séparation « mesures » /
+    # « affichage »).
+    _maj_astro_etat: Any
+    _maj_photo_etat: Any
+    _maj_spcc_etat: Any
+    _maj_spcc_vue: Any
+    _spcc_osc: Any
+    _spcc_profils: Any
 
     def _worker(self):
         last_good = None
@@ -531,19 +560,11 @@ class AcquisitionWorker:
             if fait:
                 stack = st_restack
 
-            # Jalon 56 : astrométrie de l'empilement — APRÈS le re-stack (le
-            # WCS doit décrire la grille COURANTE : la propagation vient d'y
-            # pourvoir), AVANT la construction de l'état poussé à l'UI (la
-            # ligne d'état part alors avec le bon texte).
-            if self.stacker is not None and self.stacker.n > 0:
-                self._astro_tour(self.stacker)
-                # Jalon 56 (étape 4) : photométrie — APRÈS l'astrométrie (elle
-                # a besoin du WCS résolu) ; mesure SANS effet sur l'image.
-                self._photo_tour(self.stacker)
-                # Jalon 58 : SPCC absolue — APRÈS la photométrie (mêmes
-                # prérequis) ; elle PRIORISE ses coefficients sur les gains
-                # Gaia relatifs quand sa case est cochée.
-                self._spcc_tour(self.stacker)
+            # Jalon 106d : MESURES (astrométrie + photométrie + SPCC) — corps
+            # extrait VERBATIM dans `_worker_mesures`. Servi APRÈS le re-stack
+            # (le WCS doit décrire la grille COURANTE) et AVANT la construction
+            # de l'état poussé à l'UI (la ligne d'état part avec le bon texte).
+            self._worker_mesures()
 
             show = stack if stack is not None else (last_good if last_good is not None else frame)
 
@@ -1070,3 +1091,417 @@ class AcquisitionWorker:
                 self.align_info = info
                 return True, self.stacker.mean()   # affichage immédiat
         return False, None
+
+    # ========================================================================
+    # Jalon 106d : MESURES (astrométrie + photométrie / SPCC) — CALCUL
+    # ========================================================================
+    # Méthodes reprises VERBATIM de `ui/app.py`. Le worker MESURE ; l'AFFICHAGE
+    # (`_maj_*_etat` / `_maj_*_vue`, dialogues de nom de cible, en-têtes FITS de
+    # sortie) reste dans `ui/app.py`, appelé via `self`.
+
+    def _worker_mesures(self):
+        """Mesures de l'empilement — servi APRÈS le re-stack (jalon 106d).
+
+        Corps repris VERBATIM de `_worker` (commentaire d'origine conservé) :
+        astrométrie, puis photométrie (le WCS doit être résolu), puis SPCC. La
+        grille décrite est la COURANTE (la propagation vient d'y pourvoir) et
+        l'état poussé à l'UI est construit APRÈS, avec le bon texte."""
+        # Jalon 56 : astrométrie de l'empilement — APRÈS le re-stack (le
+        # WCS doit décrire la grille COURANTE : la propagation vient d'y
+        # pourvoir), AVANT la construction de l'état poussé à l'UI (la
+        # ligne d'état part alors avec le bon texte).
+        if self.stacker is not None and self.stacker.n > 0:
+            self._astro_tour(self.stacker)
+            # Jalon 56 (étape 4) : photométrie — APRÈS l'astrométrie (elle
+            # a besoin du WCS résolu) ; mesure SANS effet sur l'image.
+            self._photo_tour(self.stacker)
+            # Jalon 58 : SPCC absolue — APRÈS la photométrie (mêmes
+            # prérequis) ; elle PRIORISE ses coefficients sur les gains
+            # Gaia relatifs quand sa case est cochée.
+            self._spcc_tour(self.stacker)
+
+    def _astro_tour(self, stacker):
+        """Appelé par le worker APRÈS le re-stack (la grille est alors celle
+        qui sera affichée et sauvegardée) : indices → RÉSOLUTION UNIQUE → état.
+
+        - WCS déjà résolu : rien à faire, la ligne rappelle la mesure (et le
+          nombre de propagations) ;
+        - case décochée / indices manquants : la ligne DIT pourquoi (jamais de
+          silence) ; en mode dossier, une lecture des indices dans l'en-tête
+          de la brute courante est tentée AVANT de renoncer ;
+        - sinon `peut_essayer` décide (frames empilées, délai, plafond) : une
+          résolution coûte du temps d'acquisition, elle n'est tentée que sur
+          un empilement déjà consistant, et au plus une fois par délai."""
+        if self.suivi_astro is None or stacker is None or stacker.n <= 0:
+            return
+        if self.suivi_astro.resolu:
+            self._maj_astro_etat()
+            return
+        if not self._astro_actif:
+            self.astro_info = "Astrométrie : désactivée"
+            self.astro_couleur = "#888888"
+            return
+        if self._astro_indices is None:
+            self._astro_indices_entete()
+        if self._astro_indices is None:
+            # Jalon 56 : ni saisie ni en-tête de brute (caméra live sans
+            # en-tête FITS) → REPLI ASTAP « aveugle » : c'est LUI qui fournit
+            # les indices (son centre), puis le solveur interne reprend la main
+            # sur un champ indicé fiable (chemin validé par _diag_solve_reel).
+            self._astro_aveugle(stacker)
+        if self._astro_indices is None:
+            self.astro_info = ("Astrométrie : " + (self._astro_msg_indices
+                               or "indices de la cible manquants"))
+            self.astro_couleur = "#c98a00"
+            return
+        if not self.suivi_astro.pret:
+            self.suivi_astro.indice(*self._astro_indices)
+        if not self.suivi_astro.peut_essayer(stacker.n):
+            raison = self.suivi_astro.raison_attente()
+            if raison:
+                self.astro_info = f"Astrométrie : {raison}"
+                self.astro_couleur = "#c98a00"
+            return
+        img = stacker.mean(recadre=False)
+        if img is None:
+            return
+        # Message posé AVANT le calcul : le thread Tk le lit PENDANT la
+        # résolution (le worker, lui, est occupé) — l'utilisateur voit ainsi
+        # d'où vient la pause d'acquisition d'une frame environ.
+        self.astro_info = (f"Astrométrie : résolution en cours "
+                           f"({stacker.n} frames)…")
+        self.astro_couleur = "#888888"
+        okk, msg = self.suivi_astro.resoudre_sur(img, n_frames=stacker.n)
+        if okk:
+            self._maj_astro_etat()
+            return
+        # Jalon 56 : le solveur INTERNE a refusé — si ASTAP avait résolu en
+        # aveugle, son WCS devient le WCS de la session (repli prévu par la
+        # décision d'Alain : « ASTAP = référence indépendante/repli »).
+        if self._astro_wcs_secours is not None:
+            ok2, msg2 = self.suivi_astro.adopter(self._astro_wcs_secours,
+                                                 img.shape[:2])
+            if ok2:
+                self._astro_wcs_secours = None     # adopté : plus de secours
+                self._astro_source = "ASTAP (repli)"
+                self._maj_astro_etat()
+                return
+            msg = f"{msg} — repli ASTAP refusé ({msg2})"
+        essais = self.suivi_astro.essais
+        self.astro_couleur = ("#c98a00" if essais < astro_mod.ASTRO_MAX_ESSAIS
+                              else "#d04040")
+        suite = ("réessai automatique dès que l'empilement double"
+                 if essais < astro_mod.ASTRO_MAX_ESSAIS else "plafond atteint")
+        self.astro_info = (f"Astrométrie : échec — {msg} "
+                           f"({essais}/{astro_mod.ASTRO_MAX_ESSAIS} essais, "
+                           f"{suite})")
+
+    def _astro_aveugle(self, stacker):
+        """Jalon 56 — REPLI ASTAP : quand AUCUN indice n'est disponible (ni
+        saisie, ni en-tête de brute), ASTAP balaie le ciel seul (`fov` auto) et
+        son centre sert d'indice au solveur interne. Le WCS rendu est GARDÉ
+        (`_astro_wcs_secours`) : si le solveur interne refuse ensuite, il est
+        adopté tel quel (repli) au lieu de laisser la session sans astrométrie.
+
+        Appel LENT (balayage complet : plusieurs secondes à une minute) → au
+        plus `ASTRO_MAX_AVEUGLES` fois par session, espacées du même délai que
+        les essais internes, et jamais pendant qu'un empilement est trop court.
+        Sans astap_cli installé, l'échec est immédiat et parfaitement clair."""
+        if self._astro_aveugles >= astro_mod.ASTRO_MAX_AVEUGLES:
+            self._astro_msg_indices = (f"aucun indice (ASTAP aveugle : plafond "
+                                       f"de {astro_mod.ASTRO_MAX_AVEUGLES} "
+                                       f"tentatives atteint)")
+            return
+        # SONDE des bases ASTAP, UNE fois par session (listdir d'un dossier de
+        # plus de 1000 fichiers) : sans base de BALAYAGE (G18/H18…), ASTAP ne
+        # peut PAS chercher sans position — inutile de bloquer l'acquisition
+        # pour un échec certain (constat réel du 23/09/2026 : avec la seule
+        # base D80, tout balayage échoue en ~0,4 s). On le DIT à l'utilisateur.
+        if self._astro_balayage is None:
+            self._astro_balayage = astro_mod.balayage_possible()
+            self._astro_bases = (", ".join(sorted(astro_mod.bases_installees()))
+                                 or "aucune")
+        if not self._astro_balayage:
+            self._astro_msg_indices = (
+                f"aucun indice (ASTAP : bases installées = {self._astro_bases}; "
+                f"PAS de base de BALAYAGE — saisir AD/Dec approximatifs, ou "
+                f"installer une base G18/H18)")
+            return
+        if stacker.n < astro_mod.ASTRO_MIN_FRAMES:
+            return
+        # Un seul essai PAR VALEUR de champ : rebalayer à l'identique redonne
+        # exactement le même échec (« No solution found! », constat réel).
+        fov = float(self._astro_champ_seul or 0.0)
+        if fov in self._astro_fov_essayes:
+            self._astro_msg_indices = (
+                f"aucun indice (ASTAP déjà tenté avec un champ de "
+                f"{fov:.3f}° : balayage NON répété — saisir AD/Dec, ou "
+                f"corriger le champ)")
+            return
+        self._astro_fov_essayes.add(fov)
+        t = time.monotonic()
+        if (self._astro_aveugles
+                and t - self._astro_dernier_aveugle
+                < astro_mod.ASTRO_ESSAI_DELAI_S):
+            return
+        img = stacker.mean(recadre=False)
+        if img is None:
+            return
+        self._astro_aveugles += 1
+        self._astro_dernier_aveugle = t
+        self.astro_info = (
+            "Astrométrie : aucun indice — balayage ASTAP en cours"
+            + (f" (champ indicatif {fov:.3f}°)…" if fov
+               else " (sans champ indicatif : LENT)…"))
+        self.astro_couleur = "#c98a00"
+        try:
+            wcs, ra, dec, champ, msg = astro_mod.resoudre_aveugle_astap(
+                img, fov_deg=fov)
+        except Exception as exc:       # un outil externe ne tue jamais le worker
+            wcs, ra, dec, champ = None, None, None, None
+            msg = f"exception ASTAP ({exc})"
+        if wcs is None or ra is None:
+            self._astro_msg_indices = f"ASTAP aveugle : {msg}"
+            self.astro_info = f"Astrométrie : {self._astro_msg_indices}"
+            self.astro_couleur = "#c98a00"
+            return
+        self._astro_wcs_secours = wcs
+        self._astro_indices = (ra, dec, champ)
+        self._astro_msg_indices = ""
+        self._astro_source = "ASTAP (aveugle)"
+        self.suivi_astro.indice(ra, dec, champ)
+        self.astro_info = (f"Astrométrie : indices d'ASTAP — {msg}"
+                           f" → solve interne…")
+        self.astro_couleur = "#888888"
+
+    def _photo_tour(self, stacker):
+        """Mesure le zéro-point PAR BANDE quand l'astrométrie est RÉSOLUE (le
+        WCS est indispensable : c'est lui qui relie les étoiles de l'image au
+        catalogue Gaia), l'empilement assez profond et la case cochée.
+
+        Mesure UNE fois par session (réessais espacés, plafonnés) et SANS AUCUN
+        effet sur l'image : l'application de ces gains au stacker est l'étape 5.
+        Le catalogue (1,1 Go) n'est lu QUE par une mesure — d'où le plafond."""
+        if self.photometrie is None or stacker is None or stacker.n <= 0:
+            return
+        if self.photometrie.valide:
+            return                     # déjà mesuré : rien à refaire
+        if not self._photo_actif:
+            return
+        if self.suivi_astro is None or not self.suivi_astro.resolu:
+            return                     # sans WCS : aucune photométrie possible
+        if stacker.n < astro_mod.ASTRO_MIN_FRAMES:
+            return
+        if self._photo_essais >= photo_mod.MAX_ESSAIS:
+            self.photo_info = (f"Photométrie : {self.photometrie.derniere_erreur}"
+                               f" — {self._photo_essais} essais, plafond atteint")
+            self.photo_couleur = "#d04040"
+            return
+        t = time.monotonic()
+        if (self._photo_essais
+                and t - self._photo_dernier < photo_mod.DELAI_ESSAI_S):
+            return
+        canaux, wcs, forme = self._photo_canaux(stacker)
+        if not canaux or wcs is None:
+            return
+        self._photo_essais += 1
+        self._photo_dernier = t
+        self.photo_info = ("Photométrie : mesure du zéro-point en cours "
+                           f"({stacker.n} frames, "
+                           f"{len(canaux)} bande(s))…")
+        self.photo_couleur = "#888888"
+        try:
+            res, msg = self.photometrie.mesurer(canaux, wcs, forme=forme)
+        except Exception as exc:       # une mesure ne tue jamais le worker
+            res, msg = None, f"exception ({exc})"
+        if res is None:
+            self.photo_info = f"Photométrie : {msg}"
+            self.photo_couleur = ("#c98a00"
+                                  if self._photo_essais < photo_mod.MAX_ESSAIS
+                                  else "#d04040")
+            return
+        self._maj_photo_etat()
+
+    @staticmethod
+    def _source_rgb(stacker):
+        """L'empilement porte-t-il les trois canaux R/G/B ? VRAI en composition
+        multi-rôles (le composite est recoloré) ET pour une source COULEUR
+        (capteur OSC en mode dossier) ; FAUX en mono. Purement géométrique (la
+        forme d'UNE frame), donc GRATUIT : aucune image à moyenner pour le
+        savoir — la SPCC a besoin des trois canaux, et le dire vaut mieux que
+        d'échouer."""
+        shp = getattr(stacker, "shape", None) or getattr(stacker, "_shape", None)
+        try:
+            return shp is not None and len(tuple(shp)) == 3
+        except TypeError:
+            return False
+
+    def _photo_canaux(self, stacker):
+        """Canaux (bandes) + WCS de la MÊME grille pour la photométrie.
+
+        Grille RECADRÉE (celle de la vue et des sauvegardes) — en composition,
+        les cartes PAR RÔLE (`moyennes`) sont les bandes ; pour une source
+        COULEUR (capteur OSC en mode dossier), les trois canaux R/G/B de
+        l'empilement BRUT (`corrections=False`) sont les bandes — c'est sur
+        cette image-là que la SPCC doit mesurer : un équilibrage ou un
+        recalage déjà appliqué fausserait les ratios de couleur (et les gains
+        se cumuleraient). En mono, une seule bande « L ». Le WCS est celui de
+        cette grille exacte (recadrage d'intersection inclus) : les deux
+        DOIVENT décrire la même grille, sinon l'appariement au catalogue
+        serait faux. → (canaux, WCS, forme)."""
+        cadre = getattr(stacker, "cadre", None)
+        try:
+            if hasattr(stacker, "moyennes"):
+                canaux = stacker.moyennes(recadre=True) or {}
+            else:
+                img = stacker.mean(corrections=False)
+                if img is None:
+                    canaux = {}
+                elif getattr(img, "ndim", 2) == 3:
+                    a = (img if img.shape[-1] == 3
+                         else np.transpose(img, (1, 2, 0)))
+                    canaux = {"R": a[..., 0], "G": a[..., 1], "B": a[..., 2]}
+                else:
+                    canaux = {"L": img}
+        except Exception as exc:
+            self.photo_info = f"Photométrie : canaux indisponibles ({exc})"
+            self.photo_couleur = "#c98a00"
+            return {}, None, None
+        canaux = {b: v for b, v in canaux.items() if v is not None}
+        if not canaux:
+            return {}, None, None
+        forme = tuple(np.asarray(next(iter(canaux.values()))).shape[:2])
+        wcs, msg = self.suivi_astro.wcs_grille(cadre, forme=forme)
+        if wcs is None:
+            self.photo_info = f"Photométrie : WCS indisponible ({msg})"
+            self.photo_couleur = "#c98a00"
+            return {}, None, None
+        return canaux, wcs, forme
+
+    # -------------------------------- jalon 58 : SPCC absolue
+    def _spcc_tour(self, stacker):
+        """Calcule les coefficients SPCC de la session (une fois, réessais
+        espacés). Mêmes prérequis que la photométrie (WCS résolu, empilement
+        assez profond) PLUS les trois canaux R/G/B et la base de profils."""
+        if self.spcc is None or stacker is None or stacker.n <= 0:
+            return
+        if self.spcc.valide:
+            return                     # déjà calibré : rien à refaire
+        if not self._spcc_actif or not getattr(self, "_spcc_dispo", False):
+            return
+        if not (self._mode_compo or self._source_rgb(stacker)):
+            return                     # il faut une image COULEUR (R, G et B)
+        if self.suivi_astro is None or not self.suivi_astro.resolu:
+            return
+        if stacker.n < astro_mod.ASTRO_MIN_FRAMES:
+            return
+        if self._spcc_essais >= spcc_mod.MAX_ESSAIS:
+            self.spcc_info = (f"SPCC : {self.spcc.derniere_erreur}"
+                              f" — {self._spcc_essais} essais, plafond atteint")
+            self.spcc_couleur = "#d04040"
+            return
+        t = time.monotonic()
+        if (self._spcc_essais
+                and t - self._spcc_dernier < spcc_mod.DELAI_ESSAI_S):
+            return
+        canaux, wcs, forme = self._photo_canaux(stacker)
+        if not canaux or wcs is None:
+            return
+        capteur, filtres, blanc = self._spcc_profils()
+        self._spcc_essais += 1
+        self._spcc_dernier = t
+        self.spcc_info = ("SPCC : calibration en cours (spectres Gaia × profils "
+                          f"capteur/filtres, {stacker.n} frames)…")
+        self.spcc_couleur = "#888888"
+        try:
+            res, msg = self.spcc.mesurer(canaux, wcs, capteur, filtres, blanc,
+                                         forme=forme,
+                                         mode=("osc" if self._spcc_osc()
+                                               else "mono"))
+        except Exception as exc:       # une mesure ne tue jamais le worker
+            res, msg = None, f"exception ({exc})"
+        if res is None:
+            self.spcc_info = f"SPCC : {msg}"
+            self.spcc_couleur = ("#c98a00"
+                                 if self._spcc_essais < spcc_mod.MAX_ESSAIS
+                                 else "#d04040")
+            self._maj_spcc_vue()
+            return
+        # Sur COMBIEN de frames la mesure a été faite : la mesure SPCC est faite
+        # UNE fois par session (SessionSpcc) — le dire évite de croire que la
+        # case ne « rafraîchit » plus rien (constat d'Alain, 25/09/2026).
+        if isinstance(self.spcc.diag, dict):
+            self.spcc.diag.setdefault("frames", int(stacker.n))
+        self._maj_spcc_etat()
+        self._maj_spcc_vue()
+
+    def _astro_indices_entete(self):
+        """Indices de la cible déduits de l'en-tête de la brute courante
+        (source DOSSIER) quand la saisie est vide — lecture STRICTE
+        (OBJCTRA/OBJCTDEC + FOCALLEN/XPIXSZ), jamais de supposition : sans
+        mots-clés explicites, rien n'est inventé et le message le dit."""
+        chemin = getattr(self.camera, "last_file", "") or ""
+        if not chemin:
+            try:      # composition : dernier fichier du rôle le plus récent
+                stats = self.camera.stats() or {}
+                cands = [v.get("last_file") or "" for v in stats.values()]
+                cands = [c for c in cands if c]
+                if cands:
+                    chemin = max(cands, key=os.path.getmtime)
+            except Exception:
+                chemin = ""
+        if not chemin:
+            return
+        ra, dec, champ, msg = astro_mod.indices_entete_fits(chemin)
+        if ra is None or champ is None:
+            self._astro_msg_indices = msg
+            return
+        self._astro_indices = (ra, dec, champ)
+        self._astro_msg_indices = ""
+        self._astro_source = f"en-tête {os.path.basename(chemin)}"
+        self.suivi_astro.indice(ra, dec, champ)
+
+    def _astro_propager_restack(self, ancien, ref):
+        """Jalon 56 : le RÉEMPILEMENT change la référence d'alignement, donc la
+        GRILLE de l'empilement — le WCS est PROPAGÉ (aucun re-solve, aucun
+        accès au catalogue : décision d'Alain du 22/09/2026).
+
+        `M10` (nouvelle grille → ANCIENNE grille) est mesuré par un aligneur
+        PRIVÉ : référence = l'ancien empilement COMPLET (`mean(recadre=False)`
+        — le même repère que toutes les frames alignées, contrat du jalon 13),
+        source = la nouvelle référence. C'est exactement le chemin confronté au
+        StarAligner réel par le banc du jalon 56 (étape 3) ; l'aligneur de la
+        SESSION n'est pas touché (il est sur le point d'être re-référencé).
+
+        Échec (appariement refusé, WCS absent) : SANS EFFET sur l'empilement,
+        message exposé sur la ligne dédiée — un WCS d'ancienne grille est
+        signalé, jamais présenté comme valable."""
+        if self.suivi_astro is None or not self.suivi_astro.resolu:
+            return
+        try:
+            base = ancien.mean(recadre=False)
+        except Exception:
+            base = None
+        if base is None:
+            return
+        al = StarAligner()
+        al.triangles_seuls = bool(self.aligner.triangles_seuls)  # HOO/SHO
+        try:
+            al.set_reference(base)
+            M, okk = al.compute(ref)
+        except Exception as exc:
+            self.astro_couleur = "#c98a00"
+            self.astro_info = f"Astrométrie : propagation impossible ({exc})"
+            return
+        if not okk or M is None:
+            self.astro_couleur = "#c98a00"
+            self.astro_info = ("Astrométrie : propagation refusée (nouvelle "
+                               "référence ↔ ancien empilement) — le WCS reste "
+                               "celui de l'ancienne grille")
+            return
+        ok2, msg = self.suivi_astro.propager(M)
+        if ok2:
+            self._maj_astro_etat()
+        else:
+            self.astro_couleur = "#c98a00"
+            self.astro_info = f"Astrométrie : propagation refusée — {msg}"
