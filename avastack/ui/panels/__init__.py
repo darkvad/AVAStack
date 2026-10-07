@@ -7,8 +7,11 @@ Chantier de refactoring (cf. CLAUDE.md / AVANCEMENT.md). Première vague, jalon
 (« Dossier surveillé »). Deuxième vague, jalon 105b — les panneaux
 « traitement » : `compo` (« Composition multi-filtres »), `calib`
 (« Calibration »), `stack` (« Empilement »), `bgnoise` (« Fond et grain ») et
-`sharp` (« Netteté live »). Chaque module regroupe la construction d'un panneau
-sous forme de « mixin » — une classe dont `App` hérite — dont le code est repris
-VERBATIM depuis `app.py` : `self` reste l'instance `App`, donc le comportement
-(et l'ordre de pose des widgets) est identique AU BIT.
+`sharp` (« Netteté live »). Troisième vague, jalon 105c — les panneaux
+« sortie » : `display` (« Affichage »), `color` (« Couleur de l'objet (après
+étirement) »), `state` (« État des calculs »), `external` (« Traitement
+externe ») et `output` (« Sortie »). Chaque module regroupe la construction
+d'un panneau sous forme de « mixin » — une classe dont `App` hérite — dont le
+code est repris VERBATIM depuis `app.py` : `self` reste l'instance `App`, donc
+le comportement (et l'ordre de pose des widgets) est identique AU BIT.
 """

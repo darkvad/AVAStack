@@ -120,6 +120,16 @@ from .panels.stack import PanneauEmpilement as _PanneauEmpilement
 from .panels.bgnoise import PanneauFondGrain as _PanneauFondGrain
 from .panels.sharp import PanneauNette as _PanneauNette
 
+# Jalon 105c (chantier de refactoring) : la 3e vague de PANNEAUX de la
+# colonne gauche — les panneaux « sortie » — vit aussi dans
+# `avastack/ui/panels/` (modules TYPÉS, mixins dont `App` HÉRITE,
+# méthodes reprises VERBATIM).
+from .panels.display import PanneauAffichage as _PanneauAffichage
+from .panels.color import PanneauCouleur as _PanneauCouleur
+from .panels.state import PanneauEtatCalculs as _PanneauEtatCalculs
+from .panels.external import PanneauTraitementExterne as _PanneauTraitementExterne
+from .panels.output import PanneauSortie as _PanneauSortie
+
 from ..processing import denoise as denoiser_local
 from ..processing import couleurs as couleurs_mod
 from ..processing import composition as composition_mod
@@ -148,8 +158,13 @@ from . import reactivite as reactivite_mod
 # MESURE ici ; l'application aux gains du stacker est l'étape 5.
 from ..processing import photometrie as photo_mod
 from ..processing import spcc as spcc_mod
+# Jalon 105c : `DEFAULT_CMD_GRAXPERT`, `DEFAULT_CMD_GRAXPERT_DN` et
+# `DEFAULT_CMD_BXT` ne sont plus utilisés DANS `app.py` (le panneau
+# « Traitement externe » vit désormais dans `ui/panels/external.py`) mais
+# restent RÉ-EXPORTÉS ici pour ne pas rompre la surface publique figée de
+# `app.py` (banc garde-fou).
 from ..external.detection import (
-    DEFAULT_CMD_GRAXPERT, DEFAULT_CMD_GRAXPERT_DN, DEFAULT_CMD_BXT,
+    DEFAULT_CMD_GRAXPERT, DEFAULT_CMD_GRAXPERT_DN, DEFAULT_CMD_BXT,  # noqa: F401
     commande_avec_strength, detecter_outils)
 
 
@@ -157,7 +172,8 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
           _PanneauFichiers, _PanneauCamera, _PanneauCadence,
           _PanneauDossierSurveille, _PanneauComposition,
           _PanneauCalibration, _PanneauEmpilement, _PanneauFondGrain,
-          _PanneauNette):
+          _PanneauNette, _PanneauAffichage, _PanneauCouleur,
+          _PanneauEtatCalculs, _PanneauTraitementExterne, _PanneauSortie):
     # Jalon 105a (chantier de refactoring) : `App` hérite AUSSI des mixins des
     # PANNEAUX « sources » extraits de cet objet vers `avastack/ui/panels/`
     # (fichiers de travail, caméra, cadence, dossier surveillé). `self` reste
@@ -755,495 +771,30 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # moteur d'étirement).
         self._poser_panneau_nette(left)
 
-        # --- Affichage
-        self._lf_affichage, box, _, _ = self._creer_section_pliable(
-            left, "affichage")
-        # Moteur d'étirement : STF intégré (défaut, inchangé) ou VeraLux
-        # (moteur tiers, opt-in). Le calcul VeraLux part dans un thread
-        # dédié côté DisplayProcessor : l'interface n'est jamais bloquée.
-        rowm = self.rowm = ttk.Frame(box)
-        rowm.pack(fill="x", pady=(0, 2))
-        ttk.Label(rowm, text="Moteur d'étirement :").pack(side="left")
-        self.var_moteur = tk.StringVar(value="STF")
-        self.cb_moteur = ttk.Combobox(rowm, textvariable=self.var_moteur,
-                                      state="readonly", width=9,
-                                      values=["STF", "VeraLux"])
-        self.cb_moteur.pack(side="left", padx=4)
-        self.cb_moteur.bind("<<ComboboxSelected>>", lambda e: self._on_moteur())
-        # Réglages propres au STF — regroupés pour être MASQUÉS en mode
-        # VeraLux (sinon ils restent visibles et laissés « cochés », sans
-        # aucun effet sur l'image : source de confusion).
-        self.frm_stf = ttk.Frame(box)
-        self.frm_stf.pack(fill="x")
-        self.var_auto = tk.BooleanVar(value=True)
-        ttk.Checkbutton(self.frm_stf, text="Auto-stretch STF (fond calé sur la cible)",
-                        variable=self.var_auto, command=self._on_auto).pack(anchor="w")
-        self.var_sigk = tk.DoubleVar(value=2.8)
-        self._add_slider(self.frm_stf, "Coupure du bruit (k·σ sous le fond)",
-                         self.var_sigk, 0.5, 5.0, 0.1,
-                         lambda: (setattr(self.disp, "sigma_k", self.var_sigk.get()),
-                                  self._refresh_preview()), "{:.1f}")
-        self.var_target = tk.DoubleVar(value=0.25)
-        self._add_slider(self.frm_stf, "Luminosité du fond du ciel",
-                         self.var_target, 0.10, 0.45, 0.01,
-                         self._on_target_auto, "{:.2f}")
-        ttk.Separator(self.frm_stf).pack(fill="x", pady=4)
-        ttk.Label(self.frm_stf, text="Manuel (si auto décoché) :").pack(anchor="w")
-        self.var_black = tk.DoubleVar(value=0.0)
-        self.var_white = tk.DoubleVar(value=1.0)
-        self.scl_black = self._add_slider(self.frm_stf, "Black point", self.var_black, 0.0, 1.0, 0.005,
-                                          lambda: (setattr(self.disp, "black", self.var_black.get()),
-                                                   self._refresh_preview()), "{:.3f}")
-        self.scl_white = self._add_slider(self.frm_stf, "White point", self.var_white, 0.0, 2.0, 0.005,
-                                          lambda: (setattr(self.disp, "white", self.var_white.get()),
-                                                                                                      self._refresh_preview()), "{:.3f}")
-        # Gamma / saturation : COMMUNS aux deux moteurs (toujours visibles,
-        # appliqués après l'étirement quel que soit le mode).
-        # NON REDONDANT AVEC LA BARRE « MÉDIAN » de l'histogramme — décision
-        # d'Alain, 28/09/2026 : « on laisse comme c'est, à savoir les deux ».
-        # À NE PAS « NETTOYER » : la barre médian place le gris moyen PAR LA MTF
-        # (MTF(m, m) = 0,5 : la valeur de la barre DEVIENT le gris moyen, c'est
-        # elle qui découpe l'histogramme à l'écran), le gamma est une courbe de
-        # PUISSANCE appliquée APRÈS l'étage de niveaux — deux courbes
-        # différentes : à m = 0,25 la MTF envoie 0,5 sur 0,75, là où γ = 4
-        # l'envoie sur 0,06.
-        self.frm_communs = ttk.Frame(box)
-        self.frm_communs.pack(fill="x")
-        vg = tk.DoubleVar(value=1.0)
-        self.var_gamma = vg
-        # Jalon 79 — `hist=False` sur gamma ET saturation (même règle que les
-        # barres de niveaux depuis le jalon 75) : les DEUX bandes de
-        # l'histogramme sont calculées AVANT ces étages — bande « brut » =
-        # source linéaire, bande « sortie » = sortie du moteur d'étirement —
-        # donc un geste sur ces curseurs ne change AUCUNE des deux courbes.
-        # Sans cela, chaque pixel de souris payait en plus les deux
-        # histogrammes (34 ms mesurés sur l'aperçu couleur) pour un tracé
-        # identique. Le moteur d'étirement lui-même n'est plus recalculé non
-        # plus (mémoire `DisplayProcessor._moteur_stf`, même jalon).
-        self._add_slider(self.frm_communs, "Gamma (les 2 moteurs)", vg, 0.2, 4.0, 0.05,
-                         lambda: (setattr(self.disp, "gamma", vg.get()),
-                                  self._refresh_preview(hist=False)), "{:.2f}")
-        vs = tk.DoubleVar(value=1.0)
-        self.var_saturation = vs
-        self._add_slider(self.frm_communs, "Saturation (globale)", vs, 0.0, 3.0,
-                         0.05,
-                         lambda: (setattr(self.disp, "saturation", vs.get()),
-                                  self._refresh_preview(hist=False)), "{:.2f}")
-        # --- Jalon 75 : saturation PAR COULEUR (R/V/B), demande d'Alain du
-        # 28/09/2026 (les colonnes de couleur du grand histogramme de SharpCap).
-        # Précision VÉRIFIÉE dans la doc et chez l'auteur : chez SharpCap ces
-        # colonnes sont une BALANCE DES CANAUX appliquée AVANT l'étirement
-        # (« colour adjustments happen before the stretch ») — or cette
-        # correction existe DÉJÀ chez nous, et à sa place photométrique (gains
-        # SPCC/Gaia, équilibrage des canaux, Linear Fit) : la rejouer à
-        # l'affichage la dupliquerait. Ici c'est donc une VRAIE saturation par
-        # couleur : le secteur de TEINTE visé seulement (poids triangulaires
-        # sur R/V/B, cf. display.saturation_canaux), après la saturation
-        # globale, 1,00 = neutre. La 1re écriture (« c_c = Y + k_c·(c − Y) »)
-        # a été REJETÉE après l'essai réel d'Alain : elle changeait le canal
-        # partout, si bien que pousser « rouge » verdissait les pixels verts
-        # (constat : « quand je pousse l'un, c'est l'autre couleur qui semble
-        # se renforcer »).
-        self.var_sat_r = tk.DoubleVar(value=1.0)
-        self.var_sat_g = tk.DoubleVar(value=1.0)
-        self.var_sat_b = tk.DoubleVar(value=1.0)
-        for lib, var in (("Saturation rouge", self.var_sat_r),
-                         ("Saturation verte", self.var_sat_g),
-                         ("Saturation bleue", self.var_sat_b)):
-            self._add_slider(self.frm_communs, lib, var, 0.0, 3.0, 0.05,
-                             self._on_sat_canaux, "{:.2f}")
+        # --- Affichage (panneau extrait au jalon 105c dans
+        # `avastack/ui/panels/display.py` : moteur d'étirement STF/VeraLux,
+        # réglages STF et communs, cadre VeraLux, rendu pleine résolution).
+        self._poser_panneau_affichage(left)
 
-        # --- VeraLux (moteur tiers) — caché tant que « STF » est sélectionné
-        self.frm_veralux = ttk.Frame(box)
-        ttk.Label(self.frm_veralux, text="Résolution du logD :").pack(anchor="w")
-        self.var_vl_mode_res = tk.StringVar(value="fond cible (auto)")
-        # Jalon 3 : « fond cible (auto) » = le moteur résout lui-même le logD
-        # pour amener le fond à la cible, à CHAQUE nouvel empilement (le
-        # rythme des frames est le cooldown) ; « logD forcé » = déterministe
-        # et réactif (curseur ou bouton 🔒).
-        self.cb_vl_mode = ttk.Combobox(self.frm_veralux,
-                                       textvariable=self.var_vl_mode_res,
-                                       state="readonly", width=16,
-                                       values=["fond cible (auto)", "logD forcé"])
-        self.cb_vl_mode.pack(anchor="w")
-        self.cb_vl_mode.bind("<<ComboboxSelected>>",
-                             lambda e: self._on_vl_mode())
-        self.var_vl_target = tk.DoubleVar(value=veralux_moteur.TARGET_BG_PAR_DEFAUT)
-        self._add_slider(self.frm_veralux, "Luminosité du fond visée (VeraLux)",
-                         self.var_vl_target, 0.10, 0.45, 0.01,
-                         self._on_vl_target, "{:.2f}")
-        self.var_vl_logd = tk.DoubleVar(value=veralux_moteur.LOG_D_PAR_DEFAUT)
-        self.scl_vl_logd = self._add_slider(
-            self.frm_veralux, "logD forcé",
-            self.var_vl_logd, 0.0, 7.0, 0.05,
-            lambda: (setattr(self.disp, "vl_log_d", self.var_vl_logd.get()),
-                     self._refresh_preview()), "{:.2f}")
-        self.btn_vl_lock = ttk.Button(self.frm_veralux,
-                                      text="🔒 Verrouiller le logD résolu",
-                                      command=self._on_vl_lock)
-        self.btn_vl_lock.pack(anchor="w", pady=(2, 0))
-        # Jalon 4 : GraXpert « live » — appliqué AVANT l'étirement VeraLux,
-        # dans le thread solveur, à chaque nouvel empilement (opt-in). Le BXT
-        # reste manuel (bouton ⚡ de la section Traitement externe).
-        self.var_vl_graxpert = tk.BooleanVar(value=False)
-        ttk.Checkbutton(self.frm_veralux,
-                        text="GraXpert live (avant étirement)",
-                        variable=self.var_vl_graxpert,
-                        command=self._on_vl_graxpert).pack(anchor="w",
-                                                           pady=(2, 0))
-        # Jalon 9 (remis le 16/09/2026) : débruitage local AVANT l'étirement
-        # — algorithmes rapides numpy/OpenCV (aucun subprocess), opère en
-        # vue « empilement » uniquement (cf. _sync_vl_denoise_vue). Force en
-        # 0..1 : seuil k-sigma (ondelettes) / h (NLM) auto-adaptés au bruit
-        # réel de chaque empilement.
-        rowdn = ttk.Frame(self.frm_veralux)
-        rowdn.pack(fill="x", pady=(2, 0))
-        self.var_vl_dn = tk.BooleanVar(value=False)
-        ttk.Checkbutton(rowdn, text="Débruitage live (avant étirement)",
-                        variable=self.var_vl_dn,
-                        command=self._on_vl_denoise).pack(side="left")
-        self.var_vl_dn_methode = tk.StringVar(value=self.VL_DN_LABELS["nlm"])
-        self.cb_vl_dn_methode = ttk.Combobox(
-            rowdn, textvariable=self.var_vl_dn_methode, state="readonly",
-            width=15, values=[lib for _, lib in self.VL_DN_METHODES])
-        self.cb_vl_dn_methode.pack(side="left", padx=(4, 0))
-        self.cb_vl_dn_methode.bind("<<ComboboxSelected>>",
-                                   lambda e: self._on_vl_denoise())
-        self.var_vl_dn_force = tk.DoubleVar(value=0.5)
-        self._add_slider(self.frm_veralux, "Force du débruitage (live)",
-                         self.var_vl_dn_force, 0.0, 1.0, 0.05,
-                         self._on_vl_denoise, "{:.2f}")
-        # Jalon 22 (décision d'Alain) : SCNR + démagenta — APRÈS composition
-        # (image COULEUR du composite) ; no-op sur un composite monochrome
-        # (Mono). Depuis le jalon 85 la chaîne couleur suit l'ÉTIREMENT (elle
-        # n'est plus dans la chaîne externe) : elle vaut pour LES DEUX VUES
-        # (v2.48.1), « empilement » comme « traitée ».
-        # Jalon 41 (décision d'Alain) : les CASES couleur sont sorties du
-        # cadre VeraLux (cadre « Couleur live » indépendant, plus bas) — la
-        # chaîne couleur est appliquée par le solveur VeraLux ET par le
-        # moteur STF/manuel (process(), testé au jalon 22). L'étiquette et le
-        # curseur d'état des calculs sont sortis AUSSI (cadre « État des
-        # calculs », visible dans les DEUX modes).
+        # --- Couleur de l'objet (panneau extrait au jalon 105c dans
+        # `avastack/ui/panels/color.py` ; APRÈS étirement : SCNR, SCNR doux,
+        # démagenta, boost du rouge SII).
+        self._poser_panneau_couleur(left)
 
-        # Jalon 5 : profil capteur du moteur VeraLux (réponse couleur du
-        # capteur — Rec.709 par défaut). Fait partie de la clé des réglages :
-        # changer de profil relance la résolution au prochain rendu.
-        ttk.Label(self.frm_veralux, text="Profil capteur :").pack(anchor="w")
-        self.var_vl_profil = tk.StringVar(value=veralux_moteur.PROFIL_PAR_DEFAUT)
-        self.cb_vl_profil = ttk.Combobox(self.frm_veralux,
-                                         textvariable=self.var_vl_profil,
-                                         state="readonly",
-                                         values=list(veralux_moteur.profils_disponibles()))
-        self.cb_vl_profil.pack(anchor="w")
-        self.cb_vl_profil.bind("<<ComboboxSelected>>",
-                               lambda e: self._on_vl_profil())
+        # --- État des calculs (panneau extrait au jalon 105c dans
+        # `avastack/ui/panels/state.py` : étapes du solveur + barre).
+        self._poser_panneau_etat_calculs(left)
 
-        # --- v2.38.0 : RENDU PLEINE RÉSOLUTION pour l'écran (demande d'Alain,
-        # 26/09/2026 : « sur l'écran, je veux pouvoir zoomer sur l'image pleine
-        # résolution »). Coché : la chaîne d'affichage (GraXpert/débruitage/
-        # netteté/couleurs/étirement) tourne sur l'empilement COMPLET — l'écran
-        # montre alors EXACTEMENT ce que le fichier contiendra, et le zoom
-        # recadre de VRAIS pixels au lieu de grossir l'aperçu 1600 px (mesuré au
-        # jalon 66 : l'anneau de couleur des étoiles, invisible sur l'aperçu,
-        # n'apparaît que dans les fichiers). Coût mesuré ×4,3 (~7-8 s par
-        # recalcul complet contre ~1,7 s) : décoché par défaut.
-        # v2.38.1 (demande d'Alain, 27/09/2026 : « ok pour le rendu pleine
-        # résolution en vue traitée ») : l'option vaut pour les DEUX vues — en
-        # vue « traitée » la source est le résultat du ⚡ traitement externe
-        # (`proc_full`, déjà mémorisé pour les sauvegardes : aucune copie en
-        # plus), cf. `_src_pleine_res`.
-        self.var_vl_pleine_res = tk.BooleanVar(value=False)
-        ttk.Checkbutton(self.frm_veralux,
-                        text="Rendu pleine résolution (zoom fidèle)",
-                        variable=self.var_vl_pleine_res,
-                        command=self._on_vl_pleine_res).pack(anchor="w",
-                                                             pady=(6, 0))
-        ttk.Label(self.frm_veralux,
-                  text="L'écran étire l'image COMPLÈTE — empilement, ou résultat "
-                       "traité en vue « traitée » : le zoom montre de vrais "
-                       "pixels, identiques au fichier enregistré. Plus lent "
-                       "(~7-8 s par rendu, contre ~2 s pour l'aperçu).",
-                  foreground="#888888", wraplength=310).pack(anchor="w")
+        # --- Traitement externe (panneau extrait au jalon 105c dans
+        # `avastack/ui/panels/external.py` : GraXpert, débruitage,
+        # BlurXTerminator, vue empilement/traitée, ⚡ et sorties liées).
+        self._poser_panneau_traitement_externe(left)
 
-        # --- Couleur de l'objet (v2.48.0, jalon 85) : cadre INDÉPENDANT du
-        # moteur d'étirement, appliqué APRÈS l'étirement par le solveur VeraLux
-        # (jalon 22/23, déplacé ici au jalon 85) ET par le moteur STF/manuel
-        # (`display.process()`) ; no-op sur un composite monochrome (Mono).
-        # S'applique aux DEUX VUES (v2.48.1) : elle n'est plus dans la chaîne
-        # externe, donc la vue « traitée » la porte enfin comme le live.
-        # POURQUOI APRÈS l'étirement : la
-        # préservation de la luminosité (case ci-dessous, cochée par défaut)
-        # est une grandeur PERCEPTUELLE, et la sortie LINÉAIRE sauvegardée ne
-        # doit plus être écrêtée en vert (elle l'était — MESURÉ sur l'empilement
-        # M31 d'Alain : excès de vert max 5,9·10⁻⁸ contre 1,6·10⁻¹ sur
-        # l'empilement d'origine).
-        # NOTE jalon 95 : self.frm_couleur reste le CONTENU INTERNE
-        # (compatibilité avec tout le code qui crée des widgets dedans).
-        # Le LabelFrame externe est accessible via self._lf_couleur.
-        self._lf_couleur, self.frm_couleur, _, _ = self._creer_section_pliable(
-            left, "couleur")
-        self.var_vl_preserve = tk.BooleanVar(value=True)
-        ttk.Checkbutton(self.frm_couleur,
-                        text="Préserver la luminosité (L*) — comme Siril",
-                        variable=self.var_vl_preserve,
-                        command=self._on_vl_preserve).pack(anchor="w",
-                                                           pady=(2, 0))
-        ttk.Label(self.frm_couleur,
-                  text="Sans elle, retirer du vert RETIRE DE LA LUMIÈRE : "
-                       "mesuré sur ton empilement SHO NGC 2237, la nébuleuse "
-                       "passe de L* 56,5 à 25,8 (elle s'éteint — « manque de "
-                       "doré ») ; avec elle, 56,4. Seuls les pixels corrigés "
-                       "changent.",
-                  foreground="#888888", wraplength=310).pack(anchor="w")
-        self.var_vl_scnr = tk.BooleanVar(value=False)
-        ttk.Checkbutton(self.frm_couleur, text="SCNR — retrait du vert",
-                        variable=self.var_vl_scnr,
-                        command=self._on_vl_scnr).pack(anchor="w", pady=(4, 0))
-        self.var_vl_scnr_force = tk.DoubleVar(value=1.0)
-        self._add_slider(self.frm_couleur, "Force du SCNR (1,00 = retrait total)",
-                         self.var_vl_scnr_force, 0.0, 1.0, 0.05,
-                         self._on_vl_scnr_force, "{:.2f}")
-        # Jalon 23 : SCNR doux borné par le bruit — ne retire que le
-        # grésillement vert (excès de vert ≤ 3σ), préserve la structure
-        # (nébuleuses) : pensé pour les palettes narrowband où le vert est
-        # de la DONNÉE (HOO : O3 ; SHO sans S : Ha). MESURÉ (banc jalon 85 [6]) :
-        # après un SCNR à force 1,00 l'excès est ≤ 0 partout, donc cette case ne
-        # retire plus rien — elle ne redevient active qu'avec une force < 1,00.
-        self.var_vl_scnr_doux = tk.BooleanVar(value=False)
-        ttk.Checkbutton(self.frm_couleur,
-                        text="SCNR doux — bruit seul (actif si force < 1,00)",
-                        variable=self.var_vl_scnr_doux,
-                        command=self._on_vl_scnr_doux).pack(anchor="w")
-        self.var_vl_demagenta = tk.BooleanVar(value=False)
-        ttk.Checkbutton(self.frm_couleur,
-                        text="Démagenta — négatif + SCNR",
-                        variable=self.var_vl_demagenta,
-                        command=self._on_vl_demagenta).pack(anchor="w")
-        self.var_vl_demagenta_force = tk.DoubleVar(value=1.0)
-        self._add_slider(self.frm_couleur, "Force du démagenta",
-                         self.var_vl_demagenta_force, 0.0, 1.0, 0.05,
-                         self._on_vl_demagenta_force, "{:.2f}")
-        ttk.Label(self.frm_couleur,
-                  text="Les deux cases sont INDÉPENDANTES (en SHO la teinte "
-                       "magenta coexiste avec l'excès de vert) : l'ordre est "
-                       "SCNR → SCNR doux → démagenta, et chacun garde sa force.",
-                  foreground="#888888", wraplength=310).pack(anchor="w")
+        # --- Sortie (panneau extrait au jalon 105c dans
+        # `avastack/ui/panels/output.py` : enregistrements linéaire, traité
+        # (linéaire), tel que vu et par filtre).
+        self._poser_panneau_sortie(left)
 
-        # --- v2.48.0 (jalon 86) : BOOST DU ROUGE (SII) MASQUÉ À L'OBJET -------
-        # Décision d'Alain après la mesure de son empilement SHO NGC 2237 :
-        # « la préservation de L* marche (la nébuleuse n'est plus éteinte), mais
-        # elle reste verte — il manque le doré ». Le doré EST physique : en SHO
-        # le rouge vient du SII, faible (MESURÉ sur ses brutes : SII/Ha = 0,22,
-        # soit 4,6× moins de flux que Ha), et les deux autres leviers essayés
-        # sont MESURÉS et écartés — le « Linear Fit » gain + offset se cale sur
-        # le quart central de l'image (60,6 % d'OBJET ici), choisit un gain rouge
-        # au plafond (×4,0) et colore le fond (saturation 0,08 → 0,34) tout en
-        # délavant la nébuleuse (0,72 → 0,31) ; un gain R global teinte le ciel
-        # (97 % des pixels de fond en R > V à ×2,5). Ce boost-ci pèse son gain
-        # par la LUMINANCE (0 dans le fond, 1 sur l'objet) : le fond reste
-        # identique AU PIXEL près (vérifié : les quatre mesures de fond ne
-        # bougent pas de ×1,5 à ×4,0).
-        ttk.Separator(self.frm_couleur).pack(fill="x", pady=4)
-        self.var_vl_boost = tk.BooleanVar(value=False)
-        ttk.Checkbutton(self.frm_couleur,
-                        text="Boost du rouge (SII) — masqué à l'objet",
-                        variable=self.var_vl_boost,
-                        command=self._on_vl_boost).pack(anchor="w")
-        self.var_vl_boost_force = tk.DoubleVar(
-            value=float(couleurs_mod.BOOST_ROUGE_DEFAUT))
-        self._add_slider(self.frm_couleur,
-                         "Force du boost (3,00 = doré mesuré)",
-                         self.var_vl_boost_force,
-                         float(couleurs_mod.BOOST_ROUGE_MIN),
-                         float(couleurs_mod.BOOST_ROUGE_MAX), 0.05,
-                         self._on_vl_boost_force, "{:.2f}")
-        ttk.Label(self.frm_couleur,
-                  text="À 3,00 la nébuleuse atteint le R:G du Linear Fit "
-                       "(mesuré 1,07 contre 1,05) en gardant sa saturation "
-                       "(0,70 contre 0,31) ; à 4,00 le doré est franc. Appliqué "
-                       "EN DERNIER (après le SCNR) pour que les deux se cumulent "
-                       "au lieu de se combattre. 1,00 = aucun effet.",
-                  foreground="#888888", wraplength=310).pack(anchor="w")
-
-        # --- État des calculs (jalons 40/41) : cadre INDÉPENDANT du moteur —
-        # visible en VeraLux (étapes du solveur : ⏳ préparation/composition/
-        # GraXpert/débruitage/netteté/étirement, puis résultat GX/DN/NET/COUL
-        # · logD · fond) ET en STF/manuel (⏳ netteté pendant la déconvolution
-        # du solveur dédié jalon 12). Un seul écrivain : _maj_lbl_vl (thread
-        # UI, appelée par _tick).
-        # NOTE jalon 95 : self.frm_etat reste le CONTENU INTERNE (pour les
-        # widgets enfants). Le LabelFrame externe est self._lf_etat_calculs.
-        self._lf_etat_calculs, self.frm_etat, _, _ = self._creer_section_pliable(
-            left, "etat_calculs")
-        self.lbl_vl = ttk.Label(self.frm_etat, text="—",
-                                foreground="#888888", wraplength=310)
-        self.lbl_vl.pack(anchor="w")
-        self.pb_vl = ttk.Progressbar(self.frm_etat, mode="indeterminate",
-                                     length=220)
-
-        # --- Traitement externe (long : plusieurs minutes — cf. docstring
-        # de _run_external ; le « live » reste réservé aux étapes rapides)
-        self._lf_traitement_externe, box, _, _ = self._creer_section_pliable(
-            left, "traitement_externe")
-        # NB (v2.38.9) : la ligne « dossier de travail » et ses boutons étaient
-        # ICI, en premières lignes du cadre. Constat d'Alain (27/09/2026) :
-        # « pas de chemin pour temp et pas de bouton journal » — et la mesure lui
-        # a donné raison sur les deux points : le bouton « Journal » n'était
-        # JAMAIS affiché (`winfo_ismapped()=0`, cadre de 318 px trop étroit pour
-        # trois boutons) et la ligne était sous le pli (y≈2421 px sur 3218 px de
-        # colonne défilante). Ils vivent maintenant EN HAUT de la colonne, dans
-        # le cadre « Fichiers de travail et journal » (cf. plus haut).
-        self.var_ext_graxpert = tk.BooleanVar(value=False)
-        ttk.Checkbutton(box, text="1. GraXpert — retrait de gradient",
-                        variable=self.var_ext_graxpert).pack(anchor="w")
-        rowgx = ttk.Frame(box)
-        rowgx.pack(fill="x")
-        self.var_cmd_graxpert = tk.StringVar(value=DEFAULT_CMD_GRAXPERT)
-        ttk.Entry(rowgx, textvariable=self.var_cmd_graxpert).pack(
-            side="left", fill="x", expand=True)
-        ttk.Button(rowgx, text="…", width=3,
-                   command=lambda: self._pick_exe(self.var_cmd_graxpert)
-                   ).pack(side="left", padx=(4, 0))
-        # v2.38.5 : état de la détection, TOUJOURS visible (chemin trouvé, ou
-        # outil introuvable) — cf. _maj_etat_outils.
-        self.lbl_etat_graxpert = ttk.Label(box, text="—", foreground="#888888",
-                                           wraplength=310)
-        self.lbl_etat_graxpert.pack(anchor="w")
-        # Jalon 8 (remis le 16/09/2026) : débruitage du traitement externe —
-        # méthode au choix : GraXpert IA (lent, subprocess) OU algorithmes
-        # locaux rapides (ondelettes/NLM, en mémoire) ; force commune 0..1.
-        # -strength (GraXpert) / k-sigma·h (local, auto-adaptés au bruit).
-        rowd = ttk.Frame(box)
-        rowd.pack(anchor="w")
-        self.var_ext_dn = tk.BooleanVar(value=False)
-        ttk.Checkbutton(rowd, text="2. Débruitage :",
-                        variable=self.var_ext_dn).pack(side="left")
-        self.var_dn_methode = tk.StringVar(
-            value=self.DN_EXT_LABELS["graxpert"])
-        self.cb_dn_methode = ttk.Combobox(
-            rowd, textvariable=self.var_dn_methode, state="readonly",
-            width=17, values=[lib for _, lib in self.DN_EXT_METHODES])
-        self.cb_dn_methode.pack(side="left", padx=(4, 0))
-        rowdn = ttk.Frame(box)
-        rowdn.pack(fill="x")
-        self.var_cmd_graxpert_dn = tk.StringVar(value=DEFAULT_CMD_GRAXPERT_DN)
-        ttk.Entry(rowdn, textvariable=self.var_cmd_graxpert_dn).pack(
-            side="left", fill="x", expand=True)
-        ttk.Button(rowdn, text="…", width=3,
-                   command=lambda: self._pick_exe(self.var_cmd_graxpert_dn)
-                   ).pack(side="left", padx=(4, 0))
-        # v2.38.5 : même état que ci-dessus pour le débruitage GraXpert.
-        self.lbl_etat_gx_dn = ttk.Label(box, text="—", foreground="#888888",
-                                        wraplength=310)
-        self.lbl_etat_gx_dn.pack(anchor="w")
-        self.var_dn_force = tk.DoubleVar(value=0.5)
-        self._add_slider(box, "Force du débruitage (0-1)", self.var_dn_force,
-                         0.0, 1.0, 0.05, None, "{:.2f}")
-        self.var_ext_bxt = tk.BooleanVar(value=False)
-        ttk.Checkbutton(box, text="3. BlurXTerminator — netteté",
-                        variable=self.var_ext_bxt).pack(anchor="w")
-        rowbx = ttk.Frame(box)
-        rowbx.pack(fill="x")
-        self.var_cmd_bxt = tk.StringVar(value=DEFAULT_CMD_BXT)
-        ttk.Entry(rowbx, textvariable=self.var_cmd_bxt).pack(
-            side="left", fill="x", expand=True)
-        ttk.Button(rowbx, text="…", width=3,
-                   command=lambda: self._pick_exe(self.var_cmd_bxt)
-                   ).pack(side="left", padx=(4, 0))
-        # v2.38.5 : état de la détection pour BlurXTerminator (rc-astro).
-        self.lbl_etat_bxt = ttk.Label(box, text="—", foreground="#888888",
-                                      wraplength=310)
-        self.lbl_etat_bxt.pack(anchor="w")
-        # Un changement de commande (saisie, bouton « … », re-détection) met à
-        # jour l'état affiché : c'est le seul retour dont dispose l'utilisateur.
-        for _v in (self.var_cmd_graxpert, self.var_cmd_graxpert_dn,
-                   self.var_cmd_bxt):
-            _v.trace_add("write", self._maj_etat_outils)
-        # v2.48.0 (jalon 85) : les trois cases couleur qui vivaient ICI
-        # (« 4. SCNR », « 5. SCNR doux », « 6. Démagenta ») ont été RETIRÉES.
-        # POURQUOI : la chaîne couleur suit désormais l'ÉTIREMENT (préservation
-        # de la luminosité + sortie linéaire non écrêtée) — elle ne peut donc
-        # plus faire partie d'une chaîne qui produit un fichier LINÉAIRE. Elle
-        # est réglée par la section « Couleur de l'objet (après étirement) » et
-        # s'applique à l'affichage du résultat ⚡ comme à sa sauvegarde
-        # « tel que vu ». Les clés de configuration `ext_scnr`, `ext_scnr_doux`
-        # et `ext_demagenta` ne sont plus écrites ni relues (sans effet).
-        ttk.Label(box, text="4-6. Couleur (SCNR / SCNR doux / démagenta) et boost "
-                            "du rouge (SII) : réglés par la section « Couleur de "
-                            "l'objet (après étirement) » — appliqués APRÈS "
-                            "l'étirement, à l'écran comme dans le fichier.",
-                  foreground="#888888",
-                  wraplength=310).pack(anchor="w", pady=(4, 0))
-        # v2.37.1 — DEMANDE D'ALAIN (25/09/2026) : « intégrer les derniers ajouts
-        # (SPCC, neutralisation, bruit chroma) dans la chaîne de traitement
-        # externe pour que je puisse sortir une belle image à la fin du stack ».
-        # La SPCC y était DÉJÀ (les corrections de couleur — gains effectifs
-        # SPCC/Gaia/manuels, équilibrage, recalage « Linear Fit » — s'appliquent
-        # au composite dans les deux chemins : `mean()` corrigé en mono,
-        # `corrections_couleur` après recomposition en composition, cf.
-        # _run_external_compo). Les DEUX corrections pré-étirement de la chaîne
-        # live rejoignent donc la chaîne externe, au même rang qu'elle (… →
-        # démagenta → neutralisation du fond → réduction du bruit chromatique,
-        # juste avant l'étirement d'affichage) : c'est l'image que l'œil voit
-        # sous l'ancre de VeraLux, et c'est elle que l'utilisateur exporte.
-        self.var_ext_neutre = tk.BooleanVar(value=True)   # défaut COCHÉE, comme
-                                                          # la case live (défaut
-                                                          # de rendu, pas un
-                                                          # choix esthétique)
-        ttk.Checkbutton(box, text="7. Neutraliser la couleur du fond",
-                        variable=self.var_ext_neutre).pack(anchor="w")
-        self.var_ext_chroma = tk.BooleanVar(value=False)  # OPT-IN (choix d'Alain)
-        ttk.Checkbutton(box,
-                        text="8. Réduire le bruit chromatique (force = curseur "
-                             "« Couleur live »)",
-                        variable=self.var_ext_chroma).pack(anchor="w")
-        ttk.Label(box, text="Placeholders : {input} · {output} (.fits complet) · "
-                           "{outbase} (sans extension, GraXpert). « … » : choisir "
-                           "l'exécutable, options conservées. Le débruitage "
-                           "Ondelettes/NLM n'utilise aucune commande (traité "
-                           "en mémoire).",
-                  foreground="#888888", wraplength=310).pack(anchor="w")
-        rowv = ttk.Frame(box)
-        rowv.pack(fill="x", pady=2)
-        self.var_view = tk.StringVar(value="pile")
-        ttk.Radiobutton(rowv, text="Vue : empilement", variable=self.var_view, value="pile",
-                        command=self._on_view).pack(side="left")
-        ttk.Radiobutton(rowv, text="vue traitée", variable=self.var_view, value="traitée",
-                        command=self._on_view).pack(side="left")
-        self.btn_ext = ttk.Button(box, text="⚡ Traiter l'empilement courant",
-                                  command=self._request_ext)
-        self.btn_ext.pack(fill="x", pady=2)
-        self.btn_save_proc = ttk.Button(box, text="💾 Enregistrer le résultat traité (linéaire)…",
-                                        command=self._save_proc, state="disabled")
-        self.btn_save_proc.pack(fill="x")
-        self.lbl_ext = ttk.Label(box, text="—", foreground="#888888", wraplength=310)
-        self.lbl_ext.pack(anchor="w")
-
-        # --- Sortie
-        self._lf_sortie, box, _, _ = self._creer_section_pliable(left, "sortie")
-        ttk.Button(box, text="💾 Enregistrer l'empilement (linéaire)…",
-                   command=self._save).pack(fill="x")
-        # Chantier 24/09/2026 (décision (a) d'Alain) : 3e sortie LINÉAIRE —
-        # « empilement TRAITÉ » = gradient retiré + débruitage + corrections de
-        # couleur, SANS étirement (intermédiaire entre « brut » et « tel que
-        # vu »). Bouton DÉDIÉ, distinct de « Enregistrer le résultat traité
-        # (linéaire)… » du cadre « Traitement externe », qui reste lié au ⚡
-        # manuel (GraXpert/BXT à la demande, sur un instantané).
-        self.btn_save_traite_lin = ttk.Button(
-            box, text="💾 Enregistrer l'empilement traité (linéaire)…",
-            command=self._save_traite_lineaire)
-        self.btn_save_traite_lin.pack(fill="x")
-        # Jalon 5 : sauvegarde « tel que vu » — la vue courante rendue comme
-        # à l'écran (étirement + gamma/saturation), en PLEINE résolution.
-        # Les autres boutons d'enregistrement restent LINÉAIRES (inchangés).
-        self.btn_save_asseen = ttk.Button(
-            box, text="💾 Enregistrer tel que vu (étiré)…",
-            command=self._save_asseen)
-        self.btn_save_asseen.pack(fill="x")
-        # Jalon 19 : en mode composition, un fichier par canal (rôle) —
-        # l'empilement « standard » reste le COMPOSITE linéaire (bouton du haut).
-        ttk.Button(box, text="💾 Enregistrer les canaux (par filtre)…",
-                   command=self._save_canaux).pack(fill="x")
 
         # --- Panneau droit
         right = ttk.Frame(main)

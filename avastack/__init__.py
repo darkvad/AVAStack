@@ -17,9 +17,45 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.59.1"
+AVASTACK_VERSION = "2.59.2"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.59.2 : CHANTIER DE REFACTORING — `ui/panels/` (jalon 105c, vague « sortie »)
+#   - Cinq modules NEUFS (TYPÉS) dans `avastack/ui/panels/` : la TROISIÈME vague
+#     d'extraction de la COLONNE GAUCHE, sous forme de mixins dont `App` HÉRITE
+#     (méthodes reprises VERBATIM — `self` reste l'instance `App`, séquence de
+#     pose et comportement inchangés AU BIT) :
+#       · `display.py` — `PanneauAffichage` : « Affichage » (moteur STF/VeraLux,
+#         réglages STF et communs, cadre VeraLux, rendu pleine résolution) ;
+#       · `color.py` — `PanneauCouleur` : « Couleur de l'objet (APRÈS
+#         étirement) » (SCNR, SCNR doux, démagenta, boost du rouge SII) ;
+#       · `state.py` — `PanneauEtatCalculs` : « État des calculs » ;
+#       · `external.py` — `PanneauTraitementExterne` : « Traitement externe »
+#         (GraXpert, débruitage, BlurXTerminator, vue empilement/traitée, ⚡) ;
+#       · `output.py` — `PanneauSortie` : « Sortie » (4 enregistrements).
+#     `_build_ui` appelle désormais `self._poser_panneau_*` (14 appels) ;
+#     `avastack/ui/app.py` : 8 922 → 8 473 lignes.
+#   - Aucun de ces 5 panneaux ne lit `CONFIG` ni `sauver_config` : aucune
+#     résolution TARDIVE n'est requise. `veralux_moteur` et `couleurs_mod` sont
+#     importés directement dans les modules (aucun banc ne les mocke via
+#     `ui.<nom>`).
+#   - `DEFAULT_CMD_GRAXPERT`, `DEFAULT_CMD_GRAXPERT_DN` et `DEFAULT_CMD_BXT`
+#     ne sont plus utilisés DANS `app.py` (le panneau Traitement externe a
+#     migré) mais restent RÉ-EXPORTÉS (`# noqa: F401`) : surface publique
+#     INCHANGÉE (75 symboles).
+#   - `pyright` 0 ERREUR sur les 25 fichiers typés ; `ruff` : seuls les
+#     2 avertissements PRÉEXISTANTS de `app.py` (`tracer_evt`, `i_etape`).
+#   - Vérifications : garde-fou VERT ; bancs rejoués verts —
+#     `_test_ui_moteur_jalon41.py`, `_test_sliders_jalon6.py`,
+#     `_test_couleur_luminance_jalon85.py`, `_test_boost_rouge_jalon86.py`,
+#     `_test_etat_calcul_jalon40.py`, `_test_ui_jalon5.py`,
+#     `_test_save_asseen_jalon5.py`, `_test_bxt_entete_jalon69.py`,
+#     `_test_graxpert_live_jalon4.py`, `_test_histo_jalon75.py`,
+#     `_test_zoom_pleine_res_jalon68.py`, `_test_ui_visibilite_jalon47.py`,
+#     `_test_ui_robuste_jalon87.py`, `_test_config_jalon6.py`,
+#     `_test_pleine_res_traitee_jalon69.py`, `_test_dialogues_jalon84.py`,
+#     `_test_annotations_overlay_jalon96.py`.
+#
 # v2.59.1 : CHANTIER DE REFACTORING — `ui/panels/` (jalon 105b, vague « traitement »)
 #   - Cinq modules NEUFS (TYPÉS) dans `avastack/ui/panels/` : la DEUXIÈME vague
 #     d'extraction de la COLONNE GAUCHE, sous forme de mixins dont `App` HÉRITE

@@ -9,58 +9,72 @@ dans le changelog du source et l'historique git.)
 
 ---
 
-## Session du 07/10/2026 — jalon 105b (v2.59.1 — LIVRÉ, TESTÉ EN RÉEL) — `ui/panels/` vague « traitement »
+## Session du 07/10/2026 — jalon 105c (v2.59.2 — CODE LIVRÉ, BANCS VERTS, TEST RÉEL EN ATTENTE) — `ui/panels/` vague « sortie »
 
 ### But du jalon
-Septième étape du **chantier de refactoring** : extraire de `app.py` la
-**construction des 5 panneaux « traitement » de la colonne gauche** dans le
-paquet **`ui/panels/` typé**, sous forme de mixins — SANS aucun changement de
-comportement.
+Huitième étape du **chantier de refactoring** : extraire de `app.py` la
+**construction des 5 panneaux « sortie » de la colonne gauche** dans le paquet
+**`ui/panels/` typé**, sous forme de mixins — SANS aucun changement de
+comportement. Dernière vague de `ui/panels/` (3/3).
 
-### Livré (v2.59.1)
+### Livré (v2.59.2)
 - Cinq modules **NEUFS** (TYPÉS) dans `avastack/ui/panels/`, mixins dont `App`
   **hérite** — méthodes reprises **VERBATIM** (le parent passe de `left` à
-  `parent`, comme au 105a) :
-  - `compo.py` → `PanneauComposition` (`_poser_panneau_compo`) ;
-  - `calib.py` → `PanneauCalibration` (`_poser_panneau_calibration`) ;
-  - `stack.py` → `PanneauEmpilement` (`_poser_panneau_empilement`) — le gros
-    morceau : stats/seeing, re-stack, astrométrie + annotation, catalogues &
-    données SPCC, photométrie, SPCC, rejet, équilibrage, Linear Fit, filtre flou ;
-  - `bgnoise.py` → `PanneauFondGrain` (`_poser_panneau_fond_grain`) ;
-  - `sharp.py` → `PanneauNette` (`_poser_panneau_nette`).
-- `_build_ui` : les 5 blocs inline (~630 lignes) deviennent 5 appels
-  `self._poser_panneau_*`. `app.py` : **9 509 → 8 922 lignes**.
-- **PIÈGE ÉVITÉ — isolation de banc** : `stack.py` lit `CONFIG` par
-  **résolution TARDIVE** (`_globals_app()`, motif du correctif 105a) : les cases
-  d'annotation lisent le VRAI config en production, mais les mocks des bancs
-  (`ui.CONFIG`) restent EFFECTIFS. `ROLES` n'est plus utilisé DANS `app.py` mais
-  reste RÉ-EXPORTÉ (`# noqa: F401`) : surface publique INCHANGÉE (75).
+  `parent`, comme aux 105a/105b) :
+  - `display.py` → `PanneauAffichage` (`_poser_panneau_affichage`) — moteur
+    STF/VeraLux, réglages STF et communs (gamma/saturation), cadre VeraLux,
+    rendu pleine résolution ;
+  - `color.py` → `PanneauCouleur` (`_poser_panneau_couleur`) — « Couleur de
+    l'objet (APRÈS étirement) » : SCNR, SCNR doux, démagenta, boost du rouge SII ;
+  - `state.py` → `PanneauEtatCalculs` (`_poser_panneau_etat_calculs`) — étapes
+    du solveur + barre de progression ;
+  - `external.py` → `PanneauTraitementExterne`
+    (`_poser_panneau_traitement_externe`) — GraXpert, débruitage,
+    BlurXTerminator, vue empilement/traitée, ⚡ ;
+  - `output.py` → `PanneauSortie` (`_poser_panneau_sortie`) — les 4
+    enregistrements (linéaire, traité linéaire, tel que vu, par filtre).
+- `_build_ui` : les 5 blocs inline (~490 lignes) deviennent 5 appels
+  `self._poser_panneau_*` (**14 appels** au total). `app.py` : **8 922 → 8 473
+  lignes**.
+- **Pas de piège d'isolation** : aucun de ces 5 panneaux ne lit `CONFIG` ni
+  `sauver_config` → aucune résolution tardive requise. `veralux_moteur`
+  (import direct dans `display.py`) et `couleurs_mod` (dans `color.py`) ne sont
+  mockés par AUCUN banc via `ui.<nom>`.
+- `DEFAULT_CMD_GRAXPERT`, `DEFAULT_CMD_GRAXPERT_DN`, `DEFAULT_CMD_BXT` ne sont
+  plus utilisés DANS `app.py` mais restent RÉ-EXPORTÉS (`# noqa: F401`) :
+  surface publique INCHANGÉE (75 symboles).
 
 ### Vérifications
 - Garde-fou `_test_refactoring_garde_fou.py` : **TOUT AU VERT** (surface 75,
-  hash au bit, **pyright 0/20**).
-- Bancs rejoués verts : `_test_compo_ui_jalon19.py`,
-  `_test_sharp_live_jalon12.py`, `_test_ui_visibilite_jalon47.py`,
-  `_test_config_jalon6.py`, `_test_annotations_overlay_jalon96.py`,
-  `_test_norm_commune_jalon61.py`, `_test_spcc_osc.py`,
-  `_test_ui_robuste_jalon87.py`, `_test_sliders_jalon6.py`,
-  `_test_ui_moteur_jalon41.py`, `_test_reset_empilement_jalon76.py`,
-  `_test_restack_jalon16.py`, `_test_restack_compo_jalon20.py`,
-  `_test_histo_jalon75.py`, `_test_zoom_pleine_res_jalon68.py`,
-  `_test_dialogues_jalon84.py`, `_test_couleur_luminance_jalon85.py`,
-  `_test_ergonomie_jalon52.py`, `_test_cadence_jalon42.py`,
-  `_test_capacites_ui_jalon32.py`, `_test_expo_affichage_jalon34.py`.
-- **`_test_rafale_fin_rendu_jalon80.py` : échec de TIMING PRÉEXISTANT**
-  (section [6] « AVANT le jalon » : nb de rendus parfois < 3) — **reproduit
-  4/4 sur l'arbre pristine** (`git stash`), donc INDÉPENDANT de cette
-  extraction (test de threads sur un worker réel). À reprendre un autre jour.
+  hash au bit, **pyright 0/25**).
+- Bancs rejoués verts : `_test_ui_moteur_jalon41.py`, `_test_sliders_jalon6.py`,
+  `_test_couleur_luminance_jalon85.py`, `_test_boost_rouge_jalon86.py`,
+  `_test_etat_calcul_jalon40.py`, `_test_ui_jalon5.py`,
+  `_test_save_asseen_jalon5.py`, `_test_bxt_entete_jalon69.py`,
+  `_test_graxpert_live_jalon4.py`, `_test_histo_jalon75.py`,
+  `_test_zoom_pleine_res_jalon68.py`, `_test_ui_visibilite_jalon47.py`,
+  `_test_ui_robuste_jalon87.py`, `_test_config_jalon6.py`,
+  `_test_pleine_res_traitee_jalon69.py`, `_test_dialogues_jalon84.py`,
+  `_test_annotations_overlay_jalon96.py`.
 - `ruff` sur `panels/` + `app.py` : **seuls les 2 avertissements PRÉEXISTANTS**
   d'`app.py` (`tracer_evt`, `i_etape`).
-- **TEST RÉEL D'ALAIN : OK** (v2.59.1, 07/10/2026).
+- **TEST RÉEL D'ALAIN : EN ATTENTE** (v2.59.2).
 
 ### Prochaine étape du chantier
-**Jalon 105c** — `ui/panels/` (3/3, sortie, typés) : `display`, `color`,
-`state`, `external`, `output`.
+**Jalon 106a** — `core/worker.py` (1/4, squelette) : `core/config.py`
+(`WorkerConfig` typé), `AcquisitionWorker` délégué.
+
+---
+
+## HISTORIQUE (07/10/2026, jalon 105b, v2.59.1 — LIVRÉ, TESTÉ EN RÉEL) — `ui/panels/` vague « traitement »
+
+Cinq modules typés (mixins dont `App` hérite, VERBATIM) : `compo`, `calib`,
+`stack` (le gros morceau : stats/seeing, re-stack, astrométrie + annotation,
+SPCC, photométrie, rejet, équilibrage, Linear Fit, filtre flou), `bgnoise`,
+`sharp`. `_build_ui` : 5 appels `_poser_panneau_*` ; `app.py` 9 509 → 8 922
+lignes. `stack.py` lit `CONFIG` par résolution tardive (`_globals_app()`) ;
+`ROLES` ré-exporté (`# noqa: F401`). Surface 75, pyright 0/20, garde-fou vert.
+**TEST RÉEL D'ALAIN : OK.**
 
 ---
 
@@ -248,26 +262,26 @@ quatre paquets + `INSTALLATION.md`.
 
 ## Prochaine étape
 
-**JALON 105b LIVRÉ, TESTÉ EN RÉEL (v2.59.1, 07/10/2026)** : `avastack/ui/panels/` (TYPÉ) —
-vague « traitement » (composition, calibration, empilement, fond et grain,
-netteté live) extraite de `app.py` sous forme de mixins ; **surface publique
-INCHANGÉE (75 symboles)**, **pyright 0 erreur sur 20 fichiers**, **banc
+**JALON 105c — CODE LIVRÉ, BANCS VERTS (v2.59.2, 07/10/2026),
+TEST RÉEL D'ALAIN EN ATTENTE** : `avastack/ui/panels/` (TYPÉ) — vague
+« sortie » (affichage, couleur de l'objet, état des calculs, traitement
+externe, sortie) extraite de `app.py` sous forme de mixins ; **surface publique
+INCHANGÉE (75 symboles)**, **pyright 0 erreur sur 25 fichiers**, **banc
 garde-fou VERT**, bancs rejoués verts, **aucun changement de comportement**.
-`stack.py` lit `CONFIG` par résolution TARDIVE (`_globals_app()`, motif du
-correctif 105a).
+Aucun de ces 5 panneaux ne lit `CONFIG` (pas de résolution tardive requise).
 
-**Prochaine action = jalon 105c** (`ui/panels/` 3/3, sortie, typés :
-`display`, `color`, `state`, `external`, `output`).
+**Prochaine action = jalon 106a** (`core/worker.py` 1/4, squelette :
+`core/config.py` `WorkerConfig` typé, `AcquisitionWorker` délégué).
 
 **Reste à faire à ton initiative, sans urgence** : le test « **installer depuis
 le Microsoft Store** » (seul test qui n'existe que par cette voie).
 
-**ÉTAT DE FIN DE SESSION (07/10/2026)** : le chantier de refactoring (jalons
-100 → 105b) est **COMMITÉ et POUSSÉ** sur `origin/master`, **arbre propre**.
-Dernière version **validée en réel** = **v2.59.1** ; dernière **release GitHub
-publique** = **v2.56.1**
+**ÉTAT (07/10/2026)** : le chantier de refactoring (jalons 100 → 105c) est
+**COMMITÉ et POUSSÉ** sur `origin/master`, **arbre propre**. Dernière version
+**validée en réel** = **v2.59.1** (la v2.59.2 — jalon 105c — attend le TEST RÉEL
+d'Alain) ; dernière **release GitHub publique** = **v2.56.1**
 (https://github.com/darkvad/AVAStack/releases/tag/v2.56.1) ; MSIX publié sur le
-Store = **v2.50.0** (les jalons 100-105b ne sont PAS des releases : aucun paquet
+Store = **v2.50.0** (les jalons 100-105c ne sont PAS des releases : aucun paquet
 construit).
 
 **RESTE OUVERT, À L'OCCASION (à ton initiative, aucune urgence)** : ① le test
@@ -310,7 +324,7 @@ identique AU BIT). Travail étalé sur plusieurs sessions : chaque jalon est une
 | **104** ✅ | `ui/config_ui.py` (typé) | extraction charger/sauver de la config UI | garde-fou + `_test_config_jalon6.py` | v2.58.2 |
 | **105a** ✅ | `ui/panels/` (1/3) sources (typés) | `files`, `camera`, `cadence`, `folder` | garde-fou + `_test_ui_visibilite_jalon47.py`, `_test_ui_robuste_jalon87.py` | v2.59.0 |
 | **105b** ✅ | `ui/panels/` (2/3) traitement (typés) | `compo`, `calib`, `stack`, `bgnoise`, `sharp` | garde-fou + `_test_compo_ui_jalon19.py`, `_test_ui_visibilite_jalon47.py` | v2.59.1 |
-| **105c** | `ui/panels/` (3/3) sortie (typés) | `display`, `color`, `state`, `external`, `output` | idem + `_test_ui_moteur_jalon41.py`, `_test_sliders_jalon6.py` | v2.59.2 |
+| **105c** ✅ | `ui/panels/` (3/3) sortie (typés) | `display`, `color`, `state`, `external`, `output` | idem + `_test_ui_moteur_jalon41.py`, `_test_sliders_jalon6.py` | v2.59.2 |
 | **106a** | `core/worker.py` (1/4) squelette | `core/config.py` (`WorkerConfig` typé), `AcquisitionWorker` délégué | garde-fou | v2.60.0 |
 | **106b** | `core/worker.py` (2/4) boucle | acquisition + reset / re-stack | garde-fou + `_test_restack_jalon16.py`, `_test_restack_compo_jalon20.py`, `_test_reset_empilement_jalon76.py` | v2.60.1 |
 | **106c** | `core/worker.py` (3/4) pilotage | roue / TEC / offset + cadence dossier | `_test_jalon17_filtre.py`, `_test_cadence_jalon42.py`, `_test_pilotage_jalon35.py` | v2.60.2 |
@@ -334,12 +348,12 @@ garde-fou les utilise s'ils sont présents (skip gracieux sinon) ; ② **CI GitH
 NON retenue** — le garde-fou reste un banc lancé À LA MAIN (interpréteur du venv),
 rejoué à chaque jalon.
 
-**État : JALON 105b LIVRÉ, TESTÉ EN RÉEL** (v2.59.1 — `ui/panels/` TYPÉ, vague
-« traitement » extraite de `app.py` : composition, calibration, empilement,
-fond et grain, netteté live ; surface publique inchangée, pyright 0 erreur
-sur 20 fichiers ; banc garde-fou VERT). Prochaine action = **jalon 105c**
-(`ui/panels/` sortie, typés). Dernière version **validée en réel** :
-**v2.59.1** ; dernière **release publiée** :
+**État : JALON 105c — CODE LIVRÉ, BANCS VERTS (v2.59.2)** (`ui/panels/` TYPÉ,
+vague « sortie » extraite de `app.py` : affichage, couleur de l'objet, état des
+calculs, traitement externe, sortie ; surface publique inchangée, pyright 0
+erreur sur 25 fichiers ; banc garde-fou VERT). **TEST RÉEL D'ALAIN EN ATTENTE.**
+Prochaine action = **jalon 106a** (`core/worker.py` squelette). Dernière version
+**validée en réel** : **v2.59.1** ; dernière **release publiée** :
 **v2.56.1** ; MSIX Store : **v2.50.0**.
 
 - **JALON PRÉCÉDENT (02/10/2026, jalon 88 — INSTALLATEUR WINDOWS EN PAQUET ZIP,
