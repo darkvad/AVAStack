@@ -13,9 +13,17 @@ sont découpés en sous-méthodes (`_worker_empiler_frame`, `_worker_reinitialis
 CONSOMMÉ par le worker : `_worker_empiler_frame` lit `kappa`/`rejet_methode`/
 `rejet_fenetre` sur un instantané `cfg` construit au POINT D'USAGE (aucun ajout
 au chemin de la boucle : comportement identique AU BIT).
-Étapes 106c/106d : « pilotage » (roue/TEC/offset + cadence dossier) et
-« mesures » (astrométrie/photométrie/SPCC) seront à leur tour découpés, et
-l'état propre au worker sera rapatrié ici.
+
+Jalon 106c : les deux blocs de « PILOTAGE » sont à leur tour extraits VERBATIM —
+`_worker_pilotage` (sondage des contrôles à la connexion, demandes filtre /
+refroidissement, relecture TEC, réglages expo/gain et OFFSET ; servi en TÊTE de
+boucle, MÊME EMPILEMENT EN PAUSE) et `_worker_cadence_dossier` (pause sur une
+source FICHIERS + scan périodique de cadence ; renvoie True quand le tour doit
+se terminer sans rien lire). Aucun paramètre du seam n'est lu sur ce chemin : la
+leçon du 106b interdit d'AJOUTER du code sur le chemin de la boucle (un
+instantané en tête de tour décalait la course du banc 76). Étape 106d :
+« mesures » (astrométrie/photométrie/SPCC) à découper, et l'état propre au
+worker sera rapatrié ici.
 
 PIÈGE ÉVITÉ : trois globals de `avastack.ui.app` sont MONKEYPATCHÉS par les bancs
 (`ui.ArchiveFrames` ; `ui.RESTACK_MIN_FRAMES`/`ui.RESTACK_CADENCE`) : ils sont
@@ -58,8 +66,8 @@ class AcquisitionWorker:
 
     # Interface attendue sur l'hôte (`App`) — DÉCLARATIONS de typage seulement.
     # Ce sont les membres de `self` (l'instance `App`) que la boucle lit/écrit ;
-    # regroupés ici pour le typage statique (`pyright`). Les étapes 106b/106c/
-    # 106d remplaceront ces `Any` par des types précis à mesure du découpage.
+    # regroupés ici pour le typage statique (`pyright`). L'étape 106d
+    # remplacera ces `Any` par des types précis à mesure du découpage.
     _a_lu_une_frame: Any
     _ancre_idx: Any
     _ancre_role: Any
@@ -210,46 +218,12 @@ class AcquisitionWorker:
         while self.running:
             t0 = time.perf_counter()
 
-            # Sondage des contrôles une fois, dès la connexion (la caméra
-            # est ouverte : les contrôles répondent sans attendre une frame).
-            if not self._controles_sondes and self.cam_pilotee is not None:
-                self._controles_sondes = True
-                try:
-                    self._sonder_controles()
-                except Exception:
-                    pass
-
-            # Demandes filtre / refroidissement posées côté Tk — traitées
-            # ICI (thread de travail, jamais d'appel SDK depuis le thread Tk).
-            try:
-                self._appliquer_filtre_demande()
-                self._appliquer_demande_tec()
-            except Exception:
-                pass
-
-            # Relecture TEC (temp/PWM/consigne) toutes les 2 s — display
-            # permanent, empilement démarré ou non.
-            if (self.cam_pilotee is not None
-                    and time.monotonic() - self._tec_dernier_t0 >= 2.0):
-                self._tec_dernier_t0 = time.monotonic()
-                try:
-                    self._tec_dernier = self.cam_pilotee.lire_refroidissement()
-                except Exception:
-                    pass
-
-            if self.pending_settings is not None:
-                self.camera.apply_settings(*self.pending_settings)  # pyright: ignore[reportOptionalMemberAccess]
-                self.pending_settings = None
-
-            # Jalon 27 : OFFSET (contrôle 7, SDK QHY) — demande posée par
-            # le thread Tk, exécutée ICI ; no-op silencieux pour les sources
-            # qui n'ont pas d'offset (base no-op).
-            if self.pending_offset is not None:
-                off, self.pending_offset = self.pending_offset, None
-                try:
-                    self.camera.definir_offset(off)  # pyright: ignore[reportOptionalMemberAccess]
-                except Exception:
-                    pass
+            # Jalon 106c : pilotage des contrôles caméra (sondage à la
+            # connexion, demandes filtre / refroidissement, relecture TEC,
+            # réglages expo/gain et OFFSET) — corps extrait VERBATIM dans
+            # `_worker_pilotage`. Servi en TÊTE de boucle, MÊME EMPILEMENT
+            # EN PAUSE (règle du jalon 26).
+            self._worker_pilotage()
 
             # (Le mécanisme « déconnexion demandée au worker » du jalon 26b
             # a été SUPPRIMÉ (décision d'Alain, 20/09/2026 : la version
@@ -475,41 +449,13 @@ class AcquisitionWorker:
                     if self.stacker.n > 0 and self._dernier_st is not None:
                         self._pousser_rendu()
 
-            # v2.41.0 : empilement EN PAUSE sur une source FICHIERS → on ne lit
-            # RIEN. Pourquoi : une brute lue pendant la pause était marquée
-            # « traitée » puis JETÉE (le `if not self.empilement_on` ci-dessous
-            # ne gardait que la lecture d'une caméra live) — elle ne pouvait
-            # plus JAMAIS être empilée, ni à la reprise, ni après une nouvelle
-            # remise à zéro. C'est exactement la fenêtre « je finis une cible,
-            # je prépare la suivante » (constat d'Alain, 28/09/2026). Le dossier
-            # est seulement SCANNÉ, pour que l'état « brutes en attente » reste
-            # juste ; les fichiers attendent sur le disque.
-            if not self.empilement_on and self._cadence_dossier():
-                maintenant = time.monotonic()
-                if maintenant >= self._prochain_scan:   # au plus toutes les 0,4 s
-                    try:
-                        self.camera.scanner()  # pyright: ignore[reportAttributeAccessIssue]
-                    except Exception:
-                        pass
-                    self._prochain_scan = maintenant + 0.4
-                self._servir_demandes_sans_frame()
-                time.sleep(0.05)
+            # Jalon 106c : cadence de lecture des sources DOSSIER (pause sur
+            # une source FICHIERS + scan périodique) — corps extrait VERBATIM
+            # dans `_worker_cadence_dossier`. Renvoie True quand l'empilement
+            # étant en pause sur une source FICHIERS, le tour doit se terminer
+            # sans rien lire (le bloc historique portait `continue`).
+            if self._worker_cadence_dossier():
                 continue
-
-            # Jalon 42 : cadence d'empilement (sources dossier, cf.
-            # _autoriser_lecture). Le scan SANS lecture ne tourne que si une
-            # cadence est posée, au plus toutes les 0,4 s — il permet de
-            # connaître les brutes EN ATTENTE SUR LE DISQUE avant de décider
-            # de lire (sinon la décision ne porterait que sur ce qui a déjà
-            # été détecté, et chaque brute isolée serait lue immédiatement).
-            if self.cadence_lecture > 0 and self._cadence_dossier():
-                maintenant = time.monotonic()
-                if maintenant >= self._prochain_scan:
-                    try:
-                        self.camera.scanner()  # pyright: ignore[reportAttributeAccessIssue]
-                    except Exception:
-                        pass
-                    self._prochain_scan = maintenant + 0.4
             lu = None
             if self._autoriser_lecture():
                 try:
@@ -735,6 +681,104 @@ class AcquisitionWorker:
                 self._armer_cadence()
                 self._a_lu_une_frame = False
             time.sleep(max(0.0, 1.0 / 20.0 - (time.perf_counter() - t0)))
+
+    def _worker_pilotage(self):
+        """Pilotage des contrôles caméra — servi en TÊTE de boucle (jalon 106c).
+
+        Corps repris VERBATIM de `_worker` (commentaires d'origine conservés,
+        jalons 26/27) : sondage des contrôles à la connexion, demandes filtre /
+        refroidissement posées côté Tk, relecture périodique du TEC, réglages
+        (expo/gain) et OFFSET demandés. Tourne à CHAQUE tour, MÊME EMPILEMENT
+        EN PAUSE (règle du jalon 26). Aucun paramètre du seam `WorkerConfig` n'y
+        est lu : ce bloc vit en tête de boucle, or la leçon du 106b est qu'aucun
+        code ne doit être AJOUTÉ sur le chemin de la boucle."""
+        # Sondage des contrôles une fois, dès la connexion (la caméra
+        # est ouverte : les contrôles répondent sans attendre une frame).
+        if not self._controles_sondes and self.cam_pilotee is not None:
+            self._controles_sondes = True
+            try:
+                self._sonder_controles()
+            except Exception:
+                pass
+
+        # Demandes filtre / refroidissement posées côté Tk — traitées
+        # ICI (thread de travail, jamais d'appel SDK depuis le thread Tk).
+        try:
+            self._appliquer_filtre_demande()
+            self._appliquer_demande_tec()
+        except Exception:
+            pass
+
+        # Relecture TEC (temp/PWM/consigne) toutes les 2 s — display
+        # permanent, empilement démarré ou non.
+        if (self.cam_pilotee is not None
+                and time.monotonic() - self._tec_dernier_t0 >= 2.0):
+            self._tec_dernier_t0 = time.monotonic()
+            try:
+                self._tec_dernier = self.cam_pilotee.lire_refroidissement()
+            except Exception:
+                pass
+
+        if self.pending_settings is not None:
+            self.camera.apply_settings(*self.pending_settings)  # pyright: ignore[reportOptionalMemberAccess]
+            self.pending_settings = None
+
+        # Jalon 27 : OFFSET (contrôle 7, SDK QHY) — demande posée par
+        # le thread Tk, exécutée ICI ; no-op silencieux pour les sources
+        # qui n'ont pas d'offset (base no-op).
+        if self.pending_offset is not None:
+            off, self.pending_offset = self.pending_offset, None
+            try:
+                self.camera.definir_offset(off)  # pyright: ignore[reportOptionalMemberAccess]
+            except Exception:
+                pass
+
+    def _worker_cadence_dossier(self):
+        """Cadence de lecture des sources DOSSIER — jalons 42 / v2.41.0 (106c).
+
+        Corps repris VERBATIM de `_worker` (commentaires d'origine conservés).
+        Renvoie True quand l'empilement étant EN PAUSE sur une source FICHIERS,
+        le tour doit se TERMINER sans rien lire (le bloc qui portait
+        `continue`) ; sinon il effectue au plus le scan périodique de la cadence
+        et renvoie False. `self.cadence_lecture` reste lu DIRECTEMENT (le seam
+        `WorkerConfig` n'est pas consommé ici : la leçon du 106b interdit
+        d'ajouter du code sur le chemin de la boucle)."""
+        # v2.41.0 : empilement EN PAUSE sur une source FICHIERS → on ne lit
+        # RIEN. Pourquoi : une brute lue pendant la pause était marquée
+        # « traitée » puis JETÉE (le `if not self.empilement_on` ci-dessous
+        # ne gardait que la lecture d'une caméra live) — elle ne pouvait
+        # plus JAMAIS être empilée, ni à la reprise, ni après une nouvelle
+        # remise à zéro. C'est exactement la fenêtre « je finis une cible,
+        # je prépare la suivante » (constat d'Alain, 28/09/2026). Le dossier
+        # est seulement SCANNÉ, pour que l'état « brutes en attente » reste
+        # juste ; les fichiers attendent sur le disque.
+        if not self.empilement_on and self._cadence_dossier():
+            maintenant = time.monotonic()
+            if maintenant >= self._prochain_scan:   # au plus toutes les 0,4 s
+                try:
+                    self.camera.scanner()  # pyright: ignore[reportAttributeAccessIssue]
+                except Exception:
+                    pass
+                self._prochain_scan = maintenant + 0.4
+            self._servir_demandes_sans_frame()
+            time.sleep(0.05)
+            return True
+
+        # Jalon 42 : cadence d'empilement (sources dossier, cf.
+        # _autoriser_lecture). Le scan SANS lecture ne tourne que si une
+        # cadence est posée, au plus toutes les 0,4 s — il permet de
+        # connaître les brutes EN ATTENTE SUR LE DISQUE avant de décider
+        # de lire (sinon la décision ne porterait que sur ce qui a déjà
+        # été détecté, et chaque brute isolée serait lue immédiatement).
+        if self.cadence_lecture > 0 and self._cadence_dossier():
+            maintenant = time.monotonic()
+            if maintenant >= self._prochain_scan:
+                try:
+                    self.camera.scanner()  # pyright: ignore[reportAttributeAccessIssue]
+                except Exception:
+                    pass
+                self._prochain_scan = maintenant + 0.4
+        return False
 
     def _worker_reinitialiser(self):
         """Remise à zéro de session — servie en TÊTE de boucle (jalon 106b).

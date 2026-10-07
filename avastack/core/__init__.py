@@ -7,7 +7,8 @@ mixin `AcquisitionWorker` dont `App` hérite ; ses PARAMÈTRES sont décrits par
 `WorkerConfig` (`config.py`). Jalon 106b : sa partie « boucle » (acquisition +
 reset / re-stack) est découpée en sous-méthodes (`_worker_empiler_frame`,
 `_worker_reinitialiser`, `_worker_restack`) et `WorkerConfig` est CONSOMMÉ pour
-le rejet kappa-sigma. Suite du chantier (106c/106d) : découpage de « pilotage »
-(roue/TEC/offset + cadence dossier) et « mesures » (astrométrie/photométrie/
-SPCC).
+le rejet kappa-sigma. Jalon 106c : sa partie « pilotage » est découpée à son
+tour (`_worker_pilotage` — roue/TEC/offset/réglages ; `_worker_cadence_dossier`
+— cadence dossier). Suite du chantier (106d) : découpage des « mesures »
+(astrométrie/photométrie/SPCC).
 """

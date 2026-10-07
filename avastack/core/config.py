@@ -11,8 +11,11 @@ offset).
 Aucun changement de comportement : ce dataclass est la DÉCLARATION typée du
 « seam » qui est CONSOMMÉ depuis le jalon 106b — le rejet kappa-sigma
 (`kappa` / `rejet_methode` / `rejet_fenetre`) est lu sur l'instantané dans
-`_worker_empiler_frame`, pour un résultat IDENTIQUE AU BIT. Il documente
-l'interface du worker et figure dans la liste blanche de `pyright`.
+`_worker_empiler_frame`, pour un résultat IDENTIQUE AU BIT. Le jalon 106c
+(découpage « pilotage ») n'ajoute AUCUNE lecture sur le chemin de la boucle :
+`cadence_lecture` reste lu DIRECTEMENT par le worker (leçon du 106b). Le
+dataclass documente l'interface du worker et figure dans la liste blanche de
+`pyright`.
 """
 
 from dataclasses import dataclass

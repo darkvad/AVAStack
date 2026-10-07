@@ -18,9 +18,29 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.60.1"
+AVASTACK_VERSION = "2.60.2"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.60.2 : CHANTIER DE REFACTORING — `core/worker.py` (jalon 106c, pilotage)
+#   - Les deux blocs de « PILOTAGE » de `_worker` sont découpés en sous-méthodes
+#     TYPÉES reprises VERBATIM (comportement inchangé AU BIT) :
+#       · `_worker_pilotage` — sondage des contrôles à la connexion, demandes
+#         filtre / refroidissement, relecture TEC, réglages expo/gain et
+#         OFFSET ; servi en TÊTE de boucle, MÊME EMPILEMENT EN PAUSE ;
+#       · `_worker_cadence_dossier` — pause sur une source FICHIERS (le bloc qui
+#         portait `continue`) + scan périodique de la cadence ; renvoie True
+#         quand le tour doit se terminer sans rien lire.
+#   - AUCUN paramètre du seam `WorkerConfig` n'est lu sur ce chemin : la leçon
+#     du jalon 106b interdit d'AJOUTER du code sur le chemin de la boucle (un
+#     instantané en tête de tour décalait la course du banc 76). `rejet_*` reste
+#     consommé par `_worker_empiler_frame` ; `cadence_lecture` reste lu
+#     DIRECTEMENT.
+#   - Vérifications : garde-fou VERT (surface 75, hash au bit, pyright 0/27) ;
+#     `ruff` ; bancs rejoués verts — `_test_jalon17_filtre.py`,
+#     `_test_cadence_jalon42.py`, `_test_pilotage_jalon35.py`,
+#     `_test_reset_empilement_jalon76.py`. Étape suivante (106d) : « mesures »
+#     (astrométrie/photométrie/SPCC).
+#
 # v2.60.1 : CHANTIER DE REFACTORING — `core/worker.py` (jalon 106b, boucle)
 #   - `_worker` reste l'ORCHESTRATEUR de la boucle du thread d'acquisition ;
 #     ses blocs cohérents sont découpés en sous-méthodes TYPÉES reprises
