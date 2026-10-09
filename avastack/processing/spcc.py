@@ -855,7 +855,10 @@ def texte_resume(k: Any, diag: Any) -> str:
     # mesure (constat d'Alain, 25/09/2026).
     n = diag.get("frames")
     if n:
-        txt += (f" · mesure faite sur {int(n)} frames (décocher/recocher la "
+        # En COMPOSITION la mesure porte sur les couches PAR RÔLE : « N frames »
+        # y serait ambigu (le composite en compte davantage).
+        quoi = " frames par rôle" if diag.get("frames_par_role") else " frames"
+        txt += (f" · mesure faite sur {int(n)}{quoi} (décocher/recocher la "
                 "case pour refaire)")
     if diag.get("avertissement"):
         txt += " — ⚠ " + diag["avertissement"]

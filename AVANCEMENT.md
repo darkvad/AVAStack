@@ -9,75 +9,129 @@ dans le changelog du source et l'historique git.)
 
 ---
 
-## Session du 09/10/2026 — RETOUR AU CODE v2.64.0 (jalons 111/112) : le repli 180° revient sur `master`
+## Session du 09/10/2026 — CLÔTURE : jalons 111→115 (v2.67.0), CAUSE de l'astrométrie corrigée, TEST RÉEL OK
 
-### Décision d'Alain (09/10/2026)
-- Test de **v2.62.1** sur le jeu M31 LRGB (poses d'un SEUL côté du Pier, couche
-  **L** seule) : **l'astrométrie ne s'améliore PAS**, et **moins de frames
-  s'empilent / plus sont rejetées** qu'avec v2.64.0.
-- **DÉCISION : remettre le CODE DE v2.64.0** (branche `meridien-wip`, commit
-  `47ab25d` = jalons 111/112), qui empile mieux et n'ajoute pas d'erreur
-  d'astrométrie. Le chantier méridien n'est donc plus « parqué » : il redevient
-  le code de travail.
-- **HYPOTHÈSE D'ALAIN (piste n°1, à instruire)** : dans son test M31 LRGB, l'image
-  empilée est à **180°** parce que l'orientation est prise sur la couche **L**
-  (alors qu'en RGB l'astrométrie fonctionne) — or une astrométrie NE DEVRAIT PAS
-  être gênée par une rotation de 180° : à vérifier.
+### État actuel
+- **`AVASTACK_VERSION = "2.67.0"` — TESTÉE EN RÉEL OK (09/10/2026) sur le jeu M31
+  LRGB SANS retournement au méridien : l'astrométrie se RÉSOUT** (l'échec
+  chronique de v2.65.0/v2.66.0 est réglé). Commit + push faits à la clôture.
+- Ce qui a débloqué : le **journal de v2.66.0** (test réel, 7 échecs) —
+  « pas assez de correspondances mutuelles ; RANSAC paires : … (meilleur : 3
+  inliers, échelle 1.628″/px) », **aucune résolution, aucun balayage ASTAP** —
+  a donné le message EXACT à reproduire hors-ligne.
+- **CAUSE trouvée et REPRODUITE hors-ligne** (rejeu de la session sur les frames
+  archivées) : le solveur recevait le **COMPOSITE NORMALISÉ**
+  (`stacker.mean(recadre=False)`) — fond ~**0,72**, σ ~0,033 → son seuil
+  `fond + 8σ` tombe à ~**0,99** : presque rien ne passe, les « étoiles »
+  détectées sont du **BRUIT** → appariement impossible. La **COUCHE BRUTE du rôle
+  G** (même grille) **RÉSOUT : 94 appariements à 2,466″/px** (couche L : 108) ⇒
+  données, catalogue (400 étoiles), indices (champ 2,63665°) et détection (120
+  étoiles) sont **BONS**.
+- C'est le **même défaut de DOMAINE que le correctif ① du jalon 113**, qui n'avait
+  corrigé que l'**ALIGNEUR** — l'astrométrie, elle, gardait `mean(recadre=False)`.
 
-### Réalisé (09/10/2026) — code v2.64.0 remis dans `master`
-- `git checkout meridien-wip -- <9 fichiers>` : les **4 fichiers de CODE** —
-  `avastack/__init__.py` (version + changelog), `avastack/catalogues/propagation.py`,
-  `avastack/processing/alignment.py`, `avastack/processing/stars.py` — et les
-  **5 bancs/outils** de diagnostic (`_diag_align_dossiers.py`, `_diag_align_verite.py`,
-  `_diag_meridien_flip_reel.py`, `_diag_orientation.py`,
-  `_test_meridien_flip_jalon111.py`).
-- **`AVASTACK_VERSION = "2.64.0"`**, import OK. Bancs rejoués **VERTS** :
-  `_test_meridien_flip_jalon111` (TOUT AU VERT, section [4] incluse),
-  `_test_align_jalon13`, `_test_propagation_jalon56`.
-- ⚠ **RIEN n'est commité ni poussé, aucun paquet, aucune release.** La branche
-  `meridien-wip` est CONSERVÉE ; filet `%TEMP%\jalons111-112.patch`.
+### Fichiers modifiés dans cette phase (jalon 115)
+- `avastack/core/worker.py` : nouveau **`_image_reference_de(st)`** (corps de
+  l'ancienne `_image_reference`, jalon 113, déplacé tel quel) ; **`_image_reference()`**
+  délègue ; les TROIS chemins d'astrométrie passent la COUCHE BRUTE :
+  `_astro_tour`, `_astro_aveugle` (ASTAP aussi) et **`_astro_propager_restack`**
+  (l'ancien empilement via `_image_reference_de(ancien)`) — la piste ouverte du
+  jalon 113 est donc FERMÉE.
+- `avastack/processing/astrometrie.py` : `SuiviAstrometrie` garde les compteurs du
+  dernier échec (**`info_echec`**, **`resume_echec()`**) et les ajoute au message :
+  « [image N étoiles, catalogue M, appariements K] ».
+- `avastack/core/worker.py` (suite, même jalon) : **`_photo_tour` et `_spcc_tour`
+  passent par `_profondeur_astro`** — le seuil de profondeur de la photo et de la
+  SPCC comparait encore `stacker.n` (la SOMME des rôles) alors que l'astrométrie
+  était passée au min PAR RÔLE (jalon 113). Un seul point de décision ; les
+  messages annoncent la profondeur par rôle (« N frames par rôle (M au total) »).
+- `avastack/processing/spcc.py` : `texte_resume` dit « mesure faite sur N frames
+  **par rôle** » quand le worker a posé `diag["frames_par_role"]`.
+- `avastack/__init__.py` : version **2.67.0** + changelog (jalons 114 + 115).
+- `bancs/_test_astro_domaine_jalon115.py` (NEUF) ; `_test_astro_profondeur_jalon113.py`
+  **ÉTENDU** (section [6] : photo/SPCC au même seuil).
 
-### Ce que fait le code v2.64.0 (rappel ; détail au changelog `avastack/__init__.py`)
-- `processing/stars.py` : SÉLECTION RÉPARTIE (`distance_min`, repli progressif,
-  `CANDIDATS_MAX`, `MIN_REPARTI`). Défaut 0 = comportement antérieur inchangé.
-- `processing/alignment.py` : `MAX_ALIGN_ETOILES` 60 → **250**, écart adaptatif
-  `_distance_repartition()`, **REPLI 180°** dans `compute()` (sens direct d'abord,
-  repli « phase » écarté pour ce cas), `_M_valide` accepte ~180° (170°–190°).
-- `catalogues/propagation.py` : sanitation d'angle acceptant ~180° (le WCS est
-  conservé sur un ré-empilement basculé sur une frame retournée).
+### Décisions prises
+- ① **L'astrométrie reçoit la MÊME image que l'aligneur** (`_image_reference_de`) :
+  la couche BRUTE du rôle du canal VERT, JAMAIS le composite normalisé. Un SEUL
+  corps pour les deux consommateurs ⇒ plus de divergence possible.
+- ② Les compteurs du solveur sont AJOUTÉS au message d'échec (le dict `info` était
+  jeté en cas d'échec) : un échec futur dira seul s'il vient de la DÉTECTION, du
+  catalogue ou de l'appariement.
+- ③ Le jalon 114 (journal au changement + libellés copiables) a PERMIS cette
+  trouvaille : c'est ce journal qui a donné le message exact à reproduire.
+- ④ **UN SEUL seuil de profondeur** pour les trois mesures (astro, photo, SPCC) :
+  le jalon 113 avait laissé la photo et la SPCC sur `stacker.n` (« sans effet,
+  elles mesurent après un WCS résolu »), mais deux règles pour une même décision
+  finissent toujours par se contredire — Alain a demandé la suppression de
+  l'écart AVANT le test réel, pour ne pas le chercher dans trois mois.
+  `_profondeur_astro` est désormais le point unique (`stacker.n` ne sert plus
+  JAMAIS de seuil, uniquement de total affiché).
 
-### Mesures à réutiliser (session du 08/10/2026)
-- Config test « RGB » (source Composition, lignes R/G/B) : `norm_commune = true`,
-  `ref_refresh = 10`, filtre flou actif ; 150 brutes (50/rôle) → 111 empilées,
-  39 refus d'ALIGNEUR.
-- **Test A/B décisif** : la MÊME brute s'aligne (« triangles +180° »), mais la
-  même brute **CALIBRÉE (dark) est REFUSÉE** → c'est la **structure du dark** qui
-  change les étoiles détectées ; une frame retournée ne passe que par le chemin
-  « triangles » (base = top-12, fragile).
-- **Défaut réel à corriger** : le rafraîchissement de référence en mode
-  COMPOSITION passe le composite (H, W, 3) → `canal_alignement` ne garde que le
-  VERT → **l'ORB devient aveugle**.
-- Note : `composition._echelle_commune` vient du rôle du canal **VERT** (G en
-  RGB/LRGB), pas de L.
+### Vérifications du jalon 115 (toutes vertes)
+- Banc NEUF vert ; `_test_astro_profondeur_jalon113` (section [6] INCLUSE),
+  `_test_astro_branchement_jalon56`,
+  `_test_propagation_jalon56`, `_test_compo_worker_jalon19`, `_test_photometrie_jalon56`,
+  `_test_catalogues_jalon70`, `_test_journal_libelles_jalon114`, `_test_spcc_jalon58` verts.
+- **Preuve hors-ligne sur les VRAIES frames** : composite `mean(recadre=False)` →
+  ÉCHEC (message identique au journal) ; couche G → RÉSOLU 94 app. à 2,466″/px.
+- Garde-fou VERT : syntaxe 244 fichiers, **surface 75 inchangée**, hash au bit
+  inchangé, **pyright 0/49** ; `ruff` propre.
+
+### Mesures de référence (à réutiliser pour le test réel)
+- Le composite NORMALISÉ a un fond ~**5×** celui des brutes (banc : 0,273 contre
+  0,050 ; vrai jeu : 0,5-1,1 contre ~0,03) → la brute est tassée dans les BAS
+  niveaux 8 bits (**médiane 1/255 contre 62/255**) → ORB aveugle → **8-9 refus sur
+  12 frames** (témoin : **0 refus** sans rafraîchissement). ⇒ « rafraîchir sur
+  Jamais » n'améliorait rien : la cause n'était pas le rafraîchissement, mais ce
+  qu'on lui PASSAIT.
+- Astrométrie : **2 frames/rôle = ÉCHEC** (« 3 inliers, échelle 1,812″/px » — le
+  message EXACT d'Alain : 3 inliers, 1,794″) ; **3 frames/rôle = RÉSOLU** (111
+  appariements) ; 1 frame/rôle = « 0 étoiles, image constante ».
+- Le solveur RÉSOUT TOUT hors-ligne (couches, composites, avec/sans normalisation
+  commune) ⇒ ni les données, ni le solveur, ni la composition ne sont en cause.
+  **Piste 180° ABANDONNÉE** (Alain a trié les frames ; le RGB seul fonctionne).
+- Config test « RGB » (08/10) : `norm_commune = true`, `ref_refresh = 10`, filtre
+  flou actif ; 150 brutes (50/rôle) → 111 empilées, 39 refus d'ALIGNEUR.
+- **Test A/B décisif (08/10)** : la MÊME brute s'aligne, mais la même brute
+  **CALIBRÉE (dark) est REFUSÉE** → c'est la structure du dark qui change les
+  étoiles détectées ; une frame retournée ne passe que par le chemin « triangles »
+  (base = top-12, fragile).
+- Une frame refusée n'est PAS empilée (`worker.py:1034-1039`).
 
 ### Outils de diagnostic jetables (hors dépôt, dans `%TEMP%`)
 `avastack_diag_refresh.py` (rejeu de session : ordre + rafraîchissements),
-`avastack_diag_archive.py` (archive vs source + test A/B), `jalons111-112.patch`.
+`avastack_diag_archive.py` (archive vs source + test A/B), `jalons111-112.patch`,
+`avastack_diag_astro_lrgb.py`, `avastack_diag_astro_solve.py`,
+`avastack_diag_astro_session.py` (diag astrométrie du 09/10).
+**Jalon 115** : `avastack_diag_astro_now.py` (compteurs fond/bruit/détection/
+catalogue/appariements par couche et par composite) et
+`avastack_diag_astro_replay.py` (REJEU de la session complète — alignement +
+rafraîchissements — puis solve du composite produit : c'est LUI qui a reproduit
+l'échec hors-ligne et prouvé le correctif de domaine).
 Archives de session (`%TEMP%\avastack_frames_*` = frames réellement LUES) :
 ⚠ supprimées par l'appli au démarrage **6 h après** leur dernière écriture — les
-copier si la preuve doit survivre.
+copier si la preuve doit survivre. Le rôle d'une archive se DÉDUIT du NOMBRE de
+frames (en-têtes perdus) : ~50-60 = L, 12-14 ×3 = R/G/B.
 
-### Prochaine étape (UNE seule)
-Instruire l'**erreur RANSAC de l'astrométrie** en testant la piste n°1 d'Alain
-(image empilée à 180° car l'orientation est prise sur L) : reproduire hors-ligne
-l'astrométrie sur un empilement M31 LRGB, **ancre L vs ancre R**, à 0° et 180°.
-Si concluant ensuite : **paquets + release**.
+### Problèmes ouverts / Points d'attention
+- **VALIDÉ SANS retournement SEULEMENT** : le test réel du 09/10/2026 porte sur le
+  jeu M31 **d'un seul côté du méridien**. Le jeu mêlant les DEUX côtés du Pier
+  (repli 180°) n'a PAS été rejoué depuis les correctifs → ne pas présenter le
+  retournement au méridien comme validé.
+- Les versions **v2.63.0 → v2.67.0** partent dans le MÊME commit de clôture
+  (jalons 111→115) ; **paquets et release GitHub ne sont PAS encore faits**.
+- ✅ FERMÉ au jalon 115 : `worker._astro_propager_restack` prend l'ancien
+  empilement en couche BRUTE (même défaut de domaine que l'astrométrie).
+- AVANCEMENT.md : rester ≤ 300 lignes (cf. `.clinerules`).
 
-### Points d'attention
-- Ne PAS présenter v2.64.0 comme un correctif « validé » : le test réel du 08/10
-  (jeux mêlant les deux côtés du méridien) restait non concluant.
-- AVANCEMENT.md dépasse largement la cible de taille (cf. `.clinerules`, ≤ 300
-  lignes) : les blocs HISTORIQUE antérieurs sont à nettoyer.
+### Prochaines étapes
+- **TEST RÉEL AVEC RETOURNEMENT** (jeu M31 des deux nuits, deux côtés du Pier) :
+  c'est le seul point du chantier non validé (empilement des frames retournées +
+  astrométrie). Journal (`%APPDATA%\AVAStack\journal.txt`, bouton « Journal ») ;
+  un CLIC DROIT sur un libellé en copie le texte.
+- Si concluant : **paquets Windows/Linux/macOS + release GitHub v2.67.0** (rien
+  n'est construit ni publié à ce stade ; dernier tag publié = v2.62.1).
 
 ---
 
@@ -87,9 +141,16 @@ Si concluant ensuite : **paquets + release**.
 ciel) s'empilent au lieu d'être rejetées, et que l'astrométrie (solveur +
 propagation) fonctionne sur un empilement LRGB.
 
-**État (09/10/2026)** : le code **v2.64.0** (jalons 111/112) est REMIS dans
-`master` (cf. session ci-dessus) — `AVASTACK_VERSION = "2.64.0"`, NON commité.
-Il n'est PAS encore validé en réel sur un jeu mêlant les deux côtés du méridien.
+**État (09/10/2026 — CLÔTURE)** : **jalons 111→115 LIVRÉS, TESTÉS EN RÉEL (jeu M31
+sans retournement) ET COMMITÉS/POUSSÉS** → `AVASTACK_VERSION = "2.67.0"` (v2.63.0
+= retournement ACCEPTÉ ; v2.64.0 = retournement RÉELLEMENT résolu ; v2.65.0 =
+correctifs composition : rafraîchissement de référence + profondeur par rôle ;
+v2.66.0 = astrométrie visible au journal ; v2.67.0 = **cause de l'échec astro
+trouvée et corrigée** : le solveur recevait le composite normalisé au lieu de la
+couche brute). Le correctif de domaine a été **mesuré sur les VRAIES frames
+hors-ligne** (composite ÉCHEC ↔ couche G RÉSOLU 94 app. / 2,466″/px) PUIS **vu
+dans l'appli**. Restent : le **test du repli 180° sur un jeu des deux côtés du
+Pier** et la **publication** (paquets + release GitHub).
 
 **Règles d'or** :
 - Un jalon = un banc neuf + rejeu des bancs concernés (TOUS VERTS) + garde-fou
@@ -103,9 +164,10 @@ Il n'est PAS encore validé en réel sur un jeu mêlant les deux côtés du mér
 
 ## En attente / prochaine session
 
-- **Chantier courant** : instruire l'erreur RANSAC d'astrométrie (piste n°1 :
-  image empilée à 180° car l'orientation est prise sur L) — cf. session du
-  09/10/2026.
+- **Chantier courant — TEST RÉEL AVEC RETOURNEMENT attendu** (jeu M31 des deux
+  nuits, deux côtés du Pier) : seul point du chantier non validé. Ensuite
+  **publication** : paquets Windows/Linux/macOS + release GitHub **v2.67.0** (le
+  dernier tag publié est **v2.62.1**).
 - **Test « installer depuis le Microsoft Store »** (seul test qui n'existe que par
   cette voie ; l'appli v2.50.0 y est publiée).
 - **Paquet macOS** : test réel par le testeur — « 📂 Dossier » et « Charger un
@@ -169,8 +231,8 @@ Il n'est PAS encore validé en réel sur un jeu mêlant les deux côtés du mér
 
 ## Clôtures précédentes
 
-- **08/10/2026** : retour à v2.62.1 et park du chantier méridien (jalons 111/112)
-  — REVERSÉ le 09/10 (le test 2.62.1 empile MOINS de frames).
+- **09/10/2026** : astrométrie en composition (jalons 111→115) — v2.67.0 testée OK
+  (M31 sans retournement), commitée et poussée (détail : bloc « Session » ci-dessus).
 - **07/10/2026** : clôture du chantier de refactoring (jalons 100→110) —
   v2.62.1 livrée, testée en réel, publiée.
 

@@ -18,9 +18,183 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.62.1"
+AVASTACK_VERSION = "2.67.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.67.0 : ASTROMÉTRIE — CAUSE DU « toujours le même problème » TROUVÉE ET
+#   CORRIGÉE (jalon 115) : le solveur recevait le COMPOSITE NORMALISÉ.
+#   - PREUVE (journal v2.66.0, test réel M31 LRGB du 09/10, 7 échecs) : « pas
+#     assez de correspondances mutuelles ; RANSAC paires : … (meilleur : 3
+#     inliers, échelle 1.628″/px) » — l'échelle trouvée vaut ~0,66× la vraie.
+#   - REPRODUIT HORS-LIGNE sur les frames RÉELLEMENT LUES (archives de session) :
+#     en rejouant la session (alignement + rafraîchissements de référence), le
+#     COMPOSITE `mean(recadre=False)` ÉCHOUE à l'identique (« aucune affinité
+#     convaincante (5 étoiles) », fond 0,725, bruit 0,033) tandis que la COUCHE
+#     BRUTE du rôle G, MÊME GRILLE, RÉSOUT avec 94 appariements à 2,466″/px
+#     (108 pour la couche L). Données, catalogue (400 étoiles), indices
+#     (AD/Dec/champ 2,63665°) et détection (120 étoiles) sont BONS.
+#   - CAUSE : la détection du solveur seuille à `fond + 8σ`. Sur le composite
+#     normalisé le fond vaut ~0,72 et σ ~0,033 → seuil ~0,99 : presque RIEN ne
+#     passe et les « étoiles » retenues sont du BRUIT → appariement impossible.
+#     C'est le MÊME défaut de DOMAINE que le correctif ① du jalon 113, mais
+#     appliqué à l'ASTROMÉTRIE (le jalon 113 n'avait corrigé que l'ALIGNEUR).
+#   - CORRECTIF : `core/worker.py` — nouveau `_image_reference_de(st)` (le corps
+#     de l'ancienne `_image_reference`, jalon 113, déplacé tel quel) ; les TROIS
+#     chemins d'astrométrie passent désormais la COUCHE BRUTE (`_image_reference_de`)
+#     au lieu de `stacker.mean(recadre=False)` : `_astro_tour`, `_astro_aveugle`
+#     (ASTAP travaille lui aussi sur un domaine de brutes) et surtout
+#     `_astro_propager_restack` — ce dernier était la « piste NON corrigée »
+#     signalée en AVANCEMENT : un composite d'un côté, une brute de l'autre,
+#     la propagation du WCS après un re-stack était refusée pour la même raison.
+#   - PLUS DE VISIBILITÉ ENCORE (`processing/astrometrie.py`) : `SuiviAstrometrie`
+#     garde les COMPTEURS du dernier échec (`info_echec`) et les ajoute au message
+#     (`resume_echec`) — « [image N étoiles, catalogue M, appariements K] ». Un
+#     échec futur dira donc TOUT SEUL s'il vient de la détection, du catalogue ou
+#     de l'appariement (avant, les compteurs étaient jetés en cas d'échec).
+#   - Banc NEUF : `_test_astro_domaine_jalon115.py` (le domaine du composite vs
+#     la couche, l'image RÉELLEMENT transmise par `_astro_tour`, `resume_echec`).
+#   - INCOHÉRENCE DU JALON 113 SUPPRIMÉE (seuil de profondeur) : les seuils de la
+#     PHOTOMÉTRIE et de la SPCC comparaient encore `stacker.n` — la SOMME des
+#     rôles — à `ASTRO_MIN_FRAMES`, alors que l'astrométrie, elle, était passée à
+#     la profondeur PAR RÔLE (v2.65.0 disait « seuils photo/SPCC inchangés » : ils
+#     mesurent après un WCS résolu, donc l'écart était latent). Deux règles pour
+#     une même décision = le genre de piège qu'on cherche trois mois plus tard :
+#     `_photo_tour` et `_spcc_tour` passent désormais par `worker.
+#     _profondeur_astro`, comme `_astro_tour`/`_astro_aveugle` → UN SEUL point de
+#     décision, plus aucun seuil ne peut dériver de l'autre.
+#   - MESSAGES ALIGNÉS SUR LA MÊME RÈGLE : la profondeur ANNONCÉE pendant une
+#     mesure est celle PAR RÔLE (« 3 frames par rôle (12 au total) », même
+#     formulation que la ligne d'astrométrie) et le libellé de la SPCC dit
+#     « mesure faite sur N frames par rôle » (`processing/spcc.texte_resume`, clé
+#     `frames_par_role` posée par le worker en composition) — le total reste
+#     affiché, il ne décrit simplement plus la mesure.
+#   - Banc du jalon 113 ÉTENDU (`_test_astro_profondeur_jalon113.py`) : section
+#     [6] — `_photo_tour`/`_spcc_tour` ne mesurent plus à 1 frame par rôle (n = 4
+#     en LRGB) et mesurent bien à 3 frames par rôle, comme l'astrométrie.
+#   - Rappel jalon 114 (v2.66.0, inclus) : lignes d'état astro/photo/SPCC AU
+#     JOURNAL au changement + libellés COPIABLES au clic droit.
+# v2.66.0 : ASTROMÉTRIE VISIBLE — lignes d'état AU JOURNAL + libellés COPIABLES
+#   (jalon 114). Deux doléances d'Alain, 09/10/2026, après le test réel de
+#   v2.65.0 (M31 LRGB) :
+#   - « TOUJOURS le même problème sur l'astrométrie — aucune info dans le
+#     journal » : les messages d'échec (orange) n'existaient QUE dans
+#     l'interface. `core/worker.py` n'importe même pas `journal` ; les seules
+#     lignes écrites pendant une session étaient celles de DÉMARRAGE et les
+#     DEBUG (case cochée). Diagnostic impossible après coup.
+#     → `App._noter_etat(cle, texte)` écrit au journal la ligne d'état la
+#     PREMIÈRE fois puis à chaque CHANGEMENT de texte (le worker pousse son
+#     état à chaque frame : on ne journalise PAS 20 fois par seconde, seulement
+#     les transitions). Branché sur les trois lignes de calcul — astrométrie,
+#     photométrie, SPCC — côté texte du worker (`_update_status`) ET côté vue
+#     de l'UI pour l'astrométrie (`_maj_astro_vue`, qui porte aussi les
+#     « indices refusés — … »). Le journal donne désormais la chronologie
+#     exacte : « résolution en cours », « échec — 3 inliers, échelle
+#     1,794″/px (1/20 essais…) », « BALAYAGE… », etc.
+#   - « impossible de copier les textes des libellés orange ou jaune » : les
+#     `ttk.Label` de Tk ne sont pas sélectionnables.
+#     → `App._poser_copie_libelles()` : un CLIC DROIT sur N'IMPORTE QUEL
+#     libellé de la fenêtre ouvre un menu « Copier le texte » qui met la ligne
+#     dans le presse-papiers (`bind_all`, donc aussi les libellés créés après
+#     coup ; Button-3 = Windows/Linux, Button-2 et Control-clic = macOS).
+#     `_texte_libelle` gère les libellés à `textvariable`. Jamais d'exception.
+#   - Banc NEUF : `_test_journal_libelles_jalon114.py` (copie de texte fixe et
+#     de `textvariable`, journalisation au changement et PAS de doublon à
+#     l'identique, intégration `_update_status`). Garde-fou rejoué (surface 75
+#     inchangée — deux méthodes privées ajoutées, hash au bit inchangé).
+# v2.65.0 : ALIGNEMENT + ASTROMÉTRIE en COMPOSITION — DEUX CORRECTIFS (jalon 113)
+#   - CONSTAT RÉEL (Alain, 09/10/2026, M31 LRGB ; rejeux des 08-09/10) : en mode
+#     COMPOSITION, le rafraîchissement de référence écrasait les brutes suivantes
+#     et l'astrométrie ne parvenait jamais à se faire.
+#   - ① RAFAÎCHISSEMENT DE RÉFÉRENCE (`core/worker.py` : `_image_reference` /
+#     `_rafraichir_reference`) : il passait `stacker.mean(recadre=False)`, donc en
+#     composition le COMPOSITE NORMALISÉ (fond ~5× celui des brutes : ~0,27 contre
+#     ~0,05 au banc ; 0,5-1,1 contre ~0,03 sur les vraies brutes). Comme
+#     `StarAligner.set_reference` prend ses bornes SUR la référence, la brute
+#     était tassée dans les bas niveaux 8 bits (médiane 1/255 contre 62/255 au
+#     banc) → ORB aveugle → **8-9 refus sur 12 frames** MESURÉS (0 refus sans
+#     rafraîchissement). On passe désormais la COUCHE 2D BRUTE du rôle qui
+#     alimente le canal VERT (G en RGB/LRGB, O3 en HOO, Ha en SHO — le MÊME canal
+#     que `canal_alignement` prenait sur le composite, mais dans le domaine des
+#     brutes) ; repli sur le 1er rôle non vide (rôle vert encore vide en début de
+#     session), et empilement tel quel hors composition. Banc : 12/12 refus → 0/12.
+#   - ② PROFONDEUR MINIMALE PAR RÔLE (nouveau `CompositeStacker.profondeur_min()`
+#     + `worker._profondeur_astro`) : `astrometrie.ASTRO_MIN_FRAMES` était comparé
+#     à `stacker.n`, qui est la SOMME des rôles — en LRGB, 1 frame par rôle
+#     donnait n = 4 ≥ 3 et le solveur tentait sa résolution sur une image DÉJÀ
+#     INSOLUBLE (« image constante ») : l'essai était BRÛLÉ et le backoff
+#     (20→300 s) éloignait les suivants, si bien que la profondeur où l'astrométrie
+#     FONCTIONNE n'était jamais atteinte. C'est la profondeur du rôle le plus FAIBLE
+#     qui est comparée au seuil (≈12 en LRGB). Mesure de référence : 2 frames/rôle
+#     = échec (« 3 inliers, échelle 1,812″/px »), 3 = RÉSOLU. Appliqué aux trois
+#     chemins : `_astro_tour` (`peut_essayer` ET `resoudre_sur(n_frames=…)`),
+#     message d'état (« N frames par rôle (M au total) »), et le garde de
+#     `_astro_aveugle` (ASTAP n'est plus sollicité sur une image insoluble).
+#     Seuils photo/SPCC inchangés (ils ne s'exécutent qu'après un WCS résolu).
+#   - Bancs NEUFS : `_test_refresh_ref_compo_jalon113.py` (domaine composite vs
+#     couche, choix de la couche du canal vert, cécité de l'ORB, rejeu 12 frames) ;
+#     `_test_astro_profondeur_jalon113.py` (`profondeur_min`, seuil par rôle,
+#     `_astro_tour` avec suivi bouchonné, garde de `_astro_aveugle`).
+#     `_test_astro_branchement_jalon56`, `_test_compo_worker_jalon19` et le
+#     garde-fou rejoués VERTS (hash au bit inchangé, surface 75, pyright 0/49) ;
+#     `ruff` propre.
+
+# v2.64.0 : ALIGNEMENT — RETOURNEMENT AU MÉRIDIEN RÉELLEMENT RÉSOLU (jalon 112)
+#   - CONSTAT RÉEL (Alain, 08/10/2026, M31 au SV555, deux nuits) : les en-têtes
+#     FITS montrent PIERSIDE=West pour les brutes du 22/09 23:53 et East pour
+#     celles du 13/09 et du 23/09 03:17 → retournement au méridien. Seules
+#     46 frames sur 212 s'empilaient (R 3/50, G 3/50, B 4/50), et l'image LRGB
+#     portait des « taches rouges » (étoiles fantômes de la couche retournée).
+#   - CAUSE PROFONDE, mesurée sur les vraies brutes : `detecter_positions`
+#     rendait les N composantes au plus FORT PIC ; or elles s'ENTASSENT dans un
+#     bandeau (les 60 « plus brillantes » tenaient dans 20 % de la hauteur) →
+#     liste d'étoiles explorable par AUCUN appariement. Mesure : 2 étoiles
+#     communes entre deux frames du même champ → **35** avec une sélection
+#     RÉPARTIE dans le champ.
+#   - `processing/stars.py` : nouveau paramètre `distance_min` → SÉLECTION
+#     RÉPARTIE (parcours glouton sur le tri par éclat, écart minimal imposé).
+#     Défaut 0 = comportement ANTÉRIEUR inchangé.
+#   - `processing/alignment.py` : ① `MAX_ALIGN_ETOILES` 60 → **250** et écart
+#     `_distance_repartition()` ADAPTATIF (0,7 × espacement moyen, plafonné à
+#     120 px — une petite image garde ses étoiles) ; ② **REPLI 180°** dans
+#     `compute()` : si l'alignement direct échoue, on réessaie la frame
+#     RETOURNÉE de 180° et on COMPOSE la matrice (le sens direct est essayé
+#     d'abord ; le repli « phase » en est ÉCARTÉ, car il suppose des images de
+#     même orientation). ③ `_M_valide` accepte ~180° (170°–190°).
+#   - RÉSULTAT MESURÉ sur les dossiers réseau d'Alain : L 10/10, R 9/10 (les
+#     frames West s'alignent à −176,2°, les East à −0,13°).
+#   - `catalogues/propagation.py` : la sanitation d'angle accepte ~180°
+#     (`ANGLE_SAN_FLIP_DEG`) — un ré-empilement basculé sur une frame retournée
+#     garde son WCS.
+#   - Bancs : `_test_meridien_flip_jalon111.py` (vert) ; align 13/15, narrowband
+#     21, propagation 56 rejoués VERTS ; garde-fou VERT (hash au bit inchangé,
+#     surface 75, pyright 0/49) ; `ruff` propre.
+# v2.63.0 : ALIGNEMENT — RETOURNEMENT AU MÉRIDIEN ACCEPTÉ (jalon 111)
+#   - CONSTAT RÉEL (Alain, 08/10/2026) : sur deux nuits d'acquisition (même
+#     caméra, NINA), les couches R/G/B ont subi un retournement au méridien
+#     (rotation ~180° par rapport au ciel) tandis que L ne l'a pas subi. Comme
+#     toutes les images partagent UN SEUL aligneur (jalon 15/19), les frames
+#     retournées étaient TOUTES rejetées (|angle| > 10°) : 3-4 frames R/G/B
+#     empilées sur 50, un empilement appauvri ET une image LRGB hérissée de
+#     « taches rouges » (la formule LRGB — L / luminance(RGB) — amplifie le
+#     fond là où L seul portait encore un objet : les étoiles fantômes du côté
+#     minoritaire du méridien).
+#   - CORRECTIF `processing/alignment.py` : `_M_valide` accepte désormais une
+#     rotation ~180° dans la MÊME tolérance que l'alignement normal
+#     (`MERIDIAN_FLIP_DEG = 180`, `MERIDIAN_FLIP_TOL_DEG = 10` → 170°–190°).
+#     TOUS les autres garde-fous restent INCHANGÉS (échelle [0.9, 1.1], inliers
+#     minimum, contre-test d'appariements mutuels, continuité de translation) :
+#     une fausse correspondance à 180° reste impossible (15° et 90° refusés).
+#     AUCUN réglage à faire : la correction s'applique d'elle-même.
+#   - `catalogues/propagation.py` : la SANITATION d'angle accepte elle aussi
+#     ~180° (`ANGLE_SAN_FLIP_DEG`) — sinon un ré-empilement basculé sur une
+#     frame retournée perdrait son WCS (`_astro_propager_restack`).
+#   - Banc `_test_meridien_flip_jalon111.py` : `_M_valide` (0°/180° acceptés ;
+#     15°/90°/165°/195° refusés ; échelle aberrante et NaN toujours bornés) ;
+#     frame pivotée de 180° RÉELLEMENT alignée et reconstruite (méthode
+#     « ORB+étoiles ») ; non-régression (translation normale conservée, 15°
+#     refusé). Bancs d'alignement 13/15, narrowband 21 et propagation 56
+#     rejoués VERTS ; garde-fou VERT (hash au bit, surface 75, pyright 0/49) ;
+#     `ruff` propre sur les fichiers touchés.
 # v2.62.1 : CHANTIER DE REFACTORING — TYPAGE RÉTROACTIF du RÉSIDU de `ui/`
 #   (jalon 110 — clôture du chantier 100→110)
 #   - ANNOTATIONS SEULES (aucun changement de comportement, rendu identique AU

@@ -50,12 +50,21 @@ import numpy as np
 from .solveur import WcsTan, _ajuster_tan
 
 # Garde-fous de SANITATION seulement : la politique d'alignement (échelle
-# [0.9, 1.1], |angle| ≤ 10°) est appliquée EN AMONT par
-# processing/alignment sur chaque matrice — la composition de deux matrices
-# valides peut dépasser ces bornes (1,1 × 1,1 = 1,21) sans être fausse.
-# Ici on refuse uniquement le mathématiquement inexploitable.
+# [0.9, 1.1], angle ~0° OU ~180° — retournement au méridien, v2.63.0) est
+# appliquée EN AMONT par processing/alignment sur chaque matrice — la
+# composition de deux matrices valides peut dépasser ces bornes
+# (1,1 × 1,1 = 1,21) sans être fausse. Ici on refuse uniquement le
+# mathématiquement inexploitable.
 ECHELLE_SAN_MIN, ECHELLE_SAN_MAX = 0.5, 2.0
 ANGLE_SAN_DEG = 45.0
+# Retournement au méridien (v2.63.0) : l'aligneur ACCEPTE désormais une
+# rotation ~180° (cf. processing/alignment). La propagation doit l'accepter
+# AUSSI — sinon un ré-empilement basculé sur une frame retournée
+# (`_astro_propager_restack`) perdrait silencieusement son WCS. On tolère donc
+# ~0° (±ANGLE_SAN_DEG) comme ~180° (±ANGLE_SAN_DEG) ; la borne reste large
+# puisqu'il ne s'agit que d'une SANITATION (la vraie politique est dans
+# l'aligneur).
+ANGLE_SAN_FLIP_DEG = 180.0
 
 
 def compose_M(M2, M1):
@@ -106,7 +115,9 @@ def propager(wcs_ref, M, forme=None):
     ang, ech, _dx, _dy = infos_M(M)
     if not (ECHELLE_SAN_MIN <= ech <= ECHELLE_SAN_MAX):
         return None, f"échelle d'alignement aberrante : {ech:.3f}"
-    if abs(ang) > ANGLE_SAN_DEG:
+    # ~0° (alignement normal) OU ~180° (retournement au méridien, v2.63.0).
+    if abs(ang) > ANGLE_SAN_DEG \
+            and abs(abs(ang) - ANGLE_SAN_FLIP_DEG) > ANGLE_SAN_DEG:
         return None, f"angle d'alignement aberrant : {ang:.1f}°"
     return WcsCompose(wcs_ref, M, forme=forme), ""
 

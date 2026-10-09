@@ -43,7 +43,7 @@ import os
 import queue
 import threading
 import time
-from typing import Any
+from typing import Any, Callable, cast
 
 import numpy as np
 import cv2
@@ -52,7 +52,8 @@ from ..cameras import QHYCamera
 from ..images import borner_lineaire, save_image
 from ..processing import StarAligner, LiveStacker
 from ..processing import stars as seeing_live
-from ..processing.composition import CompositeStacker, extraire_canal
+from ..processing.composition import (COMPOSITIONS, CompositeStacker,
+                                      extraire_canal)
 # Jalon 106d : les MESURES (astrométrie / photométrie / SPCC) sont désormais
 # CALCULÉES ici — mêmes modules d'appui que `ui/app.py` (aucun cycle : `core`
 # importe `processing`, jamais l'inverse).
@@ -543,7 +544,7 @@ class AcquisitionWorker:
                     self._ref_frames >= self.ref_refresh
                     or (self._ref_bad >= 3
                         and 2 * self._ref_bad >= self._ref_frames)):
-                self._definir_reference(self.stacker.mean(recadre=False))  # pyright: ignore[reportOptionalMemberAccess]
+                self._rafraichir_reference()
                 self._ref_frames = self._ref_bad = 0
 
             if self.ref_request and stack is not None:
@@ -551,7 +552,7 @@ class AcquisitionWorker:
                 # jalon 13 : SANS recadrage (même repère que les frames —
                 # l'ancien code passait l'empilement RECADRÉ : chaque clic
                 # décalait silencieusement tout l'empilement de (y0, x0))
-                self._definir_reference(self.stacker.mean(recadre=False))  # pyright: ignore[reportOptionalMemberAccess]
+                self._rafraichir_reference()
 
             # Jalon 106b : re-stack « à la Siril » (bouton ou auto) — extrait
             # dans `_worker_restack` ; renvoie le nouvel empilement pour
@@ -1099,6 +1100,59 @@ class AcquisitionWorker:
     # (`_maj_*_etat` / `_maj_*_vue`, dialogues de nom de cible, en-têtes FITS de
     # sortie) reste dans `ui/app.py`, appelé via `self`.
 
+    def _image_reference(self):
+        """Image à POSER comme référence d'alignement depuis l'empilement
+        courant, DANS LE MÊME DOMAINE que les brutes (jalon 113) — le « pourquoi »
+        complet vit dans `_image_reference_de`, qui porte le corps."""
+        return self._image_reference_de(self.stacker)
+
+    def _image_reference_de(self, st):
+        """Image d'un empilement `st` DANS LE MÊME DOMAINE que les brutes.
+
+        POURQUOI : `st.mean(recadre=False)` rend, en COMPOSITION, un COMPOSITE
+        NORMALISÉ (chaque rôle est calé sur ses propres percentiles) — son canal
+        VERT a un fond TRÈS supérieur à celui des brutes (0,7-1,2 contre ~0,03
+        sur les vraies données). Deux consommateurs en souffrent, les deux
+        MESURÉS : `StarAligner.set_reference` prend ses bornes de normalisation
+        SUR la référence, donc les brutes sont écrasées à 0 → ORB aveugle
+        (jalon 113 : 8-9 refus sur 12 frames) ; et le SOLVEUR d'astrométrie
+        seuille à `fond + 8σ`, or ce fond vaut ~0,72 et σ ~0,033 → le seuil
+        tombe vers 0,99, presque RIEN ne passe et les « étoiles » détectées
+        sont du BRUIT → appariement impossible (jalon 115, reproduit hors-ligne
+        sur les frames réelles : le composite ÉCHOUE « aucune affinité
+        convaincante (5 étoiles) » là où la couche BRUTE résout avec 94
+        appariements à la BONNE échelle, 2,466″/px).
+
+        CORRECTIF : on rend la COUCHE 2D BRUTE du rôle qui alimente le canal
+        VERT (G en RGB/LRGB, O3 en HOO, Ha en SHO) — EXACTEMENT le canal que
+        `canal_alignement` aurait pris sur le composite, mais dans le domaine
+        des brutes (`moyennes(recadre=False)`, qui ne normalise pas). Repli : le
+        premier rôle non vide, si le rôle du vert est encore vide en début de
+        session. Hors composition (mono, source couleur), l'empilement est déjà
+        dans le bon domaine : il est rendu tel quel.
+
+        → (H, W) float32, ou None si rien à poser."""
+        if st is None:
+            return None
+        if self._mode_compo and hasattr(st, "moyennes"):
+            canaux = st.moyennes(recadre=False) or {}
+            spec = COMPOSITIONS.get(getattr(st, "composition", "")) or {}
+            g = (spec.get("canaux_rgb") or {}).get("G") or ()
+            for role in tuple(g) + tuple(spec.get("roles", ())):
+                m = canaux.get(role)
+                if m is not None:
+                    return m
+            return None
+        return st.mean(recadre=False)
+
+    def _rafraichir_reference(self) -> None:
+        """Pose la référence d'alignement depuis l'empilement courant (jalon 13)
+        — l'image vient de `_image_reference` (même domaine que les brutes,
+        correctif du jalon 113). Rien à poser (empilement vide) → aucun effet."""
+        img = self._image_reference()
+        if img is not None:
+            self._definir_reference(img)
+
     def _worker_mesures(self):
         """Mesures de l'empilement — servi APRÈS le re-stack (jalon 106d).
 
@@ -1119,6 +1173,34 @@ class AcquisitionWorker:
             # prérequis) ; elle PRIORISE ses coefficients sur les gains
             # Gaia relatifs quand sa case est cochée.
             self._spcc_tour(self.stacker)
+
+    @staticmethod
+    def _profondeur_astro(stacker) -> int:
+        """Profondeur à comparer à `astrometrie.ASTRO_MIN_FRAMES` (jalon 113).
+
+        En COMPOSITION, `stacker.n` est la SOMME des rôles : à 1 frame par rôle
+        en LRGB il vaut déjà 4 et l'astrométrie tentait sa résolution sur une
+        image INSOLUBLE (« image constante ») — l'essai était BRÛLÉ et le
+        backoff (20→300 s) éloignait les suivants. La profondeur qui compte est
+        le MINIMUM des rôles non vides (`CompositeStacker.profondeur_min()`).
+        Hors composition, c'est le nombre de frames empilées.
+
+        TOUS LES SEUILS de profondeur passent par ici (jalon 115) : les trois
+        consommateurs — `_astro_tour` et `_astro_aveugle` (jalon 113), puis
+        `_photo_tour` et `_spcc_tour` — comparent la valeur rendue à
+        `astrometrie.ASTRO_MIN_FRAMES`. Photo et SPCC comparaient encore
+        `stacker.n` (la SOMME) : mesurer à 1 frame par rôle pendant que
+        l'astrométrie en exigeait trois était une incohérence sans effet
+        aujourd'hui (les deux mesurent APRÈS un WCS résolu) mais un piège à
+        retardement. `stacker.n` ne sert donc PLUS JAMAIS de seuil de
+        profondeur (il reste le total affiché dans les messages)."""
+        mini = getattr(stacker, "profondeur_min", None)
+        if callable(mini):
+            try:
+                return int(cast(Callable[[], Any], mini)())
+            except Exception:
+                pass
+        return int(stacker.n)
 
     def _astro_tour(self, stacker):
         """Appelé par le worker APRÈS le re-stack (la grille est alors celle
@@ -1156,22 +1238,31 @@ class AcquisitionWorker:
             return
         if not self.suivi_astro.pret:
             self.suivi_astro.indice(*self._astro_indices)
-        if not self.suivi_astro.peut_essayer(stacker.n):
+        # Jalon 113 : la profondeur comparée au seuil est celle PAR RÔLE en
+        # composition (n y est une SOMME : 1 frame/rôle en LRGB donnait n = 4
+        # ≥ ASTRO_MIN_FRAMES et l'essai partait sur une image insoluble, brûlant
+        # le quota pendant que le backoff éloignait les essais suivants).
+        n_prof = self._profondeur_astro(stacker)
+        if not self.suivi_astro.peut_essayer(n_prof):
             raison = self.suivi_astro.raison_attente()
             if raison:
                 self.astro_info = f"Astrométrie : {raison}"
                 self.astro_couleur = "#c98a00"
             return
-        img = stacker.mean(recadre=False)
+        # Jalon 115 : la MÊME image que l'ALIGNEUR (`_image_reference_de`) — le
+        # composite NORMALISÉ a un fond ~20× celui des brutes, ce qui porte le
+        # seuil du solveur au-dessus de tout (cf. `_image_reference_de`).
+        img = self._image_reference_de(stacker)
         if img is None:
             return
         # Message posé AVANT le calcul : le thread Tk le lit PENDANT la
         # résolution (le worker, lui, est occupé) — l'utilisateur voit ainsi
         # d'où vient la pause d'acquisition d'une frame environ.
-        self.astro_info = (f"Astrométrie : résolution en cours "
-                           f"({stacker.n} frames)…")
+        detail = (f"{n_prof} frames par rôle ({stacker.n} au total)"
+                  if self._mode_compo else f"{n_prof} frames")
+        self.astro_info = f"Astrométrie : résolution en cours ({detail})…"
         self.astro_couleur = "#888888"
-        okk, msg = self.suivi_astro.resoudre_sur(img, n_frames=stacker.n)
+        okk, msg = self.suivi_astro.resoudre_sur(img, n_frames=n_prof)
         if okk:
             self._maj_astro_etat()
             return
@@ -1227,7 +1318,10 @@ class AcquisitionWorker:
                 f"PAS de base de BALAYAGE — saisir AD/Dec approximatifs, ou "
                 f"installer une base G18/H18)")
             return
-        if stacker.n < astro_mod.ASTRO_MIN_FRAMES:
+        # Jalon 113 : profondeur PAR RÔLE en composition (cf. _profondeur_astro)
+        # — le balayage ASTAP est cher, inutile de l'engager sur une image
+        # insoluble à 1 frame par rôle.
+        if self._profondeur_astro(stacker) < astro_mod.ASTRO_MIN_FRAMES:
             return
         # Un seul essai PAR VALEUR de champ : rebalayer à l'identique redonne
         # exactement le même échec (« No solution found! », constat réel).
@@ -1244,7 +1338,9 @@ class AcquisitionWorker:
                 and t - self._astro_dernier_aveugle
                 < astro_mod.ASTRO_ESSAI_DELAI_S):
             return
-        img = stacker.mean(recadre=False)
+        # Jalon 115 : même image que l'aligneur (couche BRUTE du canal vert) —
+        # ASTAP travaille sur un domaine de brutes, pas sur un composite normalisé.
+        img = self._image_reference_de(stacker)
         if img is None:
             return
         self._astro_aveugles += 1
@@ -1290,7 +1386,13 @@ class AcquisitionWorker:
             return
         if self.suivi_astro is None or not self.suivi_astro.resolu:
             return                     # sans WCS : aucune photométrie possible
-        if stacker.n < astro_mod.ASTRO_MIN_FRAMES:
+        # Jalon 115 : profondeur PAR RÔLE, la MÊME que l'astrométrie (jalon 113)
+        # — `stacker.n` est une SOMME des rôles en composition et autorisait la
+        # mesure à 1 frame par rôle. Un seul point de décision
+        # (`_profondeur_astro`) pour TOUS les consommateurs : plus aucun seuil
+        # ne peut dériver de l'autre (cf. sa docstring).
+        n_prof = self._profondeur_astro(stacker)
+        if n_prof < astro_mod.ASTRO_MIN_FRAMES:
             return
         if self._photo_essais >= photo_mod.MAX_ESSAIS:
             self.photo_info = (f"Photométrie : {self.photometrie.derniere_erreur}"
@@ -1306,8 +1408,14 @@ class AcquisitionWorker:
             return
         self._photo_essais += 1
         self._photo_dernier = t
+        # La profondeur ANNONCÉE est celle de la mesure (par rôle en
+        # composition, comme l'astrométrie) ; le total est rappelé entre
+        # parenthèses pour ne pas donner à croire que la mesure ne porte que sur
+        # trois frames alors que l'empilement en compte davantage.
+        detail = (f"{n_prof} frames par rôle ({stacker.n} au total)"
+                  if self._mode_compo else f"{n_prof} frames")
         self.photo_info = ("Photométrie : mesure du zéro-point en cours "
-                           f"({stacker.n} frames, "
+                           f"({detail}, "
                            f"{len(canaux)} bande(s))…")
         self.photo_couleur = "#888888"
         try:
@@ -1393,7 +1501,12 @@ class AcquisitionWorker:
             return                     # il faut une image COULEUR (R, G et B)
         if self.suivi_astro is None or not self.suivi_astro.resolu:
             return
-        if stacker.n < astro_mod.ASTRO_MIN_FRAMES:
+        # Jalon 115 : MÊME profondeur que l'astrométrie et la photométrie
+        # (`_profondeur_astro`) — `stacker.n` est une SOMME des rôles en
+        # composition : il autorisait la mesure SPCC à 1 frame par rôle alors
+        # que l'astrométrie, elle, exigeait déjà `ASTRO_MIN_FRAMES` par rôle.
+        n_prof = self._profondeur_astro(stacker)
+        if n_prof < astro_mod.ASTRO_MIN_FRAMES:
             return
         if self._spcc_essais >= spcc_mod.MAX_ESSAIS:
             self.spcc_info = (f"SPCC : {self.spcc.derniere_erreur}"
@@ -1410,8 +1523,10 @@ class AcquisitionWorker:
         capteur, filtres, blanc = self._spcc_profils()
         self._spcc_essais += 1
         self._spcc_dernier = t
+        detail = (f"{n_prof} frames par rôle ({stacker.n} au total)"
+                  if self._mode_compo else f"{n_prof} frames")
         self.spcc_info = ("SPCC : calibration en cours (spectres Gaia × profils "
-                          f"capteur/filtres, {stacker.n} frames)…")
+                          f"capteur/filtres, {detail})…")
         self.spcc_couleur = "#888888"
         try:
             res, msg = self.spcc.mesurer(canaux, wcs, capteur, filtres, blanc,
@@ -1431,7 +1546,13 @@ class AcquisitionWorker:
         # UNE fois par session (SessionSpcc) — le dire évite de croire que la
         # case ne « rafraîchit » plus rien (constat d'Alain, 25/09/2026).
         if isinstance(self.spcc.diag, dict):
-            self.spcc.diag.setdefault("frames", int(stacker.n))
+            # La MESURE porte sur les couches PAR RÔLE : en composition, c'est
+            # la profondeur par rôle qui décrit la mesure (le total de
+            # l'empilement en dit moins) — le libellé le PRÉCISE
+            # (`processing/spcc.texte_resume`, clé `frames_par_role`).
+            self.spcc.diag.setdefault("frames", int(n_prof))
+            if self._mode_compo:
+                self.spcc.diag.setdefault("frames_par_role", True)
         self._maj_spcc_etat()
         self._maj_spcc_vue()
 
@@ -1467,9 +1588,11 @@ class AcquisitionWorker:
         accès au catalogue : décision d'Alain du 22/09/2026).
 
         `M10` (nouvelle grille → ANCIENNE grille) est mesuré par un aligneur
-        PRIVÉ : référence = l'ancien empilement COMPLET (`mean(recadre=False)`
-        — le même repère que toutes les frames alignées, contrat du jalon 13),
-        source = la nouvelle référence. C'est exactement le chemin confronté au
+        PRIVÉ : référence = l'ancien empilement COMPLET, pris DANS LE DOMAINE
+        DES BRUTES (`_image_reference_de`, jalon 115 — un composite normalisé
+        d'un côté et une brute de l'autre, les deux côtés n'ont pas le même
+        fond, et l'appariement est refusé), source = la nouvelle référence
+        (elle-même une brute). C'est exactement le chemin confronté au
         StarAligner réel par le banc du jalon 56 (étape 3) ; l'aligneur de la
         SESSION n'est pas touché (il est sur le point d'être re-référencé).
 
@@ -1479,7 +1602,7 @@ class AcquisitionWorker:
         if self.suivi_astro is None or not self.suivi_astro.resolu:
             return
         try:
-            base = ancien.mean(recadre=False)
+            base = self._image_reference_de(ancien)
         except Exception:
             base = None
         if base is None:

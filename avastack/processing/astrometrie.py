@@ -444,6 +444,11 @@ class SuiviAstrometrie:
         self.wcs: Any = None              # WcsTan de la grille de référence
         self.matrice: np.ndarray = np.eye(2, 3)   # grille courante → grille du solve
         self.info: dict[str, Any] = {}    # dict d'info du solveur
+        # Jalon 115 : compteurs du DERNIER ÉCHEC (n_etoiles_img, n_etoiles_cat,
+        # n_appariements) — le solveur les renvoie même en échec, mais ils
+        # étaient jetés : le message ne disait pas si c'était la DÉTECTION ou
+        # l'APPARIEMENT qui manquait. Cf. `resume_echec`.
+        self.info_echec: dict[str, Any] = {}
         self.essais: int = 0              # tentatives de résolution (session)
         self.propagations: int = 0        # propagations réussies
         self.derniere_erreur: str = ""
@@ -599,7 +604,9 @@ class SuiviAstrometrie:
     def resoudre_sur(self, img: np.ndarray,
                      n_frames: int | None = None) -> tuple[bool, str]:
         """Résout l'astrométrie de `img` — la GRILLE COMPLÈTE de l'empilement
-        (`stacker.mean(recadre=False)`, le repère de l'aligneur). → (True/False,
+        (le repère de l'aligneur ; le worker y passe la COUCHE BRUTE du canal
+        vert — `_image_reference_de`, jalon 115 — JAMAIS le composite normalisé,
+        dont le fond ~0,7 rend le seuil du solveur aveugle). → (True/False,
         message) ; compte la tentative, ne lève JAMAIS.
 
         Une image insuffisante (trop peu d'étoiles, indices trop loin du
@@ -630,15 +637,38 @@ class SuiviAstrometrie:
             wcs, info, msg = None, {}, f"exception du solveur ({exc})"
         if wcs is None:
             self.derniere_erreur = str(msg or "échec de résolution")
+            self.info_echec = dict(info or {})
+            resume = self.resume_echec()
+            if resume:
+                self.derniere_erreur = f"{self.derniere_erreur} {resume}"
             if self.derniere_erreur.startswith(MSG_CATALOGUE_ABSENT):
                 self.donnees_absentes = self.derniere_erreur
             return False, self.derniere_erreur
         self.wcs = wcs
         self.matrice = np.eye(2, 3)
         self.info = dict(info or {})
+        self.info_echec = {}
         self.derniere_erreur = ""
         self.donnees_absentes = ""
         return True, self.texte_resume()
+
+    def resume_echec(self) -> str:
+        """Compteurs du DERNIER échec de résolution, en clair (jalon 115).
+
+        POURQUOI (constat d'Alain, 09/10/2026 : « aucune info dans le journal »
+        devant un échec d'astrométrie) : le message ne disait QUE la cause de
+        l'appariement (« pas assez de correspondances mutuelles »), jamais
+        COMBIEN d'étoiles avaient été vues de chaque côté — impossible de
+        distinguer une image trop pauvre (DÉTECTION) d'un catalogue/indices
+        inadaptés, ni de soupçonner le DOMAINE de l'image (un composite normalisé
+        au fond ~0,7 monte le seuil à ~0,99 : plus rien ne passe). Renvoie
+        « [image N étoiles, catalogue M, appariements K] », ou "" si rien."""
+        i = self.info_echec or {}
+        if not i:
+            return ""
+        return (f"[image {int(i.get('n_etoiles_img') or 0)} étoiles, "
+                f"catalogue {int(i.get('n_etoiles_cat') or 0)}, "
+                f"appariements {int(i.get('n_appariements') or 0)}]")
 
     # -- propagation ----------------------------------------------------------
     def propager(self, M: Any) -> tuple[bool, str]:

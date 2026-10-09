@@ -464,8 +464,12 @@ class CompositeStacker:
       polygone, tous rôles confondus) : c'est le CADRE COMMUN appliqué avant
       composer() — les stackers de rôle n'ont pas à se recadrer entre eux ;
     - mean(recadre=False) renvoie le composite SANS recadrage (même repère
-      que les frames) : utilisable comme référence d'alignement, exactement
-      comme LiveStacker.mean(recadre=False) en mono (jalon 13).
+      que les frames) — mais NORMALISÉ (chaque rôle est calé sur ses propres
+      percentiles) : ce n'est donc PAS le domaine des brutes. Comme référence
+      d'ALIGNEMENT, passer la COUCHE 2D BRUTE du rôle du canal VERT
+      (`moyennes(recadre=False)`, cf. `worker._image_reference`, jalon 113) :
+      sinon `canal_alignement` écrase les brutes suivantes à 0 → ORB aveugle
+      (8-9 refus sur 12 frames MESURÉS).
     """
 
     def __init__(self, composition: str, k: float | None = 3.0, warmup: int = 5,
@@ -582,6 +586,21 @@ class CompositeStacker:
     @property
     def rejected_total(self) -> int:
         return sum(s.rejected_total for s in self.stackers.values())
+
+    def profondeur_min(self) -> int:
+        """Nombre MINIMAL de frames empilées parmi les rôles NON VIDES —
+        profondeur RÉELLE d'un composite (jalon 113).
+
+        `n` est une SOMME des rôles : en LRGB, 1 frame par rôle donne n = 4 et
+        l'astrométrie tentait alors sa résolution sur une image DÉJÀ INSOLUBLE
+        (« image constante ») — MESURÉ : 2 frames/rôle = échec, 3 = 24
+        appariements. C'est la profondeur du rôle le plus FAIBLE qui décide de
+        la qualité du composite (chaque canal entre dans l'image) : c'est ELLE
+        qu'il faut comparer à `astrometrie.ASTRO_MIN_FRAMES`.
+
+        → min des rôles non vides ; 0 si aucun rôle n'a de frame."""
+        prof = [s.n for s in self.stackers.values() if s.n > 0]
+        return min(prof) if prof else 0
 
     # -- accumulation --------------------------------------------------------
     def _stacker_de(self, role: str) -> LiveStacker:

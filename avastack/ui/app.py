@@ -897,6 +897,79 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # _restaurer_config la réappliquera si la config change quelque chose.
         self._maj_visibilite_cadres()
 
+        # Jalon 114 : le TEXTE des libellés devient COPIABLE (clic droit).
+        self._poser_copie_libelles()
+
+    # --- Jalon 114 : libellés COPIABLES + lignes d'état journalisées --------
+    # Demande d'Alain (09/10/2026) : « impossible de copier les textes des
+    # libellés orange ou jaune » — or ce sont EUX qui portent les messages
+    # d'échec (astrométrie, photométrie, SPCC, seeing, re-stack…) ET le journal
+    # restait muet pendant tout le calcul (« aucune info dans le journal »).
+    # Deux ajouts indépendants, un par doléance.
+
+    def _poser_copie_libelles(self) -> None:
+        """Rend COPIABLE le texte de TOUS les libellés de la fenêtre.
+
+        Les `ttk.Label` ne sont pas sélectionnables (pas de copie au clavier) :
+        un CLIC DROIT sur un libellé ouvre donc un menu « Copier le texte » qui
+        met la ligne dans le presse-papiers — de quoi transmettre un message
+        d'erreur sans capture d'écran. `bind_all` couvre TOUS les libellés de la
+        fenêtre, y compris ceux créés APRÈS cet appel. Jamais d'exception :
+        copier est un service, il ne doit pas perturber l'interface."""
+        menu = tk.Menu(self.root, tearoff=0)
+        menu.add_command(label="Copier le texte")
+
+        def _clic_droit(event: Any) -> Any:
+            widget = event.widget
+            try:
+                if widget.winfo_class() not in ("TLabel", "Label"):
+                    return None       # hors libellé : le clic droit garde son sens
+            except Exception:
+                return None
+            menu.entryconfigure(0,
+                                command=lambda: self._copier_libelle(widget))
+            try:
+                menu.tk_popup(event.x_root, event.y_root)
+            finally:
+                try:
+                    menu.grab_release()
+                except Exception:
+                    pass
+            return "break"
+
+        # Button-3 : Windows / Linux ; Button-2 et Control-clic : macOS.
+        for _evenement in ("<Button-3>", "<Button-2>", "<Control-Button-1>"):
+            self.root.bind_all(_evenement, _clic_droit, add="+")
+        self._clic_droit_libelle = _clic_droit   # référence (bancs)
+
+    @staticmethod
+    def _texte_libelle(widget: Any) -> str:
+        """Texte AFFICHÉ d'un libellé : la valeur de sa `textvariable` si elle
+        est posée (libellés animés), sinon son `text` figé. "" si rien n'est
+        lisible — jamais d'exception."""
+        try:
+            nom = str(widget.cget("textvariable"))
+        except Exception:
+            nom = ""
+        if nom:
+            try:
+                return str(widget.getvar(nom))
+            except Exception:
+                pass
+        try:
+            return str(widget.cget("text"))
+        except Exception:
+            return ""
+
+    def _copier_libelle(self, widget: Any) -> None:
+        """Met le texte de `widget` dans le presse-papiers (jamais d'exception)."""
+        try:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(self._texte_libelle(widget))
+            self.root.update_idletasks()
+        except Exception:
+            pass
+
     # --- Jalon 53 : dark/flat par couche (mode composition) ------------------
 
     def _source_est_compo(self) -> bool:
@@ -1732,6 +1805,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         else:
             txt, col = "Astrométrie : en attente d'indices", "#c98a00"
         self.lbl_astro.config(text=txt, foreground=col)
+        self._noter_etat("astrométrie", txt)     # jalon 114 : au journal
 
     def _sonder_catalogues(self) -> tuple[Any, Any, str]:
         """SONDE le dossier des catalogues (accès disque) → `(dossier, état, err)`.
@@ -5565,6 +5639,24 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
     # chantier de refactoring vers `avastack/ui/renderer.py` (mixin `Renderer`,
     # dont `App` hérite) — code repris VERBATIM.
 
+    def _noter_etat(self, cle: str, texte: str) -> None:
+        """Journalise une ligne d'état la PREMIÈRE fois puis à chaque CHANGEMENT.
+
+        POURQUOI (constat d'Alain, 09/10/2026 : « aucune info dans le journal »
+        devant un échec d'astrométrie) : ces lignes n'existaient QUE dans
+        l'interface — impossible de les transmettre sans capture d'écran — et le
+        journal, lui, ne parlait que du démarrage. On écrit à chaque CHANGEMENT
+        de texte (et non à chaque tour d'interface, ~20/s) : le journal garde une
+        chronologie lisible des tentatives et de leurs causes. Jamais d'exception
+        (le journal est un service, cf. `journal.py`)."""
+        etats = getattr(self, "_etats_logges", None)
+        if etats is None:
+            etats = {}
+            self._etats_logges = etats
+        if texte and texte != etats.get(cle):
+            etats[cle] = texte
+            journal.note(cle, texte)
+
     def _update_status(self, st: Any) -> None:
         arc = f"Archive (re-stack) : {st.get('archive', 0)}"
         if st.get("archive_err"):
@@ -5599,6 +5691,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         if detail_as:
             self.lbl_astro.config(text=detail_as,
                                   foreground=self.astro_couleur)
+            self._noter_etat("astrométrie", detail_as)   # jalon 114 : au journal
         else:
             self._maj_astro_vue()
         # Jalon 56 (étape 4) : ligne d'état de la PHOTOMÉTRIE (même logique).
@@ -5606,6 +5699,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         if detail_ph:
             self.lbl_photo.config(text=detail_ph,
                                   foreground=self.photo_couleur)
+            self._noter_etat("photométrie", detail_ph)   # jalon 114 : au journal
         else:
             self._maj_photo_vue()
         self._maj_photo_gains_vue()      # étape 5 : ce qui est appliqué
@@ -5615,6 +5709,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         if detail_sx:
             self.lbl_spcc.config(text=detail_sx,
                                  foreground=self.spcc_couleur)
+            self._noter_etat("SPCC", detail_sx)          # jalon 114 : au journal
         else:
             self._maj_spcc_vue()
         # Jalon 10 : seeing live (mesuré par le thread d'acquisition) —

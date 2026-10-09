@@ -49,6 +49,15 @@ MIN_ETOILES: int = 3
 # Plafond d'étoiles conservées (tri par éclat DÉCROISSANT : les plus
 # brillantes d'abord). Borne le coût sur un champ très riche.
 MAX_ETOILES: int = 200
+# v2.64.0 — sélection RÉPARTIE (cf. `detecter_positions(distance_min=…)`) :
+#  · CANDIDATS_MAX borne le NOMBRE de candidats examinés par la recherche
+#    gloutonne (le tri par éclat reste la référence ; on n'a jamais besoin de
+#    plus de `max_etoiles` candidats, et cela borne le coût du repli) ;
+#  · MIN_REPARTI est le nombre d'étoiles SOUS lequel l'écart demandé est
+#    considéré comme trop sélectif : on le RÉDUIT par paliers (repli
+#    PROGRESSIF) pour ne pas affamer un champ concentré (amas, galaxie…).
+CANDIDATS_MAX: int = 2000
+MIN_REPARTI: int = 30
 # Filtres de forme, en pixels de l'image.
 AIRE_MIN: int = 2          # < 2 px au-dessus de 8σ : pixel chaud ou bruit
 AIRE_MAX: int = 400        # > 400 px : nébulosité / amas, pas une étoile
@@ -279,8 +288,48 @@ def fwhm_depuis_sigma(sigma: float) -> float:
     return FWHM_PAR_SIGMA * max(float(sigma), 0.0)
 
 
+def _choisir_repartis(cands: Any, max_etoiles: int, distance_min: float,
+                      minimum: int = MIN_REPARTI) -> Any:
+    """Sélection RÉPARTIE des candidats (triés par éclat DÉCROISSANT), avec
+    REPLI PROGRESSIF (v2.64.0).
+
+    Parcours glouton : un candidat n'est retenu que s'il est à ≥ `distance_min`
+    de TOUS les déjà retenus → la liste couvre tout le champ. SI l'écart
+    demandé laisse moins de `minimum` étoiles (champ CONCENTRÉ : amas, galaxie,
+    canal narrowband…), l'écart est RÉDUIT DE MOITIÉ et l'on recommence,
+    jusqu'à 0 — c'est-à-dire le comportement d'origine (les plus brillantes,
+    sans contrainte d'écart). Mesuré : 40 étoiles dans 300 px passaient de 37
+    (ancien) à 7 (réparti strict) → 37 avec le repli.
+
+    `cands` n'est PAS modifié ; les candidats examinés sont plafonnés à
+    `CANDIDATS_MAX` (coût borné, le tri par éclat restant la référence)."""
+    if not cands:
+        return cands
+    pool = cands[:CANDIDATS_MAX]
+    cible = max(1, min(int(minimum), len(pool)))
+    d = float(distance_min)
+    while d >= 1.0:
+        seuil2 = d * d
+        retenus: list[tuple[float, float]] = []
+        choisis = []
+        for cnd in pool:
+            cx_ = cnd[1] + cnd[3] / 2.0
+            cy_ = cnd[2] + cnd[4] / 2.0
+            if all((cx_ - gx) ** 2 + (cy_ - gy) ** 2 >= seuil2
+                   for gx, gy in retenus):
+                retenus.append((cx_, cy_))
+                choisis.append(cnd)
+                if len(choisis) >= max_etoiles:
+                    break
+        if len(choisis) >= cible:
+            return choisis
+        d *= 0.5
+    return pool[:max_etoiles]           # d = 0 : les plus brillantes (origine)
+
+
 def detecter_positions(img: np.ndarray, max_etoiles: int = MAX_ETOILES,
-                       seuil_sigma: float = SEUIL_SIGMA
+                       seuil_sigma: float = SEUIL_SIGMA,
+                       distance_min: float = 0.0
                        ) -> tuple[np.ndarray, str]:
     """Positions (centroïdes) des étoiles les plus brillantes — prérequis de
     l'ALIGNEMENT par étoiles (jalon 13) : sur un champ pauvre en étoiles et
@@ -293,6 +342,15 @@ def detecter_positions(img: np.ndarray, max_etoiles: int = MAX_ETOILES,
     (inutile ici, et elle écarte des étoiles utilisables pour l'appariement) :
     centroïde pondéré par l'intensité, tri par éclat décroissant, plafonné à
     `max_etoiles`.
+
+    `distance_min` > 0 → SÉLECTION RÉPARTIE (v2.64.0) : au lieu des
+    `max_etoiles` composantes au plus FORT PIC (qui, sur certaines brutes,
+    s'entassent dans une bande — constat réel du 08/10/2026 : les 60 « plus
+    brillantes » de deux nuits d'Alain tenaient dans 20 % de la hauteur, ce qui
+    rendait l'appariement d'alignement inexploitable), on garde les étoiles les
+    plus brillantes en imposant un ÉCART MINIMAL `distance_min` (pixels) entre
+    deux retenues : la liste couvre alors tout le champ. Coût nul à la
+    détection (le tri existant sert de parcours glouton).
 
     Renvoie (positions, message) — convention du module : (résultat, "") en
     succès, (résultat partiel, message explicite) sinon. `positions` est un
@@ -324,6 +382,11 @@ def detecter_positions(img: np.ndarray, max_etoiles: int = MAX_ETOILES,
             pic = float(luma[y:y + bh, x:x + bw].max())
             cands.append((pic, x, y, bw, bh))
         cands.sort(key=lambda c: -c[0])
+        # v2.64.0 : sélection RÉPARTIE optionnelle + repli progressif (cf.
+        # `_choisir_repartis` et `distance_min` dans la docstring).
+        if distance_min > 0.0:
+            cands = _choisir_repartis(cands, int(max_etoiles),
+                                      float(distance_min))
         pos = []
         for _pic, x, y, bw, bh in cands[:int(max_etoiles)]:
             sub = np.clip(luma[y:y + bh, x:x + bw] - fond, 0.0, None)

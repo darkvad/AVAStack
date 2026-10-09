@@ -858,6 +858,22 @@ ce qui manquait n'était pas une correction mais une MESURE.
   INVISIBLE et ne laisse AUCUNE trace. **Règle : tout point d'entrée doit
   écrire un journal sur disque ET MONTRER l'erreur** — même famille que le
   silence de l'astrométrie en v2.38.4 (« l'application n'a pas de journal »).
+- **LES LIGNES D'ÉTAT DES CALCULS VONT AU JOURNAL, AU CHANGEMENT** (jalon 114,
+  09/10/2026) : constat d'Alain devant un échec d'astrométrie — « aucune info
+  dans le journal ». Les libellés (astrométrie, photométrie, SPCC…) n'existaient
+  QUE dans l'interface. `App._noter_etat(cle, texte)` écrit chaque ligne la
+  PREMIÈRE fois puis à chaque CHANGEMENT (le worker pousse son état à chaque
+  frame : journaliser à chaque tour noierait le journal). ⚠ **N'écrire au journal
+  que depuis le FIL UI** : `_maj_spcc_vue()` est appelée AUSSI par le worker
+  (`core/worker.py`) — seule `_maj_astro_vue()` et `_update_status()` sont
+  appelées du fil d'interface, c'est là qu'on journalise.
+- **LE TEXTE DES LIBELLÉS EST COPIABLE** (jalon 114) : les `ttk.Label` de Tk ne
+  sont pas sélectionnables — impossible de transmettre un message d'erreur sans
+  capture d'écran. `App._poser_copie_libelles()` arme un CLIC DROIT (`bind_all`,
+  donc TOUS les libellés, y compris ceux créés après coup) → menu « Copier le
+  texte » ; `_texte_libelle` relit `text` OU la valeur de `textvariable`.
+  `Button-3` = Windows/Linux, `Button-2` + Control-clic = macOS.
+
 - **`avastack/journal.py`** : journal `<config>/journal.txt` (rotation à
   1 Mio), `note()`, `erreur()` (traceback complet + texte court avec fichier et
   ligne), `trace_env()`, `montrer()` (boîte Tk, repli `stderr`), `ouvrir()`. Le
@@ -1000,6 +1016,43 @@ ce qui manquait n'était pas une correction mais une MESURE.
   LONGS pour le réveiller.
 
 ## Pièges (leçons du projet AVAStack)
+
+- **EN COMPOSITION, LA RÉFÉRENCE D'ALIGNEMENT DOIT ÊTRE UNE COUCHE DE RÔLE, JAMAIS
+  LE COMPOSITE** (défaut MESURÉ le 09/10/2026 sur le jeu M31 LRGB ; corrigé au
+  jalon 113). `CompositeStacker.mean(recadre=False)` rend un composite NORMALISÉ
+  par rôle : son canal VERT a un fond très supérieur à celui des brutes (0,5-1,1
+  contre ~0,03 sur les vraies données). Comme `StarAligner.set_reference` prend
+  ses bornes de normalisation SUR la référence, la brute est ensuite tassée dans
+  les BAS niveaux 8 bits (médiane 1/255 contre 62/255 au banc) → ORB aveugle →
+  **8-9 refus sur 12 frames** (témoin : 0 refus sans rafraîchissement). La
+  référence en composition est la COUCHE 2D BRUTE du rôle qui alimente le canal
+  VERT — `moyennes(recadre=False)[rôle]` (G en RGB/LRGB, O3 en HOO, Ha en SHO),
+  repli sur le 1er rôle non vide : cf. `worker._image_reference`. NE JAMAIS
+  conclure « les données sont mauvaises » devant des refus en cascade en
+  composition : regarder D'ABORD le nombre de rafraîchissements de référence.
+  MÊME FAMILLE DE PIÈGE pour l'ASTROMÉTRIE : `stacker.n` est une SOMME des rôles
+  — la profondeur à comparer à `astrometrie.ASTRO_MIN_FRAMES` est la profondeur
+  MINIMALE des rôles NON VIDES (`CompositeStacker.profondeur_min()` /
+  `worker._profondeur_astro`). À 1 frame/rôle en LRGB, n = 4 ≥ 3 faisait tenter
+  une résolution sur une image INSOLUBLE (« image constante ») : l'essai était
+  brûlé et le backoff 20→300 s éloignait les suivants. Mesure : 2 frames/rôle =
+  échec, 3 = RÉSOLU.
+  ⚠ **LE MÊME DOMAINE VAUT POUR LE SOLVEUR D'ASTROMÉTRIE** (jalon 115, même
+  journée — la leçon avait été appliquée à l'ALIGNEUR mais pas au solveur) :
+  `worker._astro_tour`, `_astro_aveugle` et `_astro_propager_restack` passaient
+  eux aussi `mean(recadre=False)`. Or le solveur seuille à `fond + 8σ` : sur le
+  composite normalisé (fond ~0,72, σ ~0,033) le seuil monte vers **0,99**,
+  presque RIEN ne passe, les « étoiles » détectées sont du BRUIT et l'appariement
+  échoue (« 3 inliers, échelle 1,628″/px » — l'échelle trouvée vaut ~0,66× la
+  vraie). REPRODUIT hors-ligne sur les frames réellement lues : le composite
+  ÉCHOUE à l'identique, la COUCHE BRUTE du rôle G RÉSOLUT (94 appariements à
+  2,466″/px). Règle générale : **tout consommateur d'image (aligneur, solveur,
+  ASTAP, propagation) reçoit la MÊME référence — `worker._image_reference_de(st)`,
+  une couche de BRUTE** ; ne jamais lui passer un composite normalisé. Corollaire
+  de méthode : un message d'échec de solveur doit porter les COMPTEURS
+  (`SuiviAstrometrie.resume_echec` : image / catalogue / appariements), sinon on
+  ne peut pas distinguer une image trop pauvre d'un catalogue inadapté.
+
 
 - **UNE ANCRE DE PACK (`pack(before=…/after=…)`) DOIT ÊTRE UN WIDGET TOUJOURS
   GÉRÉ, ET JAMAIS UN CONTENEUR QUI SUIT SON PROPRE EN-TÊTE** (jalon 98,

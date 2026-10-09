@@ -29,10 +29,23 @@ dans la matrice Bayer, pleine résolution, aucun artefact d'interpolation de
 débayerisation dans les centroïdes ; en mono, l'image telle quelle (jalon 15).
 
 Toutes les matrices passent par les mêmes GARDE-FOUS (jalon 13) : échelle
-dans [0.9, 1.1], |angle| ≤ 10° ; les chemins « votants » (centroïdes, phase)
-ajoutent la continuité de la translation avec la dérive en cours (anti-vote-
-aberrant : l'histogramme d'un champ presque vide peut élire un pic parasite) —
-le chemin TRIANGLES, global par construction, s'en passe."""
+dans [0.9, 1.1] et angle soit ~0° (|angle| ≤ 10°), soit ~180° (170°–190°,
+retournement au méridien — v2.63.0) ; les chemins « votants » (centroïdes,
+phase) ajoutent la continuité de la translation avec la dérive en cours
+(anti-vote-aberrant : l'histogramme d'un champ presque vide peut élire un pic
+parasite) — le chemin TRIANGLES, global par construction, s'en passe.
+
+RETOURNEMENT AU MÉRIDIEN (v2.63.0) : sur une monture équatoriale allemande, le
+passage du méridien fait pivoter la caméra de 180° par rapport au ciel (et,
+plus généralement, reprendre une session une autre nuit change l'orientation de
+la caméra). Les frames d'un côté du méridien arrivent donc avec une rotation
+~180° et étaient TOUTES rejetées (constat réel du 08/10/2026 : sur deux nuits,
+R/G/B retournées → 3-4 frames empilées sur 50, tandis que L — non retournée —
+passait ; d'où un empilement appauvri ET des « taches rouges », la formule LRGB
+amplifiant le fond là où L seul portait encore un objet). On ACCEPTE désormais
+la rotation ~180° dans la MÊME tolérance que l'alignement normal ; les autres
+garde-fous (échelle, inliers, contre-test d'appariements mutuels, continuité)
+restent inchangés, si bien qu'une fausse correspondance reste impossible."""
 
 import itertools
 from typing import Any
@@ -46,6 +59,12 @@ from . import stars as _stars
 ECHELLE_MIN: float = 0.9
 ECHELLE_MAX: float = 1.1
 ANGLE_MAX_DEG: float = 10.0
+# RETOURNEMENT AU MÉRIDIEN (v2.63.0) : une rotation ~180° (monture équatoriale
+# allemande, reprise de session une autre nuit) est un alignement LÉGITIME, PAS
+# un artefact — on l'accepte dans la même tolérance (±10°), l'échelle restant
+# dans [0.9, 1.1]. Constat réel : R/G/B retournées étaient rejetées en masse.
+MERIDIAN_FLIP_DEG: float = 180.0
+MERIDIAN_FLIP_TOL_DEG: float = 10.0
 # Phase : la SSD doit baisser d'au moins cette fraction pour être acceptée.
 PHASE_GAIN_MIN: float = 0.10
 # Inliers minimum du chemin ÉTOILES (jalon 13) : 6 suffit parce que chaque
@@ -58,7 +77,33 @@ INLIERS_ETOILES: int = 6
 # centroïdes instables qui dispersent le vote — constat réel : avec 200
 # « étoiles » le vote échoue, avec 60 brillantes il tombe juste
 # (16/16 appariements mutuels, échelle 1,000).
-MAX_ALIGN_ETOILES: int = 60
+# v2.64.0 — DEUX CHANGEMENTS tirés d'un échec RÉEL (retournement au méridien,
+# M31 au SV555 sur deux nuits) : ① on demande BEAUCOUP plus d'étoiles (250) ;
+# ② elles sont choisies RÉPARTIES dans le champ (`ALIGN_DISTANCE_MIN`), car
+# « les N plus brillantes » s'entassaient dans une bande de 20 % de la hauteur
+# et rendaient l'appariement inexploitable. Mesuré sur les brutes d'Alain :
+# 2 étoiles communes → 35, et l'alignement des frames retournées redevient
+# possible (avant : toutes refusées).
+MAX_ALIGN_ETOILES: int = 250
+ALIGN_DISTANCE_MIN: float = 120.0    # écart minimal entre deux étoiles retenues
+
+
+def _distance_repartition(forme: Any) -> float:
+    """Écart minimal de la sélection RÉPARTIE des étoiles d'alignement,
+    ADAPTÉ à la taille du champ : ~0,7 × l'espacement moyen du champ s'il
+    portait `MAX_ALIGN_ETOILES` étoiles, plafonné à `ALIGN_DISTANCE_MIN`.
+
+    POURQUOI adaptatif : un écart FIXE priverait de leurs étoiles les petites
+    images (bancs 300×400) et les champs de petite focale — le tri par éclat
+    doit rester le critère premier quand le champ est étroit."""
+    try:
+        h, w = int(forme[0]), int(forme[1])
+    except (TypeError, IndexError, ValueError):
+        return 0.0
+    if h <= 0 or w <= 0:
+        return 0.0
+    return min(ALIGN_DISTANCE_MIN,
+               0.7 * float(np.sqrt((h * w) / float(MAX_ALIGN_ETOILES))))
 
 # --- Appariement par TRIANGLES (jalon 15, esprit Siril / astrometry.net) ----
 # Chaque triangle des plus brillantes est décrit par deux rapports de côtés
@@ -73,12 +118,21 @@ TRI_RAYON: float = 3.0       # rayon d'appariement d'une étoile après transfor
 
 
 def _M_valide(M: Any) -> bool:
-    """Garde-fous géométriques (échelle + angle) d'une matrice 2×3."""
+    """Garde-fous géométriques (échelle + angle) d'une matrice 2×3.
+
+    L'angle accepté est ~0° (alignement normal) OU ~180° (retournement au
+    méridien — v2.63.0), chacun dans sa tolérance (ANGLE_MAX_DEG /
+    MERIDIAN_FLIP_TOL_DEG). TOUT le reste est refusé : c'est ce qui garde le
+    filtre utile contre les fausses correspondances. `arctan2(b, a)` rend un
+    angle dans ]−180°, 180°] → la valeur ABSOLUE suffit (une rotation de 180°
+    donne |angle| = 180°)."""
     a, b = float(M[0, 0]), float(M[1, 0])
     ech = float(np.hypot(a, b))
     if not (ECHELLE_MIN <= ech <= ECHELLE_MAX):
         return False
-    if abs(np.degrees(np.arctan2(b, a))) > ANGLE_MAX_DEG:
+    angle = abs(np.degrees(np.arctan2(b, a)))
+    if not (angle <= ANGLE_MAX_DEG
+            or abs(angle - MERIDIAN_FLIP_DEG) <= MERIDIAN_FLIP_TOL_DEG):
         return False
     return bool(np.isfinite(M).all())
 
@@ -192,7 +246,8 @@ class StarAligner:
         self.ref_gray = self._norm8(canal, self._ref_lo, self._ref_hi)
         self.ref_kp, self.ref_des = self.orb.detectAndCompute(self.ref_gray, None)
         self.ref_pos, _msg = _stars.detecter_positions(
-            canal, max_etoiles=MAX_ALIGN_ETOILES)
+            canal, max_etoiles=MAX_ALIGN_ETOILES,
+            distance_min=_distance_repartition(canal.shape))
         self._last_t = None
 
     def _norm8(self, img: Any, lo: Any = None, hi: Any = None) -> np.ndarray:
@@ -227,7 +282,8 @@ class StarAligner:
         if self.ref_pos is None or len(self.ref_pos) < INLIERS_ETOILES:
             return M, 0
         pos, _msg = _stars.detecter_positions(
-            canal_alignement(frame), max_etoiles=MAX_ALIGN_ETOILES)
+            canal_alignement(frame), max_etoiles=MAX_ALIGN_ETOILES,
+            distance_min=_distance_repartition(frame.shape))
         if pos is None or len(pos) < INLIERS_ETOILES:
             return M, 0
         pos = np.asarray(pos, np.float32)
@@ -267,7 +323,45 @@ class StarAligner:
         return M2, int(mutuel.sum())
 
     def compute(self, frame: np.ndarray) -> tuple[Any, bool]:
-        """→ (M 2x3, confiant)  M transforme la frame courante vers la référence."""
+        """→ (M 2x3, confiant)  M transforme la frame courante vers la référence.
+
+        v2.64.0 — REVERSEMENT : si l'alignement DIRECT échoue, on réessaie la
+        frame RETOURNÉE de 180° (rotation dans le plan image) et on COMPOSE la
+        matrice (retournement PUIS alignement). C'est exactement ce que produit
+        un retournement au méridien (monture équatoriale allemande) — et, plus
+        généralement, une reprise de session une autre nuit. Rien n'est deviné :
+        les deux essais passent par les MÊMES garde-fous, l'angle ~180° de la
+        matrice composée est accepté par `_M_valide`, et le sens DIRECT est
+        essayé D'ABORD (une frame déjà dans le bon sens n'est jamais retournée).
+        Constat réel du 08/10/2026 (M31, SV555, deux nuits) : les frames du côté
+        ouest étaient TOUTES refusées ; ce repli les aligne (angle résiduel
+        mesuré 3,8°)."""
+        M, ok = self._compute_direct(frame)
+        if ok:
+            return M, ok
+        retournee = cv2.rotate(frame, cv2.ROTATE_180)
+        M2, ok2 = self._compute_direct(retournee, avec_phase=False)
+        if not ok2 or M2 is None:
+            return (np.eye(2, 3) if M2 is None else M2), False
+        # Composition warpAffine : p → M2(retournement(p)).
+        R = np.array([[-1.0, 0.0, frame.shape[1] - 1.0],
+                      [0.0, -1.0, frame.shape[0] - 1.0]])
+        Mc = np.column_stack([M2[:, :2] @ R[:, :2],
+                              M2[:, :2] @ R[:, 2] + M2[:, 2]])
+        if not _M_valide(Mc):
+            return np.eye(2, 3), False
+        self._last_t = None           # repère retourné : pas de continuité
+        self._noter(Mc, ((self.dernier["methode"] if self.dernier else "")
+                         + " +180°"))
+        return Mc, True
+
+    def _compute_direct(self, frame: np.ndarray,
+                        avec_phase: bool = True) -> tuple[Any, bool]:
+        """Un essai d'alignement, SANS repli (cf. `compute` pour le 180°).
+
+        `avec_phase=False` : le repli « corrélation de phase » est ÉCARTÉ — il
+        sert au repli 180° de `compute`, car la phase (traduction SEULE) suppose
+        des images de MÊME orientation et validerait du bruit retourné."""
         # Jalon 21 (HOO/SHO) : TRIANGLES d'abord, ORB ÉCARTÉ (descripteurs de
         # gradients qui s'apparient mal d'un filtre à l'autre). Jalon 21b
         # (retour réel d'Alain : 86 frames refusées en début de session SHO —
@@ -284,16 +378,16 @@ class StarAligner:
             if M is not None:
                 return M, ok
             g = self._norm8(frame, self._ref_lo, self._ref_hi)
-            return self._phase(g)
+            return self._sans_phase(g, avec_phase)
         g = self._norm8(frame, self._ref_lo, self._ref_hi)
         kp, des = self.orb.detectAndCompute(g, None)
         if (self.ref_des is None or des is None
                 or len(kp) < self.min_matches or len(self.ref_kp) < self.min_matches):
-            return self._sans_orb(frame, g)
+            return self._sans_orb(frame, g, avec_phase)
         good = [pair[0] for pair in self.bf.knnMatch(self.ref_des, des, k=2)
                 if len(pair) == 2 and pair[0].distance < self.ratio * pair[1].distance]
         if len(good) < self.min_matches:
-            return self._sans_orb(frame, g)
+            return self._sans_orb(frame, g, avec_phase)
         # np.float32(liste) rend bien un ndarray (N, 2) — pyright, lui, voit un
         # scalaire float32 : ignores CIBLÉS (idem cv2.estimateAffinePartial2D).
         src = np.float32([kp[m.trainIdx].pt for m in good])  # pyright: ignore[reportArgumentType]
@@ -301,9 +395,9 @@ class StarAligner:
         M, inl = cv2.estimateAffinePartial2D(src, dst, method=cv2.RANSAC,  # pyright: ignore[reportCallIssue, reportArgumentType]
                                              ransacReprojThreshold=2.0, maxIters=5000)
         if M is None or inl is None:
-            return self._sans_orb(frame, g)
+            return self._sans_orb(frame, g, avec_phase)
         if int(inl.sum()) < self.min_inliers or not _M_valide(M):
-            return self._sans_orb(frame, g)
+            return self._sans_orb(frame, g, avec_phase)
         # Jalon 57 : RAFFINEMENT SOUS-PIXEL par centroïdes d'étoiles — sans
         # lui, ORB laisse 0,17-0,40 px d'erreur résiduelle et ne corrige RIEN
         # sous le pixel (franges colorées entre couches, mesuré en réel le
@@ -318,7 +412,8 @@ class StarAligner:
         return M, True
 
     # ------------------------------------------------------------ jalon 13
-    def _sans_orb(self, frame: Any, g: Any) -> tuple[Any, bool]:
+    def _sans_orb(self, frame: Any, g: Any,
+                  avec_phase: bool = True) -> tuple[Any, bool]:
         """ORB indisponible ou non concluant : TRIANGLES (jalon 15, appariement
         global), puis centroïdes d'étoiles (vote + continuité), puis
         corrélation de phase honnête, sinon refus — JAMAIS un « alignement »
@@ -329,6 +424,13 @@ class StarAligner:
         M, ok = self._etoiles(frame)
         if M is not None:
             return M, ok
+        return self._sans_phase(g, avec_phase)
+
+    def _sans_phase(self, g: Any, avec_phase: bool) -> tuple[Any, bool]:
+        """Repli « corrélation de phase » (traduction SEULE), ou REFUS quand
+        `avec_phase` est faux — cf. `_compute_direct` (repli 180°)."""
+        if not avec_phase:
+            return np.eye(2, 3), False
         return self._phase(g)
 
     # ------------------------------------------------------------ jalon 15
@@ -343,7 +445,8 @@ class StarAligner:
         reprise de session ou une autre nuit ne fait plus refuser la frame.
         → (M, True) / (None, False) si non concluant."""
         canal = canal_alignement(frame)
-        pos, _msg = _stars.detecter_positions(canal, max_etoiles=MAX_ALIGN_ETOILES)
+        pos, _msg = _stars.detecter_positions(canal, max_etoiles=MAX_ALIGN_ETOILES,
+                                              distance_min=_distance_repartition(canal.shape))
         if self.ref_pos is None or len(pos) < TRI_INLIERS_MIN \
                 or len(self.ref_pos) < TRI_INLIERS_MIN:
             return None, False
@@ -423,7 +526,8 @@ class StarAligner:
         mutuels, puis raffinement sur les inliers.
         → (M, True) / (None, False) si non concluant."""
         pos, _msg = _stars.detecter_positions(
-            canal_alignement(frame), max_etoiles=MAX_ALIGN_ETOILES)
+            canal_alignement(frame), max_etoiles=MAX_ALIGN_ETOILES,
+            distance_min=_distance_repartition(frame.shape))
         if self.ref_pos is None or len(self.ref_pos) < INLIERS_ETOILES \
                 or len(pos) < INLIERS_ETOILES:
             return None, False
