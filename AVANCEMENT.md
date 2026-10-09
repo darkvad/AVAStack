@@ -9,117 +9,101 @@ dans le changelog du source et l'historique git.)
 
 ---
 
-## Session du 09/10/2026 (soir) — TEST RÉEL M31 LRGB 2 NUITS : CAUSE des 80 refus TROUVÉE (diagnostic seul, RIEN de codé)
+## Session du 09/10/2026 (nuit) — JALON 116 LIVRÉ et TESTÉ EN RÉEL (v2.68.0 — commité, PAS de release)
 
 ### État actuel
-- `AVASTACK_VERSION = "2.67.0"` — **INCHANGÉE** : cette session n'a modifié
-  AUCUN fichier de code (diagnostic hors-ligne seul, sur les archives de frames).
-  Les DEUX correctifs décidés ci-dessous sont à écrire à la prochaine session
-  (jalon 116).
-- Test réel d'Alain (09/10, 19h27→20h01), composition **LRGB** = **L du 13/09**
-  + **R/G/B du 22-23/09** : écran **130 empilées · 80 non alignées ·
-  L: 9 · R: 39 · G: 45 · B: 37** ; astrométrie résolue (120 étoiles, 2,467″/px) ;
-  SPCC mesurée sur 130 frames. Symptômes : **doublons rouges** au début, puis
-  **trace sombre**, et **biseaux noirs dans les coins** (donc recadrage
-  d'intersection NON appliqué) ; halo + couleurs fausses après retrait de gradient.
-- Ces compteurs sont **reproduits EXACTEMENT** par rejeu hors-ligne : seules les
-  frames qui exigent le **retournement de 176°** sont perdues.
+- `AVASTACK_VERSION = "2.68.0"` — jalon **116 LIVRÉ, TESTÉ EN RÉEL, COMMITÉ et
+  POUSSÉ** (pas de release : décision d'Alain) : ① l'ORB normalise la frame sur
+  SES PROPRES bornes, ② un DERNIER RECOURS ORB étoffé (8 000 points) est essayé
+  sur la frame puis sur la frame retournée avant tout refus.
+- **TEST RÉEL d'Alain (09/10/2026)** : **OK** — les frames des DEUX nuits
+  (retournement 176°) s'empilent désormais. « Save as seen » conservée :
+  `C:\Astro\test\Andromeda Nebula2.68.0.png` (41,7 Mo).
+- **Rejeu hors-ligne des VRAIES frames, avec le code réel** (60 frames, 15 tours) :
+  ① + ② → **0 refus** (61 empilées, dont **26 sauvées par le ②**), contre
+  **26 refus** avec ① seul. Bancs rejoués VERTS + garde-fou VERT.
+- Restent **DEUX DÉFAUTS MINEURS** notés par Alain après ce test (recadrage du
+  rectangle commun / halo-écho rouge) → voir « Défauts mineurs », à traiter dans
+  une **AUTRE session**.
 
-### La cause (mesurée — deux défauts cumulés)
-
-*Ce que disent les frames* (rejeu des archives = frames réellement lues,
-ORB + similitude SANS garde-fou) :
-- L (13/09) ↔ R/G/B (22-23/09) : **+176,2°**, échelle 0,999, translation
-  ≈ (3924, 2036) px — donc DANS la tolérance 180° ± 10° : la géométrie n'est
-  pas en cause ;
-- dans la nuit L : 0,00-0,04° sur 76 min (aucune rotation de champ, dérive ≤ 5,6 px) ;
-- **les dossiers R/G/B contiennent EUX-MÊMES les deux côtés du Pier** (frames
-  0→38/36/35 d'un côté, la fin à −176,0°) ; la nuit **L est du côté des frames RGB
-  TARDIVES** (écart 0,14°) ;
-- budget : côté A = 38+36+37 = **111 frames → toutes empilées** ; côté B =
-  60 L + 39 RGB = **99 frames → 19 empilées et 80 refusées**. Le compte tombe juste.
-
-*Pourquoi le retournement échoue :*
-- ① **La normalisation écrase la frame** — `alignment._norm8` convertit la frame
-  en 8 bits avec les bornes de **la RÉFÉRENCE**. Entre deux nuits/filtres les fonds
-  diffèrent de ~1,8× (R : lo 0,031 contre L : lo 0,0547) → **97,3 % / 93,7 % /
-  78,6 %** des pixels de R/G/B **écrasés à 0** (et, dans l'autre sens, la frame L
-  sature : 1 appariement) → ORB rend **2-3 appariements** au lieu des 8 exigés.
-  **Avec les PROPRES bornes de la frame : 22-96 appariements et 10-62 inliers, au
-  BON angle.**
-- ② **`_triangles` ne peut pas porter le retournement** — c'est le SEUL chemin
-  capable d'un saut de ~3900 px (`_etoiles` vote une translation à ±40/±100 px,
-  `_phase` n'accepte que ±40 px). Or il s'appuie sur les **12 étoiles les plus
-  brillantes** : mesuré **4-5 appariements** (seuil 6) sur TOUS les couples L↔RGB —
-  et il s'écroule même DANS la nuit L (L[0]↔L[59] = 5). Base élargie à 18 :
-  intra-nuit réparé (5 → **150**), **inter-nuits toujours 4-5** (ce sont vraiment
-  d'autres étoiles qui dominent d'une nuit/filtre à l'autre).
-
-### Preuve hors-ligne (rejeu du début de session, VRAIES frames, règles du worker)
-- code **ACTUEL** : L 2/7 · R 7/1 · G 7/1 · B 7/1 → **10 refus** — le symptôme exact
-  (couche L affamée) ;
-- correctif **① seul** : L 9/0 · R 8/0 · G 7/1 · B 8/0 → **1 refus** ;
-- correctifs **① + ② (ORB 8000)** : L 9/0 · R 8/0 · G 8/0 · B 8/0 → **0 refus**.
-  (« empilées / refusées ».) Dose ORB mesurée sur le cas difficile : **8 000 points
-  ⇒ 8-35 inliers à +176,2°**, contre 3-5 à 1 000 points — les 4 cas testés passent.
+### Défauts MINEURS vus au test réel (À TRAITER PLUS TARD — notés par Alain)
+1. **Coins d'image différents entre deux orientations** : les frames retournées
+   de 176° ne couvrent pas le même rectangle que les autres, donc les bords/coins
+   diffèrent et **le retrait de gradient n'est pas possible dans cet état**.
+   Alain demande un **recadrage sur le RECTANGLE COMMUN**. ⚠ Le recadrage
+   d'intersection EXISTE déjà (`bancs/_test_crop_intersection.py`) mais il rend
+   `None` sur un cadre dégénéré (cf. piège « Recadrage d'intersection ») : **à
+   MESURER d'abord** (pourquoi il ne s'applique pas ici — angle ? cadre dégénéré ?)
+   AVANT de coder quoi que ce soit.
+2. **Halo / écho décalé ROUGE sur beaucoup d'étoiles** : RIEN de conclu — c'est
+   une **piste à instruire** (alignement résiduel d'une partie des frames ?
+   décalage du canal rouge ? règle de couleur de la composition LRGB ?). Le
+   « save as seen » de la session est conservé en PNG pour pouvoir mesurer.
 
 ### Fichiers modifiés dans cette phase
-- `AVANCEMENT.md` seulement (mémoire) : **AUCUN fichier de code**, version
-  inchangée, rien de construit ni publié. La leçon durable pour `CLAUDE.md` sera
-  écrite quand le jalon 116 sera validé en réel.
+- `avastack/processing/alignment.py` : ① `_compute_direct` (et `_orb_renforce`)
+  normalisent la frame sur ses propres percentiles ; le repli « phase » garde le
+  domaine PARTAGÉ, recalculé dans `_sans_orb` (donc gratuit sur le chemin
+  rapide) ; ② nouveaux `_reference_forte` (descripteurs de référence étoffés,
+  calculés à la demande puis EN CACHE — invalidés par `set_reference` ET
+  `reset`) et `_orb_renforce` (mêmes garde-fous que le chemin ORB) ;
+  `_composer_retournement` extrait de `compute` pour que le ② suive la même voie.
+- `avastack/__init__.py` : version **2.68.0** + changelog du jalon 116.
+- `bancs/_test_align_lumiere_jalon116.py` : banc NEUF, 5 sections, TOUT AU VERT.
+
+### Mesures du jour (à réutiliser, ne pas remesurer)
+- Code RÉEL sur les vraies frames : ① seul → 35 empilées / 26 refus ;
+  ① + ② → 61 empilées / **0 refus** (24 « ORB étoffé » + 2 « ORB étoffé+étoiles »).
+- Coût du ② sur ces mêmes frames (brutes 8,4 Mpx) : p95 **1 793 → 2 664 ms**,
+  max 1 901 → 3 037 ms (médiane 1 415 → 1 448 ms).
+- **DÉCOUVERTE (à garder)** : le repli « phase » en domaine LOCAL (l'essai du
+  09/10 sur lequel la preuve était fondée) « alignait » 29 frames sur 60 par une
+  matrice QUASI-IDENTIQUE (**0 appariement d'étoiles mutuels**) alors que leur
+  vraie géométrie est à **−176,2°** (6, 92 et 80 appariements mesurés sur G[5],
+  G[20], G[35], Δ≈(3775, 2297) px). Ces FAUX alignements sont la cause directe
+  des **doublons rouges** et de la **trace sombre** du test réel : le domaine
+  PARTAGÉ (décision d'Alain) les refuse, et le ② les aligne VRAIMENT.
 
 ### Décisions prises
-- **SOLUTION RETENUE PAR ALAIN (09/10/2026 soir) : les DEUX correctifs ensemble.**
-  ① `alignment._compute_direct` normalise la frame sur **ses propres** percentiles
-  (le chemin `_phase` garde, LUI, le domaine PARTAGÉ : son test SSD en a besoin) ;
-  ② `compute` ajoute un **dernier recours avant refus** : ORB **étoffé (8 000
-  points, MÊMES garde-fous)** essayé sur la frame, puis sur la frame retournée de
-  180°, descripteurs de référence mis en cache.
-- Coûts assumés : ① ≈ +40 ms par frame (une paire de percentiles) ; ② ≈ +0,3 s
-  **uniquement** sur les frames qui échouent partout.
-- C'est un **jalon** (116) : banc neuf + rejeu des bancs d'alignement + garde-fou
-  vert + version **2.68.0** + changelog + ce fichier, dans la MÊME réponse.
+- ① + ② conformes à la décision d'Alain du 09/10 au soir ; le domaine PARTAGÉ du
+  repli phase est CONSERVÉ — c'est la mesure ci-dessus qui le justifie (il évite
+  29 faux alignements sur 60 frames).
+- Le ② est un DERNIER RECOURS : il ne remplace pas l'ORB principal (1 000 points)
+  et n'est tenté que quand TOUTE la cascade a échoué.
+- Il s'applique AUSSI en mode narrowband (`triangles_seuls`) : il ne peut qu'y
+  SAUVER des frames que tout le reste refusait, avec les mêmes garde-fous.
 
-### Outils de diagnostic jetables (`%TEMP%`, hors dépôt)
-`avastack_diag_lrgb_roles.py` / `_roles2.py` (rôle d'une archive de frames),
-`_geo.py` (angle vrai + couture de chaque chemin de l'aligneur), `_tri.py`
-(triangles pas à pas), `_orb.py` (chemin ORB pas à pas), `_norm.py` (mesure de
-l'écrasement 8 bits), `_base.py` (effet de la base TRI_N_MAX), `_orbdose.py` (dose
-ORB utile), `_scan.py` (index du retournement dans la nuit), et **`_preuve.py`**
-(rejeu comparatif code actuel / correctifs — c'est LUI qui a prouvé le gain).
-Rappel : `%TEMP%\avastack_frames_*` = frames réellement LUES, supprimées par
-l'appli au démarrage **6 h** après leur dernière écriture — les copier si la preuve
-doit survivre ; en-têtes perdus, le rôle se déduit du NOMBRE de frames.
-
-### Problèmes ouverts / Points d'attention
-- ⚠ **La piste 180° n'est PAS abandonnée** (contrairement à la note du jalon 115) :
-  le jeu mêlant DEUX nuits la porte réellement (176,2°), et **les dossiers R/G/B la
-  portent aussi** (26 % des frames sont de l'autre côté).
-- **À ARBITRER au jalon 116** : le MÊME défaut a DÉJÀ été rencontré puis corrigé
-  dans le **solveur d'astrométrie** (`avastack/catalogues/solveur.py` : « sur un
-  champ large/riche, le top-12 d'image ≡ top-20 catalogue par invariants ne tient
-  plus » → remplacé par **`_ransac_paires`**, vote (échelle, angle) sur TOUTES les
-  paires top-60 × top-120). Reprendre cette approche pour le ② de l'aligneur serait
-  plus économe qu'un ORB de 8 000 points — **à mesurer avant de coder**.
-- **L'aligneur échoue en SILENCE** : ni les alignements ni les empilements ne vont
-  au journal (`%APPDATA%\AVAStack\journal.txt` ne porte que l'UI et l'astrométrie).
-  Sans les archives de frames, ce diagnostic était impossible.
-- **Recadrage d'intersection** : il ne s'applique QUE si le cadre est sain — un
-  cadre dégénéré rend `None`, donc AUCUN recadrage. C'est ce qui laisse les biseaux
-  noirs visibles et fait « coussin clair + couleurs fausses » au retrait de gradient
-  (piège GraXpert déjà documenté dans CLAUDE.md). À vérifier AVANT d'accuser
-  l'optique, le fond de ciel ou le traitement.
-- Les versions **v2.63.0 → v2.67.0** attendent toujours leur commit de clôture ;
-  **paquets et release GitHub ne sont PAS faits** (dernier tag publié = v2.62.1).
+### Problèmes ouverts
+- L'alternative « paires d'invariants top-60 × top-120 » (cf.
+  `catalogues/solveur.py::_ransac_paires`) n'est PAS mesurée : le ② fonctionne
+  (0 refus) et coûte ~0,9 s de p95 sur les frames concernées — à rouvrir
+  seulement si ça gêne en session réelle.
+- L'aligneur n'écrit toujours RIEN au journal (`%APPDATA%\AVAStack\journal.txt`) :
+  un futur diagnostic dépend encore des archives de frames.
 
 ### Prochaines étapes
-- **Jalon 116** : écrire les deux correctifs (① + ②), banc neuf
-  (`bancs/_test_align_lumiere_jalon116.py` : une frame « autre nuit » = fond ÷2 et
-  rotation 176° doit S'ALIGNER, alors qu'une rotation de 30° doit rester REFUSÉE),
-  rejeu des bancs d'alignement + garde-fou, **v2.68.0** + changelog.
-- Puis **REFAIRE LE TEST RÉEL** sur le MÊME jeu LRGB deux nuits : attendu
-  **0 refus fantôme**, L ≈ 60 frames, plus de biseaux, gradient propre.
-- Ensuite seulement : **paquets Windows/Linux/macOS + release GitHub**.
+- **Prochaine session** : les DEUX DÉFAUTS MINEURS ci-dessus — **mesurer d'abord**
+  (le n° 1, « rectangle commun », débloque à lui seul le retrait de gradient).
+- **Paquets + release GitHub v2.68.0** NON faits (choix d'Alain : commit/push
+  seulement). Dernier tag publié = **v2.62.1** ; Microsoft Store toujours en
+  **v2.50.0** (cadence séparée, certification à part).
+- L'aligneur n'écrit toujours RIEN au journal : un futur diagnostic dépend des
+  archives de frames (`%TEMP%\avastack_frames_*`, purgées après 6 h).
+
+### Points d'attention
+- `set_reference` ne passe PAS par `reset()` : tout nouveau cache doit être
+  invalidé LÀ AUSSI (piège rencontré avec `ref_des_fort`).
+- Les archives de frames (`%TEMP%\avastack_frames_*`) sont supprimées par
+  l'appli 6 h après leur dernière écriture — les COPIER si un rejeu doit servir
+  plus tard.
+
+---
+
+## Jalon précédent (09/10/2026, soir) — diagnostic des 80 refus
+Compteurs du test LRGB reproduits par rejeu : écart **176,2°** (dans la tolérance
+180° ± 10°), côté A = 111 frames toutes empilées / côté B = 99 frames → 19
+empilées et 80 refusées ; R/G/B mêlent les DEUX côtés du Pier (26 % des frames).
+Détail complet : changelog **v2.68.0** (`avastack/__init__.py`) et git.
 
 ---
 
@@ -129,12 +113,12 @@ doit survivre ; en-têtes perdus, le rôle se déduit du NOMBRE de frames.
 référence) s'empilent au lieu d'être rejetées, et que l'astrométrie fonctionne sur
 un empilement LRGB.
 
-**État (09/10/2026 soir)** : jalons **111→115 LIVRÉS, TESTÉS EN RÉEL et POUSSÉS**
-(v2.67.0 — l'astrométrie est réparée par le correctif de DOMAINE : le solveur
-recevait le composite normalisé au lieu de la couche brute). **Le RETOURNEMENT, en
-revanche, est INVALIDÉ EN RÉEL** : le test du soir perd 80 frames sur 210 → c'est
-l'objet du **jalon 116** (bloc de session ci-dessus). Le détail des jalons vit dans
-le changelog de `avastack/__init__.py` et dans l'historique git.
+**État (09/10/2026, nuit)** : jalons **111→115** livrés, testés en réel et poussés
+(v2.67.0) ; **jalon 116 ÉCRIT** (v2.68.0 : ① bornes propres pour l'ORB, ② dernier
+recours ORB étoffé) — **rejeu hors-ligne des vraies frames : 0 refus**. Il reste à
+le faire **VALIDER PAR LE TEST RÉEL** du jeu M31 deux nuits (bloc de session
+ci-dessus). Le détail des jalons vit dans le changelog de `avastack/__init__.py`
+et dans l'historique git.
 
 **Règles d'or** :
 - Un jalon = un banc neuf + rejeu des bancs concernés (TOUS VERTS) + garde-fou
@@ -148,10 +132,10 @@ le changelog de `avastack/__init__.py` et dans l'historique git.
 
 ## En attente / prochaine session
 
-- **Jalon 116** (les deux correctifs d'alignement) PUIS **test réel du jeu M31 des
-  deux nuits** — seul point du chantier non validé.
-- **Publication** : paquets Windows/Linux/macOS + release GitHub **v2.67.0+**
-  (dernier tag publié = **v2.62.1** ; les v2.63.0→v2.67.0 partent dans le commit de
+- **TEST RÉEL du jeu M31 deux nuits** (jalon 116 écrit, 0 refus hors-ligne) — seul
+  point du chantier non validé.
+- **Publication** : paquets Windows/Linux/macOS + release GitHub **v2.68.0**
+  (dernier tag publié = **v2.62.1** ; les v2.63.0→v2.68.0 partent dans le commit de
   clôture).
 - **Test « installer depuis le Microsoft Store »** (seul test qui n'existe que par
   cette voie ; l'appli v2.50.0 y est publiée).
@@ -212,13 +196,16 @@ le changelog de `avastack/__init__.py` et dans l'historique git.
 - **Installateur d'un OS qu'on ne peut pas exécuter** (macOS/Linux) : se vérifie
   par ce qui EST vérifiable (`bash -n`, refus hors OS, banc de contenu du paquet) ;
   l'état est écrit DATÉ, jamais déguisé en test réussi.
-- **ALIGNEUR — le retournement est le point faible (MESURÉ 09/10/2026)** : une
-  frame retournée ne peut passer QUE par `_triangles` (base = top-12 des étoiles :
-  **4-5 appariements au lieu de 6** sur des nuits réelles) OU par ORB — mais ORB
-  est **aveuglé par `_norm8`**, qui étire la frame avec les bornes de la
-  **RÉFÉRENCE** (entre deux nuits/filtres : **93-99 % des pixels écrasés à 0**, et
-  1 appariement dans l'autre sens). Une brute CALIBRÉE (dark) peut aussi être
-  refusée là où la même brute non calibrée passe.
+- **ALIGNEUR — corrigé en v2.68.0, mais la règle reste (MESURÉ 09/10/2026)** : une
+  frame retournée (~176°) ne pouvait passer QUE par `_triangles` (base = top-12 des
+  étoiles : **4-5 appariements au lieu de 6** sur des nuits réelles) OU par ORB —
+  celui-ci étant **aveugle** car `_norm8` l'étirait avec les bornes de la
+  **RÉFÉRENCE** (**93-99 % des pixels écrasés à 0**). Désormais ① l'ORB travaille
+  sur les bornes PROPRES de la frame et ② un ORB étoffé (8 000 points) sert de
+  dernier recours. ⚠ **Le repli « phase » DOIT garder le domaine PARTAGÉ** : en
+  domaine local il « alignait » des frames à 176° par une QUASI-IDENTITÉ (0
+  appariement d'étoiles mutuels) — c'est ce qui produisait les doublons rouges.
+  Une brute CALIBRÉE (dark) peut aussi être refusée là où la brute non calibrée passe.
 - **Recadrage d'intersection** : il ne s'applique PAS si le cadre est dégénéré
   (⇒ biseaux noirs visibles + « coussin clair » et couleurs fausses au retrait de
   gradient). À contrôler AVANT d'accuser l'optique ou le traitement.
@@ -227,10 +214,9 @@ le changelog de `avastack/__init__.py` et dans l'historique git.
 
 ## Clôtures précédentes
 
-- **09/10/2026** : jalons 111→115 (v2.67.0) — cause de l'échec d'astrométrie
-  trouvée (le solveur recevait le composite normalisé au lieu de la couche brute),
-  test réel OK **SANS** retournement, commité et poussé (détail : changelog
-  `avastack/__init__.py`).
-- **07/10/2026** : clôture du chantier de refactoring (jalons 100→110) —
-  v2.62.1 livrée, testée en réel, publiée.
+- **09/10/2026 (nuit)** : jalon 116 (v2.68.0) — les deux nuits (176°) s'empilent
+  (① bornes propres + ② ORB étoffé), **test réel OK**, commité et poussé ; deux
+  défauts mineurs notés (rectangle commun, halo-écho rouge).
+- **09/10/2026 (soir)** : diagnostic des 80 refus du test LRGB (176,2°) → les deux
+  correctifs du 116 ; jalons 111→115 (v2.67.0, astrométrie réparée) poussés.
 

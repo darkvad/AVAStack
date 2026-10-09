@@ -45,7 +45,35 @@ passait ; d'où un empilement appauvri ET des « taches rouges », la formule LR
 amplifiant le fond là où L seul portait encore un objet). On ACCEPTE désormais
 la rotation ~180° dans la MÊME tolérance que l'alignement normal ; les autres
 garde-fous (échelle, inliers, contre-test d'appariements mutuels, continuité)
-restent inchangés, si bien qu'une fausse correspondance reste impossible."""
+restent inchangés, si bien qu'une fausse correspondance reste impossible.
+
+DEUX CORRECTIFS DE PLUS (v2.68.0, jalon 116) — constat réel du 09/10/2026 (M31
+LRGB sur DEUX nuits, 80 frames perdues sur 210) : l'écart inter-nuits vaut
+176,2° (donc DANS la tolérance 180° ± 10°) et, pourtant, l'appariement échouait.
+Deux causes cumulées, mesurées par rejeu hors-ligne des frames réellement lues :
+
+① L'ORB TRAVAILLAIT DANS LE DOMAINE DE LA RÉFÉRENCE — `_norm8` étirait la frame
+  avec les bornes de la RÉFÉRENCE. D'une nuit (ou d'un filtre) à l'autre le fond
+  change (facteur ~1,8× mesuré) : 78-97 % des pixels de la frame étaient ÉCRASÉS
+  à 0 et l'ORB ne rendait plus que 1-3 appariements, alors que la MÊME frame
+  normalisée sur SES PROPRES bornes en rend 22-96 (10-62 inliers), au BON angle.
+  `_compute_direct` normalise donc la frame sur ses propres percentiles pour
+  l'ORB. Le repli « corrélation de phase » garde, LUI, le domaine PARTAGÉ : son
+  test d'amélioration SSD compare la frame à `ref_gray`, qui est dans le domaine
+  de la référence (une frame étirée autrement fausserait ce test).
+
+② LA BASE D'ÉTOILES EST TROP COURTE POUR UN RETOURNEMENT — une frame retournée
+  ne peut passer que par ORB (aveuglé par ①) ou par `_triangles`, or celui-ci
+  s'appuie sur les 12 étoiles les plus brillantes : mesuré 4-5 appariements sur
+  des couples INTER-NUITS (seuil 6) — les étoiles dominantes ne sont pas les
+  mêmes d'une nuit/filtre à l'autre (élargir la base à 18 ne répare que
+  l'INTRA-nuit). `compute` essaie donc, APRÈS tous les autres chemins et AVANT
+  de refuser, un ORB ÉTOFFÉ (8 000 points au lieu de 1 000, mêmes tests de
+  ratio/RANSAC/inliers et mêmes garde-fous géométriques), sur la frame PUIS sur
+  la frame retournée de 180° ; les descripteurs de référence étoffés sont
+  calculés à la première frame qui en a besoin, puis CONSERVÉS (`_reference_forte`).
+  Mesuré sur le cas difficile : 3-5 inliers à 1 000 points contre 8-35 à 8 000,
+  et le rejeu du test réel passe de 10 refus à 0."""
 
 import itertools
 from typing import Any
@@ -86,6 +114,15 @@ INLIERS_ETOILES: int = 6
 # possible (avant : toutes refusées).
 MAX_ALIGN_ETOILES: int = 250
 ALIGN_DISTANCE_MIN: float = 120.0    # écart minimal entre deux étoiles retenues
+
+# DERNIER RECOURS ORB ÉTOFFÉ (v2.68.0, jalon 116) : quand TOUS les chemins ont
+# échoué (ORB 1 000 points, triangles, étoiles, phase), une frame RETOURNÉE
+# reste sauvable par un ORB beaucoup plus fourni. Mesuré sur le vrai jeu M31
+# deux nuits (176,2°) : 3-5 inliers à 1 000 points contre 8-35 à 8 000 — les
+# MÊMES garde-fous (ratio de Lowe, RANSAC 2 px, minimum d'inliers, échelle et
+# angle) restent appliqués, si bien qu'un faux appariement ne passe pas plus
+# qu'ailleurs. Coût : payé UNIQUEMENT par les frames que tout le reste refuse.
+ORB_RENFORCE_FEATURES: int = 8000    # nfeatures du dernier recours (principal : 1000)
 
 
 def _distance_repartition(forme: Any) -> float:
@@ -207,6 +244,12 @@ class StarAligner:
     def __init__(self, n_features: int = 1000, ratio: float = 0.75,
                  min_matches: int = 8, min_inliers: int = 8) -> None:
         self.orb: Any = cv2.ORB_create(nfeatures=n_features, fastThreshold=8)  # pyright: ignore[reportAttributeAccessIssue]
+        # Jalon 116 : SECOND détecteur, ÉTOFFÉ, réservé au DERNIER RECOURS de
+        # `compute` (cf. `ORB_RENFORCE_FEATURES` et `_orb_renforce`). Il ne
+        # coûte rien tant qu'aucune frame ne l'exige : ses descripteurs de
+        # RÉFÉRENCE sont calculés à la demande puis mis en cache.
+        self.orb_fort: Any = cv2.ORB_create(  # pyright: ignore[reportAttributeAccessIssue]
+            nfeatures=ORB_RENFORCE_FEATURES, fastThreshold=8)
         self.bf: Any = cv2.BFMatcher(cv2.NORM_HAMMING)
         self.ratio: float = ratio
         self.min_matches: int = min_matches
@@ -222,6 +265,12 @@ class StarAligner:
         self.ref_kp: Any = None
         self.ref_des: Any = None
         self.ref_gray: Any = None
+        # Jalon 116 : descripteurs de RÉFÉRENCE du détecteur ÉTOFFÉ — calculés à
+        # la première frame qui a besoin du dernier recours (cf.
+        # `_reference_forte`), puis CONSERVÉS jusqu'au prochain `reset()`.
+        self.ref_kp_fort: Any = None
+        self.ref_des_fort: Any = None
+        self._ref_fort_vue: bool = False     # le cache a-t-il été TENTÉ ?
         self.ref_pos: np.ndarray | None = None   # centroïdes de la référence
         self._last_t: Any = None     # dernière translation acceptée
         self._ref_lo: Any = None     # bornes de normalisation partagées
@@ -245,6 +294,12 @@ class StarAligner:
         self._ref_lo, self._ref_hi = np.percentile(f, 1.0), np.percentile(f, 99.7)
         self.ref_gray = self._norm8(canal, self._ref_lo, self._ref_hi)
         self.ref_kp, self.ref_des = self.orb.detectAndCompute(self.ref_gray, None)
+        # Jalon 116 : la référence change — le CACHE du détecteur étoffé aussi
+        # (`set_reference` est rappelé à chaque rafraîchissement de référence,
+        # cf. jalon 113 : un cache périmé apparierait la frame à l'ANCIENNE
+        # référence).
+        self.ref_kp_fort, self.ref_des_fort = None, None
+        self._ref_fort_vue = False
         self.ref_pos, _msg = _stars.detecter_positions(
             canal, max_etoiles=MAX_ALIGN_ETOILES,
             distance_min=_distance_repartition(canal.shape))
@@ -322,6 +377,78 @@ class StarAligner:
             return M, 0
         return M2, int(mutuel.sum())
 
+    # ------------------------------------------------------------ jalon 116
+    def _reference_forte(self) -> tuple[Any, Any]:
+        """Descripteurs de RÉFÉRENCE du détecteur ÉTOFFÉ (jalon 116 ②).
+
+        Calculés à la PREMIÈRE frame qui a besoin du dernier recours, puis
+        CONSERVÉS (`reset()` les jette avec le reste) : le coût d'un ORB
+        étoffé sur la référence n'est donc payé ni au démarrage, ni à chaque
+        rafraîchissement de référence (`set_reference`), mais seulement par les
+        sessions où l'aligneur en a réellement besoin. La référence 8 bits est
+        déjà prête (`ref_gray`, normalisée sur les bornes de la référence) : il
+        n'y a rien à recalculer de ce côté.
+        → (keypoints, descripteurs) ; (None, None) tant que rien n'est tenté ou
+        si la référence n'en fournit pas (image plate, moins de points que le
+        minimum d'appariements exigé par `_orb_renforce`)."""
+        if not self._ref_fort_vue:
+            self._ref_fort_vue = True
+            if self.ref_gray is not None:
+                kp, des = self.orb_fort.detectAndCompute(self.ref_gray, None)
+                self.ref_kp_fort, self.ref_des_fort = kp, des
+        return self.ref_kp_fort, self.ref_des_fort
+
+    def _orb_renforce(self, frame: Any) -> tuple[Any, bool]:
+        """DERNIER RECOURS de `compute` (jalon 116 ②) : un ORB ÉTOFFÉ (8 000
+        points au lieu de 1 000, cf. `ORB_RENFORCE_FEATURES`) essayé seulement
+        quand TOUS les autres chemins ont échoué.
+
+        POURQUOI : une frame RETOURNÉE (~180°) ne peut passer que par ORB ou par
+        `_triangles` ; or `_triangles` s'appuie sur les 12 étoiles les plus
+        brillantes et n'en apparie plus que 4-5 d'une nuit/filtre à l'autre
+        (seuil 6 — mesuré le 09/10/2026 sur le jeu M31), et l'ORB principal
+        n'atteint pas non plus le seuil d'inliers sur ces couples (3-5 mesurés
+        à 1 000 points). L'ORB étoffé, lui, rend 8-35 inliers au BON angle sur
+        les mêmes frames : c'est ce qui fait passer le test réel de 80 refus
+        fantômes à zéro.
+
+        MÊMES GARDE-FOUS que le chemin ORB de `_compute_direct` : test de ratio
+        de Lowe, RANSAC de similitude (2 px), minimum d'inliers, `_M_valide`
+        (échelle + angle ~0° ou ~180°), puis RAFFINEMENT par centroïdes
+        (`_raffiner_centroides`, qui ne remplace la matrice que s'il la
+        vérifie). La frame est normalisée sur SES PROPRES bornes (correctif ①)
+        — c'est ce qui rend l'ORB étoffé utile sur une frame d'une autre nuit.
+
+        → (M, True) / (None, False) si même le dernier recours ne conclut pas."""
+        ref_kp, ref_des = self._reference_forte()
+        if ref_des is None or ref_kp is None \
+                or len(ref_kp) < self.min_matches:
+            return None, False
+        g = self._norm8(frame)                 # bornes PROPRES à la frame (①)
+        kp, des = self.orb_fort.detectAndCompute(g, None)
+        if des is None or len(kp) < self.min_matches:
+            return None, False
+        good = [pair[0] for pair in self.bf.knnMatch(ref_des, des, k=2)
+                if len(pair) == 2 and pair[0].distance < self.ratio * pair[1].distance]
+        if len(good) < self.min_matches:
+            return None, False
+        src = np.float32([kp[m.trainIdx].pt for m in good])  # pyright: ignore[reportArgumentType]
+        dst = np.float32([ref_kp[m.queryIdx].pt for m in good])  # pyright: ignore[reportArgumentType]
+        M, inl = cv2.estimateAffinePartial2D(src, dst, method=cv2.RANSAC,  # pyright: ignore[reportCallIssue, reportArgumentType]
+                                             ransacReprojThreshold=2.0, maxIters=5000)
+        if M is None or inl is None:
+            return None, False
+        if int(inl.sum()) < self.min_inliers or not _M_valide(M):
+            return None, False
+        Mr, n_raff = self._raffiner_centroides(frame, M)
+        if n_raff:
+            self._last_t = (float(Mr[0, 2]), float(Mr[1, 2]))
+            self._noter(Mr, f"ORB étoffé+étoiles({n_raff})")
+            return Mr, True
+        self._last_t = (float(M[0, 2]), float(M[1, 2]))
+        self._noter(M, "ORB étoffé")
+        return M, True
+
     def compute(self, frame: np.ndarray) -> tuple[Any, bool]:
         """→ (M 2x3, confiant)  M transforme la frame courante vers la référence.
 
@@ -335,15 +462,44 @@ class StarAligner:
         essayé D'ABORD (une frame déjà dans le bon sens n'est jamais retournée).
         Constat réel du 08/10/2026 (M31, SV555, deux nuits) : les frames du côté
         ouest étaient TOUTES refusées ; ce repli les aligne (angle résiduel
-        mesuré 3,8°)."""
+        mesuré 3,8°).
+
+        v2.68.0 — DERNIER RECOURS (jalon 116 ②) : si le direct ET le retourné
+        ont échoué, on tente un ORB ÉTOFFÉ (8 000 points, mêmes garde-fous) sur
+        la frame, puis sur la frame RETOURNÉE, AVANT de refuser. C'est ce qui
+        sauve les frames d'une autre nuit/filtre (176,2° mesurés sur le jeu
+        LRGB des 13 et 22-23/09/2026) que le reste de la cascade ne peut plus
+        apparier. Le sens DIRECT garde la priorité : une frame déjà dans le bon
+        sens n'est jamais retournée."""
         M, ok = self._compute_direct(frame)
         if ok:
             return M, ok
         retournee = cv2.rotate(frame, cv2.ROTATE_180)
         M2, ok2 = self._compute_direct(retournee, avec_phase=False)
-        if not ok2 or M2 is None:
-            return (np.eye(2, 3) if M2 is None else M2), False
-        # Composition warpAffine : p → M2(retournement(p)).
+        if ok2 and M2 is not None:
+            return self._composer_retournement(M2, frame)
+        # Jalon 116 ② : dernier recours, ORB ÉTOFFÉ — sur la frame, puis sur la
+        # frame retournée (cf. `_orb_renforce`).
+        Mf, okf = self._orb_renforce(frame)
+        if okf and Mf is not None:
+            return Mf, True
+        Mf2, okf2 = self._orb_renforce(retournee)
+        if okf2 and Mf2 is not None:
+            return self._composer_retournement(Mf2, frame)
+        return (np.eye(2, 3) if M2 is None else M2), False
+
+    def _composer_retournement(self, M2: Any,
+                               frame: Any) -> tuple[Any, bool]:
+        """Compose la matrice « RETOURNEMENT PUIS ALIGNEMENT » d'une frame
+        retournée de 180° (corps extrait de `compute` au jalon 116, pour que le
+        dernier recours ORB étoffé suive EXACTEMENT la même voie que le reste de
+        la cascade).
+
+        `M2` aligne la frame DÉJÀ retournée sur la référence ; on rend la
+        transformation qui, appliquée à la frame d'origine, fait les deux. La
+        matrice composée est REPASSÉE par `_M_valide` : la composition peut
+        sortir de la tolérance (échelle) alors que `M2` y était.
+        → (M composée, True) / (identité, False) si la composition est refusée."""
         R = np.array([[-1.0, 0.0, frame.shape[1] - 1.0],
                       [0.0, -1.0, frame.shape[0] - 1.0]])
         Mc = np.column_stack([M2[:, :2] @ R[:, :2],
@@ -361,7 +517,15 @@ class StarAligner:
 
         `avec_phase=False` : le repli « corrélation de phase » est ÉCARTÉ — il
         sert au repli 180° de `compute`, car la phase (traduction SEULE) suppose
-        des images de MÊME orientation et validerait du bruit retourné."""
+        des images de MÊME orientation et validerait du bruit retourné.
+
+        v2.68.0 (jalon 116 ①) : l'ORB travaille sur la frame normalisée sur SES
+        PROPRES percentiles, et non plus sur ceux de la référence — d'une nuit
+        ou d'un filtre à l'autre le fond diffère (facteur ~1,8× mesuré) et la
+        frame se retrouvait écrasée dans les tout premiers niveaux 8 bits
+        (78-97 % des pixels à 0), l'ORB ne rendant plus que 1-3 appariements. Le
+        domaine PARTAGÉ reste utilisé par le repli « phase » (cf. `_sans_orb`) :
+        son test SSD compare la frame à `ref_gray`, la référence 8 bits."""
         # Jalon 21 (HOO/SHO) : TRIANGLES d'abord, ORB ÉCARTÉ (descripteurs de
         # gradients qui s'apparient mal d'un filtre à l'autre). Jalon 21b
         # (retour réel d'Alain : 86 frames refusées en début de session SHO —
@@ -379,15 +543,15 @@ class StarAligner:
                 return M, ok
             g = self._norm8(frame, self._ref_lo, self._ref_hi)
             return self._sans_phase(g, avec_phase)
-        g = self._norm8(frame, self._ref_lo, self._ref_hi)
+        g = self._norm8(frame)               # bornes PROPRES à la frame (①)
         kp, des = self.orb.detectAndCompute(g, None)
         if (self.ref_des is None or des is None
                 or len(kp) < self.min_matches or len(self.ref_kp) < self.min_matches):
-            return self._sans_orb(frame, g, avec_phase)
+            return self._sans_orb(frame, avec_phase)
         good = [pair[0] for pair in self.bf.knnMatch(self.ref_des, des, k=2)
                 if len(pair) == 2 and pair[0].distance < self.ratio * pair[1].distance]
         if len(good) < self.min_matches:
-            return self._sans_orb(frame, g, avec_phase)
+            return self._sans_orb(frame, avec_phase)
         # np.float32(liste) rend bien un ndarray (N, 2) — pyright, lui, voit un
         # scalaire float32 : ignores CIBLÉS (idem cv2.estimateAffinePartial2D).
         src = np.float32([kp[m.trainIdx].pt for m in good])  # pyright: ignore[reportArgumentType]
@@ -395,9 +559,9 @@ class StarAligner:
         M, inl = cv2.estimateAffinePartial2D(src, dst, method=cv2.RANSAC,  # pyright: ignore[reportCallIssue, reportArgumentType]
                                              ransacReprojThreshold=2.0, maxIters=5000)
         if M is None or inl is None:
-            return self._sans_orb(frame, g, avec_phase)
+            return self._sans_orb(frame, avec_phase)
         if int(inl.sum()) < self.min_inliers or not _M_valide(M):
-            return self._sans_orb(frame, g, avec_phase)
+            return self._sans_orb(frame, avec_phase)
         # Jalon 57 : RAFFINEMENT SOUS-PIXEL par centroïdes d'étoiles — sans
         # lui, ORB laisse 0,17-0,40 px d'erreur résiduelle et ne corrige RIEN
         # sous le pixel (franges colorées entre couches, mesuré en réel le
@@ -412,18 +576,25 @@ class StarAligner:
         return M, True
 
     # ------------------------------------------------------------ jalon 13
-    def _sans_orb(self, frame: Any, g: Any,
-                  avec_phase: bool = True) -> tuple[Any, bool]:
+    def _sans_orb(self, frame: Any, avec_phase: bool = True) -> tuple[Any, bool]:
         """ORB indisponible ou non concluant : TRIANGLES (jalon 15, appariement
         global), puis centroïdes d'étoiles (vote + continuité), puis
         corrélation de phase honnête, sinon refus — JAMAIS un « alignement »
-        à (0, 0) déclaré confiant (constat réel du 17/09/2026)."""
+        à (0, 0) déclaré confiant (constat réel du 17/09/2026).
+
+        La normalisation 8 bits du repli « phase » se fait ICI, dans le domaine
+        PARTAGÉ (bornes de la référence) et non sur celles de la frame (jalon
+        116 ①) : `_phase` compare la frame à `ref_gray` par SSD, deux images
+        doivent donc être étirées de la MÊME façon. C'est aussi ce qui garde le
+        chemin rapide gratuit : une frame que l'ORB aligne du premier coup ne
+        paie jamais cette seconde paire de percentiles."""
         M, ok = self._triangles(frame)
         if M is not None:
             return M, ok
         M, ok = self._etoiles(frame)
         if M is not None:
             return M, ok
+        g = self._norm8(frame, self._ref_lo, self._ref_hi)
         return self._sans_phase(g, avec_phase)
 
     def _sans_phase(self, g: Any, avec_phase: bool) -> tuple[Any, bool]:

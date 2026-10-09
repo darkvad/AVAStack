@@ -18,9 +18,74 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.67.0"
+AVASTACK_VERSION = "2.68.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.68.0 : ALIGNEMENT — LES FRAMES D'UNE AUTRE NUIT (retournement ~176°) SONT
+#   ENFIN EMPILÉES (jalon 116). Test réel d'Alain du 09/10/2026 (M31 LRGB :
+#   L du 13/09 + R/G/B du 22-23/09, 210 frames) : 130 empilées, 80 NON ALIGNÉES
+#   (L: 9 · R: 39 · G: 45 · B: 37), avec des DOUBLONS ROUGES, une trace sombre
+#   et des biseaux noirs. Diagnostic HORS-LIGNE sur les archives de frames
+#   (aucune ligne de code touchée dans cette session-là) : l'écart entre les
+#   deux nuits vaut 176,2° — donc DANS la tolérance du retournement (180° ± 10°)
+#   —, la géométrie n'était pas en cause, et les compteurs sont reproduits
+#   EXACTEMENT par rejeu. Budget : côté A = 111 frames → toutes empilées ; côté
+#   B (60 L + 39 RGB) = 99 frames → 19 empilées, 80 refusées. Les dossiers R/G/B
+#   contiennent EUX-MÊMES les deux côtés du méridien (26 % des frames). DEUX
+#   causes cumulées, mesurées :
+#   - ① L'ORB TRAVAILLAIT DANS LE DOMAINE DE LA RÉFÉRENCE : `alignment._norm8`
+#     étirait la frame avec les bornes de la RÉFÉRENCE, alors que le fond d'une
+#     autre nuit/filtre diffère d'un facteur ~1,8× (R : lo 0,031 contre L :
+#     0,0547) → 97,3 % / 93,7 % / 78,6 % des pixels écrasés à 0 et 2-3
+#     appariements au lieu des 8 exigés ; avec SES PROPRES bornes la même frame
+#     rend 22-96 appariements (10-62 inliers), au BON angle.
+#   - ② `_triangles` NE PEUT PAS PORTER LE RETOURNEMENT : c'est le SEUL chemin
+#     capable d'un saut de ~3 900 px (`_etoiles` vote à ±40/±100 px, `_phase`
+#     n'accepte que ±40 px), mais il s'appuie sur les 12 étoiles les plus
+#     brillantes et n'en apparie plus que 4-5 sur les couples INTER-NUITS
+#     (seuil 6) ; élargir la base à 18 répare l'INTRA-nuit (5 → 150) sans rien
+#     changer entre deux nuits.
+#   CORRECTIFS (les DEUX, décision d'Alain) :
+#   - ① `_compute_direct` normalise la frame sur SES PROPRES percentiles pour
+#     l'ORB. Le repli « corrélation de phase » garde, LUI, le domaine PARTAGÉ
+#     (bornes de la référence) : c'est `_sans_orb` qui recalcule cette seconde
+#     normalisation, donc le chemin RAPIDE (une frame que l'ORB aligne) ne paie
+#     rien de plus. ⚠ MESURÉ (rejeu des vraies frames) : en donnant au repli
+#     phase le domaine LOCAL (l'essai du 09/10), 29 frames sur 60 étaient
+#     « alignées » par phase avec une matrice QUASI-IDENTIQUE (0 appariement
+#     d'étoiles mutuels) alors que leur vraie géométrie est à −176,2° (6 à 92
+#     appariements) — ce sont ces FAUX alignements qui produisaient les doublons
+#     rouges. Le domaine partagé les refuse (repli honnête), et le ② les remet
+#     d'aplomb.
+#   - ② `compute` ajoute un DERNIER RECOURS avant refus : un ORB ÉTOFFÉ
+#     (`ORB_RENFORCE_FEATURES = 8000` points au lieu de 1 000, MÊMES garde-fous
+#     que le chemin ORB : ratio de Lowe, RANSAC 2 px, minimum d'inliers,
+#     `_M_valide`, puis raffinement par centroïdes), essayé sur la frame PUIS
+#     sur la frame retournée de 180°. Ses descripteurs de RÉFÉRENCE sont
+#     calculés à la première frame qui en a besoin puis MIS EN CACHE
+#     (`_reference_forte`, invalidé par `set_reference` et `reset` — un cache
+#     périmé apparierait la frame à l'ANCIENNE référence). Mesuré sur le cas
+#     difficile : 3-5 inliers à 1 000 points contre 8-35 à 8 000. La matrice
+#     composée du retournement est extraite dans `_composer_retournement` pour
+#     que le dernier recours suive EXACTEMENT la même voie que le reste.
+#   REJEU HORS-LIGNE des vraies frames du test (60 frames, 15 tours, règles du
+#   worker) : code avec ① seul → 35 empilées / **26 refus** ; ① + ② → 61
+#   empilées / **0 refus**, dont **26 frames sauvées par le dernier recours**
+#   (24 « ORB étoffé » + 2 « ORB étoffé+étoiles »). Coût du ② sur ces frames :
+#   p95 1 793 → 2 664 ms, max 1 901 → 3 037 ms (médiane 1 415 → 1 448 ms), sur
+#   des brutes de 8,4 Mpx — payé UNIQUEMENT par les frames que tout le reste
+#   refuse.
+#   Banc NEUF : `_test_align_lumiere_jalon116.py` — le défaut ① mesuré (bornes
+#   de la référence : 99 % de pixels nuls, médiane 0/255 ; propres bornes :
+#   2 % et médiane 6/255), une frame « autre nuit » (fond ÷ 2 + rotation 176°)
+#   ALIGNÉE et reconstruite ≈ la référence, 30°/90°/échelle 1,3/bruit toujours
+#   REFUSÉS, dernier recours effectivement atteint quand la cascade historique
+#   est neutralisée (et repris sur la frame retournée avec composition), image
+#   plate refusée, cache des descripteurs de référence (calculé à la demande,
+#   conservé, invalidé par `set_reference`). Bancs rejoués VERTS : align 13 et
+#   15, méridien 111, ref-comp 113, narrowband 21, propagation/branchement/
+#   domaine 56-115 ; garde-fou refactoring VERT (syntaxe 245 fichiers, surface
+#   75, hash au bit, pyright 0 erreur sur 49 fichiers) ; ruff propre.
 # v2.67.0 : ASTROMÉTRIE — CAUSE DU « toujours le même problème » TROUVÉE ET
 #   CORRIGÉE (jalon 115) : le solveur recevait le COMPOSITE NORMALISÉ.
 #   - PREUVE (journal v2.66.0, test réel M31 LRGB du 09/10, 7 échecs) : « pas
