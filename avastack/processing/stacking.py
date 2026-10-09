@@ -69,6 +69,12 @@ _MARGE_CROP: int = 3
 # côté (sinon on garde l'image entière plutôt qu'un timbre-poste).
 _CROP_MIN_COTE: int = 16
 
+# Nombre maximal d'abscisses balayées pour chercher le plus grand rectangle
+# AXIAL INSCRIT (jalon 117, cf. `plus_grand_rect_inscrit`). Borne le coût d'un
+# recadrage recalculé à CHAQUE frame : sur une brute de 3 856 px de large le pas
+# reste ≤ ~4 px — négligeable devant `_MARGE_CROP` (3 px) et invisible à l'œil.
+_CROP_PAS_MAX: int = 1024
+
 
 # --- Équilibrage des canaux (jalon 13) ---------------------------------------
 # Les capteurs couleur ont 2 sites verts sur 4 (matrice de Bayer) et une
@@ -265,21 +271,116 @@ def _clip_poly(suj: Any, clip: Any) -> np.ndarray | None:
     return np.array(res, np.float64)
 
 
+def _coupes_verticales(poly: Any, xs: np.ndarray
+                       ) -> tuple[np.ndarray, np.ndarray]:
+    """Bornes (lo, hi) de la coupe verticale du polygone CONVEXE `poly` à chaque
+    abscisse de `xs` : `lo` = plus petite ordonnée couverte, `hi` = plus grande.
+
+    Un polygone convexe coupe une verticale en UN seul segment, donc (lo, hi) en
+    décrit exactement la bande couverte. Les abscisses hors de l'emprise du
+    polygone ressortent avec lo > hi (aucun segment)."""
+    p = np.asarray(poly, np.float64)
+    xa, ya = p[:, 0], p[:, 1]
+    xb, yb = np.roll(xa, -1), np.roll(ya, -1)
+    lo = np.full(xs.shape, np.inf)
+    hi = np.full(xs.shape, -np.inf)
+    for i in range(len(p)):
+        ax, ay, bx, by = xa[i], ya[i], xb[i], yb[i]
+        if bx == ax:                     # arête verticale : une seule abscisse
+            m = xs == ax
+            if m.any():
+                lo[m] = np.minimum(lo[m], min(float(ay), float(by)))
+                hi[m] = np.maximum(hi[m], max(float(ay), float(by)))
+            continue
+        t = (xs - ax) / (bx - ax)
+        m = (t >= 0.0) & (t <= 1.0)
+        if m.any():
+            y = ay + t[m] * (by - ay)
+            lo[m] = np.minimum(lo[m], y)
+            hi[m] = np.maximum(hi[m], y)
+    return lo, hi
+
+
+def plus_grand_rect_inscrit(poly: Any, pas_max: int = _CROP_PAS_MAX
+                            ) -> tuple[float, float, float, float] | None:
+    """Plus GRAND rectangle AXIAL (bords parallèles aux axes) inscrit dans le
+    polygone CONVEXE `poly` → (x0, x1, y0, y1) en pixels FLOTTANTS, ou None.
+
+    POURQUOI CE N'EST PAS LA BOÎTE ENGLOBANTE (jalon 117) : pour une rotation de
+    quelques degrés le polygone d'intersection vaut ~96 % de la frame, mais ses
+    extrêmes tombent au MILIEU des côtés → sa boîte englobante EST la frame
+    entière et le « recadrage » ne retirait RIEN (coins non couverts visibles,
+    retrait de gradient impossible ensuite). Le plus grand rectangle INSCRIT
+    laisse, lui, tomber les coins (mesuré sur le jeu M31 : insets (62, 137) px,
+    84,6 % de la frame conservés).
+
+    MÉTHODE (exacte sur une grille, aucune heuristique de pixels) : pour un
+    polygone CONVEXE, `hi` est CONCAVE et `lo` CONVEXE, donc sur une bande
+    [x0, x1] le minimum de `hi` et le maximum de `lo` tombent AUX EXTRÉMITÉS :
+    la hauteur disponible vaut min(hi(x0), hi(x1)) − max(lo(x0), lo(x1)). On
+    balaie alors les paires d'abscisses candidates (grille régulière bornée par
+    `pas_max` + abscisses des sommets) et on garde la plus grande aire. Le
+    résultat est arrondi ENTRANT aux pixels par `cadre_intersection`."""
+    p = np.asarray(poly, np.float64)
+    if p.ndim != 2 or p.shape[0] < 3:
+        return None
+    xmin, xmax = float(p[:, 0].min()), float(p[:, 0].max())
+    if xmax - xmin < 1.0:
+        return None
+    n = int(min(pas_max, np.ceil(xmax - xmin) + 1))
+    xs = np.linspace(xmin, xmax, n)
+    xs = np.unique(np.concatenate([xs, p[:, 0]]))
+    lo, hi = _coupes_verticales(p, xs)
+    best: tuple[float, float, float, float, float] | None = None
+    for j in range(1, len(xs)):
+        if not np.isfinite(hi[j]) or hi[j] <= lo[j]:
+            continue
+        hi_i, lo_i = hi[:j], lo[:j]
+        ht = np.minimum(hi_i, hi[j]) - np.maximum(lo_i, lo[j])
+        aire = (xs[j] - xs[:j]) * ht
+        k = int(np.argmax(aire))
+        if ht[k] <= 0.0:
+            continue
+        if best is None or aire[k] > best[0]:
+            best = (float(aire[k]), float(xs[k]), float(xs[j]),
+                    float(max(lo_i[k], lo[j])), float(min(hi_i[k], hi[j])))
+    if best is None:
+        return None
+    return (best[1], best[2], best[3], best[4])
+
+
 def cadre_intersection(poly: Any, marge: int = _MARGE_CROP,
                        min_cote: int = _CROP_MIN_COTE
                        ) -> tuple[int, int, int, int] | None:
-    """Rectangle (y0, x0, y1, x1) englobant STRICTEMENT l'intérieur du
-    polygone (arrondi vers l'intérieur + marge de sécurité), ou None si le
-    polygone est dégénéré ou trop petit pour valoir un recadrage."""
+    """Rectangle (y0, x0, y1, x1) du PLUS GRAND rectangle AXIAL INSCRIT dans le
+    polygone CONVEXE (arrondi vers l'intérieur + marge de sécurité), ou None si
+    le polygone est dégénéré ou trop petit pour valoir un recadrage.
+
+    v2.69.0 (jalon 117) : rendait auparavant la BOÎTE ENGLOBANTE du polygone —
+    pour une rotation de quelques degrés elle vaut la PLEINE image et le
+    recadrage ne retirait donc rien (cf. `plus_grand_rect_inscrit`)."""
     if poly is None or len(poly) < 3:
         return None
-    y0 = int(np.ceil(poly[:, 1].min())) + marge
-    y1 = int(np.floor(poly[:, 1].max())) - marge
-    x0 = int(np.ceil(poly[:, 0].min())) + marge
-    x1 = int(np.floor(poly[:, 0].max())) - marge
-    if y1 - y0 < min_cote or x1 - x0 < min_cote:
+    rect = plus_grand_rect_inscrit(poly)
+    if rect is None:
         return None
-    return (y0, x0, y1, x1)
+    x0, x1 = rect[0], rect[1]
+    # Arrondi ENTRANT aux pixels, puis bornes VÉRIFIÉES aux abscisses entières
+    # retenues (la bande rétrécie ne peut qu'être mieux couverte).
+    xi0, xi1 = int(np.ceil(x0)), int(np.floor(x1))
+    if xi1 - xi0 < 1:
+        return None
+    lo, hi = _coupes_verticales(np.asarray(poly, np.float64),
+                                np.array([float(xi0), float(xi1)]))
+    if not (np.isfinite(lo).all() and np.isfinite(hi).all()):
+        return None
+    yi0 = int(np.ceil(max(lo[0], lo[1]))) + marge
+    yi1 = int(np.floor(min(hi[0], hi[1]))) - marge
+    xi0 += marge
+    xi1 -= marge
+    if yi1 - yi0 < min_cote or xi1 - xi0 < min_cote:
+        return None
+    return (yi0, xi0, yi1, xi1)
 
 
 def _gains_canaux(img: np.ndarray, gains: Any = None) -> np.ndarray:

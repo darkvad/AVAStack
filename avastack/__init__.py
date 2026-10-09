@@ -18,9 +18,62 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.68.0"
+AVASTACK_VERSION = "2.69.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.69.1 : ALIGNEMENT — LE RAFFINEMENT SOUS-PIXEL PASSE À PORTE LARGE, ET RIEN
+#   N'EST RETENU SANS ÊTRE VÉRIFIÉ SUR LES ÉTOILES (jalon 117b). Défaut mesuré le
+#   09/10/2026 sur le jeu M31 deux nuits (176,2°) : sur les frames RETOURNÉES la
+#   matrice rendue par `compute` laissait un résidu d'étoiles de 0,96 à 2,38 px
+#   (contre 0,14-0,15 px pour les frames de la même nuit), et sur le fichier
+#   livré « save as seen » le canal R était décalé de (−1,30, −1,33) px par
+#   rapport au VERT → un ÉCHO ROUGE autour de chaque étoile. DEUX causes
+#   racines : ① `_raffiner_centroides` (jalon 57) était GATED par un appariement
+#   mutuel serré (≤ 1,5 px) calculé avec la matrice BRUTE — précisément là où
+#   l'erreur dépasse 1,5 px il ne trouvait que 0-4 couples et ne corrigeait
+#   RIEN ; ② rien ne VÉRIFIAIT la matrice retenue sur les centroïdes d'étoiles
+#   (le seul garde-fou était le consensus RANSAC à 2 px sur les points ORB).
+#   CORRECTIF : la porte d'appariement devient LARGE puis RESSERRÉE par
+#   itérations (`RAFFIN_RAYONS` = 4,0 → 1,5 → 1,0 px), chaque passage ré-estimant
+#   une similitude (RANSAC robuste puis LMEDS sur ses inliers) à partir du
+#   précédent ; chaque matrice candidate est VÉRIFIÉE sur les centroïdes
+#   (`_verif_centroides` : nombre d'appariements mutuels à 2,5 px et résidu
+#   MÉDIAN), et seule une candidate de résidu MEILLEUR que la matrice d'entrée
+#   est GARDÉE — jamais de régression (la matrice d'entrée est rendue INCHANGÉE
+#   sinon). Nouveaux helpers `_appariements_mutuels`, `_reestimer_centroides`,
+#   `_verif_centroides`. MESURÉ : une matrice à 2,83 px (0 appariement sous
+#   1,5 px, 31 sous 4 px) est ramenée à < 0,01 px ; cas RETOURNÉ 176° corrigé à
+#   0,02 px ; décalage sous-pixel 0,573 px ramené à 0,016 px (non-régression du
+#   jalon 57). Banc neuf `bancs/_test_align_raffin_jalon117.py` (5 sections).
+# v2.69.0 : RECADRAGE — LE CADRE DEVIENT LE PLUS GRAND RECTANGLE AXIAL INSCRIT
+#   (jalon 117a). Défaut mesuré le 09/10/2026 sur le test réel M31 LRGB (deux
+#   nuits à 176,2°) : `cadre_intersection` (processing/stacking.py) rendait la
+#   BOÎTE ENGLOBANTE du polygone d'intersection des zones couvertes. Or, pour
+#   une rotation de quelques degrés, ce polygone vaut ~96 % de la frame mais ses
+#   extrêmes tombent au MILIEU des côtés → la boîte englobante vaut la PLEINE
+#   image : mesuré `cadre` = (3, 3, 2176, 3852) sur 3856×2180 (seuls 23×17 px
+#   retirés du PNG livré). Les coins NON couverts restaient visibles, avec une
+#   teinte différente ET différente d'un coin à l'autre (c'est le recouvrement
+#   des frames, pas la vignette) → le retrait de gradient échouait derrière
+#   (GraXpert ne peut pas modéliser quatre coins peints chacun autrement).
+#   CORRECTIF : `cadre_intersection` rend désormais le PLUS GRAND RECTANGLE
+#   AXIAL INSCRIT dans le polygone (leçon « -framing=min » de Siril), calculé
+#   EXACTEMENT sur une grille bornée grâce à la structure du polygone CONVEXE :
+#   sur une bande [x0, x1] la hauteur disponible vaut min(hi(x0), hi(x1)) −
+#   max(lo(x0), lo(x1)) (`hi` concave, `lo` convexe → les extrêmes tombent AUX
+#   EXTRÉMITÉS ; aucune heuristique de pixels). Nouveaux helpers
+#   `plus_grand_rect_inscrit` (aire maximale, en flottants) et
+#   `_coupes_verticales` (coupe verticale du polygone) ; constante `_CROP_PAS_MAX`
+#   (1 024 abscisses au plus — pas ≤ ~4 px sur une brute de 3 856 px). Le
+#   résultat est arrondi ENTRANT aux pixels, puis `_MARGE_CROP` (3 px) est
+#   retirée comme avant : le banc historique n'a pas bougé. Mesuré sur le jeu
+#   réel : insets (62, 137) px → 3 732×1 906 px, 84,6 % de la frame conservés.
+#   Vaut pour `LiveStacker` ET `CompositeStacker` (même appel). Banc neuf
+#   `bancs/_test_crop_inscrit_jalon117.py` : rotation ⇒ coins retirés + rectangle
+#   réellement inscrit (ses 4 coins sont dans le polygone), coïncidence avec un
+#   balayage brute-force 1 px INDÉPENDANT (100,0 % de la vérité mesurée), cas
+#   « diamant » (carré tourné de 45°, optimum HORS sommet) à l'aire théorique
+#   s²/2, non-régression identité/translations, garde-fous et intégration.
 # v2.68.0 : ALIGNEMENT — LES FRAMES D'UNE AUTRE NUIT (retournement ~176°) SONT
 #   ENFIN EMPILÉES (jalon 116). Test réel d'Alain du 09/10/2026 (M31 LRGB :
 #   L du 13/09 + R/G/B du 22-23/09, 210 frames) : 130 empilées, 80 NON ALIGNÉES

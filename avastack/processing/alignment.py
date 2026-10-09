@@ -124,6 +124,22 @@ ALIGN_DISTANCE_MIN: float = 120.0    # écart minimal entre deux étoiles retenu
 # qu'ailleurs. Coût : payé UNIQUEMENT par les frames que tout le reste refuse.
 ORB_RENFORCE_FEATURES: int = 8000    # nfeatures du dernier recours (principal : 1000)
 
+# --- Raffinement sous-pixel à PORTE LARGE (v2.69.1, jalon 117b) --------------
+# La porte d'appariement mutuel du raffinement était FIXE à 1,5 px. Or c'est
+# PRÉCISÉMENT quand la matrice d'ORB s'écarte de 1,5 à 6 px de la vraie
+# transformation que ce raffinement ne trouvait plus rien (0-4 couples mesurés)
+# et ne corrigeait donc RIEN : le défaut n'était attrapé par personne (le seul
+# garde-fou était le consensus RANSAC à 2 px sur les points d'ORB). Mesuré sur
+# le jeu M31 deux nuits (176,2°) : matrice de l'appli à 2,0-6,5 px de la
+# transformation CONVERGÉE, résidu d'étoiles 0,96-2,38 px, et sur le fichier
+# livré le canal R décalé de (−1,30, −1,33) px par rapport au VERT (écho rouge
+# autour de chaque étoile). On démarre donc l'appariement LARGE (4 px) puis on
+# RESSERRE (1,5 puis 1,0 px), en VÉRIFIANT la matrice par les centroïdes
+# d'étoiles à chaque passage — jamais de régression : la matrice d'entrée est
+# rendue INCHANGÉE si le raffinement ne l'améliore pas.
+RAFFIN_RAYONS: tuple[float, ...] = (4.0, 1.5, 1.0)
+RAFFIN_VERIF_RAYON: float = 2.5     # rayon du contre-test d'appariements mutuels
+
 
 def _distance_repartition(forme: Any) -> float:
     """Écart minimal de la sélection RÉPARTIE des étoiles d'alignement,
@@ -314,6 +330,54 @@ class StarAligner:
             hi = lo + 1e-6
         return (np.clip((f - lo) / (hi - lo), 0, 1) * 255).astype(np.uint8)
 
+    def _appariements_mutuels(self, pos: Any, M: Any, rayon: float
+                              ) -> tuple[Any, Any, Any]:
+        """Appariements MUTUELS (plus proche voisin des DEUX côtés) entre les
+        centroïdes `pos` de la frame, RAMENÉS par `M` dans le repère de la
+        référence, et les centroïdes de la référence, à `rayon` px près.
+        → (src (n, 2), dst (n, 2), distances (n,)) en float64."""
+        pos = np.asarray(pos, np.float64)
+        ref = np.asarray(self.ref_pos, np.float64)
+        pc = cv2.transform(pos.reshape(-1, 1, 2), np.asarray(M, np.float64))[:, 0, :]
+        d2 = np.hypot(pc[:, None, 0] - ref[None, :, 0],
+                      pc[:, None, 1] - ref[None, :, 1])
+        proche = d2.argmin(1)
+        dist = d2[np.arange(len(pc)), proche]
+        inverse = d2.T.argmin(1)
+        sel = (dist <= rayon) & (inverse[proche] == np.arange(len(pc)))
+        return pos[sel], ref[proche[sel]], dist[sel]
+
+    def _reestimer_centroides(self, pos: Any, M: Any, rayon: float) -> Any:
+        """UNE passe de raffinement : appariements mutuels à `rayon` px, puis
+        ré-estimation d'une similitude (RANSAC robuste, affinée par LMEDS sur ses
+        inliers). → matrice 2×3 VALIDE, ou None si la passe ne conclut pas."""
+        src, dst, _d = self._appariements_mutuels(pos, M, rayon)
+        if len(src) < INLIERS_ETOILES:
+            return None
+        M2, inl = cv2.estimateAffinePartial2D(src, dst, method=cv2.RANSAC,
+                                              ransacReprojThreshold=rayon,
+                                              maxIters=5000)
+        if M2 is None or inl is None or not _M_valide(M2):
+            return None
+        m_inl = inl[:, 0].astype(bool)
+        if int(m_inl.sum()) < INLIERS_ETOILES:
+            return None
+        M3, _ = cv2.estimateAffinePartial2D(src[m_inl], dst[m_inl],
+                                            method=cv2.LMEDS, maxIters=5000)
+        if M3 is not None and _M_valide(M3):
+            return M3
+        return M2
+
+    def _verif_centroides(self, pos: Any, M: Any) -> tuple[int, float]:
+        """Contre-test par centroïdes d'étoiles : nombre d'appariements MUTUELS à
+        ≤ `RAFFIN_VERIF_RAYON` px et résidu MÉDIAN (px). C'est ce couple (n,
+        résidu) qui décide si une matrice raffinée est GARDÉE (jalon 117b) : rien
+        ne vérifiait auparavant la matrice retenue sur les étoiles."""
+        src, _dst, dist = self._appariements_mutuels(pos, M, RAFFIN_VERIF_RAYON)
+        if len(dist) == 0:
+            return 0, float("inf")
+        return int(len(dist)), float(np.median(dist))
+
     def _raffiner_centroides(self, frame: Any, M: Any) -> tuple[Any, int]:
         """RAFFINEMENT SOUS-PIXEL par centroïdes d'étoiles (jalon 57).
 
@@ -328,12 +392,21 @@ class StarAligner:
         images estimées par CENTROÏDES d'étoiles laissent 0,02-0,04 px.
 
         COMMENT : les centroïdes de la frame sont ramenés par `M` dans le
-        repère de la référence, appariés MUTUELLEMENT et serré (≤ 1,5 px),
-        puis une similitude (rotation + échelle + translation) est ré-estimée
-        sur ces seuls appariements incontestables. Échec ou trop peu
-        d'appariements → la matrice d'entrée est rendue INCHANGÉE (jamais de
-        régression). → (M, n_appariements) avec n = 0 si non raffiné.
-        """
+        repère de la référence, appariés MUTUELLEMENT, puis une similitude
+        (rotation + échelle + translation) est ré-estimée sur ces seuls
+        appariements incontestables. Échec ou trop peu d'appariements → la
+        matrice d'entrée est rendue INCHANGÉE (jamais de régression).
+
+        v2.69.1 (jalon 117b) — PORTE LARGE ITÉRATIVE ET VÉRIFICATION : le premier
+        appariement se fait à `RAFFIN_RAYONS[0]` (4 px) et non plus à 1,5 px, puis
+        la porte est RESSERRÉE (1,5 puis 1,0 px) en ré-estimant à chaque passage :
+        c'est ce qui rattrape une matrice d'ORB à 2-6 px de la vraie (frames
+        retournées d'une autre nuit — défaut ouvert du jalon 117). Chaque matrice
+        candidate est VÉRIFIÉE sur les centroïdes (`_verif_centroides`), et seule
+        une candidate dont le résidu d'étoiles est MEILLEUR que celui de la
+        matrice d'entrée est GARDÉE. Les étapes intermédiaires servent de point
+        de départ à la suivante (convergence) même avant d'être « meilleures ».
+        → (M, n_appariements) avec n = 0 si non raffiné."""
         if self.ref_pos is None or len(self.ref_pos) < INLIERS_ETOILES:
             return M, 0
         pos, _msg = _stars.detecter_positions(
@@ -341,41 +414,22 @@ class StarAligner:
             distance_min=_distance_repartition(frame.shape))
         if pos is None or len(pos) < INLIERS_ETOILES:
             return M, 0
-        pos = np.asarray(pos, np.float32)
-        # Positions de la frame DANS le repère de la référence (par M) : les
-        # appariements « mutuels serrés » n'y sont cherchés que pour les
-        # correspondances sans ambiguïté (une étoile de chaque côté).
-        pc = cv2.transform(pos.reshape(-1, 1, 2), M)[:, 0, :]
-        d2 = np.hypot(pc[:, None, 0] - self.ref_pos[None, :, 0],
-                      pc[:, None, 1] - self.ref_pos[None, :, 1])
-        proche = d2.argmin(1)
-        dist = d2[np.arange(len(pc)), proche]
-        inverse = d2.T.argmin(1)
-        sel = (dist <= 1.5) & (inverse[proche] == np.arange(len(pc)))
-        if int(sel.sum()) < INLIERS_ETOILES:
+        meilleur_n, meilleur_res = self._verif_centroides(pos, M)
+        M_cur = M
+        meilleur_M = M
+        for rayon in RAFFIN_RAYONS:
+            Mr = self._reestimer_centroides(pos, M_cur, rayon)
+            if Mr is None:
+                continue
+            M_cur = Mr                   # la convergence avance TOUJOURS
+            n, res = self._verif_centroides(pos, Mr)
+            if n >= INLIERS_ETOILES and (res < meilleur_res - 1e-6
+                                         or (res <= meilleur_res + 1e-6
+                                             and n > meilleur_n)):
+                meilleur_M, meilleur_n, meilleur_res = Mr, n, res
+        if meilleur_M is M or meilleur_n < INLIERS_ETOILES:
             return M, 0
-        src = pos[sel]
-        dst = np.asarray(self.ref_pos, np.float64)[proche[sel]].astype(np.float32)
-        M2, inl = cv2.estimateAffinePartial2D(src, dst, method=cv2.RANSAC,
-                                              ransacReprojThreshold=0.75,
-                                              maxIters=5000)
-        if M2 is None or inl is None or not _M_valide(M2):
-            return M, 0
-        m_inl = inl[:, 0].astype(bool)
-        if int(m_inl.sum()) < INLIERS_ETOILES:
-            return M, 0
-        # Contre-test GLOBAL (mêmes règles que les autres chemins) : le
-        # raffinement doit réunir des appariements mutuels à 2,5 px.
-        pc2 = cv2.transform(pos.reshape(-1, 1, 2), M2)[:, 0, :]
-        e2 = np.hypot(pc2[:, None, 0] - self.ref_pos[None, :, 0],
-                      pc2[:, None, 1] - self.ref_pos[None, :, 1])
-        pi = e2.argmin(1)
-        di = e2[np.arange(len(pc2)), pi]
-        inv2 = e2.T.argmin(1)
-        mutuel = (di <= 2.5) & (inv2[pi] == np.arange(len(pc2)))
-        if int(mutuel.sum()) < INLIERS_ETOILES:
-            return M, 0
-        return M2, int(mutuel.sum())
+        return meilleur_M, meilleur_n
 
     # ------------------------------------------------------------ jalon 116
     def _reference_forte(self) -> tuple[Any, Any]:

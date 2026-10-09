@@ -1054,6 +1054,94 @@ ce qui manquait n'était pas une correction mais une MESURE.
   ne peut pas distinguer une image trop pauvre d'un catalogue inadapté.
 
 
+- **ALIGNEMENT D'UNE FRAME RETOURNÉE AU MÉRIDIEN (~180°) : TROIS LEÇONS
+  MESURÉES (jalon 116, v2.68.0 — test réel OK sur le jeu M31 au SV555, deux
+  nuits à 176,2°).** ① **L'ORB doit normaliser chaque frame sur SES PROPRES
+  bornes** (`_compute_direct` : `_norm8(frame)`) : avec les bornes de la
+  RÉFÉRENCE (`_ref_lo`/`_ref_hi`), une frame d'une autre nuit ou d'un autre
+  filtre se retrouve ÉCRASÉE dans les premiers niveaux 8 bits (**93-99 % des
+  pixels à 0**, fond mesuré ×1,8) → plus aucun point ORB utile, donc refus en
+  cascade. ② **Le repli « corrélation de phase » DOIT garder le domaine PARTAGÉ**
+  (bornes de la référence, cf. `_sans_orb`) : les deux images comparées par SSD
+  doivent être étirées de la MÊME façon. En domaine LOCAL, il « alignait » 29 des
+  60 frames réelles par une QUASI-IDENTITÉ (0 appariement mutuel d'étoiles) alors
+  que leur vraie géométrie est à −176,2° (Δ≈(3775, 2297) px ; 6, 92 et 80
+  appariements mesurés sur G[5], G[20], G[35]) : ces FAUX alignements étaient la
+  cause DIRECTE des doublons rouges du test réel. ③ **Un dernier recours ORB
+  ÉTOFFÉ (8 000 points au lieu de 1 000, `_orb_renforce`) est indispensable AVANT
+  de refuser une frame** : sur les mêmes frames, 3-5 inliers à 1 000 points
+  contre 8-35 à 8 000 ; mesuré sur 60 frames réelles, ① seul = 26 refus,
+  ①+② = **0 refus** (26 frames sauvées), pour un coût p95 1 793 → 2 664 ms payé
+  UNIQUEMENT par les frames que tout le reste refuse. Il suit la MÊME voie que le
+  reste de la cascade (`_composer_retournement`, extrait de `compute` au 116).
+  ⚠ Tout NOUVEAU cache de l'aligneur doit être invalidé AUSSI dans
+  `set_reference` — qui ne passe PAS par `reset()` (piège rencontré avec
+  `ref_des_fort`). Banc : `bancs/_test_align_lumiere_jalon116.py` (5 sections)
+  + rejeu hors-ligne des vraies frames et test réel : un jalon d'alignement ne
+  se valide pas autrement.
+- **UN ORB/RANSAC À 2 px PEUT RENDRE UNE MATRICE À 2-6 px DE LA VRAIE
+  TRANSFORMATION, ET RIEN NE L'ATTRAPE** (MESURÉ le 09/10/2026, jalon 117 ;
+  CORRIGÉ au jalon 117b, v2.69.1 — c'était l'« écho rouge » du test réel). Sur les
+  frames à 176,2° du jeu M31, la matrice rendue par `compute` laisse un résidu de
+  **0,96 à 2,38 px** (0-20 % des étoiles à moins de 0,30 px) alors que la
+  transformation CONVERGÉE par re-fit itératif (appariement mutuel à 4 px puis
+  ré-estimation à 1,5/1,0 px) est la MÊME à ±1 px sur 7 frames indépendantes et
+  s'écarte de celle de l'appli de **2,0 à 6,5 px en translation** ; elle fait
+  remonter 120-146 couples d'étoiles (contre 0-35) et ramène le résidu à ~0,8 px.
+  Deux causes racines : ① le raffinement sous-pixel du jalon 57
+  (`_raffiner_centroides`) est **gated par un appariement mutuel ≤ 1,5 px calculé
+  avec la matrice BRUTE** — précisément là où l'erreur est ≥ 1,5 px il ne trouve
+  que 0 à 4 couples et ne corrige RIEN ; ② **rien ne VÉRIFIE la matrice retenue
+  sur les centroïdes d'étoiles** avant de l'accepter (le seul garde-fou est le
+  consensus RANSAC à 2 px sur les points ORB). Conséquence visuelle MESURÉE
+  directement sur l'image livrée « save as seen » : le canal R est décalé de
+  **(−1,30, −1,33) px** et le canal B de (+0,73, +0,91) px par rapport au VERT
+  (|Δ| médian 1,9 px) → chaque étoile reçoit un écho ROUGE d'un côté et cyan de
+  l'autre. Repère utile : les frames de la MÊME nuit que la référence restent à
+  0,14-0,15 px (92 % des étoiles à moins de 0,30 px) — ce sont bien les frames
+  RETOURNÉES/d'autre nuit qui décrochent. Un résidu plancher de ~0,8 px subsiste
+  entre les deux nuits après convergence, que l'affine (6 paramètres) n'améliore
+  PAS (0,80-0,87 px) : à instruire (distorsion non paramétrique entre les nuits ?
+  centroïdes ?), mais il est 3 fois plus petit que l'erreur actuelle. Diags
+  jetables : `%TEMP%\avastack_diag_j117_halo.py` (matrice appli vs convergée),
+  `avastack_diag_j117_halo2.py` (similitude vs affine vs homographie),
+  `avastack_diag_j117_png.py` (décalage des canaux SUR LE FICHIER LIVRÉ).
+  CORRECTIF (jalon 117b, v2.69.1) : la porte d'appariement du raffinement devient
+  LARGE puis RESSERRÉE (`RAFFIN_RAYONS` = 4,0 → 1,5 → 1,0 px), chaque passage
+  ré-estimant la similitude à partir du précédent, et chaque candidate est
+  VÉRIFIÉE sur les centroïdes (`_verif_centroides` : contre-test mutuel à 2,5 px
+  + résidu médian) — seule une candidate meilleure que la matrice d'entrée est
+  gardée, sinon l'entrée est rendue INCHANGÉE (jamais de régression). Mesuré :
+  une matrice à 2,83 px (0 appariement sous 1,5 px, 31 sous 4 px) revient à
+  < 0,01 px. Banc `bancs/_test_align_raffin_jalon117.py`.
+- **RECADRAGE D'INTERSECTION : UNE BOÎTE ENGLOBANTE NE RECADRE PAS UNE
+  ROTATION** (MESURÉ le 09/10/2026, jalon 117 ; CORRIGÉ au jalon 117a, v2.69.0).
+  `cadre_intersection` (processing/stacking.py) rend la BOÎTE ENGLOBANTE du
+  polygone d'intersection des zones couvertes. Or, quand les frames mêlent deux
+  orientations à quelques degrés de 180° (retournement au méridien), ce polygone
+  vaut 96,1 % de la frame mais **ses extrêmes tombent sur les MILIEUX des côtés
+  de la frame** : la boîte englobante EST la frame entière, donc le « recadrage »
+  ne retire que la marge (`_MARGE_CROP` = 3 px — mesuré : `cadre` (3,3,2176,3852)
+  sur 3856×2180, et seulement 23×17 px sur le PNG livré). Les coins non couverts
+  restent visibles et le retrait de gradient échoue derrière (mesuré sur le PNG
+  livré : les 4 coins sont à 0,11-0,25 du niveau du centre, avec une teinte
+  différente, **et ils diffèrent entre eux** — c'est le recouvrement des frames,
+  pas la vignette). Ce qu'il faut est le **PLUS GRAND RECTANGLE AXIAL INSCRIT
+  dans le polygone** (leçon « framing=min » : mesuré sur ce jeu, insets
+  (62, 137) px → 3732×1906 px, 84,6 % de la frame), pas sa boîte englobante.
+  Vaut pour `LiveStacker` ET `CompositeStacker` (même code) ; en LRGB le défaut
+  est plus visible encore car les rôles d'une même nuit couvrent 100 % pendant
+  que les rôles retournés perdent 3,6 % dans les coins (mesuré, carte de
+  couverture comprise). Diag jetable : `%TEMP%\avastack_diag_j117_crop.py`.
+  CORRECTIF (jalon 117a, v2.69.0) : `cadre_intersection` rend le PLUS GRAND
+  RECTANGLE AXIAL INSCRIT dans le polygone (`plus_grand_rect_inscrit`), calculé
+  exactement sur une grille bornée grâce à la convexité (bande [x0, x1] :
+  hauteur = min(hi(x0), hi(x1)) − max(lo(x0), lo(x1))), puis arrondi ENTRANT aux
+  pixels et rogné de `_MARGE_CROP` comme avant. Banc
+  `bancs/_test_crop_inscrit_jalon117.py` (vérifié == balayage brute-force 1 px
+  indépendant, cas « diamant » à l'aire théorique s²/2).
+
+
 - **UNE ANCRE DE PACK (`pack(before=…/after=…)`) DOIT ÊTRE UN WIDGET TOUJOURS
   GÉRÉ, ET JAMAIS UN CONTENEUR QUI SUIT SON PROPRE EN-TÊTE** (jalon 98,
   retour d'Alain 06/10/2026 : « positionnement bizarre des sections »).
