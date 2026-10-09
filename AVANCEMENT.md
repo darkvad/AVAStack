@@ -9,106 +9,112 @@ dans le changelog du source et l'historique git.)
 
 ---
 
-## Session du 09/10/2026 (nuit) — JALON 117 : LES DEUX DÉFAUTS SONT CORRIGÉS (117a recadrage, 117b alignement)
+## Session du 09/10/2026 (suite) — JALON 117c : MESURE DU LISERÉ ROUGE (diagnostic, RIEN corrigé)
+
+### État actuel
+- Le **liseré rouge des étoiles brillantes** (signalé après le 117) est **MESURÉ et
+  CAUSÉ** : c'est le **COMBINE LRGB** qui amplifie les AILES des étoiles (PSF de L
+  bien plus large que celle du RGB) — **PAS** un décalage d'alignement ni l'optique.
+  Confirmé par l'observation d'Alain (halos SEULEMENT avec L) et par un **rejeu réel**
+  des couches (`canal_*.fit`) : halo ×2,8, supprimé par un ratio LISSE (σ ≈ 4 px).
+- **Rien n'est codé ni corrigé** : session de diagnostic. Version stable inchangée
+  = **2.69.1**.
+
+### Ce qui a été mesuré (PNG livré `C:\Astro\test\Andromeda Nebula2.69.1.png`)
+- **Décalage des canaux** (corrélation de phase, 4 zones concordantes) : 2.68.0
+  R↔V = **(+0,19, +0,29) px** → 2.69.1 **R↔V = (−0,06, −0,21)**, **B↔V =
+  (+0,05, +0,21)** ; |Δ| = **0,21 px**. Donc ① l'écho du 117b est bien parti
+  (0,35 → 0,21 px) ; ② il RESTE un résidu systématique de **~0,2 px**, R et B
+  **symétriques par rapport à V**.
+- **Optique ÉCARTÉE** : la FWHM des étoiles **par filtre**, mesurée sur les frames
+  réelles (rôles connus), est la MÊME — L 2,42 / R 2,37 / V 2,28 / B 2,32 px →
+  **R/G = 1,039 · B/G = 1,019** (aucune PSF plus large en R).
+- **Signature du liseré** : sur une étoile brillante `R/V` vaut 1,25 au cœur et
+  **MAXIMAL (1,60) dans l'anneau** (r≈4-5 px), où `B/V` tombe à ~0,5 ; sur les
+  étoiles faibles l'anneau n'apparaît PAS → l'effet **dépend de la luminosité**.
+  Les crops zoomés (diag `j117c_etoiles_2691.png`) montrent un cœur pâle/blanchi
+  entouré d'un anneau orange.
+
+### Cause identifiée (MESURÉE sur les couches réelles)
+- **C'est le COMBINE LRGB (luminance), pas la couleur ni l'alignement** — conforme à
+  l'observation d'Alain : halos SEULEMENT avec L (RGB seul = rien).
+- **Mismatch de PSF L vs RGB (mesuré)** : sur `canal_L/R/G/B.fit` (run LRGB réel) le
+  profil de L est bien plus large que celui de la luminance RGB — `L/luma` = 1,00 au
+  cœur, **1,5 (r=2,5), 2,5 (r=3,5), 3,3 (r=4,5)**, ~3 dans les ailes. (Centroïde
+  L vs luma décalé de ~0,19 px = nuit 1 vs nuit 2.)
+- Le combine `rgb *= L/luma` **amplifie donc les AILES des étoiles** : sur le REJEU
+  réel (mêmes couches, même étirement VeraLux), le rapport **anneau/cœur à r≈4 px
+  passe de 0,124 (RGB seul) à 0,347 (avec L)** = **halo ×2,8**. Preuve visuelle :
+  `%TEMP%\j117c_fix_visuel.png` (colonne 2 = halo jaune/rouge ; colonnes 1 et 3 = net).
+- **Correctif DeepSeek testé** (flouter le ratio `L/luma`) : à **σ = 0,5-1 px il NE
+  SUFFIT PAS** (0,347 → 0,338 / 0,286) ; il faut **σ ≈ 4 px** pour revenir au niveau
+  RGB seul (0,128), et σ=4 est VISUELLEMENT identique au RGB seul. Le diagnostic est
+  juste, mais le RAYON proposé est **4-8× trop petit**.
+- Écartés : l'**alignement** (le dipôle est parti) ; l'**optique par filtre** (FWHM
+  R/G = 1,039) ; le combine comme source DIRECTE de couleur (il est neutre :
+  `rgb * ratio[...,None]`) — l'anneau prend la couleur des ailes ; VeraLux (l'anneau
+  de convergence existe mais ~20 % seulement, cf. diag synthétique `..._veralux.py`).
+
+### Prochaines étapes
+- **117c correctif (à VALIDER par Alain avant de coder)** : porter le combine L sur un
+  ratio **LISSÉ** (gaussienne **σ ≈ 4 px** à cette échelle → à rendre PROPORTIONNEL à
+  la FWHM/à la taille des étoiles), pour que la luminance n'apporte QUE le grand
+  échelle (nébuleuse) et n'épaississe plus les halos d'étoiles. Banc à prévoir :
+  étoile colorée + L à ailes larges → halo divisé par ≥ 2, RGB seul inchangé.
+- **Session CLOSE ici (09/10/2026)** : aucun code touché ; le correctif 117c est
+  PROPOSÉ et attend le feu vert d'Alain (cf. « En attente / prochaine session »).
+
+### Points d'attention / pièges de cette session
+- Diags jetables (`%TEMP%`, hors dépôt) : `avastack_diag_j117c_lisere.py`,
+  `_crops.py`, `_psf.py`, `_star.py`, `_phase.py`, `_veralux.py`, `_lrgb.py`,
+  `_lrgb2.py`, `_lpsf.py`, `_fix.py`, `_visuel.py`.
+- ⚠ `stars.detecter_positions` renvoie des positions **(x, y)**, pas (y, x) —
+  ce piège fausse tout crop/centroïde d'étoile.
+- Les composites de rejeu sont sauvés dans `%TEMP%\j117c_rgb_only.npy` /
+  `j117c_lrgb.npy` (rechargeables pour ne pas refaire l'étirement VeraLux).
+
+---
+
+## HISTORIQUE — jalon 117 (09/10/2026, nuit) : 117a recadrage v2.69.0 + 117b alignement v2.69.1
+(bloc d'époque conservé ; les mesures vivent aussi dans CLAUDE.md « Pièges » et le changelog)
 
 ### État actuel
 - Version stable = **2.69.1** (117a recadrage v2.69.0 + 117b alignement v2.69.1),
   **TEST RÉEL OK** (09/10/2026, M31 deux nuits) : ① les **COINS/biseaux ont
   disparu** (retrait de gradient de nouveau possible) — validé par Alain ; ②
   l'**ÉCHO ROUGE** du recouvrement **s'est éteint**. Commit + push faits.
-- ⚠ **RESTE un LISERÉ ROUGE sur les ÉTOILES LES PLUS BRILLANTES** (vu sur le PNG
-  « save as seen ») : hypothèse = le plancher ~0,8 px inter-nuits — à MESURER et
-  diagnostiquer dans une SESSION DÉDIÉE (rien à coder ici pour l'instant).
+- Le liseré rouge des étoiles brillantes laissé OUVERT ici a été **MESURÉ au 117c**
+  (bloc en tête de fichier) : ce n'est **PAS** le plancher ~0,8 px supposé.
 - Image de référence : `C:\Astro\test\Andromeda Nebula2.69.1.png` (hors dépôt).
 - Bancs TOUS VERTS : recadrage 117, alignement 117b, alignement 13/15/116,
   garde-fou refactoring (surface 75, hash, pyright 0/49) ; mesures et leçons
   durables dans CLAUDE.md « Pièges ».
 
-### Mesures qui ont guidé les correctifs (déjà exploitées — NE PAS REMESURER)
-- **Défaut n° 1** (diag `%TEMP%\avastack_diag_j117_crop.py`, rejeu des 4 dossiers
-  réels avec le code réel, replica du polygone vérifié == code réel) : le polygone
-  d'intersection est JUSTE (96,11 % de la frame, 11-12 sommets) mais ses extrêmes
-  tombent sur les **MILIEUX des côtés** → `cadre_intersection` rend
-  **(3, 3, 2176, 3852)** = frame entière − 3 px de marge (99,5 % conservés) →
-  **le recadrage ne recadre rien** (le PNG livré, 3833×2163, n'a perdu que
-  23×17 px). Ce qu'il faudrait : le **plus grand rectangle AXIAL INSCRIT** dans le
-  polygone = insets (62, 137) px → 3732×1906 px (**84,6 %**).
-  Couverture par rôle (mesurée) : L (nuit 1, 0°) **0,00 %** de pixels non
-  couverts ; R/G/B (nuit 2, 176°) **3,6 %** dans un motif de « moulin » (une
-  grande casquette par coin). Sur le livré : les 4 coins sont à **0,11-0,25** du
-  niveau du centre, avec une teinte différente **et différents entre eux** (c'est
-  le recouvrement, pas la vignette) → c'est ce qui rend le retrait de gradient
-  impossible.
-- **Défaut n° 2** (diags `avastack_diag_j117_halo.py`, `_halo2.py`, `_png.py`) :
-  résidu de la matrice de l'appli sur les frames à 176° = **0,96 à 2,38 px**
-  (0-20 % des étoiles sous 0,30 px), contre **0,14-0,15 px** pour les frames de la
-  nuit 1 (92 % des étoiles sous 0,30 px). La matrice **CONVERGÉE** par re-fit
-  itératif (appariement mutuel à 4 px puis ré-estimation à 1,5/1,0 px) est la MÊME
-  à ±1 px sur **7 frames indépendantes**, s'écarte de celle de l'appli de
-  **2,0 à 6,5 px** en translation, fait remonter **120-146 couples** d'étoiles
-  (contre 0-35) et ramène le résidu à ~0,8 px. L'affine (6 paramètres) n'améliore
-  PAS ce plancher (0,80-0,87 px) ; l'homographie testée est NON CONCLUANTE
-  (solution dégénérée) → le plancher de ~0,8 px reste à instruire.
-  Sur le livré : **R − V = (−1,30, −1,33) px**, B − V = (+0,73, +0,91) px,
-  |Δ| médian 1,9 px → l'écho rouge est la signature du décalage des canaux.
+### Mesures d'époque (117) — RENVOI
+- Défaut n° 1 (polygone d'intersection → coins non recadrés) et défaut n° 2 (résidu
+  d'alignement 0,96-2,38 px des frames à 176°, plancher ~0,8 px après convergence,
+  R−V = (−1,30, −1,33) px sur le livré 2.68.0) : mesures détaillées au changelog
+  **v2.69.0/v2.69.1** et dans CLAUDE.md « Pièges ». NE PAS REMESURER.
+- ⚠ Le **liseré rouge** n'est PAS ce plancher : cf. bloc **117c** en tête de fichier.
 
-### Ce qui a été fait
-- **117a (v2.69.0)** — recadrage = PLUS GRAND RECTANGLE AXIAL INSCRIT.
-  `stacking.cadre_intersection` rendait la BOÎTE ENGLOBANTE du polygone
-  d'intersection : pour une rotation de quelques degrés elle vaut la PLEINE image
-  (mesuré (3, 3, 2176, 3852) sur 3856×2180 → seuls 23×17 px retirés) → coins non
-  couverts visibles, retrait de gradient impossible. Désormais calculé par la
-  structure du polygone CONVEXE : sur une bande [x0, x1] la hauteur vaut
-  min(hi(x0), hi(x1)) − max(lo(x0), lo(x1)) (`hi` concave, `lo` convexe → les
-  extrêmes tombent aux extrémités, aucune heuristique de pixels). Nouveaux
-  `plus_grand_rect_inscrit`, `_coupes_verticales`, `_CROP_PAS_MAX` (1 024).
-  Attendu sur le jeu M31 : insets (62, 137) px → 3732×1906 px (84,6 %).
-- **117b (v2.69.1)** — raffinement sous-pixel à PORTE LARGE ET VÉRIFIÉ.
-  `alignment._raffiner_centroides` était gated à 1,5 px avec la matrice BRUTE :
-  au-delà il ne trouvait que 0-4 couples et ne corrigeait RIEN, et rien ne
-  VÉRIFIAIT la matrice retenue sur les étoiles. Désormais porte 4,0 → 1,5 →
-  1,0 px (`RAFFIN_RAYONS`), ré-estimation à chaque passage, VÉRIFICATION par
-  centroïdes (`_verif_centroides`), matrice d'entrée rendue INCHANGÉE si rien
-  n'est meilleur (jamais de régression). Nouveaux `_appariements_mutuels`,
-  `_reestimer_centroides`, `_verif_centroides`.
+### Détail d'implémentation (117a/117b) — renvoi
+- 117a (recadrage) et 117b (raffinement sous-pixel vérifié) : code, fichiers touchés,
+  bancs neufs et décisions → changelog **v2.69.0/v2.69.1** (`avastack/__init__.py`),
+  git, et CLAUDE.md « Pièges » (jalons 116/117). NE PAS REDÉTAILLER ICI.
 
-### Fichiers modifiés dans cette phase
-- `avastack/processing/stacking.py` : `cadre_intersection` remanié (117a) +
-  helpers `plus_grand_rect_inscrit` / `_coupes_verticales` + `_CROP_PAS_MAX`.
-- `avastack/processing/alignment.py` : `_raffiner_centroides` remanié (117b) +
-  3 helpers + `RAFFIN_RAYONS` / `RAFFIN_VERIF_RAYON`.
-- `avastack/__init__.py` : version **2.69.1** + changelog v2.69.0 / v2.69.1.
-- `bancs/_test_crop_inscrit_jalon117.py` : banc NEUF (117a).
-- `bancs/_test_align_raffin_jalon117.py` : banc NEUF (117b).
-- `CLAUDE.md` : les deux pièges du 117 passés de « DÉFAUT OUVERT » à « CORRIGÉ ».
-- Diags JETABLES dans `%TEMP%` (hors dépôt, `avastack_diag_j117_*.py`).
-
-### Décisions prises
-- Correctif n° 1 : plus grand rectangle AXIAL INSCRIT (un simple élargissement de
-  la marge ne retirerait pas des coins asymétriques — mesuré (62, 137) px).
-- Correctif n° 2 : porte d'appariement LARGE puis RESSERRÉE + vérification par
-  centroïdes, avec la règle « jamais de régression » (matrice d'entrée rendue si
-  aucune candidate n'est meilleure).
-- La porte initiale de 4 px suffit : le résidu PAR POINT des frames retournées
-  vaut 0,96-2,38 px (les 2,0-6,5 px mesurés concernent la TRANSLATION, pas le
-  résidu par étoile).
 
 ### Problèmes ouverts
-- **RESTE ROUGE sur les étoiles les plus brillantes** (test réel 117, vu sur le
-  PNG « save as seen ») : piste principale = le plancher ~0,8 px inter-nuits —
-  À MESURER/diagnostiquer en session dédiée (probable 117c).
-- Plancher de ~0,8 px entre les deux nuits après convergence : inexpliqué (ni
-  affine, ni homographie convergée) — suspect n° 1 du reste rouge ci-dessus.
+- **Reste rouge des étoiles brillantes** : **MESURÉ au 117c** (bloc en tête) — ce
+  n'est PAS le plancher ~0,8 px, mais un anneau de couleur (VeraLux).
+- Plancher de ~0,8 px entre les deux nuits après convergence : toujours non résolu,
+  mais **mis HORS DE CAUSE** pour le liseré (117c).
 - L'aligneur n'écrit toujours RIEN au journal (`%APPDATA%\AVAStack\journal.txt`).
 - L'alternative « paires d'invariants top-60 × top-120 » du solveur reste non
   mesurée (le ② du 116 suffit, 0 refus).
 
-### Prochaines étapes
-- **Session dédiée** : MESURER et diagnostiquer le **reste rouge des étoiles les
-  plus brillantes** (hypothèse : plancher ~0,8 px inter-nuits ; piste : décalage
-  R/G/B sur le PNG « save as seen » + résidu par centroïdes d'étoiles). Ouvrir un
-  **117c** si un correctif est identifié.
-- Ensuite **paquets + release GitHub v2.69.x** (dernier tag publié = v2.62.1 ;
+### Prochaines étapes (à l'époque)
+- Session dédiée de mesure du liseré rouge → **FAITE** (bloc 117c en tête).
+- Puis **paquets + release GitHub v2.69.x** (dernier tag publié = v2.62.1 ;
   Store toujours en v2.50.0).
 
 ### Points d'attention
@@ -157,11 +163,10 @@ diagnostiquer). Détail : changelog de `avastack/__init__.py` et historique git.
 
 ## En attente / prochaine session
 
-- **MESURER/DIAGNOSTIQUER le RESTE ROUGE des étoiles brillantes** (session
-  dédiée) : image de référence `C:\Astro\test\Andromeda Nebula2.69.1.png`
-  (« save as seen », hors dépôt) ; hypothèse = plancher ~0,8 px inter-nuits.
-  Piste : décalage R/G/B SUR LE PNG (cf. diag `avastack_diag_j117_png.py`) et
-  résidu inter-nuits par centroïdes d'étoiles.
+- **Liseré rouge des étoiles brillantes** : **MESURÉ et CAUSÉ au 117c** (bloc en
+  tête) — c'est le **combine LRGB** (PSF de L bien plus large que le RGB → ailes
+  d'étoiles amplifiées ×2,8). Correctif testé : **lisser le ratio L/luma
+  (σ ≈ 4 px)**. À **VALIDER par Alain** avant de coder le **117c correctif**.
 - **Publication** : paquets Windows/Linux/macOS + release GitHub **v2.69.1**
   (dernier tag publié = **v2.62.1** ; les v2.63.0→v2.69.1 partent dans le commit
   de clôture).
@@ -240,11 +245,10 @@ diagnostiquer). Détail : changelog de `avastack/__init__.py` et historique git.
 
 ## Clôtures précédentes
 
-- **09/10/2026 (nuit)** : jalon 117 (v2.69.0 recadrage + v2.69.1 alignement) —
-  coins recadrés (117a) et écho rouge éteint (117b), **test réel OK**, commité et
-  poussé ; reste un liseré rouge sur les étoiles brillantes (hypothèse plancher
-  ~0,8 px), à mesurer en session dédiée.
-- **09/10/2026 (nuit)** : jalon 116 (v2.68.0) — les deux nuits (176°) s'empilent
-  (① bornes propres + ② ORB étoffé), **test réel OK** ; deux défauts mineurs notés
-  (rectangle commun, halo-écho rouge) → corrigés par le 117.
+- **09/10/2026 (suite)** : jalon 117c — **DIAGNOSTIC** (aucun code) du liseré rouge
+  des étoiles brillantes : **causé** par le combine LRGB (PSF de L trop large → ailes
+  d'étoiles ×2,8) ; correctif proposé (ratio L/luma lissé σ≈4 px) à valider.
+- **09/10/2026 (nuit)** : jalon 117 (v2.69.0 recadrage + v2.69.1 alignement) — coins
+  recadrés et écho rouge éteint, **test réel OK**, commité et poussé ; le liseré rouge
+  restant est expliqué par le 117c.
 
