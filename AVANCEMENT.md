@@ -96,6 +96,10 @@ dans le changelog du source et l'historique git.)
 - Les archives de frames (`%TEMP%\avastack_frames_*`) sont supprimées par
   l'appli 6 h après leur dernière écriture — les COPIER si un rejeu doit servir
   plus tard.
+- **Diags jetables du jalon 116 encore dans `%TEMP%`** (hors dépôt) :
+  `avastack_diag_j116_reel.py` (rejeu complet des vraies frames, A/B avec
+  `DIAG_SANS_RENFORCE=1`) et `avastack_diag_j116_phase.py` (preuve que la phase
+  en domaine local produit des faux alignements). Relançables tels quels.
 
 ---
 
