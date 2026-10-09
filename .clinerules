@@ -1,6 +1,6 @@
 # Règles de session — lues automatiquement par Cline au démarrage de CHAQUE session.
 
-## Lecture obligatoire avant toute action
+## 1. Lecture obligatoire avant toute action
 
 En début de session (et avant de répondre à la moindre demande, même simple) :
 
@@ -11,6 +11,159 @@ En début de session (et avant de répondre à la moindre demande, même simple)
    stable de référence, tâche en cours et prochaine étape, décisions,
    pièges récents. Reprendre le travail LÀ où il s'était arrêté.
 
-Ne jamais commencer à coder sans avoir lu ces deux fichiers, et tenir
-`AVANCEMENT.md` à jour aux jalons, sur demande, ou en fin de session
-(cf. section correspondante de CLAUDE.md).
+Ne jamais commencer à coder sans avoir lu ces deux fichiers.
+
+**Lecture sélective d'AVANCEMENT.md** : ne charger en mémoire active que
+l'en-tête, la session en cours, le chantier en cours, la section
+« En attente », les « Pièges récents » et le « Setup d'Alain ». Les blocs
+`HISTORIQUE` et `Clôtures précédentes` ne servent PAS à guider le travail
+courant — ne pas les lire en début de session, sauf demande explicite.
+
+## 2. Discipline de AVANCEMENT.md (taille bornée)
+
+### Objectif
+`AVANCEMENT.md` est une mémoire COURT terme. Sa taille cible est
+**≤ 300 lignes** (soit ~3-4 K tokens). Au-delà, il pèse sur chaque
+session avant même que le travail commence.
+
+### En début de session
+- Si `AVANCEMENT.md` dépasse 400 lignes, le SIGNALER avant toute action
+  et proposer un nettoyage (l'utilisateur décide).
+
+### En fin de session (ou au changement de jalon)
+Lors d'une mise à jour d'`AVANCEMENT.md` :
+1. **Ne garder qu'UN SEUL bloc détaillé** : la session en cours.
+2. Tout bloc `HISTORIQUE` antérieur au jalon précédent doit être
+   **SUPPRIMÉ** — sa trace vit dans `avastack/__init__.py` (changelog)
+   et dans `git log`. Ne pas le déplacer ailleurs : le supprimer.
+3. Les sections `Pièges récents` : ne garder que ceux **encore actifs**.
+   Un piège résolu ou dont la leçon est déjà écrite dans `CLAUDE.md`
+   n'a plus à figurer ici.
+4. Les sections `Clôtures précédentes` : garder au maximum les **deux
+   dernières**, avec une phrase chacune.
+
+### Format d'un bloc HISTORIQUE toléré
+Un bloc historique conservé provisoirement doit tenir en **5 lignes
+maximum** :
+- Date + jalon + version
+- Verdict (livré / publié / en attente)
+- Une phrase de ce qui a été fait
+- Pointeur vers le changelog source (version) et le tag git
+
+Pas de SHA-256, pas de tailles de fichiers, pas de mesures détaillées,
+pas de décisions argumentées : tout cela appartient au changelog.
+
+## 3. Contrôle de l'exécution des tests
+
+### Quand exécuter les tests
+Exécuter les tests uniquement dans l'un de ces cas :
+- Toutes les modifications de code d'un même lot sont terminées et vous
+  estimez le lot prêt à être vérifié.
+- L'utilisateur demande explicitement l'exécution des tests.
+
+### Quand ne PAS exécuter les tests
+- Ne pas exécuter de tests après une modification partielle d'un fichier
+  qui fait partie d'un lot de modifications plus large.
+- Ne pas exécuter de tests si vous savez qu'il reste des modifications
+  planifiées non encore appliquées.
+- Après un échec de test, ne pas relancer automatiquement une nouvelle
+  tentative. Rapporter l'échec, attendre la décision de l'utilisateur.
+
+### Comment exécuter les tests
+- Utiliser la commande de test la plus ciblée possible (fichier ou module
+  concerné), pas la suite complète, sauf demande explicite.
+- Préférer les sorties concises (`pytest -q --tb=line`, `jest --silent`,
+  etc.). Éviter les modes verbeux qui produisent des logs volumineux.
+- Si un test échoue, ne rapporter que les informations nécessaires à la
+  décision : nom du test, message d'erreur principal, fichier et ligne.
+  Pas de stack trace complète sauf si indispensable.
+
+## 4. Seuil de handoff (nouvelle tâche)
+
+### Déclencheur
+Surveiller le pourcentage d'utilisation du contexte affiché dans
+`environment_details`. Lorsque l'utilisation atteint **40%**, terminer
+proprement l'étape en cours puis déclencher le handoff.
+
+### Procédure de handoff
+1. Terminer l'étape en cours (ne pas laisser de modification à moitié
+   appliquée).
+2. Mettre à jour `AVANCEMENT.md` conformément à la section 5 ci-dessous.
+3. Demander confirmation à l'utilisateur pour démarrer une nouvelle tâche.
+4. Après accord, appeler `new_task` avec un contexte minimal pointant vers
+   `AVANCEMENT.md`.
+
+### Contenu du contexte de new_task
+Le contexte passé à `new_task` doit être COURT. Il doit contenir
+uniquement :
+- Une phrase indiquant de lire `AVANCEMENT.md` pour l'état complet.
+- L'objectif immédiat de la nouvelle tâche.
+
+Ne PAS recopier le contenu d'`AVANCEMENT.md` dans le contexte de
+`new_task`.
+
+### Contre-mesure si le seuil n'est pas respecté
+Si l'utilisation dépasse 60% sans handoff déclenché, le signaler et
+proposer un handoff immédiat. Ne pas attendre la limite technique.
+
+## 5. Mise à jour de AVANCEMENT.md
+
+### Quand mettre à jour
+- Avant chaque handoff (obligatoire).
+- Après chaque décision structurante (architecture, choix d'approche,
+  contournement).
+- Après la résolution d'un problème non trivial.
+- En fin de session.
+
+### Format attendu
+`AVANCEMENT.md` doit rester court et actionnable. Structure imposée :
+
+# AVANCEMENT.md — mémoire de travail à court terme
+
+## Session du [date] — [titre court]
+
+### État actuel
+- [Une à trois phrases sur où on en est]
+
+### Fichiers modifiés dans cette phase
+- `chemin/fichier.ext` : [ce qui a été fait, en une ligne]
+
+### Décisions prises
+- [Décision] — [raison courte]
+
+### Problèmes ouverts
+- [Problème non résolu] — [piste envisagée]
+
+### Prochaines étapes
+- [Étape 1]
+- [Étape 2]
+
+### Points d'attention
+- [Piège connu, contrainte, chose à ne pas refaire]
+
+---
+
+## Chantier en cours — [nom]
+
+[Court : objectif, règles d'or, tableau des jalons si applicable]
+
+---
+
+## En attente / prochaine session
+
+- [Ce qui attend une action de l'utilisateur ou du testeur]
+
+---
+
+## Setup d'Alain
+
+[Description des setups matériels — ne change pas souvent]
+
+### Règles d'écriture
+- Maximum une page pour la section « Session du jour ».
+- Pas de code complet dans `AVANCEMENT.md` : uniquement des références
+  (chemin + ligne) si nécessaire.
+- Ne pas dupliquer ce qui est déjà dans le code ou les commits.
+- Écrire pour la session suivante, pas pour l'historique.
+- Pas de SHA-256, pas de tailles de fichiers : ces informations vivent
+  dans les tags git et les releases.
