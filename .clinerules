@@ -90,17 +90,17 @@ proprement l'étape en cours puis déclencher le handoff.
    appliquée).
 2. Mettre à jour `AVANCEMENT.md` conformément à la section 5 ci-dessous.
 3. Demander confirmation à l'utilisateur pour démarrer une nouvelle tâche.
-4. Après accord, appeler `new_task` avec un contexte minimal pointant vers
+4. Après accord, appeler `newtask` (/newtask) avec un contexte minimal pointant vers
    `AVANCEMENT.md`.
 
-### Contenu du contexte de new_task
-Le contexte passé à `new_task` doit être COURT. Il doit contenir
+### Contenu du contexte de newtask
+Le contexte passé à `newtask` doit être COURT. Il doit contenir
 uniquement :
 - Une phrase indiquant de lire `AVANCEMENT.md` pour l'état complet.
 - L'objectif immédiat de la nouvelle tâche.
 
 Ne PAS recopier le contenu d'`AVANCEMENT.md` dans le contexte de
-`new_task`.
+`newtask`.
 
 ### Contre-mesure si le seuil n'est pas respecté
 Si l'utilisation dépasse 60% sans handoff déclenché, le signaler et
