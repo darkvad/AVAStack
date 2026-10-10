@@ -9,17 +9,17 @@ dans le changelog du source et l'historique git.)
 
 ---
 
-## Session du 10/10/2026 — JALON 117d : LISSAGE LRGB OPT-IN + σ RÉGLABLE (v2.71.0)
+## Session du 10/10/2026 — JALON 117d : LISSAGE LRGB OPT-IN + σ RÉGLABLE (v2.71.0) — CLOSE, PUBLIÉE
 
 ### État actuel
 - **Le 117c a été VALIDÉ EN RÉEL** (Alain, 10/10/2026) : halos ÉTEINTS, image qui
   convient (`C:\Astro\test\Andromeda Nebula2.70.0-117c.png`). MAIS son seuil de
   masque (20σ) est un réglage **EMPIRIQUE, calé sur ce jeu d'essai** : sa validité
   sur une autre image n'était pas garantie, et il s'appliquait PARTOUT, sans choix.
-- **DÉCISION D'ALAIN** : en faire une OPTION VISIBLE. **v2.71.0 CODÉE** : case
-  « Lisser le combine LRGB (halos d'étoiles) » **DÉCOCHÉE par défaut** (vrai
-  opt-in) + champ **σ du masque** (défaut 20, bornes [3 ; 100]). **PAS ENCORE
-  TESTÉ DANS L'APPLI** (prochaine étape).
+- **DÉCISION D'ALAIN** : en faire une OPTION VISIBLE. **v2.71.0 LIVRÉE ET
+  PUBLIÉE** : case « Lisser le combine LRGB (halos d'étoiles) » **DÉCOCHÉE par
+  défaut** (vrai opt-in) + champ **σ du masque** (défaut 20, bornes [3 ; 100]).
+  **TESTÉ EN RÉEL PAR ALAIN (M31) : VALIDÉ.**
 - **Intervient à la COMPOSITION** (les couches ne sont pas touchées) : on peut
   cocher/décocher et changer σ **À CHAUD**, à n'importe quelle frame, sans
   redémarrer la session.
@@ -52,10 +52,9 @@ dans le changelog du source et l'historique git.)
   lissage/seuil sont dans la CLÉ de mémoïsation (sinon réglage « sans effet »).
 
 ### Prochaines étapes
-- **Test RÉEL du 117d** : run LRGB M31 → cocher la case, essayer σ = 10 / 20 / 80
-  À CHAUD ; viser halos éteints ET nébuleuse piquée. Le σ retenu devient la
-  valeur de départ des prochains runs.
-- Puis commit + push (changelogs 2.70.0 ET 2.71.0 partent ensemble).
+- Rien en attente sur le 117d (testé en réel, commité/poussé, **release v2.71.0
+  publiée** : 4 paquets + `INSTALLATION.md`, tag `v2.71.0` sur `9fafc5e`).
+- Prochaine session : au choix d'Alain (voir « En attente »).
 
 ### Points d'attention / pièges de cette session
 - Le réglage entre aussi dans la SAUVEGARDE LINÉAIRE : `AVACOMPO` dit « lissage
@@ -113,12 +112,12 @@ et historique git.
 
 ## En attente / prochaine session
 
-- **Test RÉEL du 117d** (v2.71.0, **NON committée**) : run LRGB M31 → cocher
-  « Lisser le combine LRGB », essayer σ = 10 / 20 / 80 **À CHAUD** → halos éteints
-  **ET** nébuleuse aussi piquée qu'en 2.69.1.
-- **Publication** : paquets Windows/Linux/macOS + release GitHub **v2.71.0**
-  (dernier tag publié = **v2.62.1** ; les v2.63.0→v2.71.0 partent dans le commit
-  de clôture).
+- **RIEN en attente** : le 117d est testé en réel, commité/poussé (`9fafc5e`) et
+  **publié** — release GitHub **v2.71.0** (4 paquets + `INSTALLATION.md`).
+  Dernier tag publié = **v2.71.0**.
+- **Microsoft Store** : cadence SÉPARÉE — l'application publiée y reste la
+  **v2.50.0** ; un MSIX v2.71.0 pourra être reconstruit puis resoumis plus tard
+  (hors périmètre de cette session).
 - **Test « installer depuis le Microsoft Store »** (seul test qui n'existe que par
   cette voie ; l'appli v2.50.0 y est publiée).
 - **Paquet macOS** : test réel par le testeur — « 📂 Dossier » et « Charger un
@@ -195,8 +194,8 @@ et historique git.
 ## Clôtures précédentes
 
 - **10/10/2026** : jalon 117d (v2.71.0) — lissage LRGB rendu **OPT-IN** (case
-  décochée par défaut) avec **σ du masque réglable** ; réglable À CHAUD ; bancs +
-  garde-fou + pyright VERTS ; **NON committé** (test réel à faire).
+  décochée par défaut) avec **σ du masque réglable** à CHAUD ; **test réel OK
+  (M31)**, commité/poussé et **PUBLIÉ** (release GitHub v2.71.0).
 - **10/10/2026** : jalon 117c (v2.70.0) — liseré rouge corrigé par un lissage
-  **MASQUÉ** du ratio L/luma, **test réel OK** ; la case UI est le 117d.
+  **MASQUÉ** du ratio L/luma, test réel OK ; la case UI est le 117d.
 
