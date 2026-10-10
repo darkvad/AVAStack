@@ -9,7 +9,7 @@ dans le changelog du source et l'historique git.)
 
 ---
 
-## Session du 10/10/2026 — JALON 117d : LISSAGE LRGB OPT-IN + σ RÉGLABLE (v2.71.0) — CLOSE, PUBLIÉE
+## Session du 10/10/2026 — JALON 117d : LISSAGE LRGB OPT-IN (v2.71.0) + MSIX STORE — CLOSE, PUBLIÉE
 
 ### État actuel
 - **Le 117c a été VALIDÉ EN RÉEL** (Alain, 10/10/2026) : halos ÉTEINTS, image qui
@@ -23,6 +23,13 @@ dans le changelog du source et l'historique git.)
 - **Intervient à la COMPOSITION** (les couches ne sont pas touchées) : on peut
   cocher/décocher et changer σ **À CHAUD**, à n'importe quelle frame, sans
   redémarrer la session.
+- **MSIX STORE v2.71.0 CONSTRUIT ET SIGNÉ** (voie Microsoft Store, cadence
+  SÉPARÉE) : gel PyInstaller v2.71.0 (`build_avastack_frozen.ps1`) → MSIX
+  (`build_msix.py`) → signature (`signer_msix.ps1`), avec l'identité PUBLIÉE du
+  produit (valeurs dans Partner Center, *Product identity* — cf.
+  `SOUMISSION.md` §1 ; jamais recopiées dans le dépôt). Signature **VALIDE**.
+  **Prêt à resoumettre** — la soumission Partner Center reste une action
+  MANUELLE d'Alain.
 
 ### Fichiers modifiés dans cette phase
 - `processing/composition.py` : `composer(..., seuil_masque_sigma=None)` ;
@@ -39,6 +46,9 @@ dans le changelog du source et l'historique git.)
   `lissage_halos` / `lissage_halos_sigma`), `ui/saver.py` (`AVACOMPO` dit l'état).
 - `avastack/__init__.py` : **v2.71.0** + changelog. Banc neuf
   `bancs/_test_lissage_halos_optin_jalon117d.py` — VERT.
+- **Aucun fichier SOURCE modifié** pour le MSIX ; artéfacts de BUILD (non
+  suivis, dans `installer/windows/output/`) : `avastack-frozen-2.71.0-windows/`
+  (+ `.zip`), `avastack-2.71.0-windows.msix` (+ `.cer`/`.pfx`), `msix_staging/`.
 
 ### Décisions prises
 - **VRAI opt-in** : case décochée = `sigma_l = 0` = combine d'AVANT le 117c
@@ -54,6 +64,8 @@ dans le changelog du source et l'historique git.)
 ### Prochaines étapes
 - Rien en attente sur le 117d (testé en réel, commité/poussé, **release v2.71.0
   publiée** : 4 paquets + `INSTALLATION.md`, tag `v2.71.0` sur `9fafc5e`).
+- **MSIX v2.71.0** : construit et signé ; **reste à le SOUMETTRE** dans Partner
+  Center (action manuelle d'Alain, cf. `SOUMISSION.md` §1 et §7).
 - Prochaine session : au choix d'Alain (voir « En attente »).
 
 ### Points d'attention / pièges de cette session
@@ -70,13 +82,7 @@ dans le changelog du source et l'historique git.)
 - Détail : changelog **v2.70.0**, banc `_test_lrgb_halo_jalon117c.py`. NE PAS REMESURER.
 - La case UI + le σ réglable du masque sont LE 117d (bloc de session ci-dessus).
 
-## HISTORIQUE — jalon 117 (09/10/2026, nuit) : recadrage v2.69.0 + alignement v2.69.1
-- Livré, **test réel OK** (coins/biseaux retirés, écho rouge éteint), commité/poussé.
-- Mesures (polygone d'intersection, résidu 0,96-2,38 px à 176°, R−V du livré 2.68.0) :
-  changelog **v2.69.0/v2.69.1**, CLAUDE.md « Pièges » (116/117), git. NE PAS REMESURER.
-- Le liseré rouge (≠ plancher ~0,8 px) laissé ouvert ici est corrigé par le **117c**.
-
-### Problèmes ouverts (hérités du 117, toujours valides)
+## Problèmes ouverts (hérités des jalons 116-117, toujours valides)
 - L'**aligneur n'écrit toujours RIEN** au journal (`%APPDATA%\AVAStack\journal.txt`).
 - L'alternative « paires d'invariants top-60 × top-120 » du solveur reste non mesurée.
 
@@ -95,10 +101,10 @@ recours ORB étoffé) — test réel **OK** (0 refus hors-ligne, deux nuits empi
 vus au test réel du 116 sont corrigés. **TEST RÉEL OK** (09/10/2026) : coins
 retirés, écho rouge éteint. **Jalon 117c VALIDÉ EN RÉEL** (v2.70.0) : liseré rouge
 éteint par un lissage **MASQUÉ** du ratio L/luma (le lissage GLOBAL, écarté,
-retirait 9-18 % du détail). **Jalon 117d CODÉ** (v2.71.0) : ce lissage devient
+retirait 9-18 % du détail). **Jalon 117d LIVRÉ ET PUBLIÉ** (v2.71.0) : ce lissage devient
 **OPT-IN** (case décochée par défaut) et son **seuil de masque devient RÉGLABLE**
-— **NON committé, test réel à faire**. Détail : changelog de `avastack/__init__.py`
-et historique git.
+— test réel OK (M31), commité/poussé et publié. Détail : changelog de
+`avastack/__init__.py` et historique git.
 
 **Règles d'or** :
 - Un jalon = un banc neuf + rejeu des bancs concernés (TOUS VERTS) + garde-fou
@@ -115,9 +121,10 @@ et historique git.
 - **RIEN en attente** : le 117d est testé en réel, commité/poussé (`9fafc5e`) et
   **publié** — release GitHub **v2.71.0** (4 paquets + `INSTALLATION.md`).
   Dernier tag publié = **v2.71.0**.
-- **Microsoft Store** : cadence SÉPARÉE — l'application publiée y reste la
-  **v2.50.0** ; un MSIX v2.71.0 pourra être reconstruit puis resoumis plus tard
-  (hors périmètre de cette session).
+- **Microsoft Store** : cadence SÉPARÉE — l'application PUBLIÉE y reste la
+  **v2.50.0** ; le **MSIX v2.71.0 est CONSTRUIT ET SIGNÉ** (prêt à resoumettre).
+  Prochaine action (Alain, manuelle) : soumettre ce MSIX dans Partner Center
+  (cf. `SOUMISSION.md` §1 et §7).
 - **Test « installer depuis le Microsoft Store »** (seul test qui n'existe que par
   cette voie ; l'appli v2.50.0 y est publiée).
 - **Paquet macOS** : test réel par le testeur — « 📂 Dossier » et « Charger un
