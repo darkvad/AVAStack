@@ -18,9 +18,68 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.69.1"
+AVASTACK_VERSION = "2.71.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.71.0 : LISSAGE DU COMBINE LRGB — OPT-IN ET SEUIL RÉGLABLE (jalon 117d).
+#   Retour du TEST RÉEL du 117c (Alain, 10/10/2026, M31) : l'image convient
+#   (halos éteints, nébuleuse piquée) MAIS le seuil du masque (20σ) est un
+#   réglage EMPIRIQUE, calé sur ce jeu d'essai — sa VALIDITÉ sur une autre image
+#   (autre fond, autre nébulosité) n'était pas garantie et il s'appliquait
+#   PARTOUT, sans choix. DÉCISION D'ALAIN : en faire une OPTION VISIBLE.
+#   - Case à cocher « Lisser le combine LRGB (halos d'étoiles) », DÉCOCHÉE PAR
+#     DÉFAUT : le combine reste celui d'AVANT le 117c (rapport L/luma BRUT, donc
+#     halos visibles) tant qu'on ne coche pas = VRAI opt-in.
+#   - Champ « σ du masque (étoiles) » : le seuil du masque d'étoiles brillantes
+#     (multiple de σ au-dessus du fond, médiane-MAD), borné [SEUIL_MASQUE_MIN 3 ;
+#     SEUIL_MASQUE_MAX 100], défaut SEUIL_MASQUE_SIGMA (20). LE BAISSER si un halo
+#     survit, L'AUGMENTER (plus sélectif) si trop de détail part.
+#   - Le réglage intervient à la COMPOSITION : il ne touche PAS les accumulations
+#     par rôle, donc on peut cocher/décocher et changer σ À CHAUD, à n'importe
+#     quelle frame (aucun redémarrage ; le réglage est relu à chaque tour comme
+#     les gains, et la clé de mémoïsation du composite inclut désormais
+#     lissage/seuil). `CompositeStacker.lissage_halos` / `seuil_masque_halos`.
+#   - Transporté jusqu'au solveur live (8e élément du job `vl_compo`, déballage
+#     TOLÉRANT), persisté en config (`lissage_halos`, `lissage_halos_sigma`) et
+#     ANNONCÉ dans l'en-tête FITS (AVACOMPO : « …, lissage combine LRGB actif
+#     (masque 20 sigma) » / « inactif ») — le fichier linéaire en dépend. Case
+#     décochée → σ = 0, chemin bit-identique à avant le 117c.
+# v2.70.0 : COMBINE LRGB — LE RAPPORT DE LUMINANCE EST LISSÉ À L'ÉCHELLE DES
+#   ÉTOILES, FIN DU LISERÉ ROUGE (jalon 117c). Défaut MESURÉ le 09/10/2026 sur
+#   le jeu réel M31 LRGB (L du 13/09 + R/G/B du 22-23/09, deux nuits à 176,2°) :
+#   après le 117, il restait un ANNEAU coloré autour des étoiles brillantes,
+#   visible SEULEMENT avec L. Diagnostic (rejeu des couches `canal_*.fit`) :
+#   ce n'est NI l'alignement (résidu ramené à ~0,2 px au 117b) NI l'optique
+#   (FWHM par filtre identiques : L 2,42 / R 2,37 / V 2,28 / B 2,32 px, R/G =
+#   1,039) — c'est le COMBINE LRGB. Le rapport L/luma vaut 1,00 au cœur mais
+#   ~3 dans les ailes (r ≈ 4-5 px) car la PSF de L (autre nuit) est plus large
+#   que celle de la luminance RGB : `rgb *= L/luma` AMPLIFIE donc les AILES des
+#   étoiles (rapport anneau/cœur 0,124 en RGB seul → 0,347 avec L = halo ×2,8 ;
+#   le combine est neutre en couleur, l'anneau prend la couleur des ailes).
+#   CORRECTIF (processing/composition.py, en DEUX temps — le premier était TROP
+#   LARGE) : ① le ratio `L/luma` est LISSÉ par une gaussienne σ = SIGMA_L_PAR_FWHM
+#   (1,7) × FWHM des étoiles MESURÉE (`stars.mesurer_seeing` sur la luminance
+#   RGB, donc RELATIVE à la résolution : aperçu comme pleine résolution), borné à
+#   [SIGMA_L_MIN 1,0 ; SIGMA_L_MAX 15,0] ; sans étoile mesurable, repli
+#   proportionnel à la largeur (SIGMA_L_REPLI_FRAC = 1/800) ; ② ce lissage
+#   s'applique SEULEMENT dans un MASQUE D'ÉTOILES BRILLANTES (`_masque_etoiles` :
+#   pic > fond + SEUIL_MASQUE_SIGMA (20)·bruit médiane-MAD, BOÎTE ENGLOBANTE <
+#   LIMITE_MASQUE_PX (60) — au-delà c'est le disque/le cœur, PAS une étoile —,
+#   dilaté de DILAT_MASQUE_FWHM (1,5)·σ puis FONDU à σ/2). AILLEURS le ratio
+#   reste BRUT, donc L garde TOUT son détail. POURQUOI LE MASQUE : le lissage
+#   GLOBAL (premier temps de ce jalon) retirait en effet 9 % du détail fin de la
+#   nébuleuse en linéaire et 16-18 % après étirement — un changement LARGE BANDE
+#   (60 % de l'énergie fine), parce que `composite_lum = luma(rgb) × ratio` :
+#   sans lissage le détail fin de la nébuleuse vient de L (profond), avec lissage
+#   il vient de la luminance RGB (bruitée). Or le mismatch de PSF L↔RGB n'existe
+#   QU'À L'ÉCHELLE DES ÉTOILES. Nouveau paramètre `composer(..., sigma_l=…)` :
+#   None (défaut) = σ auto + masque, > 0 = σ imposé + masque, 0 = AUCUN flou
+#   (comportement d'avant le 117c). Le mode « L synthétisé » (L = luminance du
+#   composite) est l'identité : aucun lissage. MESURÉ au banc neuf
+#   `bancs/_test_lrgb_halo_jalon117c.py` : le halo est DIVISÉ par 2,7 et revient
+#   au niveau du RGB seul ; le MASQUE préserve le détail de la nébuleuse (1,00
+#   contre 0,67 en lissage GLOBAL) ; σ = 0 reproduit l'ancien combine AU BIT. Le
+#   rayon de 0,5-1 px proposé au diagnostic était 4-8× trop petit.
 # v2.69.1 : ALIGNEMENT — LE RAFFINEMENT SOUS-PIXEL PASSE À PORTE LARGE, ET RIEN
 #   N'EST RETENU SANS ÊTRE VÉRIFIÉ SUR LES ÉTOILES (jalon 117b). Défaut mesuré le
 #   09/10/2026 sur le jeu M31 deux nuits (176,2°) : sur les frames RETOURNÉES la

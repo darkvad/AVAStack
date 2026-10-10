@@ -15,6 +15,22 @@ from . import sharpness as _sharpness
 from . import veralux as _veralux
 
 
+def params_lissage_halos(compo: Any) -> tuple[bool, float | None]:
+    """(lissage actif, seuil de masque) du LISSAGE DU COMBINE LRGB, lus dans le
+    8e élément du job de composition (jalon 117d).
+
+    Déballage TOLÉRANT : `compo` peut être None (mode mono) ou un tuple d'avant
+    le 117d (6 ou 7 éléments) → (False, None) = lissage inactif, donc le combine
+    reste celui d'avant le 117c. Extrait du chemin live pour être testable sans
+    lancer le solveur (banc jalon 117d)."""
+    lissage = compo[7] if compo is not None and len(compo) > 7 else None
+    if not lissage:
+        return False, None
+    actif = bool(lissage[0])
+    seuil = float(lissage[1]) if len(lissage) > 1 else None
+    return actif, seuil
+
+
 # ============================================================== jalon 75
 # ÉTAGE « NIVEAUX » DE L'ÉCRAN (les 3 barres de l'histogramme : Noir /
 # Médian / Blanc) et SATURATION PAR COULEUR.
@@ -732,6 +748,9 @@ class DisplayProcessor:
             # déballage tolérant (les jobs antérieurs n'en ont pas).
             norm_commune = (bool(compo[6]) if compo is not None
                             and len(compo) > 6 else False)
+            # Jalon 117d : lissage du combine LRGB (halos d'étoiles) et son seuil
+            # de masque — 8e élément, déballage TOLÉRANT (helper testable).
+            lissage_halos, seuil_halos = params_lissage_halos(compo)
             # v2.36.1 : neutralisation de la couleur du fond avant étirement
             # (9e élément du job — déballage tolérant : les jobs des bancs
             # antérieurs n'ont que 8 éléments → option considérée décochée).
@@ -821,10 +840,14 @@ class DisplayProcessor:
                     # composite re-fait depuis les couches traitées est BRUT,
                     # les corrections s'appliquent juste après, dans l'ordre
                     # validé (débruitage → CORRECTIONS → netteté/étirement).
-                    comp = _composition.composer(traites, nom_compo,
-                                                 mode_l=mode_l,
-                                                 normalisation_commune=
-                                                 norm_commune)
+                    comp = _composition.composer(
+                        traites, nom_compo,
+                        mode_l=mode_l,
+                        normalisation_commune=norm_commune,
+                        # Jalon 117d : la vue « traitée » recompose comme la vue
+                        # « empilement » — case décochée → σ = 0 (aucun flou).
+                        sigma_l=None if lissage_halos else 0.0,
+                        seuil_masque_sigma=seuil_halos)
                 except Exception as exc:    # formes hétérogènes (ne doit pas
                     comp = None             # arriver : cadre commun) → repli
                     msgs.append(f"Recomposition : {exc}")

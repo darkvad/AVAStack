@@ -22,7 +22,9 @@ from ..processing import DisplayProcessor
 from ..processing import couleurs as couleurs_mod
 from ..processing import sharpness as nettete_live
 from ..processing import veralux as veralux_moteur
-from ..processing.composition import COMPOSITIONS, MODES_L, ROLES
+from ..processing.composition import (COMPOSITIONS, MODES_L, ROLES,
+                                       SEUIL_MASQUE_MAX, SEUIL_MASQUE_MIN,
+                                       SEUIL_MASQUE_SIGMA)
 
 
 def _globals_app():
@@ -71,6 +73,8 @@ class ConfigUI:
     rayon_chroma_ref: float
     _echelle_apercu: float
     _norm_commune: bool
+    _compo_lissage_halos: bool
+    _compo_seuil_halos: float
     _spcc_vars: dict[str, tk.Variable]
     _spcc_noms: dict[str, Any]
 
@@ -106,6 +110,8 @@ class ConfigUI:
     var_hist_lineaire: tk.Variable
     var_hist_mode: tk.Variable
     var_kappa: tk.Variable
+    var_lissage_halos: tk.Variable
+    var_lissage_halos_sigma: tk.Variable
     var_moteur: tk.Variable
     var_norm_commune: tk.Variable
     var_photo: tk.Variable
@@ -159,6 +165,7 @@ class ConfigUI:
     _code_fit_methode: Callable[..., Any]
     _hauteur_hist: Callable[..., Any]
     _lire_gains: Callable[..., Any]
+    _lire_seuil_halos: Callable[..., Any]
     _maj_lbl_sharp: Callable[..., Any]
     _maj_visibilite_cadres: Callable[..., Any]
     _on_astro: Callable[..., Any]
@@ -227,6 +234,17 @@ class ConfigUI:
         if "norm_commune" in c:
             self.var_norm_commune.set(bool(c.get("norm_commune")))
             self._norm_commune = bool(self.var_norm_commune.get())
+        # v2.71.0 (jalon 117d) : LISSAGE DU COMBINE LRGB (halos d'étoiles), OPT-IN,
+        # et son seuil de masque. Les instantanés sont posés ici aussi : le stacker
+        # les recevra à sa création.
+        if "lissage_halos" in c:
+            self.var_lissage_halos.set(bool(c.get("lissage_halos")))
+            self._compo_lissage_halos = bool(self.var_lissage_halos.get())
+        v = c.get("lissage_halos_sigma")
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            sig = float(min(SEUIL_MASQUE_MAX, max(SEUIL_MASQUE_MIN, float(v))))
+            self.var_lissage_halos_sigma.set(sig)
+            self._compo_seuil_halos = sig
         self._on_compo_roles()   # composition recollée aux rôles restaurés
         if c.get("process_existing") is False:
             self.var_process_existing.set(False)
@@ -601,6 +619,11 @@ class ConfigUI:
         # v2.36.0 : normalisation commune des canaux (option, booléen explicite
         # comme les autres cases : une case décochée ne doit pas hériter d'un True).
         c["norm_commune"] = bool(self.var_norm_commune.get())
+        # v2.71.0 (jalon 117d) : lissage du combine LRGB (halos d'étoiles) —
+        # booléen EXPLICITE (une case décochée ne doit pas hériter d'un True), et
+        # seuil de masque borné aux limites du module.
+        c["lissage_halos"] = bool(self.var_lissage_halos.get())
+        c["lissage_halos_sigma"] = float(self._lire_seuil_halos())
         c["process_existing"] = self.var_process_existing.get()
         # Les commandes ne sont persistées que si leur OUTIL EXISTE (v2.38.5) :
         # une commande de repli (« graxpert … », binaire nu) figée dans

@@ -557,7 +557,17 @@ class Saver:
             norm = ("normalisation COMMUNE des canaux (amplitude du vert)"
                     if bool(getattr(st, "normalisation_commune", False))
                     else "normalisation par role (percentiles)")
-            ent["AVACOMPO"] = f"{getattr(st, 'composition', '?')}, {norm}"
+            # v2.71.0 (jalon 117d) : le fichier DIT aussi si le LISSAGE DU COMBINE
+            # LRGB (halos d'etoiles) a servi — c'est OPT-IN (decochage = combine
+            # d'avant le 117c) et cela change le composite lineaire ecrit.
+            if bool(getattr(st, "lissage_halos", False)):
+                liss = ("lissage combine LRGB actif (masque %g sigma)"
+                        % float(getattr(st, "seuil_masque_halos",
+                                        composition_mod.SEUIL_MASQUE_SIGMA)))
+            else:
+                liss = "lissage combine LRGB inactif"
+            ent["AVACOMPO"] = (f"{getattr(st, 'composition', '?')}, {norm}, "
+                               f"{liss}")
         # MESURES de la session (indépendantes de ce qui est appliqué).
         if spcc_ok:
             k = self.spcc.coefficients  # pyright: ignore[reportOptionalMemberAccess]

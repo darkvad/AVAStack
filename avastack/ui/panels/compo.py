@@ -17,7 +17,8 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Any, Callable
 
-from ...processing.composition import COMPOSITIONS, ROLES
+from ...processing.composition import (COMPOSITIONS, ROLES, SEUIL_MASQUE_MAX,
+                                       SEUIL_MASQUE_MIN, SEUIL_MASQUE_SIGMA)
 
 
 class PanneauComposition:
@@ -32,6 +33,8 @@ class PanneauComposition:
     rb_l_deg: ttk.Radiobutton
     var_compo_mode_l: tk.Variable
     var_norm_commune: tk.Variable
+    var_lissage_halos: tk.Variable
+    var_lissage_halos_sigma: tk.Variable
     var_compo_dossiers: list[tk.StringVar]
     var_compo_roles: list[tk.StringVar]
     var_compo_gains: dict[str, tk.StringVar]
@@ -42,6 +45,7 @@ class PanneauComposition:
     _pick_dossier_compo: Callable[..., Any]
     _detecter_filtres: Callable[..., Any]
     _on_norm_commune: Callable[..., Any]
+    _on_lissage_halos: Callable[..., Any]
 
     # --- Jalon 105b : construction du panneau « Composition multi-filtres » --
     def _poser_panneau_compo(self, parent: tk.Misc) -> None:
@@ -131,6 +135,42 @@ class PanneauComposition:
             "s'appliquent sur la base où ils ont été mesurés. Le fond garde sa "
             "couleur physique (bleu-rouge) : la neutraliser avec l'équilibrage "
             "des canaux ou le recalage colorimétrique."),
+            foreground="#888888", wraplength=310).pack(anchor="w")
+        # --- Jalon 117d : LISSAGE DU COMBINE LRGB (halos d'étoiles), OPT-IN.
+        # Décision d'Alain du 10/10/2026 : le rapport L/luma est lissé à l'échelle
+        # des étoiles pour éteindre les halos colorés, mais SEULEMENT autour des
+        # étoiles brillantes (masque). Le seuil du masque est EMPIRIQUE (il dépend
+        # du fond) : il est réglable ici. Case DÉCOCHÉE = combine d'avant le 117c.
+        self.var_lissage_halos = tk.BooleanVar(value=False)
+        ttk.Checkbutton(box, text="Lisser le combine LRGB (halos d'étoiles)",
+                        variable=self.var_lissage_halos,
+                        command=self._on_lissage_halos).pack(anchor="w",
+                                                             pady=(6, 0))
+        row_lh = ttk.Frame(box)
+        row_lh.pack(fill="x", pady=(2, 0))
+        ttk.Label(row_lh, text="σ du masque (étoiles) :").pack(side="left")
+        self.var_lissage_halos_sigma = tk.DoubleVar(
+            value=float(SEUIL_MASQUE_SIGMA))
+        self.sp_lissage_halos = ttk.Spinbox(
+            row_lh, from_=float(SEUIL_MASQUE_MIN), to=float(SEUIL_MASQUE_MAX),
+            increment=1.0, width=5, textvariable=self.var_lissage_halos_sigma,
+            command=self._on_lissage_halos)
+        self.sp_lissage_halos.pack(side="left", padx=(4, 0))
+        # La saisie au clavier (Entrée ou perte de focus) applique aussi — la
+        # flèche du Spinbox ne suffit pas.
+        self.sp_lissage_halos.bind("<Return>",
+                                   lambda e: self._on_lissage_halos())
+        self.sp_lissage_halos.bind("<FocusOut>",
+                                   lambda e: self._on_lissage_halos())
+        ttk.Label(box, text=(
+            "Coché : le rapport L/luma est lissé à l'échelle des ÉTOILES pour "
+            "éteindre leur halo coloré, mais SEULEMENT dans le masque d'étoiles "
+            "brillantes — la nébuleuse garde tout le détail de L. Le seuil du "
+            "masque est un multiple de σ au-dessus du fond : 10-20 masque les "
+            "étoiles brillantes sans toucher la nébulosité ; l'AUGMENTER (plus "
+            "sélectif) si trop de détail part, le BAISSER si un halo survit. "
+            "Décoché (défaut) : combine d'avant le jalon 117c (halos visibles). "
+            "Ne s'applique qu'en LRGB, avec un dossier L non vide."),
             foreground="#888888", wraplength=310).pack(anchor="w")
         # Jalon 45/47 : le choix de cadence est COMMUN aux deux modes —
         # voir le cadre unique `frm_rafale` (plus de combobox ici).

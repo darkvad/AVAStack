@@ -53,7 +53,7 @@ from ..images import borner_lineaire, save_image
 from ..processing import StarAligner, LiveStacker
 from ..processing import stars as seeing_live
 from ..processing.composition import (COMPOSITIONS, CompositeStacker,
-                                      extraire_canal)
+                                      SEUIL_MASQUE_SIGMA, extraire_canal)
 # Jalon 106d : les MESURES (astrométrie / photométrie / SPCC) sont désormais
 # CALCULÉES ici — mêmes modules d'appui que `ui/app.py` (aucun cycle : `core`
 # importe `processing`, jamais l'inverse).
@@ -105,8 +105,10 @@ class AcquisitionWorker:
     _autoriser_lecture: Any
     _cadence_dossier: Any
     _compo_gains: Any
+    _compo_lissage_halos: Any
     _compo_mode_l: Any
     _compo_nom: Any
+    _compo_seuil_halos: Any
     _controles_sondes: Any
     _couches_brutes: Any
     _definir_reference: Any
@@ -428,6 +430,14 @@ class AcquisitionWorker:
                     if hasattr(self.stacker, "normalisation_commune"):
                         self.stacker.normalisation_commune = bool(
                             self._norm_commune)
+                    # Jalon 117d : lissage du combine LRGB (halos d'étoiles) et
+                    # son seuil de masque — mêmes règles (le réglage suit la case
+                    # sans redémarrer la session).
+                    if hasattr(self.stacker, "lissage_halos"):
+                        self.stacker.lissage_halos = bool(
+                            self._compo_lissage_halos)
+                        self.stacker.seuil_masque_halos = float(
+                            self._compo_seuil_halos)
                 self.stacker.linear_fit = bool(self._fit_actif)
                 self.stacker.linear_fit_mode = self._fit_mode
                 # Jalon 56 (étape 5) : gains PHOTOMÉTRIQUES par rôle — écrits
@@ -651,7 +661,16 @@ class AcquisitionWorker:
                                       # comme la vue « empilement ».
                                       bool(getattr(self.stacker,
                                                    "normalisation_commune",
-                                                   False)))
+                                                   False)),
+                                      # 8e élément (jalon 117d) : lissage du
+                                      # combine LRGB (halos d'étoiles) et son
+                                      # seuil de masque — déballage tolérant
+                                      # côté display.
+                                      (bool(getattr(self.stacker,
+                                                    "lissage_halos", False)),
+                                       float(getattr(self.stacker,
+                                                     "seuil_masque_halos",
+                                                     SEUIL_MASQUE_SIGMA))))
             else:
                 self.disp.vl_compo = None
 
@@ -991,6 +1010,9 @@ class AcquisitionWorker:
                 self.stacker.mode_l = self._compo_mode_l
                 self.stacker.normalisation_commune = bool(
                     self._norm_commune)          # v2.36.0 (option)
+                # Jalon 117d : lissage du combine LRGB (halos) + seuil de masque.
+                self.stacker.lissage_halos = bool(self._compo_lissage_halos)
+                self.stacker.seuil_masque_halos = float(self._compo_seuil_halos)
             else:
                 self.stacker = LiveStacker(img_travail.shape, k=cfg.kappa,  # pyright: ignore[reportArgumentType]
                                            method=cfg.rejet_methode,

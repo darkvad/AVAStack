@@ -395,6 +395,10 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # lecture de variables Tk hors du thread principal — cf. pièges).
         self._compo_gains = None         # dict R/G/B → facteur
         self._norm_commune = False       # v2.36.0 : normalisation commune (opt-in)
+        # Jalon 117d : lissage du combine LRGB (halos d'étoiles) + seuil du masque
+        # d'étoiles — OPT-IN, case DÉCOCHÉE = combine d'avant le 117c.
+        self._compo_lissage_halos = False
+        self._compo_seuil_halos = composition_mod.SEUIL_MASQUE_SIGMA
         self._compo_mode_l = "synthetise"
         # Jalon 55 : un réglage compo/fit changé SANS nouvelle brute (mode
         # dossier consommé) doit quand même rafraîchir le rendu — le worker
@@ -3527,6 +3531,36 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._refresh_preview()
         self.disp.notify_new_stack()
 
+    def _lire_seuil_halos(self) -> float:
+        """Seuil du masque du lissage LRGB (jalon 117d), saisi en σ au-dessus du
+        fond, BORNÉ à [`SEUIL_MASQUE_MIN` ; `SEUIL_MASQUE_MAX`]. Appelé côté
+        thread PRINCIPAL seulement (variable Tk) ; le thread worker consomme
+        l'instantané `_compo_seuil_halos`."""
+        try:
+            v = float(self.var_lissage_halos_sigma.get())
+        except (tk.TclError, ValueError, TypeError):
+            v = composition_mod.SEUIL_MASQUE_SIGMA
+        return float(min(composition_mod.SEUIL_MASQUE_MAX,
+                         max(composition_mod.SEUIL_MASQUE_MIN, v)))
+
+    def _on_lissage_halos(self) -> None:
+        """Jalon 117d — case « Lisser le combine LRGB (halos d'étoiles) » et champ
+        « σ du masque ». Option d'Alain (10/10/2026) : le lissage masqué du rapport
+        L/luma est OPT-IN, et son seuil de masque est réglable (il est empirique,
+        il dépend du fond). Posés sur l'empilement courant et appliqués dès le
+        prochain rendu, SANS redémarrer la session (les couches ne sont pas
+        touchées : le combine est refait à chaque rendu) ; les instantanés
+        `_compo_lissage_halos` / `_compo_seuil_halos` sont ceux que lit le worker
+        (jamais de variable Tk hors du thread principal)."""
+        self._compo_lissage_halos = bool(self.var_lissage_halos.get())
+        self._compo_seuil_halos = self._lire_seuil_halos()
+        if self.stacker is not None and hasattr(self.stacker, "lissage_halos"):
+            self.stacker.lissage_halos = self._compo_lissage_halos
+            self.stacker.seuil_masque_halos = self._compo_seuil_halos
+        self._rafraichir_rendu = True
+        self._refresh_preview()
+        self.disp.notify_new_stack()
+
     def _lire_gains(self) -> dict[str, float]:
         """Gains R/G/B saisis (texte → float, virgule acceptée, défaut 1.0,
         borné 0..10). Appelé côté THREAD PRINCIPAL seulement (variables Tk) ;
@@ -3601,6 +3635,9 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._compo_gains = self._lire_gains()
         self._compo_mode_l = self.var_compo_mode_l.get()
         self._norm_commune = bool(self.var_norm_commune.get())   # v2.36.0
+        # Jalon 117d : lissage du combine LRGB (halos) + seuil du masque.
+        self._compo_lissage_halos = bool(self.var_lissage_halos.get())
+        self._compo_seuil_halos = self._lire_seuil_halos()
         # Jalon 54 : instantané du recalage Linear Fit pour le thread.
         self._fit_actif = bool(self.var_fit.get())
         self._fit_mode = self._code_fit_methode()
@@ -3631,6 +3668,9 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._compo_gains = self._lire_gains()
         self._compo_mode_l = self.var_compo_mode_l.get()
         self._norm_commune = bool(self.var_norm_commune.get())   # v2.36.0
+        # Jalon 117d : lissage du combine LRGB (halos) + seuil du masque.
+        self._compo_lissage_halos = bool(self.var_lissage_halos.get())
+        self._compo_seuil_halos = self._lire_seuil_halos()
         self._fit_actif = bool(self.var_fit.get())   # jalon 54 (thread)
         self._fit_mode = self._code_fit_methode()    # jalon 54b (méthode)
         # v2.41.0 : les remises à zéro de session viennent d'être faites par
@@ -5102,7 +5142,15 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                                    float(self.stacker.wb_force),
                                    self.stacker.cadre),
                                   bool(getattr(self.stacker,
-                                               "normalisation_commune", False)))
+                                               "normalisation_commune", False)),
+                                  # 8e élément (jalon 117d) : lissage du combine
+                                  # LRGB (halos) + seuil du masque — déballage
+                                  # tolérant côté display.
+                                  (bool(getattr(self.stacker,
+                                                "lissage_halos", False)),
+                                   float(getattr(
+                                       self.stacker, "seuil_masque_halos",
+                                       composition_mod.SEUIL_MASQUE_SIGMA))))
         else:
             self.disp.vl_compo = None
         # v2.37.0 : les lignes de MESURE du dict réutilisé sont RAFRAÎCHIES
@@ -5395,9 +5443,17 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # composite dès la prochaine frame, sans redémarrer la session.
         gains = self._lire_gains()
         mode_l = self.var_compo_mode_l.get()
-        if gains != self._compo_gains or mode_l != self._compo_mode_l:
+        # Jalon 117d : lissage du combine LRGB (halos) et son seuil de masque
+        # suivent la même règle que les gains (relecture côté thread principal).
+        lissage_halos = bool(self.var_lissage_halos.get())
+        seuil_halos = self._lire_seuil_halos()
+        if (gains != self._compo_gains or mode_l != self._compo_mode_l
+                or lissage_halos != self._compo_lissage_halos
+                or seuil_halos != self._compo_seuil_halos):
             self._compo_gains = gains
             self._compo_mode_l = mode_l
+            self._compo_lissage_halos = lissage_halos
+            self._compo_seuil_halos = seuil_halos
             # Jalon 55 : le rendu suit SANS attendre la prochaine brute
             # (le worker resynchronise et recalcule), et la résolution
             # VeraLux est forcée — les gains ne font pas partie de sa clé,

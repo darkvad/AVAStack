@@ -33,9 +33,23 @@ la radio décide entre « L synthétisé » (L = luminance du composite,
 combine identité — prêt pour un futur traitement spécifique du canal L)
 et « dégradé en RGB » (composite RGB pur). Si L contient des frames,
 il est utilisé quoi qu'il arrive.
+
+Combine L (jalon 117c) : le rapport L/luma est LISSÉ à l'échelle des étoiles
+(σ = 1,7 × FWHM mesurée) MAIS SEULEMENT autour des étoiles brillantes (masque) —
+sans ce lissage, une PSF de L plus large que celle du RGB dessine un ANNEAU
+coloré (halo ×2,8 mesuré le 09/10/2026) ; et le lisser PARTOUT retirerait 9-18 %
+du détail fin de la nébuleuse (le détail venait de L). Ailleurs le ratio reste
+BRUT → L garde tout son détail sur la nébuleuse. Le mode « L synthétisé » (L =
+luminance du composite) est l'identité : aucun lissage.
+
+Combine L, OPT-IN (jalon 117d) : ce lissage est une OPTION — case décochée par
+défaut, on obtient alors le combine d'AVANT le 117c (halos visibles) ; et son
+SEUIL DE MASQUE est réglable (il est empirique, il dépend du fond). = façade
+`CompositeStacker.lissage_halos` / `seuil_masque_halos`, `composer(sigma_l=…)`.
 """
 
 import numpy as np
+import cv2
 from typing import Any
 
 # Réutilisation SANS modification du socle d'empilement (jalon 15) : la
@@ -44,6 +58,10 @@ from typing import Any
 from .stacking import (LiveStacker, _aire_signee, _clip_poly,
                        cadre_intersection, quad_alignement,
                        aligner_canaux, gains_equilibre)
+# Mesure de la FWHM des étoiles (jalon 10) — sert au lissage du combine LRGB
+# (jalon 117c). `stars` est une feuille du paquet (numpy/cv2 seulement) :
+# aucun cycle d'import, comme dans alignment.py.
+from . import stars as _stars
 
 # Rôles possibles d'un dossier (un rôle = un filtre).
 ROLES: tuple[str, ...] = ("L", "R", "G", "B", "Ha", "O3", "S2")
@@ -195,6 +213,173 @@ def _luma(rgb: np.ndarray) -> np.ndarray:
             + _POIDS_LUMA[2] * rgb[..., 2])
 
 
+# ------------------------------------ combine LRGB : lissage du ratio L/luma ---
+# Jalon 117c (v2.70.0). Reçu MESURÉ le 09/10/2026 sur le jeu réel M31 LRGB
+# (L du 13/09 + R/G/B du 22-23/09, deux nuits à 176,2°) : le combine
+# `rgb *= L/luma` AMPLIFIE les AILES des étoiles, parce que la PSF de L (autre
+# nuit, autre filtre) est plus large que celle de la luminance RGB — le rapport
+# L/luma vaut 1,00 au cœur mais MONTE à ~3 dans les ailes (r ≈ 4-5 px), et
+# chaque étoile brillante prend un ANNEAU coloré (rapport anneau/cœur 0,124 en
+# RGB seul → 0,347 avec L = halo ×2,8). CAUSE : ni l'alignement (résidu ramené à
+# ~0,2 px au 117b) ni l'optique (FWHM L/R/V/B identiques, R/G = 1,039) — c'est
+# le COMBINE. Il ne s'agit PAS du réglage de couleur : le combine est neutre
+# (`rgb * ratio[..., None]`), l'anneau prend simplement la couleur des ailes.
+# CORRECTIF : LISSER le rapport à l'ÉCHELLE DES ÉTOILES → la luminance n'apporte
+# plus que le GRAND ÉCHELLE (nébuleuse), sans épaissir les halos. σ = 1,7 × FWHM
+# est le réglage qui ramène le rapport anneau/cœur au niveau du RGB seul ; un σ
+# de 0,5-1 px (rayon proposé par erreur) NE SUFFISAIT PAS (0,347 → 0,338/0,286).
+#
+# ⚠ MESURÉ SUR LES COUCHES RÉELLES (10/10/2026) : lisser le ratio PARTOUT ne va
+# pas — `composite_lum = luma(rgb) × ratio`, donc au repos (= sans lissage) le
+# détail fin de la NÉBULEUSE vient de L (profond) ; en le lissant partout, ce
+# détail fin vient désormais de la luminance RGB (bruitée) → −9 % de détail fin
+# en linéaire, −16/-18 % après étirement, changement LARGE BANDE (60 % de
+# l'énergie fine). Or le mismatch de PSF L↔RGB n'existe QU'À L'ÉCHELLE DES
+# ÉTOILES (sur la nébuleuse la structure est ≫ PSF). D'où le correctif JUSTE :
+# lisser le ratio SEULEMENT autour des ÉTOILES BRILLANTES (là où elles prennent
+# un halo) et garder le ratio BRUT ailleurs → détail de L préservé (−4 % au lieu
+# de −16 %, mesuré) ET halos éteints.
+SIGMA_L_PAR_FWHM: float = 1.7   # σ du flou du ratio ≈ 1,7 × FWHM des étoiles
+SIGMA_L_MIN: float = 1.0        # plancher (px) — un lissage nul ne sert à rien
+SIGMA_L_MAX: float = 15.0       # plafond (px) — n'efface pas le grand échelle
+# Repli quand AUCUNE étoile n'est mesurable (champ sans étoile, image minuscule) :
+# il n'y a alors pas de halo à corriger — on garde un lissage de SÉCURITÉ
+# proportionnel à la LARGEUR (donc à la RÉSOLUTION), même esprit que les rayons
+# de chroma (couleurs.rayon_chroma_apercu).
+SIGMA_L_REPLI_FRAC: float = 1.0 / 800.0
+# --- masque d'étoiles (n'ÉTOILES que les étoiles, pas la nébulosité) ----------
+# Étoile = pic > fond + SEUIL_MASQUE_SIGMA·bruit (médiane-MAD), et BOÎTE
+# ENGLOBANTE petite : au-delà de LIMITE_MASQUE_PX c'est un bras de galaxie, le
+# cœur ou une nébulosité (structure LARGE), qu'il ne faut PAS lisser. Le masque
+# est ensuite DILATÉ de DILAT_MASQUE_FWHM·σ (les ailes d'étoile, seul endroit où
+# L et le RGB diffèrent) puis FONDU à σ/2 (aucune couture).
+# ⚠ SEUIL_MASQUE_SIGMA MESURÉ sur le jeu M31 (10/10/2026) : le DISQUE de la
+# galaxie gonfle la MAD, si bien qu'un seuil « classique » (6σ) laisse passer le
+# disque (10 900 composantes → masque = 30 % de l'image, donc lissage quasi
+# global). À 20σ on ne garde que ~4 000 sources vraiment brillantes (~11 % de
+# l'image après dilatation) : le détail de la nébuleuse remonte de 0,84 (lissage
+# global) à 0,92, tout en masquant les étoiles qui portent un halo. Compromis
+# à réviser si le test réel montre qu'un halo survit.
+SEUIL_MASQUE_SIGMA: float = 20.0
+# Jalon 117d : le seuil ci-dessus est EMPIRIQUE (il dépend du fond — le disque
+# d'une galaxie gonfle la MAD). Il devient RÉGLABLE depuis l'interface (case
+# opt-in « Lisser le combine LRGB », champ « σ du masque ») : ces deux bornes
+# encadrent la saisie (l'app les applique, `composer` les accepte telles quelles).
+SEUIL_MASQUE_MIN: float = 3.0
+SEUIL_MASQUE_MAX: float = 100.0
+LIMITE_MASQUE_PX: int = 60
+DILAT_MASQUE_FWHM: float = 1.5
+
+
+def _lisser_ratio(ratio: np.ndarray, sigma: float) -> np.ndarray:
+    """Flou gaussien ISOTROPE du ratio de luminance L/luma (jalon 117c), σ en
+    PIXELS de l'image traitée. `sigma` ≤ 0 → ratio INCHANGÉ (aucun flou)."""
+    if not (sigma > 0.0):
+        return ratio
+    return cv2.GaussianBlur(ratio, (0, 0), sigmaX=float(sigma))
+
+
+def _masque_etoiles(lum: np.ndarray, sigma: float,
+                    seuil: float | None = None) -> np.ndarray | None:
+    """Masque (0..1, feutré) des ÉTOILES BRILLANTES de la luminance RGB `lum`,
+    ou None s'il n'y en a AUCUNE. Brique du lissage du ratio (jalon 117c) :
+    seules les étoiles brillantes prennent un halo (le mismatch de PSF L↔RGB
+    n'existe qu'à leur échelle), on ne lisse donc QUE là — la nébuleuse garde le
+    ratio BRUT, donc le détail de L.
+
+    Étoile = composante au-dessus de `fond + seuil·bruit` (médiane/MAD,
+    robustes) dont la BOÎTE ENGLOBANTE est < LIMITE_MASQUE_PX : au-delà, c'est un
+    bras de galaxie / le cœur / une nébulosité — une structure LARGE, qu'il ne
+    faut PAS lisser. Le masque est ensuite DILATÉ de DILAT_MASQUE_FWHM·σ (les
+    ailes d'étoile, là où L déborde du RGB) puis FONDU à σ/2 (aucune couture).
+
+    `seuil` (jalon 117d) : le seuil en σ, réglable par l'utilisateur (case
+    opt-in). None → `SEUIL_MASQUE_SIGMA` (défaut historique du 117c)."""
+    h, w = lum.shape
+    if min(h, w) < 16:
+        return None
+    ech = lum[::4, ::4]
+    fond = float(np.median(ech))
+    bruit = 1.4826 * float(np.median(np.abs(ech - fond)))
+    if bruit <= 1e-9:
+        return None
+    seuil_sig = SEUIL_MASQUE_SIGMA if seuil is None else float(seuil)
+    binaire = (lum > fond + seuil_sig * bruit).astype(np.uint8)
+    if not binaire.any():
+        return None
+    nb, labels, stats, _c = cv2.connectedComponentsWithStats(binaire,
+                                                             connectivity=8)
+    # Les stubs cv2 renvoient `MatLike` (typage large) : on caste pour que le
+    # typage de l'indexation vectorielle ci-dessous reste vérifiable (pyright).
+    lab = np.asarray(labels, dtype=np.int64)
+    st = np.asarray(stats, dtype=np.int64)
+    ok = np.zeros(nb, dtype=bool)              # composante = ÉTOILE ?
+    for i in range(1, nb):
+        ok[i] = (int(st[i, cv2.CC_STAT_WIDTH]) <= LIMITE_MASQUE_PX
+                 and int(st[i, cv2.CC_STAT_HEIGHT]) <= LIMITE_MASQUE_PX)
+    garde = ok[lab].astype(np.uint8)           # vectorisé (sans boucle pixel)
+    if not garde.any():
+        return None
+    rayon = max(1, int(round(DILAT_MASQUE_FWHM * float(sigma))))
+    noyau = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,
+                                      (2 * rayon + 1, 2 * rayon + 1))
+    garde = cv2.dilate(garde, noyau)
+    fondu = cv2.GaussianBlur(garde.astype(np.float32), (0, 0),
+                             max(1.0, 0.5 * float(sigma)))
+    return np.clip(fondu * 2.0, 0.0, 1.0).astype(np.float32)
+
+
+def _lisser_ratio_masque(ratio: np.ndarray, lum: np.ndarray, sigma: float,
+                         seuil: float | None = None) -> np.ndarray:
+    """Ratio L/luma lissé SEULEMENT dans le masque d'étoiles brillantes (jalon
+    117c) : `ratio` lissé là où le masque vaut 1, `ratio` BRUT ailleurs — le
+    détail fin de L est donc PRÉSERVÉ sur la nébuleuse. Sans étoile brillante
+    (masque None) → ratio BRUT : il n'y a rien à corriger.
+
+    `seuil` (jalon 117d) : seuil du masque en σ (None → `SEUIL_MASQUE_SIGMA`).
+    σ ≤ 0 court-circuite AVANT tout calcul : c'est le chemin « case décochée »,
+    bit-identique au comportement d'avant le 117c."""
+    if not (sigma > 0.0):                      # σ ≤ 0 = pas de flou (opt-out)
+        return ratio
+    masque = _masque_etoiles(lum, sigma, seuil)
+    if masque is None:
+        return ratio
+    lisse = cv2.GaussianBlur(ratio, (0, 0), sigmaX=float(sigma))
+    return (lisse * masque + ratio * (1.0 - masque)).astype(np.float32)
+
+
+def sigma_l_auto(lum: np.ndarray) -> float:
+    """σ (px) du lissage du ratio L/luma, déduit de la TAILLE DES ÉTOILES de la
+    luminance RGB `lum` (carte 2D) : `SIGMA_L_PAR_FWHM × FWHM`, borné à
+    [SIGMA_L_MIN, SIGMA_L_MAX].
+
+    POURQUOI auto : un σ FIXE en pixels serait faux dès que la résolution change
+    (l'aperçu est réduit à ≤ 1600 px, les canaux en pleine résolution font
+    plusieurs milliers de px). La FWHM est mesurée par `stars.mesurer_seeing`
+    (jalon 10) SUR l'image reçue → elle suit la résolution, comme les rayons de
+    chroma. Aucune étoile mesurable (nb = 0, image minuscule) → repli
+    proportionnel à la largeur (`SIGMA_L_REPLI_FRAC`) : il n'y a alors pas de
+    halo à corriger. N'échoue JAMAIS (mesure enveloppée) — même contrat que
+    `stars.mesurer_seeing`."""
+    sigma = None
+    try:
+        mesure, _msg = _stars.mesurer_seeing(np.asarray(lum, dtype=np.float32))
+    except Exception:
+        mesure = None
+    if isinstance(mesure, dict):
+        fwhm = mesure.get("fwhm")
+        if fwhm is not None:
+            try:
+                f = float(fwhm)
+            except (TypeError, ValueError):
+                f = 0.0
+            if np.isfinite(f) and f > 0.0:
+                sigma = SIGMA_L_PAR_FWHM * f
+    if sigma is None:
+        sigma = SIGMA_L_REPLI_FRAC * float(np.asarray(lum).shape[-1])
+    return float(min(max(sigma, SIGMA_L_MIN), SIGMA_L_MAX))
+
+
 def _echelle_commune(canaux: Any, spec: Any, lo_pct: float,
                      hi_pct: float) -> float | None:
     """ÉCHELLE partagée par les trois rôles du composite : l'amplitude
@@ -242,7 +427,9 @@ def _echelle_commune(canaux: Any, spec: Any, lo_pct: float,
 def composer(canaux: Any, composition: str, bornes: Any = None,
              normaliser_canal: bool = True, mode_l: str = "synthetise",
              lo_pct: float = 0.25, hi_pct: float = 99.7,
-             normalisation_commune: bool = False) -> np.ndarray | None:
+             normalisation_commune: bool = False,
+             sigma_l: float | None = None,
+             seuil_masque_sigma: float | None = None) -> np.ndarray | None:
     """Composite linéaire d'une composition.
 
     canaux   : dict rôle → carte 2D float32 (empilement du rôle), ou None
@@ -260,6 +447,18 @@ def composer(canaux: Any, composition: str, bornes: Any = None,
                25/09/2026) — cf. `_echelle_commune`.
     mode_l   : "synthetise" | "degrade" — sortie de la radio « Canal L »,
                utilisée SEULEMENT si le rôle L est vide.
+    sigma_l  : σ (px) du flou du RATIO L/luma du combine LRGB (jalon 117c), en
+               MASQUANT les étoiles brillantes (le ratio n'est lissé QUE là ;
+               ailleurs il reste BRUT, donc L garde son détail sur la nébuleuse).
+               None (DÉFAUT) → σ déduit de la FWHM des étoiles (`sigma_l_auto`) ;
+               > 0 → σ imposé ; 0 (ou ≤ 0) → AUCUN flou = comportement d'avant
+               le 117c. Sans objet hors composition à luminance (LRGB) et quand L
+               est SYNTHÉTISÉ (L = luminance du composite : combine identité).
+    seuil_masque_sigma : seuil du masque d'étoiles, en σ au-dessus du fond
+               (jalon 117d). None (DÉFAUT) → `SEUIL_MASQUE_SIGMA` (20). Réglable
+               car ce seuil est EMPIRIQUE : il dépend du fond (le disque d'une
+               galaxie gonfle la MAD) — voir la constante et `_masque_etoiles`.
+               N'a d'effet que si `sigma_l` déclenche effectivement le lissage.
 
     → (H, W, 3) float32 linéaire, (H, W) pour Mono, ou None si AUCUN rôle
     n'a de données. ValueError si les formes des rôles diffèrent (l'app
@@ -325,6 +524,7 @@ def composer(canaux: Any, composition: str, bornes: Any = None,
     #    identité aujourd'hui, prêt pour un traitement spécifique de L)
     if "luminance" in spec:
         L = norm.get(spec["luminance"][0])
+        l_du_dossier = L is not None
         if L is None and mode_l == "synthetise":
             L = _luma(rgb)
         if L is not None:
@@ -332,6 +532,19 @@ def composer(canaux: Any, composition: str, bornes: Any = None,
             ratio = np.where(lum > 1e-6,
                              L / np.maximum(lum, 1e-6),
                              1.0).astype(np.float32)
+            # Jalon 117c : un L VENU DU DOSSIER a une PSF plus large que celle
+            # du RGB → son rapport brut AMPLIFIE les ailes des étoiles (anneau
+            # coloré). On LISSE le ratio À L'ÉCHELLE DES ÉTOILES, mais SEULEMENT
+            # autour des étoiles BRILLANTES (masque) : ailleurs le ratio reste
+            # BRUT, donc le détail fin de L est préservé sur la nébuleuse (le
+            # lisser PARTOUT retirait 9-18 % du détail fin — mesuré). σ =
+            # `sigma_l` s'il est fourni, sinon déduit de la FWHM des étoiles
+            # (`sigma_l_auto`). Le mode « synthétisé » (L = luminance du
+            # composite) est l'IDENTITÉ (ratio ≡ 1) : rien à lisser.
+            if l_du_dossier:
+                sig = sigma_l if sigma_l is not None else sigma_l_auto(lum)
+                ratio = _lisser_ratio_masque(ratio, lum, float(sig),
+                                             seuil_masque_sigma)
             rgb = (rgb * ratio[..., None]).astype(np.float32)
 
     return rgb
@@ -500,6 +713,15 @@ class CompositeStacker:
         # couleur, sa neutralisation relève des offsets du recalage colorimétrique
         # (ou de GraXpert live, par couche) — comme les B0/B1/B2 de Siril.
         self.normalisation_commune: bool = False
+        # Jalon 117d — OPTION (décision d'Alain, 10/10/2026) : LISSAGE DU COMBINE
+        # LRGB (halos d'étoiles). Case DÉCOCHÉE par défaut = VRAI opt-in : le
+        # combine reste celui d'avant le 117c (rapport L/luma BRUT, σ = 0), donc
+        # les halos reviennent tant qu'on ne coche pas. Cochée → lissage masqué à
+        # l'échelle des étoiles (σ auto = 1,7 × FWHM), avec le SEUIL DU MASQUE
+        # réglable (`seuil_masque_halos`, en σ au-dessus du fond) car ce seuil est
+        # empirique et dépend du fond (cf. `SEUIL_MASQUE_SIGMA`).
+        self.lissage_halos: bool = False
+        self.seuil_masque_halos: float = SEUIL_MASQUE_SIGMA
         self.mode_l: str = "synthetise"   # radio « Canal L » (UI, phase 3)
         # Recalage colorimétrique « Linear Fit » (jalon 54) : appliqué au
         # COMPOSITE SEUL — JAMAIS aux couches (le solveur live re-fait la
@@ -755,16 +977,26 @@ class CompositeStacker:
         # pour la frame (`composer` les recalculerait à chaque appel — le
         # paramètre `bornes` existe pour ça et n'était pas utilisé).
         n = sum(s.n for s in self.stackers.values())
+        # Jalon 117d : le LISSAGE DES HALOS (et son seuil de masque) entre dans
+        # la CLÉ DE MÉMOÏSATION — sans quoi cocher/décocher la case ou changer σ
+        # réafficherait le composite mémoïsé (réglage « sans effet » apparent).
         cle = (n, bool(recadre), self.composition, self.mode_l,
-               bool(self.normalisation_commune))
+               bool(self.normalisation_commune),
+               bool(self.lissage_halos), float(self.seuil_masque_halos))
         if self._memo_compo is not None and self._memo_compo[0] == cle:
             comp = self._memo_compo[1]
         else:
+            # Case décochée (défaut) → σ = 0 : AUCUN flou = combine d'avant le
+            # 117c (bit-identique). Cochée → σ = None (auto, 1,7 × FWHM) + le
+            # seuil de masque choisi par l'utilisateur.
+            sig_l = None if self.lissage_halos else 0.0
             try:
                 comp = composer(canaux, self.composition,
                                 bornes=self._bornes_par_role(canaux, n),
                                 mode_l=self.mode_l,
-                                normalisation_commune=self.normalisation_commune)
+                                normalisation_commune=self.normalisation_commune,
+                                sigma_l=sig_l,
+                                seuil_masque_sigma=self.seuil_masque_halos)
             except ValueError:
                 comp = None               # formes hétérogènes (ne doit pas
             self._memo_compo = (cle, comp)
