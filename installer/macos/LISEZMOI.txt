@@ -88,6 +88,11 @@ DÉPANNAGE
 - « Tkinter est absent » : le Python utilisé n'a pas Tkinter. Installe Python
   depuis python.org (Tk inclus) ou `brew install python@3.13 python-tk@3.13`,
   puis relance l'installateur.
+- Boutons « qui ne répondent pas », ou fenêtre figée : c'est le plus souvent le
+  Python utilisé. Vérifie sa version (l'installateur l'affiche : « Python :
+  Python 3.x.y ») et privilégie un **Python 3.13 récent** de python.org (Tk
+  inclus) : constaté en réel, la **3.13.16** débloque l'interface. Réinstalle avec
+  ce Python, puis relance l'installateur.
 - macOS refuse d'ouvrir le bundle : clic droit → « Ouvrir » (une fois), ou
   `xattr -dr com.apple.quarantine ~/Applications/AVAStack.app`.
 - « avastack : commande introuvable » : `~/.local/bin` n'est pas dans le PATH.
@@ -111,11 +116,14 @@ Le premier supprime l'application, le bundle et le lanceur, en gardant
 `config.json`, le journal, les catalogues et la base SPCC (utiles à une
 réinstallation).
 
-ÉTAT DE CET INSTALLATEUR (à dater, règle du projet)
----------------------------------------------------
+ÉTAT DE CET INSTALLATEUR (DATÉ, règle du projet)
+------------------------------------------------
 Installateur macOS écrit le 29/09/2026 à partir de l'installateur Linux (éprouvé
 en réel sur Ubuntu) : il a été VÉRIFIÉ par analyse syntaxique (`bash -n`) et par
-construction du paquet, mais il n'a PAS encore été exécuté sur une machine
-macOS. Si quelque chose bloque, c'est un manque d'information précieuse :
-note le message exact du Terminal et le contenu du journal.
+construction du paquet, puis EXÉCUTÉ EN RÉEL sur un Mac (macOS 27 « Golden
+Gate ») — installation et lancement OK. Constat du 10/10/2026 : les « boutons qui
+ne répondent pas » venaient de la VERSION DE PYTHON ; avec un **Python 3.13
+récent** (3.13.16, python.org) et Tkinter, l'application fonctionne normalement.
+Si quelque chose bloque, c'est un manque d'information précieuse : note le
+message exact du Terminal et le contenu du journal.
 

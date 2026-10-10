@@ -347,9 +347,13 @@ installé, documentations et pages constructeurs) :
   `xattr -dr com.apple.quarantine`. Prérequis : un Python **avec Tkinter**
   (python.org, ou Homebrew + `python-tk@3.13`) ; le Python système n'en a pas.
   Il **refuse** de s'installer hors macOS et fait le MÊME test de démarrage que
-  Linux (`import avastack.ui.app` dans le venv). **ÉTAT DATÉ : écrit et vérifié
-  au banc (`_test_installeur_macos_jalon78.py`) et par exécution réelle de ses
-  garde-fous, mais PAS ENCORE EXÉCUTÉ SUR UN MAC** — c'est le prochain test.
+  Linux (`import avastack.ui.app` dans le venv). **ÉTAT DATÉ (10/10/2026) :
+  EXÉCUTÉ EN RÉEL sur un Mac** (macOS 27 « Golden Gate », installation et
+  lancement OK) et vérifié au banc (`_test_installeur_macos_jalon78.py`).
+  **PRÉREQUIS DÉCISIF : un Python 3.13 RÉCENT avec Tkinter** — les « boutons qui
+  ne répondent pas » signalés venaient de la VERSION DE PYTHON ; après passage à
+  **3.13.16 (python.org)** l'application fonctionne. Corollaire : **vérifier la
+  version de Python AVANT d'accuser le code** (cf. section « Pièges »).
 - **Route LINUX RETENUE (décision d'Alain, 27/09/2026) : ① script + venv**,
   implémentée le même jour — `installer/linux/install_avastack.sh` (copie dans
   `~/.local/share/AVAStack`, venv + `pip install`, lanceur
@@ -1256,6 +1260,20 @@ ce qui manquait n'était pas une correction mais une MESURE.
   **MAPPÉE avant son `grab_set()`** (`update_idletasks()`, puis `lift` et
   `focus_force`) : un grab posé sur une fenêtre pas encore affichée est au mieux
   sans effet, au pire bloquant (macOS comme X11).
+- **SOUS macOS, VÉRIFIER LA VERSION DE PYTHON AVANT D'ACCUSER LE CODE** (leçon
+  du 10/10/2026) : les « boutons qui ne répondent pas » — que les correctifs du
+  jalon 84 (dialogues attachés, fenêtre activée, boucle de rafraîchissement qui
+  ne meurt plus) avaient RÉDUITS sans les faire disparaître — ont été ÉLIMINÉS
+  par une simple MISE À JOUR DE PYTHON. Avec un **Python 3.13 récent
+  (3.13.16, python.org, Tk inclus)** l'application fonctionne normalement ; un
+  couple **Python/Tk d'ancienne génération** pouvait laisser l'interface figée.
+  Règle de dépannage : sur un symptôme « l'interface ne répond pas » sous macOS,
+  **lire d'abord la version de Tcl/Tk et de Python dans le journal** (le
+  `journal.txt` les inscrit au démarrage, cf. `avastack/journal.py`) avant toute
+  autre hypothèse. Les correctifs de code restent UTILES (une boîte de dialogue
+  non attachée reste un défaut réel, et un banc statique l'interdit) : la leçon
+  n'est donc PAS « le code n'y était pour rien », mais « le facteur décisif
+  était l'ENVIRONNEMENT Python/Tk ».
 - **UN SYMPTÔME « L'INTERFACE NE RÉPOND PAS » SE MESURE — DURÉE + PILE DU FIL
   FAUTIF** (`avastack/ui/reactivite.py`, jalon 84 ; même esprit que la leçon du
   27/09/2026 : un blocage se désigne par sa pile, jamais par une hypothèse). Sous

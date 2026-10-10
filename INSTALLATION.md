@@ -148,15 +148,26 @@ cd avastack-2.71.1-macos
 bash installer/install_avastack.sh
 ```
 
-**Prérequis : un Python AVEC Tkinter** (Tkinter n'est pas installable par pip) :
+**Prérequis : un Python RÉCENT AVEC Tkinter** (Tkinter n'est pas installable par
+pip) — **Python 3.13 est recommandé** (voir l'avertissement ci-dessous) :
 
-- Python de **python.org** (Tk inclus) — le plus simple : télécharger 3.12/3.13,
-  installer le `.pkg`, puis lancer ce script ;
+- Python de **python.org** (Tk inclus) — le plus simple : télécharger **Python
+  3.13**, installer le `.pkg`, puis lancer ce script ;
 - ou **Homebrew** : `brew install python@3.13 python-tk@3.13`.
 
 Vérification en une commande : `python3 -c 'import tkinter; print(tkinter.TkVersion)'`.
 Le Python livré par macOS (`/usr/bin/python3`) **n'a pas** de Tkinter utilisable :
 le script le dit et refuse d'installer sans Tkinter (sauf `--forcer`).
+
+> **⚠ Version de Python : c'est elle qui bloquait (constat du 10/10/2026).** Avec
+> un Python d'**ancienne génération** (couple Python/Tk ancien), l'application
+> s'installait mais l'**interface se figeait** — symptôme « les boutons ne
+> répondent pas ». L'installation d'un **Python 3.13 récent depuis python.org**
+> (validé en réel avec **3.13.16**) a tout débloqué : l'application fonctionne
+> normalement. **Si des boutons semblent inertes ou la fenêtre figée sous macOS,
+> vérifie la version de Python utilisée AVANT tout autre diagnostic** —
+> l'installateur l'affiche (« Python : Python 3.x.y »). L'ancien script doit
+> alors être relancé avec un Python 3.13 récent dans le `PATH`.
 
 Ce que le script écrit (tout dans ton profil, **aucun droit administrateur**) :
 
@@ -205,6 +216,15 @@ réglages et les données téléchargées) ; `--purger` supprime aussi les régl
 > blocage de l'interface de plus d'une seconde et demie (« gel de
 > l'interface »), **avec la pile du fil fautif** : c'est LE fichier à envoyer
 > avec une description du problème.
+> **TROISIÈME RETOUR RÉEL (10/10/2026) : la CAUSE des symptômes résiduels était
+> la VERSION DE PYTHON.** Après passage à un **Python 3.13 récent (3.13.16,
+> python.org)** et réinstallation, l'application fonctionne normalement — les
+> « boutons qui ne répondent pas » ont disparu. Les correctifs de code ci-dessus
+> restent utiles (ils protègent aussi contre une boîte de dialogue non attachée),
+> mais le facteur DÉCISIF côté macOS était le couple **Python/Tk** : un Python
+> d'ancienne génération pouvait laisser l'interface figée. Conséquence pour le
+> dépannage : **vérifier la version de Python AVANT d'accuser le code**, et
+> privilégier un **Python 3.13 récent** de python.org (cf. prérequis ci-dessus).
 
 ---
 
@@ -356,16 +376,17 @@ qu'il faut lancer quand une caméra n'est pas vue (ils disent quelle DLL manque)
   ni paquets prérequis) et le **test matériel caméras** sous Linux (option
   `--cameras`, quand les `*.so` constructeurs y seront déposés).
 - **Installateur macOS : EXÉCUTÉ EN RÉEL** (macOS 27 « Golden Gate »,
-  30/09/2026) — installation et lancement **sans problème**, contenu du paquet
-  vérifié au banc et garde-fous essayés en réel (refus hors macOS, `--aide`).
-  Les défauts d'INTERACTION signalés (boutons « qui ne répondent pas ») ont été
-  corrigés en DEUX temps : boîtes de dialogue attachées à la fenêtre et fenêtre
-  mise au premier plan (**v2.47.0**), puis — le symptôme persistant à l'essai
-  suivant — la boucle de rafraîchissement de l'interface, qui mourait sur un
-  widget devenu invalide et laissait la fenêtre figée (**v2.48.1**). Le paquet
-  **v2.48.2** attend son **essai réel chez le testeur** — c'est la première
-  chose à vérifier quand il l'aura installé. La signature/notarisation Apple
-  n'est pas faite (bundle local non signé).
+  30/09/2026, puis essais suivants) — installation et lancement **sans problème**,
+  contenu du paquet vérifié au banc et garde-fous essayés en réel (refus hors
+  macOS, `--aide`). Les défauts d'INTERACTION signalés (boutons « qui ne
+  répondent pas ») ont été traités en DEUX temps côté code — boîtes de dialogue
+  attachées à la fenêtre et fenêtre mise au premier plan (**v2.47.0**), puis
+  boucle de rafraîchissement de l'interface qui ne meurt plus sur un widget
+  devenu invalide (**v2.48.1**) — mais le **facteur DÉCISIF** s'est révélé être
+  la **VERSION DE PYTHON** : après passage à un **Python 3.13 récent**
+  (**3.13.16**, python.org), l'application fonctionne normalement (constat du
+  **10/10/2026**, cf. § 3 bis). La signature/notarisation Apple n'est pas faite
+  (bundle local non signé).
 - **Aucune caméra** n'est embarquée (SDK constructeurs, licences).
 - Les **données Gaia** ne sont pas embarquées : ≈ 1,1 Go (catalogue astro),
   ≈ 10,6 Go (les 48 morceaux de spectres — le bouton « ⬇ les 48 ») et quelques

@@ -65,6 +65,21 @@ dans le changelog du source et l'historique git.)
   amputé (message d'erreur utile).
 - Un paquet GELÉ/MSIX embarque tout (analyse des imports) : non concerné.
 
+### Complément documentaire (10/10/2026) — macOS : la cause était la VERSION DE PYTHON
+
+- **Retour RÉEL** : après mise à jour vers **Python 3.13.16 (python.org)**, l'appli
+  macOS FONCTIONNE — les « boutons qui ne répondent pas » (correctifs du jalon 84)
+  venaient donc du couple **Python/Tk d'ancienne génération**. **AUCUN changement
+  de code** : documentation seule.
+- Fichiers touchés : `INSTALLATION.md` (§ 3 bis : prérequis + 3ᵉ retour réel),
+  `installer/macos/install_avastack.sh` (en-tête « ÉTAT » + `aide_prerequis()`),
+  `installer/README.md` (§ macOS), `README.md`, `CLAUDE.md` (entrée macOS + piège
+  « vérifier la version de Python avant d'accuser le code »).
+- **Décision** : écrit DATÉ, factuel, sans nom propre (doc publique). **Pas de bump
+  de version** (changement documentaire ; « le prochain changement de CODE porte
+  la version suivante »). `INSTALLATION.md` pourra être **réuploadé** sur la
+  release v2.71.1 (`gh release upload --clobber`) au prochain passage.
+
 ---
 
 ## HISTORIQUE — jalon 117d (10/10/2026) : lissage LRGB OPT-IN + σ réglable (v2.71.0)

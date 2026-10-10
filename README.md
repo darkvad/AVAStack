@@ -68,16 +68,17 @@ l'utilisateur**, sans droits administrateur.
 | **Windows 10/11** | `avastack-setup-<version>.exe` | lancer l'exécutable (il installe Python si besoin, crée l'environnement et les raccourcis) |
 | **Windows 10/11** (si l'exécutable est bloqué) | `avastack-setup-<version>-windows.zip` | extraire, puis double-cliquer sur `installer\install_avastack.bat` — aucun exécutable à nous (utile quand le Contrôle intelligent des applications bloque le `.exe`) |
 | **Linux x86_64** | `avastack-setup-<version>-linux.tar.gz` | `tar xzf …` puis `bash installer/install_avastack.sh` |
-| **macOS 11+** | `avastack-setup-<version>-macos.tar.gz` | `tar xzf …` puis `bash installer/install_avastack.sh` (Python **avec Tkinter** requis : python.org, ou Homebrew + `python-tk`) |
+| **macOS 11+** | `avastack-setup-<version>-macos.tar.gz` | `tar xzf …` puis `bash installer/install_avastack.sh` (Python **3.13 récent avec Tkinter** requis : python.org, ou Homebrew + `python-tk`) |
 
 Les **trois** installateurs sont joints à la
 [dernière release](https://github.com/darkvad/AVAStack/releases/latest) ; le
 détail (prérequis système, dossiers, caméras, dépannage) est dans
 [`INSTALLATION.md`](INSTALLATION.md), et un `LISEZMOI.txt` complet est installé
 à côté de l'application. Sous macOS, l'installateur écrit un bundle
-`~/Applications/AVAStack.app` (double-clic) — **écrit et vérifié au banc, pas
-encore exécuté sur un Mac** (état daté du 29/09/2026 ; les paquets Windows et
-Linux, eux, sont exécutés en réel).
+`~/Applications/AVAStack.app` (double-clic) — **exécuté en réel sur un Mac**
+(macOS 27). Prérequis : un **Python 3.13 récent AVEC Tkinter** (python.org, ou
+Homebrew + `python-tk`) ; un Python d'ancienne génération pouvait laisser
+l'interface figée (voir [`INSTALLATION.md`](INSTALLATION.md) § 3 bis).
 
 ## Première séance
 

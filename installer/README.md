@@ -21,9 +21,11 @@ préfère le laisser préparer ses catalogues).
 **macOS** : le paquet est un `tar.gz` (pas de `.dmg`) dont l'installateur écrit
 un bundle `~/Applications/AVAStack.app` (double-clic) et un lanceur
 `~/.local/bin/avastack` ; il exige un Python AVEC Tkinter (python.org, ou
-Homebrew + `python-tk`). État au 29/09/2026 : **écrit et vérifié au banc, pas
-encore exécuté sur un Mac** (le paquet Windows et le paquet Linux, eux, sont
-exécutés en réel).
+Homebrew + `python-tk`) — **Python 3.13 recommandé**. État : **exécuté en réel
+sur un Mac** (macOS 27 : installation et lancement OK). Constat du **10/10/2026**
+documenté dans `INSTALLATION.md` § 3 bis : les « boutons qui ne répondent pas »
+provenaient de la **version de Python/Tk** et disparaissent avec un Python
+**3.13 récent (3.13.16, python.org)**.
 
 **Le nom de l'artéfact PORTE LA VERSION** (règle du 27/09/2026) : elle
 vient toujours de `AVASTACK_VERSION` (`avastack/__init__.py`), jamais d'un nom

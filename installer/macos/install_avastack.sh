@@ -30,10 +30,14 @@
 # paquet et TENTE les paquets pip caméras (tolérant : un échec n'interrompt pas
 # l'installation, ces paquets n'existant pas pour toutes les marques).
 #
-# ÉTAT DE CE SCRIPT (à dater, règle du projet) : écrit le 29/09/2026 à partir de
-# l'installateur LINUX (éprouvé en réel sur Ubuntu), ADAPTÉ pour macOS et
-# VÉRIFIÉ par analyse syntaxique (`bash -n`) et par construction du paquet — il
-# n'a PAS encore été exécuté sur une machine macOS (aucune n'est disponible).
+# ÉTAT DE CE SCRIPT (DATÉ — règle du projet) : écrit le 29/09/2026 à partir de
+# l'installateur LINUX (éprouvé en réel sur Ubuntu), ADAPTÉ pour macOS, VÉRIFIÉ
+# par analyse syntaxique (`bash -n`) et par construction du paquet, puis EXÉCUTÉ
+# EN RÉEL sur un Mac (macOS 27 « Golden Gate ») : installation et lancement OK.
+# Constat du 10/10/2026 : les « boutons qui ne répondent pas » venaient de la
+# VERSION DE PYTHON — avec un Python 3.13 récent (3.13.16, python.org) et
+# Tkinter, l'application fonctionne normalement. Si l'interface paraît figée,
+# vérifier la version de Python AVANT d'accuser le code (cf. aide_prerequis).
 # La version installée est lue dans avastack/__init__.py (AVASTACK_VERSION),
 # source unique de vérité (cf. CLAUDE.md).
 
@@ -94,10 +98,12 @@ FIN
 
 aide_prerequis() {
     cat <<'FIN'
-Prérequis macOS — un Python AVEC Tkinter (Tkinter n'est pas installable par pip) :
+Prérequis macOS — un Python RÉCENT AVEC Tkinter (Tkinter n'est pas installable
+par pip). Python 3.13 est RECOMMANDÉ : c'est cette version qui a débloqué
+l'interface (3.13.16 validée en réel le 10/10/2026).
 
   Méthode python.org (recommandée, Tk inclus) :
-      1. télécharger Python 3.12 ou 3.13 sur https://www.python.org/downloads/macos/
+      1. télécharger Python 3.13 sur https://www.python.org/downloads/macos/
       2. installer le paquet .pkg, puis relancer ce script
 
   Méthode Homebrew :
@@ -108,6 +114,10 @@ Prérequis macOS — un Python AVEC Tkinter (Tkinter n'est pas installable par p
 
   Le Python livré par macOS (/usr/bin/python3) n'a pas de Tkinter utilisable :
   il ne peut pas faire tourner AVAStack.
+
+  Si l'interface d'AVAStack se FIGE (« les boutons ne répondent pas »), la cause
+  la plus fréquente est un Python/Tk d'ANCIENNE génération : installe un Python
+  3.13 récent (python.org) et relance ce script AVANT tout autre diagnostic.
 FIN
 }
 
