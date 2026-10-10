@@ -68,13 +68,19 @@ Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 [Files]
 ; Application (package + lanceur) - pas de venv/, .git/, __pycache__
 Source: "{#RepoRoot}\AVAStack.py"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#RepoRoot}\avastack\*.py"; DestDir: "{app}\avastack"; Flags: ignoreversion
-Source: "{#RepoRoot}\avastack\cameras\*.py"; DestDir: "{app}\avastack\cameras"; Flags: ignoreversion
-Source: "{#RepoRoot}\avastack\processing\*.py"; DestDir: "{app}\avastack\processing"; Flags: ignoreversion
-Source: "{#RepoRoot}\avastack\catalogues\*.py"; DestDir: "{app}\avastack\catalogues"; Flags: ignoreversion
-Source: "{#RepoRoot}\avastack\catalogues\data\celebres_healpix8.dat.bz2"; DestDir: "{app}\avastack\catalogues\data"; Flags: ignoreversion
-Source: "{#RepoRoot}\avastack\external\*.py"; DestDir: "{app}\avastack\external"; Flags: ignoreversion
-Source: "{#RepoRoot}\avastack\ui\*.py"; DestDir: "{app}\avastack\ui"; Flags: ignoreversion
+; Package avastack/ : copie RECURSIVE du dossier entier (jalon 118). POURQUOI
+; (defaut REEL du 10/10/2026, versions v2.58.1 -> v2.71.0) : l'ancienne liste
+; par dossier ("avastack\ui\*.py", ...) ne prenait QU'UN niveau et ne
+; connaissait donc PAS les sous-paquets crees par le refactoring (core/,
+; ui/widgets/, ui/panels/) : le paquet installe plantait au demarrage sur
+; "ModuleNotFoundError: No module named 'avastack.ui.widgets'". Un Source
+; recursif (recursesubdirs) couvre TOUT le package, y compris tout futur
+; sous-paquet, en preservant l'arborescence sous {app}\avastack (verifie au
+; banc _test_installeur_iss_fichiers_jalon118). Les __pycache__/.pyc/.pyi
+; (outils de DEV) sont EXCLUS.
+Source: "{#RepoRoot}\avastack\*"; DestDir: "{app}\avastack"; \
+    Flags: ignoreversion recursesubdirs; \
+    Excludes: "__pycache__\*,*.pyc,*.pyi"
 ; Ressources : l'icone de l'application (avastack/ressources.py la cherche dans
 ; assets/, a cote du package) - barre de titres, barre des taches, raccourcis.
 Source: "{#RepoRoot}\assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubdirs

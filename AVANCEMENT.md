@@ -9,78 +9,67 @@ dans le changelog du source et l'historique git.)
 
 ---
 
-## Session du 10/10/2026 — JALON 117d : LISSAGE LRGB OPT-IN (v2.71.0) + MSIX STORE — CLOSE, PUBLIÉE
+## Session du 10/10/2026 — JALON 118 : INSTALLATEUR WINDOWS .EXE RÉPARÉ (v2.71.1) — FAIT, PUBLIÉ
 
 ### État actuel
-- **Le 117c a été VALIDÉ EN RÉEL** (Alain, 10/10/2026) : halos ÉTEINTS, image qui
-  convient (`C:\Astro\test\Andromeda Nebula2.70.0-117c.png`). MAIS son seuil de
-  masque (20σ) est un réglage **EMPIRIQUE, calé sur ce jeu d'essai** : sa validité
-  sur une autre image n'était pas garantie, et il s'appliquait PARTOUT, sans choix.
-- **DÉCISION D'ALAIN** : en faire une OPTION VISIBLE. **v2.71.0 LIVRÉE ET
-  PUBLIÉE** : case « Lisser le combine LRGB (halos d'étoiles) » **DÉCOCHÉE par
-  défaut** (vrai opt-in) + champ **σ du masque** (défaut 20, bornes [3 ; 100]).
-  **TESTÉ EN RÉEL PAR ALAIN (M31) : VALIDÉ.**
-- **Intervient à la COMPOSITION** (les couches ne sont pas touchées) : on peut
-  cocher/décocher et changer σ **À CHAUD**, à n'importe quelle frame, sans
-  redémarrer la session.
-- **MSIX STORE v2.71.0 CONSTRUIT ET SIGNÉ** (voie Microsoft Store, cadence
-  SÉPARÉE) : gel PyInstaller v2.71.0 (`build_avastack_frozen.ps1`) → MSIX
-  (`build_msix.py`) → signature (`signer_msix.ps1`), avec l'identité PUBLIÉE du
-  produit (valeurs dans Partner Center, *Product identity* — cf.
-  `SOUMISSION.md` §1 ; jamais recopiées dans le dépôt). Signature **VALIDE**.
-  **Prêt à resoumettre** — la soumission Partner Center reste une action
-  MANUELLE d'Alain.
+- **Défaut RÉEL trouvé par Alain** (10/10/2026) : après une installation PROPRE
+  par l'`.exe`, l'application NE DÉMARRAIT PAS —
+  `ModuleNotFoundError: No module named 'avastack.ui.widgets'` (`app.py`, ligne
+  104).
+- **Cause** : la section `[Files]` d'`avastack.iss` énumérait ses sources
+  DOSSIER PAR DOSSIER (UN seul niveau) → les SOUS-PAQUETS créés par le
+  refactoring (`avastack/core/`, `avastack/ui/widgets/`, `avastack/ui/panels/`,
+  le 07/10/2026) n'étaient PAS embarqués. L'installateur `.exe` livrait donc un
+  paquet AMPUTÉ depuis la **v2.58.1** jusqu'à la **v2.71.0** incluse. Les autres
+  canaux (ZIP, gelé/MSIX, Linux, macOS) copient RÉCURSIVEMENT : SAINS — et
+  l'appli publiée au Store (v2.50.0) est ANTÉRIEURE au refactoring, donc saine.
+- **CORRECTIF** : une SEULE source RÉCURSIVE dans `avastack.iss`
+  (`Source: "{#RepoRoot}\avastack\*" … recursesubdirs` ; `Excludes` écarte
+  `__pycache__`/`.pyc`/`.pyi`). Sémantique Inno VÉRIFIÉE EN RÉEL (mini-paquet
+  compilé **et installé** : arborescence préservée sous `{app}\avastack`).
+- **v2.71.1 LIVRÉE ET PUBLIÉE** : les 4 paquets + `INSTALLATION.md` régénéré
+  (nouveaux SHA-256) ; **MSIX v2.71.1 reconstruit et signé** (cadence Store
+  séparée). **Restait à VÉRIFIER en réel** l'installateur `.exe` corrigé.
 
 ### Fichiers modifiés dans cette phase
-- `processing/composition.py` : `composer(..., seuil_masque_sigma=None)` ;
-  `_masque_etoiles`/`_lisser_ratio_masque` reçoivent le seuil ; constantes
-  `SEUIL_MASQUE_MIN/MAX` ; façade `CompositeStacker.lissage_halos` (défaut False)
-  et `seuil_masque_halos` (défaut 20), tous deux dans la CLÉ de mémoïsation.
-- `core/worker.py` : instantanés `_compo_lissage_halos`/`_compo_seuil_halos` +
-  resync (création ET chaque `_tick`) ; **8e élément** du tuple `vl_compo`.
-- `processing/display.py` : helper `params_lissage_halos(compo)` (déballage
-  TOLÉRANT : jobs à 6/7 éléments → inactif) + passage à `composer`.
-- `ui/panels/compo.py` (case + champ σ), `ui/app.py` (instantanés, callback
-  `_on_lissage_halos`, `_lire_seuil_halos` borné, 2 points de snapshot + reprise
-  à chaud, 8e élément des 2 `vl_compo`), `ui/config_ui.py` (persistance
-  `lissage_halos` / `lissage_halos_sigma`), `ui/saver.py` (`AVACOMPO` dit l'état).
-- `avastack/__init__.py` : **v2.71.0** + changelog. Banc neuf
-  `bancs/_test_lissage_halos_optin_jalon117d.py` — VERT.
-- **Aucun fichier SOURCE modifié** pour le MSIX ; artéfacts de BUILD (non
-  suivis, dans `installer/windows/output/`) : `avastack-frozen-2.71.0-windows/`
-  (+ `.zip`), `avastack-2.71.0-windows.msix` (+ `.cer`/`.pfx`), `msix_staging/`.
+- `installer/windows/avastack.iss` : `[Files]` → une source RÉCURSIVE
+  (`{#RepoRoot}\avastack\*` + `recursesubdirs` + `Excludes` des fichiers de DEV)
+  remplace l'énumération par dossier.
+- `bancs/_test_installeur_iss_fichiers_jalon118.py` : banc NEUF (couverture du
+  package + compilation ISCC) — **VERT**.
+- `avastack/__init__.py` : **v2.71.1** + changelog.
+- `INSTALLATION.md` : v2.71.1 + SHA-256/tailles des 4 paquets.
+- Artéfacts de BUILD (non suivis, `installer/*/output/`) : les 4 paquets 2.71.1,
+  le gelé 2.71.1 (+ `.zip`) et le MSIX 2.71.1 signé (+ `.cer`/`.pfx`).
 
 ### Décisions prises
-- **VRAI opt-in** : case décochée = `sigma_l = 0` = combine d'AVANT le 117c
-  (vérifié AU BIT au banc) → halos visibles tant qu'on ne coche pas.
-- **σ du MASQUE réglable** — pas le σ du flou, qui reste AUTO (1,7 × FWHM) car il
-  s'adapte déjà à la résolution : c'est le seuil de masque qui dépendait de
-  l'image (médiane-MAD gonflée par le disque d'une galaxie).
-- **`composer()` GARDE ses défauts** (None = auto) : le 117c et son banc restent
-  valides ; c'est la FAÇADE qui exprime le choix (décoché → σ = 0).
-- **Application À CHAUD** : relue à chaque tour comme les gains (jalon 55), et
-  lissage/seuil sont dans la CLÉ de mémoïsation (sinon réglage « sans effet »).
+- **Copie RÉCURSIVE** (plutôt qu'ajouter 3 lignes) : rend le défaut impossible
+  pour tout **sous-paquet FUTUR** — c'est déjà ce que font ZIP / Linux / macOS.
+- **Banc de COUVERTURE** : simule la sélection de fichiers d'Inno et exige que
+  TOUT `avastack/` (sous-paquets compris) soit embarqué → rouge si on « oublie ».
+- **Release patch v2.71.1** : on ne réécrit JAMAIS un tag publié (v2.71.0).
 
 ### Prochaines étapes
-- Rien en attente sur le 117d (testé en réel, commité/poussé, **release v2.71.0
-  publiée** : 4 paquets + `INSTALLATION.md`, tag `v2.71.0` sur `9fafc5e`).
-- **MSIX v2.71.0** : construit et signé ; **reste à le SOUMETTRE** dans Partner
-  Center (action manuelle d'Alain, cf. `SOUMISSION.md` §1 et §7).
+- **Test EN RÉEL du nouvel `.exe`** (déjà installé sur le PC d'Alain) : lancer
+  `avastack-setup-2.71.1.exe` et vérifier que l'application DÉMARRE.
+- **MSIX v2.71.1** : prêt ; **reste à le SOUMETTRE** dans Partner Center (action
+  manuelle d'Alain, cf. `SOUMISSION.md` §1 et §7).
 - Prochaine session : au choix d'Alain (voir « En attente »).
 
 ### Points d'attention / pièges de cette session
-- Le réglage entre aussi dans la SAUVEGARDE LINÉAIRE : `AVACOMPO` dit « lissage
-  combine LRGB actif (masque N sigma) » / « inactif ».
-- ⚠ `stars.detecter_positions` renvoie des positions **(x, y)**, pas (y, x).
-- Coût : masque + seeing UNE fois par recomposition (mémoïsée) — jamais dans la
-  boucle chaude.
+- ⚠ **L'installateur `.exe` n'avait AUCUN banc de CONTENU** (contrairement au
+  paquet ZIP, banc 88) : c'est POURQUOI le défaut est passé 2 semaines. Le banc
+  118 comble ce trou — toute omission future d'un sous-paquet rougira.
+- Ordre des imports de `app.py` : `ui/widgets` (l. 104) → `ui/panels` (l. 121+)
+  → `core` (l. 182) — c'est widgets qui tombe EN PREMIER quand le paquet est
+  amputé (message d'erreur utile).
+- Un paquet GELÉ/MSIX embarque tout (analyse des imports) : non concerné.
 
 ---
 
-## HISTORIQUE — jalon 117c (10/10/2026) : liseré rouge — lissage MASQUÉ du ratio (v2.70.0)
-- Codé, **test réel OK** (halos éteints, image validée) ; lissage GLOBAL écarté (−9/−18 % de détail fin).
-- Détail : changelog **v2.70.0**, banc `_test_lrgb_halo_jalon117c.py`. NE PAS REMESURER.
-- La case UI + le σ réglable du masque sont LE 117d (bloc de session ci-dessus).
+## HISTORIQUE — jalon 117d (10/10/2026) : lissage LRGB OPT-IN + σ réglable (v2.71.0)
+- Case « lisser le combine LRGB » DÉCOCHÉE par défaut + champ σ du masque [3 ; 100] ; test réel OK (M31).
+- Détail : changelog **v2.71.0**, banc `_test_lissage_halos_optin_jalon117d.py`. NE PAS REMESURER.
 
 ## Problèmes ouverts (hérités des jalons 116-117, toujours valides)
 - L'**aligneur n'écrit toujours RIEN** au journal (`%APPDATA%\AVAStack\journal.txt`).
@@ -118,11 +107,12 @@ retirait 9-18 % du détail). **Jalon 117d LIVRÉ ET PUBLIÉ** (v2.71.0) : ce lis
 
 ## En attente / prochaine session
 
-- **RIEN en attente** : le 117d est testé en réel, commité/poussé (`9fafc5e`) et
-  **publié** — release GitHub **v2.71.0** (4 paquets + `INSTALLATION.md`).
-  Dernier tag publié = **v2.71.0**.
+- **Release GitHub v2.71.1 PUBLIÉE** (4 paquets + `INSTALLATION.md`). Dernier
+  tag publié = **v2.71.1**.
+- **À VÉRIFIER EN RÉEL** : l'installateur `.exe` corrigé (l'application démarre
+  après installation) — c'est LE test qui manquait et qui a révélé le défaut.
 - **Microsoft Store** : cadence SÉPARÉE — l'application PUBLIÉE y reste la
-  **v2.50.0** ; le **MSIX v2.71.0 est CONSTRUIT ET SIGNÉ** (prêt à resoumettre).
+  **v2.50.0** ; le **MSIX v2.71.1 est CONSTRUIT ET SIGNÉ** (prêt à resoumettre).
   Prochaine action (Alain, manuelle) : soumettre ce MSIX dans Partner Center
   (cf. `SOUMISSION.md` §1 et §7).
 - **Test « installer depuis le Microsoft Store »** (seul test qui n'existe que par
@@ -200,9 +190,10 @@ retirait 9-18 % du détail). **Jalon 117d LIVRÉ ET PUBLIÉ** (v2.71.0) : ce lis
 
 ## Clôtures précédentes
 
+- **10/10/2026** : jalon 118 (v2.71.1) — installateur Windows `.exe` réparé
+  (copie RÉCURSIVE du package ; sous-paquets manquants depuis v2.58.1) ; banc
+  garde-fou de contenu ; **PUBLIÉ** (release GitHub v2.71.1).
 - **10/10/2026** : jalon 117d (v2.71.0) — lissage LRGB rendu **OPT-IN** (case
   décochée par défaut) avec **σ du masque réglable** à CHAUD ; **test réel OK
-  (M31)**, commité/poussé et **PUBLIÉ** (release GitHub v2.71.0).
-- **10/10/2026** : jalon 117c (v2.70.0) — liseré rouge corrigé par un lissage
-  **MASQUÉ** du ratio L/luma, test réel OK ; la case UI est le 117d.
+  (M31)** ; **PUBLIÉ** (release GitHub v2.71.0).
 

@@ -227,6 +227,20 @@ Règles qui vont avec :
   changement de code** qui porte la version suivante (**v2.43.0** en l'occurrence).
   Le tag marque le CODE + la DOC d'une version, pas les ajouts de distribution
   qui l'ont suivie — et c'est dit tel quel dans les mémoires.
+- **L'INSTALLEUR `.exe` DOIT EMBARQUER TOUT LE PACKAGE `avastack/`, EN RÉCURSIF
+  (jalon 118, défaut RÉEL du 10/10/2026)** : sa section `[Files]` énumérait les
+  sources DOSSIER PAR DOSSIER (un seul niveau) et ne connaissait donc pas les
+  sous-paquets créés par le refactoring (`avastack/core/`,
+  `avastack/ui/widgets/`, `avastack/ui/panels/`) → l'application INSTALLÉE
+  plantait au démarrage (`ModuleNotFoundError: No module named
+  'avastack.ui.widgets'`), de la **v2.58.1 à la v2.71.0 incluse**. Une SEULE
+  source récursive (`Source: "{#RepoRoot}\avastack\*"` +
+  `Flags: recursesubdirs` + `Excludes: "__pycache__\*,*.pyc,*.pyi"`) couvre tout,
+  présent ET FUTUR ; le ZIP, le gelé/MSIX, Linux et macOS copiaient déjà
+  récursivement (`os.walk`) — LE DÉFAUT NE VISAIT QUE LE `.exe`. Garde-fou :
+  `bancs/_test_installeur_iss_fichiers_jalon118.py` (couverture de TOUT
+  `avastack/` + compilation ISCC) — à rejouer dès qu'un sous-paquet est ajouté.
+
 
 - **Données astronomiques exigées (jalon 70, constat réel d'Alain du
   27/09/2026 : « l'astrométrie ne trouve pas de résultat… et ça échoue en

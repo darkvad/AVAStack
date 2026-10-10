@@ -18,9 +18,31 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.71.0"
+AVASTACK_VERSION = "2.71.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.71.1 : INSTALLEUR WINDOWS (.exe) — LES SOUS-PAQUETS MANQUAIENT, L'APPLICATION
+#   INSTALLÉE NE DÉMARRAIT PAS (jalon 118). Défaut RÉEL constaté le 10/10/2026 par
+#   Alain sur une installation propre : au lancement, une boîte
+#   « ModuleNotFoundError: No module named 'avastack.ui.widgets' (app.py, ligne
+#   104) ». CAUSE : la section [Files] d'`avastack.iss` énumérait ses sources
+#   DOSSIER PAR DOSSIER (« avastack\ui\*.py », « avastack\processing\*.py », …) —
+#   UN SEUL niveau, donc AUCUN sous-paquet. Or le refactoring a créé des
+#   sous-paquets (`avastack/core/` au jalon 106a, `avastack/ui/widgets/` au 103,
+#   `avastack/ui/panels/` au 105a, tous le 07/10/2026) que cette liste ne
+#   connaissait pas : l'installateur .exe LIVRAIT un paquet AMPUTÉ depuis la
+#   v2.58.1 jusqu'à la v2.71.0 incluse. Les autres canaux n'étaient pas touchés :
+#   ZIP, gelé/MSIX, Linux et macOS copient RÉCURSIVEMENT (`os.walk`) ; l'appli
+#   publiée au Store (v2.50.0) est ANTÉRIEURE au refactoring, donc saine.
+#   CORRECTIF : une SEULE entrée RECURSIVE (« Source: "{#RepoRoot}\avastack\*" …
+#   Flags: recursesubdirs ») couvre tout le package, présent ET FUTUR ;
+#   « Excludes: "__pycache__\*,*.pyc,*.pyi" » écarte les fichiers de DEV.
+#   Sémantique Inno VÉRIFIÉE empiriquement (mini-paquet compilé ET installé en
+#   réel : arborescence préservée sous {app}\avastack, `__pycache__` exclu). Banc
+#   neuf `bancs/_test_installeur_iss_fichiers_jalon118.py` : simule la sélection
+#   de fichiers d'Inno et exige que TOUT `avastack/` soit couvert (sous-paquets
+#   compris) → rend cette panne impossible en silence ; compile l'installateur si
+#   ISCC est présent.
 # v2.71.0 : LISSAGE DU COMBINE LRGB — OPT-IN ET SEUIL RÉGLABLE (jalon 117d).
 #   Retour du TEST RÉEL du 117c (Alain, 10/10/2026, M31) : l'image convient
 #   (halos éteints, nébuleuse piquée) MAIS le seuil du masque (20σ) est un
