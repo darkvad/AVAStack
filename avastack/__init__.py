@@ -18,9 +18,31 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.72.0"
+AVASTACK_VERSION = "2.72.1"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.72.1 : BUG « VALEUR APPLIQUÉE MAIS NON AFFICHÉE » — UN RÉGLAGE RESTAURÉ
+#   S'AFFICHE ENFIN (jalon 120). `_add_slider` créait le `ttk.Scale` SANS
+#   `variable=` et n'écrivait l'étiquette de valeur que dans `cmd()`, que Tk
+#   n'appelle JAMAIS sur un `var.set()` programmatique (MESURÉ ; lier
+#   `variable=var` ne fait suivre QUE le bouton, pas l'étiquette). Un réglage
+#   relu de config.json était donc APPLIQUÉ (les recopies de `_restaurer_config`
+#   posaient `disp.*` à partir des variables) mais NON AFFICHÉ : l'étiquette ET
+#   le bouton restaient au DÉFAUT. Constat réel (M33, 11/10/2026) : `sat_b = 3,0`
+#   partait dans le rendu pendant que l'écran affichait 1,00 — le curseur
+#   « Saturation bleue » était le coupable des « patés » de couleur (pixels à
+#   canal nul, S = 1). CORRECTIF : registre des curseurs par variable
+#   (`App._curseurs`, rempli par `_add_slider`) + `App._poser_curseur(var,
+#   valeur)` qui repose une valeur par le CHEMIN D'UN GESTE (`s.set(v)` → cmd :
+#   variable + étiquette + callback) — UNE source de vérité, les `disp.*` n'étant
+#   posés que dans les callbacks. `_restaurer_config` route par cet appel TOUS
+#   les curseurs restaurés (sigk/target/gamma/saturation, saturation R/V/B,
+#   forces SCNR/démagenta/boost, fond visé et logD VeraLux, force et rayon du
+#   bruit chromatique, débruitage live et externe, itérations de netteté, force
+#   d'équilibrage). Banc neuf `_test_restauration_curseurs_jalon120.py` :
+#   étiquette == bouton == variable == config (== `disp.*`) POUR CHAQUE curseur,
+#   plus « valeur hors bornes → défaut conservé, étiquette comprise ». Le mixin
+#   `ConfigUI` DÉCLARE `_poser_curseur` (typage, garde-fou pyright au vert).
 # v2.72.0 : TEMPS DE POSE & INTÉGRATION PAR COUCHE (jalon 119) — la barre
 #   d'état affiche désormais, à la place du seul compteur de frames, le TEMPS
 #   DE POSE unitaire et la DURÉE D'INTÉGRATION CUMULÉE : « 20×60s = 20min

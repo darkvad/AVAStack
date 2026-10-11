@@ -1754,6 +1754,29 @@ ce qui manquait n'était pas une correction mais une MESURE.
   robustes) quand la fenêtre se remplit — sinon le σ gonflé initial reste
   à vie. Implémentation : `LiveStacker` (avastack/processing/stacking.py),
   jalon 6 / v2.3.x.
+- **`config.json` N'EST PAS LA RÉALITÉ** : c'est l'état de la DERNIÈRE FERMETURE, pas
+  celui d'un réglage pendant la session (MESURÉ le 11/10/2026 : `sat_b = 3,0` s'y
+  trouvait alors que les curseurs affichaient 1,00 et que le rendu appliquait bien 3,0).
+  On ne s'en sert JAMAIS pour affirmer l'état d'un réglage ni pour expliquer un écart :
+  on MESURE le fichier produit, ou on AFFICHE l'état réellement appliqué.
+- **PIÈGE Tk MESURÉ (v2.72.0) — « réglage appliqué mais non affiché »** : `_add_slider`
+  crée le `ttk.Scale` SANS `variable=` (app.py l.1412) et n'écrit l'étiquette de valeur
+  que dans `cmd()` (l.1372-1379), que Tk n'appelle QUE sur un geste ou un `s.set()`.
+  Un `var.set(...)` programmatique (restauration de config, config_ui.py l.309-320)
+  laisse donc le bouton ET l'étiquette à la valeur par défaut, alors que
+  `_restaurer_config` recopie les VARS dans `disp.sat_canaux`/`sigma_k`/`target` : la
+  valeur restaurée part DANS LE RENDU pendant que l'écran montre autre chose (à
+  l'inverse, `disp.gamma`/`disp.saturation` ne reçoivent jamais la leur, leurs callbacks
+  n'étant pas rappelés). RÈGLE : toute valeur posée dans l'UI passe par le chemin d'un
+  geste (`s.set(v)` → var + étiquette + callback), et les `disp.*` ne se posent QUE dans
+  les callbacks ; banc à écrire : config hors défaut ⇒ étiquette == bouton == `disp.*`
+  == config, POUR CHAQUE curseur. **CORRIGÉ (v2.72.1, jalon 120)** : `App._curseurs`
+  (registre variable → curseur, rempli par `_add_slider`) + `App._poser_curseur(var, v)`
+  (route par `s.set`) ; `_restaurer_config` ne pose PLUS AUCUN curseur par `var.set`
+  nu. Banc `_test_restauration_curseurs_jalon120.py`. **MESURE à retenir** : lier
+  `variable=var` NE SUFFIT PAS — le bouton suit alors la variable, mais `cmd()` (donc
+  l'étiquette ET les callbacks) n'est TOUJOURS PAS appelé par un `var.set` (vérifié
+  le 11/10/2026 sur Tk 8.6) ; seul `s.set(v)` déclenche `cmd`.
 - **Persistance de configuration au démarrage : restaurer de façon
   TOLÉRANTE** — chaque valeur lue est validée (bornes, énumération) et
   retombe sur le défaut si invalide. Une config.json corrompue, incomplète

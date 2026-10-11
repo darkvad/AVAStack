@@ -191,6 +191,7 @@ class ConfigUI:
     _on_vl_scnr_doux: Callable[..., Any]
     _on_vl_sharp: Callable[..., Any]
     _on_wb: Callable[..., Any]
+    _poser_curseur: Callable[..., Any]
     _poser_rayon_chroma: Callable[..., Any]
     _seuil_mag: Callable[..., Any]
     _sync_vl_mode: Callable[..., Any]
@@ -285,7 +286,8 @@ class ConfigUI:
         v = c.get("dn_force")
         if isinstance(v, (int, float)) and not isinstance(v, bool) \
                 and 0.0 <= float(v) <= 1.0:
-            self.var_dn_force.set(float(v))
+            # v2.72.1 (jalon 120) : via le curseur (étiquette + bouton suivent)
+            self._poser_curseur(self.var_dn_force, float(v))
         if c.get("ext_dn") and (self.DN_EXT_CODES.get(
                 self.var_dn_methode.get(), "graxpert") != "graxpert"
                 or gx_live.commande_valide(
@@ -317,7 +319,10 @@ class ConfigUI:
                 ("sat_b", self.var_sat_b, 0.0, 3.0)):
             v = c.get(cle)
             if isinstance(v, (int, float)) and mini <= v <= maxi:
-                var.set(float(v))
+                # v2.72.1 (jalon 120) : la valeur passe PAR LE CURSEUR (chemin
+                # d'un geste) — sinon l'étiquette et le bouton restaient au
+                # défaut alors que la valeur partait bien dans `disp.*`.
+                self._poser_curseur(var, float(v))
         self.disp.sigma_k = self.var_sigk.get()
         self.disp.target = self.var_target.get()
         # Jalon 75 : saturation par couleur + bandes d'histogramme affichées.
@@ -370,7 +375,8 @@ class ConfigUI:
         v = c.get("wb_force")
         if isinstance(v, (int, float)) and not isinstance(v, bool) \
                 and 0.0 <= float(v) <= 1.0:
-            self.var_wb_force.set(float(v))
+            # v2.72.1 (jalon 120) : via le curseur (étiquette + bouton suivent)
+            self._poser_curseur(self.var_wb_force, float(v))
         # --- Jalon 17 : filtre anti-brutes très défocalisées — booléen
         # explicite (une case décochée ne doit pas hériter d'un True) ;
         # clé absente → défaut (rejet d'office).
@@ -462,12 +468,12 @@ class ConfigUI:
         v = c.get("vl_target")
         if isinstance(v, (int, float)) and not isinstance(v, bool) \
                 and 0.10 <= float(v) <= 0.45:
-            self.var_vl_target.set(float(v))
+            self._poser_curseur(self.var_vl_target, float(v))
             self.disp.vl_target_bg = float(v)
         v = c.get("vl_logd")
         if isinstance(v, (int, float)) and not isinstance(v, bool) \
                 and 0.0 <= float(v) <= 7.0:
-            self.var_vl_logd.set(float(v))
+            self._poser_curseur(self.var_vl_logd, float(v))
             self.disp.vl_log_d = float(v)
         profil = c.get("vl_profil")
         if profil and profil in self.cb_vl_profil["values"]:
@@ -485,7 +491,7 @@ class ConfigUI:
         v = c.get("vl_denoise_force")
         if isinstance(v, (int, float)) and not isinstance(v, bool) \
                 and 0.0 <= float(v) <= 1.0:
-            self.var_vl_dn_force.set(float(v))
+            self._poser_curseur(self.var_vl_dn_force, float(v))
         self.disp.vl_denoise_methode = self.VL_DN_CODES.get(
             self.var_vl_dn_methode.get(), "nlm")
         self.disp.vl_denoise_force = self.var_vl_dn_force.get()
@@ -525,7 +531,7 @@ class ConfigUI:
             _f = c.get(_cle)
             if isinstance(_f, (int, float)) and not isinstance(_f, bool) \
                     and 0.0 <= float(_f) <= 1.0:
-                _var.set(float(_f))
+                self._poser_curseur(_var, float(_f))
         self.disp.vl_scnr_force = float(self.var_vl_scnr_force.get())
         self.disp.vl_demagenta_force = float(self.var_vl_demagenta_force.get())
         # v2.48.0 (jalon 86) : boost du rouge (SII) — DÉFAUT DÉCOCHÉ, donc une
@@ -539,7 +545,7 @@ class ConfigUI:
         if isinstance(_fb, (int, float)) and not isinstance(_fb, bool) \
                 and couleurs_mod.BOOST_ROUGE_MIN <= float(_fb) \
                 <= couleurs_mod.BOOST_ROUGE_MAX:
-            self.var_vl_boost_force.set(float(_fb))
+            self._poser_curseur(self.var_vl_boost_force, float(_fb))
         self.disp.vl_boost_force = float(self.var_vl_boost_force.get())
         # Préservation de la luminosité : DÉFAUT COCHÉE (comme Siril et
         # PixInsight) — on ne la modifie que si la config porte la clé ET une
@@ -561,7 +567,7 @@ class ConfigUI:
         v = c.get("vl_chroma_force")
         if isinstance(v, (int, float)) and not isinstance(v, bool) \
                 and 0.0 <= float(v) <= 1.0:
-            self.var_vl_chroma_force.set(float(v))
+            self._poser_curseur(self.var_vl_chroma_force, float(v))
         self.disp.vl_chroma_force = float(self.var_vl_chroma_force.get())
         # v2.37.4 : rayon de RÉFÉRENCE du flou de chroma, en pixels PLEINE
         # RÉSOLUTION — restauré TOLÉRANT (hors [0,5 ; 8] ou illisible : IGNORÉ, la
@@ -572,7 +578,7 @@ class ConfigUI:
         if isinstance(r, (int, float)) and not isinstance(r, bool) \
                 and 0.5 <= float(r) <= 8.0:
             self.rayon_chroma_ref = float(r)
-            self.var_vl_chroma_rayon.set(float(r))
+            self._poser_curseur(self.var_vl_chroma_rayon, float(r))
         self._poser_rayon_chroma(self._echelle_apercu)
         if c.get("vl_chroma"):
             self.var_vl_chroma.set(True)

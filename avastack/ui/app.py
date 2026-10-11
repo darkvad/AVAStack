@@ -614,6 +614,13 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self.var_nom_cible_manual = tk.StringVar(value="")
         # Suivi du dernier camera.last_file vu pour ne lire l'en-tête FITS qu'au changement
         self._dernier_last_file: str = ""
+        # v2.72.1 (jalon 120) : REGISTRE des curseurs PAR VARIABLE (`str(var)`
+        # = nom Tk de la variable). Il permet à `_poser_curseur` de reposer une
+        # valeur par le CHEMIN D'UN GESTE (cf. la méthode) : Tk n'appelle jamais
+        # le `command` d'un `ttk.Scale` sur un `var.set()` programmatique, si
+        # bien qu'un réglage RESTAURÉ depuis config.json était appliqué (dans
+        # `disp.*`) mais NON AFFICHÉ (bouton et étiquette restaient au défaut).
+        self._curseurs: dict[str, ttk.Scale] = {}
         journal.note("démarrage", "construction de l'interface")
         self._build_ui()
         journal.note("démarrage", "restauration de la configuration")
@@ -1421,7 +1428,41 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         s._boutons = (b_moins, b_plus)  # pyright: ignore[reportAttributeAccessIssue]
         s._row = row                 # reconstruction dynamique (jalon 31)  # pyright: ignore[reportAttributeAccessIssue]
         s._lbl_txt = label           # texte d'origine (idem)  # pyright: ignore[reportAttributeAccessIssue]
+        # v2.72.1 (jalon 120) : enregistre le curseur sous sa variable — la
+        # DERNIÈRE ligne créée pour une variable donnée est la vivante (les
+        # lignes reconstruites dynamiquement, ex. gain/offset caméra, réécrivent
+        # l'entrée). Sert à `_poser_curseur`.
+        self._curseurs[str(var)] = s
         return s
+
+    def _poser_curseur(self, var: Any, valeur: float) -> None:
+        """Pose `valeur` sur le curseur lié à `var` par le CHEMIN D'UN GESTE
+        (`s.set(v)` → `cmd` : variable + étiquette + callback), et NON par un
+        `var.set()` nu.
+
+        POURQUOI (v2.72.1, jalon 120) : Tk n'appelle JAMAIS le `command` d'un
+        `ttk.Scale` sur un `var.set()` programmatique — MESURÉ, ni la position
+        du curseur ni l'étiquette ne suivent (même en liant `variable=var`, qui
+        ne fait suivre que le bouton). Un réglage RESTAURÉ depuis config.json
+        était donc APPLIQUÉ (les recopies de restauration posaient `disp.*` à
+        partir des variables) mais NON AFFICHÉ : l'écran montrait 1,00 pendant
+        que le rendu partait avec 3,00 (bug « valeur appliquée non affichée »,
+        M33 du 11/10/2026). En passant par `s.set`, il n'y a plus qu'UNE source
+        de vérité : l'étiquette, le curseur ET les `disp.*` (posés dans les
+        callbacks) suivent la même valeur.
+
+        Repli sur `var.set` si la variable n'a pas de curseur (case, entrée,
+        menu) ou si le sien n'existe plus (ligne détruite) : l'appelant peut
+        poser n'importe quelle variable d'interface sans se soucier du type.
+        """
+        s = self._curseurs.get(str(var))
+        if s is not None:
+            try:
+                s.set(round(float(valeur), 6))   # var + étiquette + callback
+                return
+            except (tk.TclError, ValueError, TypeError):
+                pass                    # curseur détruit / valeur non numérique
+        var.set(valeur)
 
     # ------------------------------------------------------------ callbacks UI
     def _on_kappa(self) -> None:
