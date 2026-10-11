@@ -18,9 +18,25 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.71.1"
+AVASTACK_VERSION = "2.72.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.72.0 : TEMPS DE POSE & INTÉGRATION PAR COUCHE (jalon 119) — la barre
+#   d'état affiche désormais, à la place du seul compteur de frames, le TEMPS
+#   DE POSE unitaire et la DURÉE D'INTÉGRATION CUMULÉE : « 20×60s = 20min
+#   (intégration) » en mono, et PAR COUCHE en composition (« L: 12×60s=12min ·
+#   R: 10×30s=5min  |  Total: 17min »). SOURCE : les en-têtes FITS lus AVEC
+#   l'image (EXPTIME/EXPOSURE/XPOSURE, seconds — ms/µs converti si TIMEUNIT/
+#   BUNIT le dit ; `load_image(..., avec_expo=True)`, RÉTRO-COMPATIBLE : le
+#   défaut reste l'image seule) ; pour les caméras SDK, la consigne APPLIQUÉE
+#   (`CameraBase.exposure_time_sec`). Suivi PAR COUCHE dès l'empilement
+#   (`LiveStacker.exposure_times`, `CompositeStacker.expo_par_role` /
+#   `etat_expo`) : une pose VARIABLE dans une couche s'affiche en PLAGE
+#   (« 30-60s ») ; unité d'affichage AUTO (60s → 1min, 3600s → 1h). Le temps de
+#   pose de chaque frame est mémorisé AVEC l'archive (`ArchiveFrames.
+#   expositions`) pour que le re-stack le restitue — l'intégration ne repart pas
+#   de zéro après un re-stack. Aucun mot-clé inconnu n'interrompt l'empilement
+#   (valeur absente → repli sur le compteur de frames).
 # v2.71.1 : INSTALLEUR WINDOWS (.exe) — LES SOUS-PAQUETS MANQUAIENT, L'APPLICATION
 #   INSTALLÉE NE DÉMARRAIT PAS (jalon 118). Défaut RÉEL constaté le 10/10/2026 par
 #   Alain sur une installation propre : au lancement, une boîte

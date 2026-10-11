@@ -379,6 +379,7 @@ class QHYCamera(CameraBase):
                 raise
 
     def apply_settings(self, exposure_ms, gain):
+        self._expo_ms = float(exposure_ms)      # jalon 119 : expo affichée
         if self.cam is None:
             return
         try:

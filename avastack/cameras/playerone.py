@@ -433,6 +433,7 @@ class PlayerOneCamera(CameraBase):
         return img.astype(np.float32) / 65535.0
 
     def apply_settings(self, exposure_ms, gain):
+        self._expo_ms = float(exposure_ms)      # jalon 119 : expo affichée
         if not self._started:
             return
         u = _POAConfigValue()

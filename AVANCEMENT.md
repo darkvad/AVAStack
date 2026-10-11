@@ -9,121 +9,90 @@ dans le changelog du source et l'historique git.)
 
 ---
 
-## Session du 10/10/2026 — JALON 118 : INSTALLATEUR WINDOWS .EXE RÉPARÉ (v2.71.1) — FAIT, PUBLIÉ
+## Session du 11/10/2026 — jalon 119 (v2.72.0) : temps de pose & intégration par couche
 
 ### État actuel
-- **Défaut RÉEL trouvé par Alain** (10/10/2026) : après une installation PROPRE
-  par l'`.exe`, l'application NE DÉMARRAIT PAS —
-  `ModuleNotFoundError: No module named 'avastack.ui.widgets'` (`app.py`, ligne
-  104).
-- **Cause** : la section `[Files]` d'`avastack.iss` énumérait ses sources
-  DOSSIER PAR DOSSIER (UN seul niveau) → les SOUS-PAQUETS créés par le
-  refactoring (`avastack/core/`, `avastack/ui/widgets/`, `avastack/ui/panels/`,
-  le 07/10/2026) n'étaient PAS embarqués. L'installateur `.exe` livrait donc un
-  paquet AMPUTÉ depuis la **v2.58.1** jusqu'à la **v2.71.0** incluse. Les autres
-  canaux (ZIP, gelé/MSIX, Linux, macOS) copient RÉCURSIVEMENT : SAINS — et
-  l'appli publiée au Store (v2.50.0) est ANTÉRIEURE au refactoring, donc saine.
-- **CORRECTIF** : une SEULE source RÉCURSIVE dans `avastack.iss`
-  (`Source: "{#RepoRoot}\avastack\*" … recursesubdirs` ; `Excludes` écarte
-  `__pycache__`/`.pyc`/`.pyi`). Sémantique Inno VÉRIFIÉE EN RÉEL (mini-paquet
-  compilé **et installé** : arborescence préservée sous `{app}\avastack`).
-- **v2.71.1 LIVRÉE ET PUBLIÉE** : les 4 paquets + `INSTALLATION.md` régénéré
-  (nouveaux SHA-256) ; **MSIX v2.71.1 reconstruit et signé** (cadence Store
-  séparée). **Restait à VÉRIFIER en réel** l'installateur `.exe` corrigé.
+- Chantier **CODÉ et vérifié en local** : la barre d'état affiche le temps de
+  pose unitaire et la durée d'intégration cumulée — mono (« 20×60s = 20min
+  (intégration) ») et PAR COUCHE en composition (… « | Total: 17min »).
+- Garde-fou `_test_refactoring_garde_fou.py` **VERT** (surface 75, hash au bit,
+  pyright 0/49) + banc neuf **VERT** + 22 bancs du domaine rejoués **VERTS**.
+- **TESTÉ EN RÉEL PAR ALAIN (OK)** le 11/10/2026, **COMMITÉ ET POUSSÉ** sur
+  `master`. **PAS de release** cette session (demande d'Alain) : le code porte la
+  version **v2.72.0**, à publier plus tard.
 
 ### Fichiers modifiés dans cette phase
-- `installer/windows/avastack.iss` : `[Files]` → une source RÉCURSIVE
-  (`{#RepoRoot}\avastack\*` + `recursesubdirs` + `Excludes` des fichiers de DEV)
-  remplace l'énumération par dossier.
-- `bancs/_test_installeur_iss_fichiers_jalon118.py` : banc NEUF (couverture du
-  package + compilation ISCC) — **VERT**.
-- `avastack/__init__.py` : **v2.71.1** + changelog.
-- `INSTALLATION.md` : v2.71.1 + SHA-256/tailles des 4 paquets.
-- Artéfacts de BUILD (non suivis, `installer/*/output/`) : les 4 paquets 2.71.1,
-  le gelé 2.71.1 (+ `.zip`) et le MSIX 2.71.1 signé (+ `.cer`/`.pfx`).
+- `avastack/images.py` : `load_image(..., avec_expo=True)` (overloads, défaut
+  rétro-compatible), `_expo_depuis_entete`, `lire_exptime_fits` (s / ms / µs).
+- `avastack/processing/stacking.py` : `LiveStacker.exposure_times`,
+  `expo_unitaire`, `expo_min_max`, `integration_totale` ; `add(exposure=…)`.
+- `avastack/processing/composition.py` : `add(exposure=…)`, `expo_par_role`,
+  `integration_totale`, `etat_expo`.
+- `avastack/processing/framestore.py` : `ArchiveFrames.expositions` (le re-stack
+  restitue l'intégration, qui sinon repartait de zéro).
+- `avastack/cameras/folder.py` + `multifolder.py` : expo lue AVEC l'image.
+- `avastack/cameras/base.py` + 7 caméras : `exposure_time_sec` (consigne SDK).
+- `avastack/core/worker.py` : `_expo_camera`, `_etat_expo`, clé `st['expo']`.
+- `avastack/ui/app.py` : `_fmt_duree` / `_fmt_pose` / `_fmt_pose_plage`,
+  `_texte_expo`, ligne `lbl_status`, expo préservée au re-stack.
+- `avastack/__init__.py` : version **2.72.0** + changelog.
+- `bancs/_test_expo_integration_jalon119.py` : banc neuf (6 sections).
 
 ### Décisions prises
-- **Copie RÉCURSIVE** (plutôt qu'ajouter 3 lignes) : rend le défaut impossible
-  pour tout **sous-paquet FUTUR** — c'est déjà ce que font ZIP / Linux / macOS.
-- **Banc de COUVERTURE** : simule la sélection de fichiers d'Inno et exige que
-  TOUT `avastack/` (sous-paquets compris) soit embarqué → rouge si on « oublie ».
-- **Release patch v2.71.1** : on ne réécrit JAMAIS un tag publié (v2.71.0).
+- Le temps de pose suit la frame DÈS l'empilement (`add(exposure=…)`) : pas de
+  recalcul tardif ; source = en-tête FITS (fichiers) ou consigne (SDK).
+- Unités : intégration AUTO (60s→1min, 3600s→1h) ; pose unitaire en SECONDES
+  (« 60s »), variable affichée en PLAGE (« 30-60s »).
+- Helper nommé `_fmt_pose` et NON `_fmt_expo` : ce dernier est déjà pris par le
+  formateur du panneau Caméra, ré-importé dans `app.py` (cf. Pièges).
+- L'expo est archivée par frame (`framestore.expositions`) → re-stack juste.
 
 ### Prochaines étapes
-- **Test EN RÉEL du nouvel `.exe`** (déjà installé sur le PC d'Alain) : lancer
-  `avastack-setup-2.71.1.exe` et vérifier que l'application DÉMARRE.
-- **MSIX v2.71.1** : prêt ; **reste à le SOUMETTRE** dans Partner Center (action
-  manuelle d'Alain, cf. `SOUMISSION.md` §1 et §7).
-- Prochaine session : au choix d'Alain (voir « En attente »).
+- **Release GitHub v2.72.0** (SUR DEMANDE d'Alain — NON faite cette session) :
+  code validé, commité et poussé. Cadence Store séparée.
+- .exe v2.71.1, macOS, Linux vierge : tests encore en attente (cf. ci-dessous).
 
-### Points d'attention / pièges de cette session
-- ⚠ **L'installateur `.exe` n'avait AUCUN banc de CONTENU** (contrairement au
-  paquet ZIP, banc 88) : c'est POURQUOI le défaut est passé 2 semaines. Le banc
-  118 comble ce trou — toute omission future d'un sous-paquet rougira.
-- Ordre des imports de `app.py` : `ui/widgets` (l. 104) → `ui/panels` (l. 121+)
-  → `core` (l. 182) — c'est widgets qui tombe EN PREMIER quand le paquet est
-  amputé (message d'erreur utile).
-- Un paquet GELÉ/MSIX embarque tout (analyse des imports) : non concerné.
-
-### Complément documentaire (10/10/2026) — macOS : la cause était la VERSION DE PYTHON
-
-- **Retour RÉEL** : après mise à jour vers **Python 3.13.16 (python.org)**, l'appli
-  macOS FONCTIONNE — les « boutons qui ne répondent pas » (correctifs du jalon 84)
-  venaient donc du couple **Python/Tk d'ancienne génération**. **AUCUN changement
-  de code** : documentation seule.
-- Fichiers touchés : `INSTALLATION.md` (§ 3 bis : prérequis + 3ᵉ retour réel),
-  `installer/macos/install_avastack.sh` (en-tête « ÉTAT » + `aide_prerequis()`),
-  `installer/README.md` (§ macOS), `README.md`, `CLAUDE.md` (entrée macOS + piège
-  « vérifier la version de Python avant d'accuser le code »).
-- **Décision** : écrit DATÉ, factuel, sans nom propre (doc publique). **Pas de bump
-  de version** (changement documentaire ; « le prochain changement de CODE porte
-  la version suivante »). `INSTALLATION.md` pourra être **réuploadé** sur la
-  release v2.71.1 (`gh release upload --clobber`) au prochain passage.
+### Points d'attention
+- `load_image` : le défaut reste l'IMAGE SEULE — ne pas rompre les appelants.
+- Ne JAMAIS redéfinir `_fmt_expo` au niveau module de `app.py` (déjà importé).
 
 ---
 
-## HISTORIQUE — jalon 117d (10/10/2026) : lissage LRGB OPT-IN + σ réglable (v2.71.0)
-- Case « lisser le combine LRGB » DÉCOCHÉE par défaut + champ σ du masque [3 ; 100] ; test réel OK (M31).
-- Détail : changelog **v2.71.0**, banc `_test_lissage_halos_optin_jalon117d.py`. NE PAS REMESURER.
+## HISTORIQUE — jalon 118 (10/10/2026) : installateur Windows `.exe` réparé (v2.71.1), PUBLIÉ
+- `[Files]` d'`avastack.iss` → source RÉCURSIVE (+ `Excludes`) : les sous-paquets
+  (`core/`, `ui/widgets/`, `ui/panels/`) n'étaient plus embarqués depuis v2.58.1.
+- Banc neuf `_test_installeur_iss_fichiers_jalon118.py` (couverture + ISCC) — VERT.
+- Complément doc macOS (Python 3.13.16) : aucun code, doc seule.
+- Détail : changelog **v2.71.1**, banc 118. NE PAS REMESURER.
 
-## Problèmes ouverts (hérités des jalons 116-117, toujours valides)
+---
+
+## Problèmes ouverts (hérités des jalons 116-118, toujours valides)
 - L'**aligneur n'écrit toujours RIEN** au journal (`%APPDATA%\AVAStack\journal.txt`).
 - L'alternative « paires d'invariants top-60 × top-120 » du solveur reste non mesurée.
 
 ---
 
-## Chantier en cours — ALIGNEMENT : retournement au méridien + astrométrie
+## Chantier en cours — CLOS : temps de pose & intégration par couche (jalon 119)
 
-**But** : que les frames d'UN côté du méridien (rotation ~180° par rapport à la
-référence) s'empilent au lieu d'être rejetées, et que l'astrométrie fonctionne sur
-un empilement LRGB.
+Livré en **v2.72.0** (11/10/2026). Le plan (7 fichiers) a été suivi et complété
+par `framestore.py` (archivage du temps de pose → re-stack juste) et
+`multifolder.py` (expo en composition). Détail : changelog **v2.72.0** du source
+et banc `_test_expo_integration_jalon119.py`. **NE PAS REMESURER.**
 
-**État (09/10/2026, nuit)** : jalons **111→115** livrés, testés en réel et poussés
-(v2.67.0) ; **jalon 116 LIVRÉ** (v2.68.0 : ① bornes propres pour l'ORB, ② dernier
-recours ORB étoffé) — test réel **OK** (0 refus hors-ligne, deux nuits empilées).
-**Jalon 117 LIVRÉ** (v2.69.0 recadrage + v2.69.1 alignement) : les deux défauts
-vus au test réel du 116 sont corrigés. **TEST RÉEL OK** (09/10/2026) : coins
-retirés, écho rouge éteint. **Jalon 117c VALIDÉ EN RÉEL** (v2.70.0) : liseré rouge
-éteint par un lissage **MASQUÉ** du ratio L/luma (le lissage GLOBAL, écarté,
-retirait 9-18 % du détail). **Jalon 117d LIVRÉ ET PUBLIÉ** (v2.71.0) : ce lissage devient
-**OPT-IN** (case décochée par défaut) et son **seuil de masque devient RÉGLABLE**
-— test réel OK (M31), commité/poussé et publié. Détail : changelog de
-`avastack/__init__.py` et historique git.
-
-**Règles d'or** :
+**Règles d'or** (rappel) :
 - Un jalon = un banc neuf + rejeu des bancs concernés (TOUS VERTS) + garde-fou
-  `bancs/_test_refactoring_garde_fou.py` VERT (syntaxe, surface 75, hash au bit).
-- On ne réécrit JAMAIS un tag publié ; version + changelog + AVANCEMENT.md dans la
-  même réponse ; commentaires et docstrings en FRANÇAIS.
-- Le chantier de refactoring (jalons 100→110) est CLOS : plus de découpage de
-  `app.py` ni de typage rétroactif.
+  `_test_refactoring_garde_fou.py` VERT (syntaxe, surface 75, hash au bit).
+- On ne réécrit JAMAIS un tag publié ; version + changelog + AVANCEMENT.md dans
+  la même réponse ; commentaires et docstrings en FRANÇAIS.
 
 ---
 
 ## En attente / prochaine session
 
-- **Release GitHub v2.71.1 PUBLIÉE** (4 paquets + `INSTALLATION.md`). Dernier
-  tag publié = **v2.71.1**.
+- **Jalon 119 (v2.72.0) TERMINÉ** : testé en réel par Alain (OK), commité et
+  poussé ; **release NON faite** (demande d'Alain). Dernier tag publié = v2.71.1.
+- **Release GitHub v2.71.1 PUBLIÉE** (4 paquets + `INSTALLATION.md`).
 - **À VÉRIFIER EN RÉEL** : l'installateur `.exe` corrigé (l'application démarre
   après installation) — c'est LE test qui manquait et qui a révélé le défaut.
 - **Microsoft Store** : cadence SÉPARÉE — l'application PUBLIÉE y reste la
@@ -176,6 +145,11 @@ retirait 9-18 % du détail). **Jalon 117d LIVRÉ ET PUBLIÉ** (v2.71.0) : ce lis
 
 ## Pièges récents (encore actifs)
 
+- **`_fmt_expo` est DÉJÀ PRIS dans `app.py`** (jalon 119) : ce nom est importé de
+  `ui/panels/camera.py` (format de la SAISIE d'exposition, µs/ms/s). Un `def
+  _fmt_expo(...)` au niveau module de `app.py` l'ÉCRASE et casse l'affichage du
+  panneau Caméra — le banc `cameras/_test_expo_affichage_jalon34.py` le détecte.
+  D'où le nom `_fmt_pose` pour le temps de pose (jalon 119).
 - **PIÈGE LANCEMENT** : `python3` ≠ venv — toujours `python AVAStack.py`.
 - **Ordre de la chaîne** (Alain, 16/09/2026) : recadrage → gradient →
   débruitage → netteté → étirement. Débruitage : code gelé, cases décochées
@@ -208,7 +182,7 @@ retirait 9-18 % du détail). **Jalon 117d LIVRÉ ET PUBLIÉ** (v2.71.0) : ce lis
 - **10/10/2026** : jalon 118 (v2.71.1) — installateur Windows `.exe` réparé
   (copie RÉCURSIVE du package ; sous-paquets manquants depuis v2.58.1) ; banc
   garde-fou de contenu ; **PUBLIÉ** (release GitHub v2.71.1).
-- **10/10/2026** : jalon 117d (v2.71.0) — lissage LRGB rendu **OPT-IN** (case
-  décochée par défaut) avec **σ du masque réglable** à CHAUD ; **test réel OK
-  (M31)** ; **PUBLIÉ** (release GitHub v2.71.0).
+- **11/10/2026** : jalon 119 (v2.72.0) — temps de pose & intégration par couche
+  dans la barre d'état (mono + par couche) ; **test réel OK**, commité/poussé ;
+  **PAS de release** (demande d'Alain).
 

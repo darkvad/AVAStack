@@ -39,6 +39,7 @@ class MultiFolderCamera(CameraBase):
         self.name = "Composition : " + " + ".join(self.roles)
         self.poll = poll
         self._idx = 0                 # départ de la prochaine rotation
+        self._expo_courante = None    # jalon 119 : temps de pose du dernier lu
         self._running = False
 
     # -- cycle de vie -----------------------------------------------------
@@ -78,6 +79,9 @@ class MultiFolderCamera(CameraBase):
                 img = self.cams[j].read(timeout=0.02)   # 1 scan rapide
                 if img is not None:
                     self._idx = (j + 1) % n
+                    # Jalon 119 : mémorise le temps de pose du fichier lu
+                    # (en-tête FITS de CE dossier) pour l'intégration par rôle.
+                    self._expo_courante = self.cams[j].exposure_time_sec
                     return img, self.roles[j]
             time.sleep(self.poll)
         return None
@@ -101,6 +105,12 @@ class MultiFolderCamera(CameraBase):
     def pending(self):
         """Frames détectées mais pas encore lues (tous dossiers)."""
         return sum(len(cam._pending) for cam in self.cams)
+
+    @property
+    def exposure_time_sec(self):
+        """Temps de pose (secondes) du DERNIER fichier lu (tous dossiers), ou
+        None — matière de l'intégration en composition (jalon 119)."""
+        return self._expo_courante
 
     @property
     def count(self):

@@ -4817,6 +4817,10 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         n_ok = 0
         ident = np.eye(2, 3)
         for j, c in enumerate(self.archive.chemins):
+            # Jalon 119 : le temps de pose mémoire de la frame archivée suit
+            # le re-stack — l'intégration affichée reste JUSTE.
+            expo = (self.archive.expositions[j]
+                    if j < len(self.archive.expositions) else None)
             try:
                 img = load_image(c)
             except Exception:
@@ -4824,14 +4828,15 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             if tuple(img.shape) != tuple(st.shape):
                 continue
             if j == idx:
-                st.add(img)                 # l'ancre : alignement trivial
+                st.add(img, exposure=expo)  # l'ancre : alignement trivial
                 st.note_alignement(ident)
                 n_ok += 1
                 continue
             M, ok = self.aligner.compute(img)
             if ok:
                 st.add(cv2.warpAffine(img, M, (img.shape[1], img.shape[0]),
-                                      flags=cv2.INTER_LINEAR))
+                                      flags=cv2.INTER_LINEAR),
+                       exposure=expo)
                 st.note_alignement(M)
                 n_ok += 1
         self._ref_frames = self._ref_bad = 0
@@ -4934,6 +4939,10 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             arch = self.archives[role]
             n_ok_role = 0
             for j, c in enumerate(arch.chemins):
+                # Jalon 119 : temps de pose mémoire de la frame archivée
+                # (par rôle) — l'intégration par couche reste juste.
+                expo = (arch.expositions[j]
+                        if j < len(arch.expositions) else None)
                 try:
                     img = load_image(c)
                     canal = extraire_canal(img, role)
@@ -4943,7 +4952,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                         and tuple(canal.shape) != tuple(ancien.shape)):
                     continue
                 if role == role_ref and j == idx:
-                    st.add(canal, role=role)      # l'ancre : trivial
+                    st.add(canal, role=role, exposure=expo)   # ancre : trivial
                     st.note_alignement(ident)
                     n_ok_role += 1
                     continue
@@ -4951,7 +4960,8 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 if ok:
                     st.add(cv2.warpAffine(canal, M, (canal.shape[1],
                                                      canal.shape[0]),
-                                          flags=cv2.INTER_LINEAR), role=role)
+                                          flags=cv2.INTER_LINEAR),
+                           role=role, exposure=expo)
                     st.note_alignement(M)
                     n_ok_role += 1
             n_ok_par_role[role] = n_ok_role
@@ -5713,6 +5723,30 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             etats[cle] = texte
             journal.note(cle, texte)
 
+    def _texte_expo(self, st: Any) -> str:
+        """Texte « temps de pose / intégration » de la barre d'état (jalon
+        119). Mono : « 20×60s = 20min (intégration) » ; composition :
+        « L: 12×60s=12min · R: 10×30s=5min  |  Total: 17min ». Repli sur le
+        compteur de frames quand aucun temps de pose n'est connu (PNG/TIFF,
+        caméra muette)."""
+        expo = st.get("expo") or {}
+        roles = expo.get("roles") or {}
+        if roles:
+            parties = []
+            for role, d in roles.items():
+                pose = _fmt_pose_plage(d.get("unitaire"), d.get("min"),
+                                       d.get("max"))
+                integ = _fmt_duree(d.get("integration") or 0.0)
+                parties.append(f"{role}: {d.get('n', 0)}×{pose}={integ}")
+            total = _fmt_duree(expo.get("total") or 0.0)
+            return " · ".join(parties) + f"  |  Total: {total}"
+        unite, mn, mx = expo.get("unitaire"), expo.get("min"), expo.get("max")
+        if unite is not None or (mn is not None and mx is not None):
+            pose = _fmt_pose_plage(unite, mn, mx)
+            integ = _fmt_duree(expo.get("total") or 0.0)
+            return f"{st['frames']}×{pose} = {integ} (intégration)"
+        return f"{st['frames']} frames empilées (intégration cumulée)"
+
     def _update_status(self, st: Any) -> None:
         arc = f"Archive (re-stack) : {st.get('archive', 0)}"
         if st.get("archive_err"):
@@ -5793,9 +5827,53 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                              f"{os.path.basename(st.get('file', '')) or '—'}{extra}")
         self.lbl_status.config(
             text=(f"{st['cam']}  |  {st['fps']:.1f} fps  |  "
-                  f"{st['frames']} frames empilées (intégration cumulée)"
+                  + self._texte_expo(st)
                   + (f"  |  recadrée {st['crop_w']}×{st['crop_h']}"
                      if st.get("crop_w") else "")))
+
+
+def _fmt_duree(sec: Any) -> str:
+    """Durée lisible (jalon 119) : secondes en deçà de 60, minutes en deçà
+    d'une heure, heures au-delà — « 60 s → 1min », « 3600 s → 1h » (choix
+    d'Alain : unité AUTO)."""
+    try:
+        s = float(sec)
+    except (TypeError, ValueError):
+        return "—"
+    if s < 60:
+        return f"{round(s, 1):g}s"
+    if s < 3600:
+        return f"{round(s / 60, 1):g}min"
+    return f"{round(s / 3600, 1):g}h"
+
+
+def _fmt_pose(sec: Any) -> str:
+    """Temps de pose UNITAIRE (jalon 119) : en SECONDES — le langage habituel
+    d'une pose (« 60s ») —, converti en heures au-delà de 3600 s.
+
+    NB : nommé `_fmt_pose` et NON `_fmt_expo` — ce dernier est déjà pris par
+    le formateur de la SAISIE d'exposition du panneau Caméra
+    (`ui/panels/camera.py`, en µs/ms/s), ré-importé plus haut dans ce module :
+    le redéfinir ici l'écraserait et casserait l'affichage du panneau."""
+    s = round(float(sec), 1)
+    if s < 3600:
+        return f"{s:g}s"
+    return f"{round(s / 3600, 1):g}h"
+
+
+def _fmt_pose_plage(unitaire: Any, mn: Any, mx: Any) -> str:
+    """Temps de pose d'une couche : « 60s » (constant) ou « 30-60s » (variable
+    — l'unité n'est écrite qu'à DROITE, jalon 119)."""
+    if unitaire is None:
+        if mn is not None and mx is not None and float(mx) <= float(mn) * 1.001:
+            unitaire = mn
+    if unitaire is not None:
+        return _fmt_pose(unitaire)
+    if mn is None or mx is None:
+        return "—"
+    if float(mx) < 3600:
+        return f"{round(float(mn), 1):g}-{_fmt_pose(mx)}"
+    return f"{_fmt_pose(mn)}-{_fmt_pose(mx)}"
 
 
 def activer_fenetre(root: tk.Tk) -> bool:

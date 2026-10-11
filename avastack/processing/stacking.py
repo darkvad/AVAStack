@@ -460,6 +460,30 @@ class LiveStacker:
         self._wb_cache: Any = None  # (clé, gains) de l'équilibrage des canaux
         self._fit_cache: Any = None  # (clé, (image, diag)) du recalage Linear Fit
         self.fit_diag: Any = None
+        # Jalon 119 : temps de pose UNITAIRE (secondes) de chaque frame
+        # EMPILÉE — matière de l'affichage « n×expo = intégration ». Rempli
+        # par `add(..., exposure=...)` ; vidé à chaque session neuve.
+        self.exposure_times: list[float] = []
+
+    # --------------------------- jalon 119 : temps de pose / intégration
+    def expo_min_max(self) -> tuple[float, float] | None:
+        """(min, max) en SECONDES des temps de pose CONNUS de la session, ou
+        None si aucune frame n'a livré son temps de pose (PNG/TIFF…)."""
+        if not self.exposure_times:
+            return None
+        return (min(self.exposure_times), max(self.exposure_times))
+
+    def expo_unitaire(self) -> float | None:
+        """Temps de pose UNITAIRE (secondes) si la pose est CONSTANTE sur la
+        session, sinon None (poses mixtes → « 30-60s » à l'écran)."""
+        mm = self.expo_min_max()
+        if mm is None:
+            return None
+        return mm[0] if mm[1] <= mm[0] * 1.001 else None
+
+    def integration_totale(self) -> float:
+        """Durée TOTALE d'intégration (secondes) = somme des poses connues."""
+        return float(sum(self.exposure_times))
 
     def note_alignement(self, M: Any) -> None:
         """Met à jour l'intersection géométrique des zones couvertes avec la
@@ -502,14 +526,27 @@ class LiveStacker:
             self._nbuf = 0
             self._rejeu = False
 
-    def add(self, frame: np.ndarray) -> None:
+    def add(self, frame: np.ndarray,
+            exposure: float | None = None) -> None:
         """Empile une frame (jalon 79) : tampons de travail PRÉALLOUÉS, calcul
         élémentaire en float32, et accumulations comme SEUIL DE REJET en
         float64 — les mathématiques et jusqu'aux valeurs accumulées sont
         exactement celles d'avant (vérifié au banc : sommes identiques AU BIT,
         compteur de rejets identique), seules la mémoire et le parallélisme
         changent. Avant : ~15 tableaux float64 créés puis jetés par frame.
+
+        `exposure` (jalon 119) : temps de pose de la frame en SECONDES, ou
+        None si inconnu (PNG/TIFF, caméra sans réglage). NE touche PAS aux
+        mathématiques (le rendu reste figé au bit) : sert uniquement à
+        l'affichage du temps d'intégration.
         """
+        if exposure:
+            try:
+                e = float(exposure)
+            except (TypeError, ValueError):
+                e = 0.0
+            if e > 0:
+                self.exposure_times.append(e)
         f = frame if frame.dtype == np.float32 else frame.astype(np.float32)
         self._tampons(f.shape)
         bandes = self._bandes()

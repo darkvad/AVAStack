@@ -30,6 +30,9 @@ class FolderCamera(CameraBase):
         self._processed = set()         # traités (ou à ignorer)
         self._pending = deque()
         self.last_file, self.count, self.failed = "", 0, 0
+        # Jalon 119 : temps de pose du DERNIER fichier lu (secondes), lu dans
+        # l'en-tête FITS en même temps que l'image — None pour PNG/TIFF.
+        self.last_exposure = None
         self._running = False
 
     # -- cycle de vie -----------------------------------------------------
@@ -80,9 +83,11 @@ class FolderCamera(CameraBase):
                 self._seen[name] = size             # encore en cours d'écriture
 
     def _try_load(self, path, attempts=3, delay=0.5):
+        """→ (image, temps de pose en secondes) ou None. Le temps de pose est
+        lu dans l'en-tête FITS (jalon 119) SANS relecture du fichier."""
         for _ in range(attempts):
             try:
-                return load_image(path)
+                return load_image(path, avec_expo=True)
             except Exception:                       # FITS tronqué… → réessai
                 time.sleep(delay)
         return None
@@ -93,6 +98,13 @@ class FolderCamera(CameraBase):
         """Fichiers détectés mais pas encore lus (jalon 42 : matière de la
         cadence d'empilement — même contrat que MultiFolderCamera)."""
         return len(self._pending)
+
+    @property
+    def exposure_time_sec(self):
+        """Temps de pose (secondes) du DERNIER fichier lu, ou None (PNG/TIFF,
+        mot-clé absent). Lu avec l'image (en-tête déjà ouvert), donc SANS
+        relecture — sert à l'affichage de l'intégration (jalon 119)."""
+        return self.last_exposure
 
     def scanner(self):
         """Repère les nouvelles brutes complètes SANS les lire (jalon 42 :
@@ -113,10 +125,12 @@ class FolderCamera(CameraBase):
                 path = self._pending.popleft()
                 name = os.path.basename(path)
                 self._queued.discard(name)
-                img = self._try_load(path)
+                lu = self._try_load(path)
                 self._processed.add(name)           # tenté = définitif (pas de boucle infinie)
-                if img is not None:
+                if lu is not None:
+                    img, expo = lu
                     self.last_file, self.count = path, self.count + 1
+                    self.last_exposure = expo       # jalon 119 : temps de pose
                     return img
                 self.failed += 1
                 continue

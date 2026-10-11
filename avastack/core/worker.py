@@ -705,7 +705,10 @@ class AcquisitionWorker:
                              else None),
                       restack=self.restack_info, restack_n=self.restack_total,
                       astro=self.astro_info, photo=self.photo_info,
-                      spcc=self.spcc_info)
+                      spcc=self.spcc_info,
+                      # Jalon 119 : temps de pose / intégration (mono OU par
+                      # rôle en composition) — matière de la ligne d'état.
+                      expo=self._etat_expo())
             if self.stacker is not None and self.stacker.cadre is not None:
                 y0, x0, y1, x1 = self.stacker.cadre
                 st["crop_w"], st["crop_h"] = x1 - x0, y1 - y0
@@ -906,6 +909,39 @@ class AcquisitionWorker:
                 self.camera.read()
         self.empilement_on = demarrer   # « Réinitialiser » ne démarre pas
 
+    def _expo_camera(self):
+        """Temps de pose (secondes) de la frame qui vient d'être lue, ou None.
+
+        Sources FICHIERS : lu dans l'en-tête FITS (FolderCamera, sans
+        relecture) ; caméras SDK : consigne appliquée (`exposure_time_sec`).
+        Jamais d'exception : une valeur absente ne doit jamais interrompre
+        l'empilement (jalon 119)."""
+        try:
+            v = getattr(self.camera, "exposure_time_sec", None)
+            v = float(v) if v is not None else None
+        except (TypeError, ValueError, AttributeError):
+            return None
+        return v if (v is not None and v > 0) else None
+
+    def _etat_expo(self):
+        """État d'exposition de l'empilement courant (jalon 119) → dict
+        {"roles", "unitaire", "min", "max", "total"} consommé par l'UI.
+        Mono : valeurs du LiveStacker ; composition : `etat_expo()` de la
+        façade (temps de pose et intégration PROPRES à chaque couche)."""
+        st = self.stacker
+        if st is None:
+            return {"roles": {}, "unitaire": None, "min": None,
+                    "max": None, "total": 0.0}
+        if self._mode_compo and hasattr(st, "etat_expo"):
+            e = st.etat_expo()
+            return {"roles": e.get("roles", {}), "unitaire": None,
+                    "min": None, "max": None, "total": e.get("total", 0.0)}
+        mm = st.expo_min_max()
+        return {"roles": {}, "unitaire": st.expo_unitaire(),
+                "min": (mm[0] if mm else None),
+                "max": (mm[1] if mm else None),
+                "total": st.integration_totale()}
+
     def _worker_empiler_frame(self, frame, role, last_good, t0):
         """Traite une brute CALIBRÉE : filtre défocalisation, archivage,
         (re)création de l'empilement, alignement et empilement (jalon 106b).
@@ -951,11 +987,16 @@ class AcquisitionWorker:
             # changement de géométrie : les frames archivées (autre
             # taille) ne sont plus ré-empilables → archive neuve
             self._vider_archive()
+        # Jalon 119 : temps de pose de CETTE frame (en-tête FITS pour les
+        # sources fichiers, consigne appliquée pour les caméras SDK) — lu UNE
+        # fois, utilisé pour l'archive ET pour l'empilement.
+        expo = self._expo_camera()
         if self._mode_compo:          # archive PAR RÔLE (re-stack jalon 20)
             chemin_archive = self.archives.setdefault(
-                role, _globals_app().ArchiveFrames()).ajouter(frame)
+                role, _globals_app().ArchiveFrames()).ajouter(
+                    frame, exposition=expo)
         else:
-            chemin_archive = self.archive.ajouter(frame)
+            chemin_archive = self.archive.ajouter(frame, exposition=expo)
         if chemin_archive is not None:
             if self._mode_compo:
                 # Jalon 20 : score qualité PAR RÔLE — mesuré sur le CANAL
@@ -1054,7 +1095,8 @@ class AcquisitionWorker:
                                          flags=cv2.INTER_LINEAR)
                 if self._mode_compo:       # routage vers le stacker du rôle
                     self.stacker.role_courant = role
-                self.stacker.add(aligned)
+                # Jalon 119 : le temps de pose suit la frame (intégration).
+                self.stacker.add(aligned, exposure=expo)
                 self.stacker.note_alignement(M)   # intersection des zones
                 last_good = aligned
                 self._ref_bad = 0

@@ -32,6 +32,7 @@ class SimulatedCamera(CameraBase):
 
     def apply_settings(self, exposure_ms, gain):
         self.exposure_ms = float(exposure_ms)
+        self._expo_ms = float(exposure_ms)      # jalon 119 : expo affichée
         self.gain = float(gain)
 
     def read(self):

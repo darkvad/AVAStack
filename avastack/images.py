@@ -5,6 +5,7 @@ utilitaires pour les résultats des outils externes."""
 import os
 import glob
 import re
+from typing import Literal, overload
 
 import numpy as np
 import cv2
@@ -90,16 +91,78 @@ def _apply_cfa(a, path):
     return _debayer(a, pat)
 
 
-def load_image(path):
+# --- Temps de pose (jalon 119) ---------------------------------------------
+# Mots-clés FITS portant le temps de pose unitaire, dans l'ordre d'essai : les
+# logiciels d'acquisition ne s'accordent pas (EXPTIME chez N.I.N.A./APT/SGP,
+# EXPOSURE ailleurs, XPOSURE dans certains en-têtes).
+_MOTS_EXPO = ("EXPTIME", "EXPOSURE", "XPOSURE")
+
+
+def _expo_depuis_entete(entete):
+    """Temps de pose (SECONDES) lu dans un en-tête FITS, ou None.
+
+    Mots-clés essayés dans l'ordre `_MOTS_EXPO`. L'unité FITS est la SECONDE ;
+    quand un en-tête en déclare une autre (TIMEUNIT/BUNIT valant « ms » ou
+    « µs »), la valeur est convertie. Absence, valeur vide, non numérique ou
+    ≤ 0 → None : un en-tête exotique ne doit JAMAIS empêcher l'empilement."""
+    if entete is None:
+        return None
+    unite = None
+    for cle in ("TIMEUNIT", "BUNIT"):
+        try:
+            v = entete.get(cle)
+        except Exception:
+            v = None
+        if v:
+            unite = str(v).strip().lower()
+            break
+    for cle in _MOTS_EXPO:
+        try:
+            v = entete.get(cle)
+        except Exception:
+            return None
+        if v is None or v == "":
+            continue
+        try:
+            sec = float(v)
+        except (TypeError, ValueError):
+            continue
+        if unite:
+            if "milli" in unite or unite in ("ms", "msec"):
+                sec /= 1000.0
+            elif "micro" in unite or unite in ("us", "usec"):
+                sec /= 1e6
+        return sec if sec > 0 else None
+    return None
+
+
+@overload
+def load_image(path: str, avec_expo: Literal[False] = ...) -> np.ndarray: ...
+@overload
+def load_image(path: str,
+               avec_expo: Literal[True]) -> tuple[np.ndarray, float | None]: ...
+
+
+def load_image(path, avec_expo=False):
     """Charge FITS/PNG/TIFF/JPG → float32, RGB ou mono. Débayerise
     éventuellement (CFA_MODE) les brutes d'un capteur couleur.
+
+    `avec_expo=True` (jalon 119) : renvoie EN PLUS `(image, expo)`, où `expo`
+    est le temps de pose en SECONDES lu dans l'en-tête FITS (None pour les
+    formats non FITS ou sans mot-clé exploitable). Le défaut reste l'image
+    SEULE — RÉTRO-COMPATIBLE : tout appelant existant continue de fonctionner.
+
     Normalisation selon le TYPE de données (et non la valeur max) :
     entiers 8/16 bits → [0..1] ; flottants (empilements, sorties GraXpert/BXT
     en 32F) → inchangés, y compris les valeurs > 1 des étoiles brillantes."""
     p = path.lower()
+    expo = None
     if p.endswith((".fits", ".fit", ".fts")) and FITS_OK:
         with fits.open(path) as hd:
             a = np.asarray(hd[0].data)
+            # Jalon 119 : le temps de pose (EXPTIME/EXPOSURE) est extrait du
+            # MÊME en-tête déjà lu — AUCUNE relecture du fichier.
+            expo = _expo_depuis_entete(hd[0].header)
         if a.ndim == 3 and a.shape[0] <= 4 and a.shape[-1] > 4:
             # PIÈGE axes FITS couleur (même convention que
             # alignment.canal_alignement) : un FITS RGB standard écrit les
@@ -125,6 +188,8 @@ def load_image(path):
         a = np.clip(a, 0, None).astype(np.float32) / 32768.0
     else:                                            # float32/64 : tel quel
         a = a.astype(np.float32)
+    if avec_expo:                        # jalon 119 (défaut : image seule)
+        return a, expo
     return a
 
 def lire_filtre_fits(path):
@@ -140,6 +205,22 @@ def lire_filtre_fits(path):
         return None
     f = str(f).strip() if f is not None else ""
     return f or None
+
+
+def lire_exptime_fits(path):
+    """Temps de pose UNITAIRE (SECONDES) de l'en-tête d'un FITS, ou None
+    (PNG/TIFF, absence du mot-clé, valeur inexploitable, lecture impossible —
+    jamais d'exception).
+
+    Ouvre le fichier lui-même : à réserver aux usages HORS acquisition
+    (`load_image(..., avec_expo=True)` réutilise l'en-tête déjà lu, jalon 119)."""
+    if not FITS_OK or not str(path).lower().endswith((".fits", ".fit", ".fts")):
+        return None
+    try:
+        with fits.open(path) as hd:
+            return _expo_depuis_entete(hd[0].header)
+    except Exception:
+        return None
 
 
 

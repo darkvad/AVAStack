@@ -124,6 +124,7 @@ class ZWOASICamera(CameraBase):
         self.cam.start_video_capture()
 
     def apply_settings(self, exposure_ms, gain):
+        self._expo_ms = float(exposure_ms)      # jalon 119 : expo affichée
         if not self.cam:
             return
         asi = self._asi

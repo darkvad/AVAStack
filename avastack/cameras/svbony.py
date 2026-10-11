@@ -230,6 +230,7 @@ class SVBonyCamera(CameraBase):
                 .astype(np.float32) / 65535.0)
 
     def apply_settings(self, exposure_ms, gain):
+        self._expo_ms = float(exposure_ms)      # jalon 119 : expo affichée
         if not self._started:
             return
         _DLL.SVBSetControlValue(self.id, SVB_EXPOSURE, int(exposure_ms * 1000), 0)

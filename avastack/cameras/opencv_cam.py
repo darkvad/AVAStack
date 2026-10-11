@@ -33,6 +33,7 @@ class OpenCVCamera(CameraBase):
         return cv2.cvtColor(f, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
 
     def apply_settings(self, exposure_ms, gain):
+        self._expo_ms = float(exposure_ms)      # jalon 119 : expo affichée
         if not self.cap:
             return
         # Ces réglages dépendent fortement du driver (valeurs souvent ignorées) :

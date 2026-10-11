@@ -835,16 +835,21 @@ class CompositeStacker:
             self.stackers[role] = s
         return s
 
-    def add(self, frame: np.ndarray, role: str | None = None) -> None:
+    def add(self, frame: np.ndarray, role: str | None = None,
+            exposure: float | None = None) -> None:
         """Empile `frame` (canal 2D du rôle) dans le stacker de son rôle.
-        Le rôle vient de l'argument ou de `role_courant` (posé par le worker)."""
+        Le rôle vient de l'argument ou de `role_courant` (posé par le worker).
+
+        `exposure` (jalon 119) : temps de pose de la frame en SECONDES (ou
+        None) — transmis au LiveStacker du rôle, qui l'accumule pour
+        l'affichage de l'intégration PROPRE à chaque couche."""
         role = role or self.role_courant
         if not role:
             raise ValueError("CompositeStacker.add : rôle inconnu (ni "
                              "argument ni role_courant)")
         if self._shape is None:
             self._shape = tuple(frame.shape)
-        self._stacker_de(role).add(frame)
+        self._stacker_de(role).add(frame, exposure=exposure)
 
     def note_alignement(self, M: Any) -> None:
         """Intersection GLOBALE des zones couvertes (tous rôles confondus —
@@ -1117,4 +1122,38 @@ class CompositeStacker:
             if s is not None and s.n > 0:
                 parties.append(f"{role}: {s.n}")
         return " · ".join(parties)
+
+    # --------------------------- jalon 119 : temps de pose par couche
+    def expo_par_role(self) -> dict[str, dict[str, Any]]:
+        """{rôle: {"n", "unitaire", "min", "max", "integration"}} des rôles
+        NON VIDES (ordre de la composition) — temps de pose unitaire (ou
+        plage min/max si variable) et durée d'intégration de CHAQUE couche
+        (jalon 119). Chaque rôle a son PROPRE LiveStacker : les poses peuvent
+        donc différer d'une couche à l'autre (surtout en mode dossiers)."""
+        ordre = list(roles_de(self.composition))
+        ordre += [r for r in self.stackers if r not in ordre]
+        etat: dict[str, dict[str, Any]] = {}
+        for role in ordre:
+            s = self.stackers.get(role)
+            if s is None or s.n <= 0:
+                continue
+            mm = s.expo_min_max()
+            etat[role] = {"n": s.n, "unitaire": s.expo_unitaire(),
+                          "min": (mm[0] if mm else None),
+                          "max": (mm[1] if mm else None),
+                          "integration": s.integration_totale()}
+        return etat
+
+    def integration_totale(self) -> float:
+        """Durée d'intégration TOTALE (secondes), tous rôles confondus."""
+        return float(sum(s.integration_totale()
+                         for s in self.stackers.values()))
+
+    def etat_expo(self) -> dict[str, Any]:
+        """État d'exposition de la composition (jalon 119) → dict prêt pour
+        l'interface : {"roles": rôle → {...}, "total": secondes}."""
+        etat = self.expo_par_role()
+        return {"roles": etat,
+                "total": float(sum(float(v["integration"] or 0.0)
+                                   for v in etat.values()))}
 

@@ -61,11 +61,19 @@ class ArchiveFrames:
         self.erreur: str = ""               # non vide = archivage arrêté
         self._t0: float | None = None       # monotonic du dernier archivage
         self._taille: int = 0               # somme des tailles (octets)
+        # Jalon 119 : temps de pose (secondes) de CHAQUE frame archivée,
+        # parallèle à `chemins` — permet au re-stack de ré-empiler avec le bon
+        # temps d'intégration (les fichiers d'archive ne portent pas EXPTIME).
+        self.expositions: list[float | None] = []
 
-    def ajouter(self, frame: np.ndarray) -> str | None:
+    def ajouter(self, frame: np.ndarray,
+                exposition: float | None = None) -> str | None:
         """Archive une frame calibrée → chemin écrit, ou None (limite de
         débit, erreur d'écriture, ou plafond atteint). `frame` n'est PAS
-        modifiée ; aucune exception n'est propagée (l'empilement continue)."""
+        modifiée ; aucune exception n'est propagée (l'empilement continue).
+
+        `exposition` (jalon 119) : temps de pose de la frame en SECONDES,
+        conservé en parallèle du chemin (`expositions`) pour le re-stack."""
         if self.erreur:
             return None
         if (self._t0 is not None
@@ -88,6 +96,8 @@ class ArchiveFrames:
             self._t0 = time.monotonic()
             self._taille += os.path.getsize(chemin)
             self.chemins.append(chemin)
+            self.expositions.append(               # jalon 119 : temps de pose
+                float(exposition) if exposition else None)
             self.n += 1
             if self._taille > plafond:
                 self.erreur = (f"plafond atteint "
@@ -104,6 +114,7 @@ class ArchiveFrames:
             shutil.rmtree(self.dossier, ignore_errors=True)
         self.dossier = None
         self.chemins = []
+        self.expositions = []              # jalon 119 : temps de pose par frame
         self.n = 0
         self.erreur = ""
         self._t0 = None

@@ -14,6 +14,19 @@ class CameraBase:
     read() → float32 [0..1] de forme (H,W) mono ou (H,W,3) RGB, ou None."""
     name = "?"
 
+    # Jalon 119 : temps de pose APPLIQUÉ (secondes), mémorisé par
+    # `apply_settings` dans `_expo_ms` (consigne en millisecondes). Sert à
+    # l'affichage du temps d'intégration — JAMAIS aux calculs. Les sources
+    # FICHIERS (FolderCamera) le lisent dans l'en-tête et REDÉFINISSENT la
+    # propriété (les poses peuvent varier d'un fichier à l'autre).
+    _expo_ms: float | None = None
+
+    @property
+    def exposure_time_sec(self):
+        """Temps de pose appliqué, en SECONDES, ou None si inconnu."""
+        ms = self._expo_ms
+        return (float(ms) / 1000.0) if ms else None
+
     def open(self):
         pass
 

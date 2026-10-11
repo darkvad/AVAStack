@@ -383,6 +383,7 @@ class TouptekCamera(CameraBase):
         curseurs d'expo/gain de l'appli mentiraient (jalon 50)."""
         if self._handle is None:
             return
+        self._expo_ms = float(exposure_ms)      # jalon 119 : expo affichée
         dll = _DLL
         if hasattr(dll, "Toupcam_put_AutoExpoEnable"):
             dll.Toupcam_put_AutoExpoEnable(self._handle, 0)   # AE off
