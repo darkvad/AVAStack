@@ -8,9 +8,9 @@
 
 ## Session du 12/10/2026 (11) — JALON 128 (v2.80.0) : image VeraLux gardée pendant un recalcul
 
-**SESSION CLOSE** — jalon 128 livré, commité et poussé. **Reste à faire par Alain : la
-validation EN RÉEL** (live stacking VeraLux). Prochaine tâche à définir (pistes en
-« En attente / prochaine session »).
+**SESSION CLOSE** — jalon 128 livré, commité, poussé ; **release GitHub v2.80.0 PUBLIÉE**
+(4 installateurs + `INSTALLATION.md`). Il ne reste AUCUNE action technique en attente.
+Prochaine tâche à définir (pistes en « En attente / prochaine session »).
 
 ### État actuel
 - **Jalon 128 (v2.80.0)** — en étirement VeraLux, un NOUVEAU calcul ne fait plus
@@ -47,9 +47,8 @@ validation EN RÉEL** (live stacking VeraLux). Prochaine tâche à définir (pis
   est instantané → aucun overlay (l'indicateur ne ment pas sur un « calcul »).
 
 ### Prochaines étapes
-- **Validation RÉELLE par Alain** (live stacking VeraLux : bouger un curseur / cocher une
-  case — l'image doit RESTER VeraLux, l'arc tourner, puis disparaître au résultat).
-- Prochaine tâche à définir (pistes en « En attente ») ; commit/release Store à décider.
+- Prochaine tâche à définir (pistes en « En attente ») ; côté **Store**, soumettre une
+  version plus récente quand ce sera décidé (cadence séparée).
 
 ### Points d'attention
 - Le worker publie `_vl_result_moteur` SOUS LE MÊME VERROU que `_vl_result` (jamais l'un
@@ -97,8 +96,9 @@ MESURER sur le fichier.
   délégués à un utilisateur sans Siril.
 - **Piste INDI** (un seul chemin pour les 3 OS et toutes les marques) — jalon à part, PAS
   avant le portage Linux avec les `.so`.
-- **Release GitHub** : NON faite (dernier tag publié = **v2.71.1**) ; jalons 119→127 poussés
-  sur `origin/master`. Côté **Store**, la version publiée est désormais **v2.71.1**.
+- **Release GitHub** : **v2.80.0 PUBLIÉE le 12/10/2026** (tag `v2.80.0` sur le commit de
+  doc `92919f9`) — `.exe` + ZIP Windows + Linux + macOS + `INSTALLATION.md` attachés.
+  Côté **Store**, la version publiée reste **v2.71.1** (cadence séparée).
 
 ---
 
