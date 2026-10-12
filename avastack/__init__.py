@@ -22,7 +22,7 @@ ou python -m avastack.
 AVASTACK_VERSION = "2.79.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
-# v2.79.0 : LA CHROMA AGIT POUR LES DEUX MOTEURS (jalon 127). Décision d'Alain
+# v2.79.0 : LA CHROMA AGIT POUR LES DEUX MOTEURS (jalon 127) + RÉPARATION DES BANCS CHROMA 63/65 (jalon 126 FONDU ICI, décision d'Alain 12/10/2026). Décision d'Alain
 #   (12/10/2026) : la case « Réduire le bruit chromatique » (cadre « Fond et
 #   grain ») était VISIBLE mais INERTE en STF — elle vivait dans la branche
 #   VeraLux du worker (`if engine != "veralux": … continue` passait AVANT). On
@@ -43,7 +43,7 @@ AVASTACK_VERSION = "2.79.0"
 #   [4] (la chroma entre DANS la sortie STF) ; rejeu VERT (63, 65, 67, 59, 22,
 #   39, 40, 41, 47, 68, 69, 75, 81, 122, 123, 124, 9, 12, 4, 7, 8, 2, 3) +
 #   garde-fou VERT (syntaxe 259, surface 75, hash au bit, pyright 0/50).
-# v2.78.0 : RÉPARATION DES BANCS CHROMA 63/65 (jalon 126) — TROIS causes,
+#   INCLUS (jalon 126, test-only — FONDU, pas de v2.78.0 séparée) : TROIS causes,
 #   toutes PRÉEXISTANTES ou héritées du jalon 125, réparées (AUCUN changement de
 #   code de production, réparation de bancs SEULE) :
 #   1) PRÉDICAT (le « bug » documenté) : `_vl_result[0]` (clé + FORME) était

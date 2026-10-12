@@ -8,7 +8,7 @@
 
 ## PROCHAINE TÂCHE — 12/10/2026 : VALIDATION RÉELLE (M33, Alain)
 
-**LES DEUX ARBITRAGES SONT LIVRÉS** : jalon 126 (**v2.78.0**) = bancs chroma 63/65
+**LES DEUX ARBITRAGES SONT LIVRÉS, FONDUS DANS LA v2.79.0** : jalon 126 (test-only) = bancs chroma 63/65
 réparés ; jalon 127 (**v2.79.0**) = la CHROMA agit désormais pour les DEUX moteurs.
 Bancs NEUFS + rejeu + garde-fou VERTS (détail à la « Session » ci-dessous).
 
@@ -28,10 +28,10 @@ MESURER sur le fichier.
 
 ---
 
-## Session du 12/10/2026 (10) — CLOSE — JALONS 126 & 127 (v2.78.0 · v2.79.0)
+## Session du 12/10/2026 (10) — CLOSE — JALONS 126+127 FONDUS (v2.79.0)
 
 ### État actuel
-- **Jalon 126 (v2.78.0)** — BANCS CHROMA 63/65 RÉPARÉS (test-only, aucun code de
+- **Jalon 126 (FONDU dans la v2.79.0)** — BANCS CHROMA 63/65 RÉPARÉS (test-only, aucun code de
   production). Le « bug de prédicat » documenté n'était PAS la seule cause : **3
   réparations** (cf. Décisions). Bancs 63 ET 65 VERTS.
 - **Jalon 127 (v2.79.0)** — LA CHROMA AGIT POUR LES DEUX MOTEURS : elle entre dans la
@@ -48,8 +48,8 @@ MESURER sur le fichier.
 - `bancs/_test_chaine_pre_etirement_jalon125.py` : [4] = la chroma ENTRE dans la sortie STF (image COULEUR, sinon no-op) ; `bancs/_test_chroma_stf_jalon127.py` (neuf).
 - `avastack/__init__.py` (v2.79.0) + `CLAUDE.md` (section « chaîne pré-étirement »).
 
-### Fichiers modifiés (jalon 126, test-only)
-- `bancs/_test_chroma_nr_jalon63.py`, `bancs/_test_chroma_halo_jalon65.py`, `avastack/__init__.py` (v2.78.0).
+### Fichiers modifiés (jalon 126, test-only — fondu dans la v2.79.0)
+- `bancs/_test_chroma_nr_jalon63.py`, `bancs/_test_chroma_halo_jalon65.py` (changelog replié dans `avastack/__init__.py` v2.79.0).
 
 ### Mesures / faits vérifiés (rejouables)
 - Banc jalon 127 (NEUF) : VERT — [1] STF : sortie de chaîne = chroma(entrée) ; [2] STF : `process()` route (le rendu CHANGE quand la case est cochée) ; [3] sauvegarde : chroma appliquée sans gate moteur ; [4] VeraLux : chroma PUIS étirement (inchangé) ; [5] chroma ET moteur dans la clé.
@@ -65,11 +65,11 @@ MESURER sur le fichier.
 
 ### Prochaines étapes
 - **VALIDATION RÉELLE (Alain)** : M33 — ① fond neutre attendu ; ② GraXpert / débruitage / CHROMA cochés **EN STF** → écran == fichier.
-- **COMMITTÉS, PAS ENCORE POUSSÉS** : jalon 126 = `400ba7c` ; jalon 127 = `3f9b4d9`
-  (soit 2 commits d'avance sur `origin/master`) — `git push` quand Alain le décide.
+- **POUSSÉS sur `origin/master`** : jalon 126 = `400ba7c`, jalon 127 = `3f9b4d9`, clôture = `f887811`
+  — **v2.79.0 testée et validée (Alain, M33, 12/10/2026)** ; `git push` FAIT.
   **PAS de release** (dernier tag publié = v2.71.1).
-- **À ARBITRER (Alain)** : le jalon 126 étant TEST-ONLY, faut-il garder son bump de version
-  v2.78.0 (convention « 1 jalon = 1 version ») ou le fondre dans le jalon 127 ?
+- **ARBITRAGE TRANCHÉ (Alain, 12/10/2026)** : le jalon 126 (TEST-ONLY) est FONDU dans la v2.79.0
+  — PAS de version v2.78.0 séparée (une seule entrée de changelog : v2.79.0).
 
 ### Points d'attention
 - **La chroma est un NO-OP sur une image MONOCHROME** (Cr/Cb nuls) : tout banc qui la teste doit utiliser une image COULEUR (leçon du banc 125 [4]).
@@ -242,7 +242,7 @@ MESURER sur le fichier.
 
 - **12/10/2026** : jalon 127 (v2.79.0) — la CHROMA agit pour les DEUX moteurs (chaîne
   pré-étirement commune, écran + fichier ; sa case n'est plus inerte en STF) ; banc neuf +
-  rejeu + garde-fou VERTS ; **commité**, pas de release.
-- **12/10/2026** : jalon 126 (v2.78.0) — bancs chroma 63/65 réparés (test-only : prédicat,
-  moteur, course du rayon, assertion « deux chemins ») ; **commité** (`400ba7c`).
+  rejeu + garde-fou VERTS ; **poussé**, pas de release.
+- **12/10/2026** : jalon 126 (**FONDU dans la v2.79.0**) — bancs chroma 63/65 réparés (test-only : prédicat,
+  moteur, course du rayon, assertion « deux chemins ») ; **poussé** (`400ba7c`).
 
