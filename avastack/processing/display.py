@@ -450,6 +450,12 @@ class DisplayProcessor:
         self._vl_src = None           # dernière image soumise (comparaison d'objet)
         self._vl_key = None           # clé des réglages du dernier calcul lancé
         self._vl_result = None        # (clé, image étirée) du dernier calcul TERMINÉ
+        # JALON 128 : MOTEUR du dernier résultat publié (« veralux » ou « stf »).
+        # Sert à ne garder à l'écran, pendant un recalcul VeraLux, QU'une image
+        # réellement ÉTIRÉE par VeraLux : après un passage STF → VeraLux,
+        # `_vl_result` contient l'image PRÉ-ÉTIRÉE (linéaire) — la garder
+        # afficherait une image sombre au lieu du repli STF.
+        self._vl_result_moteur = ""
         self._vl_job: Any = None      # (copie image, params, clé) en attente
         self._vl_pending = False      # un calcul est en cours
         self._vl_force = False        # un NOUVEL empilement attend la résolution
@@ -1007,6 +1013,7 @@ class DisplayProcessor:
                 with self._vl_lock:
                     self._vl_pending = False
                     self._vl_result = (key, img_net)
+                    self._vl_result_moteur = "stf"   # jalon 128 (cf. _process_chaine)
                     self.vl_error = prefixe_stf
                     self.vl_log_d_resolu = None
                     self.vl_diagnostics = None
@@ -1049,6 +1056,7 @@ class DisplayProcessor:
             with self._vl_lock:
                 self._vl_pending = False
                 self._vl_result = (key, result)
+                self._vl_result_moteur = "veralux"   # jalon 128 (cf. _process_chaine)
                 self.vl_error = prefixe + err_coul   # "" si tout s'est bien passé
                 self.vl_log_d_resolu = log_d_util
                 self.vl_diagnostics = diag
@@ -1132,11 +1140,36 @@ class DisplayProcessor:
             res = self._vl_result \
                 if (self._vl_result is not None
                     and self._vl_result[0] == key) else None
+            # JALON 128 : pas de résultat pour la clé COURANTE, mais un calcul
+            # VeraLux est EN COURS et un résultat VeraLux PRÉCÉDENT existe (même
+            # forme d'image) → on le garde à l'écran au lieu de basculer sur le
+            # repli STF. Constat d'Alain (12/10/2026) : à chaque recalcul, l'image
+            # « sautait » brutalement de l'aspect VeraLux à l'aspect STF ; garder
+            # l'image VeraLux existante (périmée de quelques dixièmes de seconde)
+            # est bien plus fidèle, et l'UI superpose un indicateur de calcul.
+            # On n'accepte QUE le moteur VeraLux (`_vl_result_moteur`) : après un
+            # passage STF → VeraLux, `_vl_result` contient l'image PRÉ-ÉTIRÉE
+            # (linéaire) — la garder afficherait une image sombre.
+            precedent = None
+            if (res is None and self._vl_pending
+                    and self._veralux_actif()
+                    and self._vl_result_moteur == "veralux"
+                    and self._vl_result is not None
+                    and self._vl_result[1].shape == img.shape):
+                precedent = self._vl_result[1]
         if res is not None:
             # JALON 125 (VOLET A) : image ÉTIRÉE (VeraLux) ou PRÉ-ÉTIRÉE
             # (STF/manuel — l'étirement STF/manuel est appliqué par
             # `process()`), mêmes dimensions [0..1] dans les deux cas.
             return res[1]
+        if precedent is not None:
+            # JALON 128 : image VeraLux PRÉCÉDENTE gardée à l'écran pendant le
+            # recalcul (l'indicateur de calcul est superposé par l'UI, cf.
+            # `ui/renderer._dessiner_spinner_vl`). Elle est DÉJÀ étirée par
+            # VeraLux : `process()` n'ajoute que les étages finaux (niveaux /
+            # neutralisation / gamma / saturation), comme pour un résultat à
+            # jour — AUCUN double étirement.
+            return precedent
         # Image d'attente (la chaîne n'a pas encore rendu son résultat).
         # En VeraLux : le STF auto (aperçu rapide, SANS toucher aux réglages
         # utilisateur black/white/gamma — on ne lit que les stats lissées).

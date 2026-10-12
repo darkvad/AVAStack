@@ -6,14 +6,58 @@
 
 ---
 
-## PROCHAINE TÂCHE — à définir par Alain (SESSION CLOSE)
+## Session du 12/10/2026 (11) — JALON 128 (v2.80.0) : image VeraLux gardée pendant un recalcul
 
-**SESSION DU 12/10/2026 CLOSE — v2.79.0 validée + les 3 vérifications réelles faites** :
-installeur `.exe` OK ; Store : MSIX **v2.71.1 soumis, accepté, publié, testé OK** ;
-contrôle « pixels à canal nul » sur les FITS du 11/10 → **0** (cf. « Session »).
-Jalons 119→127 **poussés** sur `origin/master` ; **pas de release GitHub** (dernier
-tag = v2.71.1). **Rien d'ouvert côté code → la prochaine tâche reste à choisir**
-(pistes en « En attente / prochaine session »).
+**SESSION CLOSE** — jalon 128 livré, commité et poussé. **Reste à faire par Alain : la
+validation EN RÉEL** (live stacking VeraLux). Prochaine tâche à définir (pistes en
+« En attente / prochaine session »).
+
+### État actuel
+- **Jalon 128 (v2.80.0)** — en étirement VeraLux, un NOUVEAU calcul ne fait plus
+  « sauter » l'écran vers l'aperçu STF : `_process_chaine` CONSERVE le dernier résultat
+  VeraLux TERMINÉ jusqu'à ce que le recalcul aboutisse ; l'UI superpose « Recalculs en
+  cours » (arc tournant, fond transparent, coin haut-gauche) tant que le calcul tourne.
+- Vérifié par banc NEUF (8 volets) + rejeu des bancs concernés ; garde-fou VERT.
+
+### Fichiers modifiés
+- `processing/display.py` : `_vl_result_moteur` (moteur du dernier résultat, publié par
+  `_vl_worker`), `_process_chaine` (conservation gardée par moteur + forme + `_vl_pending`).
+- `ui/renderer.py` : `_render` (appel overlay + décalage du texte de zoom),
+  `_spinner_vl_actif`, `_dessiner_spinner_vl` (item canvas tag « vl_spin »).
+- `ui/app.py` : `_maj_lbl_vl` (anime l'arc), `_vl_spin_angle` (initialisé dans `__init__`).
+- `bancs/_test_conservation_veralux_jalon128.py` (neuf) · `avastack/__init__.py` (version+changelog).
+
+### Mesures / faits vérifiés (rejouables)
+- Banc NEUF 128 VERT : [0] moteur publié (« veralux »/« stf ») ; [1] conservation VeraLux
+  (identité d'objet, ≠ repli STF) ; [2] garde-fou moteur ; [3] garde-fou forme ; [4] hors
+  calcul → repli STF ; [5] `process()` IDENTIQUE avant/pendant ; [6] overlay UI ; [7] arc
+  qui tourne (30°→60°) puis retiré en fin.
+- Rejeu VERTS : veralux 2/3, etat_calcul 40, ui_moteur 41, chaine_pre_etirement 125,
+  chroma_stf 127, zoom_pleine_res 68. Garde-fou : syntaxe 260, surface 75, hash au bit,
+  pyright 0/50 — VERT.
+
+### Décisions prises
+- **Conservation gardée par le MOTEUR du résultat** : seul un résultat RÉELLEMENT étiré
+  par VeraLux est conservé (sinon, après STF→VeraLux, on garderait l'image PRÉ-ÉTIRÉE
+  linéaire = image sombre). Nouvel attribut `_vl_result_moteur` plutôt que relire la clé
+  (dont la position du moteur est un détail interne).
+- **Conservation gardée par la FORME** : un basculement aperçu↔pleine résolution retombe
+  sur le repli STF (pas d'image périmée de mauvaise taille).
+- **Overlay réservé à VeraLux** : en STF/manuel le worker tourne aussi mais l'étirement
+  est instantané → aucun overlay (l'indicateur ne ment pas sur un « calcul »).
+
+### Prochaines étapes
+- **Validation RÉELLE par Alain** (live stacking VeraLux : bouger un curseur / cocher une
+  case — l'image doit RESTER VeraLux, l'arc tourner, puis disparaître au résultat).
+- Prochaine tâche à définir (pistes en « En attente ») ; commit/release Store à décider.
+
+### Points d'attention
+- Le worker publie `_vl_result_moteur` SOUS LE MÊME VERROU que `_vl_result` (jamais l'un
+  sans l'autre : un désaccord afficherait une mauvaise image).
+- `_vl_spin_angle` est DÉCLARÉ sur `Renderer` (typage) mais INITIALISÉ dans `App.__init__` ;
+  les accès passent par `getattr(..., 0.0)` (robuste si un banc construit l'App autrement).
+- L'overlay est un item CANVAS (jamais baké dans l'image) : `_last_disp` reste propre pour
+  l'annotation et la sauvegarde.
 
 ### Règles d'or (rappel)
 Un jalon = un banc NEUF + rejeu des bancs concernés (TOUS VERTS, hors échecs
@@ -23,68 +67,13 @@ MESURER sur le fichier.
 
 ---
 
-## Session du 12/10/2026 (10) — CLOSE — JALONS 126+127 FONDUS (v2.79.0) + 3 VÉRIFS
+## Historiques (trace détaillée : `avastack/__init__.py` + git log)
 
-### État actuel
-- **Jalon 126 (FONDU dans la v2.79.0)** — bancs chroma 63/65 RÉPARÉS (test-only, aucun
-  code de production) : 3 causes (prédicat, moteur, course du rayon + assertion « deux
-  chemins »).
-- **Jalon 127 (v2.79.0)** — la CHROMA agit pour les DEUX moteurs : elle entre dans la
-  chaîne PRÉ-ÉTIREMENT COMMUNE (`_vl_worker`, APRÈS la netteté) ; `process()` route dès
-  que `vl_chroma` est actif ; la sauvegarde « tel que vu » n'est plus gardée par
-  `stretch == "veralux"`. Sa case (« Fond et grain ») n'est plus inerte en STF.
-
-### Fichiers modifiés
-- `processing/display.py` (`_vl_worker`, `process()`) · `ui/saver.py` (gate chroma) ·
-  `ui/app.py` (docstrings) · `bancs/_test_chroma_stf_jalon127.py` (neuf) ·
-  `bancs/_test_chroma_nr_jalon63.py` · `bancs/_test_chroma_halo_jalon65.py` ·
-  `bancs/_test_chaine_pre_etirement_jalon125.py` [4] · `avastack/__init__.py` · `CLAUDE.md`.
-
-### Mesures / faits vérifiés (rejouables)
-- Banc NEUF jalon 127 : VERT — [1] sortie de chaîne STF = chroma(entrée) ; [2] `process()`
-  route (rendu CHANGE quand la case est cochée) ; [3] sauvegarde sans gate moteur ;
-  [4] VeraLux : chroma PUIS étirement ; [5] chroma ET moteur dans la clé.
-- Banc jalon 125 [4] MAJ : la chroma ENTRE dans la sortie STF (image COULEUR — sur du MONO
-  la chroma est un NO-OP).
-- Bancs 63/65 : VERTS (jalon 126). Rejeu VERTS (jalon 127) : veralux 2/3, graxpert_live 4,
-  dn 7/8, sharp_live 12, couleurs 22, couleurs_immediat 39, etat_calcul 40, ui_moteur 41,
-  ui_visibilite 47, save_brute 59, chroma_structure 67, zoom_pleine_res 68,
-  pleine_res_traitee 69, histo 75, gx_parallele 81, piedestal 122, neutralisation 123,
-  exclusivite 124, chaine_pre_etirement 125, chroma_stf 127.
-- Échec **PRÉEXISTANT** restant : `_test_espace_jalon72` (géométrie d'écran — machine).
-- Garde-fou : syntaxe 259, surface 75, hash au bit, pyright 0/50 — VERT.
-
-### Décisions prises
-- **Arbitrage 1 (Alain) — RÉPARER les bancs 63/65** (3 causes) : ① `_vl_result[0]` (clé +
-  forme) comparé à `_vl_params()` SEUL → TOUJOURS faux ; réparé en `+ (img.shape,)` ;
-  ② MOTEUR : ces bancs posent `stretch = "veralux"` ; ③ halo 65 [6] : rayon posé AVANT
-  `_on_vl_chroma`, assertion adaptée à `core/worker.AcquisitionWorker`.
-- **Arbitrage 2 (Alain) — OUVRIR la chroma aux DEUX moteurs** (pas la masquer) : chaîne
-  COMMUNE ; écran ET fichier ; contrat jalon 59 inchangé (pas de chroma dans la sortie
-  LINÉAIRE).
-- **Arbitrage 3 (Alain) — jalon 126 FONDU dans la v2.79.0** : pas de version v2.78.0 à part.
-
-### Vérifications réelles (Alain, 12/10/2026)
-- ① **Installeur `.exe`** (jalon 118) : vérifié, testé, **OK** (démarre après installation).
-- ② **Microsoft Store** : MSIX **v2.71.1 soumis, accepté, PUBLIÉ, testé OK**.
-- ③ **Contrôle « pixels à canal nul »** (canal échu à 0) sur les FITS du 11/10 au dossier
-  `C:\Astro\test` : la paire A/B chroma (`M33_AB_chroma_DECOCHEE`/`COCHEE`) et
-  `M33_AA_controle_1/2` → **0** ; **veralux** post-correctif (12/10) → **0** (contre
-  **963 430** AVANT correctif le 11/10 17:47). Le **STF** « tel que vu » garde des canaux
-  à 0 (~527 k sur l'image 12/10) — **clippage LÉGITIME du moteur STF**, sans rapport avec
-  le bug `sat_b = 3,0` (jalon 120). Mesure faite hors dépôt (script jetable).
-
-### Points d'attention
-- Ne JAMAIS remettre les cases GraXpert/débruitage dans `frm_veralux` (masquées en STF →
-  actives à la sauvegarde).
-- Le worker ne touche JAMAIS aux stats EMA du STF ; en STF/manuel il publie l'image
-  PRÉ-ÉTIRÉE (chroma incluse) et `process()` étire.
-- La vue « traitée » reste coupée pour la chroma (elle y vient de la chaîne EXTERNE ⚡) ;
-  la 3e sortie LINÉAIRE ne la contient jamais.
-
-### Historique — jalon 125 (v2.77.0)
-- Chaîne pré-étirement UNIQUE (GraXpert → débruitage → netteté à l'écran pour les DEUX
-  moteurs). Trace : changelog v2.77.0 ; commit `e185ffc`.
+- **12/10/2026 — jalons 126+127 (v2.79.0)** : chroma ouverte AUX DEUX moteurs (écran ET
+  fichier ; la 3e sortie LINÉAIRE ne la contient toujours pas), bancs chroma 63/65 réparés ;
+  validé M33 ; `.exe` + Store (MSIX v2.71.1) + canal nul OK ; poussé.
+- **12/10/2026 — jalon 125 (v2.77.0)** : chaîne pré-étirement UNIQUE (GraXpert + débruitage
+  à l'écran pour les DEUX moteurs) ; poussé (`e185ffc`).
 
 ---
 
@@ -96,9 +85,14 @@ MESURER sur le fichier.
 
 ## En attente / prochaine session
 
-- **LIVRÉ ET VALIDÉ (v2.79.0)** : GraXpert + débruitage (jalon 125), chroma pour les DEUX
-  moteurs (jalon 127), bancs chroma 63/65 réparés (jalon 126) — **validé en réel (M33)** ;
-  plus les 3 vérifs réelles du 12/10 (`.exe`, **Store MSIX v2.71.1 publié**, canal nul) : OK.
+- **Jalon 128 (v2.80.0) — À VALIDER EN RÉEL** : pendant un recalcul VeraLux, l'image
+  VeraLux RESTE à l'écran (plus de saut vers le STF) + « Recalculs en cours » (arc
+  tournant, fond transparent, haut-gauche). Alain : en live stacking VeraLux, bouger un
+  curseur / cocher une case → l'image doit rester VeraLux, l'arc tourner, puis disparaître
+  au résultat.
+- **Livré et validé (v2.79.0)** : GraXpert + débruitage (125), chroma des DEUX moteurs (127),
+  bancs 63/65 (126) — validé M33 ; 3 vérifs du 12/10 (`.exe`, **Store MSIX v2.71.1**, canal
+  nul) OK.
 - **Boutons de données SANS Siril** (« ⬇ Gaia », « ⬇ Spectres (champ) », « ⬇ Base SPCC ») —
   délégués à un utilisateur sans Siril.
 - **Piste INDI** (un seul chemin pour les 3 OS et toutes les marques) — jalon à part, PAS

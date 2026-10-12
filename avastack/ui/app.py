@@ -565,6 +565,9 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._vl_lbl_txt: str = "—"          # mémo du texte affiché dans lbl_vl
                                         # (jalon 40 : anti-spam du ⏳ à 30 ms)
         self._vl_pb_active: bool = False      # curseur de calcul actuellement visible
+        # Jalon 128 : angle de l'arc « calcul VeraLux » superposé à l'image
+        # (haut-gauche), avancé à chaque tick par `_maj_lbl_vl`.
+        self._vl_spin_angle: float = 0.0
         # Jalon 42 : cadence d'empilement (sources dossier). `cadence_lecture`
         # = miroir thread-sûr (int écrit côté UI, lu par le worker) ;
         # `_prochaine_lecture`/`_prochain_scan` = état du worker seul ;
@@ -2938,6 +2941,11 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 self._lbl_vl_texte(txt, "#c98a00")
         elif (not veralux) and self._vl_lbl_txt.startswith("⏳"):
             self._lbl_vl_texte("—", "#888888")   # calcul STF fini : repos
+        # Jalon 128 : anime l'indicateur « calcul VeraLux » SUPERPOSÉ à l'image
+        # (arc tournant en haut à gauche). Même cadence que l'état des calculs ;
+        # `_dessiner_spinner_vl` crée/retire l'item selon que le calcul tourne.
+        self._vl_spin_angle = (getattr(self, "_vl_spin_angle", 0.0) + 30.0) % 360.0
+        self._dessiner_spinner_vl()
 
     def _on_view(self) -> None:
         """Bascule empilement ↔ résultat traité (stats d'étirement réinitialisées :

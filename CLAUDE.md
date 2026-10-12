@@ -690,6 +690,25 @@ AFFICHÉE à 1,00 ») est né de cet angle mort.
   `bancs/_test_chroma_stf_jalon127.py`, `bancs/_test_chroma_nr_jalon63.py`,
   `bancs/_test_chroma_halo_jalon65.py`.
 
+## Image VeraLux gardée pendant un recalcul (jalon 128, v2.80.0)
+
+- **Comportement** : en étirement VeraLux, tant qu'un nouveau calcul n'a pas abouti,
+  `DisplayProcessor._process_chaine()` rend le DERNIER résultat VeraLux terminé
+  (`_vl_result`) au lieu du repli STF — l'image ne « saute » plus d'aspect. L'UI
+  superpose `ui/renderer._dessiner_spinner_vl` (arc tournant + libellé « Recalculs
+  en cours », coin haut-gauche, FOND TRANSPARENT comme le texte de zoom, item canvas
+  de tag `vl_spin`), animé à chaque tick par `ui/app._maj_lbl_vl` (`_vl_spin_angle`).
+- **Trois garde-fous, à ne pas relâcher** : ① **moteur** — seul un résultat VERA LUX est
+  conservé, via l'attribut `_vl_result_moteur` publié par le worker **sous le même
+  verrou** que `_vl_result` (après un passage STF→VeraLux, `_vl_result` contient l'image
+  PRÉ-ÉTIRÉE linéaire : la garder afficherait une image sombre) ; ② **forme** — un
+  changement aperçu↔pleine résolution retombe sur le repli STF ; ③ **calcul en cours** —
+  seul `_vl_pending` déclenche la conservation.
+- **L'overlay est un item CANVAS** (jamais baké dans l'image) : `_last_disp` reste propre
+  pour l'annotation et la sauvegarde. En STF/manuel, AUCUN overlay (le worker tourne mais
+  l'étirement est instantané) ; le texte de zoom est décalé quand l'overlay est présent.
+- Banc : `bancs/_test_conservation_veralux_jalon128.py`.
+
 ## Doc outils externes (CLI)
 
 ### Détection de l'exécutable (v2.38.5 — leçon du 27/09/2026)

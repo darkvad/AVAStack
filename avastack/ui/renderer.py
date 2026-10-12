@@ -81,6 +81,10 @@ class Renderer:
     view_cx: Any
     view_cy: Any
     _drag: Any
+    # Jalon 128 : indicateur de calcul VeraLux SUPERPOSÉ à l'image (arc tournant,
+    # coin haut-gauche). `_vl_spin_angle` = angle courant en degrés, avancé à
+    # chaque tick par `_maj_lbl_vl` (thread UI).
+    _vl_spin_angle: float
 
     # Sources et options de rendu.
     last_show: Any
@@ -299,9 +303,43 @@ class Renderer:
                 + (", 1:1" if abs(scale - 1.0) < 0.02 else "")
             if self._pleine_res_activee():
                 info += " · PLEINE RÉSOLUTION"
-            self.cv_img.create_text(8, 8, anchor="nw", fill="#ffd75e",
+            # Jalon 128 : l'indicateur de calcul VeraLux occupe le coin
+            # haut-gauche (disque + arc) — on décale le texte de zoom pour ne
+            # pas le recouvrir quand il est affiché.
+            y_info = 46 if self._spinner_vl_actif() else 8
+            self.cv_img.create_text(8, y_info, anchor="nw", fill="#ffd75e",
                                     text=f"zoom ×{self.zoom:.1f}   ({info})   "
                                          f"double-clic : ajuster")
+        # Jalon 128 : superpose l'indicateur « calcul VeraLux en cours » (arc
+        # tournant). Dessiné EN DERNIER pour se placer AU-DESSUS de l'image.
+        self._dessiner_spinner_vl()
+
+    # ------------------------------------------- indicateur de calcul VeraLux
+    def _spinner_vl_actif(self) -> bool:
+        """True si l'overlay « calcul VeraLux en cours » doit être dessiné
+        par-dessus l'image (jalon 128) : le moteur VeraLux est RÉELLEMENT actif
+        ET un calcul tourne. En STF/manuel, le même worker tourne (GraXpert /
+        débruitage / netteté) mais l'étirement est instantané : pas d'overlay."""
+        return bool(self.disp.vl_en_cours()) and self.disp._veralux_actif()
+
+    def _dessiner_spinner_vl(self) -> None:
+        """Dessine (ou retire) l'indicateur de calcul VeraLux en haut à gauche du
+        canvas — jalon 128. Item canvas LÉGER (arc tournant + libellé, FOND
+        TRANSPARENT comme le texte de zoom : aucun cadre/disque qui masquerait
+        l'image) : AUCUN recalcul d'image ; l'angle avance à chaque tick via
+        `_maj_lbl_vl`. Le tag « vl_spin » permet de le retirer d'un seul geste."""
+        cv = self.cv_img
+        if not self._spinner_vl_actif():
+            cv.delete("vl_spin")
+            return
+        cv.delete("vl_spin")
+        # Arc tournant seul (trait ambre), sans fond : l'image reste visible.
+        angle = getattr(self, "_vl_spin_angle", 0.0)
+        cv.create_arc(14, 14, 42, 42, start=angle, extent=270, style="arc",
+                      outline="#ffc24d", width=3, tags="vl_spin")
+        # Libellé à droite de l'arc, sans bandeau (comme le texte de zoom).
+        cv.create_text(52, 28, anchor="w", fill="#ffd75e", tags="vl_spin",
+                       text="Recalculs en cours")
 
     # ------------------------------------------------------------ zoom / pan
     def _on_wheel_zoom(self, e):

@@ -19,9 +19,35 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.79.0"
+AVASTACK_VERSION = "2.80.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.80.0 : L'IMAGE VERALUX RESTE À L'ÉCRAN PENDANT UN RECALCUL (jalon 128,
+#   demande d'Alain 12/10/2026). Constat : en étirement VeraLux, à chaque
+#   NOUVEAU calcul (changement de réglage, nouvel empilement), l'aperçu
+#   « sautait » brutalement vers l'image d'attente STF le temps de la
+#   résolution — un clignotement d'aspect pénible. Désormais
+#   `DisplayProcessor._process_chaine` CONSERVE le dernier résultat VeraLux
+#   TERMINÉ (`_vl_result`) tant que le recalcul n'a pas abouti, au lieu du
+#   repli STF. GARDE-FOUS : (a) on n'accepte QUE le moteur VeraLux — un nouvel
+#   attribut `_vl_result_moteur` (« veralux »/« stf ») est publié par le worker
+#   à chaque résultat, car après un passage STF→VeraLux `_vl_result` contient
+#   l'image PRÉ-ÉTIRÉE (linéaire) et la garder afficherait une image sombre ;
+#   (b) la forme doit correspondre (un basculement aperçu↔pleine résolution
+#   retombe sur le repli STF) ; (c) seul un calcul EN COURS (`_vl_pending`)
+#   déclenche la conservation. CÔTÉ ÉCRAN, l'UI superpose « Recalculs en
+#   cours » (arc tournant, coin haut-gauche, FOND TRANSPARENT comme le texte de
+#   zoom) tant que le calcul tourne : `ui/renderer._dessiner_spinner_vl` (item
+#   canvas léger, tag « vl_spin ») dessiné PAR-DESSUS l'image, animé à chaque
+#   tick par `ui/app._maj_lbl_vl` (angle `_vl_spin_angle`). En STF/manuel,
+#   AUCUN overlay (l'étirement y est instantané) ; le texte de zoom est décalé
+#   pour ne pas le recouvrir. FICHIERS : `processing/display.py`
+#   (`_vl_result_moteur`, `_vl_worker`, `_process_chaine`), `ui/renderer.py`
+#   (`_render`, `_spinner_vl_actif`, `_dessiner_spinner_vl`), `ui/app.py`
+#   (`_maj_lbl_vl`, `_vl_spin_angle`). BANC : neuf
+#   `_test_conservation_veralux_jalon128.py` (8 volets : moteur publié,
+#   conservation, garde-fous moteur/forme/hors-calcul, écran identique, overlay
+#   UI, animation/retrait).
 # v2.79.0 : LA CHROMA AGIT POUR LES DEUX MOTEURS (jalon 127) + RÉPARATION DES BANCS CHROMA 63/65 (jalon 126 FONDU ICI, décision d'Alain 12/10/2026). Décision d'Alain
 #   (12/10/2026) : la case « Réduire le bruit chromatique » (cadre « Fond et
 #   grain ») était VISIBLE mais INERTE en STF — elle vivait dans la branche
