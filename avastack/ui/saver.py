@@ -182,7 +182,7 @@ class Saver:
         gradient live est actif et que sa commande est incomplète, la chaîne ne
         peut pas être reproduite — message clair et abandon (jamais de fichier
         « presque comme vu »). → True si l'on peut continuer."""
-        if (self.disp.stretch == "veralux" and self.disp.vl_graxpert
+        if (self.disp.vl_graxpert
                 and not gx_live.commande_valide(self.disp.vl_graxpert_cmd)):
             self._avertir(
                 "GraXpert live",

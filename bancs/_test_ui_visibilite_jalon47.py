@@ -225,15 +225,15 @@ _titres_bruts = [_titre_cadre(c) for c in ordre_apres]
 # j99 : les titres portent un préfixe "▼ " / "▶ " quand la section est pliée
 _titres = [t.replace("▼ ", "").replace("▶ ", "") for t in _titres_bruts]
 _attendus = ["Fond et grain (AVANT étirement)",
-             "Netteté live (Richardson-Lucy)",
+             "Chaîne avant étirement (GraXpert · débruitage · netteté)",
              "Affichage (temps réel)",
              "Couleur de l'objet (APRÈS étirement)"]
 verifie(all(t in _titres for t in _attendus),
         f"les quatre cadres de la chaîne sont présents ({_titres})")
 verifie([_titres.index(t) for t in _attendus] ==
         sorted(_titres.index(t) for t in _attendus),
-        "« Fond et grain » → « Netteté live » → « Affichage » → « Couleur de "
-        "l'objet » : l'ordre affiché EST l'ordre appliqué")
+        "« Fond et grain » → « Chaîne avant étirement » → « Affichage » → "
+        "« Couleur de l'objet » : l'ordre affiché EST l'ordre appliqué")
 
 
 def _cases(cadre):

@@ -4,12 +4,13 @@
 Vérifie :
   [1] display.py : attributs par défaut, clé des réglages (VeraLux et netteté),
       reset() vide le résultat mémorisé ;
-  [2] modes STF/manuel : solveur de netteté DÉDIÉ (thread réel) — image
-      d'attente NON nette tant que le calcul n'est pas prêt, puis image nette
-      conforme au module, cache par OBJET image (aucun recalcul au tick
-      suivant), recalcul sur nouvel empilement ou nouveau réglage, REFUS
-      mémorisé (aucune boucle de resoumissions — un solveur qui resoumettrait
-      un job refusé 30 fois par seconde saturerait le CPU) ;
+  [2] modes STF/manuel : la netteté vit dans la CHAÎNE PRÉ-ÉTIREMENT UNIQUE
+      (jalon 125, vol. A — plus de solveur dédié) : l'écran montre l'image
+      d'attente NON nette tant que le calcul n'est pas prêt, puis la sortie de
+      chaîne est l'image nette conforme au module ; mise en cache par
+      (image, réglages), recalcul au nouvel empilement ou au nouveau réglage,
+      REFUS explicite (raison remontée à l'UI, jamais de boucle de
+      resoumissions) ;
   [3] mode VeraLux : la netteté est la DERNIÈRE étape du solveur existant, donc
       bien APRÈS GraXpert/débruitage (gradient → débruitage → netteté →
       étirement) ; échec = repli + message, jamais d'image perdue ;
@@ -89,21 +90,6 @@ def champ(shape=(256, 256), sigma_px=1.5, nb=25, bruit=0.004, fond=0.002,
     return np.clip(img, 0.0, 1.0)
 
 
-def attendre_sh(d, timeout=20.0):
-    """Attend la fin du calcul de netteté dédié (polling, 20 ms).
-
-    DEUX conditions : le job soumis a été PRIS par le worker (`_sh_job` vidé)
-    et plus aucun calcul en cours (`_sh_pending`) — un résultat mémorisé doit
-    alors exister."""
-    t0 = time.time()
-    while time.time() - t0 < timeout:
-        with d._sh_lock:
-            if d._sh_job is None and not d._sh_pending:
-                return d._sh_result is not None
-        time.sleep(0.02)
-    return False
-
-
 def attendre_vl(d, timeout=60.0):
     """Attend la fin du job solveur VeraLux en cours (polling, 20 ms)."""
     t0 = time.time()
@@ -124,24 +110,25 @@ print("[1] display.py — attributs, clés de réglages, reset()")
 d = dp.DisplayProcessor()
 verifie(d.vl_sharp is False
         and d.vl_sharp_iterations == sh.ITERATIONS_DEFAUT
-        and d.vl_seeing is None and d.sh_msg == "" and d._sh_result is None,
+        and d.vl_seeing is None and d.sh_msg == "",
         "défauts : netteté désactivée, 5 itérations (réglage utile), aucune PSF")
+verifie(d.sh_en_cours() is False,
+        "jalon 125 : plus de solveur de netteté dédié (sh_en_cours toujours False)")
 k0 = d._vl_params()
 d.vl_sharp = True
-verifie(d._vl_params() != k0, "vl_sharp fait partie de la clé VeraLux")
+verifie(d._vl_params() != k0, "vl_sharp fait partie de la clé de la chaîne")
 k1 = d._vl_params()
 d.vl_sharp_iterations = 3
-verifie(d._vl_params() != k1, "les itérations font partie de la clé VeraLux")
-verifie(d._sh_key() == (3, None), f"clé de netteté : itérations + PSF ({d._sh_key()})")
-d.vl_seeing = dict(PSF)
-verifie(d._sh_key() == (3, 3.5), "la PSF du seeing entre dans la clé de netteté")
-d._sh_result = ((3, 3.5), IMG, IMG)
-d._sh_soumis = (IMG, (3, 3.5))
+verifie(d._vl_params() != k1, "les itérations font partie de la clé de la chaîne")
+k2 = d._vl_params()
+d.stretch = "veralux"
+verifie(d._vl_params() != k2,
+        "jalon 125 : le MOTEUR fait partie de la clé de la chaîne")
+d._vl_result = ("k", IMG)
 d.reset()
-verifie(d._sh_result is None and d._sh_soumis is None,
-        "reset() vide le résultat et la soumission de la netteté")
+verifie(d._vl_result is None, "reset() vide le résultat de la chaîne")
 
-print("[2] Modes STF/manuel : solveur de netteté DÉDIÉ (thread réel)")
+print("[2] Modes STF/manuel : la netteté vit dans la CHAÎNE PRÉ-ÉTIREMENT")
 appels = {"n": 0}
 _reel = sh.deconvoluer
 
@@ -154,99 +141,102 @@ def compte(img, **kw):
 sh.deconvoluer = compte
 try:
     d = dp.DisplayProcessor()
+    d.stretch = "stf"
     d.vl_sharp = True
     d.vl_sharp_iterations = 3
     d.vl_seeing = dict(PSF)
-    out1 = d._process_nettete(IMG)
-    verifie(out1 is IMG,
-            "1er appel : image d'attente NON nette (le calcul vient d'être soumis)")
-    verifie(attendre_sh(d), "calcul de netteté terminé (thread dédié)")
-    out2 = d._process_nettete(IMG)
+    d.process(IMG)
+    verifie(d.vl_en_cours() or d._vl_job is not None,
+            "1er appel : chaîne SOUMISE (l'écran montre l'attente NON nette)")
+    verifie(attendre_vl(d), "chaîne pré-étirement terminée (worker unique)")
+    net = d._vl_result[1]
     attendu, err = _reel(IMG, iterations=3, mesure=d.vl_seeing)
-    verifie(err == "" and float(np.max(np.abs(out2 - attendu))) < 1e-6,
-            "image nette conforme au module (3 it, PSF du seeing mesuré)")
-    verifie(not np.allclose(out2, IMG),
+    verifie(err == "" and float(np.max(np.abs(net - attendu))) < 1e-6,
+            "sortie de chaîne = image NETTE (module, 3 it, PSF du seeing mesuré)")
+    verifie(not np.allclose(net, IMG),
             "le résultat est bien MODIFIÉ (un repli silencieux ne passerait pas)")
     verifie(appels["n"] == 1, f"calcul fait UNE fois (appels={appels['n']})")
-    verifie(d._process_nettete(IMG) is out2 and appels["n"] == 1,
+    d.process(IMG)
+    verifie(appels["n"] == 1,
             "même image + mêmes réglages : résultat mémorisé, aucun recalcul")
 
-    out3 = d._process_nettete(IMG2)
-    verifie(out3 is IMG2,
-            "nouvel empilement : image d'attente (jamais l'image nette de l'autre)")
-    verifie(attendre_sh(d) and appels["n"] == 2, "nouvelle image → recalcul")
-    verifie(not np.allclose(d._process_nettete(IMG2), IMG2),
+    d.notify_new_stack()               # = une frame de plus vient d'être empilée
+    d.process(IMG2)
+    verifie(d.vl_en_cours() or d._vl_job is not None,
+            "nouvel empilement : chaîne relancée (jamais l'image nette de l'autre)")
+    verifie(attendre_vl(d) and appels["n"] == 2, "nouvelle image → recalcul")
+    attendu2, _ = _reel(IMG2, iterations=3, mesure=d.vl_seeing)
+    verifie(float(np.max(np.abs(d._vl_result[1] - attendu2))) < 1e-6,
             "…et le nouvel empilement est bien netté")
 
     d.vl_sharp_iterations = 5
-    verifie(d._process_nettete(IMG2) is IMG2 and attendre_sh(d)
-            and appels["n"] == 3, "itérations changées → recalcul")
+    d.notify_new_stack()
+    d.process(IMG2)
+    verifie(attendre_vl(d) and appels["n"] == 3, "itérations changées → recalcul")
     attendu5, _ = _reel(IMG2, iterations=5, mesure=d.vl_seeing)
-    verifie(float(np.max(np.abs(d._process_nettete(IMG2) - attendu5))) < 1e-6,
+    verifie(float(np.max(np.abs(d._vl_result[1] - attendu5))) < 1e-6,
             "le nouveau réglage (5 it) est bien celui appliqué")
 
     sans = np.full((128, 128), 0.002, dtype=np.float32)
     d.vl_seeing = {"nb": 0, "fwhm": None}
     n_avant = appels["n"]
-    verifie(d._process_nettete(sans) is sans and attendre_sh(d),
-            "PSF inutilisable : netteté refusée (image d'entrée rendue)")
+    d.notify_new_stack()
+    d.process(sans)
+    verifie(attendre_vl(d), "PSF inutilisable : la chaîne se termine quand même")
     verifie("inactive" in d.sh_msg and d.sh_new,
             f"raison explicite remontée à l'UI (« {d.sh_msg} »)")
-    verifie(np.array_equal(d._process_nettete(sans), sans),
-            "refus MÉMORISÉ : image d'entrée rendue telle quelle (copie de travail)")
+    verifie(np.array_equal(d._vl_result[1], sans),
+            "refus : la sortie de chaîne EST l'image d'entrée (repli sûr)")
     verifie(appels["n"] == n_avant + 1,
             "…sans resoumettre : le refus ne boucle pas")
     for _ in range(5):
-        d._process_nettete(sans)
+        d.process(sans)
     verifie(appels["n"] == n_avant + 1, "5 ticks d'UI de plus : toujours aucun recalcul")
 
     d.vl_sharp = False
     d.vl_seeing = dict(PSF)
-    verifie(d._process_nettete(IMG2) is IMG2 and appels["n"] == n_avant + 1,
+    d.process(IMG2)
+    verifie(appels["n"] == n_avant + 1,
             "case décochée : la netteté n'est plus appelée du tout")
 
-    # process() : la netteté est appliquée en STF/manuel, PAS en VeraLux (où
-    # c'est le solveur VeraLux qui s'en charge — jamais deux fois).
-    appels_pn = {"n": 0}
-    reel_pn = d._process_nettete
+    # process() : la netteté est portée par la CHAÎNE pré-étirement (jalon 125)
+    # — le MÊME chemin pour les deux moteurs.
+    appels_pc = {"n": 0}
+    reel_pc = d._process_chaine
 
-    def pn(img):
-        appels_pn["n"] += 1
-        return reel_pn(img)
+    def pc(img, live=True):
+        appels_pc["n"] += 1
+        return reel_pc(img, live=live)
 
-    d._process_nettete = pn
+    d._process_chaine = pc
     d.vl_sharp = True
     d.process(IMG2)
-    verifie(appels_pn["n"] == 1, "process() applique la netteté en mode STF")
-    if veralux.moteur_disponible():
-        d.stretch = "veralux"
-        d.process(IMG2)
-        verifie(appels_pn["n"] == 1,
-                "process() NE la réapplique PAS en mode VeraLux (le solveur l'a fait)")
-        d.stretch = "stf"
-    else:
-        print("  (moteur VeraLux absent : vérification du mode VeraLux sautée)")
+    verifie(appels_pc["n"] == 1,
+            "process() route par la chaîne en STF (netteté active)")
     d.vl_sharp = False
     d.process(IMG2)
-    verifie(appels_pn["n"] == 1, "case décochée : process() ne l'appelle pas")
-    d._process_nettete = reel_pn
+    verifie(appels_pc["n"] == 1,
+            "case décochée : process() ne route PLUS par la chaîne")
+    d._process_chaine = reel_pc
 
-    # EXCEPTION du module : le solveur DÉDIÉ doit rester VIVANT — un thread
-    # mort figerait l'aperçu sur l'image d'attente pour toujours.
+    # EXCEPTION du module : la chaîne pré-étirement doit rester VIVANTE — un
+    # thread mort figerait l'aperçu sur l'image d'attente pour toujours.
     def sh_leve(img, **kw):
-        raise RuntimeError("panne dédiée simulée")
+        raise RuntimeError("panne chaîne simulée")
 
 
     sh.deconvoluer = sh_leve
     d.vl_sharp = True
     d.vl_seeing = dict(PSF)
     IMG3 = champ(graine=11)
-    verifie(d._process_nettete(IMG3) is IMG3 and attendre_sh(d, timeout=20.0),
-            "exception du module : le solveur dédié est TOUJOURS VIVANT")
-    verifie("panne dédiée simulée" in d.sh_msg,
+    d.notify_new_stack()
+    d.process(IMG3)
+    verifie(attendre_vl(d, timeout=20.0),
+            "exception du module : la chaîne est TOUJOURS VIVANTE")
+    verifie("panne chaîne simulée" in d.sh_msg,
             f"exception signalée à l'UI, jamais avalée ({d.sh_msg!r})")
-    verifie(np.array_equal(d._process_nettete(IMG3), IMG3),
-            "…et l'image d'attente est rendue telle quelle (repli sûr)")
+    verifie(d.vl_error.startswith("Netteté live :"),
+            f"et tracée dans vl_error ({d.vl_error!r})")
     d.vl_sharp = False
 finally:
     sh.deconvoluer = _reel

@@ -15,7 +15,8 @@ Vérifie :
   [2] l'UI : pendant un calcul, lbl_vl = « ⏳ calcul : <étape>… » (ambre) et
       le curseur pb_vl EST affiché ; à la fin, ligne de résultat avec les ✓
       des étapes actives (GX/DN/NET/COUL) + logD + fond, curseur retiré ;
-      erreur → texte en rouge ; en mode STF, rien ne s'affiche.
+      erreur → texte en rouge ; en STF, le MÊME indicateur suit le même worker
+      (jalon 125 : la chaîne pré-étirement y tourne aussi).
 
 Nécessite un affichage. Exécution : python bancs/_test_etat_calcul_jalon40.py
 """
@@ -176,7 +177,15 @@ d2.vl_log_d_resolu = 2.5
 d2.vl_diagnostics = {"median_luminance_finale": 0.2}
 d2.vl_error = ""
 d2.vl_new = True
-app._maj_lbl_vl()
+# La LOGIQUE D'AFFICHAGE est testée seule : on neutralise le rafraîchissement
+# d'aperçu déclenché par `vl_new` (il resoumettrait un vrai job dont l'erreur
+# écraserait la ligne de résultat testée — course).
+_reel_refresh = app._refresh_preview
+app._refresh_preview = lambda: None
+try:
+    app._maj_lbl_vl()
+finally:
+    app._refresh_preview = _reel_refresh
 coul_res = str(app.lbl_vl.cget("foreground"))
 verifie(app.lbl_vl.cget("text")
         == "GX ✓ · DN ✓ · NET ✓ · COUL ✓ · logD 2.50 · fond 0.200"
@@ -189,22 +198,35 @@ verifie(app.pb_vl.winfo_manager() == "",
 d2.vl_new = True
 d2.vl_error = "boom test"
 d2.vl_diagnostics = None
-app._maj_lbl_vl()
+app._refresh_preview = lambda: None
+try:
+    app._maj_lbl_vl()
+finally:
+    app._refresh_preview = _reel_refresh
 coul_err = str(app.lbl_vl.cget("foreground"))
 verifie(app.lbl_vl.cget("text") == "boom test"
         and "#d04040" in coul_err,
         "erreur : texte en rouge")
 
-# --- mode STF (jalon 41 : le cadre d'état est visible dans les DEUX
-# modes, mais un calcul VERA LUX en attente ne s'y affiche pas — le solveur
-# VeraLux n'est pas utilisé en STF)
+# --- mode STF (jalon 125) : l'indicateur suit le MÊME worker (la chaîne
+# pré-étirement y tourne aussi) — un calcul en attente S'AFFICHE donc en STF.
 app.var_moteur.set("STF")
 d2._vl_pending = True
 d2.vl_stage = "étirement"
+app._refresh_preview = lambda: None
+try:
+    app._maj_lbl_vl()
+finally:
+    app._refresh_preview = _reel_refresh
+txt_stf = app.lbl_vl.cget("text")
+verifie(app.pb_vl.winfo_manager() != "" and "⏳" in txt_stf
+        and "étirement" in txt_stf,
+        f"mode STF : l'indicateur suit le même worker (« {txt_stf} »)")
+d2._vl_pending = False
+d2.vl_stage = ""
 app._maj_lbl_vl()
-verifie(app.pb_vl.winfo_manager() == ""
-        and app.lbl_vl.cget("text") == "boom test",
-        "mode STF : calcul VeraLux en attente ≠ indicateur, texte inchangé")
+verifie(app.pb_vl.winfo_manager() == "" and app.lbl_vl.cget("text") == "—",
+        "mode STF : calcul terminé, retour au repos (« — »)")
 
 root.destroy()
 print()

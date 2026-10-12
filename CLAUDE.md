@@ -651,6 +651,37 @@ AFFICHÉE à 1,00 ») est né de cet angle mort.
   provoqués, enregistrements réels brut + « tel que vu », case décochée,
   compatibilité ancien format).
 
+## Chaîne pré-étirement COMMUNE aux deux moteurs (jalon 125, v2.77.0 — VOLET A)
+
+- **La chaîne PRÉ-ÉTIREMENT est UNIQUE** : `DisplayProcessor._vl_worker` enchaîne
+  GraXpert → débruitage → netteté pour **LES DEUX moteurs** d'étirement. Seule la
+  **DERNIÈRE étape dépend du moteur** : en VeraLux le worker publie l'image
+  **étirée** (+ chroma, chaîne couleur après étirement) ; en STF/manuel il publie
+  l'image **PRÉ-ÉTIRÉE** et c'est `process()` qui applique l'étirement STF/manuel
+  dessus, **dans le fil d'interface** (les stats EMA du STF y vivent — ce thread ne
+  doit JAMAIS y toucher).
+- **Le MOTEUR est dans la clé** `_vl_params()` : en changer relance la chaîne
+  (STF publie l'image pré-étirée, VeraLux l'image étirée).
+- **PIÈGE — image d'attente** : en STF/manuel, l'image d'attente rendue par
+  `_process_chaine()` est l'image **LINÉAIRE** (l'étirement STF s'applique
+  dessus) ; seule la branche VeraLux rend l'aperçu STF déjà étiré. Rendre l'aperçu
+  étiré en STF l'étirerait **deux fois**.
+- **Le solveur de netteté DÉDIÉ a été SUPPRIMÉ** (`_sh_worker`,
+  `_process_nettete`, `_sh_key`, `_sh_*`) : la netteté fait partie de la chaîne
+  unique. `sh_en_cours()` existe toujours mais renvoie **False** (compat) ;
+  l'état des calculs suit `vl_en_cours()` / `vl_stage` pour les deux moteurs.
+- **CHROMA réservée à VeraLux** (écran ET fichier) : elle n'apparaît PAS dans la
+  sortie STF. Sa case vit dans « Fond et grain » mais n'agit qu'en VeraLux (la
+  sauvegarde la gate sur `stretch == "veralux"`).
+- **UI** : les cases GraXpert + débruitage vivent dans « Chaîne avant étirement
+  (GraXpert · débruitage · netteté) » — le panneau `panels/sharp.py` / `frm_sharp`,
+  **visible dans les deux modes** (le cadre VeraLux est masqué en STF). Ne JAMAIS
+  les remettre dans `frm_veralux` : elles resteraient actives à la sauvegarde
+  sans être visibles — c'est précisément le défaut corrigé ici.
+- **Préflight de sauvegarde** (`saver._gx_live_prete`) : la commande GraXpert est
+  requise dès que la case est cochée, **quel que soit le moteur**.
+- Banc : `bancs/_test_chaine_pre_etirement_jalon125.py`.
+
 ## Doc outils externes (CLI)
 
 ### Détection de l'exécutable (v2.38.5 — leçon du 27/09/2026)

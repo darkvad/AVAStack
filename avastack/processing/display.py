@@ -251,14 +251,12 @@ class DisplayProcessor:
     restaure ensuite (l'ordre inverse amplifierait le bruit que le débruitage
     doit retirer). Contrairement à GraXpert/débruitage live, son cadre d'UI
     est INDÉPENDANT du moteur d'étirement (demande d'Alain) : elle s'applique
-    donc AUSSI en STF/manuel. Deux chemins, mêmes réglages et même module :
-      - mode VeraLux : la netteté est la DERNIÈRE étape du thread solveur,
-        donc correctement APRÈS GraXpert/débruitage (gradient → débruitage →
-        netteté → étirement) ;
-      - mode STF/manuel : un thread solveur DÉDIÉ (`_sh_worker`) la calcule
-        sur l'aperçu, déclenché par `_process_nettete()` à la lecture ; tant
-        que le résultat n'est pas prêt, l'image d'attente est l'image NON
-        nette (jamais bloquant, jamais l'image d'un autre empilement).
+    donc AUSSI en STF/manuel. JALON 125 (VOLET A) : la netteté n'a plus de
+    chemin dédié — elle fait partie de la chaîne pré-étirement UNIQUE
+    (`_vl_worker`), pour les DEUX moteurs (gradient → débruitage → netteté →
+    étirement, la dernière étape seule dépendant du moteur) ; tant que le
+    résultat n'est pas prêt, l'image d'attente est l'image NON nette (jamais
+    bloquant, jamais l'image d'un autre empilement).
     La PSF est celle du seeing mesuré au jalon 10 (`vl_seeing`, mesuré sur
     l'aperçu par le thread d'acquisition) quand elle est disponible : c'est la
     mesure du flou réel, et elle évite une 2e mesure ; sinon le module mesure
@@ -443,16 +441,11 @@ class DisplayProcessor:
         self.sh_msg = ""              # message de la netteté (raison du refus),
                                       # lu par l'UI — "" si elle s'est appliquée
         self.sh_new = False           # un message vient d'arriver (lu par l'UI)
-        # solveur DÉDIÉ à la netteté des modes STF/manuel (le mode VeraLux
-        # l'applique dans son propre solveur, cf. _vl_worker)
-        self._sh_job = None           # (copie image, clé, objet source)
-        self._sh_pending = False      # un calcul de netteté est en cours
-        self._sh_soumis = None        # (objet source, clé) du dernier job SOUMIS
-        self._sh_result = None        # (clé, objet source, image nette)
-        self._sh_lock = threading.Lock()
-        self._sh_wake = threading.Event()
-        self._sh_thread = threading.Thread(target=self._sh_worker, daemon=True)
-        self._sh_thread.start()
+        # JALON 125 (VOLET A) : le solveur de netteté DÉDIÉ aux modes
+        # STF/manuel est RETIRÉ — la chaîne pré-étirement (GraXpert →
+        # débruitage → netteté) tourne désormais dans le worker UNIQUE
+        # `_vl_worker`, pour LES DEUX moteurs. `sh_msg`/`sh_new` restent
+        # publiés par ce worker et lus par l'UI (message de la netteté).
         # cache + solveur (thread dédié, jamais le thread UI)
         self._vl_src = None           # dernière image soumise (comparaison d'objet)
         self._vl_key = None           # clé des réglages du dernier calcul lancé
@@ -483,9 +476,6 @@ class DisplayProcessor:
         self._gx_couches = {}         # …et les caches PAR COUCHE (jalon 24)
         self._dn_couches = {}
         self.vl_compo: Any = None     # couches de composition (obsolètes)
-        with self._sh_lock:           # …et celui de la netteté live (jalon 12) :
-            self._sh_result = None    # un autre empilement ou une autre vue ne
-            self._sh_soumis = None    # doit jamais réutiliser un résultat
         self.sh_msg = ""
         self.sh_new = True
         # Jalon 75 : les barres de l'histogramme et l'état « figé » sont
@@ -642,10 +632,12 @@ class DisplayProcessor:
         return self._vl_pending
 
     def _vl_params(self) -> Any:
-        """Clé de hachage des réglages de la chaîne PRÉ-ÉTIREMENT VeraLux —
-        GraXpert live, débruitage live, netteté live (jalon 12), SCNR et
-        démagenta (jalon 22), plus les paramètres d'étirement : bouger
-        l'un d'eux relance la résolution."""
+        """Clé de hachage des réglages de la chaîne PRÉ-ÉTIREMENT — COMMUNE
+        aux deux moteurs depuis le jalon 125 (VOLET A) : GraXpert live,
+        débruitage live, netteté live (jalon 12), SCNR et démagenta (jalon
+        22), plus les paramètres d'étirement : bouger l'un d'eux relance la
+        chaîne. Le MOTEUR en fait partie (STF renvoie l'image pré-étirée,
+        VeraLux l'image étirée) : en changer relance donc la chaîne."""
         return (self.vl_mode_res, round(self.vl_target_bg, 4),
                 round(self.vl_log_d, 3), self.vl_profil,
                 self.vl_graxpert, self.vl_graxpert_cmd,
@@ -672,19 +664,28 @@ class DisplayProcessor:
                 # rendu immédiatement par `process()`).
                 bool(self.vl_chroma),                  # v2.37.0 (option)
                 round(float(self.vl_chroma_force), 2),
-                round(float(self.vl_chroma_rayon), 2))  # v2.37.3 (résolution)
+                round(float(self.vl_chroma_rayon), 2),  # v2.37.3 (résolution)
+                # JALON 125 (VOLET A) : le MOTEUR entre dans la clé (dernier
+                # élément) — la chaîne pré-étirement est COMMUNE, seule la
+                # dernière étape dépend du moteur : en changer doit relancer
+                # la chaîne (STF publie l'image pré-étirée, VeraLux l'étirée).
+                self.stretch)
 
     def _vl_worker(self) -> None:
-        """Thread solveur : enchaîne — si activés — GraXpert live (jalon 4)
-        PUIS le débruitage local (jalon 9 : algorithmes numpy/OpenCV, aucun
-        subprocess) PUIS la netteté live (jalon 12 : Richardson-Lucy, numpy/
-        OpenCV, aucun subprocess) PUIS l'étirement VeraLux, sur le DERNIER job
-        demandé (les jobs intermédiaires — slider bougé, frame remplacée — sont
-        simplement remplacés, jamais empilés). Écrit le résultat sous verrou.
-        C'est le seul chemin qui applique la netteté en mode VeraLux : elle y
-        est donc correctement APRÈS GraXpert/débruitage (gradient → débruitage
-        → netteté → étirement) ; les modes STF/manuel passent par le solveur
-        dédié `_sh_worker`."""
+        """Thread CHAÎNE PRÉ-ÉTIREMENT (vol. A, jalon 125) : enchaîne — si
+        activés — GraXpert live (jalon 4) PUIS le débruitage local (jalon 9 :
+        algorithmes numpy/OpenCV, aucun subprocess) PUIS la netteté live
+        (jalon 12 : Richardson-Lucy, numpy/OpenCV, aucun subprocess) PUIS —
+        en VeraLux SEULEMENT — la chroma, l'étirement VeraLux et la chaîne
+        couleur APRÈS étirement, sur le DERNIER job demandé (les jobs
+        intermédiaires — slider bougé, frame remplacée — sont simplement
+        remplacés, jamais empilés). Écrit le résultat sous verrou.
+
+        La chaîne PRÉ-ÉTIREMENT (GraXpert → débruitage → netteté) est COMMUNE
+        aux deux moteurs ; seule la DERNIÈRE étape en dépend : en mode
+        STF/manuel le worker publie l'image PRÉ-ÉTIRÉE et c'est `process()`
+        qui applique l'étirement STF/manuel dessus (jamais ce thread : les
+        stats EMA du STF vivent dans le fil d'interface)."""
         while True:
             self._vl_wake.wait()
             self._vl_wake.clear()
@@ -737,6 +738,10 @@ class DisplayProcessor:
             # antérieurs n'en ont pas → rayon de référence pleine résolution).
             chroma_rayon = (float(job[11]) if len(job) > 11
                             else _couleurs.RAYON_CHROMA_DEFAUT)
+            # JALON 125 (VOLET A) : le MOTEUR voyage dans le job (13e élément,
+            # déballage TOLÉRANT : les jobs antérieurs n'en ont pas → "veralux",
+            # leur comportement d'origine — ce solveur ne faisait que VeraLux).
+            engine = str(job[12]) if len(job) > 12 else "veralux"
             # Jalon 24 : données de composition transportées dans le job
             # (8e élément : (canaux, nom, gains, mode_l), None en mode mono).
             # Jalon 54 : 5e élément OPTIONNEL du tuple — (actif, mode) du
@@ -971,6 +976,28 @@ class DisplayProcessor:
             # désormais appliquée APRÈS l'étirement, juste après le moteur (cf.
             # plus bas) — le travail pré-étirement revient au PIÉDESTAL PAR CANAL
             # (jalon 122), intégré à `veralux.etirer`.
+            # JALON 125 (VOLET A) : chaîne pré-étirement COMMUNE — en mode
+            # STF/manuel elle S'ARRÊTE ICI : le worker publie l'image
+            # PRÉ-ÉTIRÉE (GraXpert → débruitage → netteté), puis `process()`
+            # applique l'étirement STF/manuel DANS LE FIL D'INTERFACE (les
+            # stats EMA du STF y vivent — ce thread ne doit jamais y toucher).
+            # La chroma et la chaîne couleur APRÈS étirement restent, elles,
+            # réservées à VeraLux : elles compensent les gains du moteur, et la
+            # sauvegarde ne les applique PAS en STF (écran == fichier).
+            if engine != "veralux":
+                prefixe_stf = (
+                    (f"GraXpert live : {err_gx} ; " if err_gx else "")
+                    + (f"Débruitage live : {err_dn} ; " if err_dn else "")
+                    + (f"Netteté live : {err_net} ; " if err_net else ""))
+                with self._vl_lock:
+                    self._vl_pending = False
+                    self._vl_result = (key, img_net)
+                    self.vl_error = prefixe_stf
+                    self.vl_log_d_resolu = None
+                    self.vl_diagnostics = None
+                    self.vl_new = True
+                    self.vl_stage = ""
+                continue
             # v2.37.0 : RÉDUCTION DU BRUIT CHROMATIQUE, juste AVANT l'étirement
             # (la neutralisation du fond, elle, est passée APRÈS l'étirement au
             # jalon 123). Lisse la chroma (YCrCb) : la luminance reste intacte,
@@ -1028,17 +1055,21 @@ class DisplayProcessor:
                 self.vl_stage = ""        # calcul terminé — jalon 40
 
     def sh_en_cours(self) -> bool:
-        """True si le solveur de netteté DÉDIÉ (modes STF/manuel, jalon 12)
-        a un calcul en marche — jalon 41 : le cadre « État des calculs »
-        est visible dans les DEUX modes, l'UI affiche ⏳ + curseur pendant
-        la déconvolution STF/manuel aussi."""
-        return self._sh_pending
+        """JALON 125 (VOLET A) : TOUJOURS False — le solveur de netteté DÉDIÉ
+        (modes STF/manuel) n'existe plus ; la netteté vit désormais dans la
+        chaîne pré-étirement UNIQUE (`_vl_worker`), pour les DEUX moteurs.
+        Conservé pour la compatibilité des appelants (l'état des calculs suit
+        `vl_en_cours()` / `vl_stage`, qui couvrent les deux moteurs)."""
+        return False
 
-    def _process_veralux(self, img: np.ndarray,
-                         live: bool = True) -> np.ndarray:
-        """Chemin VeraLux : rend le dernier résultat terminé (ou le STF en
-        image d'attente) et soumet un calcul si l'image ou les réglages ont
-        changé. Jamais bloquant : aucun calcul ici, seulement une copie.
+    def _process_chaine(self, img: np.ndarray,
+                        live: bool = True) -> np.ndarray:
+        """CHAÎNE PRÉ-ÉTIREMENT (vol. A, jalon 125) : rend le dernier résultat
+        terminé du worker (ou l'image d'attente STF) et soumet un calcul si
+        l'image ou les réglages ont changé. Jamais bloquant : aucun calcul ici,
+        seulement une copie. Pour VeraLux la sortie est l'image ÉTIRÉE ; pour
+        STF/manuel c'est l'image PRÉ-ÉTIRÉE (GraXpert → débruitage → netteté),
+        l'étirement STF/manuel étant appliqué ensuite par `process()`.
         v2.55.3 : la FORME de la source entre dans la clé — sans elle, le
         résultat PLEINE RÉSOLUTION en cache resservait après décochage de
         « Rendu pleine résolution » (même clé de réglages) : l'écran gardait
@@ -1087,7 +1118,10 @@ class DisplayProcessor:
                     # remplacée pendant le calcul
                     self._vl_job = (img.astype(np.float32).copy(), params,
                                     key, gx, dn, sh, coul, compo, nf,
-                                    chroma, chroma_force, chroma_rayon)
+                                    chroma, chroma_force, chroma_rayon,
+                                    # jalon 125 : le MOTEUR (« veralux » seulement
+                                    # si le chemin VeraLux est RÉELLEMENT utilisé)
+                                    "veralux" if self._veralux_actif() else "stf")
                     self._vl_wake.set()
             self._vl_src, self._vl_key = img, key
         with self._vl_lock:
@@ -1095,96 +1129,19 @@ class DisplayProcessor:
                 if (self._vl_result is not None
                     and self._vl_result[0] == key) else None
         if res is not None:
-            return res[1]                 # image étirée [0..1], mêmes dimensions
-        # Image d'attente : le STF auto (SANS toucher aux réglages utilisateur
-        # black/white/gamma — on ne fait que lire les stats lissées).
-        # NB : elle n'est pas nette — en mode VeraLux la netteté fait partie de
-        # la chaîne du solveur (après GraXpert/débruitage éventuels), c'est un
-        # état transitoire de quelques dixièmes de seconde.
-        lo, hi, m = self._auto_params(img, live=live)
-        return self._mtf(np.clip((img - lo) / (hi - lo), 0.0, 1.0), m)
-
-    # ------------------------------------------- netteté live (jalon 12)
-    def _sh_key(self) -> Any:
-        """Clé des réglages de la netteté : itérations + FWHM de la PSF
-        utilisée (celle du seeing mesuré au jalon 10, None si l'app doit
-        mesurer elle-même) — une nouvelle mesure de seeing relance donc la
-        netteté, comme un changement d'itérations."""
-        v = self.vl_seeing if isinstance(self.vl_seeing, dict) else {}
-        f = v.get("fwhm")
-        return (int(self.vl_sharp_iterations),
-                None if f is None else round(float(f), 2))
-
-    def _sh_worker(self) -> None:
-        """Thread solveur DÉDIÉ à la netteté des modes STF/manuel.
-
-        Le mode VeraLux l'applique dans son propre solveur (après GraXpert et
-        débruitage, cf. `_vl_worker`) ; les deux autres moteurs d'étirement
-        n'ont aucune chaîne pré-étirement, d'où ce second thread. Dernier job
-        gagnant : un empilement plus récent remplace celui en attente, le
-        travail n'est jamais fait deux fois pour la même image (le résultat,
-        refus compris, est MÉMORISÉ — sinon chaque tick d'UI resoumettrait un
-        job refusé, 30 fois par seconde). Résultat écrit sous verrou, l'UI
-        n'est jamais bloquée : en attendant, elle affiche l'image NON nette."""
-        while True:
-            self._sh_wake.wait()
-            self._sh_wake.clear()
-            with self._sh_lock:
-                job = self._sh_job
-                self._sh_job = None
-            if job is None:
-                # Aucun job : ne jamais laisser `_sh_pending` à True (un état
-                # « calcul en cours SANS job » empêcherait toute nouvelle
-                # soumission). Job et drapeau sont écrits ensemble sous
-                # verrou : cet état est incohérent, on le répare.
-                with self._sh_lock:
-                    self._sh_pending = False
-                continue
-            img, key, source = job
-            try:
-                nette, err = _sharpness.deconvoluer(
-                    img, iterations=key[0], mesure=self.vl_seeing)
-            except Exception as exc:       # jamais de plantage muet
-                nette, err = img, str(exc)
-            with self._sh_lock:
-                self._sh_pending = False
-                # Le refus est mémorisé LUI AUSSI (image d'entrée inchangée) :
-                # c'est ce qui évite une boucle de resoumissions.
-                self._sh_result = (key, source, nette)
-            self.sh_msg, self.sh_new = err, True
-
-    def _process_nettete(self, img: np.ndarray) -> Any:
-        """Netteté des modes STF/manuel (le mode VeraLux est traité dans
-        `_vl_worker`) : rend l'image nette si un résultat correspond EXACTEMENT
-        à l'image courante, sinon l'image d'attente (inchangée) et soumet le
-        calcul au thread dédié.
-
-        L'IDENTITÉ de l'objet image est la clé d'image : l'aperçu d'un
-        empilement donné est un objet stable (recréé à chaque nouvel
-        empilement), retouché à chaque tick d'UI — l'empreinter par son contenu
-        à chaque tick coûterait bien plus cher que la netteté elle-même
-        (sha1 du buffer). Le résultat mémorise l'objet qu'il a déconvolué, ce
-        qui garantit qu'on n'affiche JAMAIS l'image nette d'un autre
-        empilement (même objet, même clé de réglages → sinon image d'attente).
-        Jamais bloquant : aucun calcul ici."""
-        if img is None:
-            return img
-        key = self._sh_key()
-        with self._sh_lock:
-            soumis = self._sh_soumis
-            if (not self._sh_pending
-                    and (soumis is None or soumis[0] is not img
-                         or soumis[1] != key)):
-                self._sh_pending = True
-                self._sh_soumis = (img, key)
-                # copie défensive : l'image appartient à l'UI et peut être
-                # remplacée pendant le calcul
-                self._sh_job = (np.asarray(img, dtype=np.float32).copy(),
-                                key, img)
-                self._sh_wake.set()
-            res = self._sh_result
-        if res is not None and res[0] == key and res[1] is img:
-            return res[2]
+            # JALON 125 (VOLET A) : image ÉTIRÉE (VeraLux) ou PRÉ-ÉTIRÉE
+            # (STF/manuel — l'étirement STF/manuel est appliqué par
+            # `process()`), mêmes dimensions [0..1] dans les deux cas.
+            return res[1]
+        # Image d'attente (la chaîne n'a pas encore rendu son résultat).
+        # En VeraLux : le STF auto (aperçu rapide, SANS toucher aux réglages
+        # utilisateur black/white/gamma — on ne lit que les stats lissées).
+        # En STF/manuel : l'image LINÉAIRE telle quelle — c'est `process()`
+        # qui l'étire, et la rendre déjà étirée la ferait étirer DEUX FOIS.
+        # Elle n'est pas nette (transitoire, quelques dixièmes de seconde).
+        if self._veralux_actif():
+            lo, hi, m = self._auto_params(img, live=live)
+            return self._mtf(np.clip((img - lo) / (hi - lo), 0.0, 1.0), m)
         return img
 
     @staticmethod
@@ -1222,28 +1179,33 @@ class DisplayProcessor:
 
     def process(self, img: np.ndarray, live: bool = True) -> np.ndarray:
         img = img.astype(np.float32, copy=False)
-        # Netteté live (jalon 12) : AVANT l'étirement, quel que soit le
-        # moteur. En mode VeraLux elle est déjà appliquée par le solveur
-        # VeraLux (où elle suit correctement GraXpert/débruitage) : ne pas la
-        # refaire ici — d'où le test sur le moteur RÉELLEMENT utilisé.
-        if self.vl_sharp and not self._veralux_actif():
-            img = self._process_nettete(img)
+        # JALON 125 (VOLET A) : plus de solveur de netteté dédié — la chaîne
+        # pré-étirement (GraXpert → débruitage → netteté) tourne dans le worker
+        # UNIQUE `_vl_worker`, pour LES DEUX moteurs (décision d'Alain,
+        # 12/10/2026 : « le fichier = l'écran » — GraXpert + débruitage
+        # tournent désormais À L'ÉCRAN en STF/manuel aussi).
         # v2.48.0 (jalon 85) : la chaîne couleur (SCNR / SCNR doux / démagenta)
         # n'est plus appliquée AVANT l'étirement — elle suit le moteur, juste
-        # après (cf. `couleur_apres_etirement` ci-dessous). En mode VeraLux
-        # elle est appliquée par le solveur (dans _vl_worker) : ne pas la
-        # refaire ici.
+        # après. En mode VeraLux, comme la chaîne pré-étirement, elle est
+        # appliquée par le worker : ne pas la refaire ici.
         if self._veralux_actif():
-            x = self._process_veralux(img, live=live)
+            x = self._process_chaine(img, live=live)
         else:
             if self.stretch == "veralux" and not self.vl_error:
                 self.vl_error = ("VeraLux : moteur tiers veralux_core_headless.py "
                                  "introuvable — affichage STF en attendant.")
                 self.vl_new = True
+            # Sortie de la chaîne pré-étirement (GraXpert/débruitage/netteté).
+            # AUCUNE étape active → l'image brute, à l'identique : le rendu STF
+            # reste INSTANTANÉ (aucun détour par le worker), comme avant.
+            if self.vl_graxpert or self.vl_denoise or self.vl_sharp:
+                img_chaine = self._process_chaine(img, live=live)
+            else:
+                img_chaine = img
             # Jalon 79 : l'étirement passe par une MÉMOIRE (`_moteur_stf`) —
             # un réglage d'APRÈS étirement (gamma, saturations, barres de
             # niveaux) retrouve l'image déjà étirée au lieu de la recalculer.
-            x = self._moteur_stf(img, live=live)
+            x = self._moteur_stf(img_chaine, live=live)
             # v2.48.0 (jalon 85) : chaîne couleur APRÈS l'étirement — la
             # préservation de la luminosité est une grandeur perceptuelle, et
             # l'entrée linéaire (et donc le fichier « empilement traité ») n'est

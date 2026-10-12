@@ -117,26 +117,31 @@ app.var_vl_scnr.set(False)
 app._on_vl_scnr()
 
 # ==================================== [3] état des calculs en STF = netteté
-print("[3] en STF, l'indicateur suit le solveur de netteté dédié (jalon 12)")
+print("[3] en STF, l'indicateur suit la CHAÎNE pré-étirement (jalon 125)")
 app.var_moteur.set("STF")
-d._sh_pending = True
+d._vl_pending = True
+d.vl_stage = "netteté"
 app._maj_lbl_vl()
 txt = app.lbl_vl.cget("text")
 verifie("⏳" in txt and "netteté" in txt
         and "#c98a00" in str(app.lbl_vl.cget("foreground"))
         and app.pb_vl.winfo_manager() != "",
-        f"STF netteté en cours : « {txt} » + curseur visible")
-d._sh_pending = False
+        f"STF chaîne en cours : « {txt} » + curseur visible")
+d._vl_pending = False
+d.vl_stage = ""
 app._maj_lbl_vl()
 verifie(app.lbl_vl.cget("text") == "—" and app.pb_vl.winfo_manager() == "",
-        "STF netteté terminée : retour au repos (« — », curseur retiré)")
-# en VeraLux, le solveur de netteté DÉDIÉ est inutilisé : il ne déclenche rien
+        "STF chaîne terminée : retour au repos (« — », curseur retiré)")
+# en VeraLux, c'est le MÊME worker : il annonce son étape courante
 app.var_moteur.set("VeraLux")
-d._sh_pending = True
+d._vl_pending = True
+d.vl_stage = "GraXpert"
 app._maj_lbl_vl()
-verifie(app.lbl_vl.cget("text") == "—" and app.pb_vl.winfo_manager() == "",
-        "VeraLux : netteté DÉDIÉE (STF) ignorée par l'indicateur")
-d._sh_pending = False
+txt = app.lbl_vl.cget("text")
+verifie("⏳" in txt and "GraXpert" in txt and app.pb_vl.winfo_manager() != "",
+        f"VeraLux : même indicateur, étape du worker (« {txt} »)")
+d._vl_pending = False
+d.vl_stage = ""
 app._maj_lbl_vl()
 
 root.destroy()

@@ -291,7 +291,7 @@ app.disp.reset()
 app.var_vl_neutre.set(True)
 app._on_vl_neutre()
 app.disp.notify_new_stack()
-app.disp._process_veralux(petite, live=False)
+app.disp._process_chaine(petite, live=False)
 _attendre(lambda: not app.disp._vl_pending)
 app.disp.process(petite, live=False)              # niveaux + NEUTRALISATION
 gains_job = app.disp.vl_neutre_gains

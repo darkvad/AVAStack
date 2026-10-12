@@ -2876,14 +2876,18 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
           débruitage / netteté / étirement) ; À LA FIN, ligne de RÉSULTAT —
           ✓ des étapes actives (GX / DN / NET / COUL), logD utilisé, fond
           mesuré — ou erreur en rouge ;
-        - STF/manuel : ⏳ netteté pendant la déconvolution du solveur
-          dédié (jalon 12), retour au repos ensuite.
+        - STF/manuel : ⏳ l'étape COURANTE de la MÊME chaîne pré-étirement
+          (GraXpert / débruitage / netteté) — jalons 41/125 — puis retour au
+          repos.
         Un seul écrivain : le thread UI (lecture thread-sûre des attributs
         du solveur, jamais d'appel Tk depuis les threads)."""
         veralux = self.var_moteur.get() == "VeraLux"
-        en_cours_vl = veralux and self.disp.vl_en_cours()
-        en_cours_sh = (not veralux) and self.disp.sh_en_cours()
-        en_cours = en_cours_vl or en_cours_sh
+        # JALON 125 (VOLET A) : la chaîne pré-étirement est COMMUNE aux deux
+        # moteurs — c'est le MÊME worker (`vl_en_cours` / `vl_stage`) qui porte
+        # l'état, en STF/manuel comme en VeraLux. Plus de solveur de netteté
+        # dédié : ses étapes (GraXpert / débruitage / netteté) défilent ici.
+        en_cours_vl = self.disp.vl_en_cours()
+        en_cours = en_cours_vl
         # Curseur de calcul : apparaît au DÉBUT d'un job, disparaît à la FIN
         # (transitions seulement — pas de reconfiguration à chaque tick).
         if en_cours != self._vl_pb_active:
@@ -2894,10 +2898,13 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             else:
                 self.pb_vl.stop()
                 self.pb_vl.pack_forget()
-        if self.disp.vl_new:          # un calcul VeraLux vient de se TERMINER
+        if self.disp.vl_new:          # un calcul vient de se TERMINER
             self.disp.vl_new = False
+            # JALON 125 (VOLET A) : les DEUX moteurs publient par ce MÊME
+            # worker — un rafraîchissement immédiat s'impose dans les deux cas
+            # (en STF/manuel, l'étirement se recalcule sur la sortie de chaîne).
+            self._refresh_preview()
             if veralux:
-                self._refresh_preview()
                 if self.disp.vl_error:
                     self._lbl_vl_texte(self.disp.vl_error, "#d04040")
                 elif self.disp.vl_diagnostics is not None:
@@ -2921,12 +2928,8 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                         texte += (f" · fond neutralisé (R {g[0]:.4f} / "
                                   f"G {g[1]:.4f} / B {g[2]:.4f})")
                     self._lbl_vl_texte(texte, "#1d7f1d")
-        if en_cours_vl:               # solveur VeraLux : l'étape courante
+        if en_cours:                  # chaîne pré-étirement : l'étape courante
             txt = f"⏳ calcul : {self.disp.vl_stage or 'préparation'}…"
-            if txt != self._vl_lbl_txt:
-                self._lbl_vl_texte(txt, "#c98a00")
-        elif en_cours_sh:             # solveur de netteté STF/manuel (jalon 12)
-            txt = "⏳ calcul : netteté…"
             if txt != self._vl_lbl_txt:
                 self._lbl_vl_texte(txt, "#c98a00")
         elif (not veralux) and self._vl_lbl_txt.startswith("⏳"):

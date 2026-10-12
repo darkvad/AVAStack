@@ -197,7 +197,7 @@ try:
     # (sinon `process()` rend l'image d'attente STF), puis rendre.
     for dd in (d_on, d_off):
         dd.notify_new_stack()
-        dd._process_veralux(scene, live=False)
+        dd._process_chaine(scene, live=False)
         attendre_vl(dd)
     _ = d_on.process(scene, live=False)          # APERÇU (même étage)
     e_ecran_on = _capture["ecart"]
@@ -223,7 +223,7 @@ print("[4] Non-régression : écran == fichier, bornes, mono")
 print("=" * 78)
 d = _processor(True)
 d.notify_new_stack()
-d._process_veralux(scene, live=False)
+d._process_chaine(scene, live=False)
 attendre_vl(d)
 d.process(scene, live=False)                  # publie vl_neutre_gains
 gains = d.vl_neutre_gains

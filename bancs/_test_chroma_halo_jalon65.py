@@ -411,7 +411,7 @@ app._on_vl_chroma()
 d.vl_chroma_rayon = 1.25                            # ce que pose l'interface
 d.reset()
 d.notify_new_stack()
-d._process_veralux(petite, live=False)
+d._process_chaine(petite, live=False)
 a1 = _resultat()
 attendu = np.asarray(V.etirer(C.reduire_bruit_chroma(petite, force=0.5,
                                                      rayon=1.25), **params)[0],
@@ -423,7 +423,7 @@ verifie(a1 is not None and ecart < 1e-6,
 d.vl_chroma_rayon = C.RAYON_CHROMA_DEFAUT
 d.reset()
 d.notify_new_stack()
-d._process_veralux(petite, live=False)
+d._process_chaine(petite, live=False)
 a2 = _resultat()
 attendu2 = np.asarray(V.etirer(C.reduire_bruit_chroma(petite, force=0.5),
                                **params)[0], np.float32)

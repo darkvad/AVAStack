@@ -205,37 +205,15 @@ class PanneauAffichage:
                                       text="🔒 Verrouiller le logD résolu",
                                       command=self._on_vl_lock)
         self.btn_vl_lock.pack(anchor="w", pady=(2, 0))
-        # Jalon 4 : GraXpert « live » — appliqué AVANT l'étirement VeraLux,
-        # dans le thread solveur, à chaque nouvel empilement (opt-in). Le BXT
-        # reste manuel (bouton ⚡ de la section Traitement externe).
-        self.var_vl_graxpert = tk.BooleanVar(value=False)
-        ttk.Checkbutton(self.frm_veralux,
-                        text="GraXpert live (avant étirement)",
-                        variable=self.var_vl_graxpert,
-                        command=self._on_vl_graxpert).pack(anchor="w",
-                                                           pady=(2, 0))
-        # Jalon 9 (remis le 16/09/2026) : débruitage local AVANT l'étirement
-        # — algorithmes rapides numpy/OpenCV (aucun subprocess), opère en
-        # vue « empilement » uniquement (cf. _sync_vl_denoise_vue). Force en
-        # 0..1 : seuil k-sigma (ondelettes) / h (NLM) auto-adaptés au bruit
-        # réel de chaque empilement.
-        rowdn = ttk.Frame(self.frm_veralux)
-        rowdn.pack(fill="x", pady=(2, 0))
-        self.var_vl_dn = tk.BooleanVar(value=False)
-        ttk.Checkbutton(rowdn, text="Débruitage live (avant étirement)",
-                        variable=self.var_vl_dn,
-                        command=self._on_vl_denoise).pack(side="left")
-        self.var_vl_dn_methode = tk.StringVar(value=self.VL_DN_LABELS["nlm"])
-        self.cb_vl_dn_methode = ttk.Combobox(
-            rowdn, textvariable=self.var_vl_dn_methode, state="readonly",
-            width=15, values=[lib for _, lib in self.VL_DN_METHODES])
-        self.cb_vl_dn_methode.pack(side="left", padx=(4, 0))
-        self.cb_vl_dn_methode.bind("<<ComboboxSelected>>",
-                                   lambda e: self._on_vl_denoise())
-        self.var_vl_dn_force = tk.DoubleVar(value=0.5)
-        self._add_slider(self.frm_veralux, "Force du débruitage (live)",
-                         self.var_vl_dn_force, 0.0, 1.0, 0.05,
-                         self._on_vl_denoise, "{:.2f}")
+        # JALON 125 (VOLET A) : les cases GraXpert live + débruitage live ont
+        # QUITTÉ ce cadre — elles font partie de la CHAÎNE PRÉ-ÉTIREMENT,
+        # COMMUNE aux deux moteurs, et vivent désormais dans le panneau
+        # « Chaîne avant étirement » (`panels/sharp.py`), VISIBLE dans les deux
+        # modes. Les laisser ici les rendait MASQUÉES en STF alors qu'elles
+        # restaient actives à la sauvegarde (incohérence écran ⇄ fichier
+        # corrigée par la décision d'Alain du 11/10/2026 : « le fichier =
+        # l'écran » — on fait tourner GraXpert + débruitage AUSSI à l'écran en
+        # STF/manuel).
         # Jalon 22 (décision d'Alain) : SCNR + démagenta — APRÈS composition
         # (image COULEUR du composite) ; no-op sur un composite monochrome
         # (Mono). Depuis le jalon 85 la chaîne couleur suit l'ÉTIREMENT (elle

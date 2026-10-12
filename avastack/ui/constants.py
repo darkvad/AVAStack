@@ -73,7 +73,7 @@ SECTIONS_NOM_MAP: dict[str, str] = {
     "calibration": "Calibration",
     "empilement": "Empilement",
     "fond_grain": "Fond et grain (AVANT étirement)",
-    "nette": "Netteté live (Richardson-Lucy)",
+    "nette": "Chaîne avant étirement (GraXpert · débruitage · netteté)",
     "affichage": "Affichage (temps réel)",
     "couleur": "Couleur de l'objet (APRÈS étirement)",
     "etat_calculs": "État des calculs (live)",

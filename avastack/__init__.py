@@ -19,9 +19,41 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.76.0"
+AVASTACK_VERSION = "2.77.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.77.0 : VOLET A — CHAÎNE PRÉ-ÉTIREMENT UNIQUE : GraXpert + débruitage
+#   tournent À L'ÉCRAN aussi en STF/manuel (jalon 125). Demande d'Alain
+#   (11/10/2026) : « je ne comprends pas pourquoi on ne pourrait pas mettre le
+#   retrait de gradient et la suppression de bruit pour STF aussi. »
+#   L'INCOHÉRENCE ÉTAIT RÉELLE : la SAUVEGARDE appliquait GraXpert + débruitage
+#   quel que soit le moteur, l'ÉCRAN seulement en VeraLux — et leurs cases
+#   vivaient dans le cadre VeraLux (MASQUÉ en STF), donc actives à
+#   l'enregistrement sans que rien ne le montre. DÉCISION D'ALAIN : corriger
+#   CÔTÉ ÉCRAN — on GARDE la sauvegarde et on fait tourner GraXpert +
+#   débruitage à l'écran en STF/manuel aussi (« le fichier = l'écran »).
+#   ARCHITECTURE : `DisplayProcessor._vl_worker` devient LA chaîne PRÉ-ÉTIREMENT
+#   unique — GraXpert → débruitage → netteté → (chroma, étirement VeraLux,
+#   chaîne couleur APRÈS étirement : VeraLux SEULEMENT). Seule la DERNIÈRE étape
+#   dépend du MOTEUR : le MOTEUR entre dans la clé `_vl_params`. En VeraLux le
+#   worker publie l'image ÉTIRÉE ; en STF/manuel il publie l'image PRÉ-ÉTIRÉE et
+#   `process()` applique l'étirement STF/manuel DESSUS, DANS LE FIL D'INTERFACE
+#   (les stats EMA du STF y vivent — le worker ne les touche jamais). Le solveur
+#   de netteté DÉDIÉ (`_sh_worker`, `_process_nettete`, `_sh_key`, `_sh_*`) est
+#   SUPPRIMÉ : la netteté fait partie de la chaîne unique ; `sh_en_cours()` reste
+#   (renvoie toujours False) et l'état des calculs suit `vl_en_cours()` /
+#   `vl_stage` pour les DEUX moteurs. La CHROMA reste RÉSERVÉE à VeraLux (écran
+#   comme fichier) : elle n'apparaît PAS dans la sortie STF. L'image d'ATTENTE en
+#   STF/manuel est l'image LINÉAIRE (sinon `process()` l'étirerait deux fois).
+#   UI : les cases GraXpert live + débruitage live QUITTENT le cadre VeraLux et
+#   vivent dans « Chaîne avant étirement (GraXpert · débruitage · netteté) » —
+#   le panneau `panels/sharp.py`, VISIBLE dans les DEUX modes (le cadre VeraLux
+#   est masqué en STF). Le préflight de sauvegarde (`saver._gx_live_prete`) ne se
+#   limite plus à VeraLux. FICHIERS : `processing/display.py`,
+#   `ui/panels/display.py`, `ui/panels/sharp.py`, `ui/constants.py`, `ui/app.py`,
+#   `ui/saver.py`. BANCS : neuf `_test_chaine_pre_etirement_jalon125.py` ; MAJ de
+#   12 (netteté dans la chaîne unique) et 41 (état des calculs pour les 2
+#   moteurs). Garde-fou VERT (pyright 0).
 # v2.76.0 : NEUTRALISATION DÉPLACÉE (après les NIVEAUX, JUSTE AVANT gamma/
 #   saturation) + EXCLUSIVITÉ ÉQUILIBRAGE / SPCC / GAINS GAIA (jalon 124). Suite
 #   directe de la validation de M33 en v2.75.0 (constat d'Alain, 12/10/2026 :

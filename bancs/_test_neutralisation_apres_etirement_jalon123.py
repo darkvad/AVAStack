@@ -187,7 +187,7 @@ verifie(0.0 <= float(r_on.min()) and float(r_on.max()) <= 1.0,
 d_live = _processor(True)
 d_live.vl_log_d_resolu = None         # force la résolution TARGET_BG du solveur
 d_live.notify_new_stack()
-d_live._process_veralux(scene, live=False)
+d_live._process_chaine(scene, live=False)
 fait = attendre_vl(d_live)
 d_live.process(scene, live=False)     # étage de niveaux + NEUTRALISATION
 verifie(fait and d_live.vl_neutre_gains is not None
@@ -196,7 +196,7 @@ verifie(fait and d_live.vl_neutre_gains is not None
         f"{None if d_live.vl_neutre_gains is None else np.round(d_live.vl_neutre_gains, 4).tolist()}) "
         "— mesurés sur la SORTIE")
 d_off.notify_new_stack()
-d_off._process_veralux(scene, live=False)
+d_off._process_chaine(scene, live=False)
 attendre_vl(d_off)
 d_off.process(scene, live=False)
 verifie(d_off.vl_neutre_gains is None,
