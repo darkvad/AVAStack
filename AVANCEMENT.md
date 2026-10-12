@@ -6,22 +6,24 @@
 
 ---
 
-## PROCHAINE TÂCHE — 12/10/2026 : VOLET COULEUR BOUCLÉ (jalons 122 + 123 + 124)
+## PROCHAINE TÂCHE — 12/10/2026 : VOLET A (chaîne de sortie) — À CODER
 
-**Volet « couleur VeraLux » de M33 : TERMINÉ** — piédestal par canal (122), neutralisation
-APRÈS l'étirement (123), puis jalon 124 (retours de la VALIDATION de M33 en v2.75.0) : case
-déplacée dans « Couleur de l'objet (APRÈS) », neutralisation posée JUSTE AVANT
-gamma/saturation, et exclusivité Équilibrage/SPCC/Gaia.
+**Volet « couleur VeraLux » de M33 (jalons 122 + 123 + 124) : TERMINÉ**, et
+**COMMITTÉ/POUSSÉ** (commit `cd3a312`, v2.76.0 ; **PAS de release** — dernier tag publié =
+v2.71.1).
 
 ### À faire, dans cet ordre
-1. **COMMITER/POUSSER** les jalons 121, 122, 123 ET 124 (aucun n'est committé ; HEAD =
-   jalon 120 / v2.72.1). **PAS de release** a priori.
-2. **À VALIDER EN RÉEL (Alain)** : relancer M33 — fond neutre, cœur sans magenta. ATTENTION :
-   la neutralisation ne vise QUE le fond (le CŒUR reste magenta, R/G 1,37 MESURÉ) ; le
-   remède « démagenta » a été ÉCARTÉ par Alain (il y perd le vrai Hα).
-3. **VOLET A (chantier en cours, NON commencé)** : sortir GraXpert + débruitage du cadre
-   VeraLux et donner aux modes STF/manuel le même chemin de sortie (décision d'Alain du
-   11/10 : corriger CÔTÉ ÉCRAN, « le fichier = l'écran »). Détail au « Chantier en cours ».
+1. **VOLET A — À CODER EN PRIORITÉ 1 (la tâche ci-dessous)** : sortir GraXpert +
+   débruitage du cadre VeraLux et donner aux modes STF/manuel le même chemin de sortie
+   (décision d'Alain du 11/10 : corriger CÔTÉ ÉCRAN, « le fichier = l'écran »).
+   Détail au « Chantier en cours » plus bas.
+2. **BUG PRÉEXISTANT À ARBITRER (Alain)** : `chroma_nr_jalon63` [5]/[6] et
+   `chroma_halo_jalon65` [6] portent le **MÊME bug de prédicat** que
+   `couleurs_immediat_jalon39` (`_vl_result[0]` = clé+forme comparée à `_vl_params()`
+   SEUL, sans forme, depuis la v2.55.3 → prédicat TOUJOURS faux). **1 ligne chacun**,
+   NON réparés (hors périmètre du 124). **Alain décide** s'il veut que je les répare.
+3. **À VALIDER EN RÉEL (Alain)** : relancer M33 — fond neutre attendu ; le CŒUR reste
+   magenta (hors périmètre, R/G 1,37 MESURÉ ; démagenta ÉCARTÉ — perte du vrai Hα).
 
 ### Règles d'or (rappel)
 Un jalon = un banc NEUF + rejeu des bancs concernés (TOUS VERTS, hors échecs
@@ -123,16 +125,17 @@ MESURER sur le fichier.
 ---
 ## En attente / prochaine session
 
-- **PROCHAIN PAS = COMMITER/POUSSER** les jalons 121, 122, 123 ET 124 (aucun committé ; HEAD
-  = jalon 120 / v2.72.1). **PAS de release** a priori.
+- **VOLET A = PRIORITÉ 1 (à coder)** : sortir GraXpert + débruitage du cadre VeraLux et
+  donner aux modes STF/manuel le même chemin de sortie (voir « Chantier en cours »).
+- **À ARBITRER (Alain)** : réparer ou NON le bug de prédicat PRÉEXISTANT de
+  `chroma_nr_jalon63` [5]/[6] et `chroma_halo_jalon65` [6] (1 ligne chacun, hors périmètre
+  du 124).
 - **À VALIDER EN RÉEL (Alain)** : relancer M33 — fond neutre attendu ; le CŒUR restera
   magenta (hors périmètre). Démagenta ÉCARTÉ (perte du vrai Hα).
 - **Contrôle simple au passage** : re-mesurer les 2 FITS du 11/10 → les pixels à CANAL NUL
   (S = 1, fabriqués par le bug de restauration, corrigé au jalon 120) doivent avoir disparu.
-- **VOLET A (à lancer)** : sortir GraXpert + débruitage du cadre VeraLux (voir « Chantier en
-  cours »).
-- **Jalons 119/120** : committés/poussés ; **release NON faite** (dernier tag publié =
-  **v2.71.1**). Jalons 121/122/123/124 : **à commiter/pousser**, **pas de release**.
+- **Jalons 119 à 124** : committés/poussés ; **release NON faite** (dernier tag publié =
+  **v2.71.1**).
 - **À VÉRIFIER EN RÉEL** : l'installateur `.exe` corrigé (l'application démarre après
   installation) — c'est LE test qui manquait et qui a révélé le défaut (jalon 118).
 - **Microsoft Store** : cadence SÉPARÉE — l'appli PUBLIÉE y reste la **v2.50.0** ; le
