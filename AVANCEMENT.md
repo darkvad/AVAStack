@@ -33,7 +33,7 @@ MESURER sur le fichier.
 
 ---
 
-## Session du 12/10/2026 (9) — JALON 125 (v2.77.0) : VOLET A — CHAÎNE PRÉ-ÉTIREMENT UNIQUE
+## Session du 12/10/2026 (9) — CLOSE — JALON 125 (v2.77.0) : VOLET A — CHAÎNE PRÉ-ÉTIREMENT UNIQUE
 
 ### État actuel
 - **Livré (VOLET A)** : GraXpert + débruitage tournent à l'écran AUSSI en STF/manuel
@@ -65,8 +65,11 @@ MESURER sur le fichier.
 - **CHROMA reste VeraLux** : sa case (visible dans « Fond et grain ») n'agit pas en STF (écran ET fichier) — à TRANCHER (cf. « PROCHAINE TÂCHE » point 3).
 
 ### Prochaines étapes
+- **COMMITTÉ/POUSSÉ** : jalons 121→125 = commits `cd3a312`, `b8ec81f`, `e185ffc`
+  (branche `master` à jour avec `origin/master`).
 - **VALIDATION RÉELLE (Alain)** : M33 (fond neutre) + cocher GraXpert/débruitage **EN STF**.
-- Puis COMMITER/POUSSER le jalon 125 (**pas de release** a priori).
+- Ensuite, au choix d'Alain : chroma en STF ? réparation du bug de prédicat 63/65 ?
+  **PAS de release** (dernier tag publié = v2.71.1).
 
 ### Points d'attention
 - **Le CŒUR magenta N'EST PAS traité** : la neutralisation ne vise QUE le fond. MESURÉ M33 : cœur R/G 1,37 ; fond neutre (R/G 1,01). Démagenta ÉCARTÉ (perte du vrai Hα).
@@ -134,7 +137,7 @@ MESURER sur le fichier.
   magenta (hors périmètre). Démagenta ÉCARTÉ (perte du vrai Hα).
 - **Contrôle simple au passage** : re-mesurer les 2 FITS du 11/10 → les pixels à CANAL NUL
   (S = 1, fabriqués par le bug de restauration, corrigé au jalon 120) doivent avoir disparu.
-- **Jalons 119 à 124** : committés/poussés ; **jalon 125 : à COMMITER/POUSSER** ; **release
+- **Jalons 119 à 125** : committés/poussés (`cd3a312`, `b8ec81f`, `e185ffc`) ; **release
   NON faite** (dernier tag publié = **v2.71.1**).
 - **À VÉRIFIER EN RÉEL** : l'installateur `.exe` corrigé (l'application démarre après
   installation) — c'est LE test qui manquait et qui a révélé le défaut (jalon 118).
@@ -236,7 +239,7 @@ MESURER sur le fichier.
 - **12/10/2026** : jalon 125 (v2.77.0) — VOLET A : chaîne pré-étirement UNIQUE (GraXpert +
   débruitage à l'écran AUSSI en STF/manuel ; netteté dans la même chaîne ; solveur dédié
   supprimé) ; cases sorties du cadre VeraLux → « Chaîne avant étirement » ; banc neuf +
-  rejeu + garde-fou VERTS ; **à commiter**, pas de release.
+  rejeu + garde-fou VERTS ; **commité** (`e185ffc`), pas de release.
 - **12/10/2026** : jalon 124 (v2.76.0) — NEUTRALISATION DÉPLACÉE (après niveaux, avant
   gamma/saturation) + case déplacée dans « Couleur de l'objet (APRÈS) » + EXCLUSIVITÉ
   Équilibrage/SPCC/Gaia ; **commité** (`cd3a312`), pas de release.
