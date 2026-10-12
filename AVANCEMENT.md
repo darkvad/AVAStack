@@ -28,7 +28,7 @@ MESURER sur le fichier.
 
 ---
 
-## Session du 12/10/2026 (10) — JALONS 126 & 127 (v2.78.0 · v2.79.0)
+## Session du 12/10/2026 (10) — CLOSE — JALONS 126 & 127 (v2.78.0 · v2.79.0)
 
 ### État actuel
 - **Jalon 126 (v2.78.0)** — BANCS CHROMA 63/65 RÉPARÉS (test-only, aucun code de
@@ -65,8 +65,11 @@ MESURER sur le fichier.
 
 ### Prochaines étapes
 - **VALIDATION RÉELLE (Alain)** : M33 — ① fond neutre attendu ; ② GraXpert / débruitage / CHROMA cochés **EN STF** → écran == fichier.
-- **COMMITTÉS** : jalon 126 = `400ba7c` ; jalon 127 = commit suivant.
+- **COMMITTÉS, PAS ENCORE POUSSÉS** : jalon 126 = `400ba7c` ; jalon 127 = `3f9b4d9`
+  (soit 2 commits d'avance sur `origin/master`) — `git push` quand Alain le décide.
   **PAS de release** (dernier tag publié = v2.71.1).
+- **À ARBITRER (Alain)** : le jalon 126 étant TEST-ONLY, faut-il garder son bump de version
+  v2.78.0 (convention « 1 jalon = 1 version ») ou le fondre dans le jalon 127 ?
 
 ### Points d'attention
 - **La chroma est un NO-OP sur une image MONOCHROME** (Cr/Cb nuls) : tout banc qui la teste doit utiliser une image COULEUR (leçon du banc 125 [4]).
@@ -133,8 +136,9 @@ MESURER sur le fichier.
   débruitage / chroma **EN STF**.
 - **Contrôle simple au passage** : re-mesurer les 2 FITS du 11/10 → les pixels à CANAL NUL
   (S = 1, fabriqués par le bug de restauration, corrigé au jalon 120) doivent avoir disparu.
-- **Jalons 119 à 127** : committés (`cd3a312`, `b8ec81f`, `e185ffc`, `400ba7c`, + jalon
-  127) ; **release NON faite** (dernier tag publié = **v2.71.1**).
+- **Jalons 119 à 127** : committés (`cd3a312`, `b8ec81f`, `e185ffc`, `400ba7c`, `3f9b4d9`) ;
+  **2 commits d'avance sur `origin/master`** (pas encore poussés) ; **release NON faite**
+  (dernier tag publié = **v2.71.1**).
 - **À VÉRIFIER EN RÉEL** : l'installateur `.exe` corrigé (l'application démarre après
   installation) — c'est LE test qui manquait et qui a révélé le défaut (jalon 118).
 - **Microsoft Store** : cadence SÉPARÉE — l'appli PUBLIÉE y reste la **v2.50.0** ; le
