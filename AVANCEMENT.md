@@ -6,20 +6,14 @@
 
 ---
 
-## PROCHAINE TÂCHE — à trancher par Alain (12/10/2026)
+## PROCHAINE TÂCHE — à définir par Alain (SESSION CLOSE)
 
-**v2.79.0 TESTÉE ET VALIDÉE (Alain, M33, 12/10/2026)** : jalon 126 (test-only, FONDU)
-+ jalon 127 — la CHROMA agit désormais pour les DEUX moteurs, fond neutre confirmé.
-Poussé sur `origin/master` (`400ba7c`, `3f9b4d9`, `f887811`, `06b7459`) ;
-**PAS de release** (dernier tag publié = v2.71.1).
-
-### À faire — Alain choisit la suite (cf. « En attente / prochaine session »)
-1. **Vérifier en RÉEL l'installateur `.exe`** (jalon 118) : l'application doit démarrer
-   après installation — LE test qui manquait et qui a révélé le défaut.
-2. **Microsoft Store** : resoumettre le **MSIX v2.71.1** (construit, signé ; cf.
-   `SOUMISSION.md` §1/§7), puis tester « installer depuis le Store ».
-3. **Contrôle rapide** : re-mesurer les 2 FITS du 11/10 → plus de pixels à CANAL NUL
-   (S = 1, fabriqués par le bug de restauration corrigé au jalon 120).
+**SESSION DU 12/10/2026 CLOSE — v2.79.0 validée + les 3 vérifications réelles faites** :
+installeur `.exe` OK ; Store : MSIX **v2.71.1 soumis, accepté, publié, testé OK** ;
+contrôle « pixels à canal nul » sur les FITS du 11/10 → **0** (cf. « Session »).
+Jalons 119→127 **poussés** sur `origin/master` ; **pas de release GitHub** (dernier
+tag = v2.71.1). **Rien d'ouvert côté code → la prochaine tâche reste à choisir**
+(pistes en « En attente / prochaine session »).
 
 ### Règles d'or (rappel)
 Un jalon = un banc NEUF + rejeu des bancs concernés (TOUS VERTS, hors échecs
@@ -29,7 +23,7 @@ MESURER sur le fichier.
 
 ---
 
-## Session du 12/10/2026 (10) — CLOSE — JALONS 126+127 FONDUS (v2.79.0)
+## Session du 12/10/2026 (10) — CLOSE — JALONS 126+127 FONDUS (v2.79.0) + 3 VÉRIFS
 
 ### État actuel
 - **Jalon 126 (FONDU dans la v2.79.0)** — bancs chroma 63/65 RÉPARÉS (test-only, aucun
@@ -70,6 +64,16 @@ MESURER sur le fichier.
   LINÉAIRE).
 - **Arbitrage 3 (Alain) — jalon 126 FONDU dans la v2.79.0** : pas de version v2.78.0 à part.
 
+### Vérifications réelles (Alain, 12/10/2026)
+- ① **Installeur `.exe`** (jalon 118) : vérifié, testé, **OK** (démarre après installation).
+- ② **Microsoft Store** : MSIX **v2.71.1 soumis, accepté, PUBLIÉ, testé OK**.
+- ③ **Contrôle « pixels à canal nul »** (canal échu à 0) sur les FITS du 11/10 au dossier
+  `C:\Astro\test` : la paire A/B chroma (`M33_AB_chroma_DECOCHEE`/`COCHEE`) et
+  `M33_AA_controle_1/2` → **0** ; **veralux** post-correctif (12/10) → **0** (contre
+  **963 430** AVANT correctif le 11/10 17:47). Le **STF** « tel que vu » garde des canaux
+  à 0 (~527 k sur l'image 12/10) — **clippage LÉGITIME du moteur STF**, sans rapport avec
+  le bug `sat_b = 3,0` (jalon 120). Mesure faite hors dépôt (script jetable).
+
 ### Points d'attention
 - Ne JAMAIS remettre les cases GraXpert/débruitage dans `frm_veralux` (masquées en STF →
   actives à la sauvegarde).
@@ -93,20 +97,14 @@ MESURER sur le fichier.
 ## En attente / prochaine session
 
 - **LIVRÉ ET VALIDÉ (v2.79.0)** : GraXpert + débruitage (jalon 125), chroma pour les DEUX
-  moteurs (jalon 127), bancs chroma 63/65 réparés (jalon 126) — **validé en réel (M33)**.
-- **Contrôle simple au passage** : re-mesurer les 2 FITS du 11/10 → plus de pixels à CANAL
-  NUL (S = 1, fabriqués par le bug de restauration, corrigé au jalon 120).
-- **À VÉRIFIER EN RÉEL** : l'installateur `.exe` corrigé (l'application démarre après
-  installation) — c'est LE test qui manquait et qui a révélé le défaut (jalon 118).
-- **Microsoft Store** : cadence SÉPARÉE — l'appli PUBLIÉE y reste la **v2.50.0** ; le
-  **MSIX v2.71.1 est CONSTRUIT ET SIGNÉ** (prêt à resoumettre, cf. `SOUMISSION.md` §1/§7) ;
-  reste le test « installer depuis le Store » (seule voie pour ce test).
+  moteurs (jalon 127), bancs chroma 63/65 réparés (jalon 126) — **validé en réel (M33)** ;
+  plus les 3 vérifs réelles du 12/10 (`.exe`, **Store MSIX v2.71.1 publié**, canal nul) : OK.
 - **Boutons de données SANS Siril** (« ⬇ Gaia », « ⬇ Spectres (champ) », « ⬇ Base SPCC ») —
   délégués à un utilisateur sans Siril.
 - **Piste INDI** (un seul chemin pour les 3 OS et toutes les marques) — jalon à part, PAS
   avant le portage Linux avec les `.so`.
-- **Release** : NON faite (dernier tag publié = **v2.71.1**) ; jalons 119→127 poussés sur
-  `origin/master`.
+- **Release GitHub** : NON faite (dernier tag publié = **v2.71.1**) ; jalons 119→127 poussés
+  sur `origin/master`. Côté **Store**, la version publiée est désormais **v2.71.1**.
 
 ---
 
@@ -200,8 +198,8 @@ MESURER sur le fichier.
 
 ## Clôtures précédentes
 
-- **12/10/2026** : jalon 127 (v2.79.0, **incl. jalon 126 fondu**) — la CHROMA agit pour les
-  DEUX moteurs + bancs chroma 63/65 réparés ; testé/validé en réel (M33) ; **poussé**.
+- **12/10/2026** : jalon 127 (v2.79.0, incl. 126) — CHROMA pour les DEUX moteurs + bancs
+  63/65 réparés ; validé M33 ; **.exe + Store (MSIX v2.71.1) + canal nul** TOUS OK ; poussé.
 - **12/10/2026** : jalon 125 (v2.77.0) — chaîne pré-étirement UNIQUE (GraXpert + débruitage
   à l'écran pour les DEUX moteurs) ; **poussé** (`e185ffc`).
 

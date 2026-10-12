@@ -45,8 +45,8 @@ citent jamais le mainteneur** (cf. « Conventions non-négociables »).
 sur le Microsoft Store** (compte développeur Individuel ; dossier MSIX
 `installer/windows/msix/`, dossier-soumission `SOUMISSION.md`). Chaque
 version Store passe par la **certification** : cadence SÉPARÉE de celle de
-GitHub — le MSIX actuellement publié (soumission validée le 03/10/2026) est
-**v2.50.0** ; on n'y publie pas chaque jalon.
+GitHub — le MSIX publié est passé de **v2.50.0** à **v2.71.1** (soumis, accepté et
+publié le 12/10/2026) ; on n'y publie pas chaque jalon.
 
 ## AVANCEMENT.md — mémoire de session (court terme)
 
