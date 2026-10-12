@@ -79,7 +79,6 @@ class ExternalRunner:
     var_ext_graxpert: tk.Variable
     var_ext_dn: tk.Variable
     var_ext_bxt: tk.Variable
-    var_ext_neutre: tk.Variable
     var_ext_chroma: tk.Variable
     # Méthodes de l'hôte (`App`, portées par d'autres mixins) appelées ici.
     _avertir: Callable[..., Any]
@@ -120,8 +119,8 @@ class ExternalRunner:
             return
         if not (self.var_ext_graxpert.get() or self.var_ext_dn.get()
                 or self.var_ext_bxt.get()
-                or self.var_ext_neutre.get()            # v2.37.1
-                or self.var_ext_chroma.get()):          # v2.37.1
+                or self.var_ext_chroma.get()):          # v2.37.1 (jalon 123 : plus
+                                                        # de case « fond neutre »)
             self._dire("Traitement externe",
                        "Cochez au moins un traitement.")
             return
@@ -172,19 +171,19 @@ class ExternalRunner:
                         # — elle suit l'étirement et est réglée par la section
                         # « Couleur de l'objet (après étirement) ». Le résultat
                         # ⚡ reste LINÉAIRE, non écrêté en vert.
-                        # v2.37.1 : corrections PRÉ-ÉTIREMENT de la chaîne live
-                        # (9e/10e éléments + la force en 11e) — déballage
-                        # tolérant côté thread de traitement. La force est
-                        # CAPTURÉE ici (curseur « Couleur live ») : le thread
-                        # externe ne lit jamais une variable Tk.
-                        self.var_ext_neutre.get(),
+                        # JALON 123 : la NEUTRALISATION du fond n'est PLUS dans
+                        # cette chaîne (elle s'applique APRÈS l'étirement, cf.
+                        # `display`) → le job n'embarque plus que la réduction du
+                        # bruit chromatique (8e/9e/10e éléments : case, force,
+                        # rayon). Déballage TOLÉRANT côté thread de traitement.
+                        # La force est CAPTURÉE ici (curseur « Couleur live ») :
+                        # le thread externe ne lit jamais une variable Tk.
                         self.var_ext_chroma.get(),
                         float(self.disp.vl_chroma_force),
-                        # v2.37.4 : RAYON DE RÉFÉRENCE du flou de chroma
-                        # (12e élément), en pixels PLEINE RÉSOLUTION — la chaîne
+                        # v2.37.4 : RAYON DE RÉFÉRENCE du flou de chroma (10e
+                        # élément), en pixels PLEINE RÉSOLUTION — la chaîne
                         # externe travaille à cette résolution, elle l'utilise
-                        # tel quel. Capturé ici : le thread de traitement ne lit
-                        # JAMAIS une variable Tk.
+                        # tel quel.
                         float(self.rayon_chroma_ref))
         self.ext_request = True
         self._set_ext_msg("Traitement demandé…", state="busy")
@@ -230,7 +229,7 @@ class ExternalRunner:
             # chaîne couleur sur le composite).
             if self._mode_compo and hasattr(self.stacker,
                                             "mean_avec_canaux") \
-                    and len(self.ext_job) > 11 \
+                    and len(self.ext_job) > 10 \
                     and (self.ext_job[0] or self.ext_job[2]):
                 comp, canaux = self.stacker.mean_avec_canaux()
                 if comp is not None and canaux:
@@ -244,20 +243,21 @@ class ExternalRunner:
             # sauvegarde « tel que vu » (`display.couleur_apres_etirement`).
             # Le résultat ⚡ reste ainsi LINÉAIRE et non écrêté en vert :
             # réutilisable tel quel.
-            # v2.37.1 : corrections pré-étirement de la chaîne LIVE (9e, 10e et
-            # 11e éléments du job — déballage tolérant : les jobs antérieurs n'en
-            # ont pas → inactives) : neutralisation du fond → réduction du bruit
-            # chromatique, juste avant l'étirement d'affichage.
-            nf_ext = bool(self.ext_job[8]) if len(self.ext_job) > 8 else False
-            chroma_ext = bool(self.ext_job[9]) if len(self.ext_job) > 9 \
+            # JALON 123 : la RÉDUCTION DU BRUIT CHROMATIQUE est la SEULE
+            # correction pré-étirement qui reste dans la chaîne externe (8e
+            # élément du job — déballage tolérant : les jobs antérieurs n'en
+            # ont pas → inactive). La NEUTRALISATION du fond n'est plus
+            # appliquée ici : elle a lieu APRÈS l'étirement, à l'affichage et à
+            # la sauvegarde (cf. `display`), sinon elle fabrique du magenta.
+            chroma_ext = bool(self.ext_job[8]) if len(self.ext_job) > 8 \
                 else False
-            force_chroma_ext = (float(self.ext_job[10])
-                                if len(self.ext_job) > 10 else 0.5)
-            # v2.37.4 : rayon de RÉFÉRENCE du flou de chroma (12e élément —
+            force_chroma_ext = (float(self.ext_job[9])
+                                if len(self.ext_job) > 9 else 0.5)
+            # v2.37.4 : rayon de RÉFÉRENCE du flou de chroma (10e élément —
             # déballage tolérant : les jobs antérieurs n'en ont pas → rayon de
             # référence, soit le comportement de la v2.37.3).
-            rayon_chroma_ext = (float(self.ext_job[11])
-                                if len(self.ext_job) > 11
+            rayon_chroma_ext = (float(self.ext_job[10])
+                                if len(self.ext_job) > 10
                                 else couleurs_mod.RAYON_CHROMA_DEFAUT)
             steps = []
             if use_gx:
@@ -390,19 +390,11 @@ class ExternalRunner:
             # (elle suit l'étirement : `display.couleur_apres_etirement`,
             # appliquée à l'affichage du résultat et à « tel que vu ») — le
             # résultat ⚡ est donc LINÉAIRE et non écrêté en vert.
-            # v2.37.1 : NEUTRALISATION DU FOND puis RÉDUCTION DU BRUIT
-            # CHROMATIQUE — les deux corrections pré-étirement de la chaîne live,
-            # au même rang qu'elle (elles corrigent ce que l'ANCRE de VeraLux
-            # amplifie ensuite : sa soustraction transforme 2 % d'écart de ciel
-            # en un fond franc bleu, et les gains multiplicatifs — SPCC en tête —
-            # amplifient le grain du canal qu'ils montent). Gains ANNONCÉS dans
-            # le message final, comme dans « État des calculs » du live.
-            gains_fond_ext = None
-            if nf_ext:
-                gains_fond_ext = couleurs_mod.gains_fond(img)
-                if gains_fond_ext is not None \
-                        and not np.allclose(gains_fond_ext, 1.0, atol=1e-4):
-                    img = couleurs_mod.neutraliser_fond(img)
+            # JALON 123 : la NEUTRALISATION du fond a QUITTÉ cette chaîne (elle
+            # s'applique APRÈS l'étirement, à l'affichage et à « tel que vu » —
+            # cf. `display`) : sur le résultat ⚡ LINÉAIRE elle fabriquait du
+            # magenta. Seule la RÉDUCTION DU BRUIT CHROMATIQUE reste ici,
+            # pré-étirement, comme dans la chaîne live.
             if chroma_ext:
                 img = couleurs_mod.reduire_bruit_chroma(
                     img, force=force_chroma_ext, rayon=rayon_chroma_ext)
@@ -419,13 +411,8 @@ class ExternalRunner:
                                  interpolation=cv2.INTER_AREA)
             self.proc_show = img                     # version allégée (affichage)
             self.proc_new = True
-            detail_fond = ""
-            if gains_fond_ext is not None \
-                    and not np.allclose(gains_fond_ext, 1.0, atol=1e-4):
-                detail_fond = (" · fond neutralisé (R %.4f / G %.4f / B %.4f)"
-                               % gains_fond_ext)
             self._set_ext_msg(f"Traité à {time.strftime('%H:%M:%S')} "
-                              f"({n_frames} frames){detail_fond}", state="ok")
+                              f"({n_frames} frames)", state="ok")
         except Exception as e:
             self._set_ext_msg(f"Erreur : {e}", state="error")
         finally:
@@ -474,17 +461,18 @@ class ExternalRunner:
             (use_gx, cmd_gx, use_dn, cmd_dn, use_bxt, cmd_bxt,
              mode_dn, force_dn) = self.ext_job[:8]
             # v2.48.0 (jalon 85) : plus de chaîne couleur ici (elle suit
-            # l'étirement, cf. `display.couleur_apres_etirement`) — seules les
-            # corrections PRÉ-étirement restent dans cette chaîne.
-            nf_ext = bool(self.ext_job[8]) if len(self.ext_job) > 8 else False
-            chroma_ext = bool(self.ext_job[9]) if len(self.ext_job) > 9 \
+            # l'étirement, cf. `display.couleur_apres_etirement`) — seule la
+            # correction PRÉ-étirement (bruit chromatique) reste. Jalon 123 : la
+            # neutralisation du fond a, elle aussi, quitté cette chaîne (elle
+            # s'applique APRÈS l'étirement, cf. `display`).
+            chroma_ext = bool(self.ext_job[8]) if len(self.ext_job) > 8 \
                 else False
-            force_chroma_ext = (float(self.ext_job[10])
-                                if len(self.ext_job) > 10 else 0.5)
-            # v2.37.4 : rayon de RÉFÉRENCE du flou de chroma (12e élément —
+            force_chroma_ext = (float(self.ext_job[9])
+                                if len(self.ext_job) > 9 else 0.5)
+            # v2.37.4 : rayon de RÉFÉRENCE du flou de chroma (10e élément —
             # déballage tolérant, comme la chaîne mono).
-            rayon_chroma_ext = (float(self.ext_job[11])
-                                if len(self.ext_job) > 11
+            rayon_chroma_ext = (float(self.ext_job[10])
+                                if len(self.ext_job) > 10
                                 else couleurs_mod.RAYON_CHROMA_DEFAUT)
             tmp = travail.creer_dossier("avastack_compo_")
             journal = os.path.join(tmp, "outils_sortie.txt")
@@ -558,15 +546,10 @@ class ExternalRunner:
             # v2.48.0 (jalon 85) : la chaîne couleur a QUITTÉ la chaîne externe
             # (composition comprise) — elle suit l'étirement et est appliquée à
             # l'affichage / « tel que vu » (`display.couleur_apres_etirement`).
-            # v2.37.1 : neutralisation du fond puis réduction du bruit
-            # chromatique (chaîne live) — sur le COMPOSITE re-fait, comme les
-            # SCNR ; les couches restent brutes (contrat jalon 54).
-            gains_fond_ext = None
-            if nf_ext:
-                gains_fond_ext = couleurs_mod.gains_fond(img)
-                if gains_fond_ext is not None \
-                        and not np.allclose(gains_fond_ext, 1.0, atol=1e-4):
-                    img = couleurs_mod.neutraliser_fond(img)
+            # JALON 123 : la neutralisation du fond a QUITTÉ cette chaîne (elle
+            # s'applique APRÈS l'étirement, cf. `display`). Seule la réduction du
+            # bruit chromatique (chaîne live) reste, sur le COMPOSITE re-fait,
+            # comme les SCNR ; les couches restent brutes (contrat jalon 54).
             if chroma_ext:
                 img = couleurs_mod.reduire_bruit_chroma(
                     img, force=force_chroma_ext, rayon=rayon_chroma_ext)
@@ -581,10 +564,6 @@ class ExternalRunner:
                                  interpolation=cv2.INTER_AREA)
             self.proc_show = img
             self.proc_new = True
-            if gains_fond_ext is not None \
-                    and not np.allclose(gains_fond_ext, 1.0, atol=1e-4):
-                msgs.append("fond neutralisé (R %.4f / G %.4f / B %.4f)"
-                            % gains_fond_ext)
             detail = (" ; ".join(msgs) + " — ") if msgs else ""
             self._set_ext_msg(f"{detail}Traité par couche à "
                               f"{time.strftime('%H:%M:%S')} ({n_frames} "

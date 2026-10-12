@@ -395,19 +395,22 @@ class DisplayProcessor:
         # identité exacte, donc le curseur peut rester en place sans effet.
         self.vl_boost_rouge = False
         self.vl_boost_force = float(_couleurs.BOOST_ROUGE_DEFAUT)
-        # --- Neutralisation de la COULEUR DU FOND avant étirement (v2.36.1) --
+        # --- Neutralisation de la COULEUR DU FOND (v2.36.1 ; APRÈS l'étirement
+        # depuis le jalon 123) -------------------------------------------------
         # Constat d'Alain (25/09/2026) : « le fond reste bleu » à l'écran et
         # « vachement bleu » en PNG. Mesuré : le fichier LINÉAIRE a un fond
         # neutre (R/G 0,9991), mais VeraLux soustrait une ANCRE puis étire en
         # log → quelques pour cent d'écart de ciel deviennent un facteur 2,4 de
-        # couleur de fond (résidus 1 : 1,70 : 2,44 → fond étiré R/G 0,363 ·
-        # B/G 1,611). `couleurs.neutraliser_fond` corrige par des gains par
-        # canal (~2 % ici) mesurés sur la médiane de la MOITIÉ SOMBRE juste
-        # AVANT l'étirement → fond étiré R/G 1,020 · B/G 0,996. ACTIF par
-        # défaut (c'est un défaut de rendu, pas un choix esthétique) ;
-        # l'équilibrage des canaux ne le remplace pas : il estime le fond sur
-        # un percentile bas (les coins, déjà neutres), pas sur l'histogramme
-        # global où vit l'ancre. Décocher = ancien rendu.
+        # couleur de fond. La v2.36.1 corrigeait par des gains AVANT l'étirement
+        # (`neutraliser_fond`) : insuffisant, et FABRIQUANT du magenta (mesuré
+        # M33, 11/10/2026 — le gain vise à côté de ce que l'ancre SOUTRAIT).
+        # Depuis le jalon 123, les gains sont mesurés sur la SORTIE étirée et
+        # appliqués APRÈS le moteur (`couleurs.neutraliser_apres_etirement`),
+        # complétés en amont par le PIÉDESTAL PAR CANAL (jalon 122, dans
+        # `veralux.etirer`). ACTIF par défaut (défaut de rendu, pas un choix
+        # esthétique) ; l'équilibrage des canaux ne le remplace pas (il estime
+        # le fond sur un percentile bas — les coins, déjà neutres). Décocher =
+        # ancien rendu.
         self.vl_neutre_fond = True     # neutralisation de la couleur du fond
         self.vl_neutre_gains = None    # derniers gains appliqués (R, G, B) —
                                       # informatif, lu par l'UI (None = aucun)
@@ -661,7 +664,12 @@ class DisplayProcessor:
                 # la case ET la force entrent dans la clé des réglages.
                 bool(self.vl_boost_rouge),
                 round(float(self.vl_boost_force), 2),
-                bool(self.vl_neutre_fond),             # v2.36.1 (option)
+                # JALON 124 : `vl_neutre_fond` A QUITTÉ cette clé — la
+                # neutralisation a quitté le solveur (elle s'applique dans
+                # `process()` / `rendu_pleine_resolution`, juste avant
+                # gamma/saturation) : elle ne change plus la SORTIE du moteur,
+                # un basculement ne doit donc pas relancer la résolution (il est
+                # rendu immédiatement par `process()`).
                 bool(self.vl_chroma),                  # v2.37.0 (option)
                 round(float(self.vl_chroma_force), 2),
                 round(float(self.vl_chroma_rayon), 2))  # v2.37.3 (résolution)
@@ -751,10 +759,11 @@ class DisplayProcessor:
             # Jalon 117d : lissage du combine LRGB (halos d'étoiles) et son seuil
             # de masque — 8e élément, déballage TOLÉRANT (helper testable).
             lissage_halos, seuil_halos = params_lissage_halos(compo)
-            # v2.36.1 : neutralisation de la couleur du fond avant étirement
-            # (9e élément du job — déballage tolérant : les jobs des bancs
-            # antérieurs n'ont que 8 éléments → option considérée décochée).
-            nf = bool(job[8]) if len(job) > 8 else False
+            # JALON 124 : la NEUTRALISATION de la couleur du fond a QUITTÉ le
+            # solveur (le 9e élément du job est désormais IGNORÉ — la case est
+            # appliquée dans `process()`/`rendu_pleine_resolution`, juste avant
+            # gamma/saturation). La clé `vl_neutre_fond` a aussi quitté
+            # `_vl_params` : son basculement ne relance plus la résolution.
             # --- Jalon 24 : mode COMPOSITION — gradient ET débruitage PAR
             # COUCHE, AVANT recomposition (décision d'Alain du 19/09/2026 :
             # la pollution lumineuse et la clarté de la lune ne frappent pas
@@ -955,32 +964,20 @@ class DisplayProcessor:
             # NE PAS la remettre avant : elle écrêterait la sortie LINÉAIRE
             # sauvegardée et priverait la préservation de L* de tout sens
             # (cf. la note de tête du module `couleurs`).
-            # v2.36.1 : NEUTRALISATION DE LA COULEUR DU FOND, juste AVANT
-            # l'étirement (9e élément du job, déballage tolérant). L'étirement
-            # VeraLux soustrait une ancre puis étire en log : quelques pour cent
-            # d'écart de ciel y deviennent un facteur ~2,4 de couleur de fond
-            # (mesuré : fond étiré R/G 0,363 · B/G 1,611 → R/G 1,020 ·
-            # B/G 0,996 après correction). Les gains appliqués sont publiés
-            # (`vl_neutre_gains`) pour que l'interface puisse les ANNONCER.
-            gains = None
-            if nf:
-                gains = _couleurs.gains_fond(img_net)
-                if gains is not None and not np.allclose(gains, 1.0,
-                                                         atol=1e-4):
-                    img_net = _couleurs.neutraliser_fond(img_net)
-            with self._vl_lock:
-                # Publié pour l'UI (annonce honnête de ce qui est appliqué) ;
-                # None si l'option est décochée ou si rien n'a été corrigé.
-                self.vl_neutre_gains = gains if (nf and gains is not None
-                                                 and not np.allclose(
-                                                     gains, 1.0, atol=1e-4)
-                                                 ) else None
-            # v2.37.0 : RÉDUCTION DU BRUIT CHROMATIQUE, APRÈS la neutralisation
-            # (elle est un gain par canal) et juste AVANT l'étirement. Lisse la
-            # chroma (YCrCb) : la luminance reste intacte, donc ni le niveau ni
-            # le contraste du fond ne bougent — seulement le GRAIN COLORÉ que
-            # les gains multiplicatifs (SPCC en tête : K_B/K_G = 1,32) ont
-            # amplifié. No-op si l'option est décochée ou si l'image est mono.
+            # JALON 123 : la NEUTRALISATION de la couleur du fond a QUITTÉ cet
+            # étage (elle était juste AVANT l'étirement). Mesuré (M33,
+            # 11/10/2026) : appliquée AVANT, elle visait « 0,7 % à côté » de ce
+            # que l'ANCRE de VeraLux amplifie et FABRIQUAIT le magenta. Elle est
+            # désormais appliquée APRÈS l'étirement, juste après le moteur (cf.
+            # plus bas) — le travail pré-étirement revient au PIÉDESTAL PAR CANAL
+            # (jalon 122), intégré à `veralux.etirer`.
+            # v2.37.0 : RÉDUCTION DU BRUIT CHROMATIQUE, juste AVANT l'étirement
+            # (la neutralisation du fond, elle, est passée APRÈS l'étirement au
+            # jalon 123). Lisse la chroma (YCrCb) : la luminance reste intacte,
+            # donc ni le niveau ni le contraste du fond ne bougent — seulement le
+            # GRAIN COLORÉ que les gains multiplicatifs (SPCC en tête : K_B/K_G
+            # = 1,32) ont amplifié. No-op si l'option est décochée ou si l'image
+            # est mono.
             if chroma_actif:
                 self.vl_stage = "chroma"        # jalon 40 : étape courante
                 img_net = _couleurs.reduire_bruit_chroma(
@@ -998,6 +995,12 @@ class DisplayProcessor:
                     self.vl_new = True
                     self.vl_stage = ""    # calcul terminé (en erreur) — jalon 40
                 continue
+            # JALON 124 : la NEUTRALISATION de la couleur du fond a QUITTÉ le
+            # solveur — elle s'applique désormais APRÈS l'étage de niveaux,
+            # juste avant gamma/saturation (cf. `process()` et
+            # `rendu_pleine_resolution`), pour que ces derniers ne la
+            # contredisent plus. Le solveur ne fait donc plus que l'étirement
+            # puis la chaîne couleur APRÈS étirement ci-dessous.
             # v2.48.0 (jalon 85) : CHAÎNE COULEUR APRÈS L'ÉTIREMENT — SCNR →
             # SCNR doux → démagenta, avec préservation de la luminosité. Elle
             # était appliquée AVANT le moteur aux jalons 22/23 (cf. la note du
@@ -1018,6 +1021,9 @@ class DisplayProcessor:
                 self.vl_error = prefixe + err_coul   # "" si tout s'est bien passé
                 self.vl_log_d_resolu = log_d_util
                 self.vl_diagnostics = diag
+                # JALON 124 : `vl_neutre_gains` n'est PLUS publié ici (la
+                # neutralisation a quitté le solveur) — `process()` le publie
+                # désormais, au moment où il applique réellement la correction.
                 self.vl_new = True
                 self.vl_stage = ""        # calcul terminé — jalon 40
 
@@ -1258,9 +1264,36 @@ class DisplayProcessor:
         self.dernier_brut_niveaux = x
         if niveaux_actifs(self.bar_noir, self.bar_median, self.bar_blanc):
             x = niveaux(x, self.bar_noir, self.bar_median, self.bar_blanc)
+        # JALON 124 : neutralisation de la couleur du fond (VeraLux) JUSTE
+        # AVANT gamma/saturation — les retouches vraiment finales (décision
+        # d'Alain, 12/10/2026). Elle a QUITTÉ le solveur (`_vl_worker`) : c'est
+        # ici qu'elle trouve sa place, après l'étage de niveaux.
+        x = self._neutraliser_fond(x)
         x = self._finition(x, img.ndim == 3, self.gamma, self.saturation,
                            self.sat_canaux)
         return (x * 255).astype(np.uint8)
+
+    def _neutraliser_fond(self, x: Any) -> Any:
+        """NEUTRALISATION de la couleur du fond (VeraLux) — jalon 124.
+
+        Appliquée APRÈS l'étage de niveaux, JUSTE AVANT gamma/saturation, pour
+        que ces dernières retouches ne la contredisent plus (appliquée plus tôt,
+        elle était partiellement réintroduite par la saturation par couleur —
+        MESURÉ sur M33 : fond R/G 1,0007 après neutralisation → 1,0108 après
+        la finition, contre 1,0128 sans neutralisation du tout). Mesure les
+        gains sur la SORTIE (ce que l'œil voit, `couleurs.gains_fond`) et les
+        applique ; publie `vl_neutre_gains` (None si l'option est décochée, si
+        le moteur n'est pas VeraLux, ou si rien n'est corrigé) — l'UI s'en sert
+        pour ANNONCER la correction. MÊME étage que le fichier « tel que vu »
+        (`rendu_pleine_resolution`) : l'écran == le fichier."""
+        self.vl_neutre_gains = None
+        if not (self._veralux_actif() and self.vl_neutre_fond):
+            return x
+        g = _couleurs.gains_fond(x)
+        if g is None or bool(np.allclose(g, 1.0, atol=1e-4)):
+            return x
+        self.vl_neutre_gains = g
+        return _couleurs.neutraliser_apres_etirement(x)
 
     # ------------------------------------------------------------- jalon 5
     def rendu_pleine_resolution(self, img: np.ndarray,
@@ -1361,6 +1394,14 @@ class DisplayProcessor:
         blanc = float(r("bar_blanc", self.bar_blanc))
         if niveaux_actifs(noir, median, blanc):
             x = niveaux(x, noir, median, blanc)
+        # JALON 124 : NEUTRALISATION de la couleur du fond APRÈS l'étirement ET
+        # l'étage de niveaux, JUSTE AVANT gamma/saturation (décision d'Alain,
+        # 12/10/2026) — MÊME étage que l'affichage (`process()._neutraliser_fond`),
+        # pour que le fichier « tel que vu » reste l'écran au pixel près.
+        # Réservée au moteur VeraLux (son ANCRE amplifie le fond).
+        if (stretch == "veralux" and _veralux.moteur_disponible()
+                and bool(r("vl_neutre_fond", self.vl_neutre_fond))):
+            x = _couleurs.neutraliser_apres_etirement(x)
         return self._finition(x, img.ndim == 3,
                               r("gamma", self.gamma),
                               r("saturation", self.saturation),

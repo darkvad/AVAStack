@@ -17,11 +17,11 @@ Vérifie :
   [4] le « tel que vu » de la vue « traitée » les porte aussi (AVAVUE « ETIRE »),
       et celui de la vue « empilement » n'a AUCUN mot-clé AVA* (inchangé).
 
-NOTE v2.48.0 (jalon 85) : la chaîne couleur a quitté la chaîne EXTERNE (elle
-suit l'étirement) → le job passe de 15 à 12 éléments et `AVAAPPLI` ne liste plus
-que les corrections pré-étirement réellement appliquées (fond neutre, chroma) :
-le job du [2] a été remis au format courant et l'assertion DIT désormais que
-« SCNR » n'y figure PAS.
+NOTE v2.48.0 (jalon 85) puis JALON 123 : la chaîne couleur PUIS la neutralisation
+du fond ont quitté la chaîne EXTERNE (elles suivent l'étirement) → le job n'a plus
+que 11 éléments et `AVAAPPLI` ne liste plus que la correction pré-étirement
+réellement appliquée (chroma) : le job du [2] est au format courant et l'assertion
+DIT que « SCNR » ET « fond neutre » n'y figurent PAS.
 
 Exécution : python bancs/_test_bxt_entete_jalon69.py
 """
@@ -75,10 +75,10 @@ root.withdraw()
 app = ui.App(root)
 root.update_idletasks()
 
-# v2.48.0 (jalon 85) : le job externe ne porte plus les TROIS cases couleur
-# (elles suivent l'étirement) — 12 éléments : outils (0-5), mode et force du
-# débruitage (6-7), puis neutralisation du fond (8), bruit chromatique (9), sa
-# force (10) et le rayon de référence (11).
+# v2.48.0 (jalon 85) puis jalon 123 : le job externe ne porte ni les TROIS cases
+# couleur (elles suivent l'étirement) ni la neutralisation du fond — 11 éléments :
+# outils (0-5), mode et force du débruitage (6-7), puis bruit chromatique (8), sa
+# force (9) et le rayon de référence (10).
 JOB = (True, '"graxpert.exe" "{input}" -cli -cmd background-extraction '
              '-correction Division -smoothing 0.8 -output "{outbase}"',
        True, '"graxpert.exe" "{input}" -cli -cmd denoising -strength 0.4 '
@@ -86,9 +86,8 @@ JOB = (True, '"graxpert.exe" "{input}" -cli -cmd background-extraction '
        True, '"rc-astro.exe" bxt "{input}" -o "{output}" --overwrite '
              '--ss 0.5 --ash -0.3 --sn 0.3',
        "graxpert", 0.4,
-       True,        # 8 : neutralisation de la couleur du fond
-       True,        # 9 : réduction du bruit chromatique
-       0.6, 3.0)    # 10, 11 : sa force et le rayon de référence
+       True,        # 8 : réduction du bruit chromatique (opt-in)
+       0.6, 3.0)    # 9, 10 : sa force et le rayon de référence
 app.ext_job = JOB
 ent = app._entete_externe(42)
 for cle, val in sorted(ent.items()):
@@ -100,12 +99,12 @@ verifie("--sn 0.3" in ent["AVACMDBX"],
         "AVACMDBX consigne la commande BXT AVEC ses paramètres")
 verifie("strength 0.4" in ent["AVACMDDN"],
         "AVACMDDN consigne la commande de débruitage (force incluse)")
-verifie("fond neutre" in ent["AVAAPPLI"]
-        and "chroma force 0.60 rayon 3.0px" in ent["AVAAPPLI"]
-        and "SCNR" not in ent["AVAAPPLI"],
-        "AVAAPPLI liste les corrections pré-étirement RÉELLEMENT appliquées, "
-        "et NE dit PAS SCNR (les cases couleur ont quitté la chaîne externe, "
-        "jalon 85)")
+verifie("chroma force 0.60 rayon 3.0px" in ent["AVAAPPLI"]
+        and "SCNR" not in ent["AVAAPPLI"]
+        and "fond neutre" not in ent["AVAAPPLI"],
+        "AVAAPPLI liste la correction pré-étirement RÉELLEMENT appliquée (chroma), "
+        "et NE dit NI SCNR (cases couleur hors chaîne externe, jalon 85) NI "
+        "« fond neutre » (neutralisation hors chaîne externe, jalon 123)")
 verifie(ent.get("AVAFRAME") == 42, "AVAFRAME = frames empilées au moment du ⚡")
 app.ext_job = (True, "gx", False, "", False, "", "nlm", 0.5)   # job ancien
 ent8 = app._entete_externe()

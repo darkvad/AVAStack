@@ -178,8 +178,12 @@ def etire(img, log_d=3.7):
     """Étirement RÉEL du moteur (celui de l'appli) — c'est LUI qui révèle
     l'anneau : le dépôt de couleur est minuscule en linéaire, mais l'étirement
     amplifie le rapport de couleur là où la luminance est faible."""
+    # `piedestal=False` : ce banc mesure la CHROMA (poids de structure) ; le
+    # PIÉDESTAL PAR CANAL (jalon 122) est orthogonal (son propre banc) et
+    # décale l'anneau mesuré s'il est inclus ici.
     sortie, _, _ = V.etirer(img, mode=V.MODE_LOG_D, log_d=float(log_d),
-                            target_bg=0.16, profil="Rec.709 (Recommended)")
+                            target_bg=0.16, profil="Rec.709 (Recommended)",
+                            piedestal=False)
     return sortie
 
 
@@ -349,9 +353,11 @@ else:
 
     lin = V.normaliser_lin(lire(CHEMIN))
     petit, ech = reduire(lin)
-    lin_neutre = C.neutraliser_fond(lin)          # étape de la chaîne du FICHIER
-    petit_neutre = C.neutraliser_fond(petit)
-    _, logd, _ = V.etirer(petit_neutre, mode=V.MODE_TARGET_BG,
+    # Jalon 123 : la neutralisation du fond se fait APRÈS l'étirement — elle
+    # n'est donc plus une étape du chemin LINÉAIRE (elle FABRIQUAIT du magenta).
+    # La chroma (sujet de ce banc), elle, reste AVANT (recette mesurée) : on
+    # étire directement l'image linéaire.
+    _, logd, _ = V.etirer(petit, mode=V.MODE_TARGET_BG,
                           target_bg=TARGET_BG, profil=PROFIL)
     print(f"    empilement {lin.shape[1]}×{lin.shape[0]} → aperçu ×{ech:.4f} · "
           f"logD résolu sur l'aperçu {logd:.4f} · force {FORCE} · rayon {RAYON} px")
@@ -360,8 +366,8 @@ else:
                  ("v2.37.5", C.reduire_bruit_chroma))
     anneaux, grains = {}, {}
     for nom, fn in variantes:
-        src = (lin_neutre if fn is None
-               else fn(lin_neutre, FORCE, RAYON))
+        src = (lin if fn is None
+               else fn(lin, FORCE, RAYON))
         grains[nom] = grain_chroma(src[:120])       # grain au PIXEL (passe-haut)
         rendu, _, _ = V.etirer(src, mode=V.MODE_LOG_D, log_d=logd,
                                target_bg=TARGET_BG, profil=PROFIL)

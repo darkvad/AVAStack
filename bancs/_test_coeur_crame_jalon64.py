@@ -51,6 +51,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from avastack.processing import veralux as V                       # noqa: E402
+from avastack.processing import couleurs as C                      # noqa: E402
 from avastack.processing.display import DisplayProcessor           # noqa: E402
 from veralux_core_headless import solve_and_stretch                # noqa: E402
 
@@ -152,18 +153,38 @@ verifie(p_new[0] > p_new[-1] + 5.0,
 
 print("[5] non-régression : image déjà dans [0,1] et vue « tel que vu »")
 # L'ancien code passait au moteur l'image CLIPPÉE ; pour une image ≤ 1 la coupe
-# était sans effet : le rendu doit donc être IDENTIQUE à un appel direct.
+# était sans effet : le rendu doit donc être IDENTIQUE à un appel direct — HORS
+# le PIÉDESTAL PAR CANAL (jalon 122), prétraitement NOUVEAU et voulu qui aligne
+# les ciels AVANT l'étirement. On l'isole avec `piedestal=False` pour garder ce
+# contrôle sur ce qu'il vérifie vraiment : l'absence de FACTEUR d'échelle.
 direct, ld_direct, _ = solve_and_stretch(
     V.normaliser_lin(petit), working_space=V.PROFIL_PAR_DEFAUT,
     target_bg=V.TARGET_BG_PAR_DEFAUT, protect_b=V.PROTECT_B_PAR_DEFAUT,
     convergence_power=V.CONVERGENCE_POWER_PAR_DEFAUT, use_adaptive_anchor=True,
     log_d_override=None, color_grip=1.0, shadow_convergence=0.0)
 direct = direct.transpose(1, 2, 0)          # le moteur rend (3, H, W)
-via, ld_via, _ = V.etirer(petit)
+via, ld_via, _ = V.etirer(petit, piedestal=False)
 verifie(float(np.max(np.abs(via - direct))) < 1e-7 and ld_via == ld_direct,
-        "image ≤ 1 : étirement INCHANGÉ (aucun facteur ajouté) — non-régression")
+        "image ≤ 1 : étirement INCHANGÉ (aucun facteur ajouté) — non-régression "
+        "(hors piédestal, isolé ci-dessous)")
+# Le SEUL écart introduit par le DÉFAUT est le piédestal : `etirer(petit)` doit
+# être exactement le rendu direct de l'image PIÉDESTALE (même noyau, même logD).
+ref_pied, ld_pied, _ = solve_and_stretch(
+    C.piedestal_canaux(V.normaliser_lin(petit)),
+    working_space=V.PROFIL_PAR_DEFAUT, target_bg=V.TARGET_BG_PAR_DEFAUT,
+    protect_b=V.PROTECT_B_PAR_DEFAUT,
+    convergence_power=V.CONVERGENCE_POWER_PAR_DEFAUT, use_adaptive_anchor=True,
+    log_d_override=None, color_grip=1.0, shadow_convergence=0.0)
+ref_pied = ref_pied.transpose(1, 2, 0)      # le moteur rend (3, H, W)
+via_def, ld_def, _ = V.etirer(petit)
+verifie(float(np.max(np.abs(via_def - ref_pied))) < 1e-6 and ld_def == ld_pied,
+        "défaut : le rendu est EXACTEMENT la chaîne directe APRÈS piédestal "
+        "(prétraitement nouveau, jalon 122)")
 dp = DisplayProcessor()
 dp.stretch = "veralux"
+# Jalon 123 : la neutralisation du fond s'applique APRÈS l'étirement (elle fait
+# donc partie de `rendu_pleine_resolution`) ; ici on isole l'étirement lui-même.
+dp.vl_neutre_fond = False
 vue = dp.rendu_pleine_resolution(scene.copy())
 ref, ld_ref, _ = V.etirer(scene)
 verifie(float(np.max(np.abs(vue - ref))) < 1e-6,

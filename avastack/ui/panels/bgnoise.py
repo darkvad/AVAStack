@@ -24,30 +24,29 @@ class PanneauFondGrain:
     # --- Interface attendue sur l'hôte (`App`) — DÉCLARATIONS seulement ------
     _lf_fond_grain: tk.Frame
     frm_fond: ttk.Frame
-    var_vl_neutre: tk.Variable
     var_vl_chroma: tk.Variable
     var_vl_chroma_force: tk.Variable
     var_vl_chroma_rayon: tk.Variable
 
     _creer_section_pliable: Callable[..., Any]
     _add_slider: Callable[..., Any]
-    _on_vl_neutre: Callable[..., Any]
     _on_vl_chroma: Callable[..., Any]
     _on_vl_chroma_rayon: Callable[..., Any]
 
     # --- Jalon 105b : construction du panneau « Fond et grain » --------------
     def _poser_panneau_fond_grain(self, parent: tk.Misc) -> None:
-        """Cadre « Fond et grain » (AVANT étirement) : neutralisation de la
-        couleur du fond + réduction du bruit chromatique (opt-in)."""
+        """Cadre « Fond et grain » (AVANT étirement) : réduction du bruit
+        chromatique (opt-in). La NEUTRALISATION de la couleur du fond a QUITTÉ
+        ce cadre (jalon 124) : elle s'applique APRÈS l'étirement et vit
+        désormais dans « Couleur de l'objet (APRÈS étirement) »."""
         # --- v2.48.0 (jalon 85) : L'ORDRE DES CADRES SUIT L'ORDRE DES TRAITEMENTS
         # (demande d'Alain : « l'UI doit respecter l'ordre des traitements »).
-        # Le cadre couleur du jalon 22 MÉLANGEAIT deux étapes de la chaîne : les
-        # corrections AVANT l'étirement (neutralisation du fond, réduction du bruit
-        # chromatique — appliquées par le solveur « après la neutralisation et juste
-        # avant l'étirement », cf. display.py) et celles APRÈS (SCNR, SCNR doux,
-        # démagenta, préservation de L*). Il est donc SCINDÉ, et la colonne suit
-        # désormais la chaîne réelle :
-        #   Fond et grain (AVANT étirement) → neutralisation + bruit chromatique ;
+        # Le cadre couleur du jalon 22 MÉLANGEAIT deux étapes de la chaîne : la
+        # correction AVANT l'étirement (réduction du bruit chromatique, appliquée
+        # juste avant l'étirement, cf. display.py) et celles APRÈS (SCNR, SCNR
+        # doux, démagenta, préservation de L*). Il est donc SCINDÉ, et la colonne
+        # suit désormais la chaîne réelle :
+        #   Fond et grain (AVANT étirement) → bruit chromatique ;
         #   Netteté live (AVANT étirement)  → Richardson-Lucy ;
         #   Affichage (temps réel)          → l'étirement lui-même + gamma/saturation ;
         #   Couleur de l'objet (APRÈS)      → SCNR / SCNR doux / démagenta (L*, R*).
@@ -58,24 +57,14 @@ class PanneauFondGrain:
         # widgets enfants). Le LabelFrame externe est self._lf_fond_grain.
         self._lf_fond_grain, self.frm_fond, _, _ = self._creer_section_pliable(
             parent, "fond_grain")
-        # --- v2.36.1 : NEUTRALISATION DE LA COULEUR DU FOND avant étirement ---
-        # Constat d'Alain (25/09/2026) : le fond restait bleu à l'écran (et le
-        # PNG était franchement bleu, pour une autre raison : canaux permutés).
-        # COCHÉE PAR DÉFAUT : ce n'est pas un choix esthétique mais la
-        # correction d'un défaut de rendu (l'ancre de VeraLux transforme
-        # quelques pour cent d'écart de ciel en fond franchement coloré).
-        # Décocher = ancien rendu.
-        self.var_vl_neutre = tk.BooleanVar(value=True)
-        ttk.Checkbutton(self.frm_fond,
-                        text="Neutraliser la couleur du fond (live)",
-                        variable=self.var_vl_neutre,
-                        command=self._on_vl_neutre).pack(anchor="w")
-        ttk.Label(self.frm_fond,
-                  text="Égalise les 3 canaux sur la MÉDIANE DE LA MOITIÉ SOMBRE, "
-                       "juste avant l'étirement. Les gains RÉELLEMENT appliqués "
-                       "sont annoncés dans « État des calculs (live) » : c'est "
-                       "cette mesure qu'il faut lire, jamais un exemple chiffré.",
-                  foreground="#888888", wraplength=310).pack(anchor="w")
+        # --- jalons 123/124 : la NEUTRALISATION de la couleur du fond a QUITTÉ
+        # ce cadre — elle s'applique APRÈS l'étirement, donc sa case vit
+        # désormais dans « Couleur de l'objet (APRÈS étirement) »
+        # (`panels/color.py`), juste avant gamma/saturation. Le jalon 123
+        # l'avait déjà sortie de l'étage PRÉ-étirement (elle FABRIQUAIT le
+        # magenta) ; le jalon 124 achève le déplacement CÔTÉ UI (constat
+        # d'Alain : la garder ici la montrait comme un traitement AVANT
+        # l'étirement). Seul le BRUIT CHROMATIQUE reste pré-étirement ici.
 
         # --- v2.37.0 : RÉDUCTION DU BRUIT CHROMATIQUE (opt-in, DÉCOCHÉE par
         # défaut — choix d'Alain, 25/09/2026 : « oui pour la réduction de bruit

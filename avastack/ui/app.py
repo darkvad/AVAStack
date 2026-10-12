@@ -852,8 +852,9 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._poser_panneau_affichage(left)
 
         # --- Couleur de l'objet (panneau extrait au jalon 105c dans
-        # `avastack/ui/panels/color.py` ; APRÈS étirement : SCNR, SCNR doux,
-        # démagenta, boost du rouge SII).
+        # `avastack/ui/panels/color.py` ; APRÈS étirement : neutralisation du
+        # fond — déplacée ici au jalon 124 —, SCNR, SCNR doux, démagenta,
+        # boost du rouge SII).
         self._poser_panneau_couleur(left)
 
         # --- État des calculs (panneau extrait au jalon 105c dans
@@ -1497,9 +1498,47 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self.ref_refresh = 20
         self._ref_frames = self._ref_bad = 0
 
+    def _exclusivite_couleur(self, source: str) -> None:
+        """JALON 124 : ÉQUILIBRAGE / SPCC / GAINS GAIA sont MUTUELLEMENT
+        EXCLUSIFS — cocher l'un DÉCOCHE les deux autres (décision d'Alain,
+        12/10/2026).
+
+        POURQUOI : les trois écrivent les MÊMES gains de couleur du composite,
+        et l'équilibrage des canaux est appliqué APRÈS les gains (ordre
+        `gains → équilibrage → recalage`, cf. `composition.corrections_couleur`)
+        — il RECALCULE des gains par canal depuis le fond de l'image, ce qui
+        ANNULE les rapports de canaux de la SPCC et des gains Gaia. MESURÉ sur
+        M33 (12/10/2026) : deux jeux de gains très différents produisent la même
+        image étirée à 2·10⁻⁵ près (0 pixel > 1e-4) — d'où l'impression que la
+        SPCC « ne change rien ». Les garder cochés ensemble était trompeur.
+
+        `source` : « wb », « spcc » ou « photo_gains » — la case qu'on vient de
+        cocher ; les deux autres passent à False et LEUR callback est appelé
+        (basculement PROPRE : chaque case remet son propre état à zéro). Le
+        garde « la case source est-elle cochée ? » évite toute récursion : un
+        callback ainsi rappelé ne redécoche personne, sa case étant déjà à
+        False."""
+        noms = ("var_wb", "var_spcc", "var_photo_gains")
+        vars_ = {n: getattr(self, n, None) for n in noms}
+        handlers = {"var_wb": self._on_wb, "var_spcc": self._on_spcc,
+                    "var_photo_gains": self._on_photo_gains}
+        cle_garde = {"wb": "var_wb", "spcc": "var_spcc",
+                     "photo_gains": "var_photo_gains"}.get(source)
+        garde = vars_.get(cle_garde) if cle_garde is not None else None
+        if garde is None or not bool(garde.get()):
+            return
+        for nom, var in vars_.items():
+            if nom == cle_garde or var is None:
+                continue
+            if bool(var.get()):
+                var.set(False)
+                handlers[nom]()
+
     def _on_wb(self) -> None:
         """Jalon 13 : équilibrage des canaux (auto) de l'empilement —
-        répercuté sur l'empilement courant s'il existe."""
+        répercuté sur l'empilement courant s'il existe. Jalon 124 : cocher
+        cette case DÉCOCHE la SPCC et les gains Gaia (exclusivité)."""
+        self._exclusivite_couleur("wb")
         if self.stacker:
             self.stacker.wb_auto = bool(self.var_wb.get())
             self.stacker.wb_force = float(self.var_wb_force.get())
@@ -1645,7 +1684,9 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         worker sur l'empilement courant) À LA PLACE des gains Gaia relatifs ;
         décochée, elle remet tout à zéro et le dit. Changer un profil
         (capteur/filtre/blanc) invalide la mesure : un coefficient calculé pour
-        d'autres bandes serait faux."""
+        d'autres bandes serait faux. Jalon 124 : cocher cette case DÉCOCHE
+        l'équilibrage des canaux et les gains Gaia (exclusivité)."""
+        self._exclusivite_couleur("spcc")
         self._spcc_actif = bool(self.var_spcc.get())
         self._spcc_demande = self._spcc_actif     # v2.37.0 : mesure à (re)faire
         if not self._spcc_actif:
@@ -1750,7 +1791,9 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         """Jalon 56 (étape 5) : case « Gains photométriques (Gaia) » — OPT-IN
         (décochée par défaut, choix d'Alain du 23/09/2026). C'est le SEUL
         réglage qui écrit les facteurs mesurés dans le stacker, donc qui change
-        l'image : cochée SANS mesure, elle n'applique rien et l'annonce."""
+        l'image : cochée SANS mesure, elle n'applique rien et l'annonce. Jalon
+        124 : cocher cette case DÉCOCHE l'équilibrage et la SPCC (exclusivité)."""
+        self._exclusivite_couleur("photo_gains")
         self._photo_gains_actif = bool(self.var_photo_gains.get())
         self._rafraichir_rendu = True
         self._maj_photo_vue()
@@ -2564,9 +2607,12 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self.disp.vl_scnr = actif       # la clé change → re-résolution
 
     def _on_vl_neutre(self) -> None:
-        """Case « Neutraliser la couleur du fond » (v2.36.1) : le solveur
-        VeraLux applique les gains AVANT l'étirement (le direct aussi :
-        `disp.vl_neutre_fond` entre dans la clé des réglages → re-résolution).
+        """Case « Neutraliser la couleur du fond » (v2.36.1 ; APRÈS l'étirement
+        depuis le jalon 123, JUSTE AVANT gamma/saturation depuis le jalon 124) :
+        `DisplayProcessor.process()` MESURE les gains sur la SORTIE étirée et
+        les applique juste avant la finition, et le fichier « tel que vu » fait
+        de même (`rendu_pleine_resolution`) — l'écran == le fichier. Le réglage
+        n'entre PLUS dans la clé du solveur (c'est l'aperçu qui l'applique).
         Rend le rendu IMMÉDIATEMENT, comme les autres cases couleur : sans ce
         `_refresh_preview()`, cocher/décocher la case n'avait AUCUN effet visible
         avant la frame suivante — c'est exactement le bug du jalon 39, constaté de
@@ -2576,15 +2622,18 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._refresh_preview()
 
     def _sync_vl_neutre_vue(self) -> None:
-        """Vue « empilement » uniquement : la neutralisation du fond est une
-        correction PRÉ-étirement qui RESTE dans la chaîne externe ⚡ (indice 8
-        du job) — le résultat ⚡ la porte déjà, la refaire à l'affichage ferait
-        un DEUXIÈME traitement. (Contraste avec les corrections APRÈS
-        étirement, qui valent pour les deux vues depuis la v2.48.1.)"""
-        actif = bool(self.var_vl_neutre.get()) \
-            and self.var_view.get() != "traitée"
+        """v2.75.0 (jalon 123) : s'applique DANS LES DEUX VUES, comme les autres
+        corrections qui SUIVENT l'étirement (`_sync_vl_scnr_vue`). La
+        neutralisation a QUITTÉ la chaîne externe ⚡ (elle fabriquait du magenta
+        AVANT l'étirement) : elle est désormais appliquée APRÈS l'étirement (et,
+        depuis le jalon 124, JUSTE AVANT gamma/saturation), à l'affichage comme
+        à « tel que vu », pour les deux vues (empilement ET résultat traité —
+        qui passe par le même étirement)."""
+        actif = bool(self.var_vl_neutre.get())
         if actif != self.disp.vl_neutre_fond:
-            self.disp.vl_neutre_fond = actif    # la clé change → re-résolution
+            # JALON 124 : ne relance PLUS le solveur (l'option n'entre plus dans
+            # `_vl_params`) — c'est `process()` qui l'applique au rendu.
+            self.disp.vl_neutre_fond = actif
 
     def _on_vl_chroma(self) -> None:
         """Case/curseur « Réduire le bruit chromatique » (v2.37.0) : force lue
@@ -2739,24 +2788,25 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
 
     def _sync_vl_couleur_vue(self) -> None:
         """Chaîne couleur APRÈS étirement (jalon 22/23, déplacée après
-        l'étirement au jalon 85 : SCNR, SCNR doux, démagenta, boost du rouge)
-        ET corrections PRÉ-étirement (neutralisation du fond, bruit
-        chromatique). Appelée par _tick TOUTES les 30 ms : elle ne touche qu'à
-        l'ÉTAT (les _sync_*), JAMAIS au rendu — les _on_* (avec
+        l'étirement au jalon 85 : SCNR, SCNR doux, démagenta, boost du rouge ;
+        NEUTRALISATION du fond depuis le jalon 123) ET correction pré-étirement
+        (bruit chromatique). Appelée par _tick TOUTES les 30 ms : elle ne touche
+        qu'à l'ÉTAT (les _sync_*), JAMAIS au rendu — les _on_* (avec
         _refresh_preview) ne sont appelés que par les cases elles-mêmes
         (jalon 39 : un rendu ici serait déclenché 3× par tick).
 
         v2.48.1 : les synchros ne partagent plus la même règle de vue. Celles
-        qui suivent l'ÉTIREMENT (SCNR, SCNR doux, démagenta, boost du rouge)
-        valent pour LES DEUX VUES ; celles qui restent dans la chaîne EXTERNE
-        (neutralisation du fond, bruit chromatique) restent coupées en vue
-        « traitée » — le résultat ⚡ les porte déjà (double traitement sinon)."""
+        qui suivent l'ÉTIREMENT (SCNR, SCNR doux, démagenta, boost du rouge et,
+        depuis le jalon 123, la neutralisation du fond) valent pour LES DEUX
+        VUES ; le bruit chromatique, qui reste dans la chaîne EXTERNE, reste
+        coupé en vue « traitée » — le résultat ⚡ le porte déjà (double
+        traitement sinon)."""
         self._sync_vl_scnr_vue()
         self._sync_vl_scnr_doux_vue()
         self._sync_vl_demagenta_vue()
         self._sync_vl_boost_vue()           # v2.48.0 (jalon 86) : boost du rouge
-        self._sync_vl_neutre_vue()          # v2.36.1 : fond neutre avant étirement
-        self._sync_vl_chroma_vue()          # v2.37.0 : bruit chromatique
+        self._sync_vl_neutre_vue()          # v2.36.1/123 : fond neutre APRÈS l'étirement
+        self._sync_vl_chroma_vue()          # v2.37.0 : bruit chromatique (pré-étirement)
 
     def _on_vl_sharp(self) -> None:
         """Case/curseur de la netteté live (jalon 12) : répercute les

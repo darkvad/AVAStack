@@ -151,24 +151,19 @@ class PanneauTraitementExterne:
                             "l'étirement, à l'écran comme dans le fichier.",
                   foreground="#888888",
                   wraplength=310).pack(anchor="w", pady=(4, 0))
-        # v2.37.1 — DEMANDE D'ALAIN (25/09/2026) : « intégrer les derniers ajouts
-        # (SPCC, neutralisation, bruit chroma) dans la chaîne de traitement
-        # externe pour que je puisse sortir une belle image à la fin du stack ».
-        # La SPCC y était DÉJÀ (les corrections de couleur — gains effectifs
-        # SPCC/Gaia/manuels, équilibrage, recalage « Linear Fit » — s'appliquent
-        # au composite dans les deux chemins : `mean()` corrigé en mono,
-        # `corrections_couleur` après recomposition en composition, cf.
-        # _run_external_compo). Les DEUX corrections pré-étirement de la chaîne
-        # live rejoignent donc la chaîne externe, au même rang qu'elle (… →
-        # démagenta → neutralisation du fond → réduction du bruit chromatique,
-        # juste avant l'étirement d'affichage) : c'est l'image que l'œil voit
-        # sous l'ancre de VeraLux, et c'est elle que l'utilisateur exporte.
-        self.var_ext_neutre = tk.BooleanVar(value=True)   # défaut COCHÉE, comme
-                                                          # la case live (défaut
-                                                          # de rendu, pas un
-                                                          # choix esthétique)
-        ttk.Checkbutton(box, text="7. Neutraliser la couleur du fond",
-                        variable=self.var_ext_neutre).pack(anchor="w")
+        # JALON 123 : la case « 7. Neutraliser la couleur du fond » de cette
+        # chaîne a été RETIRÉE. POURQUOI : la neutralisation s'applique désormais
+        # APRÈS l'étirement (elle était AVANT, sur la sortie LINÉAIRE ici — donc
+        # sur ce que l'ANCRE de VeraLux allait amplifier, ce qui FABRIQUAIT du
+        # magenta : mesuré M33, 11/10/2026). Elle est réglée par la section
+        # « Neutraliser la couleur du fond (live) » et vaut pour les DEUX vues.
+        # Seule la réduction du bruit chromatique reste une correction
+        # pré-étirement de la chaîne externe (SPCC/Gaia/manuels déjà appliqués au
+        # composite par `mean()`/`corrections_couleur`).
+        ttk.Label(box, text="7. Neutralisation du fond : APRÈS l'étirement "
+                            "(section « Couleur de l'objet (APRÈS étirement) »).",
+                  foreground="#888888",
+                  wraplength=310).pack(anchor="w", pady=(4, 0))
         self.var_ext_chroma = tk.BooleanVar(value=False)  # OPT-IN (choix d'Alain)
         ttk.Checkbutton(box,
                         text="8. Réduire le bruit chromatique (force = curseur "

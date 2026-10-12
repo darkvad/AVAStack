@@ -101,7 +101,6 @@ class ConfigUI:
     var_ext_chroma: tk.Variable
     var_ext_dn: tk.Variable
     var_ext_graxpert: tk.Variable
-    var_ext_neutre: tk.Variable
     var_fenetre: tk.Variable
     var_fit: tk.Variable
     var_fit_methode: tk.Variable
@@ -300,12 +299,9 @@ class ConfigUI:
         # l'étirement (section « Couleur de l'objet (après étirement) »), elle
         # n'appartient plus à la chaîne externe. Une configuration antérieure
         # qui les portait reste lisible : elles sont simplement ignorées.
-        # v2.37.1 : corrections pré-étirement de la chaîne externe. La
-        # neutralisation est COCHÉE par défaut → on ne la modifie que si la
-        # config porte la clé ET une valeur (même règle que vl_neutre_fond) ;
-        # le bruit chromatique, OPT-IN, n'est activé que s'il est demandé.
-        if "ext_neutre_fond" in c:
-            self.var_ext_neutre.set(bool(c.get("ext_neutre_fond")))
+        # v2.37.1 : réduction du bruit chromatique de la chaîne externe (OPT-IN).
+        # JALON 123 : la neutralisation du fond a QUITTÉ cette chaîne → sa clé
+        # `ext_neutre_fond` n'est plus relue (et est retirée à la sauvegarde).
         if c.get("ext_chroma"):
             self.var_ext_chroma.set(True)
         for cle, var, mini, maxi in (
@@ -684,16 +680,17 @@ class ConfigUI:
         c["vl_pleine_res_ecran"] = bool(self.var_vl_pleine_res.get())
         # v2.48.0 : plus de cases couleur dans la chaîne externe (elles suivent
         # l'étirement) — clés ext_scnr / ext_scnr_doux / ext_demagenta plus
-        # écrites.
+        # écrites. JALON 123 : `ext_neutre_fond` les rejoint (la case a été
+        # retirée de la chaîne externe — la neutralisation est après l'étirement).
         # Elles sont en plus RETIRÉES d'une configuration antérieure : c'est la
         # seule exception à la règle « ne touche pas aux entrées inconnues »
         # (la docstring de cette méthode) — ces clés ne décrivent plus AUCUN
         # réglage, les garder ferait croire à une case qui n'existe plus.
-        for _cle in ("ext_scnr", "ext_scnr_doux", "ext_demagenta"):
+        for _cle in ("ext_scnr", "ext_scnr_doux", "ext_demagenta",
+                     "ext_neutre_fond"):
             c.pop(_cle, None)
-        # v2.37.1 : corrections pré-étirement de la chaîne externe (booléens
-        # EXPLICITES, comme toutes les autres cases).
-        c["ext_neutre_fond"] = bool(self.var_ext_neutre.get())
+        # v2.37.1 : réduction du bruit chromatique de la chaîne externe (booléen
+        # EXPLICITE, comme toutes les autres cases).
         c["ext_chroma"] = bool(self.var_ext_chroma.get())
         c["sigk"] = self.var_sigk.get()
         # Jalon 42 : cadence d'empilement (mode dossier), en secondes.

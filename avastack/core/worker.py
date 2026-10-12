@@ -115,6 +115,7 @@ class AcquisitionWorker:
     _dernier_st: Any
     _do_restack: Any
     _do_restack_compo: Any
+    _ecrire_fiche: Any                     # fiche de rendu (jalon 121)
     _entete_reglages: Any
     _ext_popup: Any
     _filtre_floue: Any
@@ -305,6 +306,9 @@ class AcquisitionWorker:
                 self.save_asseen_request = None
                 path, vue, reglages = req[:3]
                 lineaire = bool(req[3]) if len(req) > 3 else False
+                # Jalon 121 : contexte de fiche de rendu (5e élément, tolérant —
+                # les jobs à 3 ou 4 éléments restent valides).
+                fiche = req[4] if len(req) > 4 else None
                 if vue == "traitée" and self.proc_full is None:
                     self.asseen_result = ("ERREUR: aucun résultat traité à "
                                           "enregistrer")
@@ -328,7 +332,7 @@ class AcquisitionWorker:
                     threading.Thread(
                         target=self._save_asseen_thread,
                         args=(path, vue, source, reglages, self._session,
-                              lineaire, canaux),
+                              lineaire, canaux, fiche),
                         daemon=True).start()
 
             # Sauvegarde LINÉAIRE de l'empilement : consommation de la demande
@@ -339,7 +343,14 @@ class AcquisitionWorker:
             # (demande silencieusement ignorée — constat Alain, 16/09/2026).
             if (self.save_request is not None and self.stacker is not None
                     and self.stacker.n > 0):
-                path, self.save_request = self.save_request, None
+                req, self.save_request = self.save_request, None
+                # Jalon 121 : la demande porte (chemin, contexte de fiche) ; une
+                # simple chaîne (bancs, anciens appels) reste acceptée.
+                if isinstance(req, (tuple, list)):
+                    path = req[0]
+                    fiche = req[1] if len(req) > 1 else None
+                else:
+                    path, fiche = req, None
                 try:
                     # Jalon 25 : mot-clé FILTER (roue à filtres QHY) — utile
                     # pour les dossiers N.I.N.A. et la détection des rôles.
@@ -372,6 +383,10 @@ class AcquisitionWorker:
                                         "etirement)")
                     img, entete = borner_lineaire(img, entete)
                     save_image(path, img, entete=entete)
+                    # Jalon 121 : fiche de rendu compagne (même thread).
+                    self._ecrire_fiche(path, "empilement brut (lineaire)",
+                                       fiche, image=img, reglages=None,
+                                       entete=entete, lineaire=True)
                     self.saved_path = path
                     # Ce qui est ÉCRIT dans le fichier, montré à l'utilisateur
                     # (constat du 25/09/2026 : on ne savait pas, à la lecture du
@@ -385,8 +400,14 @@ class AcquisitionWorker:
             # recadré au cadre commun (composite = bouton « Enregistrer »).
             if (self.save_canaux_request is not None and self._mode_compo
                     and self.stacker is not None and self.stacker.n > 0):
-                d_canaux, self.save_canaux_request = \
-                    self.save_canaux_request, None
+                req, self.save_canaux_request = self.save_canaux_request, None
+                # Jalon 121 : la demande porte (dossier, contexte de fiche) ;
+                # une simple chaîne (bancs, anciens appels) reste acceptée.
+                if isinstance(req, (tuple, list)):
+                    d_canaux = req[0]
+                    fiche = req[1] if len(req) > 1 else None
+                else:
+                    d_canaux, fiche = req, None
                 try:
                     for role, carte in self.stacker.moyennes().items():
                         # v2.27.1 : même garantie d'échelle que la sauvegarde
@@ -408,9 +429,13 @@ class AcquisitionWorker:
                         # couche (elle est BRUTE par construction) : le dire
                         # explicitement (étape ⑥).
                         entete.update(self._entete_reglages(applique=False))
-                        save_image(os.path.join(
-                            d_canaux, f"canal_{role}.fit"), bordee,
-                            entete=entete)
+                        chemin_canal = os.path.join(d_canaux, f"canal_{role}.fit")
+                        save_image(chemin_canal, bordee, entete=entete)
+                        # Jalon 121 : fiche de rendu compagne, par couche.
+                        self._ecrire_fiche(
+                            chemin_canal, f"couche brute ({role})", fiche,
+                            image=bordee, reglages=None, entete=entete,
+                            lineaire=True)
                     self.saved_path = d_canaux
                 except Exception as e:
                     self.saved_path = f"ERREUR: {e}"

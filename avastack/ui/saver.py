@@ -13,7 +13,12 @@ module regroupe tout ce qui ÉCRIT un fichier depuis l'application :
   - le THREAD de sauvegarde pleine résolution (`_save_asseen_thread`) et sa
     chaîne par couche (`_couches_brutes`, `_couches_pleine_resolution`) ;
   - les EN-TÊTES FITS AUTO-DESCRIPTIFS de sortie (`_entete_reglages`,
-    `_entete_externe`, `_astro_entete_sauvegarde`).
+    `_entete_externe`, `_astro_entete_sauvegarde`) ;
+  - la FICHE DE RENDU (jalon 121) : `_fiche_actif`, `_fiche_contexte`,
+    `_fiche_etat` (état APPLIQUÉ vs AFFICHÉ), `_fiche_source`, `_fiche_chaine`,
+    `_ecrire_fiche` — le JSON compagnon `<image>.ava.json`, écrit ici même par
+    le thread qui écrit l'image. Les décisions d'Alain et le format sont dans
+    `avastack/fiche.py` et CLAUDE.md.
 
 Les méthodes sont reprises VERBATIM : `App` hérite de `Saver`, donc `self`
 reste l'instance `App` et le comportement est inchangé AU BIT. Les dépendances
@@ -39,6 +44,59 @@ from ..processing import couleurs as couleurs_mod
 from ..processing import denoise as denoiser_local
 from ..processing import sharpness as nettete_live
 from ..external import live as gx_live
+from .. import fiche as fiche_mod
+
+
+def _globals_app():
+    """Globals du module d'application `avastack.ui.app` — résolution TARDIVE.
+
+    Écho des jalons 104/105a/107 : les bancs remplacent
+    `avastack.ui.app.CONFIG` pour intercepter le vrai config.json. Lire ce global
+    au MOMENT DE L'APPEL préserve cette interception ; en production c'est le
+    MÊME objet que `avastack.config.CONFIG`."""
+    from . import app as _app              # import TARDIF (évite le cycle)
+    return _app
+
+
+# Table de contrôle « APPLIQUÉ ↔ AFFICHÉ » (exigence d'Alain, fiche de rendu,
+# jalon 121) : (clé du JSON, nom de la variable Tk, valeur réellement APPLIQUÉE
+# par le rendu). Le lecteur reçoit (app, disp) — certaines grandeurs vivent sur
+# `disp` (réglage appliqué au moteur), d'autres sur l'app elle-même (ex. le
+# rayon de chroma de RÉFÉRENCE, que l'aperçu met à l'échelle). Elle sert à
+# PROUVER que l'écran et le rendu ne divergent pas : le bug du 11/10/2026
+# (« saturation bleue » APPLIQUÉE à 3,0 pendant que l'écran affichait 1,00)
+# aurait été écrit NOIR SUR BLANC ici.
+_CONTROLE_AFFICHAGE: tuple[tuple[str, str, Callable[[Any, Any], float]], ...] = (
+    ("sigma_k", "var_sigk", lambda a, d: float(d.sigma_k)),
+    ("target", "var_target", lambda a, d: float(d.target)),
+    ("black", "var_black", lambda a, d: float(d.black)),
+    ("white", "var_white", lambda a, d: float(d.white)),
+    ("gamma", "var_gamma", lambda a, d: float(d.gamma)),
+    ("saturation", "var_saturation", lambda a, d: float(d.saturation)),
+    ("saturation_rouge", "var_sat_r", lambda a, d: float(d.sat_canaux[0])),
+    ("saturation_verte", "var_sat_g", lambda a, d: float(d.sat_canaux[1])),
+    ("saturation_bleue", "var_sat_b", lambda a, d: float(d.sat_canaux[2])),
+    ("vl_target_bg", "var_vl_target", lambda a, d: float(d.vl_target_bg)),
+    ("vl_log_d", "var_vl_logd", lambda a, d: float(d.vl_log_d)),
+    ("vl_chroma_force", "var_vl_chroma_force", lambda a, d: float(d.vl_chroma_force)),
+    # Le rayon de chroma de l'interface est une RÉFÉRENCE pleine résolution ; la
+    # valeur de `disp` est mise à l'échelle de l'aperçu — on compare donc à la
+    # référence, jamais à l'effectif (sinon faux écart systématique).
+    ("vl_chroma_rayon", "var_vl_chroma_rayon", lambda a, d: float(a.rayon_chroma_ref)),
+    ("vl_scnr_force", "var_vl_scnr_force", lambda a, d: float(d.vl_scnr_force)),
+    ("vl_demagenta_force", "var_vl_demagenta_force",
+     lambda a, d: float(d.vl_demagenta_force)),
+    ("vl_boost_force", "var_vl_boost_force", lambda a, d: float(d.vl_boost_force)),
+    ("vl_denoise_force", "var_vl_dn_force", lambda a, d: float(d.vl_denoise_force)),
+    ("vl_sharp_iterations", "var_vl_sharp_iter",
+     lambda a, d: float(d.vl_sharp_iterations)),
+    # Les barres de l'histogramme sont en POUR CENT à l'écran (0..100) et en
+    # FRACTION dans `disp` (0..1) : on compare dans l'unité AFFICHÉE (×100),
+    # sinon on signalerait un « écart » qui n'en est pas un.
+    ("bar_noir", "var_bar_noir", lambda a, d: float(d.bar_noir) * 100.0),
+    ("bar_median", "var_bar_median", lambda a, d: float(d.bar_median) * 100.0),
+    ("bar_blanc", "var_bar_blanc", lambda a, d: float(d.bar_blanc) * 100.0),
+)
 
 
 class Saver:
@@ -99,7 +157,8 @@ class Saver:
         d = self._demander_dossier(
             "Dossier où enregistrer les empilements par canal")
         if d:
-            self.save_canaux_request = d
+            # Jalon 121 : contexte de fiche de rendu transporté avec la demande.
+            self.save_canaux_request = (d, self._fiche_contexte())
 
     def _save(self):
         if not self.running or self.stacker is None or self.stacker.n == 0:
@@ -110,7 +169,10 @@ class Saver:
             filetypes=[("FITS", "*.fits"), ("TIFF 16 bits", "*.tif"), ("PNG 16 bits", "*.png")],
             initialfile=self._nom_cible_pour_sauvegarde())
         if path:
-            self.save_request = path  # la sauvegarde est faite par le thread d'acquisition
+            # Jalon 121 : la demande transporte AUSSI le contexte de fiche de
+            # rendu (capturé ici, dans le fil d'interface). Un contexte None
+            # (case décochée) = aucune fiche — le worker le tolère.
+            self.save_request = (path, self._fiche_contexte())
             # Jalon 96 (étape 6) : PNG annoté COMPAGNON, écrit à côté (le FITS
             # linéaire, lui, part par le thread — deux fichiers indépendants).
             _png, _msg = self._sauver_png_annote(path)
@@ -194,6 +256,191 @@ class Saver:
                 corr_fit_mode=getattr(st, "linear_fit_mode", "offset"))
         return reglages
 
+    # ============================================================= fiche de rendu
+    # (jalon 121) — JSON compagnon `<image>.ava.json` : « le fichier dit ce qu'on
+    # lui a fait ». Le CONTEXTE (source + état appliqué/affiché) est capturé dans
+    # le FIL D'INTERFACE au moment de la demande ; le thread d'écriture ne lit
+    # JAMAIS une variable Tk (règle du projet).
+    def _fiche_actif(self):
+        """La fiche doit-elle être écrite ? (case « Fiche de rendu ».)
+
+        Lu dans le fil d'interface : la variable Tk (si la fenêtre existe) ET la
+        persistance `fiche_rendu` de config.json. Défaut COCHÉ (décision
+        d'Alain, 11/10/2026) : sans variable ni config, on écrit."""
+        var = getattr(self, "var_fiche_rendu", None)
+        if var is not None:
+            try:
+                if not bool(var.get()):
+                    return False
+            except tk.TclError:
+                pass
+        try:
+            return bool(_globals_app().CONFIG.get("fiche_rendu", True))
+        except Exception:
+            return True
+
+    def _fiche_contexte(self):
+        """Capture, DANS LE FIL D'INTERFACE, ce que le thread ne pourra pas lire
+        plus tard : le dossier surveillé / la source (variables Tk) et l'état
+        APPLIQUÉ vs AFFICHÉ des réglages. → dict, ou None si la fiche est
+        décochée (aucune lecture Tk inutile)."""
+        if not self._fiche_actif():
+            return None
+        contexte: dict[str, Any] = {"etat": self._fiche_etat()}
+        for cle, nom_var in (("dossier", "var_folder"), ("source", "var_source")):
+            var = getattr(self, nom_var, None)
+            if var is None:
+                continue
+            try:
+                v = str(var.get()).strip()
+            except tk.TclError:
+                continue
+            if v:
+                contexte[cle] = v
+        return contexte
+
+    def _fiche_etat(self):
+        """État APPLIQUÉ (ce que le rendu utilise) mis À CÔTÉ de l'état AFFICHÉ
+        (ce que l'interface montre) — exigence d'Alain, jalon 121.
+
+        Sur la table `_CONTROLE_AFFICHAGE`, chaque réglage est comparé : s'ils
+        DIFFÈRENT, l'écart est consigné dans `ecarts` (c'est ce que le bug du
+        11/10/2026 avait rendu invisible). Fil d'interface uniquement."""
+        d = self.disp
+        affiche: dict[str, float] = {}
+        ecarts: list[dict[str, Any]] = []
+        for cle, nom_var, lire in _CONTROLE_AFFICHAGE:
+            var = getattr(self, nom_var, None)
+            if var is None:
+                continue
+            try:
+                vu = float(var.get())
+                applique = float(lire(self, d))
+            except (tk.TclError, TypeError, ValueError, AttributeError, IndexError):
+                continue
+            affiche[cle] = vu
+            if abs(applique - vu) > 1e-6:
+                ecarts.append({"reglage": cle, "applique": applique,
+                               "affiche": vu})
+        return {"affiche": affiche, "ecarts": ecarts}
+
+    def _fiche_source(self, contexte):
+        """Décrit la SOURCE de l'image pour la fiche (lisible depuis un thread :
+        aucun accès Tk — ce qui vient de l'interface est dans `contexte`)."""
+        st = self.stacker
+        d: dict[str, Any] = {
+            "frames": int(getattr(st, "n", 0) or 0),
+            "filtre": self.filtre_courant or None,
+            "mode": "composition" if self._mode_compo else "mono",
+        }
+        if contexte:
+            if contexte.get("dossier"):
+                d["dossier_brutes"] = contexte.get("dossier")
+            if contexte.get("source"):
+                d["source"] = contexte.get("source")
+        return d
+
+    def _fiche_chaine(self, reglages, vue, lineaire):
+        """Chaîne de traitement DANS L'ORDRE, telle qu'elle a été APPLIQUÉE.
+
+        L'ordre suit le pipeline réel : recadrage → gradient → débruitage →
+        corrections couleur → netteté → chroma → étirement → NEUTRALISATION du
+        fond → niveaux → gamma → saturation → cases couleur. Depuis le jalon 123
+        la neutralisation du fond est APRÈS l'étirement (elle était AVANT). En
+        sortie LINÉAIRE, la chaîne s'ARRÊTE avant l'étirement (donc pas de
+        neutralisation : c'est ce que le fichier contient)."""
+        if not reglages:
+            return []
+        r = reglages
+        etapes: list[dict[str, Any]] = []
+
+        def ajoute(nom, actif, **params):
+            e = {"etape": nom, "actif": bool(actif)}
+            e.update({k: v for k, v in params.items() if v is not None})
+            etapes.append(e)
+
+        ajoute("recadrage", bool(r.get("corr_cadre")), cadre=r.get("corr_cadre"))
+        ajoute("gradient GraXpert live", r.get("vl_graxpert"),
+               commande=r.get("vl_graxpert_cmd"))
+        ajoute("debruitage live", r.get("vl_denoise"),
+               methode=r.get("vl_denoise_methode"),
+               force=r.get("vl_denoise_force"))
+        ajoute("corrections couleur (gains / equilibrage / linear fit)",
+               bool(r.get("corr_gains") or r.get("corr_wb") or r.get("corr_fit")),
+               gains=r.get("corr_gains"), equilibrage=bool(r.get("corr_wb")),
+               linear_fit=bool(r.get("corr_fit")),
+               mode_linear_fit=r.get("corr_fit_mode"))
+        ajoute("nettete live", r.get("vl_sharp"),
+               iterations=r.get("vl_sharp_iterations"))
+        ajoute("bruit chromatique", r.get("vl_chroma"),
+               force=r.get("vl_chroma_force"),
+               rayon_ref_px=r.get("vl_chroma_rayon_ref"))
+        if lineaire:
+            etapes.append({"etape": "etirement", "actif": False,
+                           "note": "sortie LINEAIRE : aucun etirement"})
+        else:
+            ajoute("etirement", True, moteur=r.get("stretch"),
+                   mode_resolution=r.get("vl_mode_res"),
+                   log_d_resolu=r.get("vl_log_d_resolu"),
+                   fond_cible=r.get("vl_target_bg"), profil=r.get("vl_profil"))
+            # Jalon 123 : la neutralisation du fond se MESURE sur la sortie et
+            # s'applique APRÈS l'étirement — réservée à VeraLux (c'est son ancre
+            # qui amplifie la couleur du fond).
+            ajoute("neutralisation du fond",
+                   r.get("vl_neutre_fond") and r.get("stretch") == "veralux")
+            ajoute("etage de niveaux",
+                   any(float(r.get(k) or 0.0) != 0.0 for k in
+                       ("bar_noir", "bar_median", "bar_blanc")),
+                   noir=r.get("bar_noir"), median=r.get("bar_median"),
+                   blanc=r.get("bar_blanc"))
+            ajoute("gamma", abs(float(r.get("gamma") or 1.0) - 1.0) > 1e-9,
+                   valeur=r.get("gamma"))
+            ajoute("saturation globale",
+                   abs(float(r.get("saturation") or 1.0) - 1.0) > 1e-9,
+                   valeur=r.get("saturation"))
+            sat = tuple(float(v) for v in (r.get("sat_canaux") or (1.0, 1.0, 1.0)))
+            ajoute("saturation par couleur (R/V/B)",
+                   any(abs(v - 1.0) > 1e-9 for v in sat), valeur=list(sat))
+        ajoute("SCNR", r.get("vl_scnr"), doux=r.get("vl_scnr_doux"),
+               force=r.get("vl_scnr_force"))
+        ajoute("demagenta", r.get("vl_demagenta"), force=r.get("vl_demagenta_force"))
+        ajoute("boost rouge (SII)", r.get("vl_boost_rouge"),
+               force=r.get("vl_boost_force"))
+        ajoute("preservation de la luminosite", r.get("vl_preserve_luminance"))
+        return etapes
+
+    def _ecrire_fiche(self, chemin, type_sortie, contexte, image=None,
+                      reglages=None, entete=None, vue=None, lineaire=False):
+        """Écrit la fiche COMPAGNON de l'image qui vient d'être enregistrée.
+
+        Appelé par le MÊME code/thread que l'image. `contexte` = ce qui a été
+        capturé dans le fil d'interface (source + état appliqué/affiché) ; None
+        = case décochée → rien. JAMAIS bloquant : toute erreur est rendue
+        (message) et n'empêche jamais l'enregistrement de l'image."""
+        if not contexte:
+            return ""
+        try:
+            extra: dict[str, Any] = {
+                "source": self._fiche_source(contexte),
+                "chaine": self._fiche_chaine(reglages, vue, lineaire),
+                "vue": vue,
+                "lineaire": bool(lineaire),
+                "etat": contexte.get("etat") or {},
+                "entete_fits": dict(entete) if entete else None,
+            }
+            _chemin, msg = fiche_mod.ecrire_fiche(chemin, type_sortie,
+                                                  image=image, extra=extra)
+            if msg:                          # échec : au journal, jamais un popup
+                try:
+                    from .. import journal
+                    journal.note("fiche de rendu",
+                                 f"non écrite pour {chemin} : {msg}")
+                except Exception:
+                    pass
+            return msg
+        except Exception as exc:             # une fiche ne casse jamais une sauvegarde
+            return f"{type(exc).__name__}: {exc}"
+
     def _save_asseen(self):
         """Jalon 5 — « 💾 Enregistrer tel que vu (étiré) » : sauvegarde la vue
         courante (empilement ou traitée) RENDUE comme à l'écran, en PLEINE
@@ -231,7 +478,9 @@ class Saver:
         self.asseen_titre = "Enregistrer tel que vu"
         # Jalon 96 (étape 6) : PNG annoté COMPAGNON, écrit à côté du FITS.
         _png, _msg = self._sauver_png_annote(path)
-        self.save_asseen_request = (path, vue, self._reglages_rendu(), False)
+        # Jalon 121 : 5e élément = contexte de fiche de rendu (ou None).
+        self.save_asseen_request = (path, vue, self._reglages_rendu(), False,
+                                    self._fiche_contexte())
 
     def _save_traite_lineaire(self):
         """Chantier 24/09/2026 (décision (a) d'Alain) — « 💾 Enregistrer
@@ -263,7 +512,9 @@ class Saver:
         if not path:
             return
         self.asseen_titre = titre
-        self.save_asseen_request = (path, "pile", self._reglages_rendu(), True)
+        # Jalon 121 : 5e élément = contexte de fiche de rendu (ou None).
+        self.save_asseen_request = (path, "pile", self._reglages_rendu(), True,
+                                    self._fiche_contexte())
 
     def _couches_brutes(self):
         """Couches BRUTES recadrées (dict rôle → carte 2D) pour la chaîne par
@@ -351,7 +602,7 @@ class Saver:
         return comp, " ; ".join(msgs)
 
     def _save_asseen_thread(self, path, vue, source, reglages, session,
-                            lineaire=False, canaux=None):
+                            lineaire=False, canaux=None, fiche=None):
         """Thread de sauvegarde « tel que vu » (jalon 5) : GraXpert live si
         activé (vue « empilement » uniquement), puis débruitage/netteté live,
         puis rendu pleine résolution identique à l'affichage, puis écriture du
@@ -366,7 +617,11 @@ class Saver:
         chaîne GraXpert/débruitage est faite PAR COUCHE (cf.
         `_couches_pleine_resolution`) — sans quoi le composite (> 1) serait
         rescalé et écrêté par des outils contractés pour [0..1]. Le composite
-        est alors déjà corrigé : les corrections ne sont pas réappliquées."""
+        est alors déjà corrigé : les corrections ne sont pas réappliquées.
+
+        `fiche` (jalon 121) : contexte de fiche de rendu capturé dans le fil
+        d'interface (None = case décochée). La fiche compagnon est écrite ICI,
+        par le MÊME thread que l'image."""
         corrige = False
         try:
             if (vue == "pile" and canaux
@@ -452,23 +707,21 @@ class Saver:
                 img, entete = borner_lineaire(source, entete)
                 save_image(path, img, entete=entete)
                 self.dernier_applicatif = entete.get("AVAAPPLI")
+                # Jalon 121 : fiche de rendu compagne (même thread que l'image).
+                self._ecrire_fiche(
+                    path, "empilement traite (lineaire)", fiche, image=img,
+                    reglages=reglages, entete=entete, vue=vue, lineaire=True)
                 self.asseen_result = path
                 return
-            # v2.36.1 : neutralisation de la couleur du fond, JUSTE AVANT
-            # l'étirement — UNIQUEMENT pour un étirement VeraLux (c'est son
-            # ANCRE qui amplifie la couleur du fond ; le STF étire avec une
-            # seule transformation sur la luminance, donc n'est pas concerné) et
-            # JAMAIS pour la 3e sortie LINÉAIRE ci-dessus, qui doit rester
-            # « empilement + corrections » (verrouillé par le banc jalon 59 [6]).
-            # Même ordre que dans le solveur live : le fichier « tel que vu » est
-            # identique à l'écran.
-            if (vue == "pile" and reglages.get("vl_neutre_fond")
-                    and reglages.get("stretch") == "veralux"):
-                source = couleurs_mod.neutraliser_fond(source)
-            # v2.37.0 : réduction du bruit chromatique — APRÈS la neutralisation
-            # (un gain par canal) et juste AVANT l'étirement, comme dans le
-            # solveur live ; elle aussi réservée à l'étirement VeraLux (en STF,
-            # l'aperçu ne l'applique pas : le fichier doit être identique à
+            # JALON 123 : la NEUTRALISATION de la couleur du fond a QUITTÉ cet
+            # étage pré-étirement (elle FABRIQUAIT le magenta — cf. couleurs.py).
+            # Elle est désormais appliquée APRÈS l'étirement, DANS
+            # `rendu_pleine_resolution` (juste après le moteur), exactement comme
+            # le solveur live — le fichier « tel que vu » reste l'écran.
+            # v2.37.0 : réduction du bruit chromatique — juste AVANT l'étirement
+            # (la neutralisation, elle, est passée APRÈS au jalon 123), comme
+            # dans le solveur live ; elle est réservée à l'étirement VeraLux (en
+            # STF, l'aperçu ne l'applique pas : le fichier doit être identique à
             # l'écran) et JAMAIS dans la 3e sortie linéaire ci-dessus.
             if (vue == "pile" and reglages.get("vl_chroma")
                     and reglages.get("stretch") == "veralux"):
@@ -490,6 +743,14 @@ class Saver:
                 entete["AVAVUE"] = ("resultat traite externe, tel que vu "
                                     "(ETIRE)")
             save_image(path, rendu, entete=entete)
+            # Jalon 121 : fiche de rendu compagne (même thread que l'image).
+            # C'est LE cas qui manquait de provenance : « tel que vu » n'avait
+            # aucun en-tête, et la vue « traitée » vient d'une chaîne externe.
+            type_sortie = ("resultat externe, tel que vu (etire)"
+                           if vue == "traitée" else "tel que vu (etire)")
+            self._ecrire_fiche(path, type_sortie, fiche, image=rendu,
+                               reglages=reglages, entete=entete, vue=vue,
+                               lineaire=False)
             self.asseen_result = path
         except Exception as e:
             self.asseen_result = f"ERREUR: {e}"
@@ -515,6 +776,11 @@ class Saver:
                 # Jalon 96 (étape 6) : PNG annoté COMPAGNON, écrit à côté du
                 # FITS (jamais dans le fichier : linéarité préservée).
                 _png, _msg = self._sauver_png_annote(path)
+                # Jalon 121 : fiche de rendu compagne (fil d'interface ici).
+                self._ecrire_fiche(
+                    path, "resultat du traitement externe (lineaire)",
+                    self._fiche_contexte(), image=img, reglages=None,
+                    entete=entete, vue="traitée", lineaire=True)
                 self._dire("Enregistrer", f"Résultat traité sauvegardé :\n{path}")
             except Exception as e:
                 self._signaler("Enregistrer", str(e))
@@ -642,14 +908,14 @@ class Saver:
         # v2.48.0 (jalon 85) : la chaîne couleur (SCNR / SCNR doux / démagenta)
         # NE FAIT PLUS PARTIE de la chaîne externe — elle suit l'étirement et
         # est appliquée à l'affichage comme à « tel que vu »
-        # (`display.couleur_apres_etirement`). Le fichier ⚡ ne porte donc que
-        # les corrections PRÉ-étirement, ce que dit AVAAPPLI.
-        for actif, nom in ((val(8), "fond neutre"), (val(9), "chroma")):
-            if actif:
-                preet.append(nom)
-        if val(9):
+        # (`display.couleur_apres_etirement`).
+        # JALON 123 : la NEUTRALISATION du fond a elle aussi quitté cette chaîne
+        # (elle s'applique APRÈS l'étirement, cf. `display`) — le fichier ⚡ ne
+        # porte donc plus que la réduction du bruit chromatique, ce que dit
+        # AVAAPPLI.
+        if val(8):
             preet.append("chroma force %.2f rayon %.1fpx"
-                         % (float(val(10, 0.5)), float(val(11, 3.0))))
+                         % (float(val(9, 0.5)), float(val(10, 3.0))))
         ent: dict[str, Any] = {
                "AVAOUTIL": " + ".join(outils) if outils else "aucun",
                "AVAAPPLI": " + ".join(preet) if preet else "aucune",

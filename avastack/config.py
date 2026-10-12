@@ -71,4 +71,8 @@ DEFAUT_CONFIG: dict[str, Any] = {
     "seuil_mag_etoiles": 8.0,
     # Sauvegarde PNG annotée à côté du FITS
     "annoter_sauvegarde": True,
+    # FICHE DE RENDU (jalon 121) : écrire un JSON compagnon `<image>.ava.json` à
+    # côté de chaque image enregistrée (traçabilité des paramètres). Défaut
+    # COCHÉ (décision d'Alain, 11/10/2026).
+    "fiche_rendu": True,
 }

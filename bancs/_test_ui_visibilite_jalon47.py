@@ -215,11 +215,12 @@ verifie(ordre_avant == ordre_apres
 
 # ================== [5bis] v2.48.0 : l'ORDRE SUIT LA CHAÎNE DES TRAITEMENTS
 # Demande d'Alain (30/09/2026) : « l'UI doit respecter l'ordre des traitements ».
-# Le cadre couleur du jalon 22 mélangeait deux ÉTAPES de la chaîne (neutralisation
-# du fond et bruit chromatique sont appliqués AVANT l'étirement, SCNR/démagenta
-# APRÈS) ; il est scindé, et « Netteté live » (qui dit « avant étirement » depuis
-# le jalon 12) n'est plus affiché APRÈS le cadre qui porte l'étirement.
-print("[5bis] l'ordre des cadres suit l'ordre des traitements (jalon 85)")
+# Le cadre couleur du jalon 22 mélangeait deux ÉTAPES de la chaîne (bruit
+# chromatique, appliqué AVANT l'étirement, et SCNR/démagenta, APRÈS) ; il est
+# scindé, et « Netteté live » (qui dit « avant étirement » depuis le jalon 12)
+# n'est plus affiché APRÈS le cadre qui porte l'étirement. JALON 124 : la
+# neutralisation du fond, elle, a rejoint « Couleur de l'objet (APRÈS) ».
+print("[5bis] l'ordre des cadres suit l'ordre des traitements (jalons 85/124)")
 _titres_bruts = [_titre_cadre(c) for c in ordre_apres]
 # j99 : les titres portent un préfixe "▼ " / "▶ " quand la section est pliée
 _titres = [t.replace("▼ ", "").replace("▶ ", "") for t in _titres_bruts]
@@ -242,15 +243,17 @@ def _cases(cadre):
 
 
 _c_fond, _c_coul = _cases(app.frm_fond), _cases(app.frm_couleur)
-verifie(any("Neutraliser la couleur du fond" in t for t in _c_fond)
-        and any("Réduire le bruit chromatique" in t for t in _c_fond),
-        f"« Fond et grain (AVANT étirement) » porte la neutralisation ET le "
-        f"bruit chromatique ({_c_fond})")
-verifie(any("SCNR — retrait du vert" in t for t in _c_coul)
+verifie(any("Réduire le bruit chromatique" in t for t in _c_fond)
+        and not any("Neutraliser la couleur du fond" in t for t in _c_fond),
+        f"« Fond et grain (AVANT étirement) » ne porte plus QUE le bruit "
+        f"chromatique — la neutralisation en a été RETIRÉE au jalon 124 (elle "
+        f"est APRÈS l'étirement) ({_c_fond})")
+verifie(any("Neutraliser la couleur du fond" in t for t in _c_coul)
+        and any("SCNR — retrait du vert" in t for t in _c_coul)
         and any("Démagenta" in t for t in _c_coul)
         and any("Préserver la luminosité" in t for t in _c_coul),
-        f"« Couleur de l'objet (APRÈS étirement) » porte la L*, le SCNR et le "
-        f"démagenta ({_c_coul})")
+        f"« Couleur de l'objet (APRÈS étirement) » porte la neutralisation du "
+        f"fond (jalon 124), la L*, le SCNR et le démagenta ({_c_coul})")
 
 # ==================================== [6] cadence : choix commun inchangé
 print("[6] cadence unique : la combobox pilote toujours le moteur (42/45)")

@@ -175,11 +175,11 @@ fa.gains, fa.mode_l = None, "synthetise"
 app.stacker = fa
 comp_full, canaux_full = fa.mean_avec_canaux()
 # v2.48.0 (jalon 85) : plus de cases couleur dans le job externe (elles suivent
-# l'étirement) — les quatre derniers éléments sont la neutralisation du fond
-# (9e, cochée par défaut), le bruit chromatique (10e, opt-in), sa FORCE (11e)
-# et le RAYON DE RÉFÉRENCE du flou de chroma (12e).
+# l'étirement) ; jalon 123 : plus de neutralisation du fond non plus. Il ne reste
+# que le bruit chromatique (8e, opt-in), sa FORCE (9e) et le RAYON DE RÉFÉRENCE
+# du flou de chroma (10e).
 app.ext_job = (True, cmd_tpl + " GX_C", True, "", False, "", "nlm", 0.5,
-               True, False, 0.5, 3.0)
+               False, 0.5, 3.0)
 app._session = 0
 app._run_external(comp_full, 2, 0)
 root.update_idletasks()
@@ -199,7 +199,7 @@ with open(fail, "w", encoding="utf-8") as f:
     f.write("import sys\nsys.exit(3)\n")
 cmd_fail = f'"{sys.executable}" "{fail}" "{{input}}" "{{output}}"'
 app.ext_job = (True, cmd_fail, False, "", False, "", "nlm", 0.5,
-               True, False, 0.5, 3.0)        # mêmes réglages que ci-dessus
+               False, 0.5, 3.0)             # mêmes réglages que ci-dessus
 app._run_external(comp_full, 2, 0)
 root.update_idletasks()
 verifie(app.ext_state == "error",

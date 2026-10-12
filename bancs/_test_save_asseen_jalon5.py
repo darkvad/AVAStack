@@ -134,6 +134,10 @@ if vl.moteur_disponible():
     d7.stretch = "veralux"
     d7.vl_mode_res = vl.MODE_LOG_D
     d7.vl_log_d = 2.0
+    # Jalon 123 : la neutralisation du fond s'applique APRÈS l'étirement — donc
+    # elle fait partie de `rendu_pleine_resolution`. On l'isole ici pour que ce
+    # contrôle porte bien sur le rendu du moteur (et non sur un réglage annexe).
+    d7.vl_neutre_fond = False
     r7 = d7.rendu_pleine_resolution(rgb)
     ref7, _, _ = vl.etirer(np.clip(rgb, 0.0, 1.0), mode=vl.MODE_LOG_D,
                            log_d=2.0, profil=d7.vl_profil)

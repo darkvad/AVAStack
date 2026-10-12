@@ -183,11 +183,12 @@ _ = d.process(scene)                       # soumet le rendu (image d'attente)
 verifie(attendre_vl(d), "solveur VeraLux : rendu terminé")
 ecran = np.asarray(d.process(scene, live=False), np.uint8)
 # CHEMIN DE SAUVEGARDE « tel que vu », répliqué ici comme le fait
-# `_save_asseen_thread` : les étapes PRÉ-ÉTIREMENT d'abord (neutralisation du
-# fond — ACTIVE par défaut, v2.36.1 — puis réduction du bruit chromatique), et
-# l'étirement ensuite. Sans elles, la comparaison serait biaisée (mesuré : 18
-# niveaux d'écart, exactement l'effet de la neutralisation oubliée).
-source = couleurs.neutraliser_fond(scene) if d.vl_neutre_fond else scene
+# `_save_asseen_thread` : la réduction du bruit chromatique d'abord (étape
+# PRÉ-ÉTIREMENT), puis `rendu_pleine_resolution` qui fait l'étirement. Jalon 123 :
+# la neutralisation du fond a QUITTÉ cet étage pré-étirement — elle est appliquée
+# APRÈS l'étirement par `rendu_pleine_resolution` elle-même (comme le solveur
+# live), donc au même endroit à l'écran et dans le fichier.
+source = scene
 if d.vl_chroma:
     source = couleurs.reduire_bruit_chroma(source, force=d.vl_chroma_force,
                                            rayon=d.vl_chroma_rayon)

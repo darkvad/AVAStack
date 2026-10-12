@@ -131,6 +131,10 @@ FICHIERS_TYPES = (
     "avastack/ressources.py",
     "avastack/travail.py",
     "avastack/siril_ini.py",
+    # Jalon 121 : la FICHE DE RENDU (`avastack/fiche.py`) — module NEUF (JSON
+    # compagnon `<image>.ava.json`, écriture atomique et tolérante), typé dès sa
+    # création comme tout module nouveau.
+    "avastack/fiche.py",
     "avastack/ui/constants.py",
     "avastack/ui/widgets/collapsible.py",
     "avastack/ui/widgets/histogram.py",

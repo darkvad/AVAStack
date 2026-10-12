@@ -42,6 +42,7 @@ cv2.ocl.setUseOpenCL(False)          # crash OpenCV 5/OpenCL au teardown sinon
 import avastack.images as images
 images.CFA_MODE = "Non"              # couleur d'essai composite, pas de CFA
 import avastack.ui.app as ui
+from avastack.processing import couleurs as C
 from avastack.processing import veralux as vl
 
 if hasattr(sys.stdout, "reconfigure"):   # sortie pipée ≠ console (cp1252)
@@ -101,12 +102,17 @@ def attendre_resultat(d_, img_, declencher=False):
     d_.process(img_, live=False)     # rendu du résultat terminé (comme _tick)
     app._refresh_preview()
     root.update_idletasks()
-    if d_._vl_result is None or d_._vl_result[0] != d_._vl_params():
+    if d_._vl_result is None or d_._vl_result[0] != d_._vl_params() + (img_.shape,):
         return False
     # L'affichage montre bien le résultat : en test, gamma/saturation sont
-    # neutres (1.0) — process() ne fait que clipper PUIS convertir en uint8
-    # (cf. _gamma_saturation et la fin de process()).
-    ref = (np.clip(d_._vl_result[1], 0.0, 1.0) * 255).astype(np.uint8)
+    # neutres (1.0) et l'étage de niveaux est inactif — il ne reste que la
+    # NEUTRALISATION DE LA COULEUR DU FOND, appliquée par `process()` depuis le
+    # jalon 124 (après les niveaux, avant la finition). La référence doit donc la
+    # porter aussi, sinon elle ne décrit plus ce que `process()` rend.
+    ref = np.clip(d_._vl_result[1], 0.0, 1.0)
+    if d_._veralux_actif() and bool(d_.vl_neutre_fond):
+        ref = C.neutraliser_apres_etirement(ref)
+    ref = (np.clip(ref, 0.0, 1.0) * 255).astype(np.uint8)
     return bool(np.array_equal(app._last_disp, ref))
 
 
@@ -153,7 +159,7 @@ app.var_vl_scnr.set(True)
 app._sync_vl_couleur_vue()
 verifie(attendre_resultat(d, img, declencher=True),  # fige un résultat à clé courante
         "état posé : résultat résolu, clé à jour")
-cle = d._vl_params()
+cle = d._vl_params() + (img.shape,)
 for _ in range(50):                  # ce que ferait _tick pendant 1,5 s
     app._sync_vl_couleur_vue()
 verifie(not d._vl_pending and d._vl_job is None

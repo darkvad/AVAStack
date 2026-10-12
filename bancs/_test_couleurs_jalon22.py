@@ -28,10 +28,11 @@ antérieure. Vérifie :
       résultat est l'entrée AU PIXEL près et l'excès de vert la traverse
       intact (aucun écrêtage en vert du fichier linéaire) ; déballage
       tolérant des anciens formats de job ;
-  [3bis] chaîne externe : neutralisation de la couleur du fond (9e élément)
-      puis réduction du bruit chromatique (10e/11e, force transportée) ;
-  [4] persistance : clés vl_scnr / vl_scnr_doux / vl_demagenta / ext_chroma /
-      ext_neutre_fond écrites puis restaurées, clés `ext_scnr*` ABSENTES.
+  [3bis] chaîne externe : la neutralisation du fond a QUITTÉ cette chaîne
+      (jalon 123 — elle est APRÈS l'étirement) ; seule la réduction du bruit
+      chromatique reste (case + force transportées) ;
+  [4] persistance : clés vl_scnr / vl_scnr_doux / vl_demagenta / ext_chroma
+      écrites puis restaurées ; clés `ext_scnr*` ET `ext_neutre_fond` ABSENTES.
 
 Nécessite un affichage. Exécution : python bancs/_test_couleurs_jalon22.py
 """
@@ -353,15 +354,15 @@ if app2.proc_full is not None:
             f"vert du fichier linéaire")
     verifie(np.array_equal(src, src0),
             "l'image d'entrée n'est jamais modifiée par la chaîne")
-# Job 12-TUPLE (format courant) tout décoché : les emplacements 9 à 12 sont la
-# neutralisation du fond, le bruit chromatique, sa force et le rayon de
-# référence (v2.37.1 / v2.37.4).
+# Job 11-TUPLE (format courant, jalon 123) tout décoché : les emplacements 9 à 11
+# sont le bruit chromatique, sa force et le rayon de référence (v2.37.1/2.37.4 ;
+# la neutralisation du fond n'est plus dans ce job).
 app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5,
-                False, False, 0.5, 3.0)
+                False, 0.5, 3.0)
 app2._run_external(src, 3, 0)
 verifie(app2.ext_state == "ok"
         and np.allclose(app2.proc_full, src, atol=1e-6),
-        "job 12-tuple (format courant, tout décoché) : déballage tolérant, "
+        "job 11-tuple (format courant, tout décoché) : déballage tolérant, "
         "résultat = entrée")
 # Mono : no-op — résultat identique à l'entrée.
 mono = np.clip(rng.normal(0.1, 0.01, (60, 80)), 0, None).astype(np.float32)
@@ -372,84 +373,62 @@ verifie(app2.proc_full is not None
         "mono : résultat = entrée (aucune correction de couleur dans cette "
         "chaîne)")
 
-# v2.37.1 : corrections PRÉ-ÉTIREMENT de la chaîne live dans la chaîne EXTERNE
-# (demande d'Alain, 25/09/2026 : « intégrer les derniers ajouts (SPCC,
-# neutralisation, bruit chroma) dans la chaîne de traitement externe »).
-# v2.48.0 (jalon 85) : le job passe de 15 à 12 éléments (plus de cases couleur)
-# → la neutralisation du fond est le 9e (indice 8), le bruit chromatique le
-# 10e (9), sa force le 11e (10) et le rayon de référence le 12e (11).
-print("[3bis] chaîne externe : neutralisation du fond + bruit chromatique "
-      "(v2.37.1, indices décalés par le jalon 85)")
+# JALON 123 : la NEUTRALISATION du fond a QUITTÉ la chaîne EXTERNE (elle
+# s'applique APRÈS l'étirement, à l'affichage — cf. `display`). Seule la
+# RÉDUCTION DU BRUIT CHROMATIQUE reste une correction pré-étirement : case
+# (indice 8), force (9), rayon de référence (10).
+print("[3bis] chaîne externe : réduction du bruit chromatique seule "
+      "(jalon 123 : la neutralisation est APRÈS l'étirement)")
 src_sp = image_test()
 app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5,
-                True, False, 0.5, 3.0)
+                False, 0.5, 3.0)
 app2._run_external(src_sp, 4, 0)
 verifie(app2.ext_state == "ok"
-        and np.allclose(app2.proc_full, coul.neutraliser_fond(src_sp),
-                        atol=1e-6),
-        "9e élément : neutralisation du fond seule → fond égalisé")
+        and np.allclose(app2.proc_full, src_sp, atol=1e-6),
+        "case chroma décochée : le résultat est l'entrée, au pixel près")
 app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5,
-                False, True, 0.75, 3.0)
+                True, 0.75, 3.0)
 app2._run_external(src_sp, 4, 0)
 verifie(app2.ext_state == "ok"
         and np.allclose(app2.proc_full,
                         coul.reduire_bruit_chroma(src_sp, force=0.75),
                         atol=1e-6),
-        "10e/11e éléments : bruit chromatique à la FORCE transportée (0,75)")
-# Ordre de la chaîne : … → neutralisation du fond → bruit chromatique (le vert
-# de l'objet n'est plus touché ICI : il l'est APRÈS l'étirement, à l'affichage).
-app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5,
-                True, True, 0.5, 3.0)
-app2._run_external(src_sp, 5, 0)
-attendu = coul.reduire_bruit_chroma(coul.neutraliser_fond(src_sp), force=0.5)
-verifie(app2.ext_state == "ok"
-        and np.allclose(app2.proc_full, attendu, atol=1e-6),
-        "chaîne complète : fond → chromatique (sans SCNR : il suit "
-        "l'étirement)")
-# Les gains de neutralisation sont ANNONCÉS dans le message final — même
-# exigence d'honnêteté que « État des calculs » du live. Ici le fond de
-# `image_test()` est franchement vert : la correction a lieu, donc elle se dit.
-verifie("fond neutralisé" in (app2.ext_msg or ""),
-        f"fond non neutre : les gains appliqués sont ANNONCÉS "
-        f"(« {str(app2.ext_msg)[:70]}… »)")
-# …et ils ne le sont PAS quand il n'y a rien à corriger : fond déjà neutre.
-fond_neutre = np.full((60, 80, 3), 0.08, np.float32)
-app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5,
-                True, False, 0.5, 3.0)
-app2._run_external(fond_neutre, 3, 0)
+        "8e/9e éléments : bruit chromatique à la FORCE transportée (0,75)")
+# Le message final ne parle plus de fond neutralisé (cette correction a quitté
+# la chaîne) : exigence d'honnêteté — rien n'est annoncé qui ne soit fait.
 verifie("fond neutralisé" not in (app2.ext_msg or ""),
-        "fond déjà neutre : les gains ne sont PAS annoncés (aucune correction "
-        "inventée)")
-# …et sur un ciel réellement coloré (bleu de 3 %, comme sur ses empilements
-# M31), ils le sont — mesuré ici sur une image dont les DEUX bords diffèrent.
+        f"le message externe ne prétend plus neutraliser le fond "
+        f"(« {str(app2.ext_msg)[:70]}… »)")
+# Un ciel coloré n'est donc PLUS égalisé par cette chaîne LINÉAIRE : c'est VOULU
+# (la neutralisation a lieu APRÈS l'étirement) — on le prouve sur un ciel bleui.
 ciel_bleu = np.empty((60, 80, 3), np.float32)
 ciel_bleu[..., 0] = 0.0310
 ciel_bleu[..., 1] = 0.0320
 ciel_bleu[..., 2] = 0.0330
 ciel_bleu += rng.normal(0, 0.0005, ciel_bleu.shape).astype(np.float32)
 app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5,
-                True, False, 0.5, 3.0)
+                False, 0.5, 3.0)
 app2._run_external(ciel_bleu, 3, 0)
 verifie(app2.ext_state == "ok"
-        and np.allclose(app2.proc_full, coul.neutraliser_fond(ciel_bleu),
-                        atol=1e-6),
-        "ciel bleui : le fond corrigé est bien celui de la chaîne externe")
-# Mono : les deux étapes sont des no-op.
+        and np.allclose(app2.proc_full, ciel_bleu, atol=1e-6),
+        "ciel bleui : la sortie LINÉAIRE du ⚡ n'est plus neutralisée (la "
+        "neutralisation est APRÈS l'étirement, à l'affichage)")
+# Mono : la réduction du bruit chromatique est un no-op.
 app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5,
-                True, True, 1.0, 3.0)
+                True, 1.0, 3.0)
 app2._run_external(mono, 2, 0)
 verifie(app2.proc_full is not None
         and np.allclose(app2.proc_full, mono, atol=1e-6),
-        "mono : neutralisation et bruit chromatique sont des no-op")
-# Job 11-tuple (format v2.36, trois cases couleur dont AUCUNE n'existe plus) :
-# déballage tolérant — les emplacements lus sont ceux du format courant, donc
-# ici tout est décoché et le résultat est l'entrée, au pixel près.
+        "mono : la réduction du bruit chromatique est un no-op")
+# Job 10-tuple (format antérieur au jalon 123) : déballage tolérant — les
+# emplacements lus sont ceux du format courant, donc ici tout est décoché et le
+# résultat est l'entrée, au pixel près.
 app2.ext_job = (False, "", False, "", False, "", "nlm", 0.5,
-                False, False, 0.5)
+                False, 0.5)
 app2._run_external(src_sp, 3, 0)
 verifie(app2.ext_state == "ok"
         and np.allclose(app2.proc_full, src_sp, atol=1e-6),
-        "job 11-tuple (v2.36) : déballage tolérant, rien appliqué")
+        "job 10-tuple (ancien format) : déballage tolérant, rien appliqué")
 
 # ==================================== [4] persistance
 print("[4] persistance : clés explicites, restauration")
@@ -465,16 +444,17 @@ c_cfg = sauvegardes[-1]
 verifie(c_cfg.get("vl_scnr") is True and c_cfg.get("vl_scnr_doux") is True
         and c_cfg.get("vl_demagenta") is True,
         "config : vl_scnr / vl_scnr_doux / vl_demagenta écrits")
-verifie(c_cfg.get("ext_chroma") is True
-        and c_cfg.get("ext_neutre_fond") is True,
-        "config : ext_chroma (coché) et ext_neutre_fond (défaut) écrits")
+verifie(c_cfg.get("ext_chroma") is True,
+        "config : ext_chroma (coché) écrit")
 # v2.48.0 (jalon 85) : les cases couleur ont QUITTÉ la chaîne externe → les clés
 # ext_scnr / ext_scnr_doux / ext_demagenta ne sont plus ÉCRITES (elles ne
-# décrivent plus aucun réglage).
+# décrivent plus aucun réglage). JALON 123 : ext_neutre_fond les rejoint (la
+# neutralisation du fond a quitté la chaîne externe).
 verifie("ext_scnr" not in c_cfg and "ext_scnr_doux" not in c_cfg
-        and "ext_demagenta" not in c_cfg,
-        "config : ext_scnr / ext_scnr_doux / ext_demagenta ABSENTES (plus de "
-        "case couleur dans la chaîne externe)")
+        and "ext_demagenta" not in c_cfg and "ext_neutre_fond" not in c_cfg,
+        "config : ext_scnr / ext_scnr_doux / ext_demagenta ET ext_neutre_fond "
+        "ABSENTES (plus de case couleur ni de neutralisation dans la chaîne "
+        "externe)")
 ui.CONFIG = dict(c_cfg)
 app4 = ui.App(root)
 verifie(app4.var_vl_scnr.get() is True
@@ -482,24 +462,22 @@ verifie(app4.var_vl_scnr.get() is True
         and app4.var_vl_demagenta.get() is True
         and app4.disp.vl_scnr is True,
         "config : cases couleur restaurées (disp.vl_scnr actif)")
-verifie(app4.var_ext_chroma.get() is True
-        and bool(app4.var_ext_neutre.get()) is True,
-        "config : ext_chroma restauré, ext_neutre_fond reste coché")
-# Une configuration ANTÉRIEURE qui porte encore les trois clés retirées les voit
+verifie(app4.var_ext_chroma.get() is True,
+        "config : ext_chroma restauré")
+# Une configuration ANTÉRIEURE qui porte encore les clés retirées les voit
 # RETIRÉES à la sauvegarde — seule exception à la règle « ne touche pas aux
 # entrées inconnues » : sinon le fichier laisserait croire à une case qui
-# n'existe plus. Le réglage respecté au passage : ext_neutre_fond décoché.
+# n'existe plus.
 sauvegardes = []
 ui.CONFIG = {"ext_scnr": True, "ext_scnr_doux": True,
-             "ext_demagenta": True, "ext_neutre_fond": False}
+             "ext_demagenta": True, "ext_neutre_fond": True}
 app5 = ui.App(root)
 app5._sauver_config_app()
 c5 = sauvegardes[-1]
 verifie("ext_scnr" not in c5 and "ext_scnr_doux" not in c5
-        and "ext_demagenta" not in c5,
-        "config antérieure : les clés ext_scnr* sont RETIRÉES à la sauvegarde")
-verifie(bool(app5.var_ext_neutre.get()) is False,
-        "config : ext_neutre_fond DÉCOCHÉ par l'utilisateur est respecté")
+        and "ext_demagenta" not in c5 and "ext_neutre_fond" not in c5,
+        "config antérieure : les clés ext_scnr* ET ext_neutre_fond sont "
+        "RETIRÉES à la sauvegarde")
 
 # ==================================== [5] GraXpert : garde-fous (jalon 23b)
 print("[5] GraXpert live : canal mort refusé, sortie dégénérée rejetée")

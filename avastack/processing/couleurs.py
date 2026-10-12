@@ -297,7 +297,16 @@ def neutraliser_fond(img: np.ndarray, force: float = 1.0,
 
     force : 0..1 — atténue la correction (`gains ** force`), comme l'équilibrage.
     → copie float32 ; image mono ou non couleur renvoyée inchangée ; jamais
-    d'exception (numpy seul)."""
+    d'exception (numpy seul).
+
+    NOTE (jalon 123) : ce n'était PAS le bon étage. Appliqué AVANT l'étirement,
+    un gain multiplicatif vise « à côté » de ce que l'ANCRE de VeraLux amplifie
+    (elle SOUTRAIT un scalaire) et FABRIQUE du magenta — mesuré sur M33 le
+    11/10/2026. La chaîne live/sauvegarde ne s'en sert donc PLUS : elle applique
+    `neutraliser_apres_etirement` sur la SORTIE, et `piedestal_canaux` (jalon
+    122) en amont. Cette fonction reste la primitive d'espace LINÉAIRE (elle ne
+    borne pas à [0, 1] : une valeur linéaire > 1 est légitime) — utilisée par
+    les bancs et les diagnostics."""
     a = np.asarray(img, dtype=np.float32)
     g = gains_fond(a, garde)
     if g is None:
@@ -308,6 +317,119 @@ def neutraliser_fond(img: np.ndarray, force: float = 1.0,
     if bool(np.allclose(gg, 1.0, atol=1e-4)):
         return a.copy()
     return (a * gg.reshape(1, 1, 3)).astype(np.float32)
+
+
+def neutraliser_apres_etirement(img: np.ndarray, force: float = 1.0,
+                                garde: float = 0.10) -> np.ndarray:
+    """Neutralise la COULEUR DU FOND d'une image DÉJÀ ÉTIRÉE — jalon 123.
+
+    POURQUOI APRÈS (et non avant) — MESURÉ sur M33, 11/10/2026 : appliquée AVANT
+    l'étirement (v2.36.1, `neutraliser_fond`), la correction employait un
+    estimateur de ciel (« moitié la plus sombre ») qui n'est PAS la grandeur que
+    l'ANCRE de VeraLux amplifie — l'ancre SOUTRAIT un scalaire puis étire en log
+    (cf. `piedestal_canaux`) : le résultat visait « 0,7 % à côté » et FABRIQUAIT
+    le magenta. Mesurés sur la SORTIE, les gains visent EXACTEMENT ce que l'on
+    voit : un fond cyan/magenta redevient neutre.
+
+    C'est la MÊME opération que `neutraliser_fond` (mêmes gains par canal,
+    mesurés sur le fond de l'image reçue par `gains_fond`), à DEUX différences
+    près :
+      - elle s'applique à une image ÉTIRÉE, donc d'AFFICHAGE : le produit est
+        RAMENÉ dans [0, 1] (sur du linéaire, une valeur > 1 est légitime) ;
+      - la mesure porte sur la SORTIE — l'objet y est plus CLAIR que le ciel,
+        donc la « moitié la plus sombre » reste bien du fond.
+
+    force : 0..1 — atténue la correction (`gains ** force`), comme les autres
+            primitives de fond.
+    → copie float32 bornée [0, 1] ; image mono/neutre/canal vide renvoyée
+    inchangée (copie) ; l'entrée n'est JAMAIS modifiée ; jamais d'exception
+    (numpy seul)."""
+    a = np.asarray(img, dtype=np.float32)
+    g = gains_fond(a, garde)
+    if g is None:
+        return a.copy()
+    gg = np.array(g, dtype=np.float32)
+    if force < 1.0:
+        gg = gg ** float(force)
+    if bool(np.allclose(gg, 1.0, atol=1e-4)):
+        return a.copy()
+    return np.clip(a * gg.reshape(1, 1, 3), 0.0, 1.0).astype(np.float32)
+
+
+# --- Piédestal par canal : aligner les NIVEAUX DE CIEL (offsets, pas de gains) -
+def niveaux_ciel_canaux(img: np.ndarray) -> tuple[float, ...] | None:
+    """Niveau de CIEL de chaque canal (R, G, B) — ou None si l'image ne s'y
+    prête pas (mono, canal vide).
+
+    MÊME estimateur que `gains_fond` (médiane de la MOITIÉ LA PLUS SOMBRE de
+    l'image, sélection par luminance, canal par canal) — c'est volontaire.
+    La cause racine du fond cyan/magenta n'est PAS cet estimateur : c'est qu'on
+    en tirait des GAINS multiplicatifs, alors que l'ANCRE de VeraLux, elle,
+    SOUTRAIT un offset scalaire puis étire en log (« 0,7 % à côté »). Avec des
+    OFFSETS mesurés sur la MÊME grandeur, la correction annule exactement ce que
+    l'ancre amplifie (cf. `piedestal_canaux`).
+
+    → tuple de 3 flottants (R, G, B) ; None sur mono (`ndim != 3`), canal vide
+    (un niveau de ciel ≤ 1e-9 n'a pas de sens) ou moitié sombre inexistante.
+    N'écrit jamais dans l'entrée, ne lève jamais."""
+    a = np.asarray(img, dtype=np.float32)
+    if a.ndim != 3 or a.shape[-1] != 3:
+        return None
+    lum = a.mean(axis=2)
+    masque = lum <= float(np.percentile(lum, 50))
+    if not bool(masque.any()):
+        return None
+    niveaux = tuple(float(np.median(a[..., c][masque])) for c in range(3))
+    if min(niveaux) <= 1e-9:              # canal vide : aucun niveau de ciel
+        return None
+    return niveaux
+
+
+def piedestal_canaux(img: np.ndarray, force: float = 1.0,
+                     garde: float = 0.10) -> np.ndarray:
+    """Amène les NIVEAUX DE CIEL des trois canaux au MÊME niveau, par des
+    OFFSETS (soustraction) — le « piédestal par canal », à appliquer JUSTE AVANT
+    l'étirement VeraLux.
+
+    POURQUOI (remède MESURÉ du 11/10/2026, cf. AVANCEMENT.md — cause racine du
+    fond CYAN/MAGENTA et du cœur magenta de M33) : `neutraliser_fond` corrigeait
+    le fond par des GAINS multiplicatifs, mais l'étirement VeraLux ne MULTIPLIE
+    pas le résidu de ciel : il SOUTRAIT une ANCRE (un scalaire lu dans
+    l'histogramme de luminance) puis étire en log. MESURÉ : l'ancre consomme
+    ~97 % du niveau de ciel, si bien qu'un écart de ciel par canal de 0,9 %
+    ressort ×20 à ×40 — un empilement neutre à 0,9 % sort à R/G 0,77, et la
+    moindre correction par canal décide de la couleur (cyan ↔ magenta). Un gain
+    vise donc « à côté » et, sur les canaux dont le ciel passe SOUS l'ancre, il
+    FABRIQUE le magenta. Le remède est de la MÊME NATURE que ce que l'ancre fait :
+    une SOUSTRACTION. En ramenant les trois ciels au même niveau, leurs résidus
+    (ciel − ancre) deviennent ÉGAUX, donc neutres après l'étirement log.
+
+    `garde` borne chaque offset à ±garde × (niveau de ciel MÉDIAN) — même esprit
+    que la borne de `gains_fond` : sur un cadrage dominé par un OBJET étendu, la
+    « moitié sombre » n'est plus du ciel mais l'objet, et l'offset deviendrait
+    absurde (désaturation de l'objet). Aucun estimateur bon marché ne sait
+    distinguer un ciel d'un objet étendu (c'est le travail de GraXpert) : on
+    borne donc l'ampleur de la correction.
+
+    force : 0..1 — atténue la correction (offsets × force), comme les autres
+            primitives de correction de fond.
+    → copie float32 (entrée JAMAIS modifiée) ; image mono/neutre/canal vide
+    renvoyée inchangée (copie) ; jamais d'exception (numpy seul)."""
+    a = np.asarray(img, dtype=np.float32)
+    niveaux = niveaux_ciel_canaux(a)
+    if niveaux is None:
+        return a.copy()
+    cible = float(np.median(niveaux))
+    offs = np.array([n - cible for n in niveaux], dtype=np.float32)
+    borne = np.float32(max(float(garde), 0.0) * max(abs(cible), 1e-9))
+    offs = np.clip(offs, -borne, borne).astype(np.float32)
+    f = min(1.0, max(0.0, float(force)))
+    if f < 1.0:
+        offs = offs * np.float32(f)
+    if bool(np.allclose(offs, 0.0, atol=1e-9)):
+        return a.copy()
+    out = a - offs.reshape(1, 1, 3)
+    return np.maximum(out, np.float32(0.0)).astype(np.float32)
 
 
 # --- Réduction du bruit chromatique : échelles de référence ------------------

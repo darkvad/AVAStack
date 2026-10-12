@@ -28,6 +28,10 @@ from typing import Any
 
 import numpy as np
 
+# Primitives de correction de couleur PURES (numpy seul) — sans cycle : `couleurs`
+# n'importe que numpy/OpenCV et `denoise`, jamais ce module.
+from . import couleurs as _couleurs
+
 # --- Import du moteur tiers -------------------------------------------------
 # La racine du projet (parent du package avastack) est déduite de __file__,
 # PAS du répertoire courant : l'appli doit trouver le moteur même lancée via
@@ -114,6 +118,7 @@ def etirer(img: np.ndarray, mode: str = MODE_TARGET_BG,
            convergence_power: float = CONVERGENCE_POWER_PAR_DEFAUT,
            use_adaptive_anchor: bool = True, color_grip: float = 1.0,
            shadow_convergence: float = 0.0,
+           piedestal: bool = True,
            ) -> tuple[np.ndarray, float, dict[str, Any]]:
     """Applique l'étirement hyperbolique VeraLux à une image linéaire.
 
@@ -126,6 +131,11 @@ def etirer(img: np.ndarray, mode: str = MODE_TARGET_BG,
               MODE_LOG_D — logD imposé (`log_d`) : pas de résolution,
               résultat déterministe et rapide.
     profil  : clé de SENSOR_PROFILES (pondérations de luminance).
+    piedestal : ACTIF par défaut (jalon 122) — ramène les niveaux de ciel des
+              trois canaux au MÊME niveau par des OFFSETS avant l'étirement
+              (cf. `couleurs.piedestal_canaux`) : annule l'amplification
+              ×20 à ×40 de l'ancre par canal (fond cyan/magenta). No-op sur une
+              image mono ou un ciel déjà neutre. `False` = ancien rendu exact.
 
     Retourne (image_étirée float32 de MÊME forme que l'entrée ([H, W] ou
     [H, W, 3]), valeurs [0, 1] ; log_d utilisé ; dict de diagnostics).
@@ -145,6 +155,18 @@ def etirer(img: np.ndarray, mode: str = MODE_TARGET_BG,
     # - piège normalize_input (max > 1.1 → division par 65 535) ;
     # - une donnée passée par recalage géométrique peut être < 0.
     img = normaliser_lin(img)
+
+    # Jalon 122 (v2.74.0) : PIÉDESTAL PAR CANAL — ramène les niveaux de ciel des
+    # trois canaux au MÊME niveau par des OFFSETS, JUSTE AVANT l'étirement. C'est
+    # LÀ que le remède doit entrer : l'ANCRE de VeraLux SOUTRAIT un scalaire puis
+    # étire en log, donc un écart de ciel par canal y est amplifié ×20 à ×40
+    # (fond cyan/magenta, cœur magenta — M33). Une correction de MÊME NATURE (un
+    # offset) l'annule, là où les gains multiplicatifs de `neutraliser_fond`
+    # visaient « 0,7 % à côté » et FABRIQUAIENT le magenta (cf.
+    # `couleurs.piedestal_canaux`). No-op sur une image mono ou un ciel neutre ;
+    # `piedestal=False` restitue le rendu d'avant.
+    if piedestal and img.ndim == 3 and img.shape[-1] == 3:
+        img = _couleurs.piedestal_canaux(img)
 
     mode = MODE_LOG_D if mode == MODE_LOG_D else MODE_TARGET_BG
     log_d_override = float(log_d) if mode == MODE_LOG_D else None

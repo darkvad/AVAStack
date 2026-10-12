@@ -224,8 +224,11 @@ verifie(float(np.abs(C.neutraliser_fond(scene) - scene).max()) > 1e-4,
 print("[3] la preuve : 1,7 % de bleu de ciel -> fond bleu après VeraLux (corrigé)")
 res = {}
 for nom, src in (("sans correction", scene), ("avec neutralisation", neutre)):
-    out = np.asarray(V.etirer(src, mode=V.MODE_TARGET_BG, target_bg=0.20)[0],
-                     np.float32)
+    # `piedestal=False` : cette preuve porte sur `neutraliser_fond` (les GAINS de
+    # la v2.36.1). Le PIÉDESTAL PAR CANAL (jalon 122) neutralise À LUI SEUL le
+    # fond, ce qui masquerait l'effet mesuré ici ; il a son propre banc.
+    out = np.asarray(V.etirer(src, mode=V.MODE_TARGET_BG, target_bg=0.20,
+                              piedestal=False)[0], np.float32)
     ff = fond(out)
     res[nom] = (ff[0] / ff[1], ff[2] / ff[1])
     print(f"    {nom:<20} : fond étiré R/G {res[nom][0]:.3f} · "
@@ -251,22 +254,24 @@ ui.sauver_config = lambda d: vus.append(d)
 app = ui.App(root)
 verifie(hasattr(app, "var_vl_neutre")
         and bool(app.var_vl_neutre.get()) is True,
-        "case « Neutraliser la couleur du fond (live) » présente et COCHÉE "
-        "par défaut")
+        "case « Neutraliser la couleur du fond » présente et COCHÉE "
+        "par défaut (déplacée dans « Couleur de l'objet » au jalon 124)")
 verifie(bool(app.disp.vl_neutre_fond) is True,
-        "le solveur démarre avec la neutralisation active (défaut du display)")
-# La clé des réglages doit CHANGER : c'est elle qui relance la résolution.
+        "le display démarre avec la neutralisation active (défaut)")
+# JALON 124 : le réglage n'entre PLUS dans la clé du solveur (il ne change plus
+# la sortie du MOTEUR) — c'est `process()` qui l'applique, juste avant la
+# finition, et publie les gains. Le basculement reste immédiat en pratique
+# (l'UI rappelle `_refresh_preview()` → `process()`).
 cle_on = app.disp._vl_params()
 app.var_vl_neutre.set(False)
 app._on_vl_neutre()
 cle_off = app.disp._vl_params()
-verifie(cle_on != cle_off and bool(app.disp.vl_neutre_fond) is False,
-        "décochée : le solveur ne neutralise plus (clé de réglages changée → "
-        "re-résolution)")
-# TRANSPORT de bout en bout : on SOUMET un job au vrai solveur VeraLux et on
-# attend qu'il publie le résultat. Inspecter `_vl_job` serait couru (le thread
-# worker le consomme immédiatement) : ce qui compte est que l'option ARRIVE
-# jusqu'au calcul — et `vl_neutre_gains` en est la preuve publiée.
+verifie(cle_on == cle_off and bool(app.disp.vl_neutre_fond) is False,
+        "décochée : la clé du solveur NE change PAS (l'option a quitté "
+        "`_vl_params`) — l'aperçu applique la neutralisation lui-même")
+# TRANSPORT de bout en bout : on lance le vrai solveur VeraLux, puis on rend
+# l'aperçu (`process()`), qui publie `vl_neutre_gains` (gains MESURÉS SUR LA
+# SORTIE) au moment où il applique réellement la correction.
 import time                                                   # noqa: E402
 
 
@@ -281,29 +286,31 @@ def _attendre(predicat, delai=60.0):
 
 petite = scene[0:192, 0:192].astype(np.float32)   # cadrage dominé par le CIEL
                                                   # (cas réel d'usage : le fond)
+app.disp.stretch = "veralux"                      # le moteur de l'aperçu
 app.disp.reset()
 app.var_vl_neutre.set(True)
 app._on_vl_neutre()
 app.disp.notify_new_stack()
 app.disp._process_veralux(petite, live=False)
-fait = _attendre(lambda: not app.disp._vl_pending
-                 and app.disp.vl_neutre_gains is not None)
+_attendre(lambda: not app.disp._vl_pending)
+app.disp.process(petite, live=False)              # niveaux + NEUTRALISATION
 gains_job = app.disp.vl_neutre_gains
-verifie(fait and gains_job is not None,
-        "case cochée : le solveur VERA LUX a bien neutralisé le fond "
+verifie(gains_job is not None,
+        "case cochée : l'aperçu VERA LUX a bien neutralisé le fond "
         f"(gains publiés {None if gains_job is None else np.round(gains_job, 4).tolist()})")
-verifie(gains_job is not None and 1.004 < gains_job[0] < 1.05
-        and 0.95 < gains_job[2] < 0.996,
-        "les gains appliqués par le solveur sont ceux attendus (~2 %, R en "
-        "hausse et B en baisse)")
+# Jalon 123 : les gains publiés sont MESURÉS SUR LA SORTIE étirée (ce que l'œil
+# voit) et non sur l'entrée linéaire. On exige donc une correction RÉELLE et
+# BORNÉE (garde 10 %), pas les ~2 % d'avant.
+verifie(gains_job is not None
+        and not np.allclose(gains_job, 1.0, atol=1e-3)
+        and all(0.90 - 1e-6 <= float(g) <= 1.10 + 1e-6 for g in gains_job),
+        "les gains de neutralisation sont mesurés sur la SORTIE : correction "
+        "réelle et bornée à ±10 %")
 app.var_vl_neutre.set(False)
 app._on_vl_neutre()
-app.disp.reset()
-app.disp.notify_new_stack()
-app.disp._process_veralux(petite, live=False)
-_attendre(lambda: not app.disp._vl_pending and app.disp.vl_neutre_gains is None)
+app.disp.process(petite, live=False)
 verifie(app.disp.vl_neutre_gains is None,
-        "case décochée : le solveur ne publie AUCUN gain (aucune correction)")
+        "case décochée : l'aperçu ne publie AUCUN gain (aucune correction)")
 # Persistance : valeur explicite dans les deux sens.
 app.var_vl_neutre.set(True)                      # on repart de la case cochée
 app._on_vl_neutre()

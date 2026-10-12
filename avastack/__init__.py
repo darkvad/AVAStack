@@ -13,15 +13,133 @@ AVAStack.py) :
   avastack.processing   — calibration, alignement, empilement, affichage
   avastack.core         — worker d'acquisition (mixin) + config (WorkerConfig)
   avastack.external     — détection + enchaînement des outils CLI (GraXpert/BXT)
+  avastack.fiche        — fiche de rendu (JSON compagnon <image>.ava.json)
   avastack.ui           — interface Tkinter
 Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.72.1"
+AVASTACK_VERSION = "2.76.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.76.0 : NEUTRALISATION DÉPLACÉE (après les NIVEAUX, JUSTE AVANT gamma/
+#   saturation) + EXCLUSIVITÉ ÉQUILIBRAGE / SPCC / GAINS GAIA (jalon 124). Suite
+#   directe de la validation de M33 en v2.75.0 (constat d'Alain, 12/10/2026 :
+#   « il y a toujours du magenta avec veralux », « l'UI montre encore la
+#   neutralisation dans les traitements AVANT étirement », « spcc n'est pas
+#   top »). TROIS décisions, toutes tranchées par Alain :
+#   ① CÔTÉ UI : la case « Neutraliser la couleur du fond » vivait dans « Fond et
+#   grain (AVANT étirement) » alors que la correction s'applique APRÈS l'étirement
+#   depuis le jalon 123 → elle rejoint « Couleur de l'objet (APRÈS étirement) »
+#   (`ui/panels/color.py`) et son libellé dit « après étirement » (l'ancien texte
+#   « juste avant l'étirement » était FAUX). `ui/panels/bgnoise.py` ne garde que
+#   le bruit chromatique.
+#   ② CÔTÉ CHAÎNE : la neutralisation n'est PLUS appliquée par le solveur (juste
+#   après le moteur) mais par `display.process()` (aperçu) et
+#   `DisplayProcessor.rendu_pleine_resolution` (fichier) APRÈS l'étage de NIVEAUX et
+#   JUSTE AVANT la finition (gamma + saturations) — les retouches « vraiment
+#   finales ». MESURÉ sur M33 : fond R/G 1,0007 après neutralisation → 1,0108
+#   après la finition (contre 1,0128 sans), donc appliquée plus tôt elle était
+#   partiellement annulée. `vl_neutre_fond` QUITTE donc `_vl_params` (son
+#   basculement ne relance plus la résolution) et `vl_neutre_gains` est publié par
+#   `process()`. Le 9e élément du job solveur reste transporté mais IGNORÉ
+#   (déballage inchangé) ; l'écran == le fichier (banc [3]/[4]).
+#   ③ EXCLUSIVITÉ : ÉQUILIBRAGE / SPCC / GAINS GAIA sont MUTUELLEMENT EXCLUSIFS
+#   (`App._exclusivite_couleur` : cocher l'une décoche les deux autres). POURQUOI :
+#   l'équilibrage des canaux, appliqué APRÈS les gains (ordre `gains → équilibrage
+#   → recalage`), RECALCULE des gains par canal depuis le fond de l'image et ANNULE
+#   les rapports de canaux de la SPCC/Gaia — MESURÉ : deux jeux de gains très
+#   différents produisent la même image étirée à 2·10⁻⁵ près (0 pixel > 1e-4),
+#   d'où l'impression trompeuse que « la SPCC ne change rien ».
+#   FICHIERS : `ui/panels/bgnoise.py`, `ui/panels/color.py`,
+#   `processing/display.py`, `ui/app.py`. BANCS : neuf
+#   `_test_jalon124_deplacement_et_exclusivite.py` + MAJ de 39, 47, 62, 123 ;
+#   garde-fou VERT (syntaxe 257, surface 75, hash au bit, pyright 0/50). BONUS :
+#   `_test_couleurs_immediat_jalon39.py` RÉPARÉ — échec PRÉEXISTANT depuis la
+#   v2.55.3 (le prédicat comparait `_vl_result[0]` — clé + forme — à
+#   `_vl_params()` sans forme → solveur « jamais publié » → 10 échecs).
+# v2.75.0 : NEUTRALISATION DE LA COULEUR DU FOND APRÈS L'ÉTIREMENT — le
+#   CORRECTIF couleur VeraLux, étape (c) (jalon 123, chantier « volet couleur »
+#   de M33 : fond CYAN/MAGENTA et cœur magenta). CAUSE (mesurée, 11/10/2026) :
+#   la neutralisation héritée de la v2.36.1 (`couleurs.neutraliser_fond`)
+#   appliquait des GAINS multiplicatifs AVANT l'étirement, estimés sur la
+#   « moitié la plus sombre ». Or l'ANCRE de VeraLux SOUTRAIT un scalaire puis
+#   étire en log : l'estimateur ne vise PAS la grandeur amplifiée, le résultat
+#   « visait 0,7 % à côté » et FABRIQUAIT le magenta. LIVRÉ
+#   (`couleurs.neutraliser_apres_etirement`) : la neutralisation est désormais
+#   appliquée APRÈS l'étirement, avec des gains MESURÉS SUR LA SORTIE (borne
+#   [0, 1] comme toute image étirée) — c'est EXACTEMENT ce que l'œil voit. Le
+#   PIÉDESTAL PAR CANAL (jalon 122) reste le travail pré-étirement. Recette
+#   mesurée complète : chroma → piédestal → étirement → NEUTRALISATION.
+#   SITES : `display._vl_worker` (aperçu VeraLux) et
+#   `display.rendu_pleine_resolution` (fichier « tel que vu ») appliquent la
+#   neutralisation APRÈS le moteur — l'écran et le fichier RESTENT identiques ;
+#   `saver` n'a plus d'étage pré-étirement. Elle vaut pour LES DEUX VUES
+#   (empilement ET résultat traité). CONSÉQUENCE UI : la case « 7. Neutraliser
+#   la couleur du fond » de la chaîne externe est RETIRÉE (elle agissait AVANT
+#   l'étirement, sur la sortie LINÉAIRE du ⚡) — la clé `ext_neutre_fond` n'est
+#   plus écrite ni relue, et le job externe passe de 12 à 11 éléments (seule la
+#   réduction du bruit chromatique reste pré-étirement). La neutralisation est
+#   réglée par la case live « Neutraliser la couleur du fond », qui vaut pour
+#   les deux vues. Banc neuf `_test_neutralisation_apres_etirement_jalon123.py`.
+# v2.74.0 : PIÉDESTAL PAR CANAL — LE REMÈDE COULEUR VERA LUX (jalon 122,
+#   chantier « volet couleur » de M33 — fond CYAN/MAGENTA et cœur magenta).
+#   CAUSE RACINE (mesurée, 11/10/2026) : l'ANCRE de VeraLux SOUTRAIT un scalaire
+#   (lu dans l'histogramme de luminance) puis étire en log ; elle consomme ~97 %
+#   du niveau de ciel, si bien qu'un écart de ciel par CANAL de 0,9 % ressort
+#   ×20 à ×40 — un empilement neutre à 0,9 % sortait à R/G 0,77, et la moindre
+#   correction par canal décidait de la couleur (cyan ↔ magenta). Or le correctif
+#   de la v2.36.1 (`couleurs.neutraliser_fond`) appliquait des GAINS
+#   MULTIPLICATIFS estimés sur la « moitié la plus sombre » : un gain ne
+#   l'emporte PAS sur une ancre qui soustrait — il vise « 0,7 % à côté » et, sur
+#   les canaux dont le ciel passe sous l'ancre, il FABRIQUE le magenta.
+#   LIVRÉ : `couleurs.niveaux_ciel_canaux` (niveau de ciel par canal, même
+#   estimateur que `gains_fond`) et `couleurs.piedestal_canaux` (amène les trois
+#   ciels au MÊME niveau par des OFFSETS — soustraction —, bornés à ±10 % × le
+#   niveau médian, force atténuable, no-op mono/neutre/canal vide, entrée jamais
+#   modifiée). Appliqué DANS `veralux.etirer`, après `normaliser_lin` et avant le
+#   moteur : c'est LÀ que l'ancre opère, donc là que le remède de même nature doit
+#   entrer. ACTIF par défaut (correctif de justesse du rendu, comme
+#   `normaliser_lin`) ; `etirer(..., piedestal=False)` restitue l'ancien rendu au
+#   bit près. MESURÉ au banc : un ciel bleui de 1,7 % (scène aux ciels réels de
+#   M31) sortait fond étiré R/G 0,349 · B/G 1,552 → NEUTRE R/G 0,944 · B/G 0,921.
+#   PORTÉE : les trois chemins passent par `etirer` (aperçu du solveur, fichier
+#   « tel que vu » via `rendu_pleine_resolution`, chaîne externe) — le fichier
+#   reste identique à l'écran. Les bancs qui isolaient un AUTRE sujet (chroma,
+#   neutralisation par gains) le neutralisent par `piedestal=False` (jalons 62,
+#   64, 67). Banc neuf `_test_piedestal_canaux_jalon122.py`.
+#   RESTE (jalon 123) : neutralisation APRÈS l'étirement + RETRAIT de
+#   `neutraliser_fond` d'AVANT (les 3 sites d'appel).
+
+# v2.73.0 : FICHE DE RENDU — « QUE CHAQUE IMAGE DISE CE QU'ELLE A SUBI »
+#   (jalon 121, demande d'Alain). Un fichier écrit par AVAStack ne disait PAS de
+#   façon fiable la chaîne qui l'avait produit : les mots-clés FITS n'existent
+#   que pour le FITS (un TIFF/PNG n'en porte AUCUN), le « tel que vu » n'avait
+#   aucun en-tête, et l'on finissait par DEVINER un réglage (`config.json` est
+#   l'état à la dernière FERMETURE, pas celui de l'écriture ; l'empreinte
+#   mesurée est un pis-aller). Le bug du 11/10/2026 (saturation bleue APPLIQUÉE
+#   à 3,0 mais AFFICHÉE à 1,00) est né de cet angle mort.
+#   LIVRÉ : module neuf `avastack/fiche.py` — fichier JSON COMPAGNON écrit à
+#   CÔTÉ de l'image, par le MÊME code/thread que l'image (`M33.fits` →
+#   `M33.ava.json`) ; RIEN dans le FITS (linéarité des sorties intacte) ;
+#   écriture ATOMIQUE (fichier `.part` puis `os.replace`) et TOLÉRANTE (une
+#   fiche ratée n'échoue JAMAIS l'enregistrement — l'erreur va au journal).
+#   CONTENU : version + commit de l'application, date, fichier et dimensions,
+#   type de sortie ; SOURCE (dossier, source, frames, filtre, mode) ; la CHAÎNE
+#   DANS L'ORDRE (recadrage → gradient [COMMANDE exacte] → débruitage →
+#   corrections couleur → netteté → neutralisation → chroma [force + rayon] →
+#   étirement [moteur, mode de résolution, logD RÉSOLU, fond cible] → niveaux →
+#   gamma → saturation) ; et l'état APPLIQUÉ mis À CÔTÉ de l'état AFFICHÉ, avec
+#   la liste des ÉCARTS (le bug du 11/10 aurait été écrit noir sur blanc).
+#   DÉCISIONS D'ALAIN (11/10/2026, toutes validées) : ① `<image>.ava.json` à
+#   côté de l'image ; ② case à cocher COCHÉE par défaut (clé `fiche_rendu`) ;
+#   ③ chemins COMPLETS dans le JSON (exemples de doc neutres — dépôt PUBLIC) ;
+#   ④ écrite pour TOUTES les sorties (brut, traité linéaire, couches, tel que
+#   vu, résultat externe). L'état appliqué/affiché est capturé dans le FIL
+#   D'INTERFACE (jamais de lecture Tk depuis un thread). Banc neuf
+#   `_test_fiche_rendu_jalon121.py`.
 # v2.72.1 : BUG « VALEUR APPLIQUÉE MAIS NON AFFICHÉE » — UN RÉGLAGE RESTAURÉ
+
 #   S'AFFICHE ENFIN (jalon 120). `_add_slider` créait le `ttk.Scale` SANS
 #   `variable=` et n'écrivait l'étiquette de valeur que dans `cmd()`, que Tk
 #   n'appelle JAMAIS sur un `var.set()` programmatique (MESURÉ ; lier

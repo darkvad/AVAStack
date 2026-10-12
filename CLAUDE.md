@@ -606,6 +606,51 @@ IDENTIQUE au pixel près avec et sans les cases de couleur cochées). Ordre de l
 chaîne de sortie : GraXpert (par couche en composition) → débruitage →
 CORRECTIONS (gains + équilibrage + recalage) → netteté/SCNR → étirement.
 
+## Fiche de rendu — `avastack.fiche` (jalon 121, v2.73.0)
+
+Objectif (demande d'Alain, 11/10/2026) : **« que chaque image dise ce qu'elle a
+subi »** — ne plus JAMAIS deviner un réglage. Ni depuis `config.json` (c'est
+l'état à la DERNIÈRE FERMETURE, pas celui du moment de l'écriture), ni par une
+empreinte mesurée. Le bug du 11/10/2026 (« saturation bleue APPLIQUÉE à 3,0 mais
+AFFICHÉE à 1,00 ») est né de cet angle mort.
+
+- **Forme** : un JSON **compagnon**, écrit à CÔTÉ de l'image par le **MÊME
+  code/thread** que l'image — `M33.fits` → `M33.ava.json` (`fiche.chemin_fiche`
+  retire l'extension de l'image, quelle qu'elle soit : FITS, TIFF, PNG). RIEN
+  n'entre dans le FITS (la linéarité des sorties reste intacte).
+- **Décisions d'Alain (11/10/2026, toutes validées)** : ① `<image>.ava.json` à
+  côté de l'image ; ② case à cocher dans le panneau **Sortie**, **cochée par
+  défaut** (clé `fiche_rendu`) ; ③ **chemins complets** dans le JSON (les
+  EXEMPLES de la documentation publique, eux, restent neutres — dépôt PUBLIC) ;
+  ④ écrite pour **TOUTES** les sorties (brut, traité linéaire, couches par canal,
+  tel que vu, résultat externe), le champ `type_sortie` les distinguant.
+- **Contenu** : version + commit de l'application, date, fichier, dimensions,
+  type de sortie ; **SOURCE** (dossier, source, frames, filtre, mode) ; la
+  **CHAÎNE DANS L'ORDRE** (recadrage → gradient [COMMANDE exacte] → débruitage →
+  corrections couleur → netteté → neutralisation → chroma [force + rayon] →
+  étirement [moteur, mode de résolution, logD RÉSOLU, fond cible] → niveaux →
+  gamma → saturation) ; l'**en-tête FITS écrit** repris tel quel ; et l'**état
+  APPLIQUÉ mis À CÔTÉ de l'état AFFICHÉ**, AVEC la liste des **écarts**.
+- **Garde-fous** : écriture **ATOMIQUE** (`.part` puis `os.replace`) et
+  **TOLÉRANTE** — une fiche ratée n'échoue JAMAIS l'enregistrement de l'image ;
+  l'erreur part au JOURNAL (`journal.note`), jamais en boîte de dialogue.
+- **PIÈGE — « appliqué vs affiché »** : la table `_CONTROLE_AFFICHAGE`
+  (`ui/saver.py`) apparie chaque réglage à sa variable Tk. Elle est lue dans le
+  **FIL D'INTERFACE** (jamais depuis un thread — règle du projet) et transportée
+  dans la requête de sauvegarde. **Unités** : les barres de l'histogramme sont en
+  **%** à l'écran (0..100) et en **fraction** dans `disp` (0..1) — un lecteur qui
+  oublie ce facteur fabrique un faux « écart » ; le rayon de chroma de référence
+  se lit sur `app.rayon_chroma_ref`, PAS sur `disp.vl_chroma_rayon` (qui est mis
+  à l'échelle de l'aperçu).
+- **Rétro-compatibilité** : les requêtes de sauvegarde acceptent TOUJOURS
+  l'ANCIEN format (une chaîne nue = pas de contexte → pas de fiche), et le 5e
+  élément de `save_asseen_request` est LU TOLÉRANT (`req[4] if len(req) > 4`).
+  Le commit git est lu en BEST EFFORT (`git rev-parse --short HEAD`, mis en
+  cache) : vide hors dépôt (appli figée), ce qui n'invalide pas la fiche.
+- Banc : `bancs/_test_fiche_rendu_jalon121.py` (module pur, case, écarts
+  provoqués, enregistrements réels brut + « tel que vu », case décochée,
+  compatibilité ancien format).
+
 ## Doc outils externes (CLI)
 
 ### Détection de l'exécutable (v2.38.5 — leçon du 27/09/2026)
@@ -1586,12 +1631,68 @@ ce qui manquait n'était pas une correction mais une MESURE.
   mesuré NEUTRE à 0,1 % sur les zones les plus lisses) devenaient un fond étiré
   R/G 0,363 · B/G 1,611, franchement bleu. Ne pas chercher la cause dans
   l'empilement : **mesurer le fond du fichier LINÉAIRE** (`_diag_empilement_couleur.py`)
-  avant d'accuser la composition. Correctif : `couleurs.neutraliser_fond` juste
-  avant l'étirement (gains ~2 % mesurés sur la médiane de la moitié sombre).
-  Attention au corollaire : sur un cadrage **dominé par un objet étendu**, la
-  « moitié sombre » n'est plus du ciel et les gains partent à la borne (d'où le
-  garde-fou ±10 % et l'annonce des gains à l'écran). Banc :
-  `_test_fond_bleu_jalon62.py` [2]/[3].
+  avant d'accuser la composition. Premier correctif (v2.36.1, mais
+  INSUFFISANT — voir les DEUX entrées suivantes) : `couleurs.neutraliser_fond`,
+  des gains ~2 % mesurés sur la médiane de la moitié sombre. Corollaire : sur un
+  cadrage **dominé par un objet étendu**, la « moitié sombre » n'est plus du ciel
+  et les gains partent à la borne (d'où le garde-fou ±10 % et l'annonce des gains
+  à l'écran). Banc : `_test_fond_bleu_jalon62.py` [2]/[3].
+- **UN OFFSET (PIÉDESTAL PAR CANAL) ANNule L'ANCRE — PAS UN GAIN** (jalon 122,
+  v2.74.0 ; remède du fond CYAN/MAGENTA et du cœur magenta de M33, tranché le
+  11/10/2026). Le correctif v2.36.1 ci-dessus (gains multiplicatifs de
+  `neutraliser_fond`) est INSUFFISANT et peut FABRIQUER du magenta : l'ANCRE de
+  VeraLux **SOUTRAIT** un scalaire (elle ne MULTIPLIE pas), et consomme ~97 % du
+  niveau de ciel → un écart de ciel PAR CANAL de 0,9 % ressort **×20 à ×40**
+  (fond R/G 0,77 pour un empilement pourtant neutre), si bien qu'un gain vise
+  « 0,7 % à côté ». **Règle** : le remède doit être de MÊME NATURE que la cause —
+  ici un **offset**. `couleurs.piedestal_canaux` ramène les trois NIVEAUX DE CIEL
+  (même estimateur que `gains_fond`) au MÊME niveau par soustraction, AVANT
+  l'étirement, et il est appliqué **DANS `veralux.etirer`** (après
+  `normaliser_lin`, avant le moteur) — c'est LÀ que l'ancre opère. ACTIF par
+  défaut (correctif de justesse, comme `normaliser_lin`) : `etirer(...,
+  piedestal=False)` restitue l'ancien rendu au bit près. MESURÉ au banc : un ciel
+  bleui de 1,7 % sortait fond étiré R/G 0,349 · B/G 1,552 → NEUTRE R/G 0,944 ·
+  B/G 0,921. Garde-fou : offsets bornés à ±10 % × le niveau médian (un cadrage
+  dominé par un objet rend l'estimateur faux) ; no-op mono/neutre/canal vide. Les
+  bancs qui mesurent un AUTRE sujet (chroma jalon 67, neutralisation par gains
+  jalons 62/64) isolent le piédestal par `piedestal=False` — NE PAS s'en servir
+  pour masquer une régression. Banc : `_test_piedestal_canaux_jalon122.py`.
+- **LA NEUTRALISATION DU FOND SE MESURE SUR LA SORTIE — APRÈS l'étirement, JUSTE
+  AVANT gamma/saturation** (jalons 123+124, v2.75.0/v2.76.0 ; clôt le « volet
+  couleur » de M33). **Règle** : parce que l'ANCRE de VeraLux SOUTRAIT un scalaire
+  (cf. l'entrée piédestal ci-dessus), neutraliser AVANT l'étirement vise une
+  grandeur qui n'est PAS celle que l'ancre amplifie → « 0,7 % à côté », et le
+  magenta est FABRIQUÉ. La neutralisation est donc appliquée APRÈS le moteur, avec
+  des gains **mesurés sur la SORTIE étirée** (`couleurs.neutraliser_apres_etirement`,
+  bornée [0, 1] comme toute image d'AFFICHAGE — `neutraliser_fond` reste la variante
+  LINÉAIRE, non bornée). Elle n'est PLUS dans le solveur : `display.process()`
+  (aperçu) et `DisplayProcessor.rendu_pleine_resolution` (fichier « tel que vu »)
+  l'appliquent APRÈS l'étage de NIVEAUX et JUSTE AVANT la finition (gamma +
+  saturations). POURQUOI justement là (jalon 124) : appliquée plus tôt (juste après
+  le moteur), elle était partiellement RÉINTRODUITE par la saturation par couleur —
+  MESURÉ sur M33 : fond R/G 1,0007 après neutralisation → **1,0108** après la
+  finition, contre 1,0128 sans. Conséquences de transport : `vl_neutre_fond` a
+  QUITTÉ `_vl_params` (le basculement ne relance plus la résolution) et
+  `vl_neutre_gains` est publié par `process()`. Deux étages, deux natures : le
+  PIÉDESTAL (offset, pré-étirement, jalon 122) annule l'ancre ; la NEUTRALISATION
+  (gain, post-étirement, jalons 122+123) nettoie le résidu visible. Recette mesurée
+  complète : **chroma → piédestal → étirement → niveaux → NEUTRALISATION → gamma/sat**.
+  PORTÉE : vaut pour LES DEUX VUES ; réservée au moteur VeraLux ; la case vit dans
+  « Couleur de l'objet (APRÈS étirement) » (déplacée du cadre « Fond et grain (AVANT
+  étirement) » au jalon 124 — l'ancien libellé « juste avant l'étirement » était
+  FAUX). MESURÉ au banc : un ciel bleui étiré (PIÉDESTAL ACTIF) sortait fond
+  R/G 0,969 · B/G 0,957 → 0,997 · 0,996 après l'étage, et l'écran == le fichier
+  au bit. Banc : `_test_neutralisation_apres_etirement_jalon123.py` +
+  `_test_jalon124_deplacement_et_exclusivite.py`.
+- **ÉQUILIBRAGE / SPCC / GAINS GAIA SONT MUTUELLEMENT EXCLUSIFS** (jalon 124,
+  v2.76.0 ; `App._exclusivite_couleur`). **Règle** : l'équilibrage des canaux est
+  appliqué APRÈS les gains (ordre `gains → équilibrage → recalage`, cf.
+  `composition.corrections_couleur`) et RECALCULE des gains par canal depuis le fond
+  de l'image — il ANNULE donc les rapports de canaux de la SPCC et des gains Gaia.
+  MESURÉ sur M33 (12/10/2026) : deux jeux de gains très différents produisent la
+  même image étirée à **2·10⁻⁵ près (0 pixel > 1e-4)** — d'où l'impression que la
+  SPCC « ne change rien ». Cocher l'une des trois cases DÉCOCHE les deux autres.
+  Banc : `_test_jalon124_deplacement_et_exclusivite.py` [2].
 - **UN GAIN MULTIPLICATIF AMPLIFIE LE BRUIT DU CANAL QU'IL MONTE** (mesure du
   25/09/2026, v2.37.0) : sur ses empilements M31, le grain du fond était
   équilibré en R/G (0,902) mais **B/G = 1,174** — et les comptes tombent

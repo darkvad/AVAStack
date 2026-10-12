@@ -17,6 +17,18 @@ from tkinter import ttk
 from typing import Any, Callable
 
 
+def _globals_app():
+    """Globals du module d'application `avastack.ui.app` — résolution TARDIVE.
+
+    Écho du correctif du jalon 105a : les bancs remplacent
+    `avastack.ui.app.CONFIG` / `.sauver_config` pour intercepter le vrai
+    config.json. Lire ces globals au MOMENT DE L'APPEL préserve cette
+    interception ; en production c'est le MÊME objet que
+    `avastack.config.CONFIG` / `avastack.config.sauver_config`."""
+    from .. import app as _app              # import TARDIF (évite le cycle)
+    return _app
+
+
 class PanneauSortie:
     """Mixin : panneau « Sortie » (cf. docstring)."""
 
@@ -24,6 +36,8 @@ class PanneauSortie:
     _lf_sortie: tk.Frame
     btn_save_traite_lin: ttk.Button
     btn_save_asseen: ttk.Button
+    # Jalon 121 : case « Fiche de rendu » (JSON compagnon).
+    var_fiche_rendu: tk.Variable
 
     _creer_section_pliable: Callable[..., Any]
     _save: Callable[..., Any]
@@ -59,3 +73,23 @@ class PanneauSortie:
         # l'empilement « standard » reste le COMPOSITE linéaire (bouton du haut).
         ttk.Button(box, text="💾 Enregistrer les canaux (par filtre)…",
                    command=self._save_canaux).pack(fill="x")
+        # Jalon 121 (demande d'Alain, 11/10/2026) : FICHE DE RENDU — un JSON
+        # compagnon `<image>.ava.json` écrit à côté de CHAQUE image enregistrée,
+        # pour que « le fichier dise ce qu'on lui a fait » (fini de deviner un
+        # réglage depuis config.json ou par une empreinte). Case COCHÉE par
+        # défaut (décision validée) ; le petit fichier porte, entre autres, la
+        # chaîne DANS L'ORDRE et l'état APPLIQUÉ à côté de l'état AFFICHÉ.
+        self.var_fiche_rendu = tk.BooleanVar(
+            value=bool(_globals_app().CONFIG.get("fiche_rendu", True)))
+        ttk.Checkbutton(
+            box, text="Fiche de rendu (.ava.json) à côté de l'image",
+            variable=self.var_fiche_rendu,
+            command=self._on_fiche_rendu).pack(anchor="w", pady=(4, 0))
+
+    def _on_fiche_rendu(self):
+        """Persistance IMMÉDIATE de la case « Fiche de rendu » (jalon 121),
+        comme les autres cases : un booléen EXPLICITE (une case décochée ne doit
+        pas hériter d'un True) et le fichier de config réécrit tout de suite."""
+        _app = _globals_app()
+        _app.CONFIG["fiche_rendu"] = bool(self.var_fiche_rendu.get())
+        _app.sauver_config(_app.CONFIG)

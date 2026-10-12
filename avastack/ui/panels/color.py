@@ -26,6 +26,7 @@ class PanneauCouleur:
     _lf_couleur: tk.Frame
     frm_couleur: ttk.Frame
     var_vl_preserve: tk.Variable
+    var_vl_neutre: tk.Variable
     var_vl_scnr: tk.Variable
     var_vl_scnr_force: tk.Variable
     var_vl_scnr_doux: tk.Variable
@@ -37,6 +38,7 @@ class PanneauCouleur:
     _creer_section_pliable: Callable[..., Any]
     _add_slider: Callable[..., Any]
     _on_vl_preserve: Callable[..., Any]
+    _on_vl_neutre: Callable[..., Any]
     _on_vl_scnr: Callable[..., Any]
     _on_vl_scnr_force: Callable[..., Any]
     _on_vl_scnr_doux: Callable[..., Any]
@@ -65,6 +67,30 @@ class PanneauCouleur:
         # Le LabelFrame externe est accessible via self._lf_couleur.
         self._lf_couleur, self.frm_couleur, _, _ = self._creer_section_pliable(
             parent, "couleur")
+        # --- JALON 124 : NEUTRALISATION de la couleur du fond — la case a
+        # QUITTÉ « Fond et grain (AVANT étirement) » (constants : elle y était
+        # montrée comme un traitement AVANT l'étirement, ce qu'elle n'est plus
+        # depuis le jalon 123). Depuis le jalon 123 la correction s'applique
+        # APRÈS le moteur d'étirement (gains MESURÉS sur la SORTIE étirée) ;
+        # le jalon 124 la pose JUSTE AVANT gamma/saturation — les retouches
+        # vraiment finales (décision d'Alain, 12/10/2026 : « la neutralisation
+        # juste avant saturation et gamma »), car appliquée plus tôt elle était
+        # partiellement annulée par elles. COCHÉE par défaut (défaut de rendu,
+        # pas un choix esthétique) ; réservée au moteur VeraLux (son ANCRE
+        # amplifie le fond). Les gains RÉELLEMENT appliqués sont annoncés dans
+        # « État des calculs (live) » — c'est cette mesure qu'il faut lire.
+        self.var_vl_neutre = tk.BooleanVar(value=True)
+        ttk.Checkbutton(self.frm_couleur,
+                        text="Neutraliser la couleur du fond (après étirement)",
+                        variable=self.var_vl_neutre,
+                        command=self._on_vl_neutre).pack(anchor="w")
+        ttk.Label(self.frm_couleur,
+                  text="VeraLux : égalise les 3 canaux sur la MÉDIANE DE LA "
+                       "MOITIÉ SOMBRE de l'image ÉTIRÉE, juste avant "
+                       "gamma/saturation. Lire les gains RÉELLEMENT appliqués "
+                       "dans « État des calculs (live) », jamais un exemple.",
+                  foreground="#888888", wraplength=310).pack(anchor="w")
+        ttk.Separator(self.frm_couleur).pack(fill="x", pady=4)
         self.var_vl_preserve = tk.BooleanVar(value=True)
         ttk.Checkbutton(self.frm_couleur,
                         text="Préserver la luminosité (L*) — comme Siril",
