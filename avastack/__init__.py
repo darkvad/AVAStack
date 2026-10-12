@@ -19,9 +19,30 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.78.0"
+AVASTACK_VERSION = "2.79.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.79.0 : LA CHROMA AGIT POUR LES DEUX MOTEURS (jalon 127). Décision d'Alain
+#   (12/10/2026) : la case « Réduire le bruit chromatique » (cadre « Fond et
+#   grain ») était VISIBLE mais INERTE en STF — elle vivait dans la branche
+#   VeraLux du worker (`if engine != "veralux": … continue` passait AVANT). On
+#   ne la masque pas : on l'OUVRE aux DEUX moteurs, comme GraXpert + débruitage
+#   au jalon 125, par la règle « le fichier = l'écran ». MISE EN ŒUVRE : la
+#   chroma entre dans la chaîne PRÉ-ÉTIREMENT COMMUNE de `DisplayProcessor.
+#   _vl_worker` (APRÈS la netteté, JUSTE AVANT l'étirement) — elle tourne donc
+#   en VeraLux ET en STF/manuel ; `process()` route par la chaîne dès que
+#   `vl_chroma` est actif ; la sauvegarde « tel que vu » (`ui/saver.py`) n'est
+#   plus gardée par `stretch == "veralux"` (elle s'applique quel que soit le
+#   moteur, en vue « empilement »). La chaîne couleur APRÈS étirement reste,
+#   elle, réservée à VeraLux (elle compense les gains du moteur). La 3e sortie
+#   LINÉAIRE ne contient TOUJOURS pas la chroma (contrat jalon 59, inchangé), et
+#   la vue « traitée » reste servie par la chaîne EXTERNE ⚡ (pas de double
+#   traitement). FICHIERS : `processing/display.py` (`_vl_worker`, `process()`),
+#   `ui/saver.py`, `ui/app.py` (docstrings), `avastack/__init__.py`, `CLAUDE.md`,
+#   `AVANCEMENT.md`. BANCS : neuf `_test_chroma_stf_jalon127.py` + MAJ de 125
+#   [4] (la chroma entre DANS la sortie STF) ; rejeu VERT (63, 65, 67, 59, 22,
+#   39, 40, 41, 47, 68, 69, 75, 81, 122, 123, 124, 9, 12, 4, 7, 8, 2, 3) +
+#   garde-fou VERT (syntaxe 259, surface 75, hash au bit, pyright 0/50).
 # v2.78.0 : RÉPARATION DES BANCS CHROMA 63/65 (jalon 126) — TROIS causes,
 #   toutes PRÉEXISTANTES ou héritées du jalon 125, réparées (AUCUN changement de
 #   code de production, réparation de bancs SEULE) :

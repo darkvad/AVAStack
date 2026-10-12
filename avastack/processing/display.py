@@ -676,16 +676,17 @@ class DisplayProcessor:
         activés — GraXpert live (jalon 4) PUIS le débruitage local (jalon 9 :
         algorithmes numpy/OpenCV, aucun subprocess) PUIS la netteté live
         (jalon 12 : Richardson-Lucy, numpy/OpenCV, aucun subprocess) PUIS —
-        en VeraLux SEULEMENT — la chroma, l'étirement VeraLux et la chaîne
-        couleur APRÈS étirement, sur le DERNIER job demandé (les jobs
+        COMMUNE aux deux moteurs depuis le jalon 127 — la chroma PUIS — en
+        VeraLux SEULEMENT — l'étirement VeraLux et la chaîne couleur APRÈS
+        étirement, sur le DERNIER job demandé (les jobs
         intermédiaires — slider bougé, frame remplacée — sont simplement
         remplacés, jamais empilés). Écrit le résultat sous verrou.
 
-        La chaîne PRÉ-ÉTIREMENT (GraXpert → débruitage → netteté) est COMMUNE
-        aux deux moteurs ; seule la DERNIÈRE étape en dépend : en mode
-        STF/manuel le worker publie l'image PRÉ-ÉTIRÉE et c'est `process()`
-        qui applique l'étirement STF/manuel dessus (jamais ce thread : les
-        stats EMA du STF vivent dans le fil d'interface)."""
+        La chaîne PRÉ-ÉTIREMENT (GraXpert → débruitage → netteté → chroma,
+        jalon 127) est COMMUNE aux deux moteurs ; seule la DERNIÈRE étape en
+        dépend : en mode STF/manuel le worker publie l'image PRÉ-ÉTIRÉE et
+        c'est `process()` qui applique l'étirement STF/manuel dessus (jamais ce
+        thread : les stats EMA du STF vivent dans le fil d'interface)."""
         while True:
             self._vl_wake.wait()
             self._vl_wake.clear()
@@ -963,6 +964,19 @@ class DisplayProcessor:
                 if err_net:
                     img_net = img_dn     # repli : étirement sans netteté
                 self.sh_msg, self.sh_new = err_net, True
+            # v2.37.0 / JALON 127 : RÉDUCTION DU BRUIT CHROMATIQUE, juste AVANT
+            # l'étirement. Elle vit désormais dans la chaîne PRÉ-ÉTIREMENT
+            # COMMUNE (comme GraXpert/débruitage/netteté) : elle tourne donc
+            # pour LES DEUX moteurs — cocher sa case agit AUSSI en STF/manuel
+            # (écran ET fichier, « le fichier = l'écran »). Lisse la chroma
+            # (YCrCb) en laissant la LUMINANCE intacte : ni le niveau ni le
+            # contraste du fond ne bougent — seulement le GRAIN COLORÉ que les
+            # gains multiplicatifs (SPCC en tête : K_B/K_G = 1,32) ont
+            # amplifié. No-op si l'option est décochée ou si l'image est mono.
+            if chroma_actif:
+                self.vl_stage = "chroma"        # jalon 40 : étape courante
+                img_net = _couleurs.reduire_bruit_chroma(
+                    img_net, force=chroma_force, rayon=chroma_rayon)
             # v2.48.0 (jalon 85) : la chaîne couleur (SCNR → SCNR doux →
             # démagenta) n'est PLUS ICI — elle est appliquée APRÈS l'étirement
             # (`couleur_apres_etirement`, juste après le moteur d'étirement).
@@ -978,12 +992,13 @@ class DisplayProcessor:
             # (jalon 122), intégré à `veralux.etirer`.
             # JALON 125 (VOLET A) : chaîne pré-étirement COMMUNE — en mode
             # STF/manuel elle S'ARRÊTE ICI : le worker publie l'image
-            # PRÉ-ÉTIRÉE (GraXpert → débruitage → netteté), puis `process()`
-            # applique l'étirement STF/manuel DANS LE FIL D'INTERFACE (les
-            # stats EMA du STF y vivent — ce thread ne doit jamais y toucher).
-            # La chroma et la chaîne couleur APRÈS étirement restent, elles,
-            # réservées à VeraLux : elles compensent les gains du moteur, et la
-            # sauvegarde ne les applique PAS en STF (écran == fichier).
+            # PRÉ-ÉTIRÉE (GraXpert → débruitage → netteté → chroma, JALON 127),
+            # puis `process()` applique l'étirement STF/manuel DANS LE FIL
+            # D'INTERFACE (les stats EMA du STF y vivent — ce thread ne doit
+            # jamais y toucher). La chaîne couleur APRÈS étirement reste, elle,
+            # réservée à VeraLux (elle compense les gains du moteur) ; la CHROMA
+            # a QUITTÉ ce privilège au jalon 127 — elle vaut pour les DEUX
+            # moteurs, à l'écran comme au fichier.
             if engine != "veralux":
                 prefixe_stf = (
                     (f"GraXpert live : {err_gx} ; " if err_gx else "")
@@ -998,17 +1013,6 @@ class DisplayProcessor:
                     self.vl_new = True
                     self.vl_stage = ""
                 continue
-            # v2.37.0 : RÉDUCTION DU BRUIT CHROMATIQUE, juste AVANT l'étirement
-            # (la neutralisation du fond, elle, est passée APRÈS l'étirement au
-            # jalon 123). Lisse la chroma (YCrCb) : la luminance reste intacte,
-            # donc ni le niveau ni le contraste du fond ne bougent — seulement le
-            # GRAIN COLORÉ que les gains multiplicatifs (SPCC en tête : K_B/K_G
-            # = 1,32) ont amplifié. No-op si l'option est décochée ou si l'image
-            # est mono.
-            if chroma_actif:
-                self.vl_stage = "chroma"        # jalon 40 : étape courante
-                img_net = _couleurs.reduire_bruit_chroma(
-                    img_net, force=chroma_force, rayon=chroma_rayon)
             prefixe = ((f"GraXpert live : {err_gx} ; " if err_gx else "")
                        + (f"Débruitage live : {err_dn} ; " if err_dn else "")
                        + (f"Netteté live : {err_net} ; " if err_net else ""))
@@ -1195,10 +1199,12 @@ class DisplayProcessor:
                 self.vl_error = ("VeraLux : moteur tiers veralux_core_headless.py "
                                  "introuvable — affichage STF en attendant.")
                 self.vl_new = True
-            # Sortie de la chaîne pré-étirement (GraXpert/débruitage/netteté).
-            # AUCUNE étape active → l'image brute, à l'identique : le rendu STF
-            # reste INSTANTANÉ (aucun détour par le worker), comme avant.
-            if self.vl_graxpert or self.vl_denoise or self.vl_sharp:
+            # Sortie de la chaîne pré-étirement (GraXpert/débruitage/netteté/
+            # chroma — jalon 127 pour la chroma). AUCUNE étape active → l'image
+            # brute, à l'identique : le rendu STF reste INSTANTANÉ (aucun
+            # détour par le worker), comme avant.
+            if (self.vl_graxpert or self.vl_denoise or self.vl_sharp
+                    or self.vl_chroma):
                 img_chaine = self._process_chaine(img, live=live)
             else:
                 img_chaine = img

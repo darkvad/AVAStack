@@ -17,8 +17,8 @@ Vérifie :
       `process()` ;
   [3] ÉCRAN == FICHIER : la sortie de chaîne STF est exactement l'image que la
       sauvegarde « tel que vu » enchaîne AVANT l'étirement ;
-  [4] le MOTEUR fait partie de la clé de la chaîne ; la chroma reste RÉSERVÉE à
-      VeraLux (elle n'apparaît PAS dans la sortie STF).
+  [4] le MOTEUR fait partie de la clé de la chaîne ; la chroma entre dans la
+      sortie STF (chaîne pré-étirement COMMUNE depuis le jalon 127).
 
 Nécessite un affichage. Exécution :
     python bancs/_test_chaine_pre_etirement_jalon125.py
@@ -42,6 +42,7 @@ import avastack.ui.app as ui
 import avastack.processing.display as dp
 import avastack.processing.denoise as dn
 import avastack.external.live as gx_live
+from avastack.processing import couleurs as C
 
 if hasattr(sys.stdout, "reconfigure"):   # sortie pipée ≠ console (cp1252)
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -147,14 +148,23 @@ try:
     out = d.process(IMG)
     verifie(out.dtype == np.uint8 and out.shape == IMG.shape,
             "process() étire la sortie de chaîne (8 bits, mêmes dimensions)")
-    # [4] Chroma RÉSERVÉE à VeraLux : l'activer ne change RIEN en STF.
+    # [4] JALON 127 : la chroma n'est PLUS réservée à VeraLux — l'activer entre
+    # DANS la sortie STF (chaîne pré-étirement commune, APRÈS la netteté).
+    # Image COULEUR : sur une image MONOCHROME la chroma est un NO-OP (elle ne
+    # lisserait que Cr/Cb), elle ne serait donc pas observable ici.
+    IMG_C = np.stack([IMG, IMG * 0.85, IMG * 1.20], axis=-1).astype(np.float32)
     d.vl_chroma = True
     d.vl_chroma_force = 0.8
     d.notify_new_stack()
-    d.process(IMG)
-    verifie(attendre_vl(d), "2e passage terminé")
-    verifie(float(np.max(np.abs(d._vl_result[1] - attendu))) < 1e-6,
-            "chroma (réservée VeraLux) N'ENTRE PAS dans la sortie STF")
+    d.process(IMG_C)
+    verifie(attendre_vl(d), "2e passage terminé (image couleur)")
+    attendu_c, _e_c = dn.denoiser(np.flipud(IMG_C), "nlm", 0.5)
+    attendu_chroma = C.reduire_bruit_chroma(attendu_c, force=0.8,
+                                            rayon=d.vl_chroma_rayon)
+    verifie(float(np.max(np.abs(d._vl_result[1] - attendu_chroma))) < 1e-6,
+            "chroma ACTIVE dans la sortie STF (chaîne pré-étirement commune)")
+    verifie(not np.allclose(d._vl_result[1], attendu_c),
+            "…et la sortie DIFFÈRE bien de celle sans chroma")
 finally:
     gx_live.appliquer = _reel_gx
 

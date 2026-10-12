@@ -718,13 +718,15 @@ class Saver:
             # Elle est désormais appliquée APRÈS l'étirement, DANS
             # `rendu_pleine_resolution` (juste après le moteur), exactement comme
             # le solveur live — le fichier « tel que vu » reste l'écran.
-            # v2.37.0 : réduction du bruit chromatique — juste AVANT l'étirement
-            # (la neutralisation, elle, est passée APRÈS au jalon 123), comme
-            # dans le solveur live ; elle est réservée à l'étirement VeraLux (en
-            # STF, l'aperçu ne l'applique pas : le fichier doit être identique à
-            # l'écran) et JAMAIS dans la 3e sortie linéaire ci-dessus.
-            if (vue == "pile" and reglages.get("vl_chroma")
-                    and reglages.get("stretch") == "veralux"):
+            # v2.37.0 / JALON 127 : réduction du bruit chromatique — juste AVANT
+            # l'étirement, exactement comme dans la chaîne live (commune aux
+            # DEUX moteurs depuis le jalon 127). Elle n'est donc PLUS réservée à
+            # VeraLux : l'écran l'applique AUSSI en STF, et « le fichier =
+            # l'écran » impose de l'appliquer ici quel que soit le moteur. Elle
+            # reste, elle, JAMAIS dans la 3e sortie LINÉAIRE ci-dessus (la
+            # sortie linéaire a déjà rendu la main) ; en vue « traitée », elle
+            # vient de la chaîne EXTERNE ⚡ (ne pas la refaire).
+            if vue == "pile" and reglages.get("vl_chroma"):
                 source = couleurs_mod.reduire_bruit_chroma(
                     source, force=float(reglages.get("vl_chroma_force") or 0.5),
                     # v2.37.4 : rayon de RÉFÉRENCE, pleine résolution (l'image

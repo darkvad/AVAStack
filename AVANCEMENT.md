@@ -6,24 +6,19 @@
 
 ---
 
-## PROCHAINE TÂCHE — 12/10/2026 : VALIDATION RÉELLE (M33) + arbitrage bug 63/65
+## PROCHAINE TÂCHE — 12/10/2026 : VALIDATION RÉELLE (M33, Alain)
 
-**VOLET A (chaîne de sortie) : CODÉ et LIVRÉ** au jalon 125 (**v2.77.0**) — banc NEUF
-VERT, rejeu et garde-fou VERTS (détail à la « Session » ci-dessous).
+**LES DEUX ARBITRAGES SONT LIVRÉS** : jalon 126 (**v2.78.0**) = bancs chroma 63/65
+réparés ; jalon 127 (**v2.79.0**) = la CHROMA agit désormais pour les DEUX moteurs.
+Bancs NEUFS + rejeu + garde-fou VERTS (détail à la « Session » ci-dessous).
 
 ### À faire, dans cet ordre
 1. **À VALIDER EN RÉEL (Alain)** : relancer M33 — ① fond neutre attendu (le CŒUR reste
    magenta : hors périmètre, R/G 1,37 MESURÉ ; démagenta ÉCARTÉ — perte du vrai Hα) ;
-   ② cocher GraXpert et/ou débruitage **EN STF** : l'écran doit montrer le MÊME effet
-   qu'en VeraLux, et le fichier « tel que vu » y correspondre.
-2. **BUG PRÉEXISTANT À ARBITRER (Alain)** : `chroma_nr_jalon63` [5]/[6] et
-   `chroma_halo_jalon65` [6] portent le **MÊME bug de prédicat** que
-   `couleurs_immediat_jalon39` (`_vl_result[0]` = clé+forme comparée à `_vl_params()`
-   SEUL, sans forme, depuis la v2.55.3 → prédicat TOUJOURS faux). **1 ligne chacun**,
-   NON réparés (hors périmètre). **Alain décide** s'il veut que je les répare.
-3. **CHROMA en STF (piste)** : sa case (visible dans « Fond et grain ») n'agit PAS en
-   STF (réservée VeraLux, écran ET fichier) — à TRANCHER : l'ouvrir aux deux moteurs
-   comme GraXpert/débruitage, ou la masquer en STF (aujourd'hui : visible mais inerte).
+   ② cocher GraXpert / débruitage **ET la chroma EN STF** : l'écran doit montrer le MÊME
+   effet qu'en VeraLux, et le fichier « tel que vu » y correspondre.
+2. Choisir la suite (cf. « En attente / prochaine session ») ; **PAS de release**
+   (dernier tag publié = v2.71.1).
 
 ### Règles d'or (rappel)
 Un jalon = un banc NEUF + rejeu des bancs concernés (TOUS VERTS, hors échecs
@@ -33,54 +28,57 @@ MESURER sur le fichier.
 
 ---
 
-## Session du 12/10/2026 (9) — CLOSE — JALON 125 (v2.77.0) : VOLET A — CHAÎNE PRÉ-ÉTIREMENT UNIQUE
+## Session du 12/10/2026 (10) — JALONS 126 & 127 (v2.78.0 · v2.79.0)
 
 ### État actuel
-- **Livré (VOLET A)** : GraXpert + débruitage tournent à l'écran AUSSI en STF/manuel
-  (décision d'Alain du 11/10 : « le fichier = l'écran »). `_vl_worker` est LA chaîne
-  pré-étirement UNIQUE (GraXpert → débruitage → netteté) ; seule la DERNIÈRE étape
-  (l'étirement) dépend du moteur, qui entre donc dans `_vl_params`. Le solveur de netteté
-  DÉDIÉ est SUPPRIMÉ. Cases GraXpert/débruitage SORTIES du cadre VeraLux →
-  « Chaîne avant étirement ». Version **2.77.0**, changelog + CLAUDE.md à jour ; banc
-  NEUF VERT ; rejeu + garde-fou VERTS. **PAS de release** (dernier tag publié = v2.71.1).
+- **Jalon 126 (v2.78.0)** — BANCS CHROMA 63/65 RÉPARÉS (test-only, aucun code de
+  production). Le « bug de prédicat » documenté n'était PAS la seule cause : **3
+  réparations** (cf. Décisions). Bancs 63 ET 65 VERTS.
+- **Jalon 127 (v2.79.0)** — LA CHROMA AGIT POUR LES DEUX MOTEURS : elle entre dans la
+  chaîne PRÉ-ÉTIREMENT COMMUNE (`_vl_worker`, APRÈS la netteté) ; `process()` route par
+  la chaîne dès que `vl_chroma` est actif ; la sauvegarde « tel que vu » n'est plus
+  gardée par `stretch == "veralux"`. Sa case (visible dans « Fond et grain ») n'est donc
+  plus inerte en STF. Banc NEUF VERT, rejeu + garde-fou VERTS. **PAS de release**
+  (dernier tag publié = v2.71.1).
 
-### Fichiers modifiés
-- `processing/display.py` : `_vl_worker` = chaîne COMMUNE (branche par moteur : STF publie l'image PRÉ-ÉTIRÉE, VeraLux l'image étirée) ; `_process_chaine` (ex-`_process_veralux`, moteur dans la clé ET le job) ; `process()` route LES DEUX moteurs par la chaîne ; SUPPRESSION de `_sh_worker`/`_process_nettete`/`_sh_key`/`_sh_*` ; `sh_en_cours()` → False ; image d'attente STF = LINÉAIRE (sinon double étirement).
-- `ui/panels/sharp.py` : cases GraXpert + débruitage AJOUTÉES ; le panneau devient « Chaîne avant étirement » (`frm_sharp`).
-- `ui/panels/display.py` : ces cases RETIRÉES de `frm_veralux`.
-- `ui/constants.py` : titre de section « nette » → « Chaîne avant étirement (…) ».
-- `ui/app.py` : `_maj_lbl_vl` suit `vl_en_cours()`/`vl_stage` pour les deux moteurs (+ `_refresh_preview` sur `vl_new` pour les deux).
-- `ui/saver.py` : `_gx_live_prete` ne se limite plus à VeraLux.
-- `avastack/__init__.py` + `CLAUDE.md` : version 2.77.0, changelog, section « chaîne pré-étirement ».
+### Fichiers modifiés (jalon 127)
+- `processing/display.py` : `_vl_worker` applique la chroma dans la chaîne COMMUNE (bloc RETIRÉ de la branche VeraLux) ; `process()` route si `vl_chroma` ; docstrings.
+- `ui/saver.py` : gate chroma = `vue == "pile" and vl_chroma` (plus de `stretch == "veralux"`).
+- `ui/app.py` : docstrings `_on_vl_chroma`/`_sync_vl_chroma_vue` (la vue « traitée » reste coupée : la chroma y vient de la chaîne EXTERNE ⚡).
+- `bancs/_test_chaine_pre_etirement_jalon125.py` : [4] = la chroma ENTRE dans la sortie STF (image COULEUR, sinon no-op) ; `bancs/_test_chroma_stf_jalon127.py` (neuf).
+- `avastack/__init__.py` (v2.79.0) + `CLAUDE.md` (section « chaîne pré-étirement »).
+
+### Fichiers modifiés (jalon 126, test-only)
+- `bancs/_test_chroma_nr_jalon63.py`, `bancs/_test_chroma_halo_jalon65.py`, `avastack/__init__.py` (v2.78.0).
 
 ### Mesures / faits vérifiés (rejouables)
-- Banc jalon 125 : VERT — [1] cases GraXpert/débruitage DANS `frm_sharp`, PLUS dans `frm_veralux`, cadre partagé visible en STF ET VeraLux ; [2]/[3] sortie STF = GraXpert PUIS débruitage (== ce que la sauvegarde enchaîne AVANT l'étirement), `process()` étire dessus ; [4] moteur dans la clé, chroma N'ENTRE PAS dans la sortie STF.
-- Bancs MAJ : 12 (netteté dans la chaîne unique — sortie = image nette, refus explicite, exception rattrapée), 40 et 41 (état des calculs = `vl_stage`, STF inclus), 47 (titre de section + ordre).
-- Rejeu VERTS : veralux 2/3, graxpert_live 4, dn 7, sharp_live 12, couleurs 22, couleurs_immediat 39, etat_calcul 40, ui_moteur 41, ui_visibilite 47, save_brute 59, fond_bleu 62, chroma_structure 67, coeur_crame 64, zoom_pleine_res 68, pleine_res_traitee 69, histo 75, gx_parallele 81, save_rgb_axes, piedestal 122, neutralisation 123, exclusivite 124, chaine_pre_etirement 125.
-- Échecs **PRÉEXISTANTS** (inchangés, cf. ci-dessous) : `chroma_nr_jalon63` [5]/[6] et `chroma_halo_jalon65` [6] ; `_test_espace_jalon72` (géométrie d'écran).
+- Banc jalon 127 (NEUF) : VERT — [1] STF : sortie de chaîne = chroma(entrée) ; [2] STF : `process()` route (le rendu CHANGE quand la case est cochée) ; [3] sauvegarde : chroma appliquée sans gate moteur ; [4] VeraLux : chroma PUIS étirement (inchangé) ; [5] chroma ET moteur dans la clé.
+- Banc jalon 125 [4] MAJ : la chroma ENTRE dans la sortie STF (image COULEUR — sur du MONO la chroma est un NO-OP).
+- Bancs 63/65 : VERTS (jalon 126) — voir « Décisions » (3 causes).
+- Rejeu VERTS (jalon 127) : veralux 2/3, graxpert_live 4, dn 7/8, sharp_live 12, couleurs 22, couleurs_immediat 39, etat_calcul 40, ui_moteur 41, ui_visibilite 47, save_brute 59, chroma_structure 67, zoom_pleine_res 68, pleine_res_traitee 69, histo 75, gx_parallele 81, piedestal 122, neutralisation 123, exclusivite 124, chaine_pre_etirement 125, chroma_stf 127.
+- Échec **PRÉEXISTANT** restant : `_test_espace_jalon72` (géométrie d'écran — dépend de la machine).
 - Garde-fou : syntaxe 259, surface **75**, hash au bit, pyright **0/50** — VERT.
 
-### Problèmes ouverts
-- **BUG PRÉEXISTANT (1 ligne chacun, NON réparé)** : `chroma_nr_jalon63` [5]/[6] et `chroma_halo_jalon65` [6] comparent `_vl_result[0]` à `_vl_params()` SEUL (clé+forme vs clé sans forme) → prédicat TOUJOURS faux. **Alain décide** s'il veut la réparation.
-- **CHROMA reste VeraLux** : sa case (visible dans « Fond et grain ») n'agit pas en STF (écran ET fichier) — à TRANCHER (cf. « PROCHAINE TÂCHE » point 3).
+### Décisions prises
+- **Arbitrage 1 (Alain) — RÉPARER les bancs 63/65** : 3 causes, pas une seule. ① PRÉDICAT : `_vl_result[0]` (clé+forme) comparé à `_vl_params()` SEUL (clé sans forme, depuis la v2.55.3) → TOUJOURS faux ; réparé en `+ (img.shape,)`. ② MOTEUR (hérité du jalon 125) : `_process_chaine` branche sur le moteur → ces bancs (qui mesurent le solveur VeraLux) posent `stretch = "veralux"`. ③ halo 65 [6] : rayon posé AVANT `_on_vl_chroma` (un job en cours n'est pas remplacé, `_vl_pending`) + assertion « deux chemins » adaptée à l'extraction de l'acquisition (`App` + `core/worker.AcquisitionWorker`).
+- **Arbitrage 2 (Alain) — OUVRIR la chroma aux DEUX moteurs** (et non la masquer en STF) : elle entre dans la chaîne COMMUNE ; écran ET fichier ; contrat jalon 59 inchangé (pas de chroma dans la sortie LINÉAIRE).
 
 ### Prochaines étapes
-- **COMMITTÉ/POUSSÉ** : jalons 121→125 = commits `cd3a312`, `b8ec81f`, `e185ffc`
-  (branche `master` à jour avec `origin/master`).
-- **VALIDATION RÉELLE (Alain)** : M33 (fond neutre) + cocher GraXpert/débruitage **EN STF**.
-- Ensuite, au choix d'Alain : chroma en STF ? réparation du bug de prédicat 63/65 ?
+- **VALIDATION RÉELLE (Alain)** : M33 — ① fond neutre attendu ; ② GraXpert / débruitage / CHROMA cochés **EN STF** → écran == fichier.
+- **COMMITTÉS** : jalon 126 = `400ba7c` ; jalon 127 = commit suivant.
   **PAS de release** (dernier tag publié = v2.71.1).
 
 ### Points d'attention
-- **Le CŒUR magenta N'EST PAS traité** : la neutralisation ne vise QUE le fond. MESURÉ M33 : cœur R/G 1,37 ; fond neutre (R/G 1,01). Démagenta ÉCARTÉ (perte du vrai Hα).
-- Le worker ne touche JAMAIS aux stats EMA du STF (elles vivent dans le fil d'interface) : en STF/manuel il publie l'image PRÉ-ÉTIRÉE, et c'est `process()` qui étire.
-- `sh_en_cours()` renvoie False (compat) : NE PAS s'en servir pour l'état des calculs (utiliser `vl_en_cours()` / `vl_stage`).
-- Ne JAMAIS remettre les cases GraXpert/débruitage dans `frm_veralux` : masquées en STF, elles resteraient actives à la sauvegarde (c'est le défaut corrigé).
+- **La chroma est un NO-OP sur une image MONOCHROME** (Cr/Cb nuls) : tout banc qui la teste doit utiliser une image COULEUR (leçon du banc 125 [4]).
+- **`_vl_params()` ARRONDIT** `vl_chroma_rayon` à 2 décimales, mais le JOB porte la valeur NON arrondie : une clé peut « matcher » un résultat calculé avec un rayon légèrement différent (piège vu au banc 65).
+- Le worker ne touche JAMAIS aux stats EMA du STF ; en STF/manuel il publie l'image PRÉ-ÉTIRÉE (chroma incluse) et `process()` étire.
+- La vue « traitée » reste coupée pour la chroma (elle y vient de la chaîne EXTERNE ⚡) ; la 3e sortie LINÉAIRE ne la contient jamais.
+- Ne JAMAIS remettre les cases GraXpert/débruitage dans `frm_veralux` (masquées en STF → actives à la sauvegarde).
 
-### Historique — jalon 124 (v2.76.0), 12/10/2026
-- Neutralisation APRÈS les niveaux, JUSTE AVANT gamma/saturation + case déplacée dans
-  « Couleur de l'objet (APRÈS) » + EXCLUSIVITÉ Équilibrage/SPCC/Gaia. Trace : changelog
-  v2.76.0 ; commit `cd3a312` (jalons 121 à 124).
+### Historique — jalon 125 (v2.77.0), 12/10/2026
+- VOLET A : chaîne pré-étirement UNIQUE (GraXpert → débruitage → netteté à l'écran POUR
+  LES DEUX moteurs) ; cases sorties du cadre VeraLux ; solveur de netteté dédié supprimé.
+  Trace : changelog v2.77.0 ; commit `e185ffc`.
 
 ---
 
@@ -127,18 +125,16 @@ MESURER sur le fichier.
 ---
 ## En attente / prochaine session
 
-- **VOLET A = LIVRÉ (jalon 125, v2.77.0)** : GraXpert + débruitage tournent désormais à
-  l'écran AUSSI en STF/manuel (chaîne pré-étirement UNIQUE). Reste à **VALIDER EN RÉEL**.
-- **À ARBITRER (Alain)** : réparer ou NON le bug de prédicat PRÉEXISTANT de
-  `chroma_nr_jalon63` [5]/[6] et `chroma_halo_jalon65` [6] (1 ligne chacun).
-- **À TRANCHER (Alain)** : CHROMA en STF — sa case est visible mais inerte (réservée
-  VeraLux, écran ET fichier) : l'ouvrir aux deux moteurs, ou la masquer en STF ?
+- **LIVRÉ AUX JALONS 126/127** : bancs chroma 63/65 réparés ; la CHROMA agit désormais
+  pour les DEUX moteurs (chaîne pré-étirement COMMUNE, écran ET fichier). GraXpert +
+  débruitage : déjà livrés au jalon 125. Reste à **VALIDER EN RÉEL**.
 - **À VALIDER EN RÉEL (Alain)** : relancer M33 — fond neutre attendu ; le CŒUR restera
-  magenta (hors périmètre). Démagenta ÉCARTÉ (perte du vrai Hα).
+  magenta (hors périmètre). Démagenta ÉCARTÉ (perte du vrai Hα). Cocher GraXpert /
+  débruitage / chroma **EN STF**.
 - **Contrôle simple au passage** : re-mesurer les 2 FITS du 11/10 → les pixels à CANAL NUL
   (S = 1, fabriqués par le bug de restauration, corrigé au jalon 120) doivent avoir disparu.
-- **Jalons 119 à 125** : committés/poussés (`cd3a312`, `b8ec81f`, `e185ffc`) ; **release
-  NON faite** (dernier tag publié = **v2.71.1**).
+- **Jalons 119 à 127** : committés (`cd3a312`, `b8ec81f`, `e185ffc`, `400ba7c`, + jalon
+  127) ; **release NON faite** (dernier tag publié = **v2.71.1**).
 - **À VÉRIFIER EN RÉEL** : l'installateur `.exe` corrigé (l'application démarre après
   installation) — c'est LE test qui manquait et qui a révélé le défaut (jalon 118).
 - **Microsoft Store** : cadence SÉPARÉE — l'appli PUBLIÉE y reste la **v2.50.0** ; le
@@ -192,12 +188,13 @@ MESURER sur le fichier.
   **×20 à ×40** ; un fond d'empilement neutre à 0,9 % ressort à R/G 0,77, et la moindre
   correction par canal décide de la couleur (cyan ↔ magenta). Le STF amplifie aussi mais
   identique aux 3 canaux : il ne peut pas fabriquer de dominante.
-- **La neutralisation du fond (APRÈS l'étirement depuis le jalon 123 ; JUSTE AVANT
-  gamma/saturation depuis le jalon 124) + `reduire_bruit_chroma` sont RÉSERVÉS à VeraLux**
-  et **EXCLUS de la sortie linéaire traitée** (verrouillé, banc jalon 59 [6]) : un FITS
-  linéaire ne les contient JAMAIS — ce n'est pas un bug. Au jalon 124 elle n'est PLUS dans
-  le solveur : `process()` / `rendu_pleine_resolution` l'appliquent (le 9e élément `nf` du
-  job reste transporté mais IGNORÉ).
+- **La NEUTRALISATION du fond (APRÈS l'étirement depuis le jalon 123 ; JUSTE AVANT
+  gamma/saturation depuis le jalon 124) est RÉSERVÉE à VeraLux ; `reduire_bruit_chroma`
+  est, elle, COMMUNE aux deux moteurs depuis le jalon 127. Les DEUX sont EXCLUES de la
+  sortie linéaire traitée** (verrouillé, banc jalon 59 [6]) : un FITS linéaire ne les
+  contient JAMAIS — ce n'est pas un bug. La neutralisation n'est PAS dans le solveur :
+  `process()` / `rendu_pleine_resolution` l'appliquent (le 9e élément `nf` du job reste
+  transporté mais IGNORÉ).
 - **JOB EXTERNE = 11 éléments** (jalon 123 : la neutralisation du fond en est SORTIE ;
   chroma = 8, force = 9, rayon = 10). Le « 12e élément » des anciens commentaires/bancs
   n'existe plus : un job plus court est lu TOLÉRANT (indices manquants → inactifs). Clé
@@ -206,13 +203,16 @@ MESURER sur le fichier.
   `_vl_params() + (img.shape,)`. Un prédicat qui compare `_vl_result[0]` à `_vl_params()`
   SEUL est donc TOUJOURS faux (« solveur jamais publié ») — cause des échecs PRÉEXISTANTS de
   `couleurs_immediat_jalon39` (réparé au 124), `chroma_nr_jalon63` [5]/[6] et
-  `chroma_halo_jalon65` [6] (à réparer, même 1 ligne).
+  `chroma_halo_jalon65` [6] (TOUS réparés au jalon 126). À retenir pour tout NOUVEAU banc.
+- **`_vl_params()` ARRONDIT `vl_chroma_rayon` à 2 décimales** alors que le JOB porte la
+  valeur NON arrondie : une clé peut « matcher » un résultat calculé à un rayon voisin.
 - **`_test_espace_jalon72` échoue en GÉOMÉTRIE D'ÉCRAN** (« aucun bouton écrasé » +
   « rogné/débordé ») : échec **PRÉEXISTANT** (reproduit à l'IDENTIQUE sur le HEAD du jalon
   120 via `git worktree`) — dépend de la taille d'écran de la machine, PAS du code.
 - **La case chroma est IGNORÉE en vue « traitée »** (voulu : `_sync_vl_chroma_vue` la
-  coupe, le résultat ⚡ la porte déjà). Conséquence PRATIQUE : un enregistrement fait
-  depuis cette vue ne contient pas la chroma — vérifier la vue AVANT d'accuser le code.
+  coupe, le résultat ⚡ la porte déjà ; depuis le jalon 127 elle vaut pour les DEUX moteurs
+  en vue « empilement »). Conséquence PRATIQUE : un enregistrement fait depuis la vue
+  « traitée » ne reçoit PAS la chroma de l'écran — vérifier la vue AVANT d'accuser le code.
 - **`_fmt_expo` est DÉJÀ PRIS dans `app.py`** (jalon 119) : ce nom est importé de
   `ui/panels/camera.py`. Un `def _fmt_expo(...)` au niveau module de `app.py` l'ÉCRASE et
   casse le panneau Caméra (banc `cameras/_test_expo_affichage_jalon34.py`).
@@ -236,11 +236,9 @@ MESURER sur le fichier.
 
 ## Clôtures précédentes
 
-- **12/10/2026** : jalon 125 (v2.77.0) — VOLET A : chaîne pré-étirement UNIQUE (GraXpert +
-  débruitage à l'écran AUSSI en STF/manuel ; netteté dans la même chaîne ; solveur dédié
-  supprimé) ; cases sorties du cadre VeraLux → « Chaîne avant étirement » ; banc neuf +
-  rejeu + garde-fou VERTS ; **commité** (`e185ffc`), pas de release.
-- **12/10/2026** : jalon 124 (v2.76.0) — NEUTRALISATION DÉPLACÉE (après niveaux, avant
-  gamma/saturation) + case déplacée dans « Couleur de l'objet (APRÈS) » + EXCLUSIVITÉ
-  Équilibrage/SPCC/Gaia ; **commité** (`cd3a312`), pas de release.
+- **12/10/2026** : jalon 127 (v2.79.0) — la CHROMA agit pour les DEUX moteurs (chaîne
+  pré-étirement commune, écran + fichier ; sa case n'est plus inerte en STF) ; banc neuf +
+  rejeu + garde-fou VERTS ; **commité**, pas de release.
+- **12/10/2026** : jalon 126 (v2.78.0) — bancs chroma 63/65 réparés (test-only : prédicat,
+  moteur, course du rayon, assertion « deux chemins ») ; **commité** (`400ba7c`).
 

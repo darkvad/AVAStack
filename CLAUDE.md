@@ -654,12 +654,12 @@ AFFICHÉE à 1,00 ») est né de cet angle mort.
 ## Chaîne pré-étirement COMMUNE aux deux moteurs (jalon 125, v2.77.0 — VOLET A)
 
 - **La chaîne PRÉ-ÉTIREMENT est UNIQUE** : `DisplayProcessor._vl_worker` enchaîne
-  GraXpert → débruitage → netteté pour **LES DEUX moteurs** d'étirement. Seule la
-  **DERNIÈRE étape dépend du moteur** : en VeraLux le worker publie l'image
-  **étirée** (+ chroma, chaîne couleur après étirement) ; en STF/manuel il publie
-  l'image **PRÉ-ÉTIRÉE** et c'est `process()` qui applique l'étirement STF/manuel
-  dessus, **dans le fil d'interface** (les stats EMA du STF y vivent — ce thread ne
-  doit JAMAIS y toucher).
+  GraXpert → débruitage → netteté → **chroma (jalon 127)** pour **LES DEUX
+  moteurs** d'étirement. Seule la **DERNIÈRE étape dépend du moteur** : en VeraLux
+  le worker publie l'image **étirée** (+ chaîne couleur après étirement) ; en
+  STF/manuel il publie l'image **PRÉ-ÉTIRÉE** et c'est `process()` qui applique
+  l'étirement STF/manuel dessus, **dans le fil d'interface** (les stats EMA du
+  STF y vivent — ce thread ne doit JAMAIS y toucher).
 - **Le MOTEUR est dans la clé** `_vl_params()` : en changer relance la chaîne
   (STF publie l'image pré-étirée, VeraLux l'image étirée).
 - **PIÈGE — image d'attente** : en STF/manuel, l'image d'attente rendue par
@@ -670,9 +670,15 @@ AFFICHÉE à 1,00 ») est né de cet angle mort.
   `_process_nettete`, `_sh_key`, `_sh_*`) : la netteté fait partie de la chaîne
   unique. `sh_en_cours()` existe toujours mais renvoie **False** (compat) ;
   l'état des calculs suit `vl_en_cours()` / `vl_stage` pour les deux moteurs.
-- **CHROMA réservée à VeraLux** (écran ET fichier) : elle n'apparaît PAS dans la
-  sortie STF. Sa case vit dans « Fond et grain » mais n'agit qu'en VeraLux (la
-  sauvegarde la gate sur `stretch == "veralux"`).
+- **CHROMA COMMUNE aux deux moteurs** (jalon 127, v2.79.0) : elle a QUITTÉ le
+  privilège VeraLux — elle vivait dans la branche VeraLux du worker et restait
+  donc **INERTE en STF** (case visible mais sans effet). Sa case vit dans « Fond
+  et grain » et agit DÉSORMAIS en STF/manuel AUSSI, **écran ET fichier** (la
+  sauvegarde n'est plus gardée par `stretch == "veralux"`). Elle entre dans la
+  chaîne pré-étirement **APRÈS la netteté**. La chaîne couleur APRÈS étirement,
+  elle, reste réservée à VeraLux, la 3e sortie LINÉAIRE ne contient TOUJOURS pas
+  la chroma (contrat jalon 59) et la vue « traitée » la reçoit de la chaîne
+  EXTERNE ⚡ (pas de double traitement).
 - **UI** : les cases GraXpert + débruitage vivent dans « Chaîne avant étirement
   (GraXpert · débruitage · netteté) » — le panneau `panels/sharp.py` / `frm_sharp`,
   **visible dans les deux modes** (le cadre VeraLux est masqué en STF). Ne JAMAIS
@@ -680,7 +686,9 @@ AFFICHÉE à 1,00 ») est né de cet angle mort.
   sans être visibles — c'est précisément le défaut corrigé ici.
 - **Préflight de sauvegarde** (`saver._gx_live_prete`) : la commande GraXpert est
   requise dès que la case est cochée, **quel que soit le moteur**.
-- Banc : `bancs/_test_chaine_pre_etirement_jalon125.py`.
+- Bancs : `bancs/_test_chaine_pre_etirement_jalon125.py`,
+  `bancs/_test_chroma_stf_jalon127.py`, `bancs/_test_chroma_nr_jalon63.py`,
+  `bancs/_test_chroma_halo_jalon65.py`.
 
 ## Doc outils externes (CLI)
 

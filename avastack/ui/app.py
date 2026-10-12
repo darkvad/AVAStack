@@ -2638,11 +2638,13 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
     def _on_vl_chroma(self) -> None:
         """Case/curseur « Réduire le bruit chromatique » (v2.37.0) : force lue
         (tolérante — une saisie invalide laisse la valeur précédente) et
-        transportée au solveur VeraLux (10e/11e éléments du job), qui l'applique
-        juste avant l'étirement. Rendu IMMÉDIAT, comme les autres cases couleur :
-        c'est la leçon du jalon 39, revécue avec la neutralisation du fond
-        (constat d'Alain du 25/09/2026 : une case couleur qui n'appelle pas
-        `_refresh_preview()` semble inerte jusqu'à la frame suivante)."""
+        transportée à la chaîne pré-étirement COMMUNE (10e/11e éléments du job,
+        `_vl_worker`), qui l'applique juste avant l'étirement — pour LES DEUX
+        moteurs depuis le jalon 127 (elle n'est plus réservée à VeraLux). Rendu
+        IMMÉDIAT, comme les autres cases couleur : c'est la leçon du jalon 39,
+        revécue avec la neutralisation du fond (constat d'Alain du 25/09/2026 :
+        une case couleur qui n'appelle pas `_refresh_preview()` semble inerte
+        jusqu'à la frame suivante)."""
         try:
             self.disp.vl_chroma_force = min(
                 1.0, max(0.0, float(self.var_vl_chroma_force.get())))
@@ -2653,9 +2655,11 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
 
     def _sync_vl_chroma_vue(self) -> None:
         """État SEUL (sans rendu) de la case « Réduire le bruit chromatique » —
-        vue « empilement » uniquement : comme la neutralisation du fond, cette
-        correction PRÉ-étirement RESTE dans la chaîne externe ⚡ (indice 9 du
-        job) ; la refaire à l'affichage doublerait le traitement."""
+        vue « empilement » uniquement : en vue « traitée », la correction
+        PRÉ-étirement vient de la chaîne EXTERNE ⚡ (indice 9 du job) ; la
+        refaire à l'affichage doublerait le traitement. JALON 127 : la chroma
+        n'est plus réservée à VeraLux — en vue « empilement » elle vaut pour
+        LES DEUX moteurs (STF compris)."""
         actif = bool(self.var_vl_chroma.get()) \
             and self.var_view.get() != "traitée"
         if actif != self.disp.vl_chroma:
