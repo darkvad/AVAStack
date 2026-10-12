@@ -257,6 +257,10 @@ ui.CONFIG = {}
 vus = []
 ui.sauver_config = lambda d: vus.append(d)
 app = ui.App(root)
+# JALON 125 : le worker `_process_chaine` branche désormais sur le MOTEUR (STF
+# publie l'image PRÉ-ÉTIRÉE, VeraLux l'image ÉTIRÉE). Ce banc mesure la sortie
+# du SOLVEUR VeraLux : il lui faut donc le moteur VeraLux (l'App démarre en STF).
+app.disp.stretch = "veralux"
 # État de CONSTRUCTION (avant tout bascule) : la case est DÉCOCHÉE par défaut.
 verifie(hasattr(app, "var_vl_chroma") and bool(app.var_vl_chroma.get()) is False,
         "case « Réduire le bruit chromatique (live) » présente et DÉCOCHÉE par "
@@ -289,7 +293,8 @@ def _resultat_solveur():
     """Sortie PUBLIÉE par le solveur VeraLux (résultat complet, clé courante)."""
     if not _attendre(lambda: not app.disp._vl_pending
                      and app.disp._vl_result is not None
-                     and app.disp._vl_result[0] == app.disp._vl_params()):
+                     and app.disp._vl_result[0]
+                     == app.disp._vl_params() + (petite.shape,)):
         return None
     return np.asarray(app.disp._vl_result[1], np.float32)
 

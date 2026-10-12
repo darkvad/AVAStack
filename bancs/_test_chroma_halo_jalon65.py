@@ -361,6 +361,7 @@ import inspect                                                    # noqa: E402
 import time                                                       # noqa: E402
 import tkinter as tk                                              # noqa: E402
 import avastack.ui.app as ui                                      # noqa: E402
+import avastack.core.worker as worker_mod                         # noqa: E402
 from avastack.processing import veralux as V                      # noqa: E402
 
 root = tk.Tk()
@@ -369,6 +370,10 @@ ui.CONFIG = {}
 ui.sauver_config = lambda d: None
 app = ui.App(root)
 d = app.disp
+# JALON 125 : le worker `_process_chaine` branche sur le MOTEUR (STF publie
+# l'image PRÉ-ÉTIRÉE, VeraLux l'image ÉTIRÉE). Ce banc mesure la sortie du
+# SOLVEUR VeraLux : il lui faut donc `stretch == "veralux"` (défaut = STF).
+d.stretch = "veralux"
 verifie(hasattr(d, "vl_chroma_rayon")
         and abs(float(d.vl_chroma_rayon) - C.RAYON_CHROMA_DEFAUT) < 1e-9,
         "le solveur démarre avec le rayon de RÉFÉRENCE pleine résolution")
@@ -376,9 +381,16 @@ cle_avant = d._vl_params()
 d.vl_chroma_rayon = C.rayon_chroma_apercu(0.417)
 verifie(d._vl_params() != cle_avant,
         "le rayon entre dans la CLÉ des réglages (→ une re-résolution)")
-verifie(inspect.getsource(ui.App).count("rayon_chroma_apercu") >= 2,
+# L'acquisition a été EXTRAITE de `App` dans
+# `avastack.core.worker.AcquisitionWorker` (refactoring) : les DEUX chemins
+# (boucle d'acquisition ET `_pousser_rendu`) passent désormais par l'UNIQUE
+# helper `App._poser_rayon_chroma` (qui seul appelle
+# `couleurs.rayon_chroma_apercu`). On vérifie donc que ce helper est appelé
+# dans les DEUX modules, et non plus en comptant deux appels directs.
+verifie("_poser_rayon_chroma" in inspect.getsource(ui.App)
+        and "_poser_rayon_chroma" in inspect.getsource(worker_mod.AcquisitionWorker),
         "l'interface le ramène à l'échelle de l'aperçu dans ses DEUX chemins "
-        "(boucle d'acquisition ET _pousser_rendu)")
+        "(boucle d'acquisition ET _pousser_rendu) — via `_poser_rayon_chroma`")
 
 petite = IMAGE[0:192, 0:192].astype(np.float32)     # cadrage de CIEL
 
@@ -394,7 +406,7 @@ def _attendre(predicat, delai=60.0):
 
 def _resultat():
     if not _attendre(lambda: not d._vl_pending and d._vl_result is not None
-                     and d._vl_result[0] == d._vl_params()):
+                     and d._vl_result[0] == d._vl_params() + (petite.shape,)):
         return None
     return np.asarray(d._vl_result[1], np.float32)
 
@@ -407,8 +419,12 @@ app._on_vl_neutre()
 app.var_vl_chroma.set(True)
 app.var_vl_chroma_force.set(0.5)
 app.last_show = petite
-app._on_vl_chroma()
+# Le rayon est posé AVANT de déclencher l'aperçu : `_on_vl_chroma` soumet un
+# job à l'aperçu, et un job DÉJÀ en cours n'est pas remplacé (drapeau
+# `_vl_pending`) — poser le rayon APRÈS laisserait le job partir avec l'ancien
+# rayon (reliquat `rayon_chroma_apercu(0.417)` de la ligne précédente).
 d.vl_chroma_rayon = 1.25                            # ce que pose l'interface
+app._on_vl_chroma()
 d.reset()
 d.notify_new_stack()
 d._process_chaine(petite, live=False)

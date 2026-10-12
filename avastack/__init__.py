@@ -19,9 +19,32 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.77.0"
+AVASTACK_VERSION = "2.78.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.78.0 : RÉPARATION DES BANCS CHROMA 63/65 (jalon 126) — TROIS causes,
+#   toutes PRÉEXISTANTES ou héritées du jalon 125, réparées (AUCUN changement de
+#   code de production, réparation de bancs SEULE) :
+#   1) PRÉDICAT (le « bug » documenté) : `_vl_result[0]` (clé + FORME) était
+#      comparé à `_vl_params()` SEUL (clé SANS forme) depuis la v2.55.3 →
+#      prédicat TOUJOURS faux (« solveur jamais publié ») → le résultat n'était
+#      jamais reconnu. Réparé en comparant à `_vl_params() + (img.shape,)`
+#      (même correctif que le banc 39 au jalon 124).
+#   2) MOTEUR (hérité du jalon 125) : `_process_chaine` branche désormais sur le
+#      MOTEUR (STF publie l'image PRÉ-ÉTIRÉE, VeraLux l'image ÉTIRÉE) ; ces
+#      bancs mesurent la sortie du SOLVEUR VERA LUX et l'`App` démarre en STF →
+#      ils posent désormais `stretch = \"veralux\"`.
+#   3) HALO 65 [6] seul : (a) le rayon était posé APRÈS `_on_vl_chroma()`, qui
+#      soumet un job à l'aperçu — un job DÉJÀ en cours n'est pas remplacé
+#      (`_vl_pending`), le job partait donc avec le rayon précédent (reliquat
+#      `rayon_chroma_apercu(0.417)`) : le rayon est désormais posé AVANT ; (b)
+#      l'assertion « DEUX chemins » comptait `rayon_chroma_apercu` dans la
+#      source de `App`, or l'acquisition a été EXTRAITE dans
+#      `core/worker.AcquisitionWorker` : elle vérifie désormais que l'UNIQUE
+#      helper `_poser_rayon_chroma` est appelé dans les DEUX modules.
+#   FICHIERS : `bancs/_test_chroma_nr_jalon63.py`,
+#   `bancs/_test_chroma_halo_jalon65.py`, `avastack/__init__.py`,
+#   `AVANCEMENT.md`, `CLAUDE.md`.
 # v2.77.0 : VOLET A — CHAÎNE PRÉ-ÉTIREMENT UNIQUE : GraXpert + débruitage
 #   tournent À L'ÉCRAN aussi en STF/manuel (jalon 125). Demande d'Alain
 #   (11/10/2026) : « je ne comprends pas pourquoi on ne pourrait pas mettre le
