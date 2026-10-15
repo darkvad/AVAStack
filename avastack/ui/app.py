@@ -3181,7 +3181,8 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         correspondant. Override manuel ensuite : les menus déroulants
         restent modifiables à la main."""
         rapports = []
-        for i in range(4):
+        # Jalon 129 : NB_LIGNES_COMPO lignes (5 en LRGB+Ha), source unique.
+        for i in range(composition_mod.NB_LIGNES_COMPO):
             d = self.var_compo_dossiers[i].get().strip()
             if not d or not os.path.isdir(d):
                 continue
@@ -3552,9 +3553,10 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
 
     # --- Jalon 19 phase 3 : composition multi-filtres ------------------------
     def _on_compo(self) -> None:
-        """Choix de la composition → pré-remplit les rôles des 4 lignes."""
+        """Choix de la composition → pré-remplit les rôles des
+        `NB_LIGNES_COMPO` lignes (5 depuis le jalon 129 : LRGB+Ha)."""
         roles = roles_de(self.var_compo.get())
-        for i in range(4):
+        for i in range(composition_mod.NB_LIGNES_COMPO):
             self.var_compo_roles[i].set(roles[i] if i < len(roles) else "")
         self._maj_compo_info()
 
@@ -3585,8 +3587,15 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                              for canal, roles in spec["canaux_rgb"].items())
             if "luminance" in spec:
                 txt += " + luminance L (optionnelle)"
+            if composition_mod.composition_avec_ha(nom):
+                # Jalon 129 : le Ha de RGB+Ha / LRGB+Ha n'alimente AUCUN canal —
+                # sans cette mention, la ligne d'aide laisserait croire qu'il
+                # est ignoré.
+                txt += " + Ha fusionné au rouge"
         self.lbl_compo_info.config(text=txt)
-        etat = "normal" if nom == "LRGB" else "disabled"
+        # La radio « Canal L » n'a de sens que là où une luminance L existe :
+        # LRGB, et LRGB+Ha depuis le jalon 129.
+        etat = "normal" if nom in ("LRGB", "LRGB+Ha") else "disabled"
         self.rb_l_syn.config(state=etat)
         self.rb_l_deg.config(state=etat)
         self._maj_libelles_calib()   # jalon 53 : le détail suit les rôles
@@ -3601,7 +3610,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         Lève une erreur claire sur un remplissage incohérent : rôle sans
         dossier, rôle en double, dossier sans rôle, tout vide."""
         pairs, vus = [], {}
-        for i in range(4):
+        for i in range(composition_mod.NB_LIGNES_COMPO):
             role = self.var_compo_roles[i].get().strip()
             doss = self.var_compo_dossiers[i].get().strip()
             if not role:
@@ -4957,13 +4966,31 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         return (f"re-stack {n_ok}/{self.archive.n} frames · réf. = brute "
                 f"#{idx} ({score} étoiles, {raison})")
 
+    def _broadband_ha(self) -> bool:
+        """Jalon 129 : composition BROADBAND + Ha (RGB+Ha, LRGB+Ha), où le rôle
+        Ha est SECONDAIRE (fusionné au composite, cf. `COMPOSITIONS_HA`).
+
+        Conséquences VOULUES : l'empilement DÉMARRE sans attendre une brute Ha
+        (les brutes L/R/G/B arrivent en général en premier) et l'ancre
+        d'alignement reste une brute BROADBAND. Décision d'Alain du 15/10/2026,
+        **à re-mesurer en réel** : si le Ha résiste mal à l'alignement, c'est
+        ICI qu'on changera (ancre forcée sur le Ha, triangles seuls…)."""
+        return bool(self._mode_compo and self._compo_nom
+                    and composition_mod.composition_avec_ha(self._compo_nom))
+
     def _narrowband_ha(self) -> bool:
-        """Jalon 21 (décision d'Alain) : composition narrowband contenant le
+        """Jalon 21 (décision d'Alain) : composition NARROWBAND contenant le
         rôle Ha (HOO, SHO). Dans ce mode : l'ancre initiale est TOUJOURS une
         brute Ha, et l'alignement se fait par TRIANGLES seuls (ORB s'apparie
-        mal d'un filtre à l'autre)."""
+        mal d'un filtre à l'autre).
+
+        Jalon 129 : les compositions BROADBAND + Ha (RGB+Ha, LRGB+Ha) en sont
+        EXCLUES (cf. `_broadband_ha`) — le Ha y est un rôle secondaire et non la
+        référence ; sans cette exclusion la session attendrait indéfiniment une
+        brute Ha pour créer l'empilement."""
         return bool(self._mode_compo and self._compo_nom
-                    and "Ha" in roles_de(self._compo_nom))
+                    and "Ha" in roles_de(self._compo_nom)
+                    and not self._broadband_ha())
 
     def _do_restack_compo(self, raison: str, ancre_role: str | None=None, ancre_idx: int | None=None) -> str:
         """Jalon 20 — re-stack en mode COMPOSITION multi-filtres. La

@@ -19,9 +19,35 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.80.0"
+AVASTACK_VERSION = "2.81.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.81.0 : COMPOSITIONS « RGB+Ha » ET « LRGB+Ha » (jalon 129, chantier Ha,
+#   VOLET 1/5 — 15/10/2026). Le rôle Ha peut désormais être SECONDAIRE dans une
+#   composition broadband : « RGB+Ha » (R, G, B, Ha) et « LRGB+Ha » (L, R, G, B,
+#   Ha ; L optionnel). Le Ha n'alimente AUCUN canal (`canaux_rgb` ne le
+#   référence pas) : il SERA fusionné au composite après le combine L (volets
+#   suivants). CE VOLET POSE LA PLOMBERIE SEULE — aucune fusion n'est encore
+#   appliquée (le Ha s'empile et s'affiche dans l'état par rôle, sans modifier
+#   l'image, ce que le banc 129 VÉRIFIE au bit) :
+#   · table `COMPOSITIONS` étendue, plus `COMPOSITIONS_HA` et
+#     `composition_avec_ha()` (source UNIQUE de « cette composition a un Ha à
+#     fusionner ») ;
+#   · constante `NB_LIGNES_COMPO` = 5, lue par le panneau, `app.py` et
+#     `config_ui.py` — plus AUCUN `range(4)` recopié (c'est ce qui plafonnait le
+#     nombre de dossiers à 4) ;
+#   · UI à 5 lignes rôle+dossier, ligne d'aide « + Ha fusionné au rouge », radio
+#     « Canal L » active aussi en LRGB+Ha ;
+#   · SÉPARATION D'ANCRE : `_broadband_ha()` distingue les compositions
+#     broadband+Ha de `_narrowband_ha()` (HOO/SHO). SANS elle la session
+#     attendrait indéfiniment une brute Ha pour créer l'empilement : l'ancre
+#     d'une composition broadband reste une brute BROADBAND (décision d'Alain du
+#     15/10/2026, à re-mesurer en réel) ;
+#   · le repli de `composition_pour_roles` teste les compositions +Ha EN
+#     DERNIER : (« Ha »,) → HOO est un usage historique (sinon (« Ha »,) ⊂
+#     LRGB+Ha renverrait LRGB+Ha).
+#   Banc neuf `bancs/_test_compo_5roles_jalon129.py` + mise à jour du banc
+#   jalon 19 (5 lignes).
 # v2.80.0 : L'IMAGE VERALUX RESTE À L'ÉCRAN PENDANT UN RECALCUL (jalon 128,
 #   demande d'Alain 12/10/2026). Constat : en étirement VeraLux, à chaque
 #   NOUVEAU calcul (changement de réglage, nouvel empilement), l'aperçu

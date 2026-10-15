@@ -4,7 +4,7 @@
 Vérifie (App réelle, Tk) :
   [1] briques de phase 3 : FILTRES_USUELS / role_de_filtre et
       lire_filtre_fits (FITS avec/sans FILTER, PNG, fichier absent) ;
-  [2] UI : cadre Composition (4 lignes rôle+dossier, radio L, gains),
+  [2] UI : cadre Composition (5 lignes rôle+dossier depuis le jalon 129 —
       combobox composition → rôles, rôles remplis → composition déduite,
       gains bornés (virgule, hors bornes) ;
   [3] worker réel (MultiFolderCamera, dossiers temporaires Ha/O3) : gains
@@ -141,20 +141,21 @@ app = ui.App(root)
 
 verifie("Composition multi-dossiers (RGB/HOO/SHO/LRGB)" in SOURCES,
         "SOURCES : la source « Composition multi-dossiers » existe")
-verifie(len(app.var_compo_roles) == 4 and len(app.var_compo_dossiers) == 4,
-        "4 lignes rôle + dossier (1 à 4 dossiers)")
-verifie(tuple(v.get() for v in app.var_compo_roles) == ("Ha", "O3", "", ""),
+verifie(len(app.var_compo_roles) == 5 and len(app.var_compo_dossiers) == 5,
+        "5 lignes rôle + dossier (jalon 129 ; 1 à 5 dossiers)")
+verifie(tuple(v.get() for v in app.var_compo_roles) == ("Ha", "O3", "", "", ""),
         "défaut HOO → rôles pré-remplis (Ha, O3)")
 
 app.var_compo.set("SHO")
 app._on_compo()
-verifie(tuple(v.get() for v in app.var_compo_roles) == ("S2", "Ha", "O3", ""),
+verifie(tuple(v.get() for v in app.var_compo_roles) == ("S2", "Ha", "O3", "", ""),
         "choix SHO → rôles (S2, Ha, O3)")
 
 # sens inverse : rôles remplis → composition déduite (LRGB ⇄ RGB, cas valide)
 app.var_compo.set("LRGB")
 app._on_compo()
-verifie(tuple(v.get() for v in app.var_compo_roles) == ("L", "R", "G", "B"),
+verifie(tuple(v.get() for v in app.var_compo_roles)
+        == ("L", "R", "G", "B", ""),
         "choix LRGB → rôles (L, R, G, B)")
 app.var_compo_roles[0].set("")
 app._on_compo_roles()

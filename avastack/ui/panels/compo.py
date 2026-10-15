@@ -17,8 +17,9 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Any, Callable
 
-from ...processing.composition import (COMPOSITIONS, ROLES, SEUIL_MASQUE_MAX,
-                                       SEUIL_MASQUE_MIN, SEUIL_MASQUE_SIGMA)
+from ...processing.composition import (COMPOSITIONS, NB_LIGNES_COMPO, ROLES,
+                                       SEUIL_MASQUE_MAX, SEUIL_MASQUE_MIN,
+                                       SEUIL_MASQUE_SIGMA)
 
 
 class PanneauComposition:
@@ -71,12 +72,17 @@ class PanneauComposition:
         cb_compo.bind("<<ComboboxSelected>>", lambda e: self._on_compo())
         self.lbl_compo_info = ttk.Label(box, text="", foreground="#666666")
         self.lbl_compo_info.pack(anchor="w")
-        # 4 lignes fixes : rôle (filtre) + dossier. Une ligne sans rôle = non
-        # utilisée ; le remplissage des rôles CONTRAINT la composition
+        # NB_LIGNES_COMPO lignes fixes : rôle (filtre) + dossier. Une ligne sans
+        # rôle = non utilisée ; le remplissage des rôles CONTRAINT la composition
         # (cf. _on_compo_roles), la composition pré-remplit les rôles.
-        self.var_compo_roles = [tk.StringVar(value="") for _ in range(4)]
-        self.var_compo_dossiers = [tk.StringVar(value="") for _ in range(4)]
-        for i in range(4):
+        # Jalon 129 : 5 lignes — le maximum de rôles d'une composition est celui
+        # de LRGB+Ha (L, R, G, B, Ha) ; la constante est partagée avec `app.py`
+        # et `config_ui.py` (jamais un `range(4)` recopié).
+        self.var_compo_roles = [tk.StringVar(value="")
+                                for _ in range(NB_LIGNES_COMPO)]
+        self.var_compo_dossiers = [tk.StringVar(value="")
+                                   for _ in range(NB_LIGNES_COMPO)]
+        for i in range(NB_LIGNES_COMPO):
             row = ttk.Frame(box)
             row.pack(fill="x", pady=1)
             cb_role = ttk.Combobox(row, textvariable=self.var_compo_roles[i],

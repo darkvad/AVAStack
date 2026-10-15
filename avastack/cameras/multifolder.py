@@ -22,7 +22,7 @@ from .folder import FolderCamera
 
 
 class MultiFolderCamera(CameraBase):
-    """N dossiers surveillés (1 à 4), un par rôle de la composition.
+    """N dossiers surveillés (1 à 5), un par rôle de la composition.
 
     roles_dossiers : liste de couples (rôle, dossier), ex.
         [("Ha", "C:/acquisition/cible/Ha"), ("O3", "C:/acquisition/cible/O3")]

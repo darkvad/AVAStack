@@ -22,9 +22,9 @@ from ..processing import DisplayProcessor
 from ..processing import couleurs as couleurs_mod
 from ..processing import sharpness as nettete_live
 from ..processing import veralux as veralux_moteur
-from ..processing.composition import (COMPOSITIONS, MODES_L, ROLES,
-                                       SEUIL_MASQUE_MAX, SEUIL_MASQUE_MIN,
-                                       SEUIL_MASQUE_SIGMA)
+from ..processing.composition import (COMPOSITIONS, MODES_L, NB_LIGNES_COMPO,
+                                       ROLES, SEUIL_MASQUE_MAX,
+                                       SEUIL_MASQUE_MIN, SEUIL_MASQUE_SIGMA)
 
 
 def _globals_app():
@@ -207,14 +207,16 @@ class ConfigUI:
             self.var_folder.set(c["dossier"])
         if c.get("cfa") in ("Auto", "RGGB", "BGGR", "GRBG", "GBRG", "Non"):
             self.var_cfa.set(c["cfa"])
-        # --- Jalon 19 : composition multi-filtres (rôles + dossiers des 4
-        # lignes, gains, radio « Canal L ») — restauration TOLÉRANTE :
-        # format inconnu / rôle hors liste → ligne ignorée (défauts).
-        for i in range(4):
+        # --- Jalon 19 : composition multi-filtres (rôles + dossiers des
+        # NB_LIGNES_COMPO lignes, gains, radio « Canal L ») — restauration
+        # TOLÉRANTE : format inconnu / rôle hors liste → ligne ignorée (défauts).
+        # Jalon 129 : 5 lignes (LRGB+Ha) — la constante est PARTAGÉE avec le
+        # panneau et `app.py` (jamais un `range(4)` recopié).
+        for i in range(NB_LIGNES_COMPO):
             entree = c.get(f"compo_dossier_{i}")
             if isinstance(entree, str) and entree:
                 self.var_compo_dossiers[i].set(entree)
-        for i in range(4):
+        for i in range(NB_LIGNES_COMPO):
             v = c.get(f"compo_role_{i}")
             if isinstance(v, str) and v in ROLES:
                 self.var_compo_roles[i].set(v)
@@ -609,9 +611,10 @@ class ConfigUI:
         if self.var_folder.get().strip():
             c["dossier"] = self.var_folder.get().strip()
         c["cfa"] = self.var_cfa.get()
-        # Jalon 19 : réglages de la composition (rôles + dossiers des 4
-        # lignes, gains, radio « Canal L ») — relus au démarrage suivant.
-        for i in range(4):
+        # Jalon 19 : réglages de la composition (rôles + dossiers des
+        # NB_LIGNES_COMPO lignes, gains, radio « Canal L ») — relus au
+        # démarrage suivant. Jalon 129 : 5 lignes (LRGB+Ha).
+        for i in range(NB_LIGNES_COMPO):
             c[f"compo_role_{i}"] = self.var_compo_roles[i].get()
             c[f"compo_dossier_{i}"] = self.var_compo_dossiers[i].get().strip()
         c["compo_nom"] = self.var_compo.get()

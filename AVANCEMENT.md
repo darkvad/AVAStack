@@ -23,135 +23,129 @@
 
 ---
 
-## Session du 12/10/2026 (11) — JALON 128 (v2.80.0) : image VeraLux gardée pendant un recalcul
+## Session du 15/10/2026 — J1 testé EN RÉEL : le Ha est REFUSÉ à l'alignement (→ 129b)
 
-**SESSION CLOSE** — jalon 128 livré, commité, poussé ; **release GitHub v2.80.0 PUBLIÉE**
-(4 installateurs + `INSTALLATION.md`). Il ne reste AUCUNE action technique en attente.
-Prochaine tâche à définir (pistes en « En attente / prochaine session »).
+**J1 (v2.81.0) est COMMITÉ** sur `LRGBHa` en **checkpoint** (plomberie seule, correctifs
+non appliqués) ; **le test réel l'invalide en l'état** (rôle Ha quasi vide). Cette session
+porte **129b** (banc + rejeu réel → les 4 correctifs), qui suivra en SECOND commit.
 
 ### État actuel
-- **Jalon 128 (v2.80.0)** — en étirement VeraLux, un NOUVEAU calcul ne fait plus
-  « sauter » l'écran vers l'aperçu STF : `_process_chaine` CONSERVE le dernier résultat
-  VeraLux TERMINÉ jusqu'à ce que le recalcul aboutisse ; l'UI superpose « Recalculs en
-  cours » (arc tournant, fond transparent, coin haut-gauche) tant que le calcul tourne.
-- Vérifié par banc NEUF (8 volets) + rejeu des bancs concernés ; garde-fou VERT.
+- Compositions `RGB+Ha` / `LRGB+Ha` déclarées : **5 lignes** rôle+dossier, ancre **broadband**
+  (`_broadband_ha()`), **aucune fusion** appliquée (composite identique AU BIT, banc 129 vert).
+- **Test réel M33, deux relevés** du même empilement (~30 min d'écart) :
+  - (1) `Frames 57` = L14 · R14 · G14 · B14 · **Ha 1** · `Archive 69` · `non alignées 12` → **astrométrie BLOQUÉE** ;
+  - (2) `Frames 118` = L30 · R30 · G29 · B20 · **Ha 9** · `Archive 138` · `non alignées 20` · `floues 1` →
+    astrométrie + SPCC ont fonctionné. **Dossier Ha = 40 frames ⇒ ~69 % de REFUS sur le Ha.**
+- **Le verrou de l'astrométrie est CONFIRMÉ en réel** : elle s'est débloquée pile quand `Ha` a atteint 3.
 
-### Fichiers modifiés
-- `processing/display.py` : `_vl_result_moteur` (moteur du dernier résultat, publié par
-  `_vl_worker`), `_process_chaine` (conservation gardée par moteur + forme + `_vl_pending`).
-- `ui/renderer.py` : `_render` (appel overlay + décalage du texte de zoom),
-  `_spinner_vl_actif`, `_dessiner_spinner_vl` (item canvas tag « vl_spin »).
-- `ui/app.py` : `_maj_lbl_vl` (anime l'arc), `_vl_spin_angle` (initialisé dans `__init__`).
-- `bancs/_test_conservation_veralux_jalon128.py` (neuf) · `avastack/__init__.py` (version+changelog).
+### Fichiers modifiés dans cette phase (lot 129 — COMMITÉ en checkpoint)
+- `processing/composition.py` : `NB_LIGNES_COMPO` (5, source unique), `COMPOSITIONS_HA`,
+  `composition_avec_ha()`, les 2 compositions nouvelles, repli `composition_pour_roles` (+Ha en DERNIER).
+- `ui/panels/compo.py` (5 lignes) · `ui/app.py` (`range(4)` → `NB_LIGNES_COMPO`, `_maj_compo_info`,
+  `_broadband_ha()` NEUF + `_narrowband_ha()` excluant les +Ha) · `ui/config_ui.py` (5 lignes) ·
+  `cameras/multifolder.py` (« 1 à 5 ») · `avastack/__init__.py` (version 2.81.0 + changelog 129).
+- `bancs/_test_compo_5roles_jalon129.py` (NEUF, 5 volets) · `bancs/_test_compo_ui_jalon19.py` (4 → 5 lignes).
 
 ### Mesures / faits vérifiés (rejouables)
-- Banc NEUF 128 VERT : [0] moteur publié (« veralux »/« stf ») ; [1] conservation VeraLux
-  (identité d'objet, ≠ repli STF) ; [2] garde-fou moteur ; [3] garde-fou forme ; [4] hors
-  calcul → repli STF ; [5] `process()` IDENTIQUE avant/pendant ; [6] overlay UI ; [7] arc
-  qui tourne (30°→60°) puis retiré en fin.
-- Rejeu VERTS : veralux 2/3, etat_calcul 40, ui_moteur 41, chaine_pre_etirement 125,
-  chroma_stf 127, zoom_pleine_res 68. Garde-fou : syntaxe 260, surface 75, hash au bit,
-  pyright 0/50 — VERT.
+- **Les refus SONT des refus d'ALIGNEMENT** : `bad_frames` n'est incrémenté QUE là (`worker.py:1129`) ;
+  `Archive − Frames = refus` (138 − 118 = 20). Les frames FLOUES sont comptées à part et rejetées
+  **avant** l'archivage (`worker.py:992`), d'où leur absence des 138.
+- **`triangles_seuls` = False en LRGB+Ha** : `worker.py:1096` → `self._narrowband_ha()`, et J1 a **EXCLU**
+  les compositions +Ha de ce prédicat ⇒ **l'ORB passe en premier**. Or le projet a MESURÉ au jalon 21
+  qu'ORB « s'apparie mal d'un filtre à l'autre » (**86 refus** en début de session SHO) — la correction fut
+  de SAUTER l'ORB. Ligne d'état passée par `phase` (relevé 1) puis `triangles` (relevé 2) : l'alignement
+  VIT dans les replis.
+- **Cas INÉDIT** : en HOO/SHO l'ancre EST la brute Ha (le Ha n'est jamais aligné contre un autre filtre) ;
+  en LRGB+Ha (ancre broadband, choix J1) **le Ha est le SEUL rôle aligné en INTER-FILTRES**. Réponse
+  mesurée à la question d'Alain du 15/10 (« espérons que ça n'empêche pas d'aligner le Ha ») : **oui, ça gêne**.
+- **Le Ha n'entre PAS dans la SPCC** (prouvé DEUX fois) : bandes lues **par clé** (`spcc.py:812` et `548`),
+  couches **BRUTES** (`moyennes()`, `composition.py:939-951`), conversion des gains par `canaux_rgb`
+  (`composition.py:984-991`) — où le Ha n'apparaît pas.
+- **Fond BLEU = SPCC appliquée hors modèle** : R ×0.2735 / G ×0.3550 / B ×1.0000 (l'appli AVERTIT :
+  B/G 0.327 hors [0,5 ; 1,5]). Le remède DÉJÀ MESURÉ du projet (SPCC + Linear Fit = fond NEUTRE,
+  `composition.py:1070-1072`) est neutralisé par `linear_fit_mode = "offset"`, qui force `gains = 1.0`
+  (`stacking.py:205-207`) ⇒ **aucun rééchelonnement** : le facteur SPCC reste en place.
 
 ### Décisions prises
-- **Conservation gardée par le MOTEUR du résultat** : seul un résultat RÉELLEMENT étiré
-  par VeraLux est conservé (sinon, après STF→VeraLux, on garderait l'image PRÉ-ÉTIRÉE
-  linéaire = image sombre). Nouvel attribut `_vl_result_moteur` plutôt que relire la clé
-  (dont la position du moteur est un détail interne).
-- **Conservation gardée par la FORME** : un basculement aperçu↔pleine résolution retombe
-  sur le repli STF (pas d'image périmée de mauvaise taille).
-- **Overlay réservé à VeraLux** : en STF/manuel le worker tourne aussi mais l'étirement
-  est instantané → aucun overlay (l'indicateur ne ment pas sur un « calcul »).
-
-### Prochaines étapes
-- Prochaine tâche à définir (pistes en « En attente ») ; côté **Store**, soumettre une
-  version plus récente quand ce sera décidé (cadence séparée).
-
-### Points d'attention
-- Le worker publie `_vl_result_moteur` SOUS LE MÊME VERROU que `_vl_result` (jamais l'un
-  sans l'autre : un désaccord afficherait une mauvaise image).
-- `_vl_spin_angle` est DÉCLARÉ sur `Renderer` (typage) mais INITIALISÉ dans `App.__init__` ;
-  les accès passent par `getattr(..., 0.0)` (robuste si un banc construit l'App autrement).
-- L'overlay est un item CANVAS (jamais baké dans l'image) : `_last_disp` reste propre pour
-  l'annotation et la sauvegarde.
-
-### Règles d'or (rappel)
-Un jalon = un banc NEUF + rejeu des bancs concernés (TOUS VERTS, hors échecs
-**préexistants** documentés) + garde-fou `_test_refactoring_garde_fou.py` VERT ;
-commentaires en FRANÇAIS. Jamais l'état d'une case déduit de `config.json` : le
-MESURER sur le fichier.
-
----
-
-## Session du 15/10/2026 — ouverture du chantier « LRGB+Ha / RGB+Ha »
-
-### État actuel
-- **Aucun code écrit à ce stade.** Dossier de travail RESTAURÉ propre : l'essai non commité
-  (fusion Ha + continuum : 9 fichiers suivis modifiés + 15 non suivis) a été **MIS AU STASH**
-  (`stash@{0}`) → arbre vide, `git status` propre, `LRGBHa` = `origin/LRGBHa` (4ba477e) =
-  master + le seul commit de règle AVANCEMENT.
-- Chantier ouvert en **PLAN** : découpage proposé en jalons J0→J5 (détail dans la réponse du
-  15/10) — **en attente d'arbitrage d'Alain** avant la première ligne de code.
-
-### Fichiers modifiés dans cette phase
-- `AVANCEMENT.md` : ce bloc (traces détaillées 125 et 126-127 supprimées — leur trace vit
-  dans `avastack/__init__.py` et `git log`, conformément à la règle de taille bornée).
-- Aucun fichier de code : l'arbre est revenu à l'identique de `LRGBHa`.
-
-### Décisions prises
-- Le non commité part au **STASH** (réversible) et non à la poubelle ; `git stash drop`
-  reste disponible si Alain veut le détruire. `check_fits.py` et `test_paths.py` (utilitaires
-  hors sujet LRGB+Ha) sont partis avec : `git checkout stash@{0} -- check_fits.py`.
-- **Référence du continuum = R** (pas L : bande ~300 nm et PSF différente → halo) — à confirmer.
-- **k auto estimé sur les couches BRUTES et TRANSPORTÉ aux deux vues** : la vue « traitée »
-  recompose depuis des couches déjà filtrées par GraXpert → un k recalculé là divergerait.
+- **J1 COMMITÉ** sur `LRGBHa` en **checkpoint « plomberie seule »** (option A, Alain 15/10/2026) :
+  bancs 129/19 + garde-fou verts (pyright 0 erreur) ; **129b suivra en second commit** et étendra
+  l'entrée v2.81.0 (pas de bump) ; **aucune release** tant que le Ha n'est pas utilisable.
+- **J1 NON validé en l'état** ; **J2 n'est PAS démarré** : fusionner 1 frame Ha serait inobservable.
+- **129b = préalable à J2** : (1) séparer l'**ANCRE** (broadband, inchangée) de la **MÉTHODE**
+  (`triangles_seuls = True` dès qu'un Ha est fusionné) ; (2) exclure le Ha **FUSIONNÉ** de
+  `profondeur_min()` (en HOO/SHO le Ha reste un CANAL, donc il continue de compter) ; (3) compteur de
+  refus **PAR RÔLE** (aujourd'hui `bad_frames` est GLOBAL, `worker.py:720`) ; (4) libellé « frames par
+  rôle » de la SPCC (il affiche le MIN = le Ha, un rôle que la SPCC ne mesure PAS).
+- **Pas de correctif non mesuré** : le diagnostic doit passer par un **rejeu hors-ligne des vraies frames
+  L/G + Ha** dans le vrai aligneur (méthode des jalons 116/117), `triangles_seuls` False vs True.
 
 ### Problèmes ouverts
-- **Recherche état de l'art à compléter** : le web est PARTIELLEMENT bloqué. Depuis le PC
-  d'Alain (`curl.exe` + User-Agent navigateur, sortie dans `%TEMP%`) : `astropix.com` et
-  `readthedocs.io` répondent 200 ; Cloudy Nights et Stargazers Lounge renvoient 403 ;
-  `pixinsight.com` est injoignable ; `lightvortexastronomy.com` refuse le handshake TLS.
-  Déjà lu : Lodriguss « Channel Substitution » (4 méthodes : Lab / Luminance layer / HSL /
-  HSB) — **la soustraction du continuum n'y figure pas**.
+- **Raison EXACTE du refus Ha** non encore nommée sur les frames réelles → objet du rejeu de 129b.
+- `B: 20` contre L30 / R30 / G29 : dossier plus court (probable) ou refus caché ? à confirmer.
+- **L'aligneur n'écrit RIEN au journal** (`%APPDATA%\AVAStack\journal.txt` ne porte que `démarrage`,
+  `astrométrie` [configuration] et `étape`) — hérité 116-118, toujours vrai : c'est ce qui a rendu le
+  diagnostic INDIRECT. Un « refus par rôle » journalisé serait un vrai progrès.
+- « Patés bleus » de STRUCTURE (hors fond bleu SPCC) : à traiter à part (pistes : gains LRGB,
+  `lissage_halos` coché σ = 20).
 
 ### Prochaines étapes
-- Alain tranche les décisions du plan (liste des modes de fusion, référence du continuum,
-  k auto transporté, ordre fusion/combine L, ancre d'alignement, cadence des releases).
-- Puis **J1** : plomberie 5 rôles (UI + détection + persistance), sans fusion encore.
+- **129b (cette session)** : banc + rejeu des frames réelles → les 4 correctifs → re-test réel.
+- Puis **J2** (fusion « ajout au rouge » + poids + cadre « Fusion Ha ») → **J3** → **J4** → **J5**.
 
 ### Points d'attention
-- `panels/compo.py` ET `_on_compo`/`_lire_roles_dossiers` de `app.py` sont sur **`range(4)`**
-  dans master : le passage à **5 lignes** est le premier lot de code, et
-  `bancs/_test_compo_ui_jalon19.py` **assert 4 lignes** (à mettre à jour).
-- `display.params_lissage_halos()` (8e élément `vl_compo`, déballage TOLÉRANT) est le patron
-  exact à copier pour un `params_ha()` (9e élément).
-- Ne pas oublier `installer/` : règle « plus d'un ou deux fichiers touchés → rebuild ». 
+- **J1 EST COMMITÉ** (checkpoint plomberie : 8 fichiers + le banc 129) ; **le stash `stash@{0}` reste
+  à GARDER** (essai antérieur, non commité).
+- **Le rôle Ha COMPTE dans `profondeur_min()`** (`composition.py:857` / `worker.py:1267`) : c'est le seuil
+  de l'astrométrie, de la photo ET de la SPCC (`ASTRO_MIN_FRAMES = 3`, `astrometrie.py:67`). Tant que le Ha
+  reste bas, **les trois mesures sont bloquées** — MESURÉ, pas théorique.
+- **Repli « phase »** (`alignment.py:839-864`) : refuse si la forme ≠ référence, si |Δ| > 40 px, ou sans
+  gain SSD net — et il travaille dans le domaine 8 bits **PARTAGÉ** (leçon 116① : écrase une frame d'un
+  autre filtre).
+- Test décisif du fond bleu (5 s, à confirmer) : **décocher la case SPCC** → le bleu doit disparaître.
+- Des images d'un AUTRE logiciel traînent dans `Pictures`/`Downloads` (caméra tout-ciel, labels avion) :
+  ce ne sont **PAS** des preuves d'un test AVAStack — ne pas s'y tromper.
 
 ---
 
-## Problèmes ouverts HORS session (hérités des jalons 116-118, toujours valides)
-- L'**aligneur n'écrit RIEN** au journal (`%APPDATA%\AVAStack\journal.txt`) ;
-  l'alternative « paires d'invariants top-60 × top-120 » du solveur reste non mesurée.
+## Chantier en cours — LRGB+Ha / RGB+Ha (jalons 129 → 129b → J2 → J5)
+
+Le rôle Ha **n'alimente AUCUN canal** : il est **FUSIONNÉ au composite** après le combine L (canal rouge).
+L'UI a **5 lignes** (rôle + dossier) : L, R, G, B, Ha.
+
+| Jalon | Contenu | État |
+|---|---|---|
+| **J1 / 129** (v2.81.0) | compositions + 5 lignes + séparation ancre / `_narrowband_ha` | **commité** (checkpoint, banc vert), test réel KO (Ha refusé) |
+| **129b** | Ha utilisable : méthode d'alignement + `profondeur_min` + refus par rôle + libellé SPCC | **PROCHAINE SESSION** |
+| **J2** | fusion « ajout au rouge » (DÉFAUT) + poids + cadre « Fusion Ha » | après 129b |
+| **J3** | les 4 autres modes : `fondu_rouge` (α), `ecran_rouge`, `eclaircir_rouge` (max), `ha_luminance` | |
+| **J4** | continuum (défaut = BANDES PASSANTES, BW_Ha 7 nm / BW_RGB 100 nm ; référence **R**, jamais L) | |
+| **J5** | ancre EN RÉEL + fiche de rendu + doc | |
+
+**Plan FIGÉ — 13 arbitrages d'Alain (15/10/2026).** Identifiants en **FRANÇAIS** (comme `synthetise`).
+Défauts/bornes : poids **1,0** (0–10, pas 0,05) · α **0,5** (0–1, pas 0,05) · Q **0,80** (0,10–2,00, pas 0,05).
+Cadre « Fusion Ha » visible SEULEMENT si la compo contient Ha. Continuum : 3 méthodes, défaut **bandes
+passantes** (source : `NBRGBCombination.js` de PixInsight, LU sur le disque d'Alain) ; case « recentrer le
+Ha sur son fond » (`Ha − med(Ha)`) COCHÉE ; écrêtage [0,1] ; case DÉSACTIVÉE si le dossier R est vide ;
+seuil de détection d'étoiles 5σ = constante INTERNE. **HORS PÉRIMÈTRE** : poids par canal R/G/B, starless,
+versions non linéaires.
+
+**RÈGLES D'OR.** Un jalon = un banc NEUF + rejeu des bancs concernés (TOUS VERTS, hors échecs préexistants
+documentés) + garde-fou `_test_refactoring_garde_fou.py` VERT ; commentaires en FRANÇAIS ; **jamais** l'état
+d'une case déduit de `config.json` — le MESURER. **AUCUNE release GitHub sans l'accord d'Alain** ; **à CHAQUE
+jalon validé, LUI DEMANDER AVANT de démarrer le suivant**.
 
 ---
 
 ## En attente / prochaine session
 
-- **Jalon 128 (v2.80.0) — À VALIDER EN RÉEL** : pendant un recalcul VeraLux, l'image
-  VeraLux RESTE à l'écran (plus de saut vers le STF) + « Recalculs en cours » (arc
-  tournant, fond transparent, haut-gauche). Alain : en live stacking VeraLux, bouger un
-  curseur / cocher une case → l'image doit rester VeraLux, l'arc tourner, puis disparaître
-  au résultat.
-- **Livré et validé (v2.79.0)** : GraXpert + débruitage (125), chroma des DEUX moteurs (127),
-  bancs 63/65 (126) — validé M33 ; 3 vérifs du 12/10 (`.exe`, **Store MSIX v2.71.1**, canal
-  nul) OK.
-- **Boutons de données SANS Siril** (« ⬇ Gaia », « ⬇ Spectres (champ) », « ⬇ Base SPCC ») —
-  délégués à un utilisateur sans Siril.
-- **Piste INDI** (un seul chemin pour les 3 OS et toutes les marques) — jalon à part, PAS
-  avant le portage Linux avec les `.so`.
-- **Release GitHub** : **v2.80.0 PUBLIÉE le 12/10/2026** (tag `v2.80.0` sur le commit de
-  doc `92919f9`) — `.exe` + ZIP Windows + Linux + macOS + `INSTALLATION.md` attachés.
-  Côté **Store**, la version publiée reste **v2.71.1** (cadence séparée).
+- **129b — SESSION EN COURS (J2 attend derrière)** : rendre le Ha utilisable — banc + rejeu hors-ligne
+  des vraies frames L/G + Ha dans le vrai aligneur (`triangles_seuls` False vs True), puis les 4
+  correctifs, puis re-test réel.
+- Jalon 128 (v2.80.0) : à valider en réel si ce n'est pas déjà fait (l'image VeraLux reste pendant un recalcul).
+- Livré/validé : v2.79.0 (chaîne pré-étirement unique + chroma des DEUX moteurs) validé M33 ; v2.80.0 publiée.
+- Boutons de données SANS Siril (« ⬇ Gaia », « ⬇ Spectres (champ) », « ⬇ Base SPCC ») ; **piste INDI** = jalon à
+  part, PAS avant le portage Linux ; côté **Store**, cadence séparée (v2.71.1 publiée).
+- `installer/` : règle « plus d'un ou deux fichiers touchés → rebuild ».
 
 ---
 
@@ -169,7 +163,7 @@ MESURER sur le fichier.
   22-23/09, ~50-60 frames/filtre, 60 s, −15 °C (⚠ un dossier de filtre peut MÊLER les
   deux côtés du Pier : 26 % des frames RGB à 176°) ; M33 (nuit du 10-11/10) = L 60×60s ·
   R 20×60s · G 20×60s · B 17×120s → 2,2 h, recadré 3747×1983 (master dark 60 s pour
-  L/R/G, 120 s pour B).
+  L/R/G, 120 s pour B). **15/10/2026 : jeu M33 + un dossier Ha de 40 frames — cible du test J1.**
 - **Outils astro locaux vérifiés (22/09/2026)** : Siril 1.4.4 (catalogues Gaia XP dans
   `%LOCALAPPDATA%\Siril\...`, base SPCC dans `siril-spcc-database`) ; ASTAP
   (`C:\Program Files\astap`, base D80 Gaia DR3 1,24 Go) ; PAS d'astrometry.net/ANSVR.
@@ -182,71 +176,48 @@ MESURER sur le fichier.
 
 ## Pièges récents (encore actifs)
 
-- **Pixels à CANAL NUL (S = 1)** — fabriqués par le bug de restauration (CORRIGÉ au
-  jalon 120) : ils POLLUENT toute statistique de couleur (« % de taches », bruit de
-  chroma) — les EXCLURE avant de mesurer.
-- **La CHROMA est un NO-OP sur une image MONOCHROME** (Cr/Cb nuls) : tout banc qui la
-  teste doit utiliser une image COULEUR (leçon du banc 125 [4]).
-- **`config.json` NE DIT PAS LA RÉALITÉ** : c'est l'état à la DERNIÈRE FERMETURE
-  (chez Alain : 13h59 le 11/10), pas celui du moment où un fichier est écrit. On ne
-  l'utilise donc JAMAIS pour affirmer l'état d'un réglage ni pour expliquer un écart :
-  **on MESURE le fichier produit** (ou on AFFICHE l'état réellement appliqué — fiche
-  de rendu, jalons 121/123).
-- **VERALUX AMPLIFIE LE FOND (MESURÉ)** : son ANCRE (scalaire lu dans l'histogramme de
-  luminance) consomme **~97 % du niveau de ciel** → tout écart de fond par canal sort
-  **×20 à ×40** ; un fond d'empilement neutre à 0,9 % ressort à R/G 0,77, et la moindre
-  correction par canal décide de la couleur (cyan ↔ magenta). Le STF amplifie aussi mais
-  identique aux 3 canaux : il ne peut pas fabriquer de dominante.
-- **La NEUTRALISATION du fond (APRÈS l'étirement depuis le jalon 123 ; JUSTE AVANT
-  gamma/saturation depuis le jalon 124) est RÉSERVÉE à VeraLux ; `reduire_bruit_chroma`
-  est, elle, COMMUNE aux deux moteurs depuis le jalon 127. Les DEUX sont EXCLUES de la
-  sortie linéaire traitée** (verrouillé, banc jalon 59 [6]) : un FITS linéaire ne les
-  contient JAMAIS — ce n'est pas un bug. La neutralisation n'est PAS dans le solveur :
-  `process()` / `rendu_pleine_resolution` l'appliquent (le 9e élément `nf` du job reste
-  transporté mais IGNORÉ).
-- **JOB EXTERNE = 11 éléments** (jalon 123 : la neutralisation du fond en est SORTIE ;
-  chroma = 8, force = 9, rayon = 10). Le « 12e élément » des anciens commentaires/bancs
-  n'existe plus : un job plus court est lu TOLÉRANT (indices manquants → inactifs). Clé
-  `ext_neutre_fond` plus écrite ni relue.
-- **`_vl_params()` N'INCLUT PAS LA FORME** : le solveur indexe son cache par
-  `_vl_params() + (img.shape,)`. Un prédicat qui compare `_vl_result[0]` à `_vl_params()`
-  SEUL est donc TOUJOURS faux (« solveur jamais publié ») — cause des échecs PRÉEXISTANTS de
-  `couleurs_immediat_jalon39` (réparé au 124), `chroma_nr_jalon63` [5]/[6] et
-  `chroma_halo_jalon65` [6] (TOUS réparés au jalon 126). À retenir pour tout NOUVEAU banc.
-- **`_vl_params()` ARRONDIT `vl_chroma_rayon` à 2 décimales** alors que le JOB porte la
-  valeur NON arrondie : une clé peut « matcher » un résultat calculé à un rayon voisin.
-- **`_test_espace_jalon72` échoue en GÉOMÉTRIE D'ÉCRAN** (« aucun bouton écrasé » +
-  « rogné/débordé ») : échec **PRÉEXISTANT** (reproduit à l'IDENTIQUE sur le HEAD du jalon
-  120 via `git worktree`) — dépend de la taille d'écran de la machine, PAS du code.
-- **La case chroma est IGNORÉE en vue « traitée »** (voulu : `_sync_vl_chroma_vue` la
-  coupe, le résultat ⚡ la porte déjà ; depuis le jalon 127 elle vaut pour les DEUX moteurs
-  en vue « empilement »). Conséquence PRATIQUE : un enregistrement fait depuis la vue
-  « traitée » ne reçoit PAS la chroma de l'écran — vérifier la vue AVANT d'accuser le code.
-- **`_fmt_expo` est DÉJÀ PRIS dans `app.py`** (jalon 119) : ce nom est importé de
-  `ui/panels/camera.py`. Un `def _fmt_expo(...)` au niveau module de `app.py` l'ÉCRASE et
-  casse le panneau Caméra (banc `cameras/_test_expo_affichage_jalon34.py`).
+- **LE RÔLE Ha FUSIONNÉ FAUSSE `profondeur_min()`** (min des rôles non vides) : il bloque l'astrométrie,
+  la photométrie ET la SPCC (`ASTRO_MIN_FRAMES = 3`) — MESURÉ au test réel du 15/10.
+- **EN LRGB+Ha, LE Ha EST LE SEUL RÔLE ALIGNÉ EN INTER-FILTRES** (l'ancre est broadband) et il est REFUSÉ
+  massivement (~2/3 mesuré) : `triangles_seuls` est False (ORB d'abord), et le projet SAIT depuis le
+  jalon 21 qu'ORB s'apparie mal d'un filtre à l'autre.
+- **SPCC : le mode « offset » du Linear Fit NE RÉÉCHELONNE PAS** (`gains = 1.0`, `stacking.py:205`) — un
+  coefficient SPCC extrême (fond bleu) n'est donc PAS compensé. Et la SPCC AVERTIT quand son modèle décrit
+  mal l'image (pente hors [0,5 ; 1,5]) : dans ce cas, ne pas l'appliquer sans réfléchir.
+- **`bad_frames` est GLOBAL** (un seul compteur de session) : impossible de lire les refus PAR RÔLE.
+- **Pixels à CANAL NUL (S = 1)** — fabriqués par le bug de restauration (CORRIGÉ au jalon 120) : ils
+  POLLUENT toute statistique de couleur — les EXCLURE avant de mesurer.
+- **La CHROMA est un NO-OP sur une image MONOCHROME** (Cr/Cb nuls) : tout banc qui la teste doit utiliser
+  une image COULEUR (leçon du banc 125 [4]).
+- **`config.json` NE DIT PAS LA RÉALITÉ** : c'est l'état à la DERNIÈRE FERMETURE, pas celui du moment où un
+  fichier est écrit. On ne l'utilise JAMAIS pour affirmer l'état d'un réglage : **on MESURE** le fichier produit.
+- **VERALUX AMPLIFIE LE FOND (MESURÉ)** : son ancre consomme ~97 % du niveau de ciel → tout écart de fond par
+  canal sort ×20 à ×40 ; la moindre correction par canal décide de la couleur (cyan ↔ magenta).
+- **La NEUTRALISATION du fond est RÉSERVÉE à VeraLux ; `reduire_bruit_chroma` est COMMUNE aux deux moteurs ;
+  les DEUX sont EXCLUES de la sortie linéaire traitée** (verrouillé, banc jalon 59 [6]).
+- **JOB EXTERNE = 11 éléments** (jalon 123) ; un job plus court est lu TOLÉRANT.
+- **`_vl_params()` N'INCLUT PAS LA FORME** : un prédicat qui compare `_vl_result[0]` à `_vl_params()` SEUL est
+  TOUJOURS faux ; et il ARRONDIT `vl_chroma_rayon` à 2 décimales (une clé peut « matcher » un rayon voisin).
+- **Échecs PRÉEXISTANTS** : `_test_espace_jalon72` (géométrie d'écran, dépend de la machine) ;
+  `_test_reset_empilement_jalon76` [4] (course `_stop()`, sensible à la charge CPU).
+- **`_fmt_expo` est DÉJÀ PRIS dans `app.py`** (jalon 119) : le redéfinir casse le panneau Caméra.
 - **PIÈGE LANCEMENT** : `python3` ≠ venv — toujours `python AVAStack.py`.
-- **Ordre de la chaîne** (Alain, 16/09/2026) : recadrage → gradient → débruitage →
-  netteté → étirement. Débruitage : code gelé, cases décochées (16/09/2026).
+- **Ordre de la chaîne** (Alain, 16/09/2026) : recadrage → gradient → débruitage → netteté → étirement.
 - **Tk** : ne JAMAIS mélanger `grid` et `pack` dans le même conteneur (`TclError`).
-- **OpenCV/OpenCL** : crash au teardown → `cv2.ocl.setUseOpenCL(False)`. Tests `ui.App`
-  hermétiques : `ui.CONFIG = {}` + `sauver_config` intercepté.
-- **SDK natif caméras** : chargement UNE fois par process ; crash natif non rattrapable →
-  tracer chaque étape dans un fichier et vérifier l'identité des fichiers réellement
-  chargés AVANT d'interpréter un plantage. **Installateur d'un OS non exécutable**
-  (macOS/Linux) : se vérifie par ce qui EST vérifiable (`bash -n`, refus hors OS, banc de
-  contenu) ; état écrit DATÉ, jamais déguisé en test réussi.
-- **ALIGNEUR & RECADRAGE (jalons 116/117)** : détails dans CLAUDE.md. À retenir : une
-  frame d'une AUTRE NUIT/filtre se normalise sur ses PROPRES bornes ; une brute CALIBRÉE
-  (dark) peut être refusée là où la non calibrée passe ; `cadre_intersection` rend le plus
-  grand rectangle AXIAL INSCRIT — contrôler le polygone AVANT d'accuser l'optique.
+- **OpenCV/OpenCL** : crash au teardown → `cv2.ocl.setUseOpenCL(False)` ; bancs `ui.App` hermétiques :
+  `ui.CONFIG = {}` + `sauver_config` intercepté.
+- **Bancs : `_detecter_filtres()` se termine par `_dire()` = boîte MODALE** → patcher `ui.App._dire`
+  (`lambda self, *a, **k: None`), sinon blocage indéfini.
 
 ---
 
 ## Clôtures précédentes
 
-- **12/10/2026** : jalon 127 (v2.79.0, incl. 126) — CHROMA pour les DEUX moteurs + bancs
-  63/65 réparés ; validé M33 ; **.exe + Store (MSIX v2.71.1) + canal nul** TOUS OK ; poussé.
-- **12/10/2026** : jalon 125 (v2.77.0) — chaîne pré-étirement UNIQUE (GraXpert + débruitage
-  à l'écran pour les DEUX moteurs) ; **poussé** (`e185ffc`).
+- **12/10/2026** : jalon 128 (v2.80.0) — l'image VeraLux reste à l'écran pendant un recalcul (« Recalculs en
+  cours ») ; release GitHub PUBLIÉE (4 installateurs + `INSTALLATION.md`).
+- **12/10/2026** : jalon 127 (v2.79.0, incl. 126) — chroma pour les DEUX moteurs + bancs 63/65 réparés ;
+  validé M33 ; poussé.
+
+
+
 

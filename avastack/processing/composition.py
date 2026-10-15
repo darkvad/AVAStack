@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Compositions multi-filtres (jalon 19) : RGB, HOO, SHO, LRGB, Mono.
+"""Compositions multi-filtres (jalon 19) : RGB, HOO, SHO, LRGB, Mono, *+Ha.
 
 Rôles et mapping
 ----------------
@@ -12,6 +12,14 @@ comment ils alimentent les canaux R/G/B du composite :
   SHO   (3 dossiers) → R=S2, G=Ha, B=O3 (palette Hubble)
   RGB   (3 dossiers) → R=R, G=G, B=B
   LRGB  (4 dossiers) → R=R, G=G, B=B + luminance L (rôle OPTIONNEL)
+  RGB+Ha   (4 dossiers) → RGB + Ha FUSIONNÉ (jalon 129)
+  LRGB+Ha  (5 dossiers) → LRGB + Ha FUSIONNÉ (rôle L optionnel)
+
+Les compositions *+Ha (chantier du 15/10/2026, jalon 129) sont le SEUL cas où
+le rôle Ha n'alimente aucun canal : `canaux_rgb` ne le référence pas, il est
+FUSIONNÉ au composite APRÈS le combine L (canal rouge, et/ou luminance) —
+cf. `COMPOSITIONS_HA`. Tant que la fusion n'est pas livrée, le Ha s'empile et
+s'affiche dans l'état par rôle SANS modifier l'image.
 
 Chaîne de traitement (décisions des 18 et 24/09/2026, cf. AVANCEMENT.md) :
   normalisation LINÉAIRE par canal (percentiles) → composite LINÉAIRE BRUT
@@ -77,6 +85,13 @@ CANAUX_CFA: dict[str, Any] = {
     "O3": (1, 2),                            # OIII : vert + bleu
 }
 
+# Nombre de LIGNES (rôle + dossier) du panneau « Composition multi-filtres » =
+# le plus grand nombre de rôles d'une composition : LRGB+Ha (L, R, G, B, Ha).
+# SOURCE UNIQUE : le panneau, `app.py` (pré-remplissage, démarrage, détection
+# des filtres) et `config_ui.py` (persistance) la lisent — jamais un `range(4)`
+# recopié (c'est ce qui a limité le passage à 5 lignes au jalon 129).
+NB_LIGNES_COMPO: int = 5
+
 # Compositions : rôles attendus (ordre = ordre de saisie dans l'UI),
 # rôles optionnels, mapping vers les canaux du composite.
 COMPOSITIONS: dict[str, dict[str, Any]] = {
@@ -90,7 +105,24 @@ COMPOSITIONS: dict[str, dict[str, Any]] = {
     "LRGB": {"roles": ("L", "R", "G", "B"), "optionnels": ("L",),
              "canaux_rgb": {"R": ("R",), "G": ("G",), "B": ("B",)},
              "luminance": ("L",)},
+    # --- Jalon 129 : compositions BROADBAND + Ha ---------------------------
+    # Le rôle Ha n'alimente AUCUN canal (il n'apparaît pas dans `canaux_rgb`) :
+    # il est FUSIONNÉ au composite après le combine L (cf. `COMPOSITIONS_HA`).
+    # `optionnels` ne tolère QUE le L vide (comme LRGB) : R, G et B sont
+    # obligatoires, et le Ha AUSSI (sans lui la composition n'a plus d'objet —
+    # choisir RGB/LRGB suffit alors).
+    "RGB+Ha":  {"roles": ("R", "G", "B", "Ha"), "optionnels": (),
+                "canaux_rgb": {"R": ("R",), "G": ("G",), "B": ("B",)}},
+    "LRGB+Ha": {"roles": ("L", "R", "G", "B", "Ha"), "optionnels": ("L",),
+                "canaux_rgb": {"R": ("R",), "G": ("G",), "B": ("B",)},
+                "luminance": ("L",)},
 }
+
+# Compositions dont le rôle Ha est FUSIONNÉ au composite (et non un canal) :
+# seule source de vérité pour « cette composition a-t-elle un Ha à fusionner ? »
+# — l'interface (cadre « Fusion Ha »), l'ancre d'alignement (`_broadband_ha`)
+# et `composer()` la lisent.
+COMPOSITIONS_HA: tuple[str, ...] = ("RGB+Ha", "LRGB+Ha")
 
 MODES_L: tuple[str, ...] = ("synthetise", "degrade")   # radio « Canal L » (L vide)
 
@@ -103,6 +135,13 @@ def roles_de(composition: str) -> tuple[str, ...]:
 def roles_optionnels(composition: str) -> tuple[str, ...]:
     """Rôles qui peuvent rester vides sans bloquer la composition."""
     return COMPOSITIONS[composition]["optionnels"]
+
+
+def composition_avec_ha(composition: str) -> bool:
+    """True si le rôle Ha de cette composition est FUSIONNÉ au composite
+    (RGB+Ha, LRGB+Ha — cf. `COMPOSITIONS_HA`), par opposition à HOO/SHO où le
+    Ha est le signal d'un CANAL (et à toutes les compositions sans Ha)."""
+    return composition in COMPOSITIONS_HA
 
 # Alias usuels du mot-clé FITS FILTER (jalon 19) : N.I.N.A., APT, SGP, ASI
 # Air et les roues à filtres écrivent des graphies différentes du même
@@ -644,8 +683,14 @@ def composition_pour_roles(roles: Any) -> str | None:
     """Composition correspondant à un ensemble de rôles (jalon 19, phase 2 :
     SANS choix UI encore, le worker la déduit des dossiers configurés).
     Correspondance EXACTE d'abord ; sinon la première composition dont les
-    rôles englobent ceux fournis (ordre HOO, SHO, RGB, LRGB) — ex.
-    (« Ha »,) → HOO (O3 restera vide, canal neutre). → nom, ou None si vide."""
+    rôles englobent ceux fournis (ordre HOO, SHO, RGB, LRGB, puis les
+    compositions +Ha) — ex. (« Ha »,) → HOO (O3 restera vide, canal neutre).
+
+    Jalon 129 : les compositions +Ha sont testées EN DERNIER, sinon
+    (« Ha »,) ⊂ LRGB+Ha renverrait « LRGB+Ha » au lieu du HOO d'origine (le
+    repli à 1 rôle est un usage HISTORIQUE et documenté). Les cas nominaux
+    (« R,G,B,Ha » et « L,R,G,B,Ha ») sont servis par la correspondance EXACTE,
+    qui court-circuite ce repli. → nom, ou None si vide."""
     roles = tuple(roles)
     if not roles:
         return None
@@ -653,7 +698,7 @@ def composition_pour_roles(roles: Any) -> str | None:
         if COMPOSITIONS[nom]["roles"] == roles:
             return nom
     ens = set(roles)
-    for nom in ("HOO", "SHO", "RGB", "LRGB"):
+    for nom in ("HOO", "SHO", "RGB", "LRGB", "RGB+Ha", "LRGB+Ha"):
         if ens <= set(COMPOSITIONS[nom]["roles"]):
             return nom
     return None
