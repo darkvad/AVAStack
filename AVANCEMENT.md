@@ -6,6 +6,23 @@
 
 ---
 
+## ⚠️ BRANCHE DE DÉVELOPPEMENT ACTIVE — NE PAS SUPPRIMER JUSQU'À DEMANDE EXPLICITE
+
+**Branche : `LRGBHa`** (créée le 15/10/2026 à partir de `master`)
+
+> **RÈGLE FERME — GRAVÉE DANS LE MARBRE** : Jusqu'à nouvel ordre explicite de l'utilisateur,
+> **TOUTE** nouvelle fonctionnalité, **TOUT** développement, **TOUTE** modification de code
+> se fait **EXCLUSIVEMENT** sur la branche `LRGBHa`.
+>
+> La branche `master` ne doit **JAMAIS** être touchée directement pour de nouvelles
+> fonctionnalités.
+>
+> - `master` = branche stable, releases uniquement
+> - `LRGBHa` = branche de développement, nouvelles fonctionnalités (SEULE branche autorisée)
+> - Merge vers `master` = seulement sur validation explicite (release)
+
+---
+
 ## Session du 12/10/2026 (11) — JALON 128 (v2.80.0) : image VeraLux gardée pendant un recalcul
 
 **SESSION CLOSE** — jalon 128 livré, commité, poussé ; **release GitHub v2.80.0 PUBLIÉE**
