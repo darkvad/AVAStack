@@ -83,13 +83,49 @@ MESURER sur le fichier.
 
 ---
 
-## Historiques (trace détaillée : `avastack/__init__.py` + git log)
+## Session du 15/10/2026 — ouverture du chantier « LRGB+Ha / RGB+Ha »
 
-- **12/10/2026 — jalons 126+127 (v2.79.0)** : chroma ouverte AUX DEUX moteurs (écran ET
-  fichier ; la 3e sortie LINÉAIRE ne la contient toujours pas), bancs chroma 63/65 réparés ;
-  validé M33 ; `.exe` + Store (MSIX v2.71.1) + canal nul OK ; poussé.
-- **12/10/2026 — jalon 125 (v2.77.0)** : chaîne pré-étirement UNIQUE (GraXpert + débruitage
-  à l'écran pour les DEUX moteurs) ; poussé (`e185ffc`).
+### État actuel
+- **Aucun code écrit à ce stade.** Dossier de travail RESTAURÉ propre : l'essai non commité
+  (fusion Ha + continuum : 9 fichiers suivis modifiés + 15 non suivis) a été **MIS AU STASH**
+  (`stash@{0}`) → arbre vide, `git status` propre, `LRGBHa` = `origin/LRGBHa` (4ba477e) =
+  master + le seul commit de règle AVANCEMENT.
+- Chantier ouvert en **PLAN** : découpage proposé en jalons J0→J5 (détail dans la réponse du
+  15/10) — **en attente d'arbitrage d'Alain** avant la première ligne de code.
+
+### Fichiers modifiés dans cette phase
+- `AVANCEMENT.md` : ce bloc (traces détaillées 125 et 126-127 supprimées — leur trace vit
+  dans `avastack/__init__.py` et `git log`, conformément à la règle de taille bornée).
+- Aucun fichier de code : l'arbre est revenu à l'identique de `LRGBHa`.
+
+### Décisions prises
+- Le non commité part au **STASH** (réversible) et non à la poubelle ; `git stash drop`
+  reste disponible si Alain veut le détruire. `check_fits.py` et `test_paths.py` (utilitaires
+  hors sujet LRGB+Ha) sont partis avec : `git checkout stash@{0} -- check_fits.py`.
+- **Référence du continuum = R** (pas L : bande ~300 nm et PSF différente → halo) — à confirmer.
+- **k auto estimé sur les couches BRUTES et TRANSPORTÉ aux deux vues** : la vue « traitée »
+  recompose depuis des couches déjà filtrées par GraXpert → un k recalculé là divergerait.
+
+### Problèmes ouverts
+- **Recherche état de l'art à compléter** : le web est PARTIELLEMENT bloqué. Depuis le PC
+  d'Alain (`curl.exe` + User-Agent navigateur, sortie dans `%TEMP%`) : `astropix.com` et
+  `readthedocs.io` répondent 200 ; Cloudy Nights et Stargazers Lounge renvoient 403 ;
+  `pixinsight.com` est injoignable ; `lightvortexastronomy.com` refuse le handshake TLS.
+  Déjà lu : Lodriguss « Channel Substitution » (4 méthodes : Lab / Luminance layer / HSL /
+  HSB) — **la soustraction du continuum n'y figure pas**.
+
+### Prochaines étapes
+- Alain tranche les décisions du plan (liste des modes de fusion, référence du continuum,
+  k auto transporté, ordre fusion/combine L, ancre d'alignement, cadence des releases).
+- Puis **J1** : plomberie 5 rôles (UI + détection + persistance), sans fusion encore.
+
+### Points d'attention
+- `panels/compo.py` ET `_on_compo`/`_lire_roles_dossiers` de `app.py` sont sur **`range(4)`**
+  dans master : le passage à **5 lignes** est le premier lot de code, et
+  `bancs/_test_compo_ui_jalon19.py` **assert 4 lignes** (à mettre à jour).
+- `display.params_lissage_halos()` (8e élément `vl_compo`, déballage TOLÉRANT) est le patron
+  exact à copier pour un `params_ha()` (9e élément).
+- Ne pas oublier `installer/` : règle « plus d'un ou deux fichiers touchés → rebuild ». 
 
 ---
 
