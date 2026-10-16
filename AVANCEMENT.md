@@ -31,9 +31,11 @@
 > commiter, clôturer).
 
 ### État actuel
-- **129b COMMITÉ et POUSSÉ** (décision d'Alain, cette session) : 6 fichiers (4 code + `CLAUDE.md` +
-  `AVANCEMENT.md`) + 2 bancs (`_test_voie_a_ha_jalon129b.py`, `_diag_align_ha_reel_129b.py`). Entrée de
-  changelog **v2.81.0 étendue** (pas de bump, pas de release).
+- **129b COMMITÉ et POUSSÉ** (décision d'Alain, cette session) — commit **`cfd40d0`** sur `LRGBHa` :
+  6 fichiers (4 code + `CLAUDE.md` + `AVANCEMENT.md`) + 2 bancs (`_test_voie_a_ha_jalon129b.py`,
+  `_diag_align_ha_reel_129b.py`), 8 fichiers / +1353 −112. Entrée de changelog **v2.81.0 étendue**
+  (pas de bump, pas de release). Bancs rejoués avant le commit : **129b (7 volets) VERT** +
+  **garde-fou refactoring VERT** (pyright 0 erreur).
 - **Re-test réel du 16/10 (M33, composition `LRGB+Ha`, 441 frames, v2.81.0 + 129b non commité) : le Ha
   MONTE ENFIN** — retour d'Alain : « tout empilé à part 2 frames du rôle R ». La **voie A est VALIDÉE sur
   son point d'acceptation** (plus de ~69 % de refus sur le Ha) ; astrométrie/photo/SPCC ne sont plus
