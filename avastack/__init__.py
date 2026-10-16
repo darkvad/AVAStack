@@ -19,9 +19,51 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.81.0"
+AVASTACK_VERSION = "2.82.0"
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
+# v2.82.0 : LE COMBINE LRGB EST BORNÉ (jalon 130 — « halos et points colorés »,
+#   16/10/2026). DÉFAUT MESURÉ sur la sortie du 16/10 (M33, LRGB+Ha, 441
+#   frames) : « anneaux sombres autour des étoiles », « points colorés partout ».
+#   CAUSE NOMMÉE en rejouant 4 VRAIES COUCHES EMPILÉES (diag hors dépôt,
+#   `_diag_combine_bornes_130` + `_diag_echelle_130`) : `composer()` faisait
+#   `rgb *= L/luma` avec une garde ABSOLUE de 1e-6 et AUCUNE borne — le rapport
+#   allait de **−41,8 à 15 278** et 0,257 % des pixels étaient NÉGATIFS. TROIS
+#   causes, toutes STRUCTURELLES (indépendantes du nombre de frames) :
+#   ① `normaliser()` prend p0,25 pour POINT NOIR et ne clippe pas : 0,25 % des
+#      pixels de CHAQUE rôle sont négatifs. L négatif ⇒ rapport négatif ⇒ pixel
+#      à 0 (un point NOIR ; 18 649 px mesurés = 0,257 %) ; `lum` négative ⇒
+#      l'ancienne garde rendait 1,0 ⇒ pixel 2,5× plus CLAIR que le ciel (où le
+#      rapport vaut ~0,4 : un point CLAIR). Les deux à la fois = « partout ».
+#   ② là où `lum` frôle zéro (marges de recalage), `L / max(lum, 1e-6)` monte
+#      jusqu'à 15 278 : la garde était ABSOLUE alors que l'échelle des rôles
+#      après normalisation est de l'ordre de 10⁻¹ (le plancher doit suivre
+#      l'amplitude du RÔLE).
+#   ③ aucune borne haute (p99,9 mesuré = 4,66).
+#   CORRECTIF (`processing/composition.py`, `_ratio_combine`) : le rapport n'est
+#   calculé que dans un DOMAINE de significativité (au-dessus de
+#   `PLANCHER_RATIO_FRAC` = 3e-4 × l'amplitude p99,7−p0,25 de chaque rôle),
+#   ÉCRÊTÉ dans [RATIO_L_MIN 0 ; RATIO_L_MAX 5] — et HORS DOMAINE il prend la
+#   MOYENNE LOCALE du rapport (convolution normalisée `blur(ratio)/blur(domaine)`,
+#   σ = `REPLI_RATIO_SIGMA` 1,5 px), seul estimateur qui garde le niveau et la
+#   couleur du voisinage (écrire 1,0 ou 0 fabriquait un point clair ou noir).
+#   MESURÉ sur les mêmes couches : 0,37 à 0,6 % des pixels changent, les extrêmes
+#   du composite tombent de **1046 à 19,6**, les pixels éteints de 0,501 % à
+#   0,246 % (il ne reste que les négatifs propres aux rôles normalisés, que le
+#   combine n'ajoute plus), et le halo légitime du 117c (~3) n'est PAS touché
+#   (métrique anneau/cœur inchangée, 7 px sur 65 536 au plafond). Cas NOMINAL
+#   (aucun pixel hors domaine) : le calcul reste la division seule, donc le
+#   composite est INCHANGÉ AU BIT (vérifié) ; 129b/J1 restent intacts.
+#   FICHE DE RENDU : `_fiche_chaine()` émet désormais une étape « combine LRGB
+#   (rapport L/luma borne) » EN TÊTE, portant le plafond, le plancher RELATIF et
+#   l'état du lissage — la fiche était MUETTE sur les deux (seul l'en-tête
+#   `AVACOMPO` les portait), ce qui a fait croire le 16/10 que la case « Lisser
+#   le combine LRGB » était décochée alors qu'elle était cochée.
+#   Banc neuf `bancs/_test_combine_borne_jalon130.py` (8 volets : échelle réelle,
+#   bornes, les 4 pièges — dont le bord de recalage —, cas nominal au bit,
+#   plancher relatif, non-régression 117c, garde-fous, fiche). PAS de release :
+#   le jalon est à VALIDER EN RÉEL (re-test M33 LRGB+Ha demandé au mainteneur).
+
 # v2.81.0 : COMPOSITIONS « RGB+Ha » ET « LRGB+Ha » (jalon 129, chantier Ha,
 #   VOLET 1/5 — 15/10/2026). Le rôle Ha peut désormais être SECONDAIRE dans une
 #   composition broadband : « RGB+Ha » (R, G, B, Ha) et « LRGB+Ha » (L, R, G, B,

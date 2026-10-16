@@ -1369,11 +1369,97 @@ ce qui manquait n'était pas une correction mais une MESURE.
   ⚠ Le défaut est PRÉEXISTANT (déjà présent le 14/10 en v2.80.3, fichier que le
   mainteneur avait nommé « points_colores ») — il n'est PAS imputable à la voie A
   du Ha (129b).
-- **UN BANC DE COMBINE NE VAUT QUE PAR SON ÉCHELLE** : la scène du banc jalon 67
-  (ciel 0,03 / cœur 0,5, rapport 17) NE REPRODUIT NI les anneaux NI les extrêmes
-  du combine LRGB ; il faut l'échelle RÉELLE (ciel normalisé ~10⁻³ / cœur 10-27,
-  rapport 10⁴) ET des COUCHES RÉELLES (l'alignement et les PSF par filtre font
-  partie du mécanisme). Leçon de la série du 16/10/2026.
+- **UN BANC DE COMBINE NE VAUT QUE PAR SON ÉCHELLE** (leçon du 16/10/2026,
+  CHIFFRÉE le 16/10/2026 au jalon 130 sur 8 brutes empilées par rôle, cadre du
+  test M33 — `_diag_echelle_130`) : la scène du banc jalon 67 (ciel 0,03 /
+  cœur 0,5, rapport 17) NE REPRODUIT NI les anneaux NI les extrêmes du combine
+  LRGB. L'échelle RÉELLE, dans l'espace NORMALISÉ par rôle : le point noir
+  p0,25 tombe à **2,81 σ_bruit sous le ciel** (propriété des percentiles, pas
+  du ciel), l'amplitude (p99,7 − p0,25) vaut **≈ 10,5 σ**, donc **le ciel est à
+  20-27 % de l'amplitude** (mesuré : 0,205 pour `luma`, 0,268 pour le canal G),
+  les cœurs montent à **≈ 28 × l'amplitude** (contraste ciel→cœur ≈ 133×) et
+  **0,25 % des pixels de CHAQUE rôle sont NÉGATIFS** (conséquence directe de
+  p0,25 = point noir). Le bruit du RAPPORT est donc énorme au ciel (~50 %), et
+  le rapport L/luma y vaut **0,406** — TRÈS loin de 1,0 (les ciels des rôles
+  n'ont pas le même niveau), ce qui rend tout repli « 1,0 » VISIBLE. Il faut
+  AUSSI des COUCHES RÉELLES (l'alignement et les PSF par filtre font partie du
+  mécanisme).
+- **LE RAPPORT L/luma DOIT ÊTRE CALCULÉ DANS UN DOMAINE, BORNÉ, ET REPLIÉ SUR
+  LA MOYENNE LOCALE** (MESURÉ le 16/10/2026, jalon 130 ; CORRIGÉ en v2.82.0).
+  `rgb *= L/luma` sur des images NORMALISÉES PAR RÔLE fabrique TROIS familles de
+  « points », toutes STRUCTURELLES (elles ne disparaissent JAMAIS en empilant
+  plus) : ① p0,25 = point noir SANS clip ⇒ L négatif = rapport négatif = point
+  NOIR, et `lum` négative = ancienne garde 1,0 = point 2,5× CLAIR ; ② `lum`
+  frôlant zéro (marges de recalage) ⇒ rapport jusqu'à **15 278** (la garde 1e-6
+  est ABSOLUE alors que l'échelle des rôles est de l'ordre de 10⁻¹) ; ③ aucune
+  borne haute. Mesures sur la sortie du 16/10 : composite à **+1292 / −467**,
+  B écrêté à 1,0 sur 0,582 %, G au plancher sur 0,93 %, écart inter-canal > 0,1
+  sur 18,1 %, corr(R,B) = −0,06. CORRECTIF (`_ratio_combine`,
+  `processing/composition.py`) : le rapport n'est calculé que si `lum` ET `L`
+  dépassent `PLANCHER_RATIO_FRAC` (3e-4) × l'amplitude du rôle, il est écrêté
+  dans [0 ; 5], et HORS DOMAINE il prend la MOYENNE LOCALE du rapport
+  (convolution NORMALISÉE `blur(ratio)/blur(domaine)`, σ = 1,5 px) : écrire 1,0
+  OU 0 fabriquerait un point (le rapport vaut 0,4 au ciel). Résultat mesuré sur
+  les MÊMES couches : 0,37-0,6 % des pixels changent, extrêmes **1046 → 19,6**,
+  pixels éteints 0,501 % → 0,246 % ; le cas NOMINAL (aucun pixel hors domaine)
+  reste la division seule, donc INCHANGÉ AU BIT. La scène du banc doit donc
+  contenir les QUATRE pièges (trou RGB à `lum` = 2e-4, L < 0, `lum` < 0, bord de
+  recalage à 1,1e-6) — c'est ce que fait
+  `bancs/_test_combine_borne_jalon130.py` (8 volets).
+- **LE PLAFOND DE 5 NE DOIT PAS RÉTRÉCIR LE HALO DU 117c** (MESURÉ le
+  16/10/2026) : ce halo légitime monte à ~3 (anneau/cœur ×2,8 à ×3,1), le p99,9
+  du rapport vaut 4,66 → un plafond de 5 ne touche que 0,09 % des pixels (7 px
+  sur 65 536 au banc) et laisse la métrique anneau/cœur INCHANGÉE (vérifié :
+  composite identique avec et sans plafond pour la métrique). Un plafond plus
+  bas (2 ou 3) mordrait le halo et changerait 2-4× plus de pixels.
+- **UN RÉGLAGE QUI CHANGE LE COMPOSITE LINÉAIRE DOIT ÊTRE DANS LA FICHE DE
+  RENDU** (leçon du 16/10/2026, appliquée au jalon 130) : `_fiche_chaine()`
+  n'émettait AUCUNE étape pour le combine LRGB (ni ses bornes, ni le lissage du
+  117d) — seul l'en-tête `AVACOMPO` du fichier LINÉAIRE les portait, ce qui a
+  fait conclure à tort le 16/10 que la case « Lisser le combine LRGB » était
+  décochée alors qu'elle était cochée. Depuis le jalon 130 la fiche COMMENCE par
+  « combine LRGB (rapport L/luma borné) » avec `plafond_ratio`,
+  `plancher_ratio_relatif`, `lissage_halos` et `seuil_masque_sigma`. Corollaire
+  (déjà écrit plus haut) : un JSON muet sur un réglage n'est JAMAIS une preuve
+  qu'il était inactif — on MESURE.
+- **LES DOSSIERS DE NUIT MÉLANGENT LES DEUX CÔTÉS DU MÉRIDIEN — ET L'ALIGNEUR
+  LES GÈRE** (MESURÉ le 16/10/2026 sur les dossiers M33 du 22/09, `_diag_meridien_130b`) :
+  les en-têtes NINA portent `PIERSIDE` et CHAQUE dossier de filtre contient
+  **East ET West** (et jusqu'à TROIS nuits : 13/09 → 23/09). **40-50 % des
+  frames sont à θ ≈ 177°**, l'aligneur les **pivote** (176,98-177,06°, corrélation
+  0,80-0,82 après recalage vs 0,85-0,91 pour les mêmes nuits) et la ligne
+  « Δ=(+3914, +2079) px » de la barre d'état est NORMALE : une rotation de 177°
+  donne une matrice à grand décalage alors que la zone couverte recouvre encore
+  ~95 % du cadre (les coins tournent autour du centre). ⚠ Ne PAS conclure d'un Δ
+  énorme que « les frames ne sont pas pivotées » : **regarder l'ANGLE** (et le
+  recadrage, qui suit l'intersection des quadrilatères, `cadre_intersection`).
+  Une frame dont l'intersection est VIDE (`_clip_poly` → None) est **ignorée par
+  le recadrage MAIS quand même empilée** — c'est le seul cas où des zéros
+  entreraient dans le composite (jamais observé ici).
+- **LES PIXELS CHAUDS SONT RÉELS MAIS LA REJECTION LES ÉLIMINE (97 %)** (MESURÉ
+  le 16/10/2026, `_diag_hotpixels_130e`) : une brute R du QHY MiniCam8M porte
+  **~4 000 pixels aberrants** (≥ 8 σ de leur voisinage, isolés) dont **~2 135 à
+  position FIXE** dans la moitié des frames (vus sur trois nuits, répartis
+  uniformément, PAS au bord) — un vrai défaut de capteur. **MAIS après le vrai
+  chemin (StarAligner puis `LiveStacker` kappa 2,6 / fenêtre 8), 97 % ont
+  disparu** : l'alignement les DÉCALE, ils deviennent donc des valeurs aberrantes
+  rejetées. ⇒ aucun filtre cosmétique n'est nécessaire, et **il ne faut PAS
+  accuser l'empilement d'une traînée de points avant de l'avoir mesuré**.
+  ⚠ Piège de MÉTHODE : `medianBlur` change de noyau au ras des bords et fabrique
+  de FAUX aberrants sur les 3 premières lignes (mesuré : les « positions les plus
+  persistantes » y étaient TOUTES) — poser une marge de 6 px avant de compter.
+- **LE GRAIN COLORÉ EST MESURABLE, ET C'EST LUI QUI FAIT LES « TACHES »** (MESURÉ
+  le 16/10/2026, `_diag_grain_130f`) : sur la sortie réelle, l'écart-type du
+  PASSE-HAUT par canal donne R/G/**B** = 0,0035/0,0025/**0,0047** en équilibrage
+  (B/G = **1,93**) et 0,0031/0,0026/**0,0095** avec la SPCC (**B/G = 3,68**), avec
+  plus de 3 % d'écart local sur 4,8 % des pixels en B contre 2,4 % en G. Cause :
+  l'INTÉGRATION (B = 20 × 120 s = 40 min contre L 147 × 60 s = 147 min) — et
+  l'amplification par la SPCC. ⇒ pour analyser des « points colorés » : mesurer le
+  grain par canal AVANT d'accuser le combine, l'alignement ou l'empilement ; et
+  savoir que **la SPCC APPLIQUE ses coefficients même quand elle avertit que sa
+  pente sort de [0,5 ; 1,5]** (ici R/G 0,687 et B/G 0,377 : le grain bleu est
+  alors multiplié par ~1,9 de plus que le vert et la nébuleuse sort BLEUE).
+
 
 
 

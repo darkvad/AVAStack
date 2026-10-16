@@ -336,6 +336,87 @@ SEUIL_MASQUE_MAX: float = 100.0
 LIMITE_MASQUE_PX: int = 60
 DILAT_MASQUE_FWHM: float = 1.5
 
+# --- BORNES DU RAPPORT L/luma (jalon 130, v2.82.0) ---------------------------
+# MESURÉ le 16/10/2026 sur de VRAIES COUCHES EMPILÉES (M33, 4 rôles, cadre du
+# test réel) : la formule du 117c laisse le rapport aller de **−41,8 à 15 278**
+# et 0,257 % des pixels NÉGATIFS — le composite sortait à +1292 / −467 (mesuré
+# le même jour) et c'est CE mécanisme qui, après étirement, fait les « points
+# colorés » et les anneaux sombres de l'image finale. TROIS causes, toutes
+# STRUCTURELLES (elles ne dépendent pas du nombre de frames) :
+#   ① `normaliser()` prend p0,25 pour POINT NOIR et ne clippe pas : 0,25 % des
+#      pixels de CHAQUE rôle sont donc NÉGATIFS. L négatif ⇒ rapport négatif ⇒
+#      pixel à 0 (un point noir, mesuré : 18 649 px = 0,257 %) ; `lum` négative
+#      ⇒ l'ancienne garde rendait 1,0 ⇒ pixel 2,5× plus CLAIR que le ciel (où
+#      le rapport vaut ~0,4) : un point clair. Les deux à la fois = « partout ».
+#   ② là où `lum` frôle zéro (bord de recalage), `L / max(lum, 1e-6)` monte
+#      jusqu'à 15 278 : la garde 1e-6 est ABSOLUE alors que l'échelle des rôles
+#      après normalisation est de l'ordre de 10⁻¹.
+#   ③ rien ne bornait la queue haute (p99,9 mesuré = 4,66).
+# Le correctif ci-dessous ne change que 0,37 % des pixels (mêmes couches) et
+# ramène les extrêmes du composite de **1046 à 19,6**.
+def _amplitude(img: np.ndarray) -> float:
+    """Amplitude robuste d'un rôle : p99,7 − p0,25 — la MÊME métrique que la
+    normalisation par rôle, donc exactement l'échelle sur laquelle les canaux
+    ont été normalisés. Sous-échantillonnée (coût constant en 16 Mpx)."""
+    lo, hi = bornes_normalisation(np.asarray(img, dtype=np.float32))
+    return float(hi - lo)
+
+
+# Plancher de SIGNIFICATIVITÉ, en fraction de l'amplitude du rôle : en dessous,
+# L et `lum` ne portent pas de signal mesurable et leur rapport n'a pas de sens.
+PLANCHER_RATIO_FRAC: float = 3.0e-4
+# ⚠ VALEUR MESURÉE, et peu sensible : 1e-4, 3e-4 et 1e-3 donnent le MÊME
+# résultat chiffré sur les couches réelles (les pixels en cause sont à ~1e-5 de
+# l'amplitude) — on prend la valeur médiane. Ce plancher reste TRÈS en dessous du
+# niveau de ciel (~0,2 de l'amplitude) : il ne coupe que le bruit de fond, pas la
+# nébuleuse.
+RATIO_L_MIN: float = 0.0          # un rapport NÉGATIF est absurde (produit négatif)
+RATIO_L_MAX: float = 5.0          # plafond : au-dessus du p99,9 mesuré (4,66) et
+# au-dessus du halo légitime du 117c (~3) — le plafond ne touche donc que la queue
+# pathologique (0,09 % des pixels, qui montaient avant jusqu'à 15 278).
+REPLI_RATIO_SIGMA: float = 1.5    # σ (px) de la MOYENNE LOCALE du rapport hors domaine
+
+
+def _ratio_combine(L: np.ndarray, lum: np.ndarray) -> np.ndarray:
+    """Rapport L/luma du combine LRGB, **BORNÉ** (jalon 130, v2.82.0).
+
+    Le rapport n'a de sens que là où L ET `lum` portent du signal : on ne le
+    calcule donc que dans ce DOMAINE (au-dessus de `PLANCHER_RATIO_FRAC` ×
+    l'amplitude de chaque rôle), et on le borne à [RATIO_L_MIN, RATIO_L_MAX].
+    Sans ce domaine, un pixel à `lum ≈ 0` ou à L négatif fabriquait un extrême
+    (jusqu'à 15 278) : c'est la cause MESURÉE des points colorés et des anneaux
+    sombres de la sortie du 16/10/2026 (cf. le bloc de constantes ci-dessus).
+
+    HORS DOMAINE, on n'écrit ni 0 ni 1,0 mais la **moyenne LOCALE** du rapport
+    (convolution normalisée `blur(ratio) / blur(domaine)`, σ =
+    `REPLI_RATIO_SIGMA`) : le seul estimateur qui garde le niveau et la couleur
+    du voisinage. Écrire 1,0 rendrait 2,5× trop clairs les pixels de ciel (le
+    rapport y vaut ~0,4) et 0 les rendrait noirs — les deux sont des « points ».
+    Là où aucune moyenne locale n'existe (zone entièrement hors domaine, bord
+    noir d'un recalage), on rend 1,0 (= aucune action du combine).
+
+    Cas NOMINAL (aucun pixel hors domaine) : le calcul est exactement celui
+    d'avant (une seule division), donc le composite reste INCHANGÉ au bit."""
+    if lum.ndim != 2 or L.ndim != 2:
+        # Entrée NON-IMAGE (1-D, hors du chemin de l'application) : le repli
+        # local est un flou, il n'a pas de sens ici — on se borne à ÉCRÊTER le
+        # rapport (et on ne lève JAMAIS d'exception).
+        return np.clip(L / np.maximum(lum, 1e-6), RATIO_L_MIN,
+                       RATIO_L_MAX).astype(np.float32)
+    lim = max(PLANCHER_RATIO_FRAC * _amplitude(lum), 1e-6)
+    lim_L = max(PLANCHER_RATIO_FRAC * _amplitude(L), 1e-6)
+    dedans = (lum > lim) & (L > lim_L)
+    if bool(dedans.all()):
+        return np.clip(L / lum, RATIO_L_MIN, RATIO_L_MAX).astype(np.float32)
+    ratio = np.where(dedans, L / np.maximum(lum, lim), 0.0)
+    poids = cv2.GaussianBlur(dedans.astype(np.float32), (0, 0),
+                             REPLI_RATIO_SIGMA)
+    moy = cv2.GaussianBlur(ratio, (0, 0), REPLI_RATIO_SIGMA)
+    repli = np.where(poids > 1e-6, moy / np.maximum(poids, 1e-6), 1.0)
+    return np.clip(np.where(dedans, ratio, repli), RATIO_L_MIN,
+                   RATIO_L_MAX).astype(np.float32)
+
+
 
 def _lisser_ratio(ratio: np.ndarray, sigma: float) -> np.ndarray:
     """Flou gaussien ISOTROPE du ratio de luminance L/luma (jalon 117c), σ en
@@ -595,9 +676,20 @@ def composer(canaux: Any, composition: str, bornes: Any = None,
             L = _luma(rgb)
         if L is not None:
             lum = _luma(rgb)
-            ratio = np.where(lum > 1e-6,
-                             L / np.maximum(lum, 1e-6),
-                             1.0).astype(np.float32)
+            if l_du_dossier:
+                # Jalon 130 (v2.82.0) : le rapport est BORNÉ (plancher de
+                # significativité RELATIF à l'échelle du rôle, jamais négatif,
+                # repli sur la moyenne locale hors domaine) — c'est ce qui
+                # supprime les « points colorés » et les anneaux sombres
+                # mesurés sur la sortie du 16/10/2026 (rapport de −41,8 à
+                # 15 278 avant, cf. `_ratio_combine`).
+                ratio = _ratio_combine(L, lum)
+            else:
+                # « L synthétisé » : ratio ≡ 1 (identité, aucun calcul).
+                ratio = np.where(lum > 1e-6,
+                                 L / np.maximum(lum, 1e-6),
+                                 1.0).astype(np.float32)
+
             # Jalon 117c : un L VENU DU DOSSIER a une PSF plus large que celle
             # du RGB → son rapport brut AMPLIFIE les ailes des étoiles (anneau
             # coloré). On LISSE le ratio À L'ÉCHELLE DES ÉTOILES, mais SEULEMENT

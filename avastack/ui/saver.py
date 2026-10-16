@@ -253,7 +253,16 @@ class Saver:
                 corr_wb_force=float(getattr(st, "wb_force", 1.0)),
                 corr_cadre=getattr(st, "cadre", None),
                 corr_fit=bool(getattr(st, "linear_fit", False)),
-                corr_fit_mode=getattr(st, "linear_fit_mode", "offset"))
+                corr_fit_mode=getattr(st, "linear_fit_mode", "offset"),
+                # Jalon 130 : le COMBINE LRGB de la composition (et son lissage
+                # du 117d, OPT-IN) entre dans le composite LINÉAIRE écrit — la
+                # fiche de rendu doit donc le DIRE (seul l'en-tête AVACOMPO le
+                # portait, et c'est ce silence qui a fait croire le 16/10 que la
+                # case était décochée alors qu'elle était cochée).
+                compo_combine=("luminance" in composition_mod.COMPOSITIONS.get(
+                    str(getattr(st, "composition", "")), {})),
+                compo_lissage=bool(getattr(st, "lissage_halos", False)),
+                compo_seuil=getattr(st, "seuil_masque_halos", None))
         return reglages
 
     # ============================================================= fiche de rendu
@@ -359,6 +368,16 @@ class Saver:
             e.update({k: v for k, v in params.items() if v is not None})
             etapes.append(e)
 
+        # Jalon 130 : le COMBINE LRGB vient EN TÊTE — c'est lui qui FABRIQUE le
+        # composite linéaire que toute la chaîne reçoit. Deux informations y sont
+        # portées : les BORNES du rapport L/luma (toujours actives, jalons 130)
+        # et le LISSAGE du 117d (OPT-IN). Sans cette étape, la fiche était MUETTE
+        # sur les deux — seul l'en-tête `AVACOMPO` les portait.
+        ajoute("combine LRGB (rapport L/luma borne)", r.get("compo_combine"),
+               lissage_halos=r.get("compo_lissage"),
+               seuil_masque_sigma=r.get("compo_seuil"),
+               plafond_ratio=composition_mod.RATIO_L_MAX,
+               plancher_ratio_relatif=composition_mod.PLANCHER_RATIO_FRAC)
         ajoute("recadrage", bool(r.get("corr_cadre")), cadre=r.get("corr_cadre"))
         ajoute("gradient GraXpert live", r.get("vl_graxpert"),
                commande=r.get("vl_graxpert_cmd"))
