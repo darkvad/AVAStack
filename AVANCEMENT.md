@@ -1,4 +1,4 @@
-# AVANCEMENT.md — mémoire de travail à court terme
+﻿# AVANCEMENT.md — mémoire de travail à court terme
 
 (Complète CLAUDE.md. **Gardé LÉGER** : le changelog détaillé vit dans
 `avastack/__init__.py` — ici, seul le DERNIER jalon reste détaillé, sa trace
@@ -23,87 +23,114 @@
 
 ---
 
-## Session du 15/10/2026 — J1 testé EN RÉEL : le Ha est REFUSÉ à l'alignement (→ 129b)
+## Session du 16/10/2026 — ⏹ SESSION CLOSE — re-test 129b validé (alignement) + DÉFAUT D'IMAGE NOMMÉ (combine LRGB) — 129b COMMITÉ ET POUSSÉ
 
-**J1 (v2.81.0) est COMMITÉ** sur `LRGBHa` en **checkpoint** (plomberie seule, correctifs
-non appliqués) ; **le test réel l'invalide en l'état** (rôle Ha quasi vide). Cette session
-porte **129b** (banc + rejeu réel → les 4 correctifs), qui suivra en SECOND commit.
+> **CLÔTURE.** Décision d'Alain : « Lisser le combine LRGB » **était déjà cochée** (la fiche ne le dit pas —
+> voir le piège ci-dessous) ; **129b est COMMITÉ et POUSSÉ** sur `LRGBHa` ; le jalon « halos et points
+> colorés » (combine LRGB) est OUVERT mais **RIEN N'A ÉTÉ CODÉ** (consigne explicite : prendre connaissance,
+> commiter, clôturer).
 
 ### État actuel
-- Compositions `RGB+Ha` / `LRGB+Ha` déclarées : **5 lignes** rôle+dossier, ancre **broadband**
-  (`_broadband_ha()`), **aucune fusion** appliquée (composite identique AU BIT, banc 129 vert).
-- **Test réel M33, deux relevés** du même empilement (~30 min d'écart) :
-  - (1) `Frames 57` = L14 · R14 · G14 · B14 · **Ha 1** · `Archive 69` · `non alignées 12` → **astrométrie BLOQUÉE** ;
-  - (2) `Frames 118` = L30 · R30 · G29 · B20 · **Ha 9** · `Archive 138` · `non alignées 20` · `floues 1` →
-    astrométrie + SPCC ont fonctionné. **Dossier Ha = 40 frames ⇒ ~69 % de REFUS sur le Ha.**
-- **Le verrou de l'astrométrie est CONFIRMÉ en réel** : elle s'est débloquée pile quand `Ha` a atteint 3.
+- **129b COMMITÉ et POUSSÉ** (décision d'Alain, cette session) : 6 fichiers (4 code + `CLAUDE.md` +
+  `AVANCEMENT.md`) + 2 bancs (`_test_voie_a_ha_jalon129b.py`, `_diag_align_ha_reel_129b.py`). Entrée de
+  changelog **v2.81.0 étendue** (pas de bump, pas de release).
+- **Re-test réel du 16/10 (M33, composition `LRGB+Ha`, 441 frames, v2.81.0 + 129b non commité) : le Ha
+  MONTE ENFIN** — retour d'Alain : « tout empilé à part 2 frames du rôle R ». La **voie A est VALIDÉE sur
+  son point d'acceptation** (plus de ~69 % de refus sur le Ha) ; astrométrie/photo/SPCC ne sont plus
+  freinées par le Ha. **129b-A reste NON COMMITÉ.**
+- **MAIS l'image finale n'est pas utilisable** (FITS + PNG + fiche `M 33_LRGBHa 2.81.0.*`, 16/10 11:16) :
+  **anneaux sombres autour des étoiles**, **« points colorés » partout**, fond bleu.
+- **CAUSE NOMMÉE PAR LA MESURE : le COMBINE LRGB de `composer()`** (`ratio = L/luma` puis
+  `rgb *= ratio`, `processing/composition.py:596-614`). **PAS imputable à 129b** : le diff 129b ne touche
+  que le RÔLE Ha (le broadband est inchangé) et le MÊME défaut existait le 14/10 en v2.80.3 — dans un
+  fichier qu'Alain avait déjà nommé `M 33_LRGBHa_points_colores.fits`.
 
-### Fichiers modifiés dans cette phase (lot 129 — COMMITÉ en checkpoint)
-- `processing/composition.py` : `NB_LIGNES_COMPO` (5, source unique), `COMPOSITIONS_HA`,
-  `composition_avec_ha()`, les 2 compositions nouvelles, repli `composition_pour_roles` (+Ha en DERNIER).
-- `ui/panels/compo.py` (5 lignes) · `ui/app.py` (`range(4)` → `NB_LIGNES_COMPO`, `_maj_compo_info`,
-  `_broadband_ha()` NEUF + `_narrowband_ha()` excluant les +Ha) · `ui/config_ui.py` (5 lignes) ·
-  `cameras/multifolder.py` (« 1 à 5 ») · `avastack/__init__.py` (version 2.81.0 + changelog 129).
-- `bancs/_test_compo_5roles_jalon129.py` (NEUF, 5 volets) · `bancs/_test_compo_ui_jalon19.py` (4 → 5 lignes).
+### Fichiers modifiés / produits dans cette phase
+- **AUCUN fichier de code modifié** (session de DIAGNOSTIC). Les 6 fichiers + 2 bancs de 129b restent NON
+  COMMITÉS, tels quels.
+- `CLAUDE.md` : 2 leçons durables ajoutées (§ combine LRGB du jalon 117) — le rapport `L/luma` **brut**
+  est NON BORNÉ et NÉGATIF, il fabrique les points colorés ET les anneaux noirs ; un banc de combine ne
+  vaut que par son ÉCHELLE (ciel 0,03/cœur 0,5 ne reproduit rien).
+- Diagnostics (hors dépôt, `C:\Astro\test\`) : `_diag_image1..7_129b.py` (image finale + comparaison de
+  toutes les sorties du banc d'essai), `_diag_chroma_129b.py`, `_diag_anneaux_rejeu_129b.py` (GraXpert +
+  NLM par couche), `_diag_composer_rejeu_129b.py` (4 vraies couches → `composer()`), `_diag_extremes_129b.py`
+  (origine des extrêmes). **À CONSOLIDER EN UN SEUL BANC** quand le jalon s'ouvrira.
 
 ### Mesures / faits vérifiés (rejouables)
-- **Les refus SONT des refus d'ALIGNEMENT** : `bad_frames` n'est incrémenté QUE là (`worker.py:1129`) ;
-  `Archive − Frames = refus` (138 − 118 = 20). Les frames FLOUES sont comptées à part et rejetées
-  **avant** l'archivage (`worker.py:992`), d'où leur absence des 138.
-- **`triangles_seuls` = False en LRGB+Ha** : `worker.py:1096` → `self._narrowband_ha()`, et J1 a **EXCLU**
-  les compositions +Ha de ce prédicat ⇒ **l'ORB passe en premier**. Or le projet a MESURÉ au jalon 21
-  qu'ORB « s'apparie mal d'un filtre à l'autre » (**86 refus** en début de session SHO) — la correction fut
-  de SAUTER l'ORB. Ligne d'état passée par `phase` (relevé 1) puis `triangles` (relevé 2) : l'alignement
-  VIT dans les replis.
-- **Cas INÉDIT** : en HOO/SHO l'ancre EST la brute Ha (le Ha n'est jamais aligné contre un autre filtre) ;
-  en LRGB+Ha (ancre broadband, choix J1) **le Ha est le SEUL rôle aligné en INTER-FILTRES**. Réponse
-  mesurée à la question d'Alain du 15/10 (« espérons que ça n'empêche pas d'aligner le Ha ») : **oui, ça gêne**.
-- **Le Ha n'entre PAS dans la SPCC** (prouvé DEUX fois) : bandes lues **par clé** (`spcc.py:812` et `548`),
-  couches **BRUTES** (`moyennes()`, `composition.py:939-951`), conversion des gains par `canaux_rgb`
-  (`composition.py:984-991`) — où le Ha n'apparaît pas.
-- **Fond BLEU = SPCC appliquée hors modèle** : R ×0.2735 / G ×0.3550 / B ×1.0000 (l'appli AVERTIT :
-  B/G 0.327 hors [0,5 ; 1,5]). Le remède DÉJÀ MESURÉ du projet (SPCC + Linear Fit = fond NEUTRE,
-  `composition.py:1070-1072`) est neutralisé par `linear_fit_mode = "offset"`, qui force `gains = 1.0`
-  (`stacking.py:205-207`) ⇒ **aucun rééchelonnement** : le facteur SPCC reste en place.
+- **Sortie du 16/10 contre tout le banc d'essai** (`_diag_image7_129b.py`, 18 fiches FITS+JSON) : pixels à
+  écart inter-canal > 0,1 = **18,1 %** (5-6 % partout ailleurs) ; **B écrêté à 1,0 = 0,582 %** (0,01-0,10 %
+  avant) ; **G au PLANCHER exact 0,0010 = 0,93 %** (l'ancien défaut était un plancher à 0,0) ;
+  **corr(R,B) = −0,06** (les canaux ne portent plus la même image) ; géométrie des zones fautives =
+  **anneaux** (bord rempli 0,14-0,25) de 40-48 px autour des étoiles, plus des points isolés de 1 px.
+- **GraXpert live PAR COUCHE est INNOCENT** (`_diag_anneaux_rejeu_129b.py`, vraie brute G, **commande exacte**
+  du test) : creux r 3..12 px = **0,999**, **aucun négatif**, profil de l'étoile préservé (20,6 → 2,7 → 1,0).
+- **NLM (force 1,0) par couche INNOCENT** : creux **1,010**, profil inchangé.
+- **Chroma INNOCENTE** (`_diag_chroma_129b.py`, scène fidèle ciel 0,001 / cœur 10, rapport 10⁴) : correction
+  ≤ 1 % dans les ailes, aucun extrême créé ; à l'échelle du banc 67 (ciel 0,03 / cœur 0,5) l'effet est nul
+  aussi. *(Warning `overflow in power` de `_poids_structure` : bénin, poids → 0, mais à nettoyer.)*
+- **`composer()` REJOUÉ sur 4 vraies couches** (une brute par rôle L/R/G/B de la nuit du 22/09, alignées par
+  le vrai `StarAligner`, recadrées au cadre du test) :
+  **anneau ×2,8 à r ≈ 8-10 px** autour de l'étoile quand la case « Lisser le combine LRGB » est DÉCOCHÉE
+  (`sigma_l=0`, le réglage du test) — creux R/G/B = 1,195/1,099/1,095 ; **il DISPARAÎT avec le lissage**
+  (`sigma_l=None`) — creux 0,982/1,019/0,921 et profil monotone. C'est le mécanisme du jalon 117c, reproduit
+  au chiffre près (« halo ×2,8 »).
+- **Le rapport `L/luma` est NON BORNÉ, et même NÉGATIF** : mesuré **max 110,1**, p99,99 = 4,29, 0,54 % des
+  pixels > 2, **min −1,037** (la normalisation par rôle `(a − p0,25)/(p99,7 − p0,25)`, SANS clip, laisse L et
+  `luma(rgb)` de signes opposés). Sur le composite : R **−36..425**, G **−467..15**, B **−0,33..1292** —
+  alors que le MÊME composite **SANS** la couche L reste sain (R −0,17..26,9, G −0,20..28,5, B −0,18..21,9).
+  ⇒ **les extrêmes qui deviennent, après étirement et écrêtages, les points colorés et les anneaux noirs
+  viennent TOUS du combine LRGB** (pas d'un outil externe, pas du débruitage, pas de la chroma).
 
 ### Décisions prises
-- **J1 COMMITÉ** sur `LRGBHa` en **checkpoint « plomberie seule »** (option A, Alain 15/10/2026) :
-  bancs 129/19 + garde-fou verts (pyright 0 erreur) ; **129b suivra en second commit** et étendra
-  l'entrée v2.81.0 (pas de bump) ; **aucune release** tant que le Ha n'est pas utilisable.
-- **J1 NON validé en l'état** ; **J2 n'est PAS démarré** : fusionner 1 frame Ha serait inobservable.
-- **129b = préalable à J2** : (1) séparer l'**ANCRE** (broadband, inchangée) de la **MÉTHODE**
-  (`triangles_seuls = True` dès qu'un Ha est fusionné) ; (2) exclure le Ha **FUSIONNÉ** de
-  `profondeur_min()` (en HOO/SHO le Ha reste un CANAL, donc il continue de compter) ; (3) compteur de
-  refus **PAR RÔLE** (aujourd'hui `bad_frames` est GLOBAL, `worker.py:720`) ; (4) libellé « frames par
-  rôle » de la SPCC (il affiche le MIN = le Ha, un rôle que la SPCC ne mesure PAS).
-- **Pas de correctif non mesuré** : le diagnostic doit passer par un **rejeu hors-ligne des vraies frames
-  L/G + Ha** dans le vrai aligneur (méthode des jalons 116/117), `triangles_seuls` False vs True.
+- **129b-A est VALIDÉ sur son point d'acceptation** (le rôle Ha n'est plus refusé, 441 frames empilées,
+  2 refus en R seulement) — **son commit reste à l'accord d'Alain** : l'image n'est pas exploitable tant que
+  le combine LRGB n'est pas réglé.
+- **Périmètre 129b INCHANGÉ** : voie A + 3 correctifs + banc neuf. **Aucun correctif de code n'a été écrit
+  cette session** (règle « pas de correctif non mesuré » + « demander avant de démarrer le jalon suivant »).
+- **J2 (fusion Ha) NON DÉMARRÉ** : il reste derrière la décision sur le combine LRGB.
 
 ### Problèmes ouverts
-- **Raison EXACTE du refus Ha** non encore nommée sur les frames réelles → objet du rejeu de 129b.
-- `B: 20` contre L30 / R30 / G29 : dossier plus court (probable) ou refus caché ? à confirmer.
-- **L'aligneur n'écrit RIEN au journal** (`%APPDATA%\AVAStack\journal.txt` ne porte que `démarrage`,
-  `astrométrie` [configuration] et `étape`) — hérité 116-118, toujours vrai : c'est ce qui a rendu le
-  diagnostic INDIRECT. Un « refus par rôle » journalisé serait un vrai progrès.
-- « Patés bleus » de STRUCTURE (hors fond bleu SPCC) : à traiter à part (pistes : gains LRGB,
-  `lissage_halos` coché σ = 20).
+- **LA CASE « Lisser le combine LRGB » ÉTAIT DÉJÀ COCHÉE au test du 16/10** (constat d'Alain) ⇒ **le
+  lissage NE SUFFIT PAS** : mesuré, l'excès ×2,8 des ailes disparaît mais les **extrêmes du ratio sont
+  IDENTIQUES** (+1292 / −467 avec ET sans lissage). **Le correctif BORNÉ est donc nécessaire** (il n'y a
+  aucun remède « sans code » à proposer).
+- **Correctif à écrire** (jalon « halos et points colorés », AVANT J2) : BORNER le ratio (`clip`, jamais
+  négatif) et remonter le PLANCHER du dénominateur de 1e-6 à une fraction de l'échelle du rôle, + banc NEUF
+  à échelle réelle (la scène du banc 67 est aveugle à ce défaut). **Inclure** : faire DIRE à la fiche de
+  rendu si le lissage du combine est actif (`_fiche_chaine()` n'émet AUCUNE étape pour lui — seul l'en-tête
+  `AVACOMPO` du fichier linéaire le porte ; c'est ce silence qui a fait croire à une case décochée).
+- `B: 20` contre L30/R30/G29 dans le test du 15/10 : dossier plus court ou refus caché ? toujours à confirmer.
+- **L'aligneur n'écrit RIEN au journal** (hérité 116-118) : le diagnostic reste indirect (les refus par rôle
+  sont à l'ÉCRAN, pas encore au journal).
+- **Limites connues de la voie A** : bords de la couche Ha recalée à zéro hors champ couvert ; référence Ha
+  posée UNE fois par session ; recalage d'empilement qui garde le précédent en cas d'échec.
 
 ### Prochaines étapes
-- **129b (cette session)** : banc + rejeu des frames réelles → les 4 correctifs → re-test réel.
-- Puis **J2** (fusion « ajout au rouge » + poids + cadre « Fusion Ha ») → **J3** → **J4** → **J5**.
+- **DÉCISION attendue d'Alain** : (1) commiter 129b tel quel (plomberie J1 + voie A) — l'alignement est
+  validé et l'image dépend d'un défaut PRÉEXISTANT ; (2) ouvrir le jalon « combine LRGB : halos et points
+  colorés » (correctif borné + banc neuf) AVANT J2.
+- Si accord : rejouer d'abord le défaut sur une **couche réelle complète** (empilement, pas une brute) pour
+  chiffrer le gain du correctif.
 
 ### Points d'attention
-- **J1 EST COMMITÉ** (checkpoint plomberie : 8 fichiers + le banc 129) ; **le stash `stash@{0}` reste
-  à GARDER** (essai antérieur, non commité).
-- **Le rôle Ha COMPTE dans `profondeur_min()`** (`composition.py:857` / `worker.py:1267`) : c'est le seuil
-  de l'astrométrie, de la photo ET de la SPCC (`ASTRO_MIN_FRAMES = 3`, `astrometrie.py:67`). Tant que le Ha
-  reste bas, **les trois mesures sont bloquées** — MESURÉ, pas théorique.
-- **Repli « phase »** (`alignment.py:839-864`) : refuse si la forme ≠ référence, si |Δ| > 40 px, ou sans
-  gain SSD net — et il travaille dans le domaine 8 bits **PARTAGÉ** (leçon 116① : écrase une frame d'un
-  autre filtre).
-- Test décisif du fond bleu (5 s, à confirmer) : **décocher la case SPCC** → le bleu doit disparaître.
-- Des images d'un AUTRE logiciel traînent dans `Pictures`/`Downloads` (caméra tout-ciel, labels avion) :
-  ce ne sont **PAS** des preuves d'un test AVAStack — ne pas s'y tromper.
+- **129b-A est NON COMMITÉ** : 6 fichiers + 2 bancs, plus `CLAUDE.md` et cet `AVANCEMENT.md`. Le stash
+  `stash@{0}` reste à GARDER.
+- **PIÈGE (mesuré cette session) — un banc de combine doit utiliser de VRAIES couches ET la vraie échelle** :
+  ciel normalisé ~10⁻³ / cœur 10-27 (rapport 10⁴) ; l'alignement et les PSF par filtre font partie du
+  mécanisme. La scène « banc 67 » (ciel 0,03 / cœur 0,5) ne montre NI anneau NI extrême.
+- **PIÈGE — LA FICHE DE RENDU NE DIT PAS TOUT** : `_fiche_chaine()` (`ui/saver.py`) n'émet AUCUNE étape pour
+  le **lissage du combine LRGB** (seul l'en-tête `AVACOMPO` du fichier linéaire le porte). Un JSON muet sur un
+  réglage n'est donc PAS une preuve qu'il était inactif — ne jamais conclure sans MESURER (leçon « config.json
+  ne dit pas la réalité », appliquée ici à la fiche).
+- **PIÈGE** : `moyennes()` (voie A) applique le recalage de rôle — tout consommateur qui veut un empilement
+  BRUT doit passer par `LiveStacker.mean()`.
+- **PIÈGE** : en mode MONO `self.stacker` est un `LiveStacker` — pas de `note_alignement(role=…)`.
+- **Cadence d'archivage = 1 frame/s PAR RÔLE** (`framestore.ARCHIVE_INTERVALLE_S`) : un banc qui veut
+  N frames par rôle doit poser l'archive EXPLICITEMENT (`ArchiveFrames(intervalle_s=0)`).
+- **Repli « phase »** (`alignment.py`) peut « aligner » deux champs NON apparentés (mesuré 1/3) : ne jamais
+  conclure d'un repli phase qu'un appariement d'étoiles existe.
+- Des images d'un AUTRE logiciel traînent dans `Pictures`/`Downloads` : ce ne sont **PAS** des preuves
+  d'un test AVAStack.
 
 ---
 
@@ -115,7 +142,8 @@ L'UI a **5 lignes** (rôle + dossier) : L, R, G, B, Ha.
 | Jalon | Contenu | État |
 |---|---|---|
 | **J1 / 129** (v2.81.0) | compositions + 5 lignes + séparation ancre / `_narrowband_ha` | **commité** (checkpoint, banc vert), test réel KO (Ha refusé) |
-| **129b** | Ha utilisable : méthode d'alignement + `profondeur_min` + refus par rôle + libellé SPCC | **PROCHAINE SESSION** |
+| **129b-A** | Ha utilisable : **voie A** (référence PAR RÔLE + recalage de l'EMPILEMENT) + `profondeur_min` + refus par rôle + libellé SPCC | **IMPLÉMENTÉ** (banc neuf 7 volets VERT, pyright 0) — **re-test réel du 16/10 : voie A VALIDÉE** (441 frames, 2 refus en R seulement) ; **commit en attente d'accord** |
+| **J-CLRGB** (nouveau, proposé) | combine LRGB : **borner** le rapport `L/luma` + plancher de dénominateur relatif + banc NEUF à échelle réelle | **à ouvrir sur accord d'Alain** (cause mesurée des anneaux/points colorés du 16/10) |
 | **J2** | fusion « ajout au rouge » (DÉFAUT) + poids + cadre « Fusion Ha » | après 129b |
 | **J3** | les 4 autres modes : `fondu_rouge` (α), `ecran_rouge`, `eclaircir_rouge` (max), `ha_luminance` | |
 | **J4** | continuum (défaut = BANDES PASSANTES, BW_Ha 7 nm / BW_RGB 100 nm ; référence **R**, jamais L) | |
@@ -138,9 +166,15 @@ jalon validé, LUI DEMANDER AVANT de démarrer le suivant**.
 
 ## En attente / prochaine session
 
-- **129b — SESSION EN COURS (J2 attend derrière)** : rendre le Ha utilisable — banc + rejeu hors-ligne
-  des vraies frames L/G + Ha dans le vrai aligneur (`triangles_seuls` False vs True), puis les 4
-  correctifs, puis re-test réel.
+- **DÉCISION D'ALAIN (2 points)** : ① **commiter 129b** (les 6 fichiers modifiés + `bancs/_test_voie_a_ha_jalon129b.py`
+  + `bancs/_diag_align_ha_reel_129b.py` ; l'entrée de changelog **v2.81.0 est déjà étendue** — pas de bump, pas
+  de release) : la voie A est **validée en réel** (441 frames, 2 refus en R) et le défaut d'image vient du
+  combine LRGB, PRÉEXISTANT ; ② **ouvrir le jalon « combine LRGB : halos et points colorés »** (borner le
+  rapport `L/luma`, jamais négatif, plancher de dénominateur RELATIF à l'échelle du rôle, + banc NEUF sur de
+  vraies couches) — c'est le chemin pour rendre l'image utilisable avant de démarrer **J2**.
+- **Remède à tester par Alain** : il n'y en a plus de « gratuit » — la case « Lisser le combine LRGB » était
+  DÉJÀ cochée au test du 16/10 et l'image est mauvaise quand même (les extrêmes du ratio ne sont pas traités
+  par le lissage). **Le seul chemin est le correctif borné du jalon « halos et points colorés »**.
 - Jalon 128 (v2.80.0) : à valider en réel si ce n'est pas déjà fait (l'image VeraLux reste pendant un recalcul).
 - Livré/validé : v2.79.0 (chaîne pré-étirement unique + chroma des DEUX moteurs) validé M33 ; v2.80.0 publiée.
 - Boutons de données SANS Siril (« ⬇ Gaia », « ⬇ Spectres (champ) », « ⬇ Base SPCC ») ; **piste INDI** = jalon à
@@ -176,15 +210,23 @@ jalon validé, LUI DEMANDER AVANT de démarrer le suivant**.
 
 ## Pièges récents (encore actifs)
 
-- **LE RÔLE Ha FUSIONNÉ FAUSSE `profondeur_min()`** (min des rôles non vides) : il bloque l'astrométrie,
-  la photométrie ET la SPCC (`ASTRO_MIN_FRAMES = 3`) — MESURÉ au test réel du 15/10.
-- **EN LRGB+Ha, LE Ha EST LE SEUL RÔLE ALIGNÉ EN INTER-FILTRES** (l'ancre est broadband) et il est REFUSÉ
-  massivement (~2/3 mesuré) : `triangles_seuls` est False (ORB d'abord), et le projet SAIT depuis le
-  jalon 21 qu'ORB s'apparie mal d'un filtre à l'autre.
+- **TRAITÉ au 129b-A — À VÉRIFIER EN RÉEL** : le Ha **FUSIONNÉ** ne pend plus à `profondeur_min()`
+  (`role_ha_fusionne()`), les refus sont comptés **PAR RÔLE** (`bad_frames_par_role` → ligne UI) et le
+  libellé « frames par rôle » (SPCC **et** photo) décrit les **bandes mesurées** (`_profondeur_spcc`).
+  Le VERROU D'ALIGNEMENT du Ha est traité par la **voie A** (le Ha s'aligne sur lui-même).
+- **LE REFUS Ha N'EST PAS UN PROBLÈME DE MÉTHODE** (rejeu 129b, MESURÉ) : `triangles_seuls` False ou True
+  → **0/5** ; Ha RETOURNÉ ~180°, **~6 étoiles communes** avec le L, `TRI_INLIERS_MIN(6)` non tenable en
+  consolidation ; ORB **good 1-7 < 8** des deux côtés. ⇒ ne PAS remettre `triangles_seuls` pour le Ha.
+- **REPLI « PHASE » TROMPEUR SUR DES CHAMPS NON APPARENTÉS** (mesuré au banc 129b : 1/3 « aligné ») : un
+  succès `phase` ne prouve AUCUN appariement d'étoiles — ne pas s'en servir comme preuve d'alignabilité.
+- **GARDE-FOU `_invariants_triangles`** : un `n_max` > ~30 explose la mémoire — C(60,3) = 34 220
+  triangles et la matrice (T×T) qui suit font grimper le processus à **13,7 Go de RSS** (constaté, à
+  tuer). Les rejeux/essais de base élargie doivent PLAFONNER (12/18/24/30).
 - **SPCC : le mode « offset » du Linear Fit NE RÉÉCHELONNE PAS** (`gains = 1.0`, `stacking.py:205`) — un
   coefficient SPCC extrême (fond bleu) n'est donc PAS compensé. Et la SPCC AVERTIT quand son modèle décrit
   mal l'image (pente hors [0,5 ; 1,5]) : dans ce cas, ne pas l'appliquer sans réfléchir.
-- **`bad_frames` est GLOBAL** (un seul compteur de session) : impossible de lire les refus PAR RÔLE.
+- **`moyennes()` APPLIQUE le recalage de rôle** (voie A) : tout consommateur qui doit lire un empilement
+  BRUT doit passer par `LiveStacker.mean()` — sinon double transformation.
 - **Pixels à CANAL NUL (S = 1)** — fabriqués par le bug de restauration (CORRIGÉ au jalon 120) : ils
   POLLUENT toute statistique de couleur — les EXCLURE avant de mesurer.
 - **La CHROMA est un NO-OP sur une image MONOCHROME** (Cr/Cb nuls) : tout banc qui la teste doit utiliser

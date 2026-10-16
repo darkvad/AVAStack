@@ -143,6 +143,33 @@ def composition_avec_ha(composition: str) -> bool:
     Ha est le signal d'un CANAL (et à toutes les compositions sans Ha)."""
     return composition in COMPOSITIONS_HA
 
+
+def role_ha_fusionne(composition: str) -> str | None:
+    """Nom du rôle Ha PUREMENT FUSIONNÉ de cette composition, ou None (jalon
+    129b).
+
+    Dans les compositions *+Ha, le Ha n'alimente AUCUN canal du composite
+    (`canaux_rgb` ne le cite pas) : il est FUSIONNÉ après coup. Il ne doit donc
+    pas compter dans la profondeur du composite (`profondeur_min()`), qui sert
+    de seuil à l'astrométrie, à la photométrie ET à la SPCC.
+
+    POURQUOI (MESURÉ au test réel du 15/10/2026, M33) : avec une couche Ha à
+    1-9 frames, `profondeur_min()` valait 1-9 et BLOQUAIT les trois mesures
+    (`ASTRO_MIN_FRAMES = 3`) alors que les canaux R/G/B étaient à 14-30 frames
+    — l'astrométrie ne s'est débloquée qu'en atteignant 3 frames Ha.
+
+    En HOO/SHO le Ha EST un canal (il alimente R ou G) : il n'est PAS
+    « fusionné » et garde son rôle bloquant, à juste titre.
+    → "Ha" si la composition fusionne un Ha HORS canaux, sinon None."""
+    if not composition_avec_ha(composition):
+        return None
+    spec = COMPOSITIONS.get(composition) or {}
+    canaux = spec.get("canaux_rgb") or {}
+    if any("Ha" in roles for roles in canaux.values()):
+        return None                     # le Ha alimente un canal : rôle normal
+    return "Ha"
+
+
 # Alias usuels du mot-clé FITS FILTER (jalon 19) : N.I.N.A., APT, SGP, ASI
 # Air et les roues à filtres écrivent des graphies différentes du même
 # filtre. Clés NORMALISÉES (majuscules, séparateurs supprimés à la lecture).
@@ -790,6 +817,13 @@ class CompositeStacker:
         # bornes de normalisation figées — cf. `mean_avec_canaux`.
         self._memo_compo: Any = None      # (clé, composite)
         self._bornes_cache: Any = None    # (n, {rôle: (lo, hi)})
+        # Jalon 129b (voie A) : recalage d'EMPILEMENT d'un rôle dont les frames
+        # n'ont PAS été alignées sur la référence PARTAGÉE — le Ha FUSIONNÉ,
+        # aligné sur lui-même (cf. `role_ha_fusionne`). {rôle: M 2×3} : M porte
+        # l'empilement du rôle depuis SA grille vers celle du composite, et il
+        # est appliqué UNE SEULE FOIS dans `moyennes()`. Vide pour les rôles
+        # alignés en commun (cas normal) — rien ne change pour eux.
+        self.recalages: dict[str, Any] = {}
 
     # -- attributs répercutés sur tous les stackers (existants ET futurs) ---
     @property
@@ -865,8 +899,16 @@ class CompositeStacker:
         la qualité du composite (chaque canal entre dans l'image) : c'est ELLE
         qu'il faut comparer à `astrometrie.ASTRO_MIN_FRAMES`.
 
-        → min des rôles non vides ; 0 si aucun rôle n'a de frame."""
-        prof = [s.n for s in self.stackers.values() if s.n > 0]
+        Jalon 129b : le rôle Ha FUSIONNÉ (RGB+Ha, LRGB+Ha) est EXCLU — il
+        n'alimente AUCUN canal du composite, sa profondeur ne décide donc de
+        rien (cf. `role_ha_fusionne` ; MESURÉ : il bloquait l'astrométrie, la
+        photo ET la SPCC). En HOO/SHO le Ha EST un canal : il compte.
+
+        → min des rôles non vides (hors Ha fusionné) ; 0 si aucun rôle n'a de
+        frame."""
+        exclu = role_ha_fusionne(self.composition)
+        prof = [s.n for role, s in self.stackers.items()
+                if s.n > 0 and role != exclu]
         return min(prof) if prof else 0
 
     # -- accumulation --------------------------------------------------------
@@ -896,13 +938,38 @@ class CompositeStacker:
             self._shape = tuple(frame.shape)
         self._stacker_de(role).add(frame, exposure=exposure)
 
-    def note_alignement(self, M: Any) -> None:
+    def set_recalage(self, role: str, M: Any) -> None:
+        """Mémorise (ou efface si `M` est None) le recalage d'EMPILEMENT d'un
+        rôle (jalon 129b, voie A) — cf. `recalages` et `moyennes()`.
+
+        Un rôle sans recalage est déjà dans la grille du composite (aligné sur
+        la référence partagée) : c'est le cas NORMAL, et `set_recalage(rôle,
+        None)` le ramène à cet état (re-stack : le repère du rôle est refait)."""
+        if M is None:
+            self.recalages.pop(role, None)
+        else:
+            self.recalages[role] = np.asarray(M, np.float64)
+
+    def recalage(self, role: str) -> Any:
+        """Recalage d'empilement du rôle (None s'il est déjà dans la grille du
+        composite) — jalon 129b, voie A."""
+        return self.recalages.get(role)
+
+    def note_alignement(self, M: Any, role: str | None = None) -> None:
         """Intersection GLOBALE des zones couvertes (tous rôles confondus —
         même repère, aligneur partagé) : le cadre commun appliqué à CHAQUE
         moyenne de rôle avant composer(), garantissant des formes identiques.
-        Même géométrie que LiveStacker.note_alignement (jalon 15)."""
+        Même géométrie que LiveStacker.note_alignement (jalon 15).
+
+        Jalon 129b (voie A) : `role` permet d'IGNORER le rôle Ha FUSIONNÉ —
+        ses frames sont alignées dans SON repère (cf. `role_ha_fusionne`), son
+        quadrilatère n'appartient donc PAS à la grille du composite : l'inclure
+        rétrécirait le cadre commun à tort. Sa couverture est portée par le
+        recalage d'empilement (`recalages`) au moment de `moyennes()`."""
         if M is None or self._shape is None:
             return
+        if role is not None and role == role_ha_fusionne(self.composition):
+            return                        # repère propre : hors grille commune
         q = quad_alignement(M, self._shape)
         if _aire_signee(q) < 0:           # orientation normalisée
             q = q[::-1].copy()
@@ -917,6 +984,7 @@ class CompositeStacker:
     def reset(self) -> None:
         """Vide TOUT (tous rôles + cadre commun)."""
         self.stackers.clear()
+        self.recalages.clear()            # jalon 129b : recalages de rôle
         self._poly = None
         self.cadre = None
         self._shape = None
@@ -948,7 +1016,14 @@ class CompositeStacker:
         par les gains de CANAL appliqués APRÈS la composition, dans la chaîne
         de sortie (`_appliquer_corrections`) ; les couches restent BRUTES
         (contrat jalon 54 : le solveur live re-compose depuis les couches
-        brutes et ré-applique les corrections lui-même)."""
+        brutes et ré-applique les corrections lui-même).
+
+        Jalon 129b (voie A) : un rôle porteur d'un RECALAGE d'empilement (le Ha
+        fusionné, aligné sur lui-même) est ramené dans la grille du composite
+        par `cv2.warpAffine` — UNE transformation pour TOUT l'empilement, pas
+        une par frame (c'est l'intérêt de la voie A). Les pixels hors du champ
+        du rôle restent à zéro ; le cadre commun, lui, vient des rôles alignés
+        en commun (`note_alignement` ignore le Ha fusionné)."""
         out = {}
         for role, s in self.stackers.items():
             if s.n == 0:
@@ -956,6 +1031,11 @@ class CompositeStacker:
             m = s.mean(recadre=False)     # accumulation complète, même repère
             # `s.mean()` n'est None que si `s.n == 0` (exclu ci-dessus) :
             # pyright ne le sait pas → ignore CIBLÉ.
+            M = self.recalages.get(role)
+            if M is not None and m is not None:
+                # Voie A (jalon 129b) : recalage de l'EMPILEMENT du rôle.
+                m = cv2.warpAffine(m, M, (m.shape[1], m.shape[0]),
+                                   flags=cv2.INTER_LINEAR)
             out[role] = self._recadrer(m) if recadre else m  # pyright: ignore[reportArgumentType]
         return out
 

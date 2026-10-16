@@ -53,7 +53,8 @@ from ..images import borner_lineaire, save_image
 from ..processing import StarAligner, LiveStacker
 from ..processing import stars as seeing_live
 from ..processing.composition import (COMPOSITIONS, CompositeStacker,
-                                      SEUIL_MASQUE_SIGMA, extraire_canal)
+                                      SEUIL_MASQUE_SIGMA, extraire_canal,
+                                      role_ha_fusionne)
 # Jalon 106d : les MESURES (astrométrie / photométrie / SPCC) sont désormais
 # CALCULÉES ici — mêmes modules d'appui que `ui/app.py` (aucun cycle : `core`
 # importe `processing`, jamais l'inverse).
@@ -718,6 +719,10 @@ class AcquisitionWorker:
                       rejets=(self.stacker.rejected_total
                               if self.stacker is not None else 0),
                       bad=self.bad_frames, floues=self.floues_rejetees,
+                      # Jalon 129b : le détail PAR RÔLE des refus (le compteur
+                      # global ne dit pas QUELLE couche a souffert) — dict vide
+                      # hors composition.
+                      bad_role=dict(self.bad_frames_par_role),
                       fps=self.fps, cam=getattr(self.camera, "name", "—"),
                       file=getattr(self.camera, "last_file", ""),
                       pending=pend,
@@ -862,11 +867,22 @@ class AcquisitionWorker:
         self.empilement_start_request = self.reset_request = False
         self.empilement_on = False
         self.aligner = StarAligner()
+        # Jalon 129b (voie A) : SECOND aligneur, dédié au Ha FUSIONNÉ — il
+        # s'aligne sur LUI-MÊME (intra-rôle), puis son EMPILEMENT est porté sur
+        # la grille du composite par UN SEUL recalage (`_recaler_ha`). Un
+        # troisième aligneur, privé, mesure ce recalage.
+        self.aligner_ha = StarAligner()
+        self._recalage_ha_aligneur = StarAligner()
+        self._ha_ref_posee = False
+        self._ha_ref_bad = 0
         self.stacker = None
         self.disp.reset()          # stats d'affichage repartent de zéro
         self._vl_frames = None     # le 1er empilement relancera le solveur
         self._rendu_differ = None  # jalon 80 : aucun rendu en attente
         self.bad_frames, self.fps = 0, 0.0
+        # Jalon 129b : refus PAR RÔLE (le compteur global ne dit pas QUELLE
+        # couche a souffert — c'est ce qui a rendu le diagnostic 129 indirect).
+        self.bad_frames_par_role = {}
         self.floues_rejetees = 0   # jalon 17 : compteur de session
         self._fwhm_hist = []       # jalon 17 : mesures de session neuve
         self._fwhm_par_role = {}   # jalon 19 : idem, PAR RÔLE (compo)
@@ -1111,8 +1127,16 @@ class AcquisitionWorker:
                 deja_rejoue = True
 
         stack = None
+        # Jalon 129b (voie A) : en composition BROADBAND+Ha, la brute Ha
+        # s'aligne sur ELLE-MÊME (aligneur dédié) et son empilement rejoint
+        # celui du composite par UN SEUL recalage — cf. `_voie_a_ha`.
+        voie_a = self._voie_a_ha(role)
         if self.stacker is not None and not deja_rejoue:
-            M, ok = self.aligner.compute(img_travail)
+            aligneur = self.aligner
+            if voie_a:
+                self._assurer_reference_ha(img_travail)
+                aligneur = self.aligner_ha
+            M, ok = aligneur.compute(img_travail)
             if ok:
                 aligned = cv2.warpAffine(img_travail, M,
                                          (img_travail.shape[1],
@@ -1122,29 +1146,53 @@ class AcquisitionWorker:
                     self.stacker.role_courant = role
                 # Jalon 119 : le temps de pose suit la frame (intégration).
                 self.stacker.add(aligned, exposure=expo)
-                self.stacker.note_alignement(M)   # intersection des zones
+                # intersection des zones. Jalon 129b : en COMPOSITION le rôle
+                # est transmis (le Ha fusionné doit être EXCLU : son repère est
+                # propre — cf. CompositeStacker.note_alignement) ; en mono le
+                # `LiveStacker` n'a qu'un repère et ne prend pas de rôle.
+                if self._mode_compo:
+                    self.stacker.note_alignement(M, role=role)
+                else:
+                    self.stacker.note_alignement(M)
                 last_good = aligned
                 self._ref_bad = 0
+                if voie_a:
+                    self._recaler_ha()
             else:
                 self.bad_frames += 1
-                self._ref_bad += 1
-                # Jalon 13 : dossier MIXÉ (brutes de plusieurs nuits, p.ex.
-                # TargetSchedulerSequence de NINA) — si TOUT refuse alors que
-                # l'empilement est quasi vide (≤ 2 frames), la référence
-                # (1re frame, autre nuit — ou une ancre faussée) ne convient
-                # à rien : on la recale sur la frame courante. Sûr : ≤ 2
-                # frames d'ancien repère dans l'accumulation seront rejetées
-                # ensuite par la médiane Winsorized (dilution). (Jalon 17 :
-                # la frame courante a déjà passé le filtre défocalisation.)
-                if self.stacker.n <= 2 and self._ref_bad >= 3:
-                    self._definir_reference(frame)
-                    self._ref_frames = self._ref_bad = 0
+                if role:               # jalon 129b : refus PAR RÔLE
+                    self.bad_frames_par_role[role] = \
+                        self.bad_frames_par_role.get(role, 0) + 1
+                if voie_a:
+                    # Les refus du Ha (voie A) ne concernent PAS la référence
+                    # PARTAGÉE : ils ne doivent ni la faire rafraîchir ni
+                    # déclencher son repli « dossier mixé » (ce qui reposerait
+                    # la référence sur un repère Ha, hors grille composite).
+                    self._ha_ref_bad += 1
+                    s_ha = self.stacker.stackers.get("Ha")
+                    if (s_ha is not None and s_ha.n <= 2
+                            and self._ha_ref_bad >= 3):
+                        self._definir_reference_ha(img_travail)
+                else:
+                    self._ref_bad += 1
+                    # Jalon 13 : dossier MIXÉ (brutes de plusieurs nuits, p.ex.
+                    # TargetSchedulerSequence de NINA) — si TOUT refuse alors que
+                    # l'empilement est quasi vide (≤ 2 frames), la référence
+                    # (1re frame, autre nuit — ou une ancre faussée) ne convient
+                    # à rien : on la recale sur la frame courante. Sûr : ≤ 2
+                    # frames d'ancien repère dans l'accumulation seront rejetées
+                    # ensuite par la médiane Winsorized (dilution). (Jalon 17 :
+                    # la frame courante a déjà passé le filtre défocalisation.)
+                    if self.stacker.n <= 2 and self._ref_bad >= 3:
+                        self._definir_reference(frame)
+                        self._ref_frames = self._ref_bad = 0
             self._ref_frames += 1
             # Jalon 13 : ligne d'état de l'alignement (Δ, θ, méthode ou refus).
-            if ok and self.aligner.dernier:
-                d = self.aligner.dernier
+            if ok and aligneur.dernier:
+                d = aligneur.dernier
                 self.align_info = (f"Δ=({d['dx']:+.1f},{d['dy']:+.1f}) px · "
-                                   f"θ {d['angle']:+.2f}° · {d['methode']}")
+                                   f"θ {d['angle']:+.2f}° · {d['methode']}"
+                                   + (" · Ha (voie A)" if voie_a else ""))
             elif not ok:
                 self.align_info = "refus (frame non empilée)"
 
@@ -1242,6 +1290,81 @@ class AcquisitionWorker:
         if img is not None:
             self._definir_reference(img)
 
+    # ============================================ jalon 129b : voie A (Ha)
+    # Le rôle Ha d'une composition BROADBAND+Ha (RGB+Ha, LRGB+Ha) est FUSIONNÉ
+    # (aucun canal) : il s'aligne sur LUI-MÊME, puis UN SEUL recalage porte son
+    # empilement sur la grille du composite. POURQUOI (MESURÉ le 15/10/2026 sur
+    # les vraies frames M33) : le Ha (bande 7 nm, retourné ~180°) ne partage que
+    # ~6 étoiles avec le L — pile le minimum des triangles que la consolidation
+    # fait tomber : `compute()` refuse 0/5 contre une ancre broadband, contre
+    # 4/4 aligné sur lui-même, et le recalage « Ha empilé → composite » passe
+    # 5/5. Les compositions HOO/SHO ne sont PAS concernées (le Ha y est un
+    # CANAL et l'ancre) : rien ne change pour elles.
+
+    def _voie_a_ha(self, role: Any) -> bool:
+        """Vrai si le rôle doit suivre la voie A (Ha FUSIONNÉ d'une composition
+        BROADBAND+Ha) — cf. le bloc de commentaires ci-dessus."""
+        if not self._mode_compo or not role or not self._compo_nom:
+            return False
+        return role == role_ha_fusionne(self._compo_nom)
+
+    def _assurer_reference_ha(self, img: Any) -> None:
+        """Pose la référence du Ha sur SA première brute de la session (voie A)
+        — c'est ce qui fait que le Ha s'aligne sur lui-même (mesuré 4/4)."""
+        if self._ha_ref_posee:
+            return
+        self._definir_reference_ha(img)
+
+    def _definir_reference_ha(self, img: Any) -> None:
+        """Pose la référence de l'aligneur Ha (voie A) et remet à zéro le
+        compteur de refus côté Ha — repli PRÉCOCE quand les premières brutes Ha
+        sont toutes refusées (miroir du repli « dossier mixé » du jalon 13, mais
+        sur le repère du Ha : il ne doit JAMAIS toucher la référence partagée)."""
+        try:
+            self.aligner_ha.set_reference(img)
+        except Exception:
+            return
+        self._ha_ref_posee = True
+        self._ha_ref_bad = 0
+
+    def _recaler_ha(self) -> None:
+        """UN SEUL recalage de l'empilement Ha sur la grille du composite
+        (voie A, jalon 129b).
+
+        Référence = l'image du composite dans le domaine des brutes
+        (`_image_reference_de`, couche broadband) ; source = l'empilement Ha
+        BRUT (`LiveStacker.mean`, JAMAIS `moyennes()` qui appliquerait déjà le
+        recalage courant — on doublerait la transformation). MESURÉ au rejeu
+        des vraies frames : « Ha empilé → composite » = 5/5.
+
+        Le recalage n'est REMPLACÉ que s'il réussit : un échec ponctuel laisse
+        le précédent en place (jamais de saut de la couche Ha à l'écran)."""
+        if not self._voie_a_ha("Ha"):
+            return
+        st = self.stacker
+        if st is None or not hasattr(st, "set_recalage"):
+            return
+        s_ha = getattr(st, "stackers", {}).get("Ha")
+        if s_ha is None or s_ha.n == 0:
+            return
+        ref = self._image_reference_de(st)
+        if ref is None:
+            return
+        ha = s_ha.mean(recadre=False)
+        if ha is None:
+            return
+        al = self._recalage_ha_aligneur
+        al.reset()
+        try:
+            al.set_reference(ref)
+            M, ok = al.compute(ha)
+        except Exception:
+            return
+        if ok and M is not None:
+            st.set_recalage("Ha", M)
+
+
+
     def _worker_mesures(self):
         """Mesures de l'empilement — servi APRÈS le re-stack (jalon 106d).
 
@@ -1290,6 +1413,31 @@ class AcquisitionWorker:
             except Exception:
                 pass
         return int(stacker.n)
+    def _profondeur_spcc(self, stacker) -> int:
+        """Profondeur des rôles que la PHOTOMÉTRIE/SPCC MESURENT réellement
+        (jalon 129b).
+
+        Les deux mesures lisent les bandes par CLÉ (« R », « G », « B ») sur les
+        couches PAR RÔLE (`moyennes()`), c'est-à-dire les rôles cités par
+        `canaux_rgb` de la composition. En LRGB+Ha la couche Ha n'est PAS une
+        bande : elle ne doit donc pas figurer dans le libellé « N frames par
+        rôle » — elle y affichait le MINIMUM (le Ha, 1-9 frames, MESURÉ au test
+        réel du 15/10) alors que la mesure porte sur des couches à 14-30 frames.
+
+        Bénéfice gratuit : en HOO/SHO le Ha EST une bande (« R » en HOO, « G »
+        en SHO) — il reste donc compté, comme avant. Hors composition, la règle
+        reste la profondeur de l'empilement.
+
+        → min des profondeurs des rôles des bandes R/G/B ; repli sur
+        `_profondeur_astro` si la composition ne mappe aucun canal (Mono)."""
+        if not self._mode_compo:
+            return self._profondeur_astro(stacker)
+        spec = COMPOSITIONS.get(getattr(stacker, "composition", "")) or {}
+        bandes = {r for roles in (spec.get("canaux_rgb") or {}).values()
+                  for r in roles}
+        sks = getattr(stacker, "stackers", {}) or {}
+        prof = [sks[r].n for r in bandes if r in sks and sks[r].n > 0]
+        return min(prof) if prof else self._profondeur_astro(stacker)
 
     def _astro_tour(self, stacker):
         """Appelé par le worker APRÈS le re-stack (la grille est alors celle
@@ -1501,8 +1649,12 @@ class AcquisitionWorker:
         # composition, comme l'astrométrie) ; le total est rappelé entre
         # parenthèses pour ne pas donner à croire que la mesure ne porte que sur
         # trois frames alors que l'empilement en compte davantage.
-        detail = (f"{n_prof} frames par rôle ({stacker.n} au total)"
-                  if self._mode_compo else f"{n_prof} frames")
+        # Jalon 129b : c'est la profondeur des BANDES mesurées (`_profondeur_spcc`
+        # — le Ha fusionné n'en est pas une : il ne doit pas tirer le libellé
+        # vers le bas, cf. sa docstring).
+        n_mesure = self._profondeur_spcc(stacker)
+        detail = (f"{n_mesure} frames par rôle ({stacker.n} au total)"
+                  if self._mode_compo else f"{n_mesure} frames")
         self.photo_info = ("Photométrie : mesure du zéro-point en cours "
                            f"({detail}, "
                            f"{len(canaux)} bande(s))…")
@@ -1612,8 +1764,14 @@ class AcquisitionWorker:
         capteur, filtres, blanc = self._spcc_profils()
         self._spcc_essais += 1
         self._spcc_dernier = t
-        detail = (f"{n_prof} frames par rôle ({stacker.n} au total)"
-                  if self._mode_compo else f"{n_prof} frames")
+        # Jalon 129b : le libellé annonce la profondeur des BANDES MESURÉES
+        # (`_profondeur_spcc`) et non le MINIMUM de tous les rôles : en LRGB+Ha
+        # ce minimum était celui du Ha (1-9 frames), une couche que la SPCC NE
+        # MESURE PAS (elle lit R/G/B) — le libellé annonçait donc une profondeur
+        # qui ne décrivait pas la mesure.
+        n_mesure = self._profondeur_spcc(stacker)
+        detail = (f"{n_mesure} frames par rôle ({stacker.n} au total)"
+                  if self._mode_compo else f"{n_mesure} frames")
         self.spcc_info = ("SPCC : calibration en cours (spectres Gaia × profils "
                           f"capteur/filtres, {detail})…")
         self.spcc_couleur = "#888888"
@@ -1636,10 +1794,11 @@ class AcquisitionWorker:
         # case ne « rafraîchit » plus rien (constat d'Alain, 25/09/2026).
         if isinstance(self.spcc.diag, dict):
             # La MESURE porte sur les couches PAR RÔLE : en composition, c'est
-            # la profondeur par rôle qui décrit la mesure (le total de
-            # l'empilement en dit moins) — le libellé le PRÉCISE
+            # la profondeur des BANDES mesurées qui décrit la mesure (le total
+            # de l'empilement en dit moins, et le Ha fusionné n'est pas une
+            # bande — jalon 129b) — le libellé le PRÉCISE
             # (`processing/spcc.texte_resume`, clé `frames_par_role`).
-            self.spcc.diag.setdefault("frames", int(n_prof))
+            self.spcc.diag.setdefault("frames", int(n_mesure))
             if self._mode_compo:
                 self.spcc.diag.setdefault("frames_par_role", True)
         self._maj_spcc_etat()

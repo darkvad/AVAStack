@@ -48,6 +48,44 @@ AVASTACK_VERSION = "2.81.0"
 #     LRGB+Ha renverrait LRGB+Ha).
 #   Banc neuf `bancs/_test_compo_5roles_jalon129.py` + mise à jour du banc
 #   jalon 19 (5 lignes).
+#   ── SECONDE PARTIE (129b, MÊME version : « 129b suivra en second commit et
+#   étendra l'entrée v2.81.0 », aucune release tant que le Ha n'est pas
+#   utilisable) ───────────────────────────────────────────────────────────────
+#   LE TEST RÉEL DU 15/10 (M33, SV555) A INVALIDÉ J1 EN L'ÉTAT : le rôle Ha
+#   restait quasi vide (≈ 69 % de refus : « Frames 118 = L30 R30 G29 B20
+#   Ha 9 »). CAUSE NOMMÉE par rejeu hors-ligne des vraies frames
+#   (`bancs/_diag_align_ha_reel_129b.py`, NON livré comme banc : outil de
+#   diagnostic) : le Ha (bande 7 nm, RETOURNÉ ~180°) ne partage que ~6 étoiles
+#   avec le L — pile `TRI_INLIERS_MIN`, que la consolidation fait tomber ;
+#   `compute()` refuse 0/5 contre l'ancre broadband (ORB : good 1-7 < 8) comme
+#   avec `triangles_seuls` (True ou False : 0/5 → 0/5). Le correctif « triangles
+#   seuls » prévu est donc INVALIDÉ PAR LA MESURE. VOIE A (MESURÉE) retenue :
+#   · RÉFÉRENCE PAR RÔLE + RECALAGE DE L'EMPILEMENT — en composition +Ha, la
+#     brute Ha s'aligne sur ELLE-MÊME (`worker.aligner_ha`, référence = sa 1re
+#     brute de session ; mesuré 4/4) et son empilement rejoint la grille du
+#     composite par UN SEUL recalage (`worker._recaler_ha` →
+#     `CompositeStacker.set_recalage`, appliqué une fois dans `moyennes()` ;
+#     mesuré 5/5). Le rôle Ha fusionné est EXCLU du cadre commun
+#     (`note_alignement(role=…)` : repère PROPRE) et le re-stack compo rejoue
+#     le Ha dans son propre repère. HOO/SHO INCHANGÉS (aligneur partagé, ancre
+#     Ha, `triangles_seuls`).
+#   · PROFONDEUR — `role_ha_fusionne()` (source unique) + `profondeur_min()`
+#     EXCLUENT le Ha FUSIONNÉ : il n'alimente aucun canal, or cette profondeur
+#     est le seuil de l'astrométrie, de la photo ET de la SPCC
+#     (`ASTRO_MIN_FRAMES = 3`) — MESURÉ en réel : le Ha à 1-9 frames bloquait
+#     les trois alors que les canaux étaient à 14-30. En HOO/SHO le Ha EST un
+#     canal : il compte toujours.
+#   · REFUS PAR RÔLE — `worker.bad_frames_par_role` + ligne « Non alignées par
+#     rôle » (`ui._update_status`) : le compteur GLOBAL ne disait pas QUELLE
+#     couche avait souffert (c'est ce qui a rendu le diagnostic 129 indirect).
+#   · LIBELLÉ « frames par rôle » — la SPCC et la photométrie annoncent la
+#     profondeur des BANDES MESURÉES (`worker._profondeur_spcc`), plus le
+#     MINIMUM tous rôles (qui était le Ha fusionné, non mesuré).
+#   FICHIERS : `processing/composition.py`, `core/worker.py`, `ui/app.py`.
+#   BANC NEUF `bancs/_test_voie_a_ha_jalon129b.py` (7 volets : table, profondeur,
+#   recalage/cadre, témoin hors-ligne du refus, session réelle 5 dossiers avec
+#   espions de routage, recalage mesuré par un VRAI aligneur, libellés,
+#   non-régression HOO/SHO).
 # v2.80.0 : L'IMAGE VERALUX RESTE À L'ÉCRAN PENDANT UN RECALCUL (jalon 128,
 #   demande d'Alain 12/10/2026). Constat : en étirement VeraLux, à chaque
 #   NOUVEAU calcul (changement de réglage, nouvel empilement), l'aperçu

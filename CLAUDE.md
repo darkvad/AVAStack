@@ -1174,6 +1174,38 @@ ce qui manquait n'était pas une correction mais une MESURE.
   (`SuiviAstrometrie.resume_echec` : image / catalogue / appariements), sinon on
   ne peut pas distinguer une image trop pauvre d'un catalogue inadapté.
 
+- **UN RÔLE FUSIONNÉ (le Ha de « RGB+Ha » / « LRGB+Ha ») EST UN CAS À PART —
+  TROIS RÈGLES MESURÉES** (jalon 129b, 15/10/2026, rejeu des vraies frames M33
+  + test réel). ① **Il ne s'aligne PAS contre la référence broadband** : le Ha
+  (bande 7 nm, souvent RETOURNÉ ~180° comme le L) ne partage que ~6 étoiles avec
+  le L — pile `TRI_INLIERS_MIN`, que la consolidation (appariements MUTUELS à
+  2 px) fait tomber → `compute()` refuse **0/5**, l'ORB étant inutilisable
+  (« good » = 1-7 < `min_matches` 8) et les triangles insuffisants QUE
+  `triangles_seuls` soit False ou True (0/5 → 0/5 : le correctif « triangles
+  seuls » est INVALIDÉ par la mesure). Le repère ~180° est DANS la tolérance :
+  c'est le NOMBRE d'étoiles communes qui verrouille. VOIE A qui marche : le Ha
+  s'aligne sur LUI-MÊME (**4/4**, référence = sa 1re brute de session,
+  `worker.aligner_ha`) et son EMPILEMENT rejoint la grille du composite par UN
+  SEUL recalage (**5/5**) — `CompositeStacker.set_recalage(role, M)` appliqué
+  une fois dans `moyennes()`. Un tel rôle est EXCLU de `note_alignement`
+  (repère PROPRE : l'inclure rétrécirait le cadre commun) ; `_recaler_ha` relit
+  l'empilement par `LiveStacker.mean(recadre=False)`, JAMAIS par `moyennes()`
+  (qui appliquerait DÉJÀ le recalage courant : double transformation). Le
+  re-stack compo doit rejouer le Ha dans SON repère (référence Ha refaite). Les
+  compositions HOO/SHO ne changent PAS (le Ha y est l'ancre et un canal).
+  ② **Un rôle FUSIONNÉ ne doit PAS compter dans `profondeur_min()`** : il
+  n'alimente aucun canal du composite, or c'est cette profondeur qui est le
+  seuil de l'astrométrie, de la photométrie ET de la SPCC (`ASTRO_MIN_FRAMES`) —
+  MESURÉ en réel : le Ha à 1-9 frames bloquait les trois alors que les canaux
+  étaient à 14-30. `role_ha_fusionne()` (source unique) tranche : en HOO/SHO le
+  Ha EST un canal et compte. ③ **Un libellé de mesure doit décrire ce qui est
+  MESURÉ** : la SPCC et la photo lisent les bandes par CLÉ (R/G/B), donc PAS le
+  Ha fusionné → `worker._profondeur_spcc` (sinon « N frames par rôle » annonce le
+  MINIMUM, c'est-à-dire le Ha). Et le compteur de refus est désormais PAR RÔLE
+  (`bad_frames_par_role` → ligne « Non alignées par rôle ») : un compteur GLOBAL
+  ne dit pas QUELLE couche a souffert — c'est ce qui a rendu le diagnostic 129
+  indirect. Banc : `bancs/_test_voie_a_ha_jalon129b.py` (7 volets).
+
 
 - **ALIGNEMENT D'UNE FRAME RETOURNÉE AU MÉRIDIEN (~180°) : TROIS LEÇONS
   MESURÉES (jalon 116, v2.68.0 — test réel OK sur le jeu M31 au SV555, deux
@@ -1304,6 +1336,44 @@ ce qui manquait n'était pas une correction mais une MESURE.
   `display.params_lissage_halos`, déballage TOLÉRANT), persistés en config
   (`lissage_halos`, `lissage_halos_sigma`) et ANNONCÉS dans `AVACOMPO` (le fichier
   linéaire en dépend). Banc `bancs/_test_lissage_halos_optin_jalon117d.py`.
+- **LE RAPPORT L/luma BRUT EST NON BORNÉ ET PEUT ÊTRE NÉGATIF — CE N'EST PAS
+  QU'UN HALO ×2,8 : C'EST AUSSI LA SOURCE DES « POINTS COLORÉS » ET DES ANNEAUX
+  NOIRS** (MESURÉ le 16/10/2026, rejeu de 4 vraies couches M33 — une brute par
+  rôle — alignées par le vrai `StarAligner` puis `composer()`, cf.
+  `C:\Astro\test\_diag_composer_rejeu_129b.py` et `_diag_extremes_129b.py`).
+  `ratio = np.where(lum > 1e-6, L / max(lum, 1e-6), 1.0)` (`composer()`,
+  `composition.py:596-614`) vaut, sur des données réelles : **max 110,1**,
+  p99,99 = 4,29, **0,54 % des pixels > 2**, et **min −1,037** (la normalisation
+  par rôle, `(a − p0,25)/(p99,7 − p0,25)` SANS clip, laisse ~25 % des pixels
+  NÉGATIFS : L et `luma(rgb)` peuvent donc avoir des signes OPPOSÉS). Multiplié
+  par les cœurs du composite (jusqu'à 27) il fait grimper les canaux à
+  **+1292 / −467**, alors que le MÊME composite SANS la couche L reste sain
+  (max ~27, min ~−0,2, mesuré). Ce sont CES extrêmes qui, après l'étirement et
+  les écrêtages, deviennent les POINTS COLORÉS et les ANNEAUX NOIRS de l'image
+  finale : sortie du 16/10 = B écrêté à 1,0 sur **0,582 %** des pixels, G au
+  PLANCHER 0,0010 sur **0,93 %**, écart inter-canal > 0,1 sur **18,1 %** (contre
+  5-6 % pour toutes les sorties antérieures) ; corr(R,B) = −0,06 (les canaux ne
+  sont plus la même image). Le lissage du ratio (case « Lisser le combine LRGB »)
+  SUPPRIME l'anneau mesuré (creux r 3..12 px : 1,095 → 0,921, l'excès ×2,8 à
+  r ≈ 8-10 px disparaît) mais **PAS** les extrêmes : hors du masque d'étoiles le
+  ratio reste BRUT. ⚠ **AU TEST DU 16/10 LA CASE « Lisser le combine LRGB »
+  ÉTAIT DÉJÀ COCHÉE** (constat d'Alain) : le lissage ne suffit donc PAS — MESURÉ,
+  les extrêmes (+1292 / −467) sont IDENTIQUES avec et sans lissage. C'est le
+  ratio NON BORNÉ qu'il faut corriger, pas le halo. ⚠ **ET LA FICHE DE RENDU NE
+  DIT RIEN DU LISSAGE** : `_fiche_chaine()` (`ui/saver.py`) n'émet AUCUNE étape
+  pour lui — seul l'en-tête `AVACOMPO` du fichier LINÉAIRE le porte. Un JSON muet
+  ne prouve donc JAMAIS que la case était décochée (corollaire du piège
+  « config.json ne dit pas la réalité »). ⚠ Ne pas accuser GraXpert live PAR
+  COUCHE ni le NLM par couche : rejoués seuls sur une vraie brute, ils sont
+  INNOCENTS (creux 0,999 et 1,010, aucun négatif, profil de l'étoile préservé).
+  ⚠ Le défaut est PRÉEXISTANT (déjà présent le 14/10 en v2.80.3, fichier que le
+  mainteneur avait nommé « points_colores ») — il n'est PAS imputable à la voie A
+  du Ha (129b).
+- **UN BANC DE COMBINE NE VAUT QUE PAR SON ÉCHELLE** : la scène du banc jalon 67
+  (ciel 0,03 / cœur 0,5, rapport 17) NE REPRODUIT NI les anneaux NI les extrêmes
+  du combine LRGB ; il faut l'échelle RÉELLE (ciel normalisé ~10⁻³ / cœur 10-27,
+  rapport 10⁴) ET des COUCHES RÉELLES (l'alignement et les PSF par filtre font
+  partie du mécanisme). Leçon de la série du 16/10/2026.
 
 
 

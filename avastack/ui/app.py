@@ -328,6 +328,13 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self.q = queue.Queue(maxsize=2)
         self.stacker = None
         self.aligner = StarAligner()
+        # Jalon 129b (voie A) : SECOND aligneur, dédié au Ha FUSIONNÉ des
+        # compositions BROADBAND+Ha (il s'aligne sur lui-même), + le recalage de
+        # son empilement sur la grille du composite (aligneur privé).
+        self.aligner_ha = StarAligner()
+        self._recalage_ha_aligneur = StarAligner()
+        self._ha_ref_posee = False
+        self._ha_ref_bad = 0
         self.calib = Calibrator()
         self.disp = DisplayProcessor()
         self._vl_frames = None        # nb de frames du dernier empilement affiché
@@ -342,6 +349,9 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self.save_request = self.saved_path = None
         self.save_canaux_request = None  # jalon 19 : dossier des canaux (compo)
         self.bad_frames = 0
+        # Jalon 129b : refus PAR RÔLE (composition) — le compteur global ne dit
+        # pas QUELLE couche a souffert.
+        self.bad_frames_par_role: dict[str, int] = {}
         # Détection des sources SDK (correctif du 19/09/2026 : le choix
         # « QHY (SDK) » n'affichait rien et le 1er « Démarrer » mourait en
         # crash natif). Le scan QHY est isolé en SOUS-PROCESSUS (un segfault
@@ -3832,11 +3842,18 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         fermée, thread arrêté) — c'est ce qu'exige un bouton « Réinitialiser ».
         """
         self.aligner = StarAligner()
+        # Jalon 129b (voie A) : aligneur dédié au Ha FUSIONNÉ + aligneur privé
+        # du recalage de son empilement (cf. `__init__`).
+        self.aligner_ha = StarAligner()
+        self._recalage_ha_aligneur = StarAligner()
+        self._ha_ref_posee = False
+        self._ha_ref_bad = 0
         self.stacker = None
         self.disp.reset()                      # stats d'affichage repartent de zéro
         self._vl_frames = None                 # le 1er empilement relancera le solveur
         self._rendu_differ = None              # jalon 80 : aucun rendu en attente
         self.bad_frames, self.fps = 0, 0.0
+        self.bad_frames_par_role = {}          # jalon 129b : refus PAR RÔLE
         self.floues_rejetees = 0              # jalon 17 : compteur de session
         self._fwhm_hist = []                  # jalon 17 : mesures de session neuve
         self._fwhm_par_role = {}              # jalon 19 : idem, PAR RÔLE (compo)
@@ -5068,9 +5085,20 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         roles += [r for r in self.archives if r not in roles]
         n_ok_par_role = {}
         ident = np.eye(2, 3)
+        # Jalon 129b (voie A) : le Ha FUSIONNÉ se rejoue dans SON repère — la
+        # référence du Ha est re-posée sur la 1re brute Ha chargée, et le
+        # recalage de son empilement est OUBLIÉ (il sera recalculé après le
+        # rejeu). Hors composition +Ha, rien ne change.
+        if self._voie_a_ha("Ha"):
+            self.aligner_ha.reset()
+            self._ha_ref_posee = False
+            self._ha_ref_bad = 0
+            st.set_recalage("Ha", None)
         for role in roles:
             arch = self.archives[role]
             n_ok_role = 0
+            voie_a_ha = self._voie_a_ha(role)
+            aligneur = self.aligner_ha if voie_a_ha else self.aligner
             for j, c in enumerate(arch.chemins):
                 # Jalon 119 : temps de pose mémoire de la frame archivée
                 # (par rôle) — l'intégration par couche reste juste.
@@ -5084,20 +5112,31 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 if (ancien.shape is not None
                         and tuple(canal.shape) != tuple(ancien.shape)):
                     continue
-                if role == role_ref and j == idx:
+                if role == role_ref and j == idx and not voie_a_ha:
                     st.add(canal, role=role, exposure=expo)   # ancre : trivial
                     st.note_alignement(ident)
                     n_ok_role += 1
                     continue
-                M, ok = self.aligner.compute(canal)
+                if voie_a_ha and not self._ha_ref_posee:
+                    # 1re brute Ha chargée = référence du Ha (le Ha s'aligne
+                    # ensuite sur lui-même) : elle entre telle quelle.
+                    self._definir_reference_ha(canal)
+                    st.add(canal, role=role, exposure=expo)
+                    st.note_alignement(ident, role=role)
+                    n_ok_role += 1
+                    continue
+                M, ok = aligneur.compute(canal)
                 if ok:
                     st.add(cv2.warpAffine(canal, M, (canal.shape[1],
                                                      canal.shape[0]),
                                           flags=cv2.INTER_LINEAR),
                            role=role, exposure=expo)
-                    st.note_alignement(M)
+                    st.note_alignement(M, role=role)
                     n_ok_role += 1
             n_ok_par_role[role] = n_ok_role
+        # Jalon 129b : UN SEUL recalage de l'empilement Ha sur la grille du
+        # composite, calculé APRÈS le rejeu (la grille Ha vient d'être refaite).
+        self._recaler_ha()
         n_ok = sum(n_ok_par_role.values())
         self._ref_frames = self._ref_bad = 0
         self._restack_depuis = 0
@@ -5889,6 +5928,13 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         lignes = [f"Frames : {st['frames']}",
                   f"Pixels rejetés (σ) : {st['rejets']}",
                   f"Frames non alignées : {st['bad']}"]
+        # Jalon 129b : le détail PAR RÔLE des refus (le compteur global ne dit
+        # pas QUELLE couche a souffert) — seulement s'il y a des refus, et
+        # tolérant pour les états d'ancien format (sans clé « bad_role »).
+        par_role = st.get("bad_role") or {}
+        if any(par_role.values()):
+            lignes.append("Non alignées par rôle : " + " · ".join(
+                f"{r} {n}" for r, n in par_role.items() if n))
         if st.get("floues"):
             lignes.append(f"Frames floues rejetées : {st['floues']}")
         # Jalon 18 : compteur des re-stacks de la session (ligne seulement
