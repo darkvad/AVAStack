@@ -1461,6 +1461,14 @@ ce qui manquait n'était pas une correction mais une MESURE.
   référence). Corollaire de MÉTHODE : mesurer un « point » du composite exige le
   **cadre RECADRÉ** — sans recadrage, les zones vides des images pivotées
   fabriquent des milliers de faux points.
+- **UN MASTER DARK HORS ÉCHELLE NE SE SOUSTRAIT PAS « UN PEU »** (piste à vérifier,
+  16/10/2026) : les masters de `C:\IA\Darks\masters\-15\...` sont écrits par **Siril
+  en float32 [0;1]** (médiane **0,03**), et `load_image` laisse les FLOTTANTS tels
+  quels alors qu'il divise les uint16 par 65 535 → un master à la mauvaise échelle
+  retire ~3 % du plein (≈1 966 ADU pour un ciel à 3 000) **ou rien du tout**. Les
+  masters ne sont PAS persistés dans `config.json` (choix de session) : **on ne peut
+  pas savoir après coup s'ils étaient chargés** — il faut le DEMANDER (ou mesurer le
+  niveau de ciel de la sortie contre celui des brutes).
 - **LE COMBINE LRGB AMPLIFIE LE BRUIT DE R ET B (×1,49 / ×1,84)** (16/10/2026,
   `_diag_amont_132b`) : le bruit relatif d'UNE frame est identique partout
   (~6,5 % — R 6,83 · G 6,52 · B 6,51 · L 5,8), le prédit `/√N` donne R 0,76 ·

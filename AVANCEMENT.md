@@ -23,7 +23,7 @@
 
 ---
 
-## Session du 16/10/2026 (soir, suite) — CHANTIER « CAUSE AMONT » : ELLE EST NOMMÉE, CHIFFRÉE, REJOUABLE
+## Session du 16/10/2026 (soir, suite) — CHANTIER « CAUSE AMONT » — **SESSION CLOSE**
 
 > Ouverture du chantier décidé en fin de session précédente. **Deux causes MESURÉES :**
 > ① le **combine LRGB amplifie le bruit de R et B (×1,49 / ×1,84)** alors que le bruit
@@ -36,10 +36,19 @@
 > de +40 % porté par une seule image. **AUCUN fichier du dépôt modifié.**
 
 ### État actuel
+- **SESSION CLOSE (Alain, 16/10 au soir)**. **PROCHAINE ÉTAPE : TRACER LES TACHES** (protocole au § Prochaines
+  étapes). Pendant ce temps **Alain lance un empilement RGB SIMPLE (sans L)** : d'après l'expérience 132b, on
+  attend un grain **plus ÉGAL entre les canaux** (R/G ≈ 0,93 au lieu de 1,49) — même si G devient un peu plus
+  granuleux qu'avec L. Si le « patchwork » disparaît sans L, c'est le combine qui le fabrique.
+- **OBJECTION D'ALAIN, À VÉRIFIER EN PREMIER (elle est juste)** : un **pixel chaud partirait avec le DARK**, et il
+  y en aurait beaucoup trop pour le nombre de taches vues. ⇒ établir d'abord **si un dark était chargé pendant le
+  run du 16/10, et à la bonne échelle** : les masters `C:\IA\Darks\masters\-15\...` sont écrits par **Siril en
+  float32 [0;1]** (méd 0,03) et `load_image` laisse les FLOTTANTS tels quels alors qu'il divise les uint16 par
+  65 535 — un master non calé se soustrait à la mauvaise hauteur (ou pas du tout). `config.json` ne porte PAS les
+  masters (choix de session, jamais persistés).
 - **Jalon 131 (diagnostic seul) reste valable** : l'étirement multiplie la dispersion chromatique locale par ×52
   (pente ×597 au fond) et le clip des ombres (`_calc_stats` mesure sur la MOYENNE des canaux, `np.clip` agit
-  PAR canal) fabrique **282 742 px COLORÉS** à canal noir. Correctif STÉ (point noir/blanc/m par canal) NON décidé.
-- **Chantier CAUSE AMONT ouvert ce soir : cause nommée et chiffrée, correctif À DÉCIDER.**
+  PAR canal) fabrique **282 742 px COLORÉS** à canal noir. Correctif STF (point noir/blanc/m par canal) NON décidé.
 - **Jalon 130 COMMITÉ ET POUSSÉ** (`ef0c35c`, v2.82.0, branche `LRGBHa`) ; arbre propre, rien en attente.
 
 ### Composition réelle du run 473 frames (source : `%APPDATA%\AVAStack\config.json`)
@@ -125,10 +134,14 @@ puis DEUX empilements : (A) tel quel, (B) chaque image recalée en niveau (offse
   ailleurs : dans les défauts **cohérents d'un grand nombre d'images**.
 
 ### Prochaines étapes (ordre proposé, à trancher par Alain)
-1. **TRACER LES TACHES JUSQU'AUX IMAGES** (le test qui reste à faire, et le seul décisif) : partir
-   d'une tache du composite BRUT, remonter à la position dans les images individuelles via les
-   matrices d'alignement du rôle, et REGARDER : combien d'images la portent (1 = rayon cosmique,
-   la moitié = pixel chaud) et à quelles positions selon l'orientation.
+1. **TRACER LES TACHES JUSQU'AUX IMAGES** (le test qui reste, et le seul décisif) :
+   ① choisir 10-20 taches du composite BRUT (positions, aire, amplitude — déjà mesurées au 131) ;
+   ② remonter à leur position dans les images individuelles du rôle via les matrices d'alignement, et
+   compter **COMBIEN d'images la portent** (1 = rayon cosmique isolé, beaucoup = défaut fixe) ;
+   ③ convertir les amplitudes **en ADU** (+40 % du fond local : combien d'ADU, quelle valeur brute ?) ;
+   ④ **recouper avec les pixels chauds du master dark** (`MasterDark_60_90_25.fit`) et avec les aberrants
+   des brutes (2 135 positions fixes, mesurés au 130e) ;
+   ⑤ établir **si un dark était appliqué** sur ce run, et à quelle échelle (cf. objection d'Alain).
 2. **DÉCIDER LE CORRECTIF** (aucun n'est choisi) : pistes — caler le NIVEAU de chaque frame avant empilement
    (par côté/nuit), ou grouper/filtrer par côté+nuit, ou compléter le rejet par un test de NIVEAU (et non
    d'aberration), ou corriger le fond PAR CANAL à l'étirement. **VeraLux (méthode préférée d'Alain) ne doit
