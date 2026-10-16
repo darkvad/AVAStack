@@ -1436,6 +1436,33 @@ ce qui manquait n'était pas une correction mais une MESURE.
   Une frame dont l'intersection est VIDE (`_clip_poly` → None) est **ignorée par
   le recadrage MAIS quand même empilée** — c'est le seul cas où des zéros
   entreraient dans le composite (jamais observé ici).
+- **LES DOSSIERS MÉLANGENT AUSSI LES NIVEAUX DE CIEL — MESURÉ** (chantier CAUSE
+  AMONT, 16/10/2026, `_diag_amont_132c`) : sur M33 (dossiers du 22/09), le ciel
+  d'une frame vaut, en ADU (fenêtre de ciel, `BZERO` ajouté) : R **3 664 East /
+  3 008 West (+21,8 %)** · G **4 224 / 3 208 (+31,7 %)** · B 3 632 / 3 344 ·
+  L 6 696 / 6 072 · Ha ~1 800 ; la dispersion DANS un dossier va de 12,6 % (L,
+  5 nuits et 2 côtés) à **49,8 % (B : 8 frames sur 51 entre 1,5 et 3,4 × la
+  médiane)**. ⇒ un rejet kappa-sigma ne voit RIEN là-dedans (le σ temporel vaut
+  alors 13-50 %, aucun mode n'est aberrant) : le mélange des deux côtés du Pier,
+  qui couvrent le ciel différemment (177°), produit un fond **structuré**, et
+  leurs rapports variant AVEC LE CANAL, il est aussi **coloré**. ⚠ Avant
+  d'accuser le capteur, l'empilement ou l'étirement : mesurer le ciel FRAME PAR
+  FRAME (`_diag_amont_132c.py`).
+- **LE COMBINE LRGB AMPLIFIE LE BRUIT DE R ET B (×1,49 / ×1,84)** (16/10/2026,
+  `_diag_amont_132b`) : le bruit relatif d'UNE frame est identique partout
+  (~6,5 % — R 6,83 · G 6,52 · B 6,51 · L 5,8), le prédit `/√N` donne R 0,76 ·
+  G 0,81 · B 0,91 %, mais le composite BRUT sort R 1,27 · G 0,84 · B 2,05 %
+  (**seul G est conforme**). Injecter ces bruits dans le VRAI `compo.composer()`
+  reproduit R/G = 1,49 (mesuré 1,51) et B/G = 1,84 ; **sans rôle L (RGB) les
+  rapports retombent à 0,93 / 1,11**. Mécanisme : `ratio = L / lum` avec
+  `lum = 0,299 R + 0,587 G + 0,114 B` — le bruit du ratio SE RETRANCHE au vert
+  et S'AJOUTE aux canaux à faible poids. ⇒ ne jamais conclure « le canal B manque
+  de frames » sans le mesurer (ici B a le **2e temps d'intégration** : 51 × 120 s).
+- **PIÈGE — LIRE UNE FENÊTRE D'UNE BRUTE FITS SANS LA RAPATRIER** : les brutes
+  QHY portent `BZERO`/`BSCALE`, que `memmap=True` REFUSE (`ValueError`) ; passer
+  `do_not_scale_image_data=True` et ajouter `BZERO` soi-même (l'offset est commun
+  à toutes les frames, donc comparable) — on évite 16,8 Mo lus par frame.
+
 - **LES PIXELS CHAUDS SONT RÉELS MAIS LA REJECTION LES ÉLIMINE (97 %)** (MESURÉ
   le 16/10/2026, `_diag_hotpixels_130e`) : une brute R du QHY MiniCam8M porte
   **~4 000 pixels aberrants** (≥ 8 σ de leur voisinage, isolés) dont **~2 135 à

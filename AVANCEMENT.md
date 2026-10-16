@@ -23,72 +23,113 @@
 
 ---
 
-## Session du 16/10/2026 (fin) — JALON 131 : LES « TACHES » — CAUSE NOMMÉE, CHIFFRÉE, REJOUABLE
+## Session du 16/10/2026 (soir, suite) — CHANTIER « CAUSE AMONT » : ELLE EST NOMMÉE, CHIFFRÉE, REJOUABLE
 
-> **Diagnostic mené à son terme sur les fichiers d'Alain** (scripts HORS DÉPÔT
-> `C:\Astro\test\_diag_taches_131*.py`, sorties `_131*_out.txt`, planches
-> `_131*.jpg/png`). **Ni l'empilement, ni l'alignement, ni M33, ni le matériel, ni
-> le combine** : le brut ET l'image traitée sont PROPRES (fond neutre à 1,000,
-> halo d'étoile neutre, bruit local 0,05-0,07 %). **La cause est l'ÉTIREMENT, qui
-> multiplie par ×46-52 la dispersion chromatique locale du fond**, plus un défaut
-> du clip des ombres (calculé sur la moyenne des canaux, appliqué PAR CANAL).
-> `AVANCEMENT.md` a été recadré sur ce jalon.
+> Ouverture du chantier décidé en fin de session précédente. **La cause amont n'est
+> NI le capteur, NI l'étirement, NI M33** : c'est l'**HÉTÉROGÉNÉITÉ DES DOSSIERS DE
+> BRUTES** — chaque dossier de filtre mélange **deux côtés du Pier et 2 à 5 nuits**,
+> avec des niveaux de ciel qui diffèrent de **+22 % à +32 %** entre les deux côtés et
+> jusqu'à **3,4×** frame à frame dans le bleu — **plus** le fait que le **combine LRGB
+> amplifie le bruit de R et B (×1,49 / ×1,84)** alors que le bruit d'UNE frame est le
+> MÊME partout (~6,5 %). **AUCUN fichier du dépôt modifié** (scripts hors dépôt).
 
 ### État actuel
-- **Jalon 130 COMMITÉ ET POUSSÉ** (`ef0c35c`, branche `LRGBHa`, v2.82.0) : combine LRGB borné + banc neuf
-  (8 volets, bancs VERTs), poussé sur `origin` le 16/10 au soir.
-- **Jalon 131 = DIAGNOSTIC SEUL, AUCUN CODE MODIFIÉ** : cause nommée, chiffrée, rejouable — correctif à décider.
-- **SESSION CLOSE sur la décision d'Alain (16/10, fin)** : ① l'explication STF ↔ VeraLux lui a été donnée ;
-  ② le jalon 130 est poussé ; ③ **la prochaine session commence par la CAUSE AMONT** (le fond du composite).
-  Le problème existe dans **les DEUX moteurs** et **VeraLux reste la méthode préférée d'Alain** : aucun
-  correctif ne doit le dégrader.
-- Le re-test STF d'Alain (`M 33 2.82.0 bis STF  sans chroma sans nettete.fits`) **n'a pas innocenté l'étirement :
-  il a innocenté TOUT LE RESTE**.
+- **Jalon 131 (diagnostic seul) reste valable** : l'étirement multiplie la dispersion chromatique locale par ×52
+  (pente ×597 au fond) et le clip des ombres (`_calc_stats` mesure sur la MOYENNE des canaux, `np.clip` agit
+  PAR canal) fabrique **282 742 px COLORÉS** à canal noir. Correctif STÉ (point noir/blanc/m par canal) NON décidé.
+- **Chantier CAUSE AMONT ouvert ce soir : cause nommée et chiffrée, correctif À DÉCIDER.**
+- **Jalon 130 COMMITÉ ET POUSSÉ** (`ef0c35c`, v2.82.0, branche `LRGBHa`) ; arbre propre, rien en attente.
 
-### Mesures décisives (toutes rejouables)
-- **Preuve visuelle à échelle COMMUNE** (`_131d_echelle_commune.jpg`, gris = fond×0,90 → ×1,50, *la même
-  règle pour les trois images*) : **BRUT propre · TRAITÉ propre · STF = patchwork rouge/vert/bleu/magenta**.
-  ⚠ Leçon : comparer des tuiles en étirant le contraste PAR TUILE ne prouve rien (piège du 130, reproduit ici).
-- **Gain du bruit par l'étirement (TRAITÉ → STF)** : bruit local du fond 0,07 %/0,05 %/0,07 % (R/G/B) →
-  **7,32 %/3,21 %/5,55 % = ×111/×66/×81**. Dispersion chromatique locale (G−R, N=31 px) : 1,61 % → **84,88 % = ×52**.
-- **Pourquoi un gain pareil** : fond = 0,0249, `lo = med − 2,6 σ` = 0,02470, `hi = p99,9` = 0,09471 →
-  **le fond n'est qu'à 0,265 % de la plage au-dessus du noir**, `m = 0,02338` → **pente ×597 au fond**.
-- **Défaut du clip des ombres (display.py)** : `_calc_stats` mesure médiane/σ sur la **MOYENNE des canaux**
-  (`_calc_stats`, l. 523) mais `np.clip((img − lo)/(hi − lo))` (`_moteur_stf`, l. 614) est appliqué **par canal**.
-  Le fond R est à +1,73 σ de `lo` (3,56 % de ses pixels écrasés à 0), G à +3,49 σ (2,14 %), B à +2,82 σ (3,01 %)
-  → **364 905 px ont un canal noir, dont 282 742 COLORÉS** (un canal à 0, les autres non) = points rouges/bleus purs.
-  Prédiction vérifiée : fond **G/R = 1,88 prédit contre 1,84 mesuré** (et G−R local médian +13,3 %).
-- **Correctif testé en SIMULATION** (`_131f`, `_131g_avant_apres.jpg`) — **point noir, point blanc et m PAR CANAL** :
-  fond **G/R = 1,000 B/R = 1,000** (vert → neutre), pixels à canal noir 108 648 → 34 390, points rouges
-  228 418 → 110 013 px, couronne d'étoile R +30,4 % → +14,7 / G +16,1 / B +9,6 (anneau coloré quasi corrigé).
-  **MAIS le patchwork subsiste** (110 013 px rouges) → le clip n'est PAS la cause première.
-- **La source amont est dans l'EMPILEMENT BRUT, pas dans le traitement** : dispersion chromatique locale du fond
-  BRUT 1,82 % · TRAITÉ 1,61 % (le débruitage/GraXpert ne la réduit PAS) ; corrélation des motifs (G−R)/(B−R)
-  = +0,70 (structure commune). Le brut porte 1 022 taches rouges + 393 bleues (aire médiane 4-7 px, seuil +40 % local).
-- **VeraLux** : même famille de défaut, autre dosage — dispersion ×6,8 seulement mais **21 624 px écrasés** contre
-  244 en STF (les 244 px du STF sont TOUS dans le VeraLux). Le test STF a donc réduit le désastre d'un facteur 88.
+### Composition réelle du run 473 frames (source : `%APPDATA%\AVAStack\config.json`)
+Le **journal** ne porte PAS la composition (que des étapes de démarrage). Les dossiers sont ceux du
+**22/09/2026** (et non du 10-11/10) : 475 frames .fit* dispo, **473 empilées** (2 refusées).
+
+| rôle | dossier | N | expo | intégration | nuits | East/West |
+|---|---|---|---|---|---|---|
+| L | `1x1/60.00/.../L` | 240 | 60 s | 4,00 h | 13,14,15,20,23/09 | 120/120 |
+| R | `1x1/60.00/.../R` | 80 | 60 s | 1,33 h | 14,15,20,23/09 | 40/40 |
+| G | `1x1/60.00/.../G` | 64 | 60 s | 1,07 h | 14,15,16,20,23/09 | 24/40 |
+| B | **`1x1/120.00/.../B`** | 51 | **120 s** | 1,70 h | 14,16,23/09 | 28/23 |
+| Ha | `1x1/180.00/.../Ha` | 40 | 180 s | 2,00 h | 14,16/09 | 35/5 |
+
+⚠ **Le canal B a le 2ᵉ temps d'intégration de la composition** : l'hypothèse « B bruité faute de frames » (relevée
+au 130f) **est réfutée pour ce run**.
+
+
+### Mesures décisives du chantier (scripts HORS DÉPÔT, sorties `_132*_out.txt`)
+- **① LE BRUIT D'UNE FRAME EST LE MÊME PARTOUT (~6,5 %)** (`_diag_amont_132a.py`) : R 6,83 % · G 6,52 % ·
+  B 6,51 % · L ~5,8 % (σ robuste/ciel, mesuré sur les brutes réelles, 2 zones de ciel, en ADU). Le prédit
+  `/√N` donne R 0,76 · G 0,81 · B 0,91 %… or le **composite BRUT sort R 1,27 · G 0,84 · B 2,05 %** : **seul G
+  est conforme**, R est ×1,66 et B ×2,25. ⇒ le grain coloré ne vient PAS des brutes.
+- **② LE COMBINE LRGB AMPLIFIE R ET B** (`_diag_amont_132b.py`, **expérience décisive, pure et rejouable**) :
+  en injectant dans le **vrai `compo.composer()`** des couches synthétiques portant EXACTEMENT ces bruits,
+  on obtient R/G = **1,49** (mesuré 1,51 ✔) et B/G = **1,84** (mesuré 2,44) ; **sans le rôle L (RGB), les
+  rapports retombent à 0,93 / 1,11** = les bruits intrinsèques. Mécanisme : `ratio = L / lum` où
+  `lum = 0,299 R + 0,587 G + 0,114 B` — le bruit du ratio **se retranche au vert** (poids 0,587) et
+  **s'ajoute aux canaux à faible poids**. Reste un **excédent propre à B (×1,33)** → ③.
+- **③ CHAQUE DOSSIER MÉLANGE 2 CÔTÉS DU PIER ET 2-5 NUITS, AVEC DES CIELS TRÈS DIFFÉRENTS**
+  (`_diag_amont_132c.py`, lecture d'UNE fenêtre par frame, 475 frames) :
+
+  | rôle | ciel médian | min … max | σ/méd | East | West | frames hors norme (>1,5×) |
+  |---|---|---|---|---|---|---|
+  | L | 6 304 | 5 552 … **12 672** | 12,6 % | 6 696 | 6 072 | 1 / 240 |
+  | R | 3 272 | 2 896 … 4 576 | 13,2 % | 3 664 | 3 008 (**+21,8 %**) | 0 / 80 |
+  | G | 3 296 | 3 152 … 6 144 | 20,9 % | 4 224 | 3 208 (**+31,7 %**) | 4 / 64 |
+  | B | 3 584 | 3 280 … **11 984** | **49,8 %** | 3 632 | 3 344 | **8 / 51** (les 8 dernières, 23/09) |
+  | Ha | 1 808 | 1 792 … 1 840 | 0,8 % | 1 808 | 1 792 | 0 / 40 |
+
+  ⚠ **Le rapport East/West n'est PAS le même par canal** (+21,8 % en R, +31,7 % en G) ⇒ mélanger les deux
+  côtés du Pier, qui couvrent le ciel différemment (rotation 177°), **fabrique de la COULEUR** — et comme la
+  proportion de chaque côté VARIE avec la position dans le cadre, cette couleur est **STRUCTURÉE**. Un rejet
+  kappa-sigma ne peut rien contre un **décalage de niveau partagé par la moitié des frames** (le σ temporel
+  vaut alors 13-50 %, aucun mode n'est aberrant).
+- **④ DARKS MAÎTRES À INSTRUIRE** (`_132a` §3) : `C:\IA\Darks\masters\-15\...\MasterDark_60/120_90_25.fit`
+  sont écrits par **Siril 1.4.0-rc2** en **float32 normalisé [0;1]** (méd 0,03 · max 1) — or `load_image`
+  laisse les FLOTTANTS tels quels alors qu'il divise les uint16 par 65 535 : à vérifier avant toute conclusion
+  (question ouverte ci-dessous).
+- **Rappel jalon 131 (toujours valable)** : étirement pente ×597 au fond (fond 0,0249 · `lo` 0,02470 · `hi` 0,09471) ;
+  dispersion chromatique locale 1,82 % (BRUT) / 1,61 % (TRAITÉ) / 84,9 % (STF) ; 1 022 taches rouges + 393 bleues
+  dans le BRUT (aire médiane 4-7 px, +40 % du fond local) ; VeraLux = 21 624 px écrasés contre 244 en STF.
+
 
 ### Fichiers produits (hors dépôt, `C:\Astro\test\`)
-- `_diag_taches_131.py`, `_diag_taches_131b.py`, `_diag_taches_131c.py`, `_diag_taches_131d.py`,
-  `_diag_taches_131e.py`, `_diag_taches_131f.py`, `_diag_taches_131g.py`, `_diag_taches_131h.py`
-  (+ sorties `_131*_out.txt`, planches `_131_apercu.jpg`, `_131_carte_taches.png`,
-  `_131b_gros_plans_stf.jpg`, `_131b_meme_zone.jpg`, `_131d_echelle_commune.jpg`, `_131g_avant_apres.jpg`).
-- **AUCUN fichier du dépôt modifié** pour ce diagnostic (hors cette mise à jour de `AVANCEMENT.md`).
+- **Nouveaux (chantier)** : `_diag_amont_132a.py` (bruit par frame + darks), `_diag_amont_132b.py`
+  (expérience du combine dans le vrai `composer`), `_diag_amont_132c.py` (ciel de TOUTES les frames par rôle
+  et par `PIERSIDE`) + sorties `_132a_out.txt`, `_132b_out.txt`, `_132c_out.txt`.
+- Rappel jalon 131 : `_diag_taches_131*.py` (+ `_131*_out.txt`, planches `_131*.jpg/png`) — hors dépôt.
+- **AUCUN fichier du dépôt modifié** (hors cette mise à jour d'`AVANCEMENT.md`).
 
+### Prochaines étapes (ordre proposé, à trancher par Alain)
+1. **PROUVER LE LIEN ③ → COULEUR** (le seul maillon encore en « mécanisme » et non en « mesure ») : empiler
+   ~16 frames R + 16 frames G **en deux configurations** — (A) mélange East/West comme l'appli, (B) un SEUL
+   côté du Pier — et mesurer σ(G−R) local du mini-composite. Si (A) fabrique la structure colorée et (B) non,
+   la cause est PROUVÉE sur les brutes réelles et le correctif est dessiné.
+2. **DÉCIDER LE CORRECTIF** (aucun n'est choisi) : pistes — caler le NIVEAU de chaque frame avant empilement
+   (par côté/nuit), ou grouper/filtrer par côté+nuit, ou compléter le rejet par un test de NIVEAU (et non
+   d'aberration), ou corriger le fond PAR CANAL à l'étirement. **VeraLux (méthode préférée d'Alain) ne doit
+   pas être dégradé** ; le correctif du clip par canal (131f) reste à décider séparément.
+3. **Axes restants du chantier** : (a) l'origine des **1 022 taches rouges + 393 bleues** du BRUT (traçage sur
+   les brutes via les matrices d'alignement, jamais fait) ; (c) les **pixels chauds résiduels** (2 135 fixes en R,
+   97 % éliminés par le rejet).
+4. **Après** : l'ancre VeraLux (calculée sur la LUMINANCE puis soustraite `max(x,0)` PAR CANAL, 21 624 px écrasés) ;
+   en réserve : « SPCC : ne pas appliquer une pente hors bornes ».
 
-### Points d'attention
-- **PIÈGE — un banc de combine doit poser ses pièges DANS l'ESPACE NORMALISÉ** : les poser en valeurs brutes
-  juste au-dessus de p0,25 est FRAGILE (le point noir est lui-même dans le bruit et le p0,25 dépend de la
-  graine). Les valeurs 1,1e-6 / −0,02 / −0,30 ne veulent rien dire en brut mais sont celles du mécanisme.
-- **PIÈGE — `_amplitude()` est LA référence d'échelle** (p99,7 − p0,25, sous-échantillonnée, coût constant) :
-  toute borne « relative » passe par elle, JAMAIS par une constante absolue (c'est le bug du 1e-6).
-- **PIÈGE** : `moyennes()` (voie A) applique le recalage de rôle — qui veut un empilement BRUT doit passer
-  par `LiveStacker.mean()`.
-- **Cadence d'archivage = 1 frame/s PAR RÔLE** (`framestore.ARCHIVE_INTERVALLE_S`) : un banc qui veut N
-  frames par rôle doit poser l'archive EXPLICITEMENT (`ArchiveFrames(intervalle_s=0)`).
-- **Repli « phase »** (`alignment.py`) peut « aligner » deux champs NON apparentés (mesuré 1/3) : ne jamais
-  conclure d'un repli phase qu'un appariement d'étoiles existe.
+### Problèmes ouverts
+- **Les darks maîtres Siril (float32 [0;1], méd 0,03) sont-ils réellement appliqués, et à la bonne échelle ?**
+  `config.json` ne porte PAS les masters (choisis dans le panneau Calibration, non persistés) : à mesurer.
+- **Le journal ne porte PAS la composition** d'un run (que des étapes de démarrage) → seul `config.json`
+  (dernier état) ou la fiche de rendu renseignent.
+
+### Points d'attention (encore actifs)
+- **PIÈGE** : `moyennes()` (voie A) applique le recalage de rôle — qui veut un empilement BRUT doit passer par
+  `LiveStacker.mean()`.
+- **Cadence d'archivage = 1 frame/s PAR RÔLE** (`framestore.ARCHIVE_INTERVALLE_S`) : un banc qui veut N frames
+  par rôle doit poser l'archive EXPLICITEMENT (`ArchiveFrames(intervalle_s=0)`).
+- **Repli « phase »** (`alignment.py`) peut « aligner » deux champs NON apparentés (mesuré 1/3) ; garde-fou
+  `_invariants_triangles` : `n_max` ≤ ~30 (au-delà, 13,7 Go de RSS).
 - Des images d'un AUTRE logiciel traînent dans `Pictures`/`Downloads` : **PAS** des preuves d'un test.
+- Tk : jamais `grid` et `pack` mélangés ; `cv2.ocl.setUseOpenCL(False)` ; bancs `ui.App` : patcher `_dire`.
+
 
 ---
 
@@ -125,13 +166,14 @@ jalon validé, LUI DEMANDER AVANT de démarrer le suivant**.
 
 ## En attente / prochaine session
 
-- **PROCHAINE SESSION — CHANTIER « CAUSE AMONT » (décidé par Alain, 16/10 au soir)** : le fond du composite
-  porte des écarts chromatiques STRUCTURÉS de σ = 1,6 % (BRUT 1,82 % → TRAITÉ 1,61 % : ni le débruitage ni
-  GraXpert ne les réduisent) que l'étirement multiplie par ×52. **À INSTRUIRE AVANT TOUTE CORRECTION** :
-  (a) les 1 022 taches rouges et 393 bleues du BRUT (aire médiane 4-7 px, +40 % du fond local) et leur
-  origine ; (b) le bruit du canal B (2,26 % contre 0,95 % en G — 17-20 frames seulement) ; (c) les pixels
-  chauds FIXES résiduels (~2 135 dans R) ; (d) la rotation à 177° d'une partie des frames. Les scripts de
-  mesure sont prêts : `C:\Astro\test\_diag_taches_131*.py` (+ sorties `_131*_out.txt`).
+- **CHANTIER « CAUSE AMONT » — EN COURS, INSTRUIT CE SOIR** (voir le bloc de session ci-dessus) : la cause est
+  nommée (hétérogénéité des dossiers : 2 côtés du Pier × 2-5 nuits, ciels qui diffèrent de +22 à +32 % entre les
+  côtés et jusqu'à ×3,4 dans B ; **plus** l'amplification asymétrique du combine LRGB), et le prédit `/√N` est
+  validé pour le vert seulement. **RESTE À FAIRE** : ① prouver le lien « mélange des côtés → couleur » par un
+  mini-empilement East/West contre mono-côté (`_diag_amont_132*` sont les outils de départ) ; ② **DÉCIDER LE
+  CORRECTIF** (Alain) ; ③ les 1 022 taches rouges + 393 bleues du BRUT (traçage sur les brutes, jamais fait) et
+  les pixels chauds résiduels ; ④ le sort des **darks maîtres Siril** (float32 [0;1]) — question ouverte.
+
 - **VeraLux (méthode préférée d'Alain) — à instruire APRÈS la cause amont** : son ANCRE est calculée sur la
   LUMINANCE PONDÉRÉE puis soustraite avec un `max(x, 0)` **PAR CANAL** (code tiers
   `veralux_core_headless.py`, `calculate_anchor_adaptive` + `extract_luminance`) ; l'ancre consomme ~97 %
