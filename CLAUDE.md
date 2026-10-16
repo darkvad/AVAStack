@@ -1448,6 +1448,19 @@ ce qui manquait n'était pas une correction mais une MESURE.
   leurs rapports variant AVEC LE CANAL, il est aussi **coloré**. ⚠ Avant
   d'accuser le capteur, l'empilement ou l'étirement : mesurer le ciel FRAME PAR
   FRAME (`_diag_amont_132c.py`).
+- **LE REJET NE SE LAISSE PAS AVEUGLER PAR UN MÉLANGE DE FONDS** (mesuré le
+  16/10/2026, `_diag_amont_132e`) : avec 16 images R consécutives dont les fonds
+  vont de 3 360 à 4 576 ADU (**saut de 50 % entre deux images voisines**), un
+  défaut de **+40 % du fond posé sur UNE SEULE image** est **REJETÉ** — avant
+  comme après recalage des niveaux (seuil mesuré 11-13 % du fond, contre 40 %
+  pour le défaut). La MAD ne porte que sur 4 valeurs : **3 valeurs proches
+  suffisent à la garder petite**, donc un seul aberrant parmi 4 est vu. ⇒ **les
+  taches du composite ne peuvent PAS être des défauts d'UNE seule image** ; elles
+  sont portées par BEAUCOUP d'images (piste : pixels chauds, invisibles au rejet
+  car cohérents, et dont la position dépend de l'orientation — chaque rôle a SA
+  référence). Corollaire de MÉTHODE : mesurer un « point » du composite exige le
+  **cadre RECADRÉ** — sans recadrage, les zones vides des images pivotées
+  fabriquent des milliers de faux points.
 - **LE COMBINE LRGB AMPLIFIE LE BRUIT DE R ET B (×1,49 / ×1,84)** (16/10/2026,
   `_diag_amont_132b`) : le bruit relatif d'UNE frame est identique partout
   (~6,5 % — R 6,83 · G 6,52 · B 6,51 · L 5,8), le prédit `/√N` donne R 0,76 ·

@@ -25,13 +25,15 @@
 
 ## Session du 16/10/2026 (soir, suite) — CHANTIER « CAUSE AMONT » : ELLE EST NOMMÉE, CHIFFRÉE, REJOUABLE
 
-> Ouverture du chantier décidé en fin de session précédente. **La cause amont n'est
-> NI le capteur, NI l'étirement, NI M33** : c'est l'**HÉTÉROGÉNÉITÉ DES DOSSIERS DE
-> BRUTES** — chaque dossier de filtre mélange **deux côtés du Pier et 2 à 5 nuits**,
-> avec des niveaux de ciel qui diffèrent de **+22 % à +32 %** entre les deux côtés et
-> jusqu'à **3,4×** frame à frame dans le bleu — **plus** le fait que le **combine LRGB
-> amplifie le bruit de R et B (×1,49 / ×1,84)** alors que le bruit d'UNE frame est le
-> MÊME partout (~6,5 %). **AUCUN fichier du dépôt modifié** (scripts hors dépôt).
+> Ouverture du chantier décidé en fin de session précédente. **Deux causes MESURÉES :**
+> ① le **combine LRGB amplifie le bruit de R et B (×1,49 / ×1,84)** alors que le bruit
+> d'UNE frame est le MÊME partout (~6,5 %) — reproduit dans le vrai `composer` ;
+> ② les **dossiers de brutes sont hétérogènes** (2 côtés du Pier × 2-5 nuits, ciels
+> **+22 à +32 %** entre les côtés, jusqu'à **×3,4** frame à frame dans B).
+> ⚠ **EN REVANCHE le lien entre ② et les « taches » n'est PAS établi, et le mécanisme
+> un temps envisagé (« le rejet devient aveugle ») est RÉFUTÉ par l'expérience 132e**
+> (voir plus bas) : le rejet winsorized (MAD sur 4 frames) rejette quand même un défaut
+> de +40 % porté par une seule image. **AUCUN fichier du dépôt modifié.**
 
 ### État actuel
 - **Jalon 131 (diagnostic seul) reste valable** : l'étirement multiplie la dispersion chromatique locale par ×52
@@ -95,15 +97,38 @@ au 130f) **est réfutée pour ce run**.
 ### Fichiers produits (hors dépôt, `C:\Astro\test\`)
 - **Nouveaux (chantier)** : `_diag_amont_132a.py` (bruit par frame + darks), `_diag_amont_132b.py`
   (expérience du combine dans le vrai `composer`), `_diag_amont_132c.py` (ciel de TOUTES les frames par rôle
-  et par `PIERSIDE`) + sorties `_132a_out.txt`, `_132b_out.txt`, `_132c_out.txt`.
+  et par `PIERSIDE`), `_diag_amont_132e.py` (défaut artificiel : tel quel contre niveaux recalés) ; sorties
+  `_132a/b/c/e_out.txt` et planche `_132e_injection.jpg`. `_diag_amont_132d.py` = première version PÉRIMÉE
+  (deux bugs de mesure, corrigés au 132e) — ne pas relancer.
 - Rappel jalon 131 : `_diag_taches_131*.py` (+ `_131*_out.txt`, planches `_131*.jpg/png`) — hors dépôt.
-- **AUCUN fichier du dépôt modifié** (hors cette mise à jour d'`AVANCEMENT.md`).
+- **AUCUN fichier de CODE modifié** (hors la mémoire : `AVANCEMENT.md` et `CLAUDE.md`).
+
+### Expérience 1 — `_diag_amont_132e.py` (16 frames R CONSÉCUTIVES, mêmes alignement/ordre/défaut)
+But : prouver (ou réfuter) que le mélange des fonds empêche le rejet de voir un défaut
+de +40 % porté par UNE seule image. Défaut artificiel au même pixel de la même image,
+puis DEUX empilements : (A) tel quel, (B) chaque image recalée en niveau (offset global).
+- L'**alignement est bon** (corrélation 0,906-1,000 après recalage) : **il n'est pas en cause**.
+- La tranche réelle choisie (autour d'un changement de nuit) a des fonds de **3 360 à 4 572 ADU
+  (écart 63 %)** et un **saut de 50 % entre deux images consécutives**.
+- **RÉSULTAT : le défaut est REJETÉ DANS LES DEUX CAS** (A seuil 11 % du fond, B 13 %) → **le
+  mécanisme « rejet aveuglé » est RÉFUTÉ** : la MAD porte sur 4 valeurs, et 3 valeurs proches
+  suffisent à la garder petite ; un seul aberrant parmi 4 est donc vu.
+- Corollaire important : **un défaut présent dans une SEULE image ne peut PAS expliquer les
+  1 022 + 393 taches** (le rejet les élimine). Les taches doivent être portées par **beaucoup
+  d'images à la fois** → piste **pixels chauds** (cohérents, donc invisibles au rejet) et/ou
+  **position dépendant de l'ORIENTATION** (chaque rôle a SA référence : un même pixel chaud ne
+  tombe pas au même endroit d'un canal à l'autre → tache COLORÉE).
+- Le simple **offset global** ne ramène d'ailleurs pas les niveaux locaux à l'identique
+  (50 % d'écart subsistent à ce pixel après recalage) : l'écart n'est pas qu'un décalage.
+- ⇒ **le recalage en niveau (ce que fait Siril) n'est PAS le remède aux taches** : il ne
+  change rien au sort du défaut (rejeté dans les deux cas). Ce qu'il faudra corriger est
+  ailleurs : dans les défauts **cohérents d'un grand nombre d'images**.
 
 ### Prochaines étapes (ordre proposé, à trancher par Alain)
-1. **PROUVER LE LIEN ③ → COULEUR** (le seul maillon encore en « mécanisme » et non en « mesure ») : empiler
-   ~16 frames R + 16 frames G **en deux configurations** — (A) mélange East/West comme l'appli, (B) un SEUL
-   côté du Pier — et mesurer σ(G−R) local du mini-composite. Si (A) fabrique la structure colorée et (B) non,
-   la cause est PROUVÉE sur les brutes réelles et le correctif est dessiné.
+1. **TRACER LES TACHES JUSQU'AUX IMAGES** (le test qui reste à faire, et le seul décisif) : partir
+   d'une tache du composite BRUT, remonter à la position dans les images individuelles via les
+   matrices d'alignement du rôle, et REGARDER : combien d'images la portent (1 = rayon cosmique,
+   la moitié = pixel chaud) et à quelles positions selon l'orientation.
 2. **DÉCIDER LE CORRECTIF** (aucun n'est choisi) : pistes — caler le NIVEAU de chaque frame avant empilement
    (par côté/nuit), ou grouper/filtrer par côté+nuit, ou compléter le rejet par un test de NIVEAU (et non
    d'aberration), ou corriger le fond PAR CANAL à l'étirement. **VeraLux (méthode préférée d'Alain) ne doit
@@ -120,15 +145,9 @@ au 130f) **est réfutée pour ce run**.
 - **Le journal ne porte PAS la composition** d'un run (que des étapes de démarrage) → seul `config.json`
   (dernier état) ou la fiche de rendu renseignent.
 
-### Points d'attention (encore actifs)
-- **PIÈGE** : `moyennes()` (voie A) applique le recalage de rôle — qui veut un empilement BRUT doit passer par
-  `LiveStacker.mean()`.
-- **Cadence d'archivage = 1 frame/s PAR RÔLE** (`framestore.ARCHIVE_INTERVALLE_S`) : un banc qui veut N frames
-  par rôle doit poser l'archive EXPLICITEMENT (`ArchiveFrames(intervalle_s=0)`).
-- **Repli « phase »** (`alignment.py`) peut « aligner » deux champs NON apparentés (mesuré 1/3) ; garde-fou
-  `_invariants_triangles` : `n_max` ≤ ~30 (au-delà, 13,7 Go de RSS).
-- Des images d'un AUTRE logiciel traînent dans `Pictures`/`Downloads` : **PAS** des preuves d'un test.
-- Tk : jamais `grid` et `pack` mélangés ; `cv2.ocl.setUseOpenCL(False)` ; bancs `ui.App` : patcher `_dire`.
+### Points d'attention
+- Les pièges ACTIFS (`moyennes()` voie A, cadence d'archivage, repli « phase », `_invariants_triangles`,
+  Tk/OpenCL/bancs `_dire`) sont TOUS déjà écrits dans `CLAUDE.md` : ne pas les dupliquer ici (règle §2).
 
 
 ---
