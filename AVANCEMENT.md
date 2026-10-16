@@ -35,9 +35,13 @@
 > `AVANCEMENT.md` a été recadré sur ce jalon.
 
 ### État actuel
-- **Jalon 130 (combine LRGB borné, v2.82.0) toujours NON COMMITÉ** sur `LRGBHa` (5 fichiers + banc neuf,
-  bancs VERTs) : **le correctif est indépendant** de l'affaire des taches. Retour arrière : `git checkout -- avastack/`.
-- **Jalon 131 = DIAGNOSTIC SEUL, AUCUN CODE MODIFIÉ.** La cause est nommée ; le correctif reste à décider.
+- **Jalon 130 COMMITÉ ET POUSSÉ** (`ef0c35c`, branche `LRGBHa`, v2.82.0) : combine LRGB borné + banc neuf
+  (8 volets, bancs VERTs), poussé sur `origin` le 16/10 au soir.
+- **Jalon 131 = DIAGNOSTIC SEUL, AUCUN CODE MODIFIÉ** : cause nommée, chiffrée, rejouable — correctif à décider.
+- **SESSION CLOSE sur la décision d'Alain (16/10, fin)** : ① l'explication STF ↔ VeraLux lui a été donnée ;
+  ② le jalon 130 est poussé ; ③ **la prochaine session commence par la CAUSE AMONT** (le fond du composite).
+  Le problème existe dans **les DEUX moteurs** et **VeraLux reste la méthode préférée d'Alain** : aucun
+  correctif ne doit le dégrader.
 - Le re-test STF d'Alain (`M 33 2.82.0 bis STF  sans chroma sans nettete.fits`) **n'a pas innocenté l'étirement :
   il a innocenté TOUT LE RESTE**.
 
@@ -121,19 +125,24 @@ jalon validé, LUI DEMANDER AVANT de démarrer le suivant**.
 
 ## En attente / prochaine session
 
-- **DÉCISIONS EN ATTENTE D'ALAIN (le diagnostic 131 est TERMINÉ)** — à trancher :
-  ① **corriger l'étirement** (piste « point noir, point blanc et m PAR CANAL », mesurée en simulation :
-     fond neutre 1,000, pixels à canal noir ÷3, anneau coloré réduit de moitié) — mais le patchwork subsiste ;
-  ② **traiter la SOURCE AMONT** : la dispersion chromatique locale du fond (1,6 % σ dans l'empilement BRUT,
-     que le débruitage/GraXpert ne réduit pas) que l'étirement multiplie par ×52 ;
-  ③ **VeraLux** : même famille de défaut, autre dosage (21 624 px écrasés contre 244 en STF) — APRÈS ① et ②.
+- **PROCHAINE SESSION — CHANTIER « CAUSE AMONT » (décidé par Alain, 16/10 au soir)** : le fond du composite
+  porte des écarts chromatiques STRUCTURÉS de σ = 1,6 % (BRUT 1,82 % → TRAITÉ 1,61 % : ni le débruitage ni
+  GraXpert ne les réduisent) que l'étirement multiplie par ×52. **À INSTRUIRE AVANT TOUTE CORRECTION** :
+  (a) les 1 022 taches rouges et 393 bleues du BRUT (aire médiane 4-7 px, +40 % du fond local) et leur
+  origine ; (b) le bruit du canal B (2,26 % contre 0,95 % en G — 17-20 frames seulement) ; (c) les pixels
+  chauds FIXES résiduels (~2 135 dans R) ; (d) la rotation à 177° d'une partie des frames. Les scripts de
+  mesure sont prêts : `C:\Astro\test\_diag_taches_131*.py` (+ sorties `_131*_out.txt`).
+- **VeraLux (méthode préférée d'Alain) — à instruire APRÈS la cause amont** : son ANCRE est calculée sur la
+  LUMINANCE PONDÉRÉE puis soustraite avec un `max(x, 0)` **PAR CANAL** (code tiers
+  `veralux_core_headless.py`, `calculate_anchor_adaptive` + `extract_luminance`) ; l'ancre consomme ~97 %
+  du niveau de ciel → **21 624 px écrasés = 88 × le STF** (les 244 px du STF sont TOUS dedans). Remède DÉJÀ
+  en place de ce côté : le **PIÉDESTAL PAR CANAL** (jalon 122, ACTIF, `couleurs.piedestal_canaux`).
 - **DIRE si les anneaux sombres autour des étoiles sont toujours là** : **MESURÉ** — la couronne d'étoile est
   NEUTRE dans le brut ET le traité (±0 % à r=14) et devient COLORÉE dans le STF (R +41 %, G +19 %, B +23 %
   à r=14). Ce n'est donc PAS un anneau de l'empilement : l'étirement colore le halo (le clip par canal le
   réduit : R +30,4 % → +14,7 %).
-- **Puis, sur accord** : commiter le jalon 130 (v2.82.0 : `composition.py`, `ui/saver.py`, `__init__.py`,
-  `CLAUDE.md`, `AVANCEMENT.md` + le banc neuf) et/ou ouvrir un jalon « SPCC : ne pas appliquer une pente
-  hors bornes » (piste née du diagnostic 130, PAS encore décidée).
+- **Jalon en RÉSERVE (pas décidé)** : « SPCC : ne pas appliquer une pente hors bornes » (piste du
+  diagnostic 130).
 - **Retour arrière possible en un geste** : `git checkout -- avastack/processing/composition.py` remet le
   combine d'avant (le correctif est isolé dans `_ratio_combine`).
 - Livré/validé : **v2.81.0** (compositions +Ha + voie A) sur `LRGBHa` — **PAS publiée** (pas de release tant
@@ -228,6 +237,10 @@ jalon validé, LUI DEMANDER AVANT de démarrer le suivant**.
 
 ## Clôtures précédentes
 
+- **16/10/2026 (fin)** : jalon 130 (v2.82.0) COMMITÉ + POUSSÉ (`ef0c35c`) — le combine LRGB est borné ; et le
+  diagnostic 131 INNOCENTE l'empilement, l'alignement et M33 en nommant la cause des « taches » :
+  l'ÉTIREMENT (gain ×50-600 au fond) + le clip des ombres calculé sur la moyenne des canaux et appliqué
+  PAR CANAL (fond vert, 282 742 px à un canal noir). Prochaine session : la CAUSE AMONT.
 - **12/10/2026** : jalon 128 (v2.80.0) — l'image VeraLux reste à l'écran pendant un recalcul (« Recalculs en
   cours ») ; release GitHub PUBLIÉE (4 installateurs + `INSTALLATION.md`).
 - **12/10/2026** : jalon 127 (v2.79.0, incl. 126) — chroma pour les DEUX moteurs + bancs 63/65 réparés ;
