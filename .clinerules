@@ -89,18 +89,14 @@ proprement l'étape en cours puis déclencher le handoff.
 1. Terminer l'étape en cours (ne pas laisser de modification à moitié
    appliquée).
 2. Mettre à jour `AVANCEMENT.md` conformément à la section 5 ci-dessous.
-3. Demander confirmation à l'utilisateur pour démarrer une nouvelle tâche.
-4. Après accord, appeler `newtask` (/newtask) avec un contexte minimal pointant vers
-   `AVANCEMENT.md`.
+3. Annoncer que la session est prête pour le handoff, avec l'objectif
+   immédiat (une seule action).
 
-### Contenu du contexte de newtask
-Le contexte passé à `newtask` doit être COURT. Il doit contenir
-uniquement :
-- Une phrase indiquant de lire `AVANCEMENT.md` pour l'état complet.
-- L'objectif immédiat de la nouvelle tâche.
-
-Ne PAS recopier le contenu d'`AVANCEMENT.md` dans le contexte de
-`newtask`.
+> **RÈGLE FERME (Alain, 17/10/2026)** : Cline **NE PEUT PAS** appeler
+> `newtask` — cet outil n'existe pas dans son jeu d'outils. Ne jamais
+> promettre ni annoncer un appel à `newtask`/`/newtask`. Le handoff est
+> réalisé **par Alain lui-même**. Cline se limite à : AVANCEMENT.md à jour
+> + un contexte de reprise COURT prêt à coller (deux phrases maximum).
 
 ### Contre-mesure si le seuil n'est pas respecté
 Si l'utilisation dépasse 60% sans handoff déclenché, le signaler et

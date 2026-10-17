@@ -34,6 +34,10 @@
 - Ni dark, ni brutes, ni empilement du rôle, ni alignement, ni combine ne les expliquent
   séparément : c'est l'EMPILEMENT DU RÔLE R DE CE RUN-LÀ (session à 5 rôles) qui diffère
   de l'empilement R seul.
+- **Rouges ET bleues : même signature** (aucune couche ne les porte, une seule voie est
+  amplifiée : R pour les rouges, B pour les bleues), **mais ce ne sont PAS les mêmes
+  taches** (0,8 % de recouvrement à ≤ 5 px). Elles relèvent donc d'un **mécanisme
+  COMMUN** — un correctif « spécial rouge » ne réglerait pas le bleu.
 
 ### Mesures (scripts hors dépôt `_134*`/`_135*`/`_137*`/`_138*`, sorties `_134*_out.txt`…)
 | Mesure | Résultat |
@@ -49,6 +53,7 @@
 | 135 — couche R vs mono R | dy=0 · dx=1 · **r = 0,985** ⇒ la couche R EST l'empilement R seul |
 | 136 — `composer()` rejoué sur les couches | COMMUN : 1762 taches (361 d'aire ≥ 3) ; PAR RÔLE : 287 806 ⇒ le fichier réel est COMMUN |
 | 138 — rejeu AUX POSITIONS RÉELLES | **−0,7 %** (1,9 % > +40 %) alors que le fichier réel y est à **+156,7 %** |
+| 139 — les taches **BLEUES** (même protocole) | aucune couche ne les porte : B **+0,4 %** · G +0,5 % · R −0,3 % · L −0,6 % · Ha −0,1 % (contrôle positif OK : B **+1158 %**, 100 % > +40 %) ; composite B **+73,4 %** · G −8,7 % · R −9,3 % ; multiplicateur B **×1,72** contre R ×0,91 · G ×0,90 ; **0,8 %** seulement des bleues ont une rouge à ≤ 5 px (aires médianes 8 et 9 px) |
 
 ### Fichiers produits (hors dépôt, `C:\Astro\test\`)
 - `M 33 R seul 134 lineaire.fits` · `_134_rmono_run_out.txt` / `_134_rmono_etat.json` ;
@@ -68,12 +73,21 @@
   pour ces positions (138 : `composer()` n'y fabrique rien).
 
 ### Prochaines étapes
-1. **Run composition R+G** (80 + 64 frames, `--canaux`, `--no-save`) ≈ 17 min : comparer
-   `canal_R.fit` au mono R **aux positions des taches** (contrôle positif obligatoire).
-2. Si la couche R du run long porte les taches → chercher dans l'ACCUMULATION du rôle
-   (rafraîchissement de référence tous les 20 frames, re-stack, rejet).
-3. Sinon → instrumenter `composer()` **dans** l'appli (dump de `norm_R/G/B` et du `ratio`).
-4. Ensuite seulement : décider le correctif (Alain).
+1. **Run composition RGB (SANS L ni Ha)** avec `--canaux` et `--no-save` (80 + 64 + 51 = 195
+   frames, ~20 min). Pourquoi ce run et pas R+G : sans L, `mode_l = synthetise` ⇒ **le
+   combine est l'IDENTITÉ** (ratio ≡ 1) ; le composite devient une simple mise à l'échelle
+   des couches. Donc :
+   - si les taches **disparaissent** ⇒ elles viennent du COMBINE (ratio) — or le 138 dit que
+     `composer()` n'en fabrique pas… ⇒ instrumenter le combine ;
+   - si elles **apparaissent ET sont dans les couches** ⇒ elles naissent dans l'EMPILEMENT
+     des rôles de ce run-là ;
+   - si elles apparaissent **sans** être dans les couches ⇒ contradiction frontale, preuve
+     qu'un chemin de code reste inconnu.
+   Ce run teste **les rouges ET les bleues** d'un coup, et reproduit le test d'Alain
+   (M33 en RGB montre les mêmes taches).
+2. Contrôle positif OBLIGATOIRE à chaque fois (200 étoiles brillantes : sans lui, un
+   recalage décalé fait conclure n'importe quoi).
+3. Ensuite seulement : décider le correctif (Alain).
 
 ### Points d'attention
 - **Une brute est DITHÉRÉE** : le seul test valable est un empilement ALIGNÉ (mono ou couche).
@@ -121,12 +135,12 @@ jalon validé, LUI DEMANDER AVANT de démarrer le suivant**.
 ## En attente / prochaine session
 
 - **CHANTIER « CAUSE AMONT » — ÉTAPE ①+② FAITES (17/10)** : le rôle R seul est empilé et
-  **PROPRE** ; les taches ne sont ni dans les brutes (dithérées — le traçage fixe est
-  invalide), ni dans les 5 couches brutes, ni dans un `composer()` rejoué sur ces couches.
-  Elles n'existent QUE dans le plan R du fichier de 473 frames ⇒ l'empilement du rôle R
-  de ce run-là diffère de l'empilement R seul. **PROCHAINE ACTION, UNE SEULE** : run
-  composition **R+G** avec `--canaux` (~17 min) et comparaison de `canal_R.fit` au mono R
-  **aux positions des taches** (contrôle positif aux étoiles brillantes obligatoire).
+  **PROPRE** ; les taches (rouges **et** bleues) ne sont ni dans les brutes (dithérées — le
+  traçage fixe est invalide), ni dans les 5 couches brutes, ni dans un `composer()` rejoué
+  sur ces couches. Elles n'existent QUE dans le composite de 473 frames ⇒ l'empilement des
+  rôles de ce run-là diffère de l'empilement R seul. **PROCHAINE ACTION, UNE SEULE** : run
+  composition **RGB sans L ni Ha** avec `--canaux` (~20 min, le combine y est l'IDENTITÉ :
+  il discrimine couches / combine d'un coup, et teste rouges ET bleues).
   Puis seulement : décider le correctif. Reste aussi ④ l'hétérogénéité des dossiers
   (2 côtés du Pier × 2-5 nuits, ciels +22 à +32 %) et l'amplification asymétrique du
   combine — mesure faite, correctif non décidé.
