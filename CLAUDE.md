@@ -1461,14 +1461,41 @@ ce qui manquait n'était pas une correction mais une MESURE.
   référence). Corollaire de MÉTHODE : mesurer un « point » du composite exige le
   **cadre RECADRÉ** — sans recadrage, les zones vides des images pivotées
   fabriquent des milliers de faux points.
-- **UN MASTER DARK HORS ÉCHELLE NE SE SOUSTRAIT PAS « UN PEU »** (piste à vérifier,
-  16/10/2026) : les masters de `C:\IA\Darks\masters\-15\...` sont écrits par **Siril
-  en float32 [0;1]** (médiane **0,03**), et `load_image` laisse les FLOTTANTS tels
-  quels alors qu'il divise les uint16 par 65 535 → un master à la mauvaise échelle
-  retire ~3 % du plein (≈1 966 ADU pour un ciel à 3 000) **ou rien du tout**. Les
-  masters ne sont PAS persistés dans `config.json` (choix de session) : **on ne peut
-  pas savoir après coup s'ils étaient chargés** — il faut le DEMANDER (ou mesurer le
-  niveau de ciel de la sortie contre celui des brutes).
+- **MESURER LE DARK SUR LES BRUTES DU DISQUE NE PROUVE RIEN SUR CE QUE L'APPLI A
+  SOUSTRAIT** (leçon du 17/10/2026, qui a produit la FAUSSE conclusion « aucun dark
+  soustrait » du 132f) : les fichiers d'un dossier de brutes ne sont pas calibrés
+  PAR CONSTRUCTION — ils contiennent le dark et son motif fixe. La seule mesure
+  valable passe par `Calibrator.apply(img, role=…)` ou par la SORTIE de l'appli.
+  Mesuré sur 12 frames R, master 60 s : motif du master **92,9 %** dans la moyenne
+  des brutes, **−0,07 %** après `apply` (ciel −1 639 ADU = exactement la médiane du
+  master) ⇒ **l'échelle est BONNE** (master float32 [0;1], méd 1 639 ADU, même forme
+  que la brute) et la soustraction est complète. Symétriquement, un empilement refait
+  PAR L'APPLI avec les darks par rôle est **identique au bit** à un fichier enregistré
+  le 16/10 (`np.array_equal` True, 0 pixel différent sur 21 774 744, AVASCALE
+  103,62867736816406, mêmes 1 022 taches) : la mesure
+  du fichier ne dit pas si les darks étaient chargés — elle dit qu'ils l'étaient dans
+  les DEUX cas, ou dans aucun, **jamais l'un sans l'autre**. Les masters ne sont pas
+  persistés dans `config.json` (choix de session) : pour trancher, faire un A/B de
+  quelques frames avec/sans dark (mesuré : médiane du composite brut 2,07 / 2,39 /
+  2,84 avec dark contre 3,03 / 3,24 / 3,56 sans).
+- **UNE BRUTE EST DITHÉRÉE : ON NE TRACE PAS UN DÉFAUT À UNE COORDONNÉE CAPTEUR
+  FIXE** (leçon du 17/10/2026, deuxième occurrence de la même erreur de méthode
+  après le 132f). Échantillonner chaque brute à la MÊME position capteur ne prouve
+  RIEN : si la monture a dithéré, l'étoile est à un autre pixel dans chaque frame.
+  Mesuré au 134c : « 0 % des frames > +40 % » aux positions des taches, alors que
+  les couches empilées, elles, voient bel et bien les étoiles (+852 à +2026 %).
+  Seul test valable : un empilement ALIGNÉ (mono ou couche), jamais une brute.
+- **LES `cadre` DE DEUX RUNS NE SONT PAS COMPARABLES** (17/10/2026) : chaque run a
+  son propre canevas d'alignement. Le mono et le composite diffèrent de 11 px sur
+  `cadre` alors que leurs 400 étoiles s'apparient à (0,−1) — 97,8 % à ≤ 2 px.
+  Pour recaler deux sorties, utiliser l'HISTOGRAMME DES ÉCARTS D'ÉTOILES
+  (`_diag_134e`), jamais les cadres (18 px d'erreur constatée, qui fait conclure à
+  tort qu'aucune couche ne porte un signal).
+- **LES COUCHES BRUTES PAR RÔLE S'ÉCRIVENT PAR `save_canaux_request`**
+  (`canal_<rôle>.fit`, valeurs fichiers avec leur propre `AVASCALE`) : c'est le
+  seul moyen de vérifier un combine hors de l'appli. L'appli doit ATTENDRE leur
+  écriture avant de quitter (300 ms de `root.quit` ne suffisent pas : le dossier
+  reste vide), et les brutes NINA (`BZERO/BSCALE`) refusent `memmap=True`.
 - **LE COMBINE LRGB AMPLIFIE LE BRUIT DE R ET B (×1,49 / ×1,84)** (16/10/2026,
   `_diag_amont_132b`) : le bruit relatif d'UNE frame est identique partout
   (~6,5 % — R 6,83 · G 6,52 · B 6,51 · L 5,8), le prédit `/√N` donne R 0,76 ·

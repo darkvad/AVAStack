@@ -1,4 +1,4 @@
-﻿# AVANCEMENT.md — mémoire de travail à court terme
+# AVANCEMENT.md — mémoire de travail à court terme
 
 (Complète CLAUDE.md. **Gardé LÉGER** : le changelog détaillé vit dans
 `avastack/__init__.py` — ici, seul le DERNIER jalon reste détaillé, sa trace
@@ -23,145 +23,67 @@
 
 ---
 
-## Session du 16/10/2026 (soir, suite) — CHANTIER « CAUSE AMONT » — **SESSION CLOSE**
-
-> Ouverture du chantier décidé en fin de session précédente. **Deux causes MESURÉES :**
-> ① le **combine LRGB amplifie le bruit de R et B (×1,49 / ×1,84)** alors que le bruit
-> d'UNE frame est le MÊME partout (~6,5 %) — reproduit dans le vrai `composer` ;
-> ② les **dossiers de brutes sont hétérogènes** (2 côtés du Pier × 2-5 nuits, ciels
-> **+22 à +32 %** entre les côtés, jusqu'à **×3,4** frame à frame dans B).
-> ⚠ **EN REVANCHE le lien entre ② et les « taches » n'est PAS établi, et le mécanisme
-> un temps envisagé (« le rejet devient aveugle ») est RÉFUTÉ par l'expérience 132e**
-> (voir plus bas) : le rejet winsorized (MAD sur 4 frames) rejette quand même un défaut
-> de +40 % porté par une seule image. **AUCUN fichier du dépôt modifié.**
+## Session du 17/10/2026 (après-midi) — 134/135/138 : LES TACHES NE SONT DANS AUCUNE COUCHE
 
 ### État actuel
-- **SESSION CLOSE (Alain, 16/10 au soir)**. **PROCHAINE ÉTAPE : TRACER LES TACHES** (protocole au § Prochaines
-  étapes). Pendant ce temps **Alain lance un empilement RGB SIMPLE (sans L)** : d'après l'expérience 132b, on
-  attend un grain **plus ÉGAL entre les canaux** (R/G ≈ 0,93 au lieu de 1,49) — même si G devient un peu plus
-  granuleux qu'avec L. Si le « patchwork » disparaît sans L, c'est le combine qui le fabrique.
-- **OBJECTION D'ALAIN, À VÉRIFIER EN PREMIER (elle est juste)** : un **pixel chaud partirait avec le DARK**, et il
-  y en aurait beaucoup trop pour le nombre de taches vues. ⇒ établir d'abord **si un dark était chargé pendant le
-  run du 16/10, et à la bonne échelle** : les masters `C:\IA\Darks\masters\-15\...` sont écrits par **Siril en
-  float32 [0;1]** (méd 0,03) et `load_image` laisse les FLOTTANTS tels quels alors qu'il divise les uint16 par
-  65 535 — un master non calé se soustrait à la mauvaise hauteur (ou pas du tout). `config.json` ne porte PAS les
-  masters (choix de session, jamais persistés).
-- **Jalon 131 (diagnostic seul) reste valable** : l'étirement multiplie la dispersion chromatique locale par ×52
-  (pente ×597 au fond) et le clip des ombres (`_calc_stats` mesure sur la MOYENNE des canaux, `np.clip` agit
-  PAR canal) fabrique **282 742 px COLORÉS** à canal noir. Correctif STF (point noir/blanc/m par canal) NON décidé.
-- **Jalon 130 COMMITÉ ET POUSSÉ** (`ef0c35c`, v2.82.0, branche `LRGBHa`) ; arbre propre, rien en attente.
+- **Étape ① FAITE : le rôle R SEUL est empilé, et il est PROPRE.** Empilement mono réel
+  (vrai `ui.App`, source « Dossier surveillé », 80 frames, dark 60 s UNIQUE, 6 min 20) →
+  `M 33 R seul 134 lineaire.fits` (1959×3740, AVAFRAME 80, 0 refus, 0 floue).
+- **LES TACHES NE SONT NI DANS L'EMPILEMENT R, NI DANS LES BRUTES, NI DANS AUCUNE DES
+  5 COUCHES BRUTES.** Elles n'existent que dans le plan R du fichier de 473 frames.
+- Ni dark, ni brutes, ni empilement du rôle, ni alignement, ni combine ne les expliquent
+  séparément : c'est l'EMPILEMENT DU RÔLE R DE CE RUN-LÀ (session à 5 rôles) qui diffère
+  de l'empilement R seul.
 
-### Composition réelle du run 473 frames (source : `%APPDATA%\AVAStack\config.json`)
-Le **journal** ne porte PAS la composition (que des étapes de démarrage). Les dossiers sont ceux du
-**22/09/2026** (et non du 10-11/10) : 475 frames .fit* dispo, **473 empilées** (2 refusées).
-
-| rôle | dossier | N | expo | intégration | nuits | East/West |
-|---|---|---|---|---|---|---|
-| L | `1x1/60.00/.../L` | 240 | 60 s | 4,00 h | 13,14,15,20,23/09 | 120/120 |
-| R | `1x1/60.00/.../R` | 80 | 60 s | 1,33 h | 14,15,20,23/09 | 40/40 |
-| G | `1x1/60.00/.../G` | 64 | 60 s | 1,07 h | 14,15,16,20,23/09 | 24/40 |
-| B | **`1x1/120.00/.../B`** | 51 | **120 s** | 1,70 h | 14,16,23/09 | 28/23 |
-| Ha | `1x1/180.00/.../Ha` | 40 | 180 s | 2,00 h | 14,16/09 | 35/5 |
-
-⚠ **Le canal B a le 2ᵉ temps d'intégration de la composition** : l'hypothèse « B bruité faute de frames » (relevée
-au 130f) **est réfutée pour ce run**.
-
-
-### Mesures décisives du chantier (scripts HORS DÉPÔT, sorties `_132*_out.txt`)
-- **① LE BRUIT D'UNE FRAME EST LE MÊME PARTOUT (~6,5 %)** (`_diag_amont_132a.py`) : R 6,83 % · G 6,52 % ·
-  B 6,51 % · L ~5,8 % (σ robuste/ciel, mesuré sur les brutes réelles, 2 zones de ciel, en ADU). Le prédit
-  `/√N` donne R 0,76 · G 0,81 · B 0,91 %… or le **composite BRUT sort R 1,27 · G 0,84 · B 2,05 %** : **seul G
-  est conforme**, R est ×1,66 et B ×2,25. ⇒ le grain coloré ne vient PAS des brutes.
-- **② LE COMBINE LRGB AMPLIFIE R ET B** (`_diag_amont_132b.py`, **expérience décisive, pure et rejouable**) :
-  en injectant dans le **vrai `compo.composer()`** des couches synthétiques portant EXACTEMENT ces bruits,
-  on obtient R/G = **1,49** (mesuré 1,51 ✔) et B/G = **1,84** (mesuré 2,44) ; **sans le rôle L (RGB), les
-  rapports retombent à 0,93 / 1,11** = les bruits intrinsèques. Mécanisme : `ratio = L / lum` où
-  `lum = 0,299 R + 0,587 G + 0,114 B` — le bruit du ratio **se retranche au vert** (poids 0,587) et
-  **s'ajoute aux canaux à faible poids**. Reste un **excédent propre à B (×1,33)** → ③.
-- **③ CHAQUE DOSSIER MÉLANGE 2 CÔTÉS DU PIER ET 2-5 NUITS, AVEC DES CIELS TRÈS DIFFÉRENTS**
-  (`_diag_amont_132c.py`, lecture d'UNE fenêtre par frame, 475 frames) :
-
-  | rôle | ciel médian | min … max | σ/méd | East | West | frames hors norme (>1,5×) |
-  |---|---|---|---|---|---|---|
-  | L | 6 304 | 5 552 … **12 672** | 12,6 % | 6 696 | 6 072 | 1 / 240 |
-  | R | 3 272 | 2 896 … 4 576 | 13,2 % | 3 664 | 3 008 (**+21,8 %**) | 0 / 80 |
-  | G | 3 296 | 3 152 … 6 144 | 20,9 % | 4 224 | 3 208 (**+31,7 %**) | 4 / 64 |
-  | B | 3 584 | 3 280 … **11 984** | **49,8 %** | 3 632 | 3 344 | **8 / 51** (les 8 dernières, 23/09) |
-  | Ha | 1 808 | 1 792 … 1 840 | 0,8 % | 1 808 | 1 792 | 0 / 40 |
-
-  ⚠ **Le rapport East/West n'est PAS le même par canal** (+21,8 % en R, +31,7 % en G) ⇒ mélanger les deux
-  côtés du Pier, qui couvrent le ciel différemment (rotation 177°), **fabrique de la COULEUR** — et comme la
-  proportion de chaque côté VARIE avec la position dans le cadre, cette couleur est **STRUCTURÉE**. Un rejet
-  kappa-sigma ne peut rien contre un **décalage de niveau partagé par la moitié des frames** (le σ temporel
-  vaut alors 13-50 %, aucun mode n'est aberrant).
-- **④ DARKS MAÎTRES À INSTRUIRE** (`_132a` §3) : `C:\IA\Darks\masters\-15\...\MasterDark_60/120_90_25.fit`
-  sont écrits par **Siril 1.4.0-rc2** en **float32 normalisé [0;1]** (méd 0,03 · max 1) — or `load_image`
-  laisse les FLOTTANTS tels quels alors qu'il divise les uint16 par 65 535 : à vérifier avant toute conclusion
-  (question ouverte ci-dessous).
-- **Rappel jalon 131 (toujours valable)** : étirement pente ×597 au fond (fond 0,0249 · `lo` 0,02470 · `hi` 0,09471) ;
-  dispersion chromatique locale 1,82 % (BRUT) / 1,61 % (TRAITÉ) / 84,9 % (STF) ; 1 022 taches rouges + 393 bleues
-  dans le BRUT (aire médiane 4-7 px, +40 % du fond local) ; VeraLux = 21 624 px écrasés contre 244 en STF.
-
+### Mesures (scripts hors dépôt `_134*`/`_135*`/`_137*`/`_138*`, sorties `_134*_out.txt`…)
+| Mesure | Résultat |
+|---|---|
+| 134 — critère 131b | contrôle OK : **1022 rouges / 393 bleus** ; mono R : 2786 taches > +40 % = 380/Mpx |
+| 134e — recalage mono ↔ composite | ORB : échelle 1,00000 · rotation 0,000° · translation 0 ; **97,8 % des 400 étoiles à (0,−1)** |
+| 134 — les taches projetées dans le mono | 809/810 dans le cadre · écart médian **−0,7 %** · 5,8 % encore > +40 % (hasard 0,4 %) |
+| 134b — ratio composite/mono aux taches | méd **2,65** (p90 7,3 · max 9,0) contre 1,03 au fond |
+| 134d — anatomie d'une tache | **PSF de ~5 px** : R composite ×8,9 au pic · G ×2,2 · B ~0 · mono plat |
+| 134f — santé | corrélation après lissage 101×101 : **0,9925** (même scène) ; mono plat au centre |
+| 135 — CONTRÔLE POSITIF (200 étoiles brillantes) | couches R/G/B/L : **+852 à +2026 %**, 100 % > +40 % ⇒ recalage VALIDE |
+| 135 — aux 810 taches | R −0,8 % · G −0,6 % · B −0,5 % · L −0,8 % · Ha −2,2 % (0,5-2,5 % > +40 %) |
+| 135 — couche R vs mono R | dy=0 · dx=1 · **r = 0,985** ⇒ la couche R EST l'empilement R seul |
+| 136 — `composer()` rejoué sur les couches | COMMUN : 1762 taches (361 d'aire ≥ 3) ; PAR RÔLE : 287 806 ⇒ le fichier réel est COMMUN |
+| 138 — rejeu AUX POSITIONS RÉELLES | **−0,7 %** (1,9 % > +40 %) alors que le fichier réel y est à **+156,7 %** |
 
 ### Fichiers produits (hors dépôt, `C:\Astro\test\`)
-- **Nouveaux (chantier)** : `_diag_amont_132a.py` (bruit par frame + darks), `_diag_amont_132b.py`
-  (expérience du combine dans le vrai `composer`), `_diag_amont_132c.py` (ciel de TOUTES les frames par rôle
-  et par `PIERSIDE`), `_diag_amont_132e.py` (défaut artificiel : tel quel contre niveaux recalés) ; sorties
-  `_132a/b/c/e_out.txt` et planche `_132e_injection.jpg`. `_diag_amont_132d.py` = première version PÉRIMÉE
-  (deux bugs de mesure, corrigés au 132e) — ne pas relancer.
-- Rappel jalon 131 : `_diag_taches_131*.py` (+ `_131*_out.txt`, planches `_131*.jpg/png`) — hors dépôt.
-- **AUCUN fichier de CODE modifié** (hors la mémoire : `AVANCEMENT.md` et `CLAUDE.md`).
+- `M 33 R seul 134 lineaire.fits` · `_134_rmono_run_out.txt` / `_134_rmono_etat.json` ;
+- `_canaux134g\canal_{L,R,G,B,Ha}.fit` (run 40 frames, via `--canaux` du driveur) ;
+- `_diag_134_rmono.py`, `_diag_134b_ou_sont_les_taches.py`, `_diag_134c_tracer_frames.py`,
+  `_diag_134d_anatomie.py`, `_diag_134e_recalage_etoiles.py`, `_diag_134f_sante.py`,
+  `_diag_135_couches.py`, `_diag_136_rejoue_combine.py`, `_diag_137_multiple.py`,
+  `_diag_138_positions.py` ;
+- driveur `_run_133b_fresh_linear.py` enrichi : `--mono DOSSIER` et `--canaux DOSSIER`.
+- **AUCUN fichier du dépôt modifié.**
 
-### Expérience 1 — `_diag_amont_132e.py` (16 frames R CONSÉCUTIVES, mêmes alignement/ordre/défaut)
-But : prouver (ou réfuter) que le mélange des fonds empêche le rejet de voir un défaut
-de +40 % porté par UNE seule image. Défaut artificiel au même pixel de la même image,
-puis DEUX empilements : (A) tel quel, (B) chaque image recalée en niveau (offset global).
-- L'**alignement est bon** (corrélation 0,906-1,000 après recalage) : **il n'est pas en cause**.
-- La tranche réelle choisie (autour d'un changement de nuit) a des fonds de **3 360 à 4 572 ADU
-  (écart 63 %)** et un **saut de 50 % entre deux images consécutives**.
-- **RÉSULTAT : le défaut est REJETÉ DANS LES DEUX CAS** (A seuil 11 % du fond, B 13 %) → **le
-  mécanisme « rejet aveuglé » est RÉFUTÉ** : la MAD porte sur 4 valeurs, et 3 valeurs proches
-  suffisent à la garder petite ; un seul aberrant parmi 4 est donc vu.
-- Corollaire important : **un défaut présent dans une SEULE image ne peut PAS expliquer les
-  1 022 + 393 taches** (le rejet les élimine). Les taches doivent être portées par **beaucoup
-  d'images à la fois** → piste **pixels chauds** (cohérents, donc invisibles au rejet) et/ou
-  **position dépendant de l'ORIENTATION** (chaque rôle a SA référence : un même pixel chaud ne
-  tombe pas au même endroit d'un canal à l'autre → tache COLORÉE).
-- Le simple **offset global** ne ramène d'ailleurs pas les niveaux locaux à l'identique
-  (50 % d'écart subsistent à ce pixel après recalage) : l'écart n'est pas qu'un décalage.
-- ⇒ **le recalage en niveau (ce que fait Siril) n'est PAS le remède aux taches** : il ne
-  change rien au sort du défaut (rejeté dans les deux cas). Ce qu'il faudra corriger est
-  ailleurs : dans les défauts **cohérents d'un grand nombre d'images**.
+### Décisions prises
+- **On ne corrige rien** tant que la couche R d'un run long n'a pas été comparée au mono.
+- Le 134c (« les brutes ne portent rien ») est **INVALIDE** par construction : une brute est
+  dithérée, l'échantillonner à une coordonnée capteur fixe ne prouve rien.
+- La piste « pixels chauds du dark » reste écartée (133e), la piste « combine » est écartée
+  pour ces positions (138 : `composer()` n'y fabrique rien).
 
-### Prochaines étapes (ordre proposé, à trancher par Alain)
-1. **TRACER LES TACHES JUSQU'AUX IMAGES** (le test qui reste, et le seul décisif) :
-   ① choisir 10-20 taches du composite BRUT (positions, aire, amplitude — déjà mesurées au 131) ;
-   ② remonter à leur position dans les images individuelles du rôle via les matrices d'alignement, et
-   compter **COMBIEN d'images la portent** (1 = rayon cosmique isolé, beaucoup = défaut fixe) ;
-   ③ convertir les amplitudes **en ADU** (+40 % du fond local : combien d'ADU, quelle valeur brute ?) ;
-   ④ **recouper avec les pixels chauds du master dark** (`MasterDark_60_90_25.fit`) et avec les aberrants
-   des brutes (2 135 positions fixes, mesurés au 130e) ;
-   ⑤ établir **si un dark était appliqué** sur ce run, et à quelle échelle (cf. objection d'Alain).
-2. **DÉCIDER LE CORRECTIF** (aucun n'est choisi) : pistes — caler le NIVEAU de chaque frame avant empilement
-   (par côté/nuit), ou grouper/filtrer par côté+nuit, ou compléter le rejet par un test de NIVEAU (et non
-   d'aberration), ou corriger le fond PAR CANAL à l'étirement. **VeraLux (méthode préférée d'Alain) ne doit
-   pas être dégradé** ; le correctif du clip par canal (131f) reste à décider séparément.
-3. **Axes restants du chantier** : (a) l'origine des **1 022 taches rouges + 393 bleues** du BRUT (traçage sur
-   les brutes via les matrices d'alignement, jamais fait) ; (c) les **pixels chauds résiduels** (2 135 fixes en R,
-   97 % éliminés par le rejet).
-4. **Après** : l'ancre VeraLux (calculée sur la LUMINANCE puis soustraite `max(x,0)` PAR CANAL, 21 624 px écrasés) ;
-   en réserve : « SPCC : ne pas appliquer une pente hors bornes ».
-
-### Problèmes ouverts
-- **Les darks maîtres Siril (float32 [0;1], méd 0,03) sont-ils réellement appliqués, et à la bonne échelle ?**
-  `config.json` ne porte PAS les masters (choisis dans le panneau Calibration, non persistés) : à mesurer.
-- **Le journal ne porte PAS la composition** d'un run (que des étapes de démarrage) → seul `config.json`
-  (dernier état) ou la fiche de rendu renseignent.
+### Prochaines étapes
+1. **Run composition R+G** (80 + 64 frames, `--canaux`, `--no-save`) ≈ 17 min : comparer
+   `canal_R.fit` au mono R **aux positions des taches** (contrôle positif obligatoire).
+2. Si la couche R du run long porte les taches → chercher dans l'ACCUMULATION du rôle
+   (rafraîchissement de référence tous les 20 frames, re-stack, rejet).
+3. Sinon → instrumenter `composer()` **dans** l'appli (dump de `norm_R/G/B` et du `ratio`).
+4. Ensuite seulement : décider le correctif (Alain).
 
 ### Points d'attention
-- Les pièges ACTIFS (`moyennes()` voie A, cadence d'archivage, repli « phase », `_invariants_triangles`,
-  Tk/OpenCL/bancs `_dire`) sont TOUS déjà écrits dans `CLAUDE.md` : ne pas les dupliquer ici (règle §2).
-
+- **Une brute est DITHÉRÉE** : le seul test valable est un empilement ALIGNÉ (mono ou couche).
+- **Les `cadre` de deux RUNS ne sont pas comparables** (chacun a son canevas) : recaler par
+  les ÉTOILES (histogramme des écarts), jamais par les cadres (±18 px d'erreur constatés).
+- Les couches brutes passent par `save_canaux_request` (`canal_<rôle>.fit`) ; l'appli doit
+  ATTENDRE leur écriture avant de quitter (300 ms de `root.quit` ne suffisent pas).
+- Les brutes NINA portent `BZERO/BSCALE` : `memmap=True` est refusé par astropy.
+- `config.json` pointe sur M31 (test de non-régression d'Alain, cible SAINE) ; M33 est la
+  cible qui montre les taches — Alain a confirmé que **M33 en RGB (sans L) montre les mêmes**.
 
 ---
 
@@ -198,13 +120,16 @@ jalon validé, LUI DEMANDER AVANT de démarrer le suivant**.
 
 ## En attente / prochaine session
 
-- **CHANTIER « CAUSE AMONT » — EN COURS, INSTRUIT CE SOIR** (voir le bloc de session ci-dessus) : la cause est
-  nommée (hétérogénéité des dossiers : 2 côtés du Pier × 2-5 nuits, ciels qui diffèrent de +22 à +32 % entre les
-  côtés et jusqu'à ×3,4 dans B ; **plus** l'amplification asymétrique du combine LRGB), et le prédit `/√N` est
-  validé pour le vert seulement. **RESTE À FAIRE** : ① prouver le lien « mélange des côtés → couleur » par un
-  mini-empilement East/West contre mono-côté (`_diag_amont_132*` sont les outils de départ) ; ② **DÉCIDER LE
-  CORRECTIF** (Alain) ; ③ les 1 022 taches rouges + 393 bleues du BRUT (traçage sur les brutes, jamais fait) et
-  les pixels chauds résiduels ; ④ le sort des **darks maîtres Siril** (float32 [0;1]) — question ouverte.
+- **CHANTIER « CAUSE AMONT » — ÉTAPE ①+② FAITES (17/10)** : le rôle R seul est empilé et
+  **PROPRE** ; les taches ne sont ni dans les brutes (dithérées — le traçage fixe est
+  invalide), ni dans les 5 couches brutes, ni dans un `composer()` rejoué sur ces couches.
+  Elles n'existent QUE dans le plan R du fichier de 473 frames ⇒ l'empilement du rôle R
+  de ce run-là diffère de l'empilement R seul. **PROCHAINE ACTION, UNE SEULE** : run
+  composition **R+G** avec `--canaux` (~17 min) et comparaison de `canal_R.fit` au mono R
+  **aux positions des taches** (contrôle positif aux étoiles brillantes obligatoire).
+  Puis seulement : décider le correctif. Reste aussi ④ l'hétérogénéité des dossiers
+  (2 côtés du Pier × 2-5 nuits, ciels +22 à +32 %) et l'amplification asymétrique du
+  combine — mesure faite, correctif non décidé.
 
 - **VeraLux (méthode préférée d'Alain) — à instruire APRÈS la cause amont** : son ANCRE est calculée sur la
   LUMINANCE PONDÉRÉE puis soustraite avec un `max(x, 0)` **PAR CANAL** (code tiers
@@ -311,15 +236,9 @@ jalon validé, LUI DEMANDER AVANT de démarrer le suivant**.
 
 ## Clôtures précédentes
 
-- **16/10/2026 (fin)** : jalon 130 (v2.82.0) COMMITÉ + POUSSÉ (`ef0c35c`) — le combine LRGB est borné ; et le
-  diagnostic 131 INNOCENTE l'empilement, l'alignement et M33 en nommant la cause des « taches » :
-  l'ÉTIREMENT (gain ×50-600 au fond) + le clip des ombres calculé sur la moyenne des canaux et appliqué
-  PAR CANAL (fond vert, 282 742 px à un canal noir). Prochaine session : la CAUSE AMONT.
-- **12/10/2026** : jalon 128 (v2.80.0) — l'image VeraLux reste à l'écran pendant un recalcul (« Recalculs en
-  cours ») ; release GitHub PUBLIÉE (4 installateurs + `INSTALLATION.md`).
-- **12/10/2026** : jalon 127 (v2.79.0, incl. 126) — chroma pour les DEUX moteurs + bancs 63/65 réparés ;
-  validé M33 ; poussé.
-
-
-
-
+- **17/10/2026 (matin)** : 133 — le fichier `2.82.0 bis` est reproductible AU BIT par un
+  empilement frais avec les darks par rôle ; le dark est innocenté (le 132f, qui affirmait
+  l'inverse, mesurait les brutes du disque — méthode invalide).
+- **16/10/2026 (fin)** : jalon 130 (v2.82.0) COMMITÉ + POUSSÉ (`ef0c35c`) — le combine LRGB
+  est borné ; le diagnostic 131 innocentait l'empilement et nommait l'étirement + le clip
+  par canal.
