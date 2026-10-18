@@ -32,6 +32,7 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 - **v2.87.0 — jalon 141-B (interface)** : bandeau orange + UNE boîte quand la
   composition AFFICHÉE cesse de décrire la SESSION (`_compo_session`) ; le
   fichier, lui, reste correct (`AVACOMPO`). Banc neuf **141** (8 volets) vert.
+  **VALIDÉE EN RÉEL par Alain (18/10)** : « ça fonctionne ».
 - ①/②/③ (v2.82.2 `586f860`, v2.83.0 `4dd335b`, v2.84.0 `f35d349`) livrés et
   **validés en réel** ; **136** (halo coloré) et **137** (neutralisation après
   étirement en STF) livrés en v2.86.0 (`7e6cc88`). Détail :
@@ -144,11 +145,11 @@ retient l'en-tête et REPOSE `suivi_astro.indice()`. Détail : `CLAUDE.md` §130
 
 
 ### État actuel
-- **Code** : **v2.87.0** sur `LRGBHa` — **141-B livrée** (banc 141 vert +
-  non-régression verte) ; ①/②/③ validés en réel ; 136/137 livrés en v2.86.0.
+- **Code** : **v2.87.0** sur `LRGBHa`, commité et poussé (`09fd60f`) —
+  **141-B VALIDÉE EN RÉEL par Alain** (18/10) ; ①/②/③ validés en réel ;
+  136/137 livrés en v2.86.0.
 - **À FAIRE PAR ALAIN** : juger à l'écran le halo (136) et la neutralisation STF
-  (137), et **éprouver 141-B** : changer la composition PENDANT une session (le
-  bandeau doit rester, et le fichier garder `AVACOMPO` de la session).
+  (137) sur une session — 141-B est acquise, ne plus la retester.
 - **Reste à faire** : **chantier LRGB+Ha J2 → J5** (plan figé ci-dessous) ;
   aucune release sans accord.
 - **Combine** innocenté trois fois (140/142/143) : `_ratio_combine` intact.
@@ -193,8 +194,9 @@ l'entrée d'astrométrie » ; preuves dans `C:\Astro\test\` (`_dump154_*`).
   (voie A) NON touchés ; **pas de case** (le drapeau est fixé par session).
 - **② = choix C** (raffiner au-delà de `TRI_RAFFIN_SEUIL` 0,30 px) : gain
   < 0,05 px sur 66 % des frames, mais 12 à 50 % de l'erreur là où il sert.
-- **141 = B (PRÉVENIR), LIVRÉE en v2.87.0** : la composition affichée ne peut
-  plus mentir en silence ; A = documenter, C = invalider : écartés.
+- **141 = B (PRÉVENIR), LIVRÉE (v2.87.0) ET VALIDÉE EN RÉEL** : la composition
+  affichée ne peut plus mentir en silence ; A = documenter, C = invalider :
+  écartés.
 - **VeraLux = CLOS** (piédestal 122 + neutralisation 123/124 suffisent, fichier
   tiers GPL NON modifié) ; **résidu L (~0,48 px) = ABANDONNÉ** ; **la FONCTION
   SPCC RESTE** (seule l'enquête sur son alerte est close).
@@ -243,12 +245,13 @@ l'entrée d'astrométrie » ; preuves dans `C:\Astro\test\` (`_dump154_*`).
   exigent `== "triangles"` et restent verts (leur résidu est ~0,03 px).
 
 ### Contexte de reprise (à coller — 2 phrases)
-Arbre **v2.87.0** sur `LRGBHa` : ①/②/③ validés en réel, **136** (halo coloré),
-**137** (neutralisation après étirement en STF) et **141-B** (bandeau + une boîte
-quand la composition affichée cesse de décrire la session) livrés, bancs verts,
-aucune release faite ; mode manuel hors neutralisation, teinte des coins ±15-20 %
-notée sans action. Prochaine action unique : le **chantier LRGB+Ha J2 → J5**
-(fusion « ajout au rouge » + poids + cadre) — aucune release sans accord.
+Arbre **v2.87.0** sur `LRGBHa`, propre et poussé (`09fd60f`) : ①/②/③ validés en
+réel, **136** (halo coloré), **137** (neutralisation après étirement en STF) et
+**141-B** (bandeau + une boîte quand la composition affichée cesse de décrire la
+session) livrés — **141-B VALIDÉE EN RÉEL par Alain** —, bancs verts, aucune
+release faite ; mode manuel hors neutralisation, teinte des coins ±15-20 % notée
+sans action. Prochaine action unique : le **chantier LRGB+Ha J2 → J5** (fusion
+« ajout au rouge » + poids + cadre) — aucune release sans accord.
 
 ---
 
@@ -278,9 +281,9 @@ identifiants en français (`synthetise`).
   boutons sans Siril (⬇ Gaia / Spectres / Base SPCC) **laissés en l'état**
   (secondaire) ; **teinte des COINS** **notée, sans action**. Seule attente :
   **release v2.87.0**, sur accord explicite.
-- **141-B LIVRÉE (v2.87.0)** : à ÉPROUVER en réel — changer la composition
-  PENDANT une session : le bandeau doit rester affiché et le fichier garder
-  l'`AVACOMPO` de la session (c'est le comportement voulu, pas un défaut).
+- **141-B VALIDÉE EN RÉEL (Alain, 18/10)** : bandeau + boîte confirmés au
+  changement de composition en session ; le fichier garde l'`AVACOMPO` de la
+  session (comportement voulu). **Rien à retester.**
 
 - **Validé en réel (18/10)** : run LRGB **sans aucune tache bleue ni rouge**,
   **2 refus R + 1 G**, astrométrie **réussie** avec les bons indices.
