@@ -1,8 +1,8 @@
 # AVANCEMENT.md — mémoire de travail à court terme
 
-(Complète CLAUDE.md. **Gardé LÉGER** : le changelog détaillé vit dans
-`avastack/__init__.py` — ici, seul le DERNIER jalon reste détaillé, sa trace
-étant dans le changelog du source et l'historique git.)
+(Complète `CLAUDE.md`, qui porte les leçons durables. Ici : état courant, décisions,
+pièges actifs, prochaine action. Le détail daté vit dans `avastack/__init__.py`
+(changelog) et `git log` — pas ici.)
 
 ---
 
@@ -10,249 +10,331 @@
 
 **Branche : `LRGBHa`** (créée le 15/10/2026 à partir de `master`)
 
-> **RÈGLE FERME — GRAVÉE DANS LE MARBRE** : Jusqu'à nouvel ordre explicite de l'utilisateur,
-> **TOUTE** nouvelle fonctionnalité, **TOUT** développement, **TOUTE** modification de code
-> se fait **EXCLUSIVEMENT** sur la branche `LRGBHa`.
->
-> La branche `master` ne doit **JAMAIS** être touchée directement pour de nouvelles
-> fonctionnalités.
->
-> - `master` = branche stable, releases uniquement
-> - `LRGBHa` = branche de développement, nouvelles fonctionnalités (SEULE branche autorisée)
-> - Merge vers `master` = seulement sur validation explicite (release)
+> **RÈGLE FERME — GRAVÉE DANS LE MARBRE** : jusqu'à nouvel ordre explicite,
+> **TOUT** développement et **TOUTE** modification de code se font **EXCLUSIVEMENT**
+> sur `LRGBHa`. `master` = branche stable, releases uniquement ; merge vers `master`
+> seulement sur validation explicite (release).
+
+Versions : `LRGBHa` = **v2.82.2** (⑦ v2.82.1 + étape ① + **garde 133** — **NON
+COMMITÉS** ; dernier commit `d95a19e` = v2.82.0) · `master` publié = **v2.80.0** ·
+Store publié = **v2.71.1**.
+
+**Gouvernance** : **aucune release GitHub sans l'accord d'Alain** ; **à CHAQUE jalon validé,
+lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une case de
+`config.json` — on MESURE le fichier produit.
 
 ---
 
-## Session du 17/10/2026 (après-midi) — 134/135/138 : LES TACHES NE SONT DANS AUCUNE COUCHE
+## Session du 18/10/2026 — plan ⑪ : étape ① + garde 133 LIVRÉES (v2.82.2), bancs verts
+
+### Ce qui est livré
+- **Étape ① : plus de repli `phase` en BROADBAND.** `StarAligner.repli_phase`
+  (défaut **True** = comportement historique) + `PHASE_EN_BROADBAND = False` +
+  `repli_phase_session(narrowband)` dans `processing/alignment.py` ; le worker
+  l'applique **PAR SESSION** à la création de l'empileur : **False** en
+  broadband (RGB/LRGB±Ha, mono, OSC), **True** en HOO/SHO (étape ③).
+  `_sans_phase` exige les DEUX verrous (`avec_phase` du réessai +180° **et**
+  `repli_phase`) ; l'ordre **ORB → triangles** est INCHANGÉ.
+- **Conséquence VOULUE** : une « réussite » de phase en translation seule n'est
+  plus finale ⇒ `compute` atteint son réessai **+180°** (puis l'ORB étoffé) ; un
+  champ retourné est RETOURNÉ ou REFUSÉ, jamais empilé à l'envers.
+- **Banc NEUF** `bancs/_test_phase_broadband_jalon132.py` (8 volets, **VERT**) :
+  piège reproduit (angle 0 quand l'interrupteur est à True), `_phase` plus jamais
+  appelée à False, retournée 177,07° à **0,01 px** de la pose vraie, table
+  **par rôle** (L/R/G/B) : **6/8** faibles refusées contre **1/8** avec la phase,
+  **0 frame à l'envers**. Non-régression : bancs 21, 13, 116, 131, 129b **verts**.
+- **Verdict ⑩ (rappel — détail dans `CLAUDE.md` § « Pose vraie contre pose
+  appliquée »)** : les 4 divergentes sont fausses dans LES DEUX runs ; **11/50**
+  (140) et **12/49** (143) frames B ont été empilées **à l'envers** par `phase`
+  sur un champ à **+177,07°** (résidu d'une translation ≥ **2 591 px**) ; ce n'est
+  ni la référence ni le rejet par kappa-sigma.
+
+### Garde d'interface d'astrométrie (jalon 133) — LIVRÉE le 18/10
+- **Où** : `worker._astro_indices_garde()`, appelée par `_astro_tour` **après**
+  la lecture d'en-tête et **avant** la pose des indices — un seul point, jamais
+  l'interface.
+- **Quoi** : indices venus de la **saisie** + brute courante portant
+  `OBJCTRA/OBJCTDEC` (repli `RA/DEC`) ⇒ `astrometrie.separation_deg()`
+  (haversine) comparée à **`GARDE_INDICES_FRACTION` (0,25) × champ saisi**.
+  Au-delà : **en-tête retenu** (AD/Dec de la brute ; champ de l'en-tête s'il est
+  déductible, sinon **champ saisi**), `suivi_astro.indice()` **reposé** (WCS
+  oublié, essais à zéro), ligne d'état + journal disant les DEUX valeurs et
+  laquelle est retenue. Sous le seuil, ou sans coordonnées : **rien ne change**.
+- **Coût borné** : UNE comparaison par jeu d'indices saisi (`_astro_garde_pour`) —
+  aucun `fits.open` ajouté sur le chemin de la boucle.
+- **Banc NEUF** `bancs/_test_astro_indices_garde_jalon133.py` (6 volets, **VERT**,
+  23 vérifications) : M31 saisi sur M33 → en-tête retenu + message + journal et
+  le **solveur reçoit les bons indices** ; même cible à 0,05° → saisie gardée +
+  **une seule** lecture ; sans coordonnées → saisie gardée ; déjà d'en-tête →
+  aucune lecture ; WCS résolu **toujours propagé** ; champ de l'en-tête adopté
+  quand il est déductible.
+- **Non-régression** : bancs **132, 115, 113, 56, 76** verts (banc 115 : son
+  bouchon d'aligneur porte `repli_phase`, attribut né à l'étape ①).
 
 ### État actuel
-- **Étape ① FAITE : le rôle R SEUL est empilé, et il est PROPRE.** Empilement mono réel
-  (vrai `ui.App`, source « Dossier surveillé », 80 frames, dark 60 s UNIQUE, 6 min 20) →
-  `M 33 R seul 134 lineaire.fits` (1959×3740, AVAFRAME 80, 0 refus, 0 floue).
-- **LES TACHES NE SONT NI DANS L'EMPILEMENT R, NI DANS LES BRUTES, NI DANS AUCUNE DES
-  5 COUCHES BRUTES.** Elles n'existent que dans le plan R du fichier de 473 frames.
-- Ni dark, ni brutes, ni empilement du rôle, ni alignement, ni combine ne les expliquent
-  séparément : c'est l'EMPILEMENT DU RÔLE R DE CE RUN-LÀ (session à 5 rôles) qui diffère
-  de l'empilement R seul.
-- **Rouges ET bleues : même signature** (aucune couche ne les porte, une seule voie est
-  amplifiée : R pour les rouges, B pour les bleues), **mais ce ne sont PAS les mêmes
-  taches** (0,8 % de recouvrement à ≤ 5 px). Elles relèvent donc d'un **mécanisme
-  COMMUN** — un correctif « spécial rouge » ne réglerait pas le bleu.
+- **Code** : ⑦ (v2.82.1), ① (v2.82.2) **et** la garde 133 sont écrits mais **NON
+  COMMITÉS** — l'arbre de travail porte les trois. Bancs 132 + **133** verts, plus
+  les voisins 115, 113, 56, 76.
+- **RUN RÉEL LRGB (Alain, 18/10)** : **plus aucune tache bleue NI rouge**, très
+  peu de rejets (**2 R + 1 G**, à confirmer sur la trace) ⇒ `phase` en broadband
+  était la **seule** cause des deux couleurs. Test taches **TERMINÉ**.
+- **Astrométrie** : run relancé avec les **bons indices** ⇒ **réussie** ; cause
+  = AD/Dec de **M31** restées dans les champs ⇒ **garde 133 LIVRÉE** (le piège
+  est fermé côté worker).
+- **Reste à faire** : le **commit de la v2.82.2**, puis ② et ③ du plan ⑪.
+- **Combine** innocenté trois fois (140/142/143) : `_ratio_combine` intact.
 
-### Mesures (scripts hors dépôt `_134*`/`_135*`/`_137*`/`_138*`, sorties `_134*_out.txt`…)
-| Mesure | Résultat |
-|---|---|
-| 134 — critère 131b | contrôle OK : **1022 rouges / 393 bleus** ; mono R : 2786 taches > +40 % = 380/Mpx |
-| 134e — recalage mono ↔ composite | ORB : échelle 1,00000 · rotation 0,000° · translation 0 ; **97,8 % des 400 étoiles à (0,−1)** |
-| 134 — les taches projetées dans le mono | 809/810 dans le cadre · écart médian **−0,7 %** · 5,8 % encore > +40 % (hasard 0,4 %) |
-| 134b — ratio composite/mono aux taches | méd **2,65** (p90 7,3 · max 9,0) contre 1,03 au fond |
-| 134d — anatomie d'une tache | **PSF de ~5 px** : R composite ×8,9 au pic · G ×2,2 · B ~0 · mono plat |
-| 134f — santé | corrélation après lissage 101×101 : **0,9925** (même scène) ; mono plat au centre |
-| 135 — CONTRÔLE POSITIF (200 étoiles brillantes) | couches R/G/B/L : **+852 à +2026 %**, 100 % > +40 % ⇒ recalage VALIDE |
-| 135 — aux 810 taches | R −0,8 % · G −0,6 % · B −0,5 % · L −0,8 % · Ha −2,2 % (0,5-2,5 % > +40 %) |
-| 135 — couche R vs mono R | dy=0 · dx=1 · **r = 0,985** ⇒ la couche R EST l'empilement R seul |
-| 136 — `composer()` rejoué sur les couches | COMMUN : 1762 taches (361 d'aire ≥ 3) ; PAR RÔLE : 287 806 ⇒ le fichier réel est COMMUN |
-| 138 — rejeu AUX POSITIONS RÉELLES | **−0,7 %** (1,9 % > +40 %) alors que le fichier réel y est à **+156,7 %** |
-| 139 — les taches **BLEUES** (même protocole) | aucune couche ne les porte : B **+0,4 %** · G +0,5 % · R −0,3 % · L −0,6 % · Ha −0,1 % (contrôle positif OK : B **+1158 %**, 100 % > +40 %) ; composite B **+73,4 %** · G −8,7 % · R −9,3 % ; multiplicateur B **×1,72** contre R ×0,91 · G ×0,90 ; **0,8 %** seulement des bleues ont une rouge à ≤ 5 px (aires médianes 8 et 9 px) |
+### Fichiers modifiés dans cette phase
+- `avastack/processing/alignment.py` : `PHASE_EN_BROADBAND`,
+  `repli_phase_session`, `StarAligner.repli_phase`, verrou dans `_sans_phase`,
+  doc du module et de `_compute_direct`.
+- `avastack/core/worker.py` : interrupteur appliqué par session (création de
+  l'empileur), copié par l'aligneur de propagation WCS, note sur les aligneurs Ha ;
+  **diagnostic `AVASTACK_DUMP_ASTRO`** (inactif par défaut) : dump de l'image
+  exacte donnée au solveur d'astrométrie + JSON + verdict ; **garde 133** :
+  `_astro_indices_garde`, `_astro_journal`, `_brute_courante` (extrait de
+  `_astro_indices_entete`), appel dans `_astro_tour` ; `_nom_cible_proche`.
+- `avastack/processing/astrometrie.py` : `GARDE_INDICES_FRACTION` (0,25),
+  `separation_deg()` (haversine).
+- `avastack/ui/app.py` : `_astro_garde_pour` initialisé avec les autres états
+  d'astrométrie.
+- `avastack/processing/trace_roles.py` : champ `repli_phase` (ligne `reference`).
+- `avastack/__init__.py` : **v2.82.2** + changelog (①, dump astro, garde 133).
+- `bancs/_test_phase_broadband_jalon132.py` : **NEUF** (8 volets).
+- `bancs/_test_astro_indices_garde_jalon133.py` : **NEUF** (6 volets).
+- `bancs/_test_astro_domaine_jalon115.py` : bouchons d'aligneur complets
+  (`repli_phase`).
+- `CLAUDE.md` (§ étape ①, § garde 133) et `AVANCEMENT.md`.
 
-### Fichiers produits (hors dépôt, `C:\Astro\test\`)
-- `M 33 R seul 134 lineaire.fits` · `_134_rmono_run_out.txt` / `_134_rmono_etat.json` ;
-- `_canaux134g\canal_{L,R,G,B,Ha}.fit` (run 40 frames, via `--canaux` du driveur) ;
-- `_diag_134_rmono.py`, `_diag_134b_ou_sont_les_taches.py`, `_diag_134c_tracer_frames.py`,
-  `_diag_134d_anatomie.py`, `_diag_134e_recalage_etoiles.py`, `_diag_134f_sante.py`,
-  `_diag_135_couches.py`, `_diag_136_rejoue_combine.py`, `_diag_137_multiple.py`,
-  `_diag_138_positions.py` ;
-- driveur `_run_133b_fresh_linear.py` enrichi : `--mono DOSSIER` et `--canaux DOSSIER`.
-- **AUCUN fichier du dépôt modifié.**
+### Mesures du chantier (détail dans `CLAUDE.md` et le changelog v2.82.2)
+- **140** RGB : aucune tache. **142** LRGB : R +103,9 % · B +132,1 %.
+  **143** L←R : B +80,7 %. **144** L←B : B +34,6 %. Rejeux 146/147 au bit :
+  force du bleu **4,5 / 81,1 / 46,1 %** ; poids 0,857 et σ **×4,38** aux 243
+  taches ; couches B entre runs r 0,985 · **Δ méd +72,3** aux 243 taches.
+
+### Astrométrie — RÉSOLUE le 18/10 : les AD/Dec étaient celles de M31
+- **Cause** : les champs d'astrométrie avaient gardé **M31** (10,683333 /
+  +41,268611) alors que les brutes étaient **M33** (en-tête 23,4625 / +30,66) ;
+  Alain a corrigé la saisie, le run suivant **résout**. Détail et leçon durable :
+  `CLAUDE.md` § « Diagnostic de l'entrée d'astrométrie ».
+- **Preuve** (dump, vrai `ui.App`, 12 brutes M33 du 22/09, 3/rôle) : les deux
+  entrées sont **identiques au pixel** (r = 1,000000, écart médian 0) ;
+  indices M31 → **échec** « 5 étoiles, 4 inliers, 1,615″/px » (le sien :
+  3 inliers, 1,603) ; indices M33 → **OK, 115 appariements, 2,469″/px,
+  rms 0,30 px**. Le champ (2,637°) ne distinguait PAS les deux cibles.
+- **Mécanisme** : à l'ouverture, `_source_fichiers_obsolete()` rend `False`
+  (aucune caméra) ⇒ les AD/Dec restaurées de la config servent à la NOUVELLE
+  cible. D'où la **garde d'interface** en prochaine action.
+- **Outils hors dépôt** : `_run_astro_154_capture.py`, `_diag_astro_154d_jeu.py`,
+  `_diag_astro_154e_compare.py` ; preuves `_dump154_indicesM31\`, `_dump154_off\`.
 
 ### Décisions prises
-- **On ne corrige rien** tant que la couche R d'un run long n'a pas été comparée au mono.
-- Le 134c (« les brutes ne portent rien ») est **INVALIDE** par construction : une brute est
-  dithérée, l'échantillonner à une coordonnée capteur fixe ne prouve rien.
-- La piste « pixels chauds du dark » reste écartée (133e), la piste « combine » est écartée
-  pour ces positions (138 : `composer()` n'y fabrique rien).
+- **Combine hors de cause** (140/142/143) ⇒ on ne touche pas à `_ratio_combine`.
+- **Cause UNIQUE mesurée** : `phase` en broadband. Le run réel de ① efface les
+  **deux** couleurs (bleu ET rouge) ⇒ l'hypothèse « rouge = contenu des 240
+  brutes L » est **ABANDONNÉE** : ne pas la rouvrir sans un NOUVEAU symptôme.
+- **Étape ① appliquée TELLE QUELLE** : `phase` écartée en broadband, **conservée**
+  en HOO/SHO (étape ③) ; les aligneurs du Ha (voie A) ne sont PAS touchés.
+- **Le correctif est un INTERRUPTEUR** (`PHASE_EN_BROADBAND`) : le rebasculer à
+  `True` rend le comportement d'avant sans toucher au reste — comparaison possible.
+- **PAS de case dans l'interface** (décision d'Alain du 18/10/2026) : on teste
+  d'abord en mode unique (phase écartée en broadband). Une case ne sera ajoutée
+  que si le besoin de **jongler entre les 2 modes selon les cibles** apparaît ;
+  l'architecture est déjà prête (le drapeau est fixé PAR SESSION, une case
+  n'aurait qu'à écrire `aligner.repli_phase`).
+- **La composition d'un fichier se lit dans son `AVACOMPO`**, jamais dans l'interface (141).
+- **134c invalide** (brute dithérée) ; **135/136/138** sur 40 frames ⇒ annulées.
+- **Interface (141)** : (A) documenter, (B) prévenir, (C) invalider — à trancher.
+
+### Problèmes ouverts
+- **VeraLux** : à instruire (ancre calculée puis soustraite par canal) — APRÈS ②/③.
+- **② et ③** du plan ⑪ : à démarrer sur ton accord.
 
 ### Prochaines étapes
-1. **Run composition RGB (SANS L ni Ha)** avec `--canaux` et `--no-save` (80 + 64 + 51 = 195
-   frames, ~20 min). Pourquoi ce run et pas R+G : sans L, `mode_l = synthetise` ⇒ **le
-   combine est l'IDENTITÉ** (ratio ≡ 1) ; le composite devient une simple mise à l'échelle
-   des couches. Donc :
-   - si les taches **disparaissent** ⇒ elles viennent du COMBINE (ratio) — or le 138 dit que
-     `composer()` n'en fabrique pas… ⇒ instrumenter le combine ;
-   - si elles **apparaissent ET sont dans les couches** ⇒ elles naissent dans l'EMPILEMENT
-     des rôles de ce run-là ;
-   - si elles apparaissent **sans** être dans les couches ⇒ contradiction frontale, preuve
-     qu'un chemin de code reste inconnu.
-   Ce run teste **les rouges ET les bleues** d'un coup, et reproduit le test d'Alain
-   (M33 en RGB montre les mêmes taches).
-2. Contrôle positif OBLIGATOIRE à chaque fois (200 étoiles brillantes : sans lui, un
-   recalage décalé fait conclure n'importe quoi).
-3. Ensuite seulement : décider le correctif (Alain).
+1. **COMMIT de la v2.82.2** (⑦ + ① + garde 133) — bancs 132 **et 133** verts, plus
+   21/13/116/129b/115/113/56/76 ; run réel LRGB OK ; astrométrie OK.
+   ⚠ La garde a été ajoutée **sous la MÊME version** (précédent : le dump astro) ;
+   si Alain préfère une **v2.82.3** pour le jalon 133, seul `AVASTACK_VERSION` et
+   l'en-tête du bloc changent.
+2. **② du plan ⑪** : centroïdes APRÈS `triangles` (mesure, pas de correction avant).
+3. **③** : SHO/HOO sans `phase` — décision après mesure du coût.
+5. Contrôle positif 200 étoiles OBLIGATOIRE à chaque mesure.
 
 ### Points d'attention
-- **Une brute est DITHÉRÉE** : le seul test valable est un empilement ALIGNÉ (mono ou couche).
-- **Les `cadre` de deux RUNS ne sont pas comparables** (chacun a son canevas) : recaler par
-  les ÉTOILES (histogramme des écarts), jamais par les cadres (±18 px d'erreur constatés).
-- Les couches brutes passent par `save_canaux_request` (`canal_<rôle>.fit`) ; l'appli doit
-  ATTENDRE leur écriture avant de quitter (300 ms de `root.quit` ne suffisent pas).
-- Les brutes NINA portent `BZERO/BSCALE` : `memmap=True` est refusé par astropy.
-- `config.json` pointe sur M31 (test de non-régression d'Alain, cible SAINE) ; M33 est la
-  cible qui montre les taches — Alain a confirmé que **M33 en RGB (sans L) montre les mêmes**.
+- **Une brute est DITHÉRÉE** : seul un empilement ALIGNÉ (mono ou couche) prouve quelque chose.
+- **`--dossier` sans `--dark` = run invalide** dès que l'exposition change (L ← B, 120 s).
+- **Comparer deux BRUTES par corrélation est INVALIDE si le dossier mélange des
+  nuits** (B : 14→23/09) ; les `cadre` de deux runs ne se comparent pas non plus.
+- `save_canaux_request` : attendre l'écriture des couches avant de quitter l'appli ;
+  brutes NINA : `BZERO/BSCALE` ⇒ `memmap=True` refusé par astropy.
+- **Banc 132** : la corrélation de phase ne se scénarise pas (elle réussit ou non
+  selon le contenu) — le volet « piège » teste le CHEMIN DE DÉCISION avec un
+  espion ; le volet « coût » exige une frame douce (contraste 0,10, flou σ = 1).
+- **Banc 133** : le message de la garde nomme les cibles via le catalogue
+  d'objets célèbres — le banc **patche `wk._nom_cible_proche`** (aucun catalogue
+  requis) et vérifie le JOURNAL, pas seulement `astro_info` (la résolution
+  remplace la ligne d'état par son résumé).
+
+### Contexte de reprise (à coller)
+Étape ① validée en réel (aucune tache bleue ni rouge, 2 refus R + 1 G),
+astrométrie réussie avec les bons indices et **garde 133 livrée** (banc vert) ;
+le code (⑦ + ① + 133) reste **NON COMMITÉ**.
+Prochaine action unique : le **commit de la v2.82.2**, puis l'étape ② du plan ⑪.
 
 ---
 
-## Chantier en cours — LRGB+Ha / RGB+Ha (jalons 129 → 129b → J2 → J5)
+## Chantier en cours — CAUSE AMONT (taches rouges/bleues du LRGB) — **CLOS le 18/10**
 
-Le rôle Ha **n'alimente AUCUN canal** : il est **FUSIONNÉ au composite** après le combine L (canal rouge).
-L'UI a **5 lignes** (rôle + dossier) : L, R, G, B, Ha.
+> Conservé comme TRACE de la recherche : ne rejouer aucune de ces mesures. La
+> synthèse exploitable est dans `CLAUDE.md` (§ pose vraie, § repli `phase`) et
+> le changelog v2.82.2.
+
+**Objectif** : supprimer les taches vues sur M33 en LRGB (absentes en RGB et en mono).
+**Règles d'or** : aucune correction avant d'avoir nommé la cause ; contrôle positif de
+recalage à chaque mesure ; mesurer sur les couches du **même run** ; rien n'est corrigé
+sans l'accord d'Alain.
+
+| Étape | Contenu | État |
+|---|---|---|
+| ① 131→133 | étirement (×600 au fond) et dark innocentés ; `2.82.0 bis` reproductible au bit | fait |
+| ② 134→139 | analyse des taches ; 134c invalide ; 135/136/138 sur couches de 40 f ⇒ annulées | fait |
+| ③ **140** | RGB sans L : **AUCUNE tache** ⇒ le rôle L est nécessaire | fait |
+| ④ **142 / 142b / 142c** | taches DANS les couches R et B ; combine innocenté ; blob compact ×6,25 | fait |
+| ⑤ **143** | L ← dossier R : **rouge parti, bleu là** ⇒ deux causes | fait |
+| ⑥ **144** | L ← dossier B (dark 120 s) : **rouge toujours propre, bleu partiel** | fait |
+| ⑦ **145** (v2.82.1) | instrumentation du worker par rôle ; rejeu 140/143/144 (agrégats **globaux** : B inchangée) ; retournement 177° et σ de B empoisonné découverts | fait |
+| ⑧ **146** | rejeu avec `--canaux` + `--trace` : **force du bleu retrouvée (4,5 / 81,1 / 46,1 %)**, couches refaites **au bit** ; écart **local** (+72 points aux 243 taches) | **fait (18/10)** |
+| ⑨ **147** | cartes `poids`/`σ` aux 243 taches : **rejet ET géométrie** — poids 0,857 (témoin rouge 1,2 % sous p5), σ **×4,38** (témoin 1,00) ; 11,4 % des frames B posées à > 2 px d'un run à l'autre (max 32,8) | **fait (18/10)** |
+| ⑩ **148** | pose vraie mesurée hors appli (**ASTAP**) : les 4 divergentes sont fausses dans **les DEUX** runs ; **11/50** et **12/49** frames B empilées **à l'envers** par le repli `phase` (rotation 0 sur un champ à **+177,07°**) ⇒ ce n'est ni la référence ni le rejet | **fait (18/10)** |
+| ⑪ **① — 132 (v2.82.2)** | plan ⑪ étape ① : **plus de repli `phase` en broadband** (interrupteur `PHASE_EN_BROADBAND` + verrou dans `_sans_phase`) ; banc neuf (8 volets) : piège supprimé, retournée 177,07° à 0,01 px, refus **par rôle** mesurés | **LIVRÉ le 18/10** · banc vert · **NON COMMITÉ** |
+| ⑫ **run réel LRGB** | **VALIDATION EN RÉEL (Alain, 18/10)** : **plus aucune tache bleue ni rouge** ; rejets **2 R + 1 G** ; astrométrie **réussie** avec les bons indices ⇒ cause amont **CLOSE** | **validé** · reste le commit |
+
+---
+
+## Chantier en cours — LRGB+Ha (jalons 129 → J5) — reprend APRÈS la garde d'interface
+
+Le rôle Ha **n'alimente aucun canal** : il est **FUSIONNÉ** au composite après le combine L.
 
 | Jalon | Contenu | État |
 |---|---|---|
-| **J1 / 129** (v2.81.0) | compositions + 5 lignes + séparation ancre / `_narrowband_ha` | **commité** (checkpoint, banc vert), test réel KO (Ha refusé) |
-| **129b-A** | Ha utilisable : **voie A** (référence PAR RÔLE + recalage de l'EMPILEMENT) + `profondeur_min` + refus par rôle + libellé SPCC | **COMMITÉ** (`cfd40d0`) — re-test réel du 16/10 : voie A **VALIDÉE** (441 frames, 2 refus en R) |
-| **J-CLRGB = JALON 130** (v2.82.0) | combine LRGB : **domaine** + **bornes [0 ; 5]** + **repli = moyenne LOCALE** + la fiche DIT le combine + banc NEUF (8 volets) | **IMPLÉMENTÉ**, banc/garde-fou VERT, mesure sur couches réelles faite — **à VALIDER EN RÉEL** (non commité) |
-| **J2** | fusion « ajout au rouge » (DÉFAUT) + poids + cadre « Fusion Ha » | après le re-test du 130 |
+| J1 / 129 (v2.81.0) | compositions + 5 lignes UI + séparation ancre / `_narrowband_ha` | commité |
+| 129b | voie A (référence **PAR RÔLE** + recalage de l'empilement) + `profondeur_min` + refus par rôle | COMMITÉ ; validé en réel le 16/10 (441 frames, 2 refus en R) |
+| **130 (v2.82.0)** | combine LRGB borné [0 ; 5] + repli local + fiche + banc neuf | COMMITÉ + POUSSÉ (`ef0c35c`) |
+| J2 → J5 | fusion « ajout au rouge » + poids + cadre ; 4 autres modes ; continuum ; ancre réelle + doc | à faire |
 
-| **J3** | les 4 autres modes : `fondu_rouge` (α), `ecran_rouge`, `eclaircir_rouge` (max), `ha_luminance` | |
-| **J4** | continuum (défaut = BANDES PASSANTES, BW_Ha 7 nm / BW_RGB 100 nm ; référence **R**, jamais L) | |
-| **J5** | ancre EN RÉEL + fiche de rendu + doc | |
-
-**Plan FIGÉ — 13 arbitrages d'Alain (15/10/2026).** Identifiants en **FRANÇAIS** (comme `synthetise`).
-Défauts/bornes : poids **1,0** (0–10, pas 0,05) · α **0,5** (0–1, pas 0,05) · Q **0,80** (0,10–2,00, pas 0,05).
-Cadre « Fusion Ha » visible SEULEMENT si la compo contient Ha. Continuum : 3 méthodes, défaut **bandes
-passantes** (source : `NBRGBCombination.js` de PixInsight, LU sur le disque d'Alain) ; case « recentrer le
-Ha sur son fond » (`Ha − med(Ha)`) COCHÉE ; écrêtage [0,1] ; case DÉSACTIVÉE si le dossier R est vide ;
-seuil de détection d'étoiles 5σ = constante INTERNE. **HORS PÉRIMÈTRE** : poids par canal R/G/B, starless,
-versions non linéaires.
-
-**RÈGLES D'OR.** Un jalon = un banc NEUF + rejeu des bancs concernés (TOUS VERTS, hors échecs préexistants
-documentés) + garde-fou `_test_refactoring_garde_fou.py` VERT ; commentaires en FRANÇAIS ; **jamais** l'état
-d'une case déduit de `config.json` — le MESURER. **AUCUNE release GitHub sans l'accord d'Alain** ; **à CHAQUE
-jalon validé, LUI DEMANDER AVANT de démarrer le suivant**.
+Plan figé (13 arbitrages du 15/10) : poids **1,0** (0–10) · α **0,5** · Q **0,80**
+(0,10–2,00) · cadre « Fusion Ha » visible seulement si la compo contient Ha ·
+continuum = **bandes passantes** (Ha 7 nm / RGB 100 nm), référence **R** ·
+identifiants en français (`synthetise`).
 
 ---
 
 ## En attente / prochaine session
 
-- **CHANTIER « CAUSE AMONT » — ÉTAPE ①+② FAITES (17/10)** : le rôle R seul est empilé et
-  **PROPRE** ; les taches (rouges **et** bleues) ne sont ni dans les brutes (dithérées — le
-  traçage fixe est invalide), ni dans les 5 couches brutes, ni dans un `composer()` rejoué
-  sur ces couches. Elles n'existent QUE dans le composite de 473 frames ⇒ l'empilement des
-  rôles de ce run-là diffère de l'empilement R seul. **PROCHAINE ACTION, UNE SEULE** : run
-  composition **RGB sans L ni Ha** avec `--canaux` (~20 min, le combine y est l'IDENTITÉ :
-  il discrimine couches / combine d'un coup, et teste rouges ET bleues).
-  Puis seulement : décider le correctif. Reste aussi ④ l'hétérogénéité des dossiers
-  (2 côtés du Pier × 2-5 nuits, ciels +22 à +32 %) et l'amplification asymétrique du
-  combine — mesure faite, correctif non décidé.
-
-- **VeraLux (méthode préférée d'Alain) — à instruire APRÈS la cause amont** : son ANCRE est calculée sur la
-  LUMINANCE PONDÉRÉE puis soustraite avec un `max(x, 0)` **PAR CANAL** (code tiers
-  `veralux_core_headless.py`, `calculate_anchor_adaptive` + `extract_luminance`) ; l'ancre consomme ~97 %
-  du niveau de ciel → **21 624 px écrasés = 88 × le STF** (les 244 px du STF sont TOUS dedans). Remède DÉJÀ
-  en place de ce côté : le **PIÉDESTAL PAR CANAL** (jalon 122, ACTIF, `couleurs.piedestal_canaux`).
-- **DIRE si les anneaux sombres autour des étoiles sont toujours là** : **MESURÉ** — la couronne d'étoile est
-  NEUTRE dans le brut ET le traité (±0 % à r=14) et devient COLORÉE dans le STF (R +41 %, G +19 %, B +23 %
-  à r=14). Ce n'est donc PAS un anneau de l'empilement : l'étirement colore le halo (le clip par canal le
-  réduit : R +30,4 % → +14,7 %).
-- **Jalon en RÉSERVE (pas décidé)** : « SPCC : ne pas appliquer une pente hors bornes » (piste du
-  diagnostic 130).
-- **Retour arrière possible en un geste** : `git checkout -- avastack/processing/composition.py` remet le
-  combine d'avant (le correctif est isolé dans `_ratio_combine`).
-- Livré/validé : **v2.81.0** (compositions +Ha + voie A) sur `LRGBHa` — **PAS publiée** (pas de release tant
-  que le Ha n'est pas fusionné) ; **v2.80.0** publiée sur `master`.
-- Boutons de données SANS Siril (« ⬇ Gaia », « ⬇ Spectres (champ) », « ⬇ Base SPCC ») ; **piste INDI** = jalon à
-  part, PAS avant le portage Linux ; côté **Store**, cadence séparée (v2.71.1 publiée).
-- `installer/` : règle « plus d'un ou deux fichiers touchés → rebuild ».
+- **Validé en réel (18/10)** : run LRGB **sans aucune tache bleue ni rouge**,
+  **2 refus R + 1 G**, astrométrie **réussie** avec les bons indices.
+- **Reprise** : § « Astrométrie — RÉSOLUE » ci-dessus +
+  `CLAUDE.md` § « Diagnostic de l'entrée d'astrométrie » (leçon durable : lire
+  `indices` dans le dump AVANT tout). Mesures antérieures dans `C:\Astro\test\` :
+  `_astap148*\`, `_148h_toutes.txt`, `_diag_astro_152.py`, `_diag_astro_153_entree.py`,
+  et pour cette séance `_dump154_indicesM31\`, `_dump154_off\`, `_154*_etat.json`.
+- **Décisions d'Alain attendues** : **commit de la v2.82.2** (⑦ + ① + garde 133)
+  ou version séparée **v2.82.3** pour le jalon 133 ; démarrage de **②**
+  (centroïdes après `triangles`) puis **③** (SHO/HOO sans `phase`) ; interface
+  141 (A/B/C).
+- **RÉSOLU (141)** : « M33 en RGB montre les mêmes taches » = session **LRGB+Ha** avec
+  l'interface passée en « RGB » **pendant** l'empilement ; le fichier porte
+  `AVACOMPO=LRGB+Ha…`. Un vrai RGB (après « Arrêter » ou « Réinitialiser ») n'a rien.
+- **VeraLux** : ancre calculée sur la luminance pondérée puis soustraite par canal
+  (`max(x, 0)`), ~97 % du niveau de ciel consommé ⇒ tout écart de fond sort ×20 à ×40 ;
+  remède déjà actif = **piédestal par canal** (jalon 122).
+- **Halo d'étoile** : couronne NEUTRE dans le brut, COLORÉE par le STF (R +41 % / G +19 % /
+  B +23 % à r=14) ⇒ ce n'est pas l'empilement, c'est l'étirement + le clip par canal.
+- Boutons de données sans Siril (« ⬇ Gaia », « ⬇ Spectres », « ⬇ Base SPCC ») ; **INDI** =
+  jalon à part, après le portage Linux ; **Store** = cadence séparée (v2.71.1 publiée).
+- Retour arrière en un geste : `git checkout -- avastack/processing/composition.py`.
 
 ---
 
 ## Setup d'Alain
 
-- **Setup 1 (miniPC)** : QHY MiniCam8M (mono refroidie, roue intégrée, alim. 12 V) ;
-  N.I.N.A. → `TargetSchedulerSequence/<cible>/<expo>/LIGHT` — un dossier peut MÉLANGER
-  plusieurs nuits (la 1re frame par mtime n'est pas forcément de la nuit courante).
-- **Setup 2** : C8 défourché + réducteur 0,63 → 1280 mm ; Player One Uranus-C Pro
-  (couleur, IMX585, 3856×2180, RGGB, gain unitaire 210, TEC) sur monture DIY **Open
-  Astro Mount** ; guidage SVBONY SV305C sur lunette 60/240. Constat 17/09/2026 à
-  1280 mm : étoiles « en plusieurs points puis en trainées » → origine du jalon 13
-  (alignement robuste). Banc POA : `_diag_camera_playerone.py` (jalon 28).
-- **Jeux de test (QHY MiniCam8M + SV555)** : M31 (09/10) = L du 13/09 + R/G/B du
-  22-23/09, ~50-60 frames/filtre, 60 s, −15 °C (⚠ un dossier de filtre peut MÊLER les
-  deux côtés du Pier : 26 % des frames RGB à 176°) ; M33 (nuit du 10-11/10) = L 60×60s ·
-  R 20×60s · G 20×60s · B 17×120s → 2,2 h, recadré 3747×1983 (master dark 60 s pour
-  L/R/G, 120 s pour B). **15/10/2026 : jeu M33 + un dossier Ha de 40 frames — cible du test J1.**
-- **Outils astro locaux vérifiés (22/09/2026)** : Siril 1.4.4 (catalogues Gaia XP dans
-  `%LOCALAPPDATA%\Siril\...`, base SPCC dans `siril-spcc-database`) ; ASTAP
-  (`C:\Program Files\astap`, base D80 Gaia DR3 1,24 Go) ; PAS d'astrometry.net/ANSVR.
-- **Machine LINUX d'Alain (fait du 29/09/2026)** : **Ubuntu 26.04 LTS** — installateur
-  Linux exécuté PLUSIEURS fois (installation, prérequis, venv, dépendances, lancement) ;
-  astrométrie, SPCC et GraXpert y sont validés. Restent : machine **VIERGE** (sans
-  Python) et **test matériel caméras** (`--cameras`).
+- **Setup 1 (miniPC)** : QHY MiniCam8M (mono refroidie, roue intégrée) ; N.I.N.A. →
+  `TargetSchedulerSequence/<cible>/<expo>/LIGHT` — un dossier peut MÉLANGER plusieurs nuits.
+- **Setup 2** : C8 défourché + réducteur 0,63 (1280 mm) ; Player One Uranus-C Pro (couleur,
+  IMX585, RGGB) sur monture DIY **Open Astro Mount** ; guidage SV305C sur 60/240.
+- **Jeux de test (QHY + SV555)** : **M31** (L du 13/09 + R/G/B des 22-23/09, 60 s, −15 °C ;
+  un dossier peut mêler les deux côtés du Pier) ; **M33** (nuit du 10-11/10 : L 60×60 s,
+  R/G/B 60-120 s) + un dossier **Ha de 40 frames** (cible du test J1).
+  Darks maîtres : 60 s (L/R/G), 120 s (B), 180 s (Ha).
+- **Outils locaux** : Siril 1.4.4 (catalogues Gaia XP, base SPCC), ASTAP (D80 Gaia DR3) ;
+  pas d'astrometry.net. **Ubuntu 26.04 LTS** : installateur Linux éprouvé ; restent la
+  machine VIERGE et le test matériel caméras (`--cameras`).
 
 ---
 
 ## Pièges récents (encore actifs)
 
-- **L'ÉTIREMENT A UN GAIN DE ×600 AU FOND** (jalon 131, MESURÉ sur le re-test du 16/10) : fond 0,0249,
-  `lo = med − 2,6 σ` = 0,02470, `hi = p99,9` = 0,09471 → le fond n'est qu'à **0,265 % de la plage** au-dessus
-  du noir, `m = 0,0234`, **pente ×597**. Conséquence mesurée : le bruit local du fond passe de 0,05-0,07 %
-  (image traitée) à 3-7 % (image étirée) = **×66-111**, et la dispersion chromatique locale (G−R, N=31 px)
-  de 1,61 % à **84,9 % = ×52**. Un « grain » invisible en linéaire devient un patchwork saturé : **c'est
-  attendu ; ce qui ne l'est pas, c'est que le fond porte des structures COLORÉES (σ 1,6 %) dès l'empilement
-  BRUT** (le débruitage/GraXpert ne les réduit pas : 1,82 % → 1,61 %).
-- **`_calc_stats` MESURE SUR LA MOYENNE DES CANAUX, MAIS LE CLIP S'APPLIQUE PAR CANAL** (`display.py`,
-  `_calc_stats` l. 523 → `_moteur_stf` l. 614) : le fond R est à +1,73 σ de `lo` (3,56 % de ses pixels
-  écrasés à 0), G à +3,49 σ (2,14 %), B à +2,82 σ (3,01 %) → **364 905 px ont un canal noir, dont 282 742
-  COLORÉS** (points rouges/bleus purs) **et un fond VERT** (G/R = 1,88 prédit contre 1,84 mesuré). Un point
-  noir/blanc par canal remet le fond à 1,000/1,000 et divise les pixels à canal noir par 3 (simulé, `_131f`).
-- **COMPARER DES TUILES N'A DE SENS QU'À ÉCHELLE COMMUNE** : étirer le contraste de chaque tuile séparément
-  (percentiles par tuile) fait paraître le brut toujours propre — ses étoiles écrasent l'échelle (piège déjà
-  rencontré au 130). Règle qui marche : **afficher chaque image relativement à SON PROPRE FOND** (gris =
-  fond × 0,90 → fond × 1,50) — c'est ce qui a montré le patchwork (`_131d_echelle_commune.jpg`).
-- **LE REFUS Ha N'EST PAS UN PROBLÈME DE MÉTHODE** (rejeu 129b, MESURÉ) : `triangles_seuls` False ou True
-  → **0/5** ; Ha RETOURNÉ ~180°, **~6 étoiles communes** avec le L, `TRI_INLIERS_MIN(6)` non tenable en
-  consolidation ; ORB **good 1-7 < 8** des deux côtés. ⇒ ne PAS remettre `triangles_seuls` pour le Ha.
-- **REPLI « PHASE » TROMPEUR SUR DES CHAMPS NON APPARENTÉS** (mesuré au banc 129b : 1/3 « aligné ») : un
-  succès `phase` ne prouve AUCUN appariement d'étoiles — ne pas s'en servir comme preuve d'alignabilité.
-- **GARDE-FOU `_invariants_triangles`** : un `n_max` > ~30 explose la mémoire — C(60,3) = 34 220
-  triangles et la matrice (T×T) qui suit font grimper le processus à **13,7 Go de RSS** (constaté, à
-  tuer). Les rejeux/essais de base élargie doivent PLAFONNER (12/18/24/30).
-- **SPCC : le mode « offset » du Linear Fit NE RÉÉCHELONNE PAS** (`gains = 1.0`, `stacking.py:205`) — un
-  coefficient SPCC extrême (fond bleu) n'est donc PAS compensé. Et la SPCC AVERTIT quand son modèle décrit
-  mal l'image (pente hors [0,5 ; 1,5]) : dans ce cas, ne pas l'appliquer sans réfléchir.
-- **`moyennes()` APPLIQUE le recalage de rôle** (voie A) : tout consommateur qui doit lire un empilement
-  BRUT doit passer par `LiveStacker.mean()` — sinon double transformation.
-- **Pixels à CANAL NUL (S = 1)** — fabriqués par le bug de restauration (CORRIGÉ au jalon 120) : ils
-  POLLUENT toute statistique de couleur — les EXCLURE avant de mesurer.
-- **La CHROMA est un NO-OP sur une image MONOCHROME** (Cr/Cb nuls) : tout banc qui la teste doit utiliser
-  une image COULEUR (leçon du banc 125 [4]).
-- **`config.json` NE DIT PAS LA RÉALITÉ** : c'est l'état à la DERNIÈRE FERMETURE, pas celui du moment où un
-  fichier est écrit. On ne l'utilise JAMAIS pour affirmer l'état d'un réglage : **on MESURE** le fichier produit.
-- **VERALUX AMPLIFIE LE FOND (MESURÉ)** : son ancre consomme ~97 % du niveau de ciel → tout écart de fond par
-  canal sort ×20 à ×40 ; la moindre correction par canal décide de la couleur (cyan ↔ magenta).
-- **La NEUTRALISATION du fond est RÉSERVÉE à VeraLux ; `reduire_bruit_chroma` est COMMUNE aux deux moteurs ;
-  les DEUX sont EXCLUES de la sortie linéaire traitée** (verrouillé, banc jalon 59 [6]).
-- **JOB EXTERNE = 11 éléments** (jalon 123) ; un job plus court est lu TOLÉRANT.
-- **`_vl_params()` N'INCLUT PAS LA FORME** : un prédicat qui compare `_vl_result[0]` à `_vl_params()` SEUL est
-  TOUJOURS faux ; et il ARRONDIT `vl_chroma_rayon` à 2 décimales (une clé peut « matcher » un rayon voisin).
-- **Échecs PRÉEXISTANTS** : `_test_espace_jalon72` (géométrie d'écran, dépend de la machine) ;
+- **AD/Dec d'astrométrie PERSISTÉES d'une cible à l'autre** : à l'ouverture de
+  l'appli, `_source_fichiers_obsolete()` rend `False` (aucune caméra) donc les
+  coordonnées restaurées de la config servent à la NOUVELLE cible. Mesuré le
+  18/10 : M31 (`10,683333 / +41,268611`) sur des brutes M33 → « 5 étoiles,
+  4 inliers, 1,615″/px ». Lire **`indices`** dans le dump. **FERMÉ au jalon 133**
+  côté worker (`_astro_indices_garde`, seuil 0,25 × champ) — le piège reste à
+  connaître pour lire un journal d'AVANT la v2.82.2.
+
+- **Un agrégat GLOBAL est AVEUGLE à un écart LOCAL** : 243 taches (~0,03 % des
+  7,3 Mpx) font passer la couche B de +1,7 % à +80,7 % AUX POSITIONS sans
+  bouger le poids moyen (0,916 → 0,919), le σ p50 ni les rejets. « La couche ne
+  change pas » ne se lit jamais sur des percentiles : on lit **sur les
+  positions** du défaut (c'est le trou du 145, comblé par le 146).
+- **Les CARTES sont sur le CANEVAS d'empilement** (union des cadres), pas sur la
+  couche croisée : décalage > 100 px → `decalage_etoiles(..., lim=300)` (avec
+  `lim=60` : 2 % appariées et un contrôle positif à +0 %).
+- **`poids` n'est JAMAIS 1,0** : kappa-sigma retire des frames partout
+  (médiane 0,918). Lire un rejet **contre le p5 du fond du même run**, avec témoin.
+- **Comparer des tuiles n'a de sens qu'à ÉCHELLE COMMUNE** : ramener chaque image
+  à son propre fond (×0,90 → ×1,50) ; une tuile étirée seule paraît toujours propre.
+- **Le refus Ha n'est pas un problème de méthode** : `triangles_seuls` True/False → 0/5 ;
+  Ha retourné ~180°, ~6 étoiles communes, `TRI_INLIERS_MIN(6)` non tenable. Ne pas le remettre.
+- **Le repli « phase » n'est PAS une preuve d'alignement** (1/3 au banc 129b ;
+  11-12 frames B par run empilées **à l'envers** au ⑩) : une translation seule ne
+  peut pas aligner un champ retourné. **CORRIGÉ (①, v2.82.2)** : `_sans_phase`
+  exige `avec_phase` ET `repli_phase` — ne jamais rendre une réussite de phase
+  FINALE du chemin direct. **Et elle ne se scénarise pas** : à paramètres voisins
+  elle réussit ou refuse selon le contenu → un banc teste le **chemin de décision**
+  (espion sur `_phase`), et son coût se mesure sur une frame **douce** (contraste
+  0,10, bruit 0,008, flou σ = 1).
+- **Une empreinte ne dit pas le SENS du champ** : `PIERSIDE` (West/East) et
+  `ANGLE`/`OBJCTROT` sont dans l'en-tête FITS ; `align_ok=True` avec `angle=0`
+  reste compatible avec une frame retournée.
+- **Garde-fou `_invariants_triangles`** : `n_max` > ~30 explose la mémoire (13,7 Go de RSS
+  constatés) ⇒ plafonner à 12/18/24/30.
+- **SPCC** : le mode « offset » du Linear Fit ne rééchelonne pas (`gains = 1.0`) — un
+  coefficient extrême n'est pas compensé ; ne pas appliquer une pente hors [0,5 ; 1,5].
+- **`moyennes()` APPLIQUE le recalage de rôle** : lire un empilement BRUT via `mean()`.
+- **Pixels à CANAL NUL** (bug corrigé au jalon 120) : les exclure de toute statistique.
+- **La CHROMA est un NO-OP sur une image monochrome** : tester sur une image couleur.
+- **`config.json` NE DIT PAS LA RÉALITÉ** (état à la dernière fermeture) : on MESURE.
+- **VeraLux amplifie le fond** ; la neutralisation est réservée à VeraLux,
+  `reduire_bruit_chroma` est commune, les DEUX sont exclues de la sortie linéaire traitée.
+- **JOB EXTERNE = 11 éléments** (un job plus court est lu tolérant) ; **`_vl_params()`
+  n'inclut pas la forme** et arrondit `vl_chroma_rayon` à 2 décimales.
+- **Échecs PRÉEXISTANTS** : `_test_espace_jalon72` (géométrie d'écran),
   `_test_reset_empilement_jalon76` [4] (course `_stop()`, sensible à la charge CPU).
-- **`_fmt_expo` est DÉJÀ PRIS dans `app.py`** (jalon 119) : le redéfinir casse le panneau Caméra.
-- **PIÈGE LANCEMENT** : `python3` ≠ venv — toujours `python AVAStack.py`.
-- **Ordre de la chaîne** (Alain, 16/09/2026) : recadrage → gradient → débruitage → netteté → étirement.
-- **Tk** : ne JAMAIS mélanger `grid` et `pack` dans le même conteneur (`TclError`).
-- **OpenCV/OpenCL** : crash au teardown → `cv2.ocl.setUseOpenCL(False)` ; bancs `ui.App` hermétiques :
-  `ui.CONFIG = {}` + `sauver_config` intercepté.
-- **Bancs : `_detecter_filtres()` se termine par `_dire()` = boîte MODALE** → patcher `ui.App._dire`
-  (`lambda self, *a, **k: None`), sinon blocage indéfini.
+- **`_fmt_expo` est DÉJÀ PRIS dans `app.py`** ; **Tk** : jamais `grid` + `pack` dans le même
+  conteneur ; **OpenCV** : `cv2.ocl.setUseOpenCL(False)` ; bancs `ui.App` : `ui.CONFIG = {}`
+  et `ui.App._dire` patché (`_dire` = boîte MODALE, sinon blocage).
+- **Lancement** : `python AVAStack.py` (venv) — jamais `python3`.
+- **Ordre de la chaîne** : recadrage → gradient → débruitage → netteté → étirement.
 
 ---
 
 ## Clôtures précédentes
 
-- **17/10/2026 (matin)** : 133 — le fichier `2.82.0 bis` est reproductible AU BIT par un
-  empilement frais avec les darks par rôle ; le dark est innocenté (le 132f, qui affirmait
-  l'inverse, mesurait les brutes du disque — méthode invalide).
-- **16/10/2026 (fin)** : jalon 130 (v2.82.0) COMMITÉ + POUSSÉ (`ef0c35c`) — le combine LRGB
-  est borné ; le diagnostic 131 innocentait l'empilement et nommait l'étirement + le clip
-  par canal.
+- **18/10/2026 (matin)** : ⑧ + ⑨ + ⑩ — force du bleu réelle et LOCALE ; cause
+  mesurée à l'ASTAP = frames B empilées **à l'envers** par le repli `phase`
+  (11/50 et 12/49), pas la référence ni le rejet ⇒ correctif = étape ①.
+- **17/10/2026 (matin)** : 133 — le fichier `2.82.0 bis` est reproductible AU BIT ;
+  le dark est innocenté (le 132f mesurait les brutes du disque : méthode invalide).
+
+

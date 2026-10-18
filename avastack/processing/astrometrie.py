@@ -84,6 +84,15 @@ ASTRO_CHAMP_MAX: float = 30.0   # bornes du champ indicé (°)
 ASTRO_MAX_AVEUGLES: int = 2      # plafond des balayages ASTAP (session) — LENTS
 ASTRO_ASTAP_TIMEOUT_S: float = 90.0    # délai d'un balayage (borné pour le live)
 
+# Jalon 133 — GARDE D'INTERFACE des indices : une SAISIE (persistée dans
+# `config.json`) peut désigner la cible de la VEILLE alors que les brutes sont
+# une AUTRE cible ; la résolution échoue alors en silence, avec un message qui
+# ne dit jamais QUELLES coordonnées ont servi (mesuré le 18/10/2026 : AD/Dec de
+# M31 sur des brutes M33 → « 5 étoiles, 4 inliers, 1,615″/px » ; avec les
+# indices de l'en-tête : 115 appariements). Au-delà de cette fraction du champ,
+# deux positions ne peuvent pas désigner la même cible : l'en-tête est retenu.
+GARDE_INDICES_FRACTION: float = 0.25
+
 # Séparateurs des coordonnées sexagésimales (« 41d16'09" », « 0h42m44s »,
 # « 00 42 44 », « 0:42:44 ») — l'espace en fait partie : les logiciels
 # d'acquisition écrivent OBJCTRA/OBJCTDEC ainsi.
@@ -173,6 +182,26 @@ def champ_depuis_optique(focale_mm: Any, pixel_um: Any,
     if f <= 0.0 or p <= 0.0 or n <= 0.0:
         return None
     return 206.265 * p * n / f / 3600.0
+
+
+def separation_deg(ra1: Any, dec1: Any, ra2: Any, dec2: Any) -> float | None:
+    """Séparation angulaire (degrés) entre deux positions célestes.
+
+    Formule de la HAVERSINE (grand cercle) : stable aux PETITS écarts, là où
+    une simple différence d'AD multipliée par cos(Dec) se dégrade (et devient
+    fausse près des pôles). Seul usage : la garde d'interface des indices
+    (jalon 133), qui compare une saisie aux coordonnées de l'en-tête.
+
+    → séparation en degrés, ou None si l'une des quatre valeurs n'est pas un
+    nombre (convention du module : jamais d'exception)."""
+    try:
+        r1, d1, r2, d2 = (np.radians(float(v)) for v in (ra1, dec1, ra2, dec2))
+    except (TypeError, ValueError):
+        return None
+    sd = np.sin((d2 - d1) / 2.0)
+    sr = np.sin((r2 - r1) / 2.0)
+    a = sd * sd + np.cos(d1) * np.cos(d2) * sr * sr
+    return float(np.degrees(2.0 * np.arcsin(np.sqrt(np.clip(a, 0.0, 1.0)))))
 
 
 def _valeur_entete(entete: Any, noms: Any) -> str | None:

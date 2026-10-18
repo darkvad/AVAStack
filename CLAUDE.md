@@ -1136,6 +1136,311 @@ ce qui manquait n'était pas une correction mais une MESURE.
   ne se voit pas sur un chemin court dans un bac à sable : il faut des textes
   LONGS pour le réveiller.
 
+## Trace par rôle de l'empilement (étape ⑦ du chantier CAUSE AMONT, v2.82.1)
+
+- **À QUOI ÇA SERT** : le LRGB porte des taches qu'AUCUNE couche isolée ne
+  porte (contrôle positif à +852…+2026 % sur 200 étoiles) et le combine est
+  innocenté trois fois (140/142/143). Ce qui restait invisible était l'ÉTAT
+  D'EMPILEMENT par rôle : quelle référence d'alignement, quels offsets, quels
+  pixels rejetés, avec quel σ. `processing/trace_roles.py` l'écrit.
+- **INACTIVE PAR DÉFAUT** : sans `trace_roles.ouvrir(dossier, nom)` ni
+  `AVASTACK_TRACE_ROLES=<dossier>`, chaque point d'accroche rend après UN test
+  de chaîne : aucun calcul, aucun fichier, résultat identique AU BIT. C'est la
+  règle à conserver — une instrumentation ne doit jamais changer la mesure.
+- **DEUX TYPES DE LIGNE** (JSONL, une ligne = un fait) :
+  `reference` = {seq, motif, role, n, empreinte, n_roles, cadre, aligneur} ;
+  `frame` = {seq, role, etape, empreinte, n_roles, ref_role/ref_n/ref_motif/
+  ref_empreinte/ref_age, dx/dy/distance/angle/echelle/methode, n_role,
+  rejets_cumules, poids_moyen/poids_plein_pct/poids_sous_pct, sigma_p50/p90/
+  p99, duree_ms}. Plus `entete` (version + argv) et `fin`.
+- **`motif` dit POURQUOI la référence a été posée** : `initiale`, `auto`
+  (toutes les `ref_refresh` frames), `manuelle` (bouton), `repli` (dossier
+  mixé, jalon 13), `restack`, `ha` (voie A, aligneur séparé). Un run sans
+  trace ne permet PAS de distinguer un rafraîchissement auto d'un clic.
+- **`role` dit DE QUELLE COUCHE elle vient** : c'est le rôle rendu par
+  `worker._image_reference_et_role_de` (canal VERT : G en RGB/LRGB, O3 en HOO,
+  Ha en SHO ; repli sur le 1er rôle non vide). POINT UNIQUE : `_image_reference_de`
+  en est une simple vue `[0]` — ne jamais dupliquer ce choix.
+- **EMPREINTE = CONTENU, pas nom** (blake2b 8 octets sur une version décimée
+  ≤ 512 px) : elle prouve que deux runs lisent la MÊME brute, et identifie la
+  référence réellement utilisée. Deux empreintes identiques = même image.
+- **POIDS = `wsum / n`** (le rejet kappa-sigma est un poids 0/1, il n'existe
+  pas d'autre pondération). `poids_sous_pct` = part des pixels COUVERTS ayant
+  perdu au moins une frame. **σ** = `sqrt(sumsq/wsum − moyenne²)`, TEMPOREL, en
+  unités de l'image linéaire ; les pixels NON COUVERTS (`wsum == 0`, bords de
+  recalage) sont EXCLUS, sinon les percentiles tombent à zéro.
+- **`exporter_cartes(dossier, prefixe, stackers)`** (option, ~34 Mo par carte
+  en 8 Mpx) : par rôle, `moyenne` / `poids` / `sigma`. Une tache est un défaut
+  LOCAL : des percentiles disent « la couche est plus bruitée », pas « ici ».
+  Les cartes d'un run sont dans SON cadre d'intersection — ne pas les comparer
+  pixel à pixel entre runs sans recaler par les étoiles.
+- **REJEU** : `_run_133b_fresh_linear.py --compo … --tag T --trace DOSSIER
+  [--trace-cartes]`, puis `_diag_145_trace_roles.py` (les deux hors dépôt).
+  La trace est ouverte AVANT `_start()` (la première brute doit être tracée) et
+  close quand la source est épuisée, avant la sauvegarde éventuelle.
+  Pour une mesure de RENDU (pas d'état), ajouter `--canaux` : les couches
+  brutes sont écrites par le chemin natif de l'appli ; `_diag_146_force_bleue.py`
+  les mesure (option `--jeu 140` = rejoue la mesure sur les couches d'origine,
+  pour valider le code de mesure) et `_diag_146b_identite.py` compare deux jeux
+  de couches au bit.
+- **MESURÉ (étape ⑧, 18/10/2026) — un agrégat GLOBAL est AVEUGLE à un écart
+  LOCAL** : sur les mêmes brutes, la couche B passe de **+1,7 %** (3 rôles) à
+  **+80,7 %** (L←R) et **+34,6 %** (L←B) aux **243 positions** des taches bleues
+  de la référence, alors que `poids_moyen` (0,916→0,919), `sigma_p50` et les
+  rejets kappa-sigma ne bougent pas. Le rejeu refait les couches d'origine **AU
+  BIT** (100 % de pixels identiques, |Δ| max = 0) : la force du bleu est une
+  propriété RÉELLE de la couche B, et « la couche B ne change pas » (tiré des
+  seuls agrégats au 145) était FAUX. Règle : ne jamais conclure sur une couche
+  à partir de percentiles — superposer les **positions** du défaut aux cartes
+  `poids`/`σ` de `exporter_cartes`.
+- **MESURÉ (étape ⑨, 18/10/2026) — CARTES CONTRE TACHES** : aux 243 positions des
+  taches bleues, dans un run à 4 rôles, `poids` = **0,857** contre 0,918 au fond
+  (64,6 % des positions sous le p5 du fond, contre **1,2 %** aux taches rouges
+  prises comme témoin) et **σ ×4,38** (témoin 1,00×) ; sans 4e rôle, σ ×1,02 et
+  moyenne +1,7 %. ⇒ une MINORITÉ de frames (~8 %) porte une valeur ~10× le fond
+  à ces pixels : rejetée sans 4e rôle, GARDÉE avec (σ gonflé ⇒ seuil k·σ énorme).
+- **PIÈGES DES CARTES** : elles sont écrites sur le CANEVAS d'empilement (union
+  des cadres), plus GRAND que la couche croisée à l'intersection ⇒ décalage
+  > 100 px vers la référence, donc `decalage_etoiles(..., lim=300)` (avec
+  `lim=60` : 2 % d'étoiles appariées et contrôle positif à +0 %). Et `poids`
+  n'est jamais 1,0 (kappa-sigma retire partout) : comparer au **p5 du fond du
+  MÊME run**, avec une population témoin.
+- **POSE PAR FRAME** : la trace donne `dy/dx/angle/echelle` de chaque brute ; en
+  joignant deux runs par l'**empreinte de la brute**, on compare les poses.
+  Mesuré au ⑨ : 11,4 % des frames B ont une pose différente de plus de 2 px
+  entre un run à 3 rôles et un run à 4 (max 32,8 px), G à 6,2 % (p90 0,43 px) —
+  la référence automatique (pile d'un autre rôle) n'a pas la même profondeur au
+  même instant selon le nombre de rôles.
+- **GARDE-FOUS** : jamais d'exception ; écriture bornée (`MAX_OCTETS` 64 Mio) ;
+  un `frame` refusé n'a PAS d'offsets (le `dernier` de l'aligneur est celui de
+  la frame d'avant — l'écrire fabriquerait un recalage imaginaire) ; l'appel
+  `noter_frame` se fait APRÈS `add` et `note_alignement` (la pile du rôle porte
+  alors la frame courante et le cadre est à jour).
+- Banc : `bancs/_test_trace_roles_jalon131.py` (inactivité stricte, schéma des
+  trois types de ligne avec la VRAIE App, poids/σ recalculés à la main, rejet
+  réel, cartes FITS, entrées absurdes, borne d'écriture, garde du refactoring
+  `_image_reference_et_role_de`).
+
+## Pose vraie contre pose appliquée (étape ⑩, 18/10/2026) — repli `phase` piégé
+
+- **QUESTION** : les 4 brutes B divergentes entre runs recevaient des poses
+  différentes. Deux hypothèses à trancher : « 143 se trompe de référence » ou
+  « 140 rejette à tort ». Réponse MESURÉE : **ni l'une ni l'autre**.
+- **PROTOCOLE (reproductible, hors appli)** :
+  ① les empreintes de la trace ne disent pas le NOM du fichier — on les apparie
+  en rejouant `images.load_image` → `calibration.Calibrator.apply` (dark du
+  rôle) → `trace_roles.empreinte` (`_diag_148_apparie_empreintes.py`) ;
+  ② la référence initiale des deux runs est la 1re brute **R** du 14/09 à
+  **02:36:47** (empreinte `780545b1…`, retrouvée par `_diag_148b`) ;
+  ③ `astap_cli.exe -f <fits> -fov 1.5 -r 10 -D d80` écrit un `.ini` avec la
+  **matrice CD** (TAN) — pas besoin de l'interface ;
+  ④ la pose VRAIE relative à la référence s'obtient en projetant une grille de
+  points frame → ciel → référence et en ajustant `p_ref = A·p_frame + t`
+  (`_diag_148d_pose_vraie.py`). `t = (dx, dy)` est EXACTEMENT ce que la trace
+  nomme `dx/dy` (OpenCV `M[0,2]`, `M[1,2]`, source → référence).
+- **CONTRÔLE DE CONVENTION** : la seule brute prise AVANT le retournement
+  (`B_0000`, PIERSIDE=West) rend t = (+0,90 ; −5,95) px contre (+0,85 ; −6,18)
+  appliqués, soit **0,2 px** — la chaîne de mesure est juste.
+- **MESURE** : le retournement méridien a eu lieu vers **04:04** (PIERSIDE West
+  → East dans l'en-tête FITS). Toute brute East exige une **rotation de
+  +177,07°** et une translation ≈ **(+3911, +2074)** px ; un modèle « translation
+  seule » laisse un résidu de **2591 px** ⇒ aucune translation ne peut l'aligner.
+  Or les 4 divergentes (`382c13ae`, `e9c346e6`, `28e2b89d`, `68e09a71`) sont
+  empilées avec **|angle| = 0** dans **les DEUX runs** (erreur ≈ 4 400 px).
+- **ÉTENDUE — LES 51 BRUTES B RÉSOLUES** (`_diag_148g_solve_toutes.py` puis
+  `_diag_148h_toutes.py`, 0 échec) : **23 West** à **+0,004…+0,013°** (résidu
+  d'une translation seule ≤ **0,4 px**) et **28 East** à **+177,019…+177,070°**
+  (résidu ≥ **2 590,9 px**) ⇒ aucune translation ne peut aligner une East. Au
+  140 : 50 empilées, **39 justes** (méd 0,21 px, max 1,33) et **11 à l'envers**
+  (22 %) ; au 143 : 49 empilées, **37 justes** (méd 0,19, max 1,65) et **12 à
+  l'envers** (24,5 %). **Toutes** les fausses sont dans le **lot East du 14/09**
+  (11/16 et 12/16) ; 16/09 West (20 f.) et 23/09 East (11/10 f.) sont **toutes
+  justes**. `b1441134` est le cas révélateur : ORB réussit au 140 (erreur
+  **1,0 px**) et `phase` prend sa place au 143 (erreur 4 424 px) — même brute,
+  même instant, seule la référence diffère.
+- **CAUSE DANS LE CODE** : `StarAligner.compute()` rend dès que
+  `_compute_direct()` « réussit » — et cet essai INCLUT le repli `phase`
+  (`_sans_orb` → `_sans_phase`). Le réessai **+180°** n'a lieu que si le direct
+  ÉCHOUE. Sur un champ retourné où ORB/triangles ne trouvent pas d'étoiles
+  communes, `phase` (corrélation de translation, qui s'accroche au MOTIF FIXE du
+  capteur) « réussit » à ~0 px : la frame est empilée à l'envers et **jamais
+  rejetée**. Le commentaire de `_compute_direct` le dit déjà (« la phase
+  validerait du bruit retourné ») — l'interdiction n'était appliquée qu'au
+  réessai, pas au chemin direct.
+- **CE QUE ÇA EXPLIQUE** : ce n'est PAS la profondeur de la pile G qui crée le
+  défaut ; elle déplace le pic de `phase`, donc les translations bidon. Quand
+  elles se RESSERRENT (143 : 7 frames à ±10 px), les étoiles retournées
+  s'accumulent au même pixel, gonflent σ (×4,38) et **survivent** à
+  kappa-sigma ; quand elles se DISPERSENT (140 : +37,8 / +21,9 / −14,1),
+  kappa-sigma les rejette (σ ×1,02). D'où une « force du bleu » qui dépend de ce
+  que porte la référence, à défaut du nombre de rôles.
+- **SUITE — PLAN ⑪ décidé par Alain (3 étapes, chacune testée par LUI)** : ①
+  supprimer `phase` en broadband (RGB/LRGB±Ha), à essayer aussi en mono/OSC, ordre
+  ORB → triangles inchangé ; ② ajouter le **raffinement centroïdes APRÈS
+  `triangles`** (aujourd'hui ABSENT : `_triangles` rend la matrice LMEDS brute,
+  contrairement aux chemins ORB et `étoiles` — c'est le gain « parfait ») ; ③
+  tester **SHO/HOO sans `phase`** pour savoir si elle y sert. MESURÉ avant de
+  toucher au code : `phase` porte aussi les AUTRES rôles — **29/80 R, 11/50 B,
+  3/59 G** (140) et **14/80 R, 13/80 L, 9/62 G, 12/49 B** (143) — donc ① REFUSERA
+  des frames (toutes méthodes à étoiles déjà essayées avant `phase`). Nuance : une
+  partie de ces frames tombe sur des nuits **West** (16/09), où une translation
+  seule est légitime — les classer exige d'apparier les empreintes R/G/L aux
+  fichiers (même méthode que `_diag_148`). En SHO/HOO `triangles_seuls=True` : la
+  cascade y est DÉJÀ triangles → étoiles → `phase`. **ÉTAPE ① LIVRÉE le
+  18/10/2026 (v2.82.2)** — cf. la section suivante ; ② et ③ restent à faire.
+- **PIÈGES** : une empreinte ne dit pas le SENS du champ — `PIERSIDE` et
+  `ANGLE`/`OBJCTROT` sont dans l'en-tête FITS ; `astap_cli` n'accepte pas les
+  chemins UNC (copier en local) ; le `.wcs`/`.ini` d'ASTAP est en convention
+  FITS (même tableau que `load_image`, aucun flip) ; une frame « alignée »
+  n'est pas une frame JUSTE : `align_ok=True` avec `angle=0` reste compatible
+  avec un champ retourné.
+
+## Étape ① du plan ⑪ — plus de repli `phase` en broadband (v2.82.2, 18/10/2026)
+
+- **CE QUI EST CHANGÉ** : `StarAligner.repli_phase` (interrupteur) + la constante
+  `PHASE_EN_BROADBAND = False` + `repli_phase_session(narrowband)` dans
+  `processing/alignment.py`. **Une seule source décide** ; le worker ne fait
+  qu'appliquer, **PAR SESSION**, à la création de l'empileur :
+  `self.aligner.repli_phase = repli_phase_session(self._narrowband_ha())`.
+  En **broadband** (RGB/LRGB±Ha, mono, OSC) → **False** ; en **HOO/SHO** → **True**
+  (l'étape ③ mesurera ce que la phase y apporte). L'aligneur privé de propagation
+  du WCS (`_astro_propager_restack`) COPIE le drapeau ; les deux aligneurs du Ha
+  (voie A : `aligner_ha`, `_recalage_ha_aligneur`) restent au comportement
+  historique — canal narrowband, hors périmètre du ①.
+- **LE VERROU EST DANS `_sans_phase`, PAS DANS `compute`** : `_sans_phase` exige
+  **les deux** conditions (`avec_phase` du réessai +180° **et** `repli_phase`).
+  Conséquence VOULUE : le chemin direct ne peut plus « réussir » par une
+  translation seule, donc `compute` atteint son réessai **+180°** puis l'ORB
+  étoffé. L'**ORDRE** de la cascade est inchangé : ORB → triangles → étoiles →
+  (phase) — ne pas le réordonner sans mesure.
+- **DÉFAUT PAR DÉFAUT `True`** : `StarAligner()` reste au comportement historique,
+  sinon tous les bancs et les appelants directs changeraient de résultat sans le
+  vouloir. C'est le **worker** qui décide, une fois par session.
+- **PAS DE CASE DANS L'INTERFACE (décision d'Alain du 18/10/2026)** : l'interrupteur
+  reste la constante `PHASE_EN_BROADBAND` (modification + relance de l'appli, puis
+  nouvelle session — il est appliqué à la création de l'empileur). Une case ne sera
+  ajoutée que si le besoin de jongler entre les 2 modes **selon les cibles**
+  apparaît ; le drapeau étant fixé PAR SESSION, une case n'aurait qu'à écrire
+  `aligner.repli_phase` (penser au miroir thread-sûr : le worker ne lit jamais Tk).
+- **MESURÉ AU BANC NEUF** `bancs/_test_phase_broadband_jalon132.py` (8 volets) :
+  une réussite « phase » en translation seule n'est plus **jamais finale** (avec
+  l'interrupteur à True elle était acceptée à **angle 0** sur une frame
+  impossible à apparier ; à False, `_phase` n'est **plus appelée du tout** et la
+  frame est **refusée**) ; un champ retourné de **177,07°** est **RETOURNÉ**
+  (|angle| ≈ 177°, **résidu 0,01 px** contre la pose vraie) ; une frame RICHE
+  simplement translatée s'aligne toujours sans phase ; la table **par rôle**
+  (L/R/G/B × 8 frames) donne le **COÛT** : **6/8** frames faibles refusées contre
+  **1/8** avec la phase, et **0 frame à l'envers** dans les deux modes.
+- **COÛT RÉEL ATTENDU** (mesuré au ⑩, à confirmer par le run d'Alain) : ce sont
+  les frames que **seule** la phase plaçait qui seront refusées — **29/80 R,
+  11/50 B, 3/59 G** au run 140 et **14/80 R, 13/80 L, 9/62 G, 12/49 B** au 143 ;
+  une partie tombe sur des nuits **West** où la translation était légitime.
+- **PIÈGE DE BANC — `phase` ne se scénarise pas** : la corrélation de phase réussit
+  ou non selon le CONTENU (elle a « réussi » sur un champ tourné dans une scène
+  et refusé dans une autre, à paramètres voisins). Le volet « le piège » teste donc
+  le **CHEMIN DE DÉCISION** avec un espion (`_phase` remplacée par une réussite en
+  translation seule) : c'est la cause dans le code, et elle est déterministe. Pour
+  le **coût**, il faut une frame **douce et peu contrastée** (contraste 0,10,
+  bruit 0,008, flou σ = 1) : les étoiles y perdent leurs points ORB, la structure
+  à basse fréquence reste.
+- **TRACE** : `trace_roles.noter_reference` écrit désormais `repli_phase` — sans
+  ce drapeau, un run « avec » et un run « sans » phase se ressemblent (mêmes
+  brutes, même référence) et la mesure des refus par rôle ne se compare pas.
+  Le compteur de refus par rôle (`bad_frames_par_role`, ligne « Non alignées par
+  rôle ») reste la mesure de terrain.
+
+## Diagnostic de l'entrée d'astrométrie (18/10/2026) — lire le message AVANT de corriger
+
+- **CAUSE TROUVÉE LE 18/10/2026 — CE N'ÉTAIT NI L'IMAGE NI LE CODE : LES INDICES
+  ÉTAIENT CEUX DE LA CIBLE PRÉCÉDENTE (M31) SUR DES BRUTES M33.** Mesure :
+  12 brutes M33 LRGB (3/rôle, jeu du 22/09), le VRAI `ui.App`, dump activé ;
+  deux runs qui ne diffèrent QUE par les AD/Dec d'astrométrie.
+  · indices restaurés par l'interface (config : `astro_ra=10,683333`,
+    `astro_dec=+41,268611` = **M31**) → **ÉCHEC** « aucune affinité convaincante
+    (5 étoiles) ; RANSAC paires : 4 inliers, **1,615″/px** » — le message exact
+    du run d'Alain (3 inliers, 1,603″/px) ;
+  · indices de l'EN-TÊTE (`OBJCTRA/OBJCTDEC` = 23,4625 / +30,66 = M33) →
+    **OK, 115 appariements, 2,469″/px, rms 0,30 px**.
+  Les deux entrées sont **IDENTIQUES AU PIXEL** (r = 1,000000, écart médian 0) :
+  la même FITS re-soumise hors appli échoue avec M31 et résout avec M33. Donc
+  NI l'empilement, NI `repli_phase`, NI la profondeur ne sont en cause.
+- **MÉCANISME (interface)** : `ui.app._effacer_indices_astro()` n'est appelée que
+  si `_start()` / « Réinitialiser » voit une source OBSOLÈTE, et
+  `_source_fichiers_obsolete()` rend **False quand `camera is None`** — c'est le
+  cas à l'ouverture de l'application. Les AD/Dec de la cible PRÉCÉDENTE,
+  restaurés de `%APPDATA%\\AVAStack\\config.json`, sont donc **réutilisés
+  silencieusement** pour la nouvelle cible ; le champ (2,637°) étant le même
+  pour les deux cibles, rien ne le trahit. Le message, lui, ne dit JAMAIS les
+  indices utilisés — seul le dump les porte.
+- **RÈGLE DE TRI** : devant un échec de solveur, lire **`indices`** dans le dump
+  AVANT tout le reste. Une échelle trouvée ~**0,65× la vraie** (ici 1,615 contre
+  2,462″/px) sur 3-4 inliers est la signature du fit sur un mauvais endroit du
+  ciel ou d'une image normalisée — pas d'une preuve sur le contenu.
+- **Piège de méthode** : « mêmes brutes, mêmes nuits, mêmes en-têtes » ne rend
+  PAS les indices constants — ils viennent de la SAISIE (persistée), pas des
+  fichiers, tant que les champs ne sont pas vides. Vérifier `astro_source`
+  (`saisie` vs `en-tête …`) avant de suspecter l'image.
+
+- **GARDE EN PLACE DEPUIS LE JALON 133 (18/10/2026)** — le piège est fermé dans
+  le **worker**, jamais dans l'interface : `worker._astro_indices_garde()`,
+  appelée par `_astro_tour` juste AVANT la pose des indices. Si les indices
+  viennent de la SAISIE (`_astro_source == "saisie"`) et que la brute courante
+  porte `OBJCTRA/OBJCTDEC` (repli `RA/DEC`), `astrometrie.separation_deg()`
+  compare les deux positions ; au-delà de `GARDE_INDICES_FRACTION × champ
+  saisi` (**0,25** : M31 ↔ M33 = **14,78°**, seuil 0,66° sur un champ de
+  2,637°) l'**EN-TÊTE est retenu** — coordonnées de la brute, champ de l'en-tête
+  s'il est déductible (sinon champ saisi, même optique) — `suivi_astro.indice()`
+  est reposé (WCS oublié, essais à zéro), et la ligne d'état + le journal
+  DISENT les deux valeurs et laquelle est retenue. Sous le seuil, ou sans
+  coordonnées dans l'en-tête (caméra SDK, PNG/TIFF), **rien ne change**.
+  · **PIÈGE DE COÛT** : la comparaison est faite **UNE fois par jeu d'indices
+    saisi** (`_astro_garde_pour`) — relire un en-tête FITS à CHAQUE frame
+    ajouterait un `fits.open` sur le chemin de la boucle d'acquisition.
+  · **PIÈGE D'ÉTAT** : les indices saisis ont DÉJÀ été posés par l'interface
+    (`_on_astro` → `suivi_astro.indice`), donc `pret` est vrai — l'appel gardé
+    par `if not self.suivi_astro.pret` ne reposerait RIEN. La garde doit appeler
+    `indice()` elle-même, sinon le solveur cherche encore à l'ancienne position.
+  · Le NOM des cibles dans le message vient du catalogue d'objets célèbres
+    (`cherche_celebres`, 0,5°) quand il est installé, sinon des coordonnées : le
+    message ne dépend JAMAIS d'un catalogue téléchargé (banc hermétique).
+  · `_brute_courante()` (même chemin que `_astro_indices_entete` : `last_file`,
+    repli `stats()` en composition) est le SEUL lecteur du fichier courant.
+  · Banc : `bancs/_test_astro_indices_garde_jalon133.py` (6 volets : décision,
+    seuil, sans en-tête, déjà d'en-tête, WCS propagé, champ de l'en-tête).
+
+- **LE MESSAGE D'ÉCHEC MENT SUR DEUX CHIFFRES** : `[image 120 étoiles, catalogue
+  400, appariements 0]` — 120 est `MAX_ETOILES_DETECTION`, 400 est `N_CAT_MAX`
+  (des **plafonds**), et `n_appariements` n'est renseigné qu'au **succès**
+  (`solveur.resoudre` ne l'écrit qu'en l. 857) : « 0 » est la valeur par défaut,
+  pas une mesure. Seul chiffre exploitable : le nombre d'**inliers** du meilleur
+  essai (échec sous `TRI_INLIERS_MIN = 6`).
+- **CE QUI ENTRE DANS LE SOLVEUR** : `worker._image_reference_de` →
+  `moyennes(recadre=False)` → **la couche du canal VERT** (G en RGB/LRGB, O3 en
+  HOO, Ha en SHO) → repli « premier rôle non vide ». **Cette sélection n'a PAS
+  changé** entre la v2.82.0 et la v2.82.2 (le ⑦ ne fait que rendre le rôle) ;
+  l'astrométrie ne lit NI `repli_phase` NI la trace.
+- **RÈGLE** : avant de toucher au solveur ou aux indices, **comparer l'entrée**.
+  Un désaccord « ça marchait, ça ne marche plus » sur les MÊMES brutes ne peut
+  venir que du code ; mais l'entrée peut changer par son **CONTENU** (poses et
+  refus de l'alignement : une frame retournée correctement laisse des zones non
+  couvertes dans la grille NON recadrée, une frame posée par `phase` non).
+- **INSTRUMENT** : `AVASTACK_DUMP_ASTRO=<dossier>` (env) → `worker._astro_dump_entree`
+  écrit, à CHAQUE tentative, l'image exacte (FITS) + un JSON (`median`, `p1`,
+  `p99_7`, **`pixels_nuls_pct`**, `seuil_solveur`, `pixels_au_dessus_pct`,
+  profondeurs par rôle, indices) + `_resultat.json` (verdict). **INACTIF par
+  défaut** — sans la variable, aucun calcul, aucune écriture (comportement
+  identique). Même esprit que `AVASTACK_TRACE_ROLES`.
+- **CONTRÔLE DE NON-RÉGRESSION MESURÉ** (jeu M33 LRGB réel, 3 frames/rôle) :
+  l'entrée est **identique au chiffre près** avec `repli_phase` True et False, et
+  le solve passe dans les deux (118 appariements, 2,466"/px, rms 0,22 px) — sur
+  ce jeu aucune frame n'est placée par la phase. Scripts hors dépôt :
+  `_diag_astro_152.py` (champ/centre), `_diag_astro_153_entree.py` (entrée
+  phase ON/OFF).
+- **PIÈGE DE MÉTHODE** : ne pas suspecter le pointage, la profondeur ni le champ
+  indicé quand les brutes et les nuits sont les mêmes — ce sont des constantes,
+  pas des variables. La question est « quelle image, et quelle différence avec
+  avant », pas « pourquoi le solveur se trompe ».
+
 ## Pièges (leçons du projet AVAStack)
 
 - **EN COMPOSITION, LA RÉFÉRENCE D'ALIGNEMENT DOIT ÊTRE UNE COUCHE DE RÔLE, JAMAIS

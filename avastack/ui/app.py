@@ -69,6 +69,12 @@ from ..processing.composition import ROLES               # noqa: F401 (ré-expor
 # pas rompre la surface publique figée de `app.py` (banc garde-fou).
 from ..processing.composition import MODES_L              # noqa: F401 (ré-export)
 from ..processing.framestore import ArchiveFrames
+# Étape ⑦ du chantier CAUSE AMONT : trace par rôle. Importée ici parce que
+# `_definir_reference` est le SEUL point par lequel passe toute référence
+# d'alignement (initiale, rafraîchissement auto ou manuel, repli « dossier
+# mixé », re-stack, ancre Ha) : c'est là que le rôle source et le motif se
+# connaissent. Inactive par défaut (aucun calcul, aucune écriture).
+from ..processing import trace_roles
 
 # Jalon 102 (chantier de refactoring) : les CONSTANTES de l'interface (seuils,
 # palettes, listes de choix) vivent désormais dans `avastack/ui/constants.py`
@@ -513,6 +519,9 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._photo_dernier = 0.0        # monotonic du dernier essai
         self._astro_msg_indices = ""     # raison d'un refus des indices saisis
         self._astro_source = ""          # « saisie », « image <fichier> », « ASTAP »…
+        # Jalon 133 : garde d'interface — jeu d'indices DÉJÀ comparé à
+        # l'en-tête de la brute courante (l'en-tête se lit UNE fois).
+        self._astro_garde_pour = None
         # Repli ASTAP « aveugle » (décision d'Alain, 23/09/2026) : tenté quand
         # AUCUN indice n'est disponible (caméra live sans en-tête FITS). Le WCS
         # rendu par ASTAP est gardé ici pour servir de repli si le solveur
@@ -4825,11 +4834,22 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
     # `avastack/ui/saver.py` (mixin `Saver`, dont `App` hérite) — code
     # repris VERBATIM.
 
-    def _definir_reference(self, img: np.ndarray) -> None:
+    def _definir_reference(self, img: np.ndarray, motif: str = "",
+                           role_source: Any = None) -> None:
         """Remplace la référence d'alignement ET mesure son score (le score
-        de la référence sert de seuil au déclencheur auto du re-stack)."""
+        de la référence sert de seuil au déclencheur auto du re-stack).
+
+        `motif` / `role_source` (étape ⑦ du chantier CAUSE AMONT) : POURQUOI la
+        référence est posée (initiale / auto / manuelle / repli / restack) et
+        DE QUELLE COUCHE elle vient. Ils ne changent RIEN au calcul — ils
+        n'alimentent que la trace par rôle, qui répond à la seule question
+        encore ouverte des taches LRGB : quelle référence chaque couche a
+        réellement eue, et à quelle profondeur.
+        """
         self.aligner.set_reference(img)
         self._ref_score = self._score_frame(img)
+        trace_roles.noter_reference(self, img, motif=motif,
+                                    role_source=role_source)
 
     def _vider_archive(self) -> None:
         """Vide l'archive temporaire ET le score parallèle (les deux listes
@@ -4932,7 +4952,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # empilement complet, AVANT que la référence de la session ne soit
         # remplacée (l'aligneur privé de la propagation a besoin de l'ancien).
         self._astro_propager_restack(ancien, ref)
-        self._definir_reference(ref)
+        self._definir_reference(ref, motif="restack")
         st = LiveStacker(ancien.shape, k=ancien.k, method=ancien.method,
                          window=ancien.window)
         st.wb_auto = ancien.wb_auto
@@ -5065,7 +5085,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # Jalon 56 : propagation du WCS AVANT le remplacement (nouvelle
         # référence = une brute dans SON repère pixel, donc nouvelle grille).
         self._astro_propager_restack(ancien, canal_ref)
-        self._definir_reference(canal_ref)
+        self._definir_reference(canal_ref, motif="restack", role_source=role_ref)
         st = CompositeStacker(ancien.composition, k=ancien.k,
                               method=ancien.method, window=ancien.window)
         st.gains = dict(ancien.gains) if ancien.gains else None

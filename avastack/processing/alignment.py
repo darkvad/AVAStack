@@ -22,6 +22,12 @@
    avant `phaseCorrelate`, et la translation n'est acceptée que si la SSD
    contre la référence s'améliore NETTEMENT — sinon la frame est refusée
    (comptée « non alignée ») au lieu d'être empilée à l'identité.
+   ÉTAPE ① DU PLAN ⑪ (18/10/2026) : ce repli est DÉSACTIVÉ en BROADBAND
+   (`StarAligner.repli_phase` à False, cf. `PHASE_EN_BROADBAND`). Le garde-fou
+   SSD ne suffit pas : sur un champ RETOURNÉ de +177,07°, mesuré au ⑩, la phase
+   gagnait 10 % de SSD sur le fond et le motif fixe du capteur et posait la
+   frame À L'ENVERS (angle 0) au lieu de laisser le réessai +180° faire son
+   travail. En narrowband (HOO/SHO) le repli reste actif (étape ③ à mesurer).
 
 Tous les chemins travaillent sur le CANAL VERT des images couleur (esprit
 Siril, qui aligne sur le canal vert de la brute CFA) : 2 sites verts sur 4
@@ -95,6 +101,36 @@ MERIDIAN_FLIP_DEG: float = 180.0
 MERIDIAN_FLIP_TOL_DEG: float = 10.0
 # Phase : la SSD doit baisser d'au moins cette fraction pour être acceptée.
 PHASE_GAIN_MIN: float = 0.10
+# INTERRUPTEUR DE L'ÉTAPE ① DU PLAN ⑪ (chantier CAUSE AMONT, 18/10/2026) : le
+# repli « corrélation de phase » est-il utilisé en BROADBAND ?
+#
+# MESURÉ au ⑩ (ASTAP, 51 brutes B résolues) : sur un champ RETOURNÉ de
+# +177,07°, une translation seule laisse ≥ 2 591 px de résidu — AUCUNE
+# translation ne peut aligner la frame. Pourtant `phase` « réussissait » (le fond
+# et le MOTIF FIXE du capteur suffisent à améliorer la SSD de 10 %) et 11/50
+# puis 12/49 frames B ont été empilées À L'ENVERS. Le réessai +180° de `compute`
+# n'est tenté que si le chemin direct ÉCHOUE : une réussite « phase »
+# court-circuite ce réessai.
+#
+# False (décision de l'étape ①) = le repli est ÉCARTÉ en broadband : la frame est
+# alors RETOURNÉE par le réessai +180° (ou par l'ORB étoffé), sinon REFUSÉE.
+# True = ancien comportement, à rebasculer pour comparer. NARROWBAND (HOO/SHO)
+# garde son repli : l'étape ③ du plan mesurera ce qu'il y apporte.
+PHASE_EN_BROADBAND: bool = False
+
+
+def repli_phase_session(narrowband: bool) -> bool:
+    """Valeur de l'INTERRUPTEUR `StarAligner.repli_phase` pour une session.
+
+    Étape ① du plan ⑪ : le repli « phase » (translation SEULE) est ÉCARTÉ en
+    BROADBAND — une translation ne peut pas aligner un champ retourné de 180°
+    (résidu mesuré ≥ 2 591 px à +177,07°) — et CONSERVÉ en NARROWBAND (HOO/SHO),
+    où la cascade est déjà triangles → étoiles → phase et où l'étape ③ mesurera
+    son apport. Un seul endroit décide : le worker ne fait qu'appliquer.
+    → True si la phase est autorisée, False sinon."""
+    return bool(PHASE_EN_BROADBAND) or bool(narrowband)
+
+
 # Inliers minimum du chemin ÉTOILES (jalon 13) : 6 suffit parce que chaque
 # estimation est CONTRE-VÉRIFIÉE par appariements mutuels (un champ croisé
 # entre deux nuits ne partage que 6-7 étoiles brillantes — constat réel du
@@ -275,6 +311,11 @@ class StarAligner:
         # phase (retour réel : trop de refus quand le canal narrowband montre
         # peu d'étoiles).
         self.triangles_seuls: bool = False
+        # INTERRUPTEUR DU REPLI « PHASE » (étape ① du plan ⑪). Le worker le fixe
+        # PAR SESSION (`repli_phase_session`) : False en BROADBAND, True en
+        # NARROWBAND. Ici True = comportement HISTORIQUE, pour que les bancs et
+        # les appelants directs ne changent pas de résultat sans le vouloir.
+        self.repli_phase: bool = True
         self.reset()
 
     def reset(self) -> None:
@@ -294,9 +335,17 @@ class StarAligner:
         self.dernier: Any = None     # info du dernier alignement (UI, jalon 13)
 
     def _noter(self, M: Any, methode: str) -> None:
-        """Mémorise la dernière décision d'alignement pour la ligne d'état."""
-        ang, _ech, dx, dy = infos_M(M)
-        self.dernier = {"methode": methode, "dx": dx, "dy": dy, "angle": ang}
+        """Mémorise la dernière décision d'alignement pour la ligne d'état.
+
+        `echelle` (étape ⑦ du chantier CAUSE AMONT) : `infos_M` la rendait déjà,
+        on la CONSERVE au lieu de la jeter — deux couches dont l'échelle diffère
+        (changement d'optique, dithering non compensé) ne se comparent que si on
+        la voit. Aucun consommateur existant ne la lit ; seul l'ajout de clé
+        change.
+        """
+        ang, ech, dx, dy = infos_M(M)
+        self.dernier = {"methode": methode, "dx": dx, "dy": dy, "angle": ang,
+                        "echelle": ech}
 
     def set_reference(self, img: np.ndarray) -> None:
         canal = canal_alignement(img)     # vert (couleur) / tel quel (mono)
@@ -573,6 +622,14 @@ class StarAligner:
         sert au repli 180° de `compute`, car la phase (traduction SEULE) suppose
         des images de MÊME orientation et validerait du bruit retourné.
 
+        ÉTAPE ① DU PLAN ⑪ (18/10/2026) : l'interrupteur de session
+        `self.repli_phase` s'ajoute à `avec_phase`. Quand il est faux (broadband),
+        le chemin direct ne peut PLUS « réussir » par une translation seule : un
+        champ retourné échoue ici, ce qui laisse `compute` tenter son réessai
+        +180° (puis l'ORB étoffé) au lieu d'empiler la frame à l'envers. Sans ce
+        verrou, `phase` court-circuitait le réessai — c'est la cause MESURÉE au
+        ⑩ (11/50 puis 12/49 frames B à l'envers sur un champ à +177,07°).
+
         v2.68.0 (jalon 116 ①) : l'ORB travaille sur la frame normalisée sur SES
         PROPRES percentiles, et non plus sur ceux de la référence — d'une nuit
         ou d'un filtre à l'autre le fond diffère (facteur ~1,8× mesuré) et la
@@ -633,7 +690,8 @@ class StarAligner:
     def _sans_orb(self, frame: Any, avec_phase: bool = True) -> tuple[Any, bool]:
         """ORB indisponible ou non concluant : TRIANGLES (jalon 15, appariement
         global), puis centroïdes d'étoiles (vote + continuité), puis
-        corrélation de phase honnête, sinon refus — JAMAIS un « alignement »
+        corrélation de phase honnête (SI l'interrupteur de session l'autorise,
+        étape ①), sinon refus — JAMAIS un « alignement »
         à (0, 0) déclaré confiant (constat réel du 17/09/2026).
 
         La normalisation 8 bits du repli « phase » se fait ICI, dans le domaine
@@ -653,8 +711,11 @@ class StarAligner:
 
     def _sans_phase(self, g: Any, avec_phase: bool) -> tuple[Any, bool]:
         """Repli « corrélation de phase » (traduction SEULE), ou REFUS quand
-        `avec_phase` est faux — cf. `_compute_direct` (repli 180°)."""
-        if not avec_phase:
+        `avec_phase` est faux — cf. `_compute_direct` (repli 180°) — ou quand
+        l'INTERRUPTEUR de session `repli_phase` est faux (étape ① du plan ⑪ :
+        en broadband, une translation ne peut pas aligner un champ retourné de
+        180°, et une « réussite » de la phase court-circuite le réessai +180°)."""
+        if not (avec_phase and self.repli_phase):
             return np.eye(2, 3), False
         return self._phase(g)
 

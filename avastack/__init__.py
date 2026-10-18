@@ -19,7 +19,127 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.82.0"
+AVASTACK_VERSION = "2.82.2"
+
+# v2.82.2 : PLUS DE REPLI « PHASE » EN BROADBAND (étape ① du plan ⑪ du chantier
+#   CAUSE AMONT — 18/10/2026). Correctif de la cause MESURÉE au ⑩ : sur un champ
+#   RETOURNÉ de +177,07° (28 des 51 brutes B résolues à l'ASTAP), une translation
+#   seule laisse ≥ 2 591 px de résidu — pourtant 11/50 (run 140) puis 12/49
+#   (run 143) frames B étaient empilées À L'ENVERS. `phase` « réussissait » sur le
+#   fond et le MOTIF FIXE du capteur et court-circuitait le réessai +180° de
+#   `compute`, qui n'est tenté que si le chemin direct ÉCHOUE.
+#   CONTENU :
+#   · `StarAligner.repli_phase` (interrupteur, défaut True = comportement
+#     HISTORIQUE, donc bancs et appelants directs inchangés), `PHASE_EN_BROADBAND`
+#     (False) et `repli_phase_session()` : UN SEUL endroit décide, le worker ne
+#     fait qu'appliquer ;
+#   · `worker._worker_empiler_frame` fixe l'interrupteur PAR SESSION — False en
+#     broadband (RGB/LRGB±Ha, mono, OSC), True en HOO/SHO (l'étape ③ du plan
+#     mesurera ce que la phase y apporte) ; l'aligneur privé de propagation du
+#     WCS copie le drapeau ; les DEUX aligneurs du Ha (voie A) restent au
+#     comportement historique (canal narrowband, hors périmètre du ①) ;
+#   · `_sans_phase` exige LES DEUX verrous (`avec_phase` du réessai +180° et
+#     `repli_phase` de session). L'ORDRE de la cascade est INCHANGÉ :
+#     ORB → triangles → étoiles → (phase) ;
+#   · `trace_roles.noter_reference` écrit `repli_phase` — sans ce drapeau, deux
+#     runs « avec » et « sans » phase (mêmes brutes, même référence) ne se
+#     comparent pas.
+#   BANC NEUF `bancs/_test_phase_broadband_jalon132.py` (8 volets) : une réussite
+#   de phase en TRANSLATION SEULE n'est plus jamais finale (elle était acceptée à
+#   angle 0 sur une frame impossible à apparier, et `_phase` n'est plus appelée du
+#   tout) ; un champ retourné de 177,07° est RETOURNÉ (|angle| ≈ 177°, résidu
+#   0,01 px contre la pose vraie) ; l'ordre ORB → triangles est conservé ; la
+#   table PAR RÔLE (L/R/G/B × 8 frames) mesure le COÛT : 6/8 frames faibles
+#   refusées contre 1/8 avec la phase, et AUCUNE frame à l'envers ; une session
+#   LRGB réelle applique l'interrupteur et n'utilise jamais « phase ».
+#   PAS de release : le run réel de mesure (refus par rôle) est fait par Alain.
+#   AJOUT (même version, 18/10) : DIAGNOSTIC `AVASTACK_DUMP_ASTRO=<dossier>` —
+#   l'image EXACTE donnée au solveur d'astrométrie (FITS + JSON : médiane,
+#   percentiles, `pixels_nuls_pct`, `seuil_solveur`, pixels au-dessus, profondeurs,
+#   indices) et le verdict du solve. INACTIF par défaut (aucune écriture sans la
+#   variable). POURQUOI : « l'astrométrie ne résout plus » ne se tranche qu'en
+#   comparant ce qui ENTRE dans le solveur — la sélection de l'image est
+#   identique à la v2.82.0 (`moyennes(recadre=False)`, canal vert).
+
+#   AJOUT (même version, 18/10) : GARDE D'INTERFACE DES INDICES D'ASTROMÉTRIE
+#   (jalon 133) — une SAISIE qui désigne une AUTRE cible que les brutes ne fait
+#   plus échouer le solve en silence. MÉCANISME MESURÉ : les AD/Dec sont
+#   PERSISTÉES dans `config.json` et restaurées au démarrage ; à l'ouverture
+#   `_source_fichiers_obsolete()` rend False (aucune caméra), donc celles de la
+#   VEILLE servent à la NOUVELLE cible — M31 (10,683333 / +41,268611) sur des
+#   brutes M33 (23,4625 / +30,66) : « 5 étoiles, 4 inliers, 1,615″/px », message
+#   muet sur les indices ; avec les indices de l'en-tête, 115 appariements à
+#   2,469″/px. CONTENU :
+#   · `astrometrie.separation_deg()` (haversine, None si entrée illisible) et
+#     `GARDE_INDICES_FRACTION = 0,25` (seuil = 0,25 × champ saisi) ;
+#   · `worker._astro_indices_garde()` : si les indices viennent de la SAISIE et
+#     que la brute courante porte OBJCTRA/OBJCTDEC (repli RA/DEC), la séparation
+#     est comparée ; au-delà du seuil l'EN-TÊTE est RETENU (coordonnées de la
+#     brute, champ de l'en-tête s'il est déductible, sinon champ saisi) et
+#     `suivi_astro.indice()` est reposé (WCS oublié, essais remis à zéro). Sous
+#     le seuil, ou sans coordonnées dans l'en-tête, RIEN ne change ;
+#   · UN SEUL point de décision : `worker._astro_tour`, après la lecture
+#     d'en-tête et avant la pose des indices (l'interface ne décide rien) ;
+#   · la ligne d'état ET le journal DISENT les deux valeurs et laquelle est
+#     retenue (« AD/Dec saisies M31 ≠ en-tête M33 (14,78° > 0,66° = 0,25 ×
+#     champ) — en-tête utilisé »), noms du catalogue d'objets célèbres quand ils
+#     sont disponibles (repli : coordonnées) ;
+#   · coût BORNÉ : UNE comparaison par jeu d'indices saisi (`_astro_garde_pour`),
+#     l'en-tête n'est PAS relu à chaque frame ;
+#   · `_brute_courante()` extrait VERBATIM de `_astro_indices_entete` (même
+#     chemin pour les deux : `last_file`, repli `stats()` en composition).
+#   BANC NEUF `bancs/_test_astro_indices_garde_jalon133.py` (6 volets) : M31
+#   saisi sur M33 → en-tête retenu, message ET journal, solveur alimenté avec
+#   les BONS indices ; même cible à 0,05° → saisie gardée et en-tête lu UNE
+#   seule fois ; brute sans coordonnées → saisie gardée ; indices déjà d'en-tête
+#   → aucune lecture ni message ; WCS résolu toujours propagé ; champ de
+#   l'en-tête adopté quand il est déductible. Non-régression : bancs 132, 115,
+#   113, 56, 76 verts (banc 115 : son bouchon d'aligneur porte `repli_phase`,
+#   attribut né à l'étape ①).
+#   PAS de release : la garde sera MESURÉE au prochain run réel.
+
+# v2.82.1 : TRACE PAR RÔLE de l'empilement (étape ⑦ du chantier CAUSE AMONT —
+#   17/10/2026). Aucune correction, aucun changement de calcul : on rend
+#   OBSERVABLE ce que l'empilement fait réellement, par couche.
+#   POURQUOI : les taches rouges/bleues du LRGB ne sont portées par aucune des
+#   cinq couches prises isolément (contrôle positif à +852…+2026 % sur 200
+#   étoiles) et le combine est innocenté trois fois (runs 140/142/143). Reste
+#   l'ÉTAT D'EMPILEMENT, qui n'était journalisé nulle part : quelle référence
+#   d'alignement était en vigueur, quels offsets en sortaient, quels pixels
+#   étaient rejetés, avec quel σ — et pour QUEL rôle.
+#   CONTENU :
+#   · module neuf `processing/trace_roles.py` — une ligne JSON par brute
+#     (`frame`) et par référence posée (`reference`), plus une ligne `entete`
+#     (version, argv, dossier) et une `fin` ;
+#   · champs par frame : rôle, étape (empilee / refus_alignement / refus_flou /
+#     ancre), EMPREINTE de la brute (2⁶⁴ sur une version décimée ≤ 512 px —
+#     deux runs « sur les mêmes brutes » se PROUVENT enfin), référence en
+#     vigueur (`ref_role`, `ref_n`, `ref_motif`, `ref_empreinte`, `ref_age`),
+#     offsets (`dx`, `dy`, `distance`, `angle`, `echelle`, `methode`), profondeur
+#     de CHAQUE rôle, rejets kappa-sigma CUMULÉS, et statistiques de POIDS
+#     (`wsum/n` : moyen, % plein, % sous) et de σ TEMPOREL (`p50/p90/p99`) de la
+#     pile du rôle — `wsum` est un poids 0/1, il n'y a pas d'autre pondération ;
+#   · `exporter_cartes()` (option) : par rôle, trois cartes FITS — moyenne,
+#     POIDS, σ — pour superposer un défaut LOCAL (une tache) aux pixels rejetés
+#     ou au bruit doublé. ~34 Mo par carte en 8 Mpx, donc JAMAIS écrites par
+#     défaut ;
+#   · points d'accroche UNIQUES : `worker._worker_empiler_frame` (les 4 étapes
+#     d'une brute), `worker._rafraichir_reference` (motif auto/manuelle),
+#     `app._definir_reference` (initiale / repli / restack — et le rôle source,
+#     désormais rendu par `worker._image_reference_et_role_de`), plus l'ancre Ha
+#     (aligneur « Ha ») ; `StarAligner._noter` conserve `echelle`, qu'il jetait.
+#   GARDE-FOUS : INACTIVE par défaut (sans `ouvrir()` ni `AVASTACK_TRACE_ROLES`,
+#   chaque appel rend après un test de chaîne — calculs identiques AU BIT) ;
+#   jamais d'exception ; écriture bornée (`MAX_OCTETS` 64 Mio) ; une carte ratée
+#   n'invalide pas les autres ; aucun tableau de la pile n'est modifié.
+#   Banc neuf `bancs/_test_trace_roles_jalon131.py` (inactivité stricte, schéma
+#   des deux types de ligne, poids/σ recalculés à la main, rejet réel compté,
+#   cartes FITS, jamais d'exception, app réelle : `_definir_reference` trace le
+#   motif ET le rôle).
+#   PAS de release : l'étape suivante est le REJEU de 140/143/144 sur les mêmes
+#   brutes, avec cette trace, pour savoir si la force du bleu suit la profondeur
+#   du 4e rôle.
+
 
 # --- Changelog (entrée la plus récente en premier) --------------------------
 # v2.82.0 : LE COMBINE LRGB EST BORNÉ (jalon 130 — « halos et points colorés »,

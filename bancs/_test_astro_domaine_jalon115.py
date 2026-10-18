@@ -169,6 +169,11 @@ instances = []
 class FauxAligner:
     def __init__(self):
         self.triangles_seuls = False
+        # Étape ① du plan ⑪ (v2.82.2) : `_astro_propager_restack` COPIE
+        # l'interrupteur du repli « phase » de l'aligneur de session —
+        # `StarAligner` le porte depuis la v2.82.2, ce bouchon doit le porter
+        # aussi (sinon le banc mesure un aligneur qui n'existe plus).
+        self.repli_phase = False
         self.refs = []
         instances.append(self)
 
@@ -203,7 +208,8 @@ try:
     app.suivi_astro = SuiviResolu()
     app._astro_name_proposed = True
     app._astro_was_resolved = True        # évite le bloc « nom de cible »
-    app.aligner = type("A", (), {"triangles_seuls": False})()
+    app.aligner = type("A", (), {"triangles_seuls": False,
+                                 "repli_phase": False})()
     app._astro_propager_restack(st_c, brute(graine=99))
 finally:
     wk.StarAligner = _orig_aligner

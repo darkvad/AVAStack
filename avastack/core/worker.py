@@ -39,6 +39,7 @@ et `ui/panels/stack.py` — l'interception des bancs reste EFFECTIVE et le
 comportement est identique AU BIT.
 """
 
+import json
 import os
 import queue
 import threading
@@ -48,6 +49,7 @@ from typing import Any, Callable, cast
 import numpy as np
 import cv2
 
+from .. import journal
 from ..cameras import QHYCamera
 from ..images import borner_lineaire, save_image
 from ..processing import StarAligner, LiveStacker
@@ -61,6 +63,15 @@ from ..processing.composition import (COMPOSITIONS, CompositeStacker,
 from ..processing import astrometrie as astro_mod
 from ..processing import photometrie as photo_mod
 from ..processing import spcc as spcc_mod
+# Étape ⑦ du chantier CAUSE AMONT : TRACE PAR RÔLE (référence d'alignement,
+# offsets, poids/σ par pixel, rejets). INACTIVE par défaut : sans ouverture
+# explicite (`trace_roles.ouvrir`) ni `AVASTACK_TRACE_ROLES`, chaque appel rend
+# immédiatement — le comportement de l'empilement reste identique AU BIT.
+from ..processing import trace_roles
+# Étape ① du plan ⑪ (chantier CAUSE AMONT) : l'interrupteur du repli « phase »
+# est DÉCIDÉ dans `processing.alignment` (une seule source) et seulement APPLIQUÉ
+# ici, par session, selon que la composition est narrowband (HOO/SHO) ou non.
+from ..processing.alignment import repli_phase_session
 from .config import WorkerConfig
 
 
@@ -74,6 +85,107 @@ def _globals_app():
     `avastack.ui.app`."""
     from ..ui import app as _app              # import TARDIF (évite le cycle)
     return _app
+
+
+def _nom_cible_proche(ra: Any, dec: Any) -> str:
+    """Nom du catalogue d'objets célèbres le plus proche (0,5°), ou "".
+
+    Sert UNIQUEMENT à rendre lisible le message de la GARDE D'INTERFACE des
+    indices d'astrométrie (jalon 133) : « AD/Dec saisies M31 ≠ en-tête M33 »
+    se lit mieux que deux paires de coordonnées. Le catalogue peut être
+    absent/illisible (l'utilisateur ne l'a pas téléchargé) : on rend alors une
+    chaîne vide et l'appelant retombe sur les coordonnées — jamais d'exception,
+    cette fonction ne doit pas empêcher une résolution.
+    """
+    try:
+        from ..catalogues import cherche_celebres
+        objets = cherche_celebres(float(ra), float(dec), rayon_deg=0.5)
+    except Exception:
+        return ""
+    if not objets:
+        return ""
+    return str(getattr(objets[0], "designation", "") or "").strip()
+
+
+# ------------------------------- diagnostic : QUE reçoit le solveur d'astrométrie ?
+def _astro_dump_entree(app, img, stacker, n_prof):
+    """DIAGNOSTIC (INACTIF par défaut) : sauve l'image EXACTE donnée au solveur.
+
+    Activé UNIQUEMENT par la variable d'environnement `AVASTACK_DUMP_ASTRO=<dossier>`
+    (même esprit que `AVASTACK_TRACE_ROLES`). Sans elle, la fonction rend
+    immédiatement : aucun calcul, aucune écriture, comportement identique.
+
+    POURQUOI : « l'astrométrie ne résout plus » se tranche en comparant ce qui
+    ENTRE dans le solveur, pas ce que l'appli affiche. La SÉLECTION de l'image
+    (`_image_reference_de` : rôle du canal vert, `moyennes(recadre=False)`) est
+    IDENTIQUE depuis la v2.82.0 ; ce qui peut changer est son CONTENU
+    (l'empilement). Ce dump le rend mesurable : un FITS par tentative plus un
+    JSON (forme, médiane, percentiles, part de pixels à zéro — les zones non
+    couvertes par des frames retournées —, pixels au-dessus du seuil du solveur,
+    profondeurs par rôle, indices).
+
+    → base du nom écrit (pour y joindre le résultat), ou une chaîne vide si
+    le diagnostic est inactif.
+    """
+    racine = os.environ.get("AVASTACK_DUMP_ASTRO", "").strip()
+    if not racine:
+        return ""
+    try:
+        os.makedirs(racine, exist_ok=True)
+        base = time.strftime("astro_%Y%m%d_%H%M%S") + f"_n{int(n_prof)}"
+        a = np.asarray(img, dtype=np.float32)
+        med = float(np.median(a))
+        ecart = float(1.4826 * np.median(np.abs(a - med)))
+        seuil = med + 8.0 * ecart
+        try:
+            from .. import AVASTACK_VERSION as _version
+        except Exception:                      # appli figée : nom informatif
+            _version = "?"
+        prof = {}
+        for role, st in (getattr(stacker, "stackers", {}) or {}).items():
+            prof[str(role)] = int(getattr(st, "n", 0) or 0)
+        rec = {
+            "version": str(_version),
+            "mode": "compo" if bool(getattr(app, "_mode_compo", False)) else "mono",
+            "composition": str(getattr(app, "_compo_nom", "") or ""),
+            "n_prof": int(n_prof),
+            "profondeurs": prof,
+            "indices": list(getattr(app, "_astro_indices", None) or []),
+            "forme": [int(v) for v in a.shape],
+            "median": med,
+            "p1": float(np.percentile(a, 1.0)),
+            "p99_7": float(np.percentile(a, 99.7)),
+            "pixels_nuls_pct": round(100.0 * float(np.mean(a <= 0.0)), 3),
+            "seuil_solveur": seuil,
+            "pixels_au_dessus_pct": round(
+                100.0 * float(np.mean(a > seuil)), 3),
+        }
+        save_image(os.path.join(racine, base + ".fits"), a)
+        with open(os.path.join(racine, base + ".json"), "w",
+                  encoding="utf-8") as f:
+            json.dump(rec, f, ensure_ascii=False, indent=1)
+        return base
+    except Exception:
+        return ""
+
+
+def _astro_dump_resultat(base, okk, msg, suivi=None):
+    """Complète le dump d'entrée par le VERDICT du solveur (inactif par défaut)."""
+    if not base:
+        return
+    racine = os.environ.get("AVASTACK_DUMP_ASTRO", "").strip()
+    if not racine:
+        return
+    try:
+        info = dict(getattr(suivi, "info" if okk else "info_echec", {}) or {})
+        rec = {"ok": bool(okk), "message": str(msg or ""),
+               "essais": int(getattr(suivi, "essais", 0) or 0),
+               "info": info}
+        with open(os.path.join(racine, base + "_resultat.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump(rec, f, ensure_ascii=False, indent=1)
+    except Exception:
+        pass
 
 
 class AcquisitionWorker:
@@ -99,6 +211,7 @@ class AcquisitionWorker:
     _astro_dernier_aveugle: Any
     _astro_entete_sauvegarde: Any
     _astro_fov_essayes: Any
+    _astro_garde_pour: Any
     _astro_indices: Any
     _astro_msg_indices: Any
     _astro_source: Any
@@ -160,6 +273,7 @@ class AcquisitionWorker:
     _stack_pleine_res: Any
     _tec_dernier: Any
     _tec_dernier_t0: Any
+    _trace_role_courant: Any             # étape ⑦ : rôle de la frame courante
     _veut_restack: Any
     _vider_archive: Any
     _vl_frames: Any
@@ -588,7 +702,9 @@ class AcquisitionWorker:
                 # jalon 13 : SANS recadrage (même repère que les frames —
                 # l'ancien code passait l'empilement RECADRÉ : chaque clic
                 # décalait silencieusement tout l'empilement de (y0, x0))
-                self._rafraichir_reference()
+                # Étape ⑦ : motif « manuelle » — le clic se distingue enfin du
+                # rafraîchissement automatique dans la trace.
+                self._rafraichir_reference(motif="manuelle")
 
             # Jalon 106b : re-stack « à la Siril » (bouton ou auto) — extrait
             # dans `_worker_restack` ; renvoie le nouvel empilement pour
@@ -873,6 +989,10 @@ class AcquisitionWorker:
         # troisième aligneur, privé, mesure ce recalage.
         self.aligner_ha = StarAligner()
         self._recalage_ha_aligneur = StarAligner()
+        # Étape ① du plan ⑪ : ces DEUX aligneurs gardent le repli « phase »
+        # (valeur par défaut True) — le Ha est un canal NARROWBAND, son périmètre
+        # est l'étape ③ du plan, pas le ①. L'aligneur PARTAGÉ, lui, reçoit son
+        # interrupteur à la création de l'empileur (cf. `_worker_empiler_frame`).
         self._ha_ref_posee = False
         self._ha_ref_bad = 0
         self.stacker = None
@@ -913,6 +1033,10 @@ class AcquisitionWorker:
         self._astro_fov_essayes = set()
         self._astro_balayage = None
         self._astro_source = ""
+        # Jalon 133 : garde d'interface — mémoire de la saisie DÉJÀ comparée à
+        # l'en-tête (l'en-tête se lit UNE fois par jeu d'indices, pas à chaque
+        # frame).
+        self._astro_garde_pour = None
         # Jalon 56 (étape 4) : photométrie de session neuve.
         self.photometrie.reset()  # pyright: ignore[reportOptionalMemberAccess]
         self.photo_info = ""
@@ -998,6 +1122,9 @@ class AcquisitionWorker:
         # `WorkerConfig`) — construit ici seulement, pour laisser le chemin de
         # la boucle strictement inchangé.
         cfg = WorkerConfig.depuis(self)
+        # Étape ⑦ : rôle courant retenu pour les ÉVÉNEMENTS DE RÉFÉRENCE, qui
+        # surviennent parfois hors de la frame courante (restack, ancre Ha).
+        self._trace_role_courant = role
         # Jalon 17 : filtre anti-brutes TRÈS DÉFOCALISÉES — AVANT tout le
         # reste (une frame rejetée n'est ni archivée ni empilable, donc
         # jamais ramenée par un re-stack). Rejet d'office, case pour
@@ -1009,6 +1136,12 @@ class AcquisitionWorker:
         if verdict:
             self.floues_rejetees += 1
             self.align_info = verdict
+            # Étape ⑦ : un rejet qui ne laisse AUCUNE trace par rôle est
+            # exactement ce qui rendait la cause amont invisible — on le note
+            # (empreinte de la brute comprise : même brute, autre run).
+            trace_roles.noter_frame(self, role=role, etape="refus_flou",
+                                    image=frame, ok=False, expo=None,
+                                    raison=verdict)
             time.sleep(max(0.0, 1.0 / 20.0 - (time.perf_counter() - t0)))
             return True, last_good, None
 
@@ -1109,8 +1242,20 @@ class AcquisitionWorker:
             self.stacker.linear_fit_mode = self._fit_mode
             self.aligner.reset()
             # Jalon 21 : HOO/SHO → TRIANGLES seuls pour toute la session.
-            self.aligner.triangles_seuls = self._narrowband_ha()
-            self._definir_reference(img_travail)
+            narrowband = self._narrowband_ha()
+            self.aligner.triangles_seuls = narrowband
+            # ÉTAPE ① DU PLAN ⑪ (18/10/2026) : en BROADBAND, le repli « phase »
+            # (translation seule) est ÉCARTÉ — mesuré au ⑩, il posait 11-12
+            # frames B À L'ENVERS sur un champ retourné de +177,07° au lieu de
+            # laisser le réessai +180° les retourner. En HOO/SHO il reste actif
+            # (étape ③ : mesurer ce qu'il apporte). L'ordre de la cascade ne
+            # change pas : ORB → triangles → étoiles → (phase).
+            self.aligner.repli_phase = repli_phase_session(narrowband)
+            # Étape ⑦ : la PREMIÈRE référence est une BRUTE du rôle courant —
+            # le motif et le rôle sont journalisés (sans quoi « quelle
+            # référence pendant les 20 premières frames » reste une hypothèse).
+            self._definir_reference(img_travail, motif="initiale",
+                                    role_source=role)
             self.disp.reset()          # stats d'affichage repartent de zéro
             # Jalon 21 : 1re brute Ha → ancre + rejeu des frames
             # archivées entre-temps (les autres rôles arrivés avant).
@@ -1154,6 +1299,12 @@ class AcquisitionWorker:
                     self.stacker.note_alignement(M, role=role)
                 else:
                     self.stacker.note_alignement(M)
+                # Étape ⑦ : trace APRÈS `add` et `note_alignement` — la pile du
+                # rôle porte alors CETTE frame, et le cadre commun est à jour.
+                # `aligneur` est celui qui a décidé (voie A : celui du Ha).
+                trace_roles.noter_frame(self, role=role, etape="empilee",
+                                        image=img_travail, aligneur=aligneur,
+                                        ok=True, expo=expo, t0=t0)
                 last_good = aligned
                 self._ref_bad = 0
                 if voie_a:
@@ -1163,6 +1314,13 @@ class AcquisitionWorker:
                 if role:               # jalon 129b : refus PAR RÔLE
                     self.bad_frames_par_role[role] = \
                         self.bad_frames_par_role.get(role, 0) + 1
+                # Étape ⑦ : un refus est une frame PERDUE pour la couche —
+                # sans cette ligne, un run qui refuse 12 frames de B et un run
+                # qui n'en refuse aucune se ressemblent dans les fichiers.
+                trace_roles.noter_frame(self, role=role,
+                                        etape="refus_alignement",
+                                        image=img_travail, ok=False,
+                                        expo=expo, t0=t0)
                 if voie_a:
                     # Les refus du Ha (voie A) ne concernent PAS la référence
                     # PARTAGÉE : ils ne doivent ni la faire rafraîchir ni
@@ -1184,7 +1342,8 @@ class AcquisitionWorker:
                     # ensuite par la médiane Winsorized (dilution). (Jalon 17 :
                     # la frame courante a déjà passé le filtre défocalisation.)
                     if self.stacker.n <= 2 and self._ref_bad >= 3:
-                        self._definir_reference(frame)
+                        self._definir_reference(frame, motif="repli",
+                                                role_source=role)
                         self._ref_frames = self._ref_bad = 0
             self._ref_frames += 1
             # Jalon 13 : ligne d'état de l'alignement (Δ, θ, méthode ou refus).
@@ -1197,6 +1356,13 @@ class AcquisitionWorker:
                 self.align_info = "refus (frame non empilée)"
 
             stack = self.stacker.mean()
+        if deja_rejoue:
+            # Étape ⑦ : le rejeu d'ancre n'aligne PAS la frame courante (elle
+            # vient d'être empilée par `_do_restack_compo`) — on le note tel
+            # quel, sinon la trace ferait croire à un trou de séquence.
+            trace_roles.noter_frame(self, role=role, etape="ancre",
+                                    image=img_travail, ok=True, expo=expo,
+                                    t0=t0)
         return False, last_good, stack
 
     def _worker_restack(self):
@@ -1241,7 +1407,7 @@ class AcquisitionWorker:
         """Image à POSER comme référence d'alignement depuis l'empilement
         courant, DANS LE MÊME DOMAINE que les brutes (jalon 113) — le « pourquoi »
         complet vit dans `_image_reference_de`, qui porte le corps."""
-        return self._image_reference_de(self.stacker)
+        return self._image_reference_et_role_de(self.stacker)[0]
 
     def _image_reference_de(self, st):
         """Image d'un empilement `st` DANS LE MÊME DOMAINE que les brutes.
@@ -1269,8 +1435,22 @@ class AcquisitionWorker:
         dans le bon domaine : il est rendu tel quel.
 
         → (H, W) float32, ou None si rien à poser."""
+        return self._image_reference_et_role_de(st)[0]
+
+    def _image_reference_et_role_de(self, st):
+        """(image de référence, RÔLE source) — le corps de `_image_reference_de`.
+
+        Le rôle n'était rendu NULLE PART : la trace par rôle (étape ⑦ du
+        chantier CAUSE AMONT) en a besoin pour dire QUELLE couche a servi de
+        référence d'alignement et à quelle profondeur — l'hypothèse « la
+        référence change de nature quand un 4e rôle arrive » n'était
+        vérifiable nulle part. Le CHOIX, lui, est INCHANGÉ (même ordre, même
+        repli) : on nomme seulement le rôle retenu.
+
+        → (image (H, W) float32, rôle str|None) ; (None, None) si rien à poser.
+        """
         if st is None:
-            return None
+            return None, None
         if self._mode_compo and hasattr(st, "moyennes"):
             canaux = st.moyennes(recadre=False) or {}
             spec = COMPOSITIONS.get(getattr(st, "composition", "")) or {}
@@ -1278,17 +1458,23 @@ class AcquisitionWorker:
             for role in tuple(g) + tuple(spec.get("roles", ())):
                 m = canaux.get(role)
                 if m is not None:
-                    return m
-            return None
-        return st.mean(recadre=False)
+                    return m, role
+            return None, None
+        return st.mean(recadre=False), None
 
-    def _rafraichir_reference(self) -> None:
+    def _rafraichir_reference(self, motif: str = "auto") -> None:
         """Pose la référence d'alignement depuis l'empilement courant (jalon 13)
-        — l'image vient de `_image_reference` (même domaine que les brutes,
-        correctif du jalon 113). Rien à poser (empilement vide) → aucun effet."""
-        img = self._image_reference()
+        — l'image vient de `_image_reference_et_role_de` (même domaine que les
+        brutes, correctif du jalon 113). Rien à poser (empilement vide) → aucun
+        effet.
+
+        `motif` (étape ⑦) : « auto » (toutes les N frames) ou « manuelle »
+        (bouton « Réf. = empilement ») — les deux passaient par ici sans laisser
+        de trace, donc un rafraîchissement manuel au milieu d'un run était
+        indiscernable d'un rafraîchissement automatique."""
+        img, role_src = self._image_reference_et_role_de(self.stacker)
         if img is not None:
-            self._definir_reference(img)
+            self._definir_reference(img, motif=motif, role_source=role_src)
 
     # ============================================ jalon 129b : voie A (Ha)
     # Le rôle Ha d'une composition BROADBAND+Ha (RGB+Ha, LRGB+Ha) est FUSIONNÉ
@@ -1326,6 +1512,11 @@ class AcquisitionWorker:
             return
         self._ha_ref_posee = True
         self._ha_ref_bad = 0
+        # Étape ⑦ : le Ha a un aligneur À PART (repère propre, voie A) — sa
+        # référence doit être tracée avec le bon aligneur, sinon elle
+        # disparaîtrait d'une trace qui ne lit que l'aligneur partagé.
+        trace_roles.noter_reference(self, img, motif="ha",
+                                    role_source="Ha", aligneur="Ha")
 
     def _recaler_ha(self) -> None:
         """UN SEUL recalage de l'empilement Ha sur la grille du composite
@@ -1473,6 +1664,12 @@ class AcquisitionWorker:
                                or "indices de la cible manquants"))
             self.astro_couleur = "#c98a00"
             return
+        # Jalon 133 — GARDE D'INTERFACE : une SAISIE qui désigne une AUTRE cible
+        # que l'en-tête de la brute courante est IGNORÉE au profit de l'en-tête
+        # (mesuré le 18/10/2026 : AD/Dec de M31 sur des brutes M33 → échec
+        # « 5 étoiles, 4 inliers, 1,615″/px », message muet sur les indices).
+        # UN SEUL point de décision : ici, jamais dans l'interface.
+        self._astro_indices_garde()
         if not self.suivi_astro.pret:
             self.suivi_astro.indice(*self._astro_indices)
         # Jalon 113 : la profondeur comparée au seuil est celle PAR RÔLE en
@@ -1492,6 +1689,9 @@ class AcquisitionWorker:
         img = self._image_reference_de(stacker)
         if img is None:
             return
+        # DIAGNOSTIC (inactif par défaut) : l'image EXACTE qui entre dans le
+        # solveur — c'est elle, et non l'empilement affiché, qui décide.
+        base_dump = _astro_dump_entree(self, img, stacker, n_prof)
         # Message posé AVANT le calcul : le thread Tk le lit PENDANT la
         # résolution (le worker, lui, est occupé) — l'utilisateur voit ainsi
         # d'où vient la pause d'acquisition d'une frame environ.
@@ -1500,6 +1700,7 @@ class AcquisitionWorker:
         self.astro_info = f"Astrométrie : résolution en cours ({detail})…"
         self.astro_couleur = "#888888"
         okk, msg = self.suivi_astro.resoudre_sur(img, n_frames=n_prof)
+        _astro_dump_resultat(base_dump, okk, msg, self.suivi_astro)
         if okk:
             self._maj_astro_etat()
             return
@@ -1523,6 +1724,107 @@ class AcquisitionWorker:
         self.astro_info = (f"Astrométrie : échec — {msg} "
                            f"({essais}/{astro_mod.ASTRO_MAX_ESSAIS} essais, "
                            f"{suite})")
+
+    # -------------------------- garde d'interface des indices (jalon 133)
+    def _astro_journal(self, texte: str) -> None:
+        """Écrit une ligne d'astrométrie au JOURNAL sans passer par l'interface.
+
+        `_noter_etat` (interface, jalon 114) est utilisé quand il existe : il
+        tient le cache des textes DÉJÀ écrits, donc la  ligne d'état ne sera pas
+        journalisée une seconde fois au rafraîchissement suivant. Jamais
+        d'exception (le journal est un service, cf. `journal.py`) et aucun accès
+        Tk : appelable depuis le thread du worker."""
+        noter = getattr(self, "_noter_etat", None)
+        try:
+            if callable(noter):
+                cast(Callable[[str, str], Any], noter)("astrométrie", texte)
+            else:
+                journal.note("astrométrie", texte)
+        except Exception:
+            pass
+
+    def _astro_indices_garde(self) -> bool:
+        """Jalon 133 — une SAISIE qui ne correspond pas aux brutes ne doit plus
+        faire échouer le solve en silence.
+
+        MÉCANISME MESURÉ (18/10/2026) : les AD/Dec d'astrométrie sont
+        PERSISTÉES dans `config.json` et restaurées au démarrage — à l'ouverture
+        `_source_fichiers_obsolete()` rend False (aucune caméra), donc elles
+        servent à la NOUVELLE cible sans que rien ne le dise. Cas réel : AD/Dec
+        de M31 (10,683333 / +41,268611) sur des brutes M33 (23,4625 / +30,66)
+        → échec « 5 étoiles, 4 inliers, 1,615″/px » ; avec les indices de
+        l'en-tête, 115 appariements à 2,469″/px. Le champ (2,637°) ne
+        distinguait PAS les deux cibles.
+        [CLAUDE.md § « Diagnostic de l'entrée d'astrométrie »]
+
+        RÈGLE (spec validée par Alain) :
+          · comparaison SEULEMENT si les indices viennent de la saisie
+            (`_astro_source == "saisie"`) ET si la brute courante PORTE des
+            coordonnées (`OBJCTRA/OBJCTDEC`, repli `RA/DEC`) ;
+          · séparation > `GARDE_INDICES_FRACTION` × champ saisi ⇒ la saisie est
+            IGNORÉE au profit de l'en-tête ; la ligne d'état ET le journal
+            DISENT les deux valeurs et laquelle est retenue ;
+          · sous le seuil (même cible, petit écart) : RIEN ne change ;
+          · brute sans coordonnées (caméra SDK, PNG/TIFF, FITS sans mots-clés) :
+            la saisie est CONSERVÉE, aucune comparaison — le comportement
+            d'avant ne bouge pas ;
+          · UNE seule comparaison par JEU D'INDICES saisi (`_astro_garde_pour`) :
+            l'en-tête se lit une fois, pas à chaque frame (aucun coût ajouté sur
+            le chemin de la boucle).
+
+        → True si les indices ont été REMPLACÉS par ceux de l'en-tête.
+        """
+        if self.suivi_astro is None or self._astro_indices is None:
+            return False
+        if self._astro_source != "saisie":
+            return False                  # en-tête / image / ASTAP : déjà bon
+        try:
+            ra_s, dec_s, champ_s = (float(v) for v in self._astro_indices)
+        except (TypeError, ValueError):
+            return False
+        if champ_s <= 0.0:
+            return False
+        if self._astro_garde_pour is not None \
+                and self._astro_garde_pour == (ra_s, dec_s, champ_s):
+            return False                  # cette saisie a DÉJÀ été comparée
+        chemin = self._brute_courante()
+        if not chemin:
+            return False                  # aucune brute identifiable : rien à lire
+        ra, dec, champ, _msg = astro_mod.indices_entete_fits(chemin)
+        # Comparaison FAITE (une seule fois, quel que soit le verdict) : une
+        # brute sans coordonnées laisse la saisie en place, sans relire l'en-tête
+        # à chaque frame.
+        self._astro_garde_pour = (ra_s, dec_s, champ_s)
+        if ra is None or dec is None:
+            return False                  # pas d'en-tête exploitable : saisie gardée
+        sep = astro_mod.separation_deg(ra, dec, ra_s, dec_s)
+        if sep is None:
+            return False
+        seuil = astro_mod.GARDE_INDICES_FRACTION * champ_s
+        if sep <= seuil:
+            return False                  # même cible : la saisie reste
+        # L'EN-TÊTE EST RETENU : coordonnées de la brute courante, et le champ
+        # SAISI s'il n'est pas déductible de l'en-tête (même optique, donc même
+        # champ — `indices_entete_fits` rend alors `champ=None`).
+        self._astro_indices = (ra, dec, champ if champ is not None else champ_s)
+        self._astro_source = f"en-tête {os.path.basename(chemin)}"
+        self._astro_garde_pour = self._astro_indices
+        # Les indices CHANGENT : `indice()` oublie le WCS et remet les essais à
+        # zéro. Il FAUT l'appeler ici — l'appel gardé par `pret` plus bas ne le
+        # ferait pas, les indices saisis ayant déjà été posés par l'interface.
+        self.suivi_astro.indice(*self._astro_indices)
+        nom_saisie = _nom_cible_proche(ra_s, dec_s) or (f"AD {ra_s:.5f}° "
+                                                        f"Dec {dec_s:+.5f}°")
+        nom_entete = (astro_mod.nom_objet_entete_fits(chemin)
+                      or f"AD {ra:.5f}° Dec {dec:+.5f}°")
+        txt = (f"Astrométrie : AD/Dec saisies {nom_saisie} ≠ en-tête "
+               f"{nom_entete} ({sep:.2f}° > {seuil:.2f}° = "
+               f"{astro_mod.GARDE_INDICES_FRACTION:.2f} × champ) — "
+               f"en-tête utilisé")
+        self.astro_info = txt
+        self.astro_couleur = "#c98a00"
+        self._astro_journal(txt)
+        return True
 
     def _astro_aveugle(self, stacker):
         """Jalon 56 — REPLI ASTAP : quand AUCUN indice n'est disponible (ni
@@ -1804,11 +2106,14 @@ class AcquisitionWorker:
         self._maj_spcc_etat()
         self._maj_spcc_vue()
 
-    def _astro_indices_entete(self):
-        """Indices de la cible déduits de l'en-tête de la brute courante
-        (source DOSSIER) quand la saisie est vide — lecture STRICTE
-        (OBJCTRA/OBJCTDEC + FOCALLEN/XPIXSZ), jamais de supposition : sans
-        mots-clés explicites, rien n'est inventé et le message le dit."""
+    def _brute_courante(self) -> str:
+        """Chemin de la brute la PLUS RÉCENTE de la session ("" si aucune).
+
+        Source DOSSIER : `last_file` de la caméra ; en COMPOSITION, le dernier
+        fichier du rôle le plus récent (`stats()`). Deux consommateurs, tous
+        deux dans le worker : la lecture des indices dans l'en-tête
+        (`_astro_indices_entete`) et la GARDE de la saisie (`_astro_indices_garde`,
+        jalon 133). Corps repris VERBATIM de `_astro_indices_entete`."""
         chemin = getattr(self.camera, "last_file", "") or ""
         if not chemin:
             try:      # composition : dernier fichier du rôle le plus récent
@@ -1819,6 +2124,14 @@ class AcquisitionWorker:
                     chemin = max(cands, key=os.path.getmtime)
             except Exception:
                 chemin = ""
+        return chemin
+
+    def _astro_indices_entete(self):
+        """Indices de la cible déduits de l'en-tête de la brute courante
+        (source DOSSIER) quand la saisie est vide — lecture STRICTE
+        (OBJCTRA/OBJCTDEC + FOCALLEN/XPIXSZ), jamais de supposition : sans
+        mots-clés explicites, rien n'est inventé et le message le dit."""
+        chemin = self._brute_courante()
         if not chemin:
             return
         ra, dec, champ, msg = astro_mod.indices_entete_fits(chemin)
@@ -1857,6 +2170,11 @@ class AcquisitionWorker:
             return
         al = StarAligner()
         al.triangles_seuls = bool(self.aligner.triangles_seuls)  # HOO/SHO
+        # Étape ① du plan ⑪ : même interrupteur que la session — l'aligneur privé
+        # mesure la MÊME paire de repères, il doit refuser ce que la session
+        # refuserait (sinon la propagation du WCS accepterait une translation
+        # seule là où l'empilement, lui, exige un retournement).
+        al.repli_phase = bool(self.aligner.repli_phase)
         try:
             al.set_reference(base)
             M, okk = al.compute(ref)
