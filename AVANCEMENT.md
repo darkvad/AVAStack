@@ -173,20 +173,32 @@ Leçon durable et preuves : `CLAUDE.md` § « Diagnostic de l'entrée d'astromé
 - **134c invalide** (brute dithérée) ; **135/136/138** annulées. **Interface (141)** :
   (A) documenter, (B) prévenir, (C) invalider — à trancher.
 
+### Décisions d'Alain du 18/10 (après ③) — TRANCHÉES
+- **Interface 141 = option B (PRÉVENIR)** : la composition affichée ne doit plus
+  pouvoir mentir en silence quand elle change en cours de session (le fichier,
+  lui, est correct via `AVACOMPO`). A = documenter, C = invalider : écartés.
+- **VeraLux = CLOS** : le piédestal par canal (jalon 122) + la neutralisation
+  après étirement (123/124) traitent le fond ×20-×40. L'ancre reste telle
+  quelle et **`veralux_core_headless.py` (tiers, GPL) n'est PAS modifié**.
+- **Halo d'étoile coloré = À CORRIGER (vite fait)** : cause MESURÉE = étirement
+  + clip PAR CANAL (couronne neutre dans le brut ; R +41 % / G +19 % / B +23 %
+  à r = 14) ⇒ le remède agit sur le clip, pas sur l'empilement.
+- **Résidu de la couche L (~0,48 px) = ABANDONNÉ** : on ne l'instruit plus ; une
+  trace courte reste dans `CLAUDE.md` (§ « Limites connues et assumées »).
+
 ### Problèmes ouverts
-- **Résidu systématique de la couche L (0,48 px)** : distorsion inter-nuits
-  (palier ~0,8 px du jalon 117) que ni la similitude ni l'affine ne corrige —
-  à instruire SÉPARÉMENT (le ② ne le traite pas).
-- **VeraLux** : à instruire (ancre calculée puis soustraite par canal) — APRÈS ②/③.
+- **Halo d'étoile coloré** : remède à écrire (clip sur la luminance ?) + banc
+  couleur — c'est le seul défaut visuel connu qui reste.
+- Rien d'autre : ①/②/③ livrés et validés ; VeraLux clos ; résidu L assumé.
 
 ### Prochaines étapes
-1. **③ — LIVRÉE (v2.84.0) et VALIDÉE en réel le 18/10** : 206 frames, **0 non
-   alignée**, 1 re-stack, méthode `triangles`. Reste un contrôle de FICHIER
-   facultatif (canal Ha net, aucun coin noir) — sur le LINÉAIRE.
-2. **Demander à Alain le prochain jalon** : SPCC (pente B/G 1,626), interface 141
-   (A/B/C), VeraLux (ancre), ou un run de validation supplémentaire.
-2. **SPCC** à instruire (pente B/G 1,626 hors [0,5 ; 1,5]) — APRÈS ③.
-3. Interface 141 (A/B/C) et **VeraLux** restent en attente.
+1. **Halo d'étoile coloré** — correctif court + banc (prochain jalon de code).
+2. **Interface 141 = B** — prévenir au changement de composition en session
+   (+ banc) ; rien d'autre à trancher.
+3. **Chantier LRGB+Ha J2 → J5** (le gros reste fonctionnel, plan figé ci-dessous).
+4. **Release GitHub v2.84.0** (4 paquets) — **sur accord explicite d'Alain**.
+5. Reste, sans urgence : Store (v2.71.1 publiée), Linux machine vierge +
+   `--cameras`, INDI après Linux, macOS jamais testé.
 
 ### Points d'attention
 - **Une brute est DITHÉRÉE** : seul un empilement ALIGNÉ prouve quelque chose.
@@ -210,52 +222,17 @@ Leçon durable et preuves : `CLAUDE.md` § « Diagnostic de l'entrée d'astromé
   exigent `== "triangles"` et restent verts (leur résidu est ~0,03 px).
 
 ### Contexte de reprise (à coller)
-Arbre propre, **v2.84.0** : ① (v2.82.2), ② choix C (v2.83.0) et **③ (jalon 135)
-LIVRÉE ET VALIDÉE en réel** — run SHO Sh2-132 : **206 frames, 0 non alignée**,
-1 re-stack, méthode `triangles`, **plus aucune phase**. Sur ce jeu, la phase
-finalisait 22 frames à tort (21 Ha à 0,857 px de résidu au lieu de 0,065 ; 1 O3
-à l'envers, |angle| 173,4°). Prochaine action unique : **demander à Alain le
-prochain jalon** (SPCC, interface 141, VeraLux…) — aucune modification de code
-ni release avant sa décision.
+Arbre propre, **v2.84.0** : ①/②/③ **livrés et validés en réel** (③ = 206 frames
+Sh2-132, 0 non alignée, plus aucune phase). Décisions du 18/10 : **141 = B
+(prévenir)**, **VeraLux clos** (ne pas toucher au fichier GPL), **halo d'étoile
+coloré à corriger** (cause mesurée : clip par canal après étirement), **résidu
+de la couche L abandonné** (trace dans `CLAUDE.md`). Prochain jalon de code :
+**corriger le halo coloré puis l'interface 141-B** ; **aucune release sans
+accord d'Alain**.
 
 ---
 
-## Chantier CLOS — ② choix C : raffiner `triangles` AU-DELÀ DU SEUIL (jalon 134, v2.83.0)
-
-**Livré le 18/10** : `TRI_RAFFIN_SEUIL = 0,30` px et, dans
-`StarAligner._triangles` **APRÈS** le contre-test mutuel final (le résidu y était
-DÉJÀ calculé : `median(dist_cur[mutuel])`), un raffinement conditionnel
-`_raffiner_centroides(frame, M, pos=pos)` — les centroïdes de la frame sont en
-main, donc **aucune re-détection**. S'il conclut : `M` remplacée, méthode
-`triangles+étoiles(n)` ; sinon `triangles` (rien ne change). `_last_t` posé APRÈS,
-avec la matrice FINALE ; `try/except` autour de l'appel (une frame validée ne se
-perd jamais). Banc 134 (7 volets, 30 vérifs) **vert** ; non-régression
-**13 / 15 / 21 / 116 / 117 / 129b / 131 / 132 / 133** verte ; `py_compile` OK.
-**VALIDÉ en réel le 18/10** : 472 frames (L 240 · R 79 · G 62 · B 51 · Ha 40),
-2 refus (G 1 · R 1), 1 floue, **0,00 % de pixels noirs** et canaux alignés à
-**0,079 px (R)** / **0,130 px (B)** sur le linéaire livré — le run précédent
-donnait 0,087 / 0,155 px.
-Trace complète : `CLAUDE.md` § « Raffinement `triangles` au-delà du seuil ».
-
-**⚠ Le plan d'origine se trompait sur un point, et c'est MESURÉ** : il annonçait
-« frame synthétique décalée de 1,0-1,5 px → raffinée, résidu ≤ 0,1 px ». FAUX :
-`_triangles` laisse déjà **0,015-0,035 px** sur un champ propre, même décalé de
-1,2 px (il consolide RANSAC + LMEDS sur appariements mutuels), et les centroïdes
-ne peuvent pas améliorer ce qui est déjà au niveau du bruit (même similitude,
-mêmes points). Un décalage synthétique ne franchit donc JAMAIS le seuil : le banc
-134 teste le **câblage** (espion, seuils 0 et 10, matrice prise, méthode,
-`_last_t`) + une frame **faible et floue** (résidu 0,236 px → 0,214 px).
-
----
-
-## Chantier CLOS — CAUSE AMONT (taches rouges/bleues du LRGB) — clos le 18/10
-Cause UNIQUE mesurée : le repli `phase` en broadband (frames B à l'envers sur un
-champ à +177,07°, 11/50 puis 12/49) ; **corrigé à l'étape ①** et validé en réel.
-Trace : `CLAUDE.md`, changelog v2.82.2, `git log` (140 → 149) — **ne rien rejouer**.
-
----
-
-## Chantier en cours — LRGB+Ha (jalons 129 → J5) — reprend APRÈS ③
+## Chantier en cours — LRGB+Ha (jalons 129 → J5) — reprend après 141-B
 
 Le rôle Ha **n'alimente aucun canal** : il est **FUSIONNÉ** au composite après le combine L.
 
@@ -280,18 +257,25 @@ identifiants en français (`synthetise`).
 - **Reprise** : `CLAUDE.md` § « Diagnostic de l'entrée d'astrométrie » (lire
   `indices` dans le dump AVANT tout) ; mesures dans `C:\Astro\test\`
   (`_dump154_*`, `_diag_astro_152/153*.py`, `_astap148*\`) — astrométrie RÉSOLUE.
-- **Décisions d'Alain** : **①, ② (C) et ③** sont **LIVRÉS et VALIDÉS en réel**
-  (v2.82.2 / v2.83.0 / v2.84.0) ; restent à trancher l'interface 141 (A/B/C),
-  SPCC (pente B/G 1,626) et VeraLux. Une release GitHub ne se fera QUE sur accord
-  explicite d'Alain, et le prochain jalon ne démarre qu'après sa demande.
+- **Décisions d'Alain (18/10, après-midi)** : **①, ② (C) et ③** sont **LIVRÉS et
+  VALIDÉS en réel** (v2.82.2 / v2.83.0 / v2.84.0) ; **141 = B (prévenir)** ;
+  **VeraLux = clos** (piédestal + neutralisation suffisent, fichier GPL intact) ;
+  **halo coloré = à corriger** ; **résidu L = abandonné** (trace `CLAUDE.md`) ;
+  **SPCC = abandonné**. Prochain jalon de code : le halo, puis 141-B.
 - **RÉSOLU (141)** : « M33 en RGB montre les mêmes taches » = session **LRGB+Ha**
   avec l'interface passée en « RGB » **pendant** l'empilement (`AVACOMPO=LRGB+Ha…`).
-- **VeraLux** : ancre calculée sur la luminance pondérée puis soustraite par canal
-  (`max(x, 0)`), ~97 % du ciel consommé ⇒ le fond sort ×20 à ×40 (remède = piédestal).
-- **Halo d'étoile** : couronne NEUTRE dans le brut, COLORÉE par le STF (R +41 % / G +19 % /
-  B +23 % à r=14) ⇒ ce n'est pas l'empilement, c'est l'étirement + le clip par canal.
-- Boutons de données sans Siril (« ⬇ Gaia », « ⬇ Spectres », « ⬇ Base SPCC ») ; **INDI** =
-  jalon à part, après le portage Linux ; **Store** = cadence séparée (v2.71.1 publiée).
+  ⇒ remède retenu (B) : **prévenir** quand la composition change en session.
+- **VeraLux (CLOS)** : ancre calculée sur la luminance pondérée puis soustraite par
+  canal (`max(x, 0)`), ~97 % du ciel consommé ⇒ fond ×20 à ×40, **déjà traité**
+  par le piédestal par canal (jalon 122) + la neutralisation après étirement
+  (123/124). **Ne pas modifier `veralux_core_headless.py` (tiers, GPL).**
+- **Halo d'étoile (À CORRIGER)** : couronne NEUTRE dans le brut, COLORÉE par le
+  STF (R +41 % / G +19 % / B +23 % à r = 14) ⇒ ce n'est pas l'empilement, c'est
+  l'étirement + le **clip par canal** : le remède agit là.
+- Boutons de données sans Siril (« ⬇ Gaia », « ⬇ Spectres », « ⬇ Base SPCC ») : sans
+  objet depuis l'abandon de SPCC — à retirer ou laisser inertes (décision courte).
+  **INDI** = jalon à part, après le portage Linux ; **Store** = cadence séparée
+  (v2.71.1 publiée).
 - Retour arrière en un geste : `git checkout -- avastack/processing/composition.py`.
 
 ---

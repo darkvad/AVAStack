@@ -1502,6 +1502,39 @@ ce qui manquait n'était pas une correction mais une MESURE.
   107 556 437 pixels rejetés (σ), archive 206, ligne d'état `triangles`
   (Δ +8,9/+11,5 px, θ −0,19°) — **aucune méthode « phase »**. 204 + 1 frame S2
   arrivée avant l'ancre = 206, et le re-stack de session réaligne cette frame.
+
+## Limites connues et ASSUMÉES (décisions d'Alain, 18/10/2026)
+
+- **RÉSIDU DE LA COUCHE L (~0,48 px) — ABANDONNÉ, NE PAS ROUVRIR SANS NOUVEAU
+  SYMPTÔME.** Mesuré au ② : résidu médian **0,484 px** sur la couche L (les
+  autres rôles sont à 0,06-0,08 px), p90 0,675, max 1,385. Cause identifiée au
+  jalon 117 : **distorsion inter-nuits** — un plancher de **~0,8 px** entre deux
+  nuits que ni la similitude ni l'**affine** (6 paramètres) ne corrige
+  (0,80-0,87 px sur les frames retournées/d'autre nuit). Le ② ne le traite pas
+  (il raffine sur les mêmes points). Diags jetables du 117 :
+  `%TEMP%\avastack_diag_j117_halo{,2}.py`, `…_png.py`. Conséquence pratique :
+  la couche L est un peu moins nette que R/G/B sur les jeux multi-nuits ; c'est
+  ACCEPTÉ.
+- **VERALux — ANCRE : CLOS, LE FICHIER TIERS N'EST PAS MODIFIÉ.** L'ancre est lue
+  dans l'histogramme de luminance, SOUTRAITE un scalaire et consomme ~97 % du
+  ciel (d'où un fond ×20-×40 sur un écart de 0,9 % par canal). Le remède est de
+  MÊME NATURE que la cause et il est DÉJÀ livré : **piédestal par canal AVANT
+  l'étirement** (jalon 122) + **neutralisation des gains APRÈS l'étirement**
+  (jalons 123/124). `veralux_core_headless.py` est un **fichier tiers GPL-3.0** :
+  ne jamais le reproduire ni le modifier à la légère.
+- **HALO D'ÉTOILE COLORÉ — À CORRIGER, CAUSE DÉJÀ MESURÉE.** La couronne est
+  **neutre dans le brut** ; elle est **colorée par l'étirement** : à r = 14 px du
+  centre, R **+41 %**, G **+19 %**, B **+23 %** ⇒ ce n'est NI l'empilement NI la
+  composition, c'est le **clip PAR CANAL** après étirement (chaque canal sature
+  à son propre niveau). Le remède doit donc agir sur le **traitement d'image**
+  (p. ex. borner/clipper sur la LUMINANCE et ré-appliquer la teinte), jamais sur
+  l'alignement ou le rejet ; le banc devra mesurer les **rapports de canaux sur
+  le fichier livré** (linéaire/« tel que vu »), jamais un agrégat global.
+- **INTERFACE 141 = B (PRÉVENIR)** : la composition d'un FICHIER se lit dans son
+  en-tête `AVACOMPO`, jamais dans l'interface ; si la composition change PENDANT
+  une session, l'interface doit **le dire** au lieu de laisser croire que la
+  session en cours a changé (le fichier, lui, reste correct).
+
 - **CE QUE LA PREMIÈRE MESURE NE DISAIT PAS** : ses 3 jeux n'avaient **aucun**
   frame à retourner (0 frame à |angle| > 170°) — d'où « coût 0 » sans preuve de
   risque. Le jeu d'Alain, lui, contient 31 retournements : c'est LUI qui tranche.
