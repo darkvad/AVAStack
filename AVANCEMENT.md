@@ -42,68 +42,32 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 
 
 ### Garde d'interface d'astrométrie (jalon 133) — LIVRÉE le 18/10
-- **Où** : `worker._astro_indices_garde()`, appelée par `_astro_tour` **après**
-  la lecture d'en-tête et **avant** la pose des indices — un seul point, jamais
-  l'interface.
-- **Quoi** : indices venus de la **saisie** + brute courante portant
-  `OBJCTRA/OBJCTDEC` (repli `RA/DEC`) ⇒ `astrometrie.separation_deg()`
-  (haversine) comparée à **`GARDE_INDICES_FRACTION` (0,25) × champ saisi**.
-  Au-delà : **en-tête retenu** (AD/Dec de la brute ; champ de l'en-tête s'il est
-  déductible, sinon **champ saisi**), `suivi_astro.indice()` **reposé** (WCS
-  oublié, essais à zéro), ligne d'état + journal disant les DEUX valeurs et
-  laquelle est retenue. Sous le seuil, ou sans coordonnées : **rien ne change**.
-- **Coût borné** : UNE comparaison par jeu d'indices saisi (`_astro_garde_pour`) —
-  aucun `fits.open` ajouté sur le chemin de la boucle.
-- **Banc NEUF** `bancs/_test_astro_indices_garde_jalon133.py` (6 volets, **VERT**,
-  23 vérifications) : M31 saisi sur M33 → en-tête retenu + message + journal et
-  le **solveur reçoit les bons indices** ; même cible à 0,05° → saisie gardée +
-  **une seule** lecture ; sans coordonnées → saisie gardée ; déjà d'en-tête →
-  aucune lecture ; WCS résolu **toujours propagé** ; champ de l'en-tête adopté
-  quand il est déductible.
-- **Non-régression** : bancs **132, 115, 113, 56, 76** verts (banc 115 : son
-  bouchon d'aligneur porte `repli_phase`, attribut né à l'étape ①).
+`worker._astro_indices_garde()` (appelée par `_astro_tour`, un seul point) compare
+la SAISIE aux `OBJCTRA/OBJCTDEC` de la brute (seuil 0,25 × champ) ; au-delà elle
+retient l'en-tête et REPOSE `suivi_astro.indice()`. Détail : `CLAUDE.md` §1300.
+
 
 ### Étape ② du plan ⑪ — MESURÉE le 18/10 (AUCUNE ligne de code touchée)
 - **Protocole** : run RÉEL LRGB+Ha instrumenté PASSIVEMENT (vrai `ui.App`, mêmes
-  brutes/darks/ordre : L 240, R 80, G 64, B 51, Ha 40 ; `--no-save`), espion sur
-  `StarAligner._triangles` qui mesure les centroïdes AVANT (`_verif_centroides`,
-  appariements mutuels ≤ 2,5 px) et le candidat de `_raffiner_centroides` APRÈS,
-  sans rien changer à la cascade. Re-stacks, recalage Ha et propagation
-  d'astrométrie EXCLUS (ils réalignent des EMPILEMENTS). 475 frames lues,
-  **472 empilées, 1 floue, 2 refus (G)**, 143 mesures, 0 erreur d'espion.
-- **Population `triangles`** : **143 / 472 frames (30,3 %)** — B 16/51,
-  G 33/61, **Ha 39/40**, L 31/240, R 24/80. Les refus restent **G 2**
-  (réf `G/auto`, seq 215 et 271) : le ② ne peut PAS en retirer, un raffinement
-  ne refuse jamais une frame.
-- **Résidu de la matrice `triangles` sur les étoiles (AVANT)** : méd 0,083 px ·
-  p90 0,675 · max 1,385. Par classe : **87/143 ≤ 0,10 px**, 13 dans 0,10-0,30,
-  30 dans 0,30-0,70, 13 > 0,70.
-- **Ce que les centroïdes changent (APRÈS)** : candidate GARDÉE **112/143**
-  (78 %), 31 inchangées ; résidu méd 0,0855 · p90 0,644 · **max 1,141** ;
-  107 meilleures, 5 égales (plus d'appariements), **0 pire** (par construction).
-  Gain : **90 frames < 0,05 px**, 4 dans 0,05-0,10, 12 dans 0,1-0,3, **1 seule
-  ≥ 0,3** (max 0,734) ; méd 0,002 px. Déplacement de translation : méd 0,018 px,
-  p90 0,784, max 2,934 — **7 frames seulement > 1 px**, et ce sont les pires
-  (ex. 1,385 → 0,651 px).
-- **PAR RÔLE (résidu méd avant → après · déplacement méd)** : B 0,060 → 0,060
-  (0,035 px) · G 0,082 → 0,084 (0,005) · Ha 0,070 → 0,069 (0,006) ·
-  **L 0,484 → 0,467 (0,164)** · R 0,083 → 0,082 (0,024).
-- **LECTURE** : `_triangles` n'est PAS « la matrice LMEDS brute » — il consolide
-  déjà (RANSAC 2,5 px + LMEDS + contre-test mutuel 2,5 px). Le ② garde une
-  candidate sur 112/143 frames mais le gain reste **< 0,05 px sur 95/143
-  (66 %)** ; il corrige PARTIELLEMENT les 7 pires et ne touche PAS le résidu
-  systématique de la couche **L (~0,48 px)**, qui est une DISTORSION inter-nuits
-  (le palier ~0,8 px du jalon 117, qu'un affine n'améliore pas) : ce n'est pas
-  la translation que les centroïdes corrigent.
-- **Contrôle positif 200 étoiles** (transformation CONNUE) : 202 appariements,
-  résidu **0,0438 px** à la vraie matrice, **1,4904 px** pour une erreur connue
-  de 1,5 px (lu − connu = −0,0096), retour à **0,0104 px** après raffinement ;
-  scénario rotation+échelle : 176 appariements, 0,0533 px, erreur retrouvée à
-  0,0148 px. ⇒ la mesure réagit à une erreur connue.
-- **Outils hors dépôt** : `_espion_155.py`, `_lance_155.py`,
-  `_diag_155b_controle.py`, `_diag_155c_analyse.py`, `_diag_155d_detail.py`,
-  `_diag_155a_methodes.py` ; preuves `_155_centroides.jsonl`,
-  `_trace155/155.jsonl`, `_155b_controle.json`, `_155_resultat.txt`.
+  brutes/darks/ordre) ; espion sur `_triangles` mesurant les centroïdes AVANT et
+  le candidat de `_raffiner_centroides` APRÈS ; re-stacks, recalage Ha et
+  propagation **exclus**. **475 lues → 472 empilées, 1 floue, 2 refus (G)**,
+  143 mesures, 0 erreur. Détail complet : `CLAUDE.md` § « Étape ② du plan ⑪ ».
+- **Population `triangles` : 143/472 (30,3 %)** — B 16/51 · G 33/61 · **Ha 39/40**
+  · L 31/240 · R 24/80. Les refus (**G 2**) viennent de `G/auto` et **aucun n'est
+  supprimable** : un raffinement ne refuse jamais.
+- **Résidu avant** : méd **0,083 px** · p90 0,675 · max 1,385 ; 87/143 ≤ 0,10,
+  30 dans 0,30-0,70, 13 > 0,70. **Gain** : méd **0,002 px**, < 0,05 sur 95/143,
+  **7 frames seulement** déplacées de plus de 1 px (pires : 1,385 → 0,651).
+- **Par rôle (méd avant → après)** : B 0,060→0,060 · G 0,082→0,084 · Ha
+  0,070→0,069 · **L 0,484→0,467** · R 0,083→0,082. Le résidu **L** est une
+  DISTORSION inter-nuits, pas une translation : le ② ne le corrige pas.
+- **Contrôle positif 200 étoiles** : 202 appariements, **0,0438 px** à la vraie
+  matrice, **1,4904 px** pour une erreur connue de 1,5 px, retour à 0,0104 px.
+- **Outils hors dépôt** : `_espion_155.py`, `_lance_155.py`, `_diag_155{a,b,c,d}*.py`,
+  `_attendre_155.py` ; preuves `_155_centroides.jsonl`, `_trace155/155.jsonl`,
+  `_155b_controle.json`, `_155_resultat.txt`.
+
 
 ### État actuel
 - **Code** : v2.82.2 **COMMITÉE ET POUSSÉE** (`586f860`, `origin/LRGBHa`) ;
@@ -111,7 +75,7 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 - **RUN RÉEL LRGB (Alain, 18/10)** : plus aucune tache bleue NI rouge ⇒ `phase`
   en broadband était la seule cause. Test taches **TERMINÉ**.
 - **Astrométrie** : réussie après correction des indices (garde 133 livrée).
-- **Reste à faire** : décider du ② (mesure faite, gain marginal) puis ③
+- **Reste à faire** : **coder le ② choix C** (mesure faite, jalon 134) puis ③
   (SHO/HOO sans `phase`).
 - **Combine** innocenté trois fois (140/142/143) : `_ratio_combine` intact.
 
@@ -131,10 +95,8 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 
 
 ### Mesures du chantier (détail dans `CLAUDE.md` et le changelog v2.82.2)
-- **140** RGB : aucune tache. **142** LRGB : R +103,9 % · B +132,1 %.
-  **143** L←R : B +80,7 %. **144** L←B : B +34,6 %. Rejeux 146/147 au bit :
-  force du bleu **4,5 / 81,1 / 46,1 %** ; poids 0,857 et σ **×4,38** aux 243
-  taches ; couches B entre runs r 0,985 · **Δ méd +72,3** aux 243 taches.
+Chantier CLOS : 140 RGB propre · 142 LRGB R +103,9 % / B +132,1 % · 143 B +80,7 %
+· 144 B +34,6 % · poids 0,857 et σ ×4,38 aux 243 taches — **ne pas rejouer**.
 
 ### Astrométrie — RÉSOLUE le 18/10 : les AD/Dec étaient celles de M31
 - **Cause** : les champs gardaient **M31** (10,683333 / +41,268611) alors que les
@@ -158,26 +120,30 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
   que si le besoin de **jongler entre les 2 modes selon les cibles** apparaît ;
   l'architecture est déjà prête (le drapeau est fixé PAR SESSION, une case
   n'aurait qu'à écrire `aligner.repli_phase`).
+- **② = CHOIX C (Alain, 18/10/2026)** : le raffinement centroïdes n'est appliqué
+  **QUE si la matrice `triangles` laisse un résidu > `TRI_RAFFIN_SEUIL`**
+  (proposé **0,30 px** : 43/143 frames mesurées ; 0,10 en toucherait 56, 0,50
+  seulement 13). Raison : le gain est < 0,05 px sur 95/143 frames (66 %) ⇒
+  inutile de payer et de toucher une matrice déjà bonne ; là où il sert
+  (7 frames > 1 px, pires 1,385 → 0,651) il corrige 12 à 50 % de l'erreur, et
+  `_raffiner_centroides` ne régresse JAMAIS (elle rend l'entrée inchangée).
 - **La composition d'un fichier se lit dans son `AVACOMPO`**, jamais dans l'interface (141).
 - **134c invalide** (brute dithérée) ; **135/136/138** sur 40 frames ⇒ annulées.
 - **Interface (141)** : (A) documenter, (B) prévenir, (C) invalider — à trancher.
 
 ### Problèmes ouverts
-- **Décision ②** : la mesure est faite (gain méd 0,002 px ; 7 frames > 1 px dont
-  les pires 1,385 → 0,651). Options : (A) ne RIEN ajouter, (B) ajouter le
-  raffinement tel quel (coût mesuré : **~0,10 s** par frame `triangles`, max
-  0,41 s, sur 143 frames), (C) ne l'appliquer qu'aux matrices dont le résidu
-  dépasse un seuil. **Alain tranche.**
 - **Résidu systématique de la couche L (0,48 px)** : distorsion inter-nuits
   (palier ~0,8 px du jalon 117) que ni la similitude ni l'affine ne corrige —
-  à instruire SÉPARÉMENT (ce n'est pas le ②).
+  à instruire SÉPARÉMENT (le ② ne le traite pas).
 - **VeraLux** : à instruire (ancre calculée puis soustraite par canal) — APRÈS ②/③.
 
 ### Prochaines étapes
-1. **Décision d'Alain sur le ②** (A/B/C ci-dessus) — aucune ligne de code n'est
-   écrite avant son accord.
-2. **③** : SHO/HOO sans `phase` — mesure du coût (refus par rôle) avant décision.
-3. Contrôle positif 200 étoiles OBLIGATOIRE à chaque mesure.
+1. **CODER le choix C** (jalon 134, v2.83.0) — plan détaillé dans la section
+   « Prochain chantier » ci-dessous.
+2. Banc NEUF `_test_triangles_raffin_jalon134.py` + non-régression
+   (13, 21, 116, 117, 129b, 131, 132, 133) ; puis **run réel d'Alain**.
+3. **③** : SHO/HOO sans `phase` — mesure du coût (refus par rôle) avant décision.
+4. Contrôle positif 200 étoiles OBLIGATOIRE à chaque mesure.
 
 ### Points d'attention
 - **Une brute est DITHÉRÉE** : seul un empilement ALIGNÉ (mono ou couche) prouve quelque chose.
@@ -203,13 +169,65 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
   dans un plan sans revérifier le code.
 
 ### Contexte de reprise (à coller)
-v2.82.2 **commitée et poussée** (`586f860`) ; arbre de travail **propre**.
-**Étape ② du plan ⑪ MESURÉE le 18/10** : 143/472 frames (30,3 %) posées par
-`triangles`, résidu méd 0,083 px (L 0,484), gain des centroïdes méd **0,002 px**
-(90/143 < 0,05), 7 frames seulement déplacées de plus de 1 px, **0 refus
-supprimable** ; contrôle positif 200 étoiles PASS. Prochaine action unique :
-**attendre la décision d'Alain (A ne rien ajouter / B ajouter / C sous seuil)**
-avant d'écrire la moindre ligne de code.
+Arbre **propre**, `c81a325` poussé : l'étape ② du plan ⑪ est **MESURÉE** (143/472
+frames posées par `triangles`, résidu méd 0,083 px, gain des centroïdes méd
+0,002 px, contrôle positif 200 étoiles PASS) et **Alain a choisi le C**.
+Prochaine action unique : **coder le ② C (jalon 134, v2.83.0)** — raffiner
+`_triangles` SEULEMENT si le résidu médian des appariements mutuels dépasse
+`TRI_RAFFIN_SEUIL` (0,30 px), puis banc 134 + non-régression.
+
+
+---
+
+## Prochain chantier — ② choix C : raffiner `triangles` SOUS SEUIL (jalon 134, v2.83.0)
+
+**Objectif** : n'appeler `_raffiner_centroides` que sur une matrice `triangles`
+manifestement fausse, sans toucher au reste de la cascade (ORB → triangles →
+étoiles → (phase) INCHANGÉ, `repli_phase` INCHANGÉ).
+
+**Où** : `StarAligner._triangles` (`avastack/processing/alignment.py`), entre le
+**contre-test mutuel final** (les variables `dist_cur` / `mutuel` existent déjà,
+l. ~795-804) et `self._noter(M, "triangles")` / `return M, True`. **Le résidu est
+déjà calculé** : `float(np.median(dist_cur[mutuel]))` — aucune détection, aucune
+vérification supplémentaire pour DÉCIDER.
+
+**Quoi (4 points)** :
+1. `TRI_RAFFIN_SEUIL: float = 0.30` (px), à côté de `TRI_RAYON` /
+   `TRI_INLIERS_MIN` et commenté avec les chiffres du ② (43/143 frames ; seuil
+   0,10 → 56, 0,50 → 13).
+2. Après le contre-test, si `res > TRI_RAFFIN_SEUIL` :
+   `M_raff, n = self._raffiner_centroides(frame, M)` ; si `n` → `M = M_raff` et
+   méthode **`f"triangles+étoiles({n})"`** ; sinon méthode `"triangles"` (rien
+   ne change). `_last_t` doit être posé APRÈS cette étape, avec la matrice FINALE.
+3. **PIÈGE DE COÛT** : `_raffiner_centroides` re-détecte les centroïdes alors que
+   `_triangles` vient de les calculer (`pos`). Ajouter un paramètre OPTIONNEL
+   `pos=None` à `_raffiner_centroides` (utilisé tel quel s'il est fourni ; les
+   appelants ORB/étoiles restent inchangés) évite ~100 ms par frame raffinée.
+   Si l'on préfère minimiser le diff, l'appel simple est acceptable (100 ms
+   mesurés, max 405).
+4. **Garde-fous** : `ref_pos` déjà vérifié plus haut ; `_raffiner_centroides`
+   rend l'entrée INCHANGÉE si elle ne fait pas mieux ⇒ jamais de régression ;
+   aucune exception ne doit sortir ; si `mutuel.sum() < TRI_INLIERS_MIN`, on est
+   déjà sorti en `False` avant.
+
+**Banc NEUF** `bancs/_test_triangles_raffin_jalon134.py` (volets ; réutiliser le
+générateur de champ d'étoiles des bancs **13/21**) :
+· frame synthétique décalée de **1,0-1,5 px** → `_raffiner_centroides` APPELÉE
+  (espion) et matrice améliorée (résidu ≤ 0,1 px, erreur de translation < 0,15 px) ;
+· frame quasi parfaite (**0,05 px**) → `_raffiner_centroides` **JAMAIS** appelée
+  et matrice rendue **AU BIT** identique à celle de `_triangles` ;
+· seuils : `TRI_RAFFIN_SEUIL = 0` → appelée ; `= 10` → jamais ;
+· la MÉTHODE notée est `triangles+étoiles(n)` dans le 1er cas, `triangles` dans
+  le 2e (la trace ⑦ et la ligne d'état doivent distinguer les deux) ;
+· aucune exception quand `detecter_positions` rend peu d'étoiles.
+
+**Non-régression** : bancs **13, 21, 116, 117, 129b, 131, 132, 133** verts, puis
+`python -m py_compile avastack/processing/alignment.py`.
+**Validation réelle** : un run d'Alain (LRGB+Ha) → refus **par rôle** attendus
+**inchangés (G 2)** ; la trace ⑦ doit montrer `triangles+étoiles(...)` sur les
+frames à fort résidu. ⚠ NE PAS réinterpréter `_lance_155.py` comme un
+avant/après : après le correctif, l'espion mesure la matrice DÉJÀ raffinée.
+**Version** : v2.83.0 + changelog (`avastack/__init__.py`) ; jalon **134**.
 
 
 ---

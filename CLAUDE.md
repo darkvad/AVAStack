@@ -1407,8 +1407,9 @@ ce qui manquait n'était pas une correction mais une MESURE.
   seulement sur les 7 pires (correction PARTIELLE, 12 à 50 % de l'erreur).
   Le résidu systématique de la couche **L (~0,48 px)** n'est PAS touché : c'est
   la **distorsion inter-nuits** du jalon 117 (palier ~0,8 px, qu'un affine
-  n'améliore pas), ce n'est pas une translation. Conclusion de mesure, pas de
-  correctif : la décision A/B/C appartient à Alain.
+  n'améliore pas), ce n'est pas une translation. **DÉCISION D'ALAIN (18/10) :
+  choix C** — raffiner SEULEMENT au-delà de `TRI_RAFFIN_SEUIL` (0,30 px) ;
+  plan d'implémentation et banc dans `AVANCEMENT.md` § « Prochain chantier ».
 - **OUTILS hors dépôt** : `_espion_155.py` (espion), `_lance_155.py` /
   `_lance_155_fond.py` (run réel détaché), `_diag_155a_methodes.py` (méthodes des
   traces 140/143), `_diag_155b_controle.py` (contrôle 200 étoiles),
