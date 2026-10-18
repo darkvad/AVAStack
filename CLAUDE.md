@@ -1497,6 +1497,11 @@ ce qui manquait n'était pas une correction mais une MESURE.
     du ⑩, reproduit en narrowband sur une vraie brute.
   ⇒ l'étape ③ n'est pas un compromis « on perd 0 frame » : c'est un **CORRECTIF**
   (0 refus, 21 frames Ha mieux alignées, 1 frame O3 plus jamais à l'envers).
+- **VALIDÉ EN RÉEL le 18/10 (v2.84.0, run SHO de Sh2-132 par Alain)** :
+  **206 frames** (S2 80 · Ha 55 · O3 71), **0 frame non alignée**, **1 re-stack**,
+  107 556 437 pixels rejetés (σ), archive 206, ligne d'état `triangles`
+  (Δ +8,9/+11,5 px, θ −0,19°) — **aucune méthode « phase »**. 204 + 1 frame S2
+  arrivée avant l'ancre = 206, et le re-stack de session réaligne cette frame.
 - **CE QUE LA PREMIÈRE MESURE NE DISAIT PAS** : ses 3 jeux n'avaient **aucun**
   frame à retourner (0 frame à |angle| > 170°) — d'où « coût 0 » sans preuve de
   risque. Le jeu d'Alain, lui, contient 31 retournements : c'est LUI qui tranche.

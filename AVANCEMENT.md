@@ -93,8 +93,18 @@ retient l'en-tête et REPOSE `suivi_astro.indice()`. Détail : `CLAUDE.md` §130
 - **Outils hors dépôt** : `_mesure_156_phase_narrowband.py` (`--controle`,
   `--jeu`, `--tag`, `--max`), preuves `_156_*` et `_156b_*` (3 jeux) +
   `_156c_*` (Sh2-132). Détail durable : `CLAUDE.md` § « Étape ③ du plan ⑪ ».
-- **DÉCISION D'ALAIN** : ③ retenu et livré ; **reste la validation en réel** sur
-  son run SHO de Sh2-132 (le jeu qui contient les retournements).
+- **DÉCISION D'ALAIN** : ③ retenu et livré.
+
+### Run de VALIDATION du ③ (Alain, 18/10, v2.84.0) — RÉUSSI
+- **206 frames** (S2 80 · Ha 55 · O3 71), **0 frame non alignée**, **1 re-stack**,
+  107 556 437 pixels rejetés (σ), archive 206. Ligne d'état : `triangles`
+  (Δ +8,9/+11,5 px, θ −0,19°) — **aucune méthode « phase »**.
+- Cohérent avec la mesure hors dépôt : le rejeu comptait 204 frames APRÈS l'ancre
+  + 1 frame S2 arrivée avant elle = **206** ; le re-stack de session est celui qui
+  réaligne cette frame d'ancre (d'où « Re-stacks : 1 » et archive 206).
+- **À vérifier sur le fichier** : canal Ha net (les 21 frames que la phase
+  finalisait étaient fausses de 1,1 à 2,3 px) et aucun coin noir (frame à
+  l'envers) — contrôle sur le LINÉAIRE, pas sur le « tel que vu ».
 
 ### Run de VALIDATION du ② (Alain, 18/10, v2.83.0) — MESURÉ
 - **472 frames empilées** (L 240 · R 79 · G 62 · B 51 · Ha 40), **2 non alignées
@@ -120,11 +130,11 @@ retient l'en-tête et REPOSE `suivi_astro.indice()`. Détail : `CLAUDE.md` §130
 
 ### État actuel
 - **Code** : **v2.84.0** (③, jalon 135) — bancs 135 neuf + non-régression verte ;
-  **validation réelle Sh2-132 à faire par Alain**.
+  **run réel Sh2-132 RÉUSSI** (206 frames, 0 non alignée, 1 re-stack).
 - **RUN RÉEL LRGB (Alain, 18/10)** : plus aucune tache bleue NI rouge ⇒ `phase`
   en broadband était la seule cause. Astrométrie réussie (garde 133).
-- **Reste à faire** : **valider ③ en réel** (run SHO de Sh2-132 : 31
-  retournements, 22 frames que la phase finalisait à tort).
+- **Reste à faire** : rien sur ①/②/③ — **demander à Alain le prochain jalon**
+  (SPCC, interface 141 A/B/C, VeraLux…) ; aucune release sans son accord.
 - **Combine** innocenté trois fois (140/142/143) : `_ratio_combine` intact.
 
 ### Fichiers modifiés dans cette phase (v2.84.0)
@@ -170,13 +180,11 @@ Leçon durable et preuves : `CLAUDE.md` § « Diagnostic de l'entrée d'astromé
 - **VeraLux** : à instruire (ancre calculée puis soustraite par canal) — APRÈS ②/③.
 
 ### Prochaines étapes
-1. **③ — LIVRÉE (v2.84.0), VALIDATION RÉELLE à faire** : run SHO sur
-   `SV555\SH2-132\240.00` (dossiers `Ha` · `OIII` · `SII`, dark maître 240 s,
-   composition **SHO**), avec `AVASTACK_TRACE_ROLES=<dossier>` pour compter les
-   méthodes. À vérifier : **0 refus** par rôle, **retournements corrects**, plus
-   aucune méthode « phase », et un canal Ha **net** (les 21 frames que la phase
-   finalisait étaient à ~0,86 px de résidu). Si le rendu régresse : la constante
-   `PHASE_EN_NARROWBAND` suffit à revenir en arrière (banc 135 le prouve).
+1. **③ — LIVRÉE (v2.84.0) et VALIDÉE en réel le 18/10** : 206 frames, **0 non
+   alignée**, 1 re-stack, méthode `triangles`. Reste un contrôle de FICHIER
+   facultatif (canal Ha net, aucun coin noir) — sur le LINÉAIRE.
+2. **Demander à Alain le prochain jalon** : SPCC (pente B/G 1,626), interface 141
+   (A/B/C), VeraLux (ancre), ou un run de validation supplémentaire.
 2. **SPCC** à instruire (pente B/G 1,626 hors [0,5 ; 1,5]) — APRÈS ③.
 3. Interface 141 (A/B/C) et **VeraLux** restent en attente.
 
@@ -202,14 +210,13 @@ Leçon durable et preuves : `CLAUDE.md` § « Diagnostic de l'entrée d'astromé
   exigent `== "triangles"` et restent verts (leur résidu est ~0,03 px).
 
 ### Contexte de reprise (à coller)
-Arbre propre, **v2.84.0** : étapes ① (v2.82.2), ② choix C (v2.83.0, validée en
-réel) et **③ LIVRÉE (jalon 135)** — `PHASE_EN_NARROWBAND = False`, bancs 135 neuf
-et non-régression verte. Mesure décisive : sur **Sh2-132** (204 frames, 31
-retournements), la phase finalisait **22 frames** à tort — 21 Ha à **0,857 px**
-de résidu (au lieu de 0,065) et **1 O3 empilée à l'envers** (|angle| 173,4°).
-Prochaine action unique : **validation réelle par Alain** d'un run SHO de Sh2-132
-(0 refus, retournements corrects, aucune méthode « phase », canal Ha net) — pas
-de nouvelle modification de code avant ce verdict.
+Arbre propre, **v2.84.0** : ① (v2.82.2), ② choix C (v2.83.0) et **③ (jalon 135)
+LIVRÉE ET VALIDÉE en réel** — run SHO Sh2-132 : **206 frames, 0 non alignée**,
+1 re-stack, méthode `triangles`, **plus aucune phase**. Sur ce jeu, la phase
+finalisait 22 frames à tort (21 Ha à 0,857 px de résidu au lieu de 0,065 ; 1 O3
+à l'envers, |angle| 173,4°). Prochaine action unique : **demander à Alain le
+prochain jalon** (SPCC, interface 141, VeraLux…) — aucune modification de code
+ni release avant sa décision.
 
 ---
 
@@ -273,10 +280,10 @@ identifiants en français (`synthetise`).
 - **Reprise** : `CLAUDE.md` § « Diagnostic de l'entrée d'astrométrie » (lire
   `indices` dans le dump AVANT tout) ; mesures dans `C:\Astro\test\`
   (`_dump154_*`, `_diag_astro_152/153*.py`, `_astap148*\`) — astrométrie RÉSOLUE.
-- **Décisions d'Alain** : **② TRANCHÉ (C), LIVRÉ et VALIDÉ en réel** (v2.83.0) ;
-  **③ TRANCHÉ (retirer `phase` en narrowband), LIVRÉ en v2.84.0** — attend sa
-  **validation réelle** sur Sh2-132 ; restent l'interface 141 (A/B/C), SPCC et
-  VeraLux. Une release GitHub ne se fera QUE sur accord explicite.
+- **Décisions d'Alain** : **①, ② (C) et ③** sont **LIVRÉS et VALIDÉS en réel**
+  (v2.82.2 / v2.83.0 / v2.84.0) ; restent à trancher l'interface 141 (A/B/C),
+  SPCC (pente B/G 1,626) et VeraLux. Une release GitHub ne se fera QUE sur accord
+  explicite d'Alain, et le prochain jalon ne démarre qu'après sa demande.
 - **RÉSOLU (141)** : « M33 en RGB montre les mêmes taches » = session **LRGB+Ha**
   avec l'interface passée en « RGB » **pendant** l'empilement (`AVACOMPO=LRGB+Ha…`).
 - **VeraLux** : ancre calculée sur la luminance pondérée puis soustraite par canal
