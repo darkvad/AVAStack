@@ -15,8 +15,8 @@ pièges actifs, prochaine action. Le détail daté vit dans `avastack/__init__.p
 > sur `LRGBHa`. `master` = branche stable, releases uniquement ; merge vers `master`
 > seulement sur validation explicite (release).
 
-Versions : `LRGBHa` = **v2.82.2** (⑦ v2.82.1 + étape ① + **garde 133** — **NON
-COMMITÉS** ; dernier commit `d95a19e` = v2.82.0) · `master` publié = **v2.80.0** ·
+Versions : `LRGBHa` = **v2.82.2** (⑦ v2.82.1 + étape ① + **garde 133** —
+**COMMITÉE ET POUSSÉE** le 18/10, `586f860`) · `master` publié = **v2.80.0** ·
 Store publié = **v2.71.1**.
 
 **Gouvernance** : **aucune release GitHub sans l'accord d'Alain** ; **à CHAQUE jalon validé,
@@ -72,16 +72,16 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
   bouchon d'aligneur porte `repli_phase`, attribut né à l'étape ①).
 
 ### État actuel
-- **Code** : ⑦ (v2.82.1), ① (v2.82.2) **et** la garde 133 sont écrits mais **NON
-  COMMITÉS** — l'arbre de travail porte les trois. Bancs 132 + **133** verts, plus
-  les voisins 115, 113, 56, 76.
+- **Code** : ⑦ (v2.82.1), ① et la garde 133 sont **COMMITÉS ET POUSSÉS**
+  (`586f860`, `origin/LRGBHa`) — arbre de travail propre. Bancs 131, 132, **133**,
+  115, 113, 56, 76 verts.
 - **RUN RÉEL LRGB (Alain, 18/10)** : **plus aucune tache bleue NI rouge**, très
   peu de rejets (**2 R + 1 G**, à confirmer sur la trace) ⇒ `phase` en broadband
   était la **seule** cause des deux couleurs. Test taches **TERMINÉ**.
 - **Astrométrie** : run relancé avec les **bons indices** ⇒ **réussie** ; cause
   = AD/Dec de **M31** restées dans les champs ⇒ **garde 133 LIVRÉE** (le piège
   est fermé côté worker).
-- **Reste à faire** : le **commit de la v2.82.2**, puis ② et ③ du plan ⑪.
+- **Reste à faire** : ② puis ③ du plan ⑪.
 - **Combine** innocenté trois fois (140/142/143) : `_ratio_combine` intact.
 
 ### Fichiers modifiés dans cette phase
@@ -148,17 +148,15 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 
 ### Problèmes ouverts
 - **VeraLux** : à instruire (ancre calculée puis soustraite par canal) — APRÈS ②/③.
-- **② et ③** du plan ⑪ : à démarrer sur ton accord.
+- **② du plan ⑪** : accord donné le 18/10 (commit v2.82.2 fait) — à DÉMARRER.
 
 ### Prochaines étapes
-1. **COMMIT de la v2.82.2** (⑦ + ① + garde 133) — bancs 132 **et 133** verts, plus
-   21/13/116/129b/115/113/56/76 ; run réel LRGB OK ; astrométrie OK.
-   ⚠ La garde a été ajoutée **sous la MÊME version** (précédent : le dump astro) ;
-   si Alain préfère une **v2.82.3** pour le jalon 133, seul `AVASTACK_VERSION` et
-   l'en-tête du bloc changent.
-2. **② du plan ⑪** : centroïdes APRÈS `triangles` (mesure, pas de correction avant).
-3. **③** : SHO/HOO sans `phase` — décision après mesure du coût.
-5. Contrôle positif 200 étoiles OBLIGATOIRE à chaque mesure.
+1. **② du plan ⑪ (PROCHAINE ACTION)** : centroïdes APRÈS `triangles` — MESURE
+   seule, aucune correction avant d'avoir nommé ce que les centroïdes changent
+   (ordre actuel : ORB → triangles → étoiles → (phase)). Contrôle positif
+   200 étoiles obligatoire, refus comptés PAR RÔLE.
+2. **③** : SHO/HOO sans `phase` — décision après mesure du coût.
+3. Contrôle positif 200 étoiles OBLIGATOIRE à chaque mesure.
 
 ### Points d'attention
 - **Une brute est DITHÉRÉE** : seul un empilement ALIGNÉ (mono ou couche) prouve quelque chose.
@@ -176,10 +174,11 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
   remplace la ligne d'état par son résumé).
 
 ### Contexte de reprise (à coller)
-Étape ① validée en réel (aucune tache bleue ni rouge, 2 refus R + 1 G),
-astrométrie réussie avec les bons indices et **garde 133 livrée** (banc vert) ;
-le code (⑦ + ① + 133) reste **NON COMMITÉ**.
-Prochaine action unique : le **commit de la v2.82.2**, puis l'étape ② du plan ⑪.
+v2.82.2 **commitée et poussée** (`586f860`, `origin/LRGBHa`) : étape ① (plus de
+repli `phase` en broadband, run réel LRGB sans aucune tache bleue ni rouge) +
+trace par rôle ⑦ + **garde d'interface d'astrométrie** (jalon 133, banc vert).
+Prochaine action unique : **étape ② du plan ⑪** — mesurer les centroïdes APRÈS
+`triangles` (aucune correction avant la mesure), contrôle positif 200 étoiles.
 
 ---
 
@@ -238,10 +237,10 @@ identifiants en français (`synthetise`).
   `indices` dans le dump AVANT tout). Mesures antérieures dans `C:\Astro\test\` :
   `_astap148*\`, `_148h_toutes.txt`, `_diag_astro_152.py`, `_diag_astro_153_entree.py`,
   et pour cette séance `_dump154_indicesM31\`, `_dump154_off\`, `_154*_etat.json`.
-- **Décisions d'Alain attendues** : **commit de la v2.82.2** (⑦ + ① + garde 133)
-  ou version séparée **v2.82.3** pour le jalon 133 ; démarrage de **②**
-  (centroïdes après `triangles`) puis **③** (SHO/HOO sans `phase`) ; interface
-  141 (A/B/C).
+- **Décisions d'Alain attendues** : rien de bloquant — v2.82.2 **commitée et
+  poussée** (`586f860`) ; restent **②** (centroïdes après `triangles`, mesure
+  seule) puis **③** (SHO/HOO sans `phase`) et l'interface 141 (A/B/C).
+  Une release GitHub ne se fera QUE sur accord explicite.
 - **RÉSOLU (141)** : « M33 en RGB montre les mêmes taches » = session **LRGB+Ha** avec
   l'interface passée en « RGB » **pendant** l'empilement ; le fichier porte
   `AVACOMPO=LRGB+Ha…`. Un vrai RGB (après « Arrêter » ou « Réinitialiser ») n'a rien.
