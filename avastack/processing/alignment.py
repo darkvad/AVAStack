@@ -205,6 +205,20 @@ TRI_PAIRS_MAX: int = 2000    # plafond de paires candidates évaluées
 TRI_INLIERS_MIN: int = 6     # correspondances requises (même exigence qu'étoiles)
 TRI_RAYON: float = 3.0       # rayon d'appariement d'une étoile après transformée
 
+# --- Raffinement des matrices `triangles` SEULEMENT au-delà du seuil ---------
+# ÉTAPE ② DU PLAN ⑪ (jalon 134, v2.83.0 — choix C d'Alain, 18/10/2026).
+# MESURÉ sur un run réel LRGB+Ha (475 brutes lues, 472 empilées, 143 posées par
+# `triangles`, soit 30,3 %) : le contre-test final de `_triangles` laisse un
+# résidu médian de 0,083 px, et les centroïdes (`_raffiner_centroides`) ne
+# gagnent MOINS DE 0,05 px sur 95 des 143 frames (66 %) : payer une détection
+# supplémentaire ET toucher une matrice déjà bonne n'a aucun intérêt. Là où le
+# raffinement SERT (7 frames déplacées de plus de 1 px, pires 1,385 → 0,651 px),
+# le résidu dépasse largement ce seuil. Population au-delà du seuil :
+# 0,30 px → 43/143 frames (0,10 px en toucherait 56 ; 0,50 px seulement 13).
+# `_raffiner_centroides` rend l'entrée INCHANGÉE quand elle ne fait pas mieux :
+# ce garde-fou de coût ne peut donc jamais dégrader un alignement.
+TRI_RAFFIN_SEUIL: float = 0.30   # résidu médian (px) toléré SANS raffiner
+
 
 def _M_valide(M: Any) -> bool:
     """Garde-fous géométriques (échelle + angle) d'une matrice 2×3.
@@ -427,7 +441,8 @@ class StarAligner:
             return 0, float("inf")
         return int(len(dist)), float(np.median(dist))
 
-    def _raffiner_centroides(self, frame: Any, M: Any) -> tuple[Any, int]:
+    def _raffiner_centroides(self, frame: Any, M: Any, pos: Any = None
+                             ) -> tuple[Any, int]:
         """RAFFINEMENT SOUS-PIXEL par centroïdes d'étoiles (jalon 57).
 
         POURQUOI : ORB ne localise ses points qu'à ~0,5-1 px et le consensus
@@ -455,12 +470,20 @@ class StarAligner:
         une candidate dont le résidu d'étoiles est MEILLEUR que celui de la
         matrice d'entrée est GARDÉE. Les étapes intermédiaires servent de point
         de départ à la suivante (convergence) même avant d'être « meilleures ».
+
+        `pos` (jalon 134, étape ② du plan ⑪) : centroïdes de la frame DÉJÀ
+        calculés par l'appelant — `_triangles` vient de les détecter pour ses
+        triangles. Fourni, il est utilisé TEL QUEL et aucune détection
+        supplémentaire n'est payée (~100 ms par frame raffinée mesurés, max
+        405) ; à None (appelants ORB / étoiles), la détection se fait ici,
+        exactement comme avant.
         → (M, n_appariements) avec n = 0 si non raffiné."""
         if self.ref_pos is None or len(self.ref_pos) < INLIERS_ETOILES:
             return M, 0
-        pos, _msg = _stars.detecter_positions(
-            canal_alignement(frame), max_etoiles=MAX_ALIGN_ETOILES,
-            distance_min=_distance_repartition(frame.shape))
+        if pos is None:
+            pos, _msg = _stars.detecter_positions(
+                canal_alignement(frame), max_etoiles=MAX_ALIGN_ETOILES,
+                distance_min=_distance_repartition(frame.shape))
         if pos is None or len(pos) < INLIERS_ETOILES:
             return M, 0
         meilleur_n, meilleur_res = self._verif_centroides(pos, M)
@@ -729,6 +752,10 @@ class StarAligner:
         d'appariements mutuels, comme le chemin « étoiles »). AUCUNE fenêtre
         de continuité : c'est un appariement global, un dithering, une
         reprise de session ou une autre nuit ne fait plus refuser la frame.
+        ÉTAPE ② DU PLAN ⑪ (jalon 134, choix C) : si le résidu médian de ce
+        contre-test dépasse `TRI_RAFFIN_SEUIL`, la matrice est ENSUITE raffinée
+        par centroïdes (`_raffiner_centroides`, centroïdes déjà en main) et la
+        méthode notée devient `triangles+étoiles(n)`.
         → (M, True) / (None, False) si non concluant."""
         canal = canal_alignement(frame)
         pos, _msg = _stars.detecter_positions(canal, max_etoiles=MAX_ALIGN_ETOILES,
@@ -802,8 +829,26 @@ class StarAligner:
                                       == np.arange(len(pc)))
         if int(mutuel.sum()) < TRI_INLIERS_MIN:
             return None, False
+        # ÉTAPE ② DU PLAN ⑪ (jalon 134, choix C d'Alain) : le résidu du
+        # contre-test ci-dessus est DÉJÀ calculé (`dist_cur` sur `mutuel`) — il
+        # n'y a donc aucune détection ni vérification supplémentaire pour
+        # DÉCIDER. Au-delà de `TRI_RAFFIN_SEUIL` seulement, on paie un
+        # raffinement par centroïdes en lui passant les centroïdes déjà en main
+        # (`pos`, d'où l'absence de re-détection). En dessous, la matrice est
+        # laissée AU BIT telle quelle : c'est là que se trouvent 100 des 143
+        # frames mesurées, et le gain y est < 0,05 px.
+        res = float(np.median(dist_cur[mutuel]))
+        methode = "triangles"
+        if res > TRI_RAFFIN_SEUIL:
+            try:
+                M_raff, n_raff = self._raffiner_centroides(frame, M, pos=pos)
+            except Exception:      # un raffinement ne fait jamais perdre une
+                M_raff, n_raff = M, 0   # frame DÉJÀ validée (aucune exception)
+            if n_raff:
+                M = M_raff
+                methode = f"triangles+étoiles({n_raff})"
         self._last_t = (float(M[0, 2]), float(M[1, 2]))
-        self._noter(M, "triangles")
+        self._noter(M, methode)
         return M, True
 
     def _etoiles(self, frame: np.ndarray) -> tuple[Any, bool]:

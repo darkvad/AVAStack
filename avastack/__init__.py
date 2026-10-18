@@ -19,7 +19,57 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.82.2"
+AVASTACK_VERSION = "2.83.0"
+
+# v2.83.0 : RAFFINEMENT `triangles` SEULEMENT AU-DELÀ DU SEUIL (étape ② du plan ⑪
+#   du chantier CAUSE AMONT — jalon 134, 18/10/2026). Choix C d'Alain après
+#   MESURE réelle.
+#   POURQUOI : le plan ⑪ supposait que `_triangles` rendait « la matrice LMEDS
+#   brute », moins précise que les chemins ORB et « étoiles » qui la raffinent
+#   sur les centroïdes. Le CODE dit l'inverse (correspondances mutuelles ≤ 2,5 px
+#   → RANSAC 2,5 px → LMEDS → contre-test final d'appariements mutuels), et la
+#   MESURE le confirme : run réel LRGB+Ha instrumenté PASSIVEMENT (vrai `ui.App`,
+#   mêmes brutes/darks/ordre, 475 lues → 472 empilées, 1 floue, 2 refus G),
+#   `triangles` porte 143 frames (30,3 % — B 16/51, G 33/61, Ha 39/40, L 31/240,
+#   R 24/80), résidu médian 0,083 px (p90 0,675, max 1,385 ; 87/143 ≤ 0,10).
+#   Les centroïdes ne gagnent < 0,05 px sur 95 de ces 143 frames (66 %), médiane
+#   du gain 0,002 px ; 7 frames seulement bougent de plus de 1 px (pires
+#   1,385 → 0,651). Un raffinement systématique paierait donc une détection par
+#   frame ET toucherait une matrice déjà bonne pour rien.
+#   CONTENU :
+#   · `TRI_RAFFIN_SEUIL = 0,30` px, à côté de `TRI_RAYON` / `TRI_INLIERS_MIN` et
+#     commenté avec les chiffres du run (0,30 → 43/143 frames ; 0,10 → 56 ;
+#     0,50 → 13) ;
+#   · `StarAligner._triangles` : APRÈS le contre-test mutuel final, si le résidu
+#     MÉDIAN DÉJÀ calculé (`dist_cur[mutuel]`) dépasse le seuil, la matrice est
+#     raffinée par `_raffiner_centroides` ; si le raffinement conclut, la matrice
+#     retenue est la sienne et la méthode notée devient `triangles+étoiles(n)`.
+#     Sous le seuil, la matrice est rendue AU BIT telle quelle et la méthode
+#     reste `triangles` — la ligne d'état et la trace ⑦ distinguent donc les deux
+#     (aucune réinterprétation d'un ancien run possible) ;
+#   · `_raffiner_centroides(frame, M, pos=None)` : les centroïdes de la frame
+#     sont DÉJÀ en main dans `_triangles` ; fournis, ils évitent une re-détection
+#     (~100 ms par frame raffinée mesurés, max 405). Les appelants ORB / étoiles
+#     / ORB étoffé sont inchangés (détection faite sur place, comme avant) ;
+#   · `_last_t` (continuité) est posé APRÈS le raffinement, avec la matrice
+#     FINALE ;
+#   · GARDE-FOU : un échec du raffinement n'enlève jamais une frame déjà validée
+#     (aucune exception ne sort, `_raffiner_centroides` rendant l'entrée
+#     inchangée quand elle ne fait pas mieux) ; un raffinement ne REFUSE jamais,
+#     donc les 2 refus G du run de mesure restent 2.
+#   · RESTE INCHANGÉ : l'ordre de la cascade (ORB → triangles → étoiles →
+#     phase), `repli_phase` / `PHASE_EN_BROADBAND` (étape ①), les garde-fous
+#     géométriques, les chemins `étoiles` et `ORB étoffé`.
+#   BANC NEUF `bancs/_test_triangles_raffin_jalon134.py` (7 volets) : le seuil et
+#   la constante ; un résidu faible ne déclenche RIEN (0 appel, matrice AU BIT,
+#   méthode `triangles`) ; seuils 0 et 10 → toujours / jamais ; le câblage est
+#   prouvé par espion (matrice rendue PRISE, méthode `triangles+étoiles(17)`,
+#   `_last_t` de la matrice FINALE) ; un cas RÉEL où le raffinement gagne
+#   (résidu 0,24 → 0,21 px, méthode renseignée) ; `pos` fourni = aucune
+#   re-détection ; champ pauvre → refus sans exception. La mesure du run réel
+#   (avant/après) vit dans `CLAUDE.md`.
+#   PAS de release : le run de validation réel (refus par rôle, trace ⑦) est
+#   fait par Alain.
 
 # v2.82.2 : PLUS DE REPLI « PHASE » EN BROADBAND (étape ① du plan ⑪ du chantier
 #   CAUSE AMONT — 18/10/2026). Correctif de la cause MESURÉE au ⑩ : sur un champ

@@ -1419,6 +1419,48 @@ ce qui manquait n'était pas une correction mais une MESURE.
   `_155_resultat.txt`.
 
 
+## Raffinement `triangles` au-delà du seuil (jalon 134, v2.83.0 — étape ② choix C)
+
+- **CE QUI EST LIVRÉ** : `TRI_RAFFIN_SEUIL = 0,30` px et, dans `_triangles`
+  APRÈS le contre-test mutuel final, un raffinement conditionnel
+  (`_raffiner_centroides`) dont le résultat remplace la matrice et renomme la
+  méthode en `triangles+étoiles(n)`. Sous le seuil, matrice rendue **AU BIT**
+  telle quelle, méthode `triangles`. `_last_t` est posé APRÈS (matrice FINALE).
+- **PIÈGE — UN CHAMP SYNTHÉTIQUE NE PRODUIT PAS DE RÉSIDU ÉLEVÉ** : le plan ⑪
+  annonçait « frame décalée de 1,0-1,5 px → raffinée ». MESURÉ FAUX :
+  `_triangles` laisse **0,015-0,035 px** sur un champ propre décalé de 0 à
+  2 px (il consolide déjà RANSAC + LMEDS sur appariements mutuels). Même en
+  poussant (bruit ×8, flou σ 1,2, amp 0,15) on plafonne à **0,24 px** sans que
+  les centroïdes puissent faire mieux — les deux estiment la MÊME similitude
+  sur les MÊMES points. Les résidus > 0,30 px du run réel viennent de la
+  distorsion inter-nuits et d'appariements douteux, pas d'un décalage. Un banc
+  qui exigerait « décalage 1,5 px → raffinement » mesurerait une FICTION.
+  ⇒ le banc 134 teste le **câblage** (espion : appelé / jamais, matrice prise,
+  méthode, `_last_t`) + un cas réel de frame **faible et floue**
+  (résidu 0,236 px, 34 appariements) où le raffinement gagne 0,022 px.
+- **PIÈGE — « AU BIT » EXIGE UNE GRAINE FIXÉE** : `estimateAffinePartial2D`
+  (RANSAC et LMEDS) tire dans le générateur GLOBAL d'OpenCV. Deux appels ne
+  rendent pas la même matrice sans `cv2.setRNGSeed(n)` avant chacun : sans
+  cela, la comparaison bit-à-bit du volet « résidu faible » ne prouve rien.
+- **La méthode devient un marqueur de chemin** : `triangles` = seuil non
+  franchi ; `triangles+étoiles(n)` = seuil franchi ET raffinement concluant
+  (n = ses appariements). Un échec de raffinement laisse `triangles` — donc la
+  trace ⑦ et la ligne d'état disent lequel des deux a servi. ⚠ Un ancien run
+  ne se réinterprète pas : après le correctif, `_lance_155.py` mesurerait la
+  matrice DÉJÀ raffinée.
+- **Coût** : `_raffiner_centroides(..., pos=...)` réutilise les centroïdes que
+  `_triangles` vient de calculer ⇒ **0 re-détection** (≈100 ms économisés par
+  frame raffinée ; vérifié par espion sur `stars.detecter_positions`, résultat
+  IDENTIQUE avec et sans `pos`). Les appelants ORB / étoiles / ORB étoffé sont
+  inchangés (détection faite sur place).
+- **Garde-fou** : un raffinement ne REFUSE jamais et rend l'entrée INCHANGÉE
+  s'il ne fait pas mieux ⇒ les **2 refus G** du run de mesure ne peuvent pas
+  changer ; l'appel est de plus entouré d'un `try/except` (une frame DÉJÀ
+  validée ne se perd pas sur une erreur d'outil).
+- Banc `bancs/_test_triangles_raffin_jalon134.py` (7 volets, 30 vérifications).
+  Non-régression : **13, 15, 21, 116, 117, 129b, 131, 132, 133** verts.
+
+
 ## Diagnostic de l'entrée d'astrométrie (18/10/2026) — lire le message AVANT de corriger
 
 - **CAUSE TROUVÉE LE 18/10/2026 — CE N'ÉTAIT NI L'IMAGE NI LE CODE : LES INDICES
