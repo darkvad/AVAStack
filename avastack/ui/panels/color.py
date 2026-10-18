@@ -76,19 +76,24 @@ class PanneauCouleur:
         # vraiment finales (décision d'Alain, 12/10/2026 : « la neutralisation
         # juste avant saturation et gamma »), car appliquée plus tôt elle était
         # partiellement annulée par elles. COCHÉE par défaut (défaut de rendu,
-        # pas un choix esthétique) ; réservée au moteur VeraLux (son ANCRE
-        # amplifie le fond). Les gains RÉELLEMENT appliqués sont annoncés dans
-        # « État des calculs (live) » — c'est cette mesure qu'il faut lire.
+        # pas un choix esthétique) ; JALON 137 : elle vaut pour les DEUX moteurs
+        # AUTOMATIQUES (STF auto ET VeraLux) — elle était réservée à VeraLux,
+        # donc VISIBLE et SANS EFFET en STF (le défaut du jalon 127, revécu).
+        # Pas de correction en mode manuel (le point noir y est réglé à la main,
+        # souvent au niveau du fond : plus rien à mesurer). Les gains RÉELLEMENT
+        # appliqués sont annoncés dans « État des calculs (live) » — c'est cette
+        # mesure qu'il faut lire.
         self.var_vl_neutre = tk.BooleanVar(value=True)
         ttk.Checkbutton(self.frm_couleur,
                         text="Neutraliser la couleur du fond (après étirement)",
                         variable=self.var_vl_neutre,
                         command=self._on_vl_neutre).pack(anchor="w")
         ttk.Label(self.frm_couleur,
-                  text="VeraLux : égalise les 3 canaux sur la MÉDIANE DE LA "
-                       "MOITIÉ SOMBRE de l'image ÉTIRÉE, juste avant "
-                       "gamma/saturation. Lire les gains RÉELLEMENT appliqués "
-                       "dans « État des calculs (live) », jamais un exemple.",
+                  text="STF et VeraLux : égalise les 3 canaux sur la MÉDIANE DE "
+                       "LA MOITIÉ SOMBRE de l'image ÉTIRÉE, juste avant "
+                       "gamma/saturation (sans effet en mode manuel). Lire les "
+                       "gains RÉELLEMENT appliqués dans « État des calculs "
+                       "(live) », jamais un exemple.",
                   foreground="#888888", wraplength=310).pack(anchor="w")
         ttk.Separator(self.frm_couleur).pack(fill="x", pady=4)
         self.var_vl_preserve = tk.BooleanVar(value=True)

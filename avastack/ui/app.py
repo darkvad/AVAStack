@@ -2958,8 +2958,23 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             txt = f"⏳ calcul : {self.disp.vl_stage or 'préparation'}…"
             if txt != self._vl_lbl_txt:
                 self._lbl_vl_texte(txt, "#c98a00")
-        elif (not veralux) and self._vl_lbl_txt.startswith("⏳"):
-            self._lbl_vl_texte("—", "#888888")   # calcul STF fini : repos
+        elif not veralux:
+            # JALON 137 : la neutralisation APRÈS étirement vaut aussi en STF —
+            # ses gains sont donc annoncés ici comme ils le sont en VeraLux
+            # (sans quoi l'utilisateur ne peut pas savoir ce qui a été corrigé).
+            # Garde de mémo : ce chemin tourne à chaque tick, il ne doit pas
+            # reconfigurer le libellé 30 fois par seconde.
+            g = self.disp.vl_neutre_gains
+            if g is not None:
+                txt = ("FOND ✓ · fond neutralisé (R %.4f / G %.4f / B %.4f)"
+                       % (g[0], g[1], g[2]))
+                if txt != self._vl_lbl_txt:
+                    self._lbl_vl_texte(txt, "#1d7f1d")
+            elif (self._vl_lbl_txt.startswith("⏳")
+                  or self._vl_lbl_txt.startswith("FOND ✓")):
+                # calcul fini, ou correction qui vient de DISPARAÎTRE (case
+                # décochée, ciel redevenu neutre) : retour au repos.
+                self._lbl_vl_texte("—", "#888888")
         # Jalon 128 : anime l'indicateur « calcul VeraLux » SUPERPOSÉ à l'image
         # (arc tournant en haut à gauche). Même cadence que l'état des calculs ;
         # `_dessiner_spinner_vl` crée/retire l'item selon que le calcul tourne.

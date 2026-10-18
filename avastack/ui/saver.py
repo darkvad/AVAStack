@@ -403,10 +403,13 @@ class Saver:
                    log_d_resolu=r.get("vl_log_d_resolu"),
                    fond_cible=r.get("vl_target_bg"), profil=r.get("vl_profil"))
             # Jalon 123 : la neutralisation du fond se MESURE sur la sortie et
-            # s'applique APRÈS l'étirement — réservée à VeraLux (c'est son ancre
-            # qui amplifie la couleur du fond).
+            # s'applique APRÈS l'étirement. JALON 137 : pour les DEUX moteurs
+            # AUTOMATIQUES (STF auto ET VeraLux) — elle était réservée à VeraLux
+            # et donc INERTE en STF, alors que la case y est visible et cochée.
             ajoute("neutralisation du fond",
-                   r.get("vl_neutre_fond") and r.get("stretch") == "veralux")
+                   bool(r.get("vl_neutre_fond"))
+                   and (bool(r.get("auto", True))
+                        or r.get("stretch") == "veralux"))
             ajoute("etage de niveaux",
                    any(float(r.get(k) or 0.0) != 0.0 for k in
                        ("bar_noir", "bar_median", "bar_blanc")),

@@ -19,7 +19,105 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.84.0"
+AVASTACK_VERSION = "2.86.0"
+
+# v2.86.0 : LA NEUTRALISATION APRÈS ÉTIREMENT VAUT AUSSI EN STF (jalon 137,
+#   18/10/2026). Demandé par Alain après le correctif du halo (136) : « permet la
+#   neutralisation après étirement pour STF aussi ».
+#   POURQUOI : la case « Neutraliser la couleur du fond (après étirement) »,
+#   COCHÉE PAR DÉFAUT, n'agissait QUE si le moteur était VeraLux (son ancre
+#   amplifiait le fond — cas d'origine du jalon 123). En STF elle était donc
+#   VISIBLE et SANS EFFET : exactement le défaut corrigé au jalon 127 pour la
+#   chroma (« une case inerte est un mensonge de l'interface »).
+#   CONTENU :
+#   · `DisplayProcessor._neutraliser_fond` : la condition devient « option
+#     cochée ET moteur AUTOMATIQUE » (`self.auto` ou VeraLux actif) ;
+#   · `rendu_pleine_resolution` : MÊME condition (miroir exact, sinon l'écran et
+#     le fichier divergent — la parité est vérifiée au bit par le banc 137) ;
+#   · `saver._chaine` : la fiche du « tel que vu » décrit la neutralisation pour
+#     les deux moteurs automatiques (elle était verrouillée sur `stretch`) ;
+#   · UI : l'aide de la case ne dit plus « VeraLux : » mais « STF et VeraLux …
+#     (sans effet en mode manuel) », et les gains sont ANNONCÉS aussi en STF
+#     (« FOND ✓ · fond neutralisé (R … / G … / B …) » à la place du simple
+#     « — » au repos) ;
+#   · MODE MANUEL LAISSÉ DEHORS, et c'est délibéré : l'utilisateur y règle
+#     lui-même le point noir, souvent AU niveau du fond — il n'y a plus de
+#     « couleur du fond » à mesurer, et une correction mesurée sur du noir
+#     serait du bruit appliqué à toute l'image. Le banc 137 le vérifie (rendu
+#     identique case cochée/décochée).
+#   MESURÉ (hors dépôt, `_diag_137_probe.py`) sur une scène au ciel décalé AU-DELÀ
+#   de la garde du correctif 136 (R ×0,80 · B ×0,72) : écart de couleur du fond
+#   rendu 0,130 (case décochée) → 0,045 (cochée), gains publiés [1,0029 · 1,0 ·
+#   1,1] (bornés à ±10 % par `gains_fond`). Sur une image au ciel NEUTRE : aucun
+#   gain, rendu identique AU BIT.
+#   MESURÉ SUR LE RUN RÉEL (fichiers du 18/10, correctif 136 compris) :
+#   · `M 33 2.83.0 lineaire.fits` : gains [1,0106 · 1,0 · 0,9535] — coins
+#     (médiane des QUATRE coins) R +13,8 → +15,0 % et B +19,7 → +14,1 %,
+#     région brillante R/G +1,1 %, B/G −4,6 %, niveau −1,2 % ; sur la SEULE
+#     tuile du coin haut-gauche on lit R +19,4 → +22,5 % et B +16,7 → +12,7 %
+#     — l'estimateur (moitié sombre) et les coins ne disent pas la même chose,
+#     c'est la limite mesurée ci-dessous ;
+#   · `M 33 2.83.0 lineaire traite.fits` : gains [0,9966 · 1,0 · 0,9900] — coins
+#     R +18,6 → +18,2 %, B +13,4 → +12,3 %, région brillante −0,4 %.
+#   LIMITE MESURÉE, À DIRE : en STF la neutralisation d'AVANT étirement (136)
+#   égalise déjà le ciel mesuré par le MÊME estimateur (la moitié sombre), donc
+#   cet étage ne corrige qu'un RÉSIDU (quelques %) — il n'est PAS le levier de
+#   la teinte résiduelle des COINS (±15-20 %), qui est un DÉGRADÉ (les coins
+#   diffèrent de la moitié sombre de 1,3 % en linéaire, amplifié ×18 par la
+#   pente de la MTF). Pour celle-là il faudrait un modèle de fond réel
+#   (GraXpert/DBE, déjà disponible) ou un estimateur par région — à trancher.
+#   BANC NEUF `bancs/_test_neutralisation_stf_jalon137.py` (8 volets) : la case
+#   AGIT en STF (écart du fond divisé par > 2), gains publiés et bornés, ordre
+#   (avant la finition), parité écran/fichier au bit, ciel neutre → identité au
+#   bit, mode manuel hors périmètre, mono. Non-régression 5/39/41/62/75/121/
+#   123/124/125/127/128/136 verte. PAS de release : à valider par Alain.
+
+# v2.85.0 : HALO D'ÉTOILE COLORÉ CORRIGÉ — NEUTRALISER LE CIEL PAR CANAL AVANT
+#   L'ÉTIREMENT STF (jalon 136, 18/10/2026). Correctif court, demandé par Alain.
+#   CAUSE MESURÉE (fichier LINÉAIRE du run LRGB+Ha de M33, v2.83.0) : les
+#   niveaux de ciel des trois canaux valent R 0,02736 · G 0,03139 · B 0,03987,
+#   soit R −12,9 % et B +27,0 % par rapport au vert — ET C'EST DU CIEL : les
+#   quatre coins et les quatre milieux de bord donnent les mêmes écarts à
+#   0,5 % (écart MULTIPLICATIF, donc l'affaire de GAINS). Le STF appliquait UN
+#   point noir commun, calculé sur la luminance : lo = 0,03108 passe AU-DESSUS
+#   du ciel du canal R, qui est donc écrêté à 0 — MESURÉ : 97,34 % des pixels
+#   de l'image ont R = 0 (49,08 % pour G) et le rendu par défaut affiche un
+#   ciel à R 0,00 / G 0,07 / B 0,71 (bleu vif). La couronne d'une étoile,
+#   neutre dans le linéaire, ne rallume R qu'au cœur, et la MTF (très raide)
+#   amplifie la transition : à r = 14 px d'une étoile brillante, R/G valait
+#   0,11 et B/G 2,11 contre 0,88 et 1,30 dans le fond local.
+#   CONTENU :
+#   · `display.gains_avant_etirement` (gains de `couleurs.gains_fond`, la
+#     primitive d'espace LINÉAIRE du projet, lus sur un sous-échantillon
+#     256×256 : ~6 ms) et `display.source_etirement` : l'ÉTIREMENT ET SES
+#     STATISTIQUES portent sur l'image neutralisée, sinon le point noir reste
+#     calé sur un ciel moyen que deux canaux sur trois ne touchent jamais ;
+#   · `GARDE_NEUTRE_STF = 0,35` : `gains_fond` borne par défaut à 10 %
+#     (calibré sur un ciel presque neutre — M31 : 3,6 %), insuffisant ici où
+#     il faut +16,3 % (R) et −20,4 % (B) ; 0,35 couvre ce cas et BORNE le pire
+#     cas (cadrage dominé par un objet étendu) ;
+#   · appliqué aux TROIS chemins du STF : écran (`_moteur_stf`), image
+#     d'attente VeraLux (`_process_chaine`) et « tel que vu »
+#     (`rendu_pleine_resolution`) — écran et fichier restent identiques AU BIT ;
+#     `gains_etirement` publié (diagnostic), oublié par `reset()` ;
+#   · INCHANGÉS : mode MANUEL (pas de MTF raide ⇒ pas de halo), moteur VeraLux
+#     (il applique déjà `piedestal_canaux` + neutralisation), et TOUT rendu
+#     d'une image au ciel NEUTRE (aucun gain ⇒ identité AU BIT).
+#   MESURÉ APRÈS (même fichier) : gains R ×1,1626 / B ×0,7964 ; ciel du rendu
+#   R +19,4 % / B +16,7 % (contre −100 % / +888 %), pixels à 0 : R 1,05 % (au
+#   lieu de 97,34 %) ; couronne à r = 14 : R +5,0 % / B −6,6 % (contre −100 % /
+#   −81 %). Résidu assumé : la pente de la MTF (~18 à hauteur de ciel) amplifie
+#   encore un écart résiduel de ±1,3 % entre le fond estimé et les coins ⇒ une
+#   TEINTE de fond de ±20 %, sans commune mesure avec le ciel bleu vif d'avant ;
+#   le levier suivant serait la neutralisation APRÈS étirement (jalon 123,
+#   aujourd'hui réservée à VeraLux) — à trancher par Alain.
+#   BANC NEUF `bancs/_test_halo_couleur_jalon136.py` (8 volets) : ciel neutre →
+#   identité AU BIT et aucun gain ; ciel décalé (cast mesuré) → écart de teinte
+#   de la couronne divisé par plus de 3 et ramené sous 10 % ; garde bornée ;
+#   mono ; parité écran/fichier au bit ; mode manuel inchangé ; idempotence et
+#   image d'entrée intacte ; fond rendu toujours à la cible (25 %) avec ET sans
+#   décalage. Non-régression 5/39/62/68/75/79/121/125/127/128 verte.
+#   PAS de release : à valider par Alain sur un run réel.
 
 # v2.84.0 : PLUS DE REPLI « PHASE » EN NARROWBAND (étape ③ du plan ⑪ du chantier
 #   CAUSE AMONT — jalon 135, 18/10/2026). Décision d'Alain après MESURE réelle.

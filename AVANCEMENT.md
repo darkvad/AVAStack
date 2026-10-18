@@ -15,10 +15,10 @@ pièges actifs, prochaine action. Le détail daté vit dans `avastack/__init__.p
 > sur `LRGBHa`. `master` = branche stable, releases uniquement ; merge vers `master`
 > seulement sur validation explicite (release).
 
-Versions : `LRGBHa` = **v2.84.0** (⑦ v2.82.1 + ① + **garde 133** en v2.82.2,
+Versions : `LRGBHa` = **v2.86.0** (⑦ v2.82.1 + ① + **garde 133** en v2.82.2,
 `586f860` ; **② choix C** jalon 134 `4dd335b`, validé en réel ; **③ jalon 135**
-= phase retirée en narrowband, à valider en réel sur Sh2-132) · `master` publié =
-**v2.80.0** · Store publié = **v2.71.1**.
+validé en réel ; **136 halo coloré** + **137 neutralisation après étirement en
+STF**) · `master` publié = **v2.80.0** · Store publié = **v2.71.1**.
 
 **Gouvernance** : **aucune release GitHub sans l'accord d'Alain** ; **à CHAQUE jalon validé,
 lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une case de
@@ -26,7 +26,7 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 
 ---
 
-## Session du 18/10/2026 — ① + 133 (v2.82.2), ② choix C (v2.83.0), ③ LIVRÉE (v2.84.0)
+## Session du 18/10/2026 — ① + 133 (v2.82.2), ② C (v2.83.0), ③ (v2.84.0), 136 halo + 137 neutralisation STF (v2.86.0)
 
 ### Ce qui est livré
 - **v2.82.2, commitée et poussée `586f860`** — **étape ①** (plus de repli `phase`
@@ -95,6 +95,30 @@ retient l'en-tête et REPOSE `suivi_astro.indice()`. Détail : `CLAUDE.md` §130
   `_156c_*` (Sh2-132). Détail durable : `CLAUDE.md` § « Étape ③ du plan ⑪ ».
 - **DÉCISION D'ALAIN** : ③ retenu et livré.
 
+### Halo d'étoile coloré (136) + neutralisation après étirement en STF (137) — v2.86.0
+- **136 — halo** : cause en TROIS étages (détail : `CLAUDE.md` § « Halo d'étoile
+  coloré ») : ① ciel inégal par canal (**R −14,0 % / B +25,6 %**, identique dans
+  les quatre coins ⇒ **multiplicatif** ⇒ GAINS, pas offsets) ; ② le point noir
+  COMMUN du STF passe au-dessus du ciel R ⇒ **97,34 % des pixels à 0 dans R**,
+  ciel rendu **R 0,00 / G 0,07 / B 0,71** ; ③ la pente de la MTF (≈ 18) amplifie
+  tout résidu de 1-3 % en 20-100 %.
+- **136 — correctif** : `display.gains_avant_etirement` / `source_etirement` —
+  gains par canal AVANT la courbe, **stats recalculées sur l'image neutralisée**,
+  `GARDE_NEUTRE_STF = 0,35`. Ciel neutre ⇒ aucun gain ⇒ rendu **identique AU
+  BIT**. Couronne à r = 14 : **R +4,9 % / B −6,8 %** (contre −100 % / −81 %).
+- **137 — neutralisation après étirement EN STF** : elle était réservée à
+  VeraLux ⇒ case **visible et inerte**. Portée : option cochée **ET moteur
+  AUTOMATIQUE** (mode manuel exclu — point noir réglé à la main). Gains ANNONCÉS
+  en STF (« FOND ✓ »). Scène décisive : écart du fond **0,130 → 0,045**.
+- **LIMITE MESURÉE (les deux)** : en STF, le 136 égalise déjà le ciel avec le
+  MÊME estimateur, donc le 137 ne corrige qu'un RÉSIDU ; la **teinte des COINS**
+  (±15-20 %) est un **DÉGRADÉ** (1,3 % en linéaire, ×18 par la pente de la MTF) ⇒
+  modèle de fond réel (GraXpert/ABE) ou estimateur par région : **décision
+  d'Alain**. Gains bornés ±10 %, détail : `CLAUDE.md` § « Neutralisation APRÈS
+  étirement ».
+- Bancs neufs **136** (8 volets) et **137** (8 volets) verts ; non-régression
+  5/39/41/62/68/69/75/79/121/123/124/125/127/128 verte. **Pas de release.**
+
 ### Run de VALIDATION du ③ (Alain, 18/10, v2.84.0) — RÉUSSI
 - **206 frames** (S2 80 · Ha 55 · O3 71), **0 frame non alignée**, **1 re-stack**,
   107 556 437 pixels rejetés (σ), archive 206. Ligne d'état : `triangles`
@@ -129,21 +153,30 @@ retient l'en-tête et REPOSE `suivi_astro.indice()`. Détail : `CLAUDE.md` §130
   qu'avec les gains Gaia ⇒ à instruire, pas à corriger à l'aveugle.
 
 ### État actuel
-- **Code** : **v2.84.0** (③, jalon 135) — bancs 135 neuf + non-régression verte ;
-  **run réel Sh2-132 RÉUSSI** (206 frames, 0 non alignée, 1 re-stack).
+- **Code** : **v2.86.0** — jalons **136** (halo coloré) et **137** (neutralisation
+  après étirement en STF) livrés, bancs 136 et 137 neufs + non-régression verte ;
+  ①/②/③ livrés et validés en réel.
 - **RUN RÉEL LRGB (Alain, 18/10)** : plus aucune tache bleue NI rouge ⇒ `phase`
   en broadband était la seule cause. Astrométrie réussie (garde 133).
-- **Reste à faire** : rien sur ①/②/③ — **demander à Alain le prochain jalon**
-  (SPCC, interface 141 A/B/C, VeraLux…) ; aucune release sans son accord.
+- **À FAIRE PAR ALAIN** : juger à l'écran le halo ET la neutralisation STF sur une
+  session (le défaut du halo était massif : ciel bleu vif, 97 % des pixels à 0
+  dans R).
+- **Reste à faire** : plus rien sur ①/②/③/136/137 — **demander à Alain le
+  prochain jalon** (interface 141-B, LRGB+Ha J2-J5) ; aucune release sans accord.
 - **Combine** innocenté trois fois (140/142/143) : `_ratio_combine` intact.
 
-### Fichiers modifiés dans cette phase (v2.84.0)
-- `avastack/processing/alignment.py` (`PHASE_EN_NARROWBAND`, `repli_phase_session`
-  par mode, docstrings), `avastack/core/worker.py` (commentaires ③ ; aligneurs
-  Ha de la VOIE A explicitement hors périmètre), `avastack/__init__.py`
-  (**v2.84.0** + changelog), `bancs/_test_phase_narrowband_jalon135.py` (NEUF,
-  7 volets), `bancs/_test_phase_broadband_jalon132.py` (volet [1] mis à jour),
-  `CLAUDE.md` et `AVANCEMENT.md`. Rappel v2.83.0 : `4dd335b`.
+### Fichiers modifiés dans cette phase (v2.86.0 / 136 + 137)
+- `avastack/processing/display.py` : **136** `GARDE_NEUTRE_STF`,
+  `SEUIL_NEUTRE_STF`, `gains_avant_etirement`, `source_etirement`,
+  `gains_etirement`, branchés dans `_moteur_stf`, `_process_chaine` et
+  `rendu_pleine_resolution` ; **137** `_neutraliser_fond` +
+  `rendu_pleine_resolution` : neutralisation d'APRÈS étirement pour les DEUX
+  moteurs AUTOMATIQUES (manuel exclu).
+- `ui/panels/color.py` (aide de la case), `ui/app.py` (annonce « FOND ✓ » en STF),
+  `ui/saver.py` (fiche : plus de verrou sur `stretch`), `bancs/_test_halo_couleur_
+  jalon136.py` et `bancs/_test_neutralisation_stf_jalon137.py` (NEUFS, 8 volets
+  chacun), `avastack/__init__.py` (**v2.86.0**), `CLAUDE.md`, `AVANCEMENT.md`.
+  Rappels : v2.85.0 non publiée ; v2.84.0 `f35d349` ; v2.83.0 `4dd335b`.
 
 ### Mesures du chantier (détail dans `CLAUDE.md` et le changelog v2.82.2)
 140 RGB propre · 142 LRGB R +103,9 % / B +132,1 % · 143 B +80,7 % · 144 B +34,6 % ·
@@ -180,24 +213,36 @@ Leçon durable et preuves : `CLAUDE.md` § « Diagnostic de l'entrée d'astromé
 - **VeraLux = CLOS** : le piédestal par canal (jalon 122) + la neutralisation
   après étirement (123/124) traitent le fond ×20-×40. L'ancre reste telle
   quelle et **`veralux_core_headless.py` (tiers, GPL) n'est PAS modifié**.
-- **Halo d'étoile coloré = À CORRIGER (vite fait)** : cause MESURÉE = étirement
-  + clip PAR CANAL (couronne neutre dans le brut ; R +41 % / G +19 % / B +23 %
-  à r = 14) ⇒ le remède agit sur le clip, pas sur l'empilement.
+- **Halo d'étoile coloré = CORRIGÉ en v2.85.0 (136)** : la fiche du 18/10 disait
+  « clip par canal après étirement » ; la mesure a trouvé la cause EN AMONT —
+  ciel par canal R −14,0 % / B +25,6 % (multiplicatif, identique dans les coins)
+  + point noir COMMUN du STF au-dessus du ciel R ⇒ 97,34 % des pixels à 0 dans R.
+  Remède = **gains par canal AVANT la courbe** (`gains_fond`, garde 0,35) + stats
+  recalculées sur l'image neutralisée.
+- **Neutralisation APRÈS étirement = EN STF AUSSI en v2.86.0 (137)** : elle était
+  réservée à VeraLux ⇒ case **visible et inerte** en STF. Portée : option + moteur
+  AUTOMATIQUE (mode manuel exclu). Mesuré : scène décisive 0,130 → 0,045 ; run
+  réel `lineaire` gains [1,0106 · 1,0 · 0,9535], coins B +19,7 → +14,1 %.
+- **Résidu de teinte des COINS (±15-20 %)** = **DÉGRADÉ**, pas une dominante :
+  1,3 % en linéaire entre les coins et la moitié sombre, ×18 par la pente de la
+  MTF. Un gain global n'y peut rien ⇒ modèle de fond réel (GraXpert/ABE, déjà
+  dans l'appli) ou estimateur par région — **décision d'Alain**.
 - **Résidu de la couche L (~0,48 px) = ABANDONNÉ** : on ne l'instruit plus ; une
   trace courte reste dans `CLAUDE.md` (§ « Limites connues et assumées »).
 
 ### Problèmes ouverts
-- **Halo d'étoile coloré** : remède à écrire (clip sur la luminance ?) + banc
-  couleur — c'est le seul défaut visuel connu qui reste.
-- Rien d'autre : ①/②/③ livrés et validés ; VeraLux clos ; résidu L assumé.
+- **Aucun** sur ①/②/③/136/137 : livrés, mesurés, bancs verts. Le rendu est à
+  JUGER À L'ÉCRAN par Alain (le correctif 136 ne change le rendu que si le ciel
+  est coloré ; le 137 corrige un résidu).
+- En attente d'une décision : **teinte des COINS ±15-20 %** (dégradé) — GraXpert/
+  ABE ou estimateur par région, à trancher ; mesurée, non traitée.
 
 ### Prochaines étapes
-1. **Halo d'étoile coloré** — correctif court + banc (prochain jalon de code).
-2. **Interface 141 = B** — prévenir au changement de composition en session
+1. **Interface 141 = B** — prévenir au changement de composition en session
    (+ banc) ; rien d'autre à trancher.
-3. **Chantier LRGB+Ha J2 → J5** (le gros reste fonctionnel, plan figé ci-dessous).
-4. **Release GitHub v2.84.0** (4 paquets) — **sur accord explicite d'Alain**.
-5. Reste, sans urgence : Store (v2.71.1 publiée), Linux machine vierge +
+2. **Chantier LRGB+Ha J2 → J5** (le gros reste fonctionnel, plan figé ci-dessous).
+3. **Release GitHub v2.86.0** (4 paquets) — **sur accord explicite d'Alain**.
+4. Reste, sans urgence : Store (v2.71.1 publiée), Linux machine vierge +
    `--cameras`, INDI après Linux, macOS jamais testé.
 
 ### Points d'attention
@@ -222,13 +267,16 @@ Leçon durable et preuves : `CLAUDE.md` § « Diagnostic de l'entrée d'astromé
   exigent `== "triangles"` et restent verts (leur résidu est ~0,03 px).
 
 ### Contexte de reprise (à coller)
-Arbre propre, **v2.84.0** : ①/②/③ **livrés et validés en réel** (③ = 206 frames
-Sh2-132, 0 non alignée, plus aucune phase). Décisions du 18/10 : **141 = B
-(prévenir)**, **VeraLux clos** (ne pas toucher au fichier GPL), **halo d'étoile
-coloré à corriger** (cause mesurée : clip par canal après étirement), **résidu
-de la couche L abandonné** (trace dans `CLAUDE.md`). Prochain jalon de code :
-**corriger le halo coloré puis l'interface 141-B** ; **aucune release sans
-accord d'Alain**.
+Arbre **v2.86.0** : ①/②/③ **livrés et validés en réel** (③ = 206 frames Sh2-132,
+0 non alignée, plus aucune phase) ; **136 = halo d'étoile coloré CORRIGÉ** (gains
+par canal AVANT le STF, garde 0,35 — cause : ciel R −14 % / B +26 % + point noir
+commun ⇒ 97 % des pixels à 0 dans R) et **137 = la neutralisation APRÈS étirement
+vaut désormais aussi en STF** (moteurs automatiques seulement ; mode manuel
+exclu). Décisions du 18/10 : **141 = B (prévenir)**, **VeraLux clos** (ne pas
+toucher au fichier GPL), **résidu de la couche L abandonné**, **SPCC abandonné**.
+Deux choses attendent Alain : **juger à l'écran** (halo + neutralisation) et
+trancher la **teinte des COINS ±15-20 %** (dégradé : GraXpert/ABE ou estimateur
+par région ?). Prochain jalon de code : **141-B** ; **aucune release sans accord**.
 
 ---
 
@@ -260,8 +308,9 @@ identifiants en français (`synthetise`).
 - **Décisions d'Alain (18/10, après-midi)** : **①, ② (C) et ③** sont **LIVRÉS et
   VALIDÉS en réel** (v2.82.2 / v2.83.0 / v2.84.0) ; **141 = B (prévenir)** ;
   **VeraLux = clos** (piédestal + neutralisation suffisent, fichier GPL intact) ;
-  **halo coloré = à corriger** ; **résidu L = abandonné** (trace `CLAUDE.md`) ;
-  **SPCC = abandonné**. Prochain jalon de code : le halo, puis 141-B.
+  **halo coloré = CORRIGÉ en v2.85.0 (136)** ; **neutralisation après étirement
+  en STF = FAITE en v2.86.0 (137)** ; **résidu L = abandonné** (trace
+  `CLAUDE.md`) ; **SPCC = abandonné**. Prochain jalon de code : **141-B**.
 - **RÉSOLU (141)** : « M33 en RGB montre les mêmes taches » = session **LRGB+Ha**
   avec l'interface passée en « RGB » **pendant** l'empilement (`AVACOMPO=LRGB+Ha…`).
   ⇒ remède retenu (B) : **prévenir** quand la composition change en session.
@@ -269,9 +318,16 @@ identifiants en français (`synthetise`).
   canal (`max(x, 0)`), ~97 % du ciel consommé ⇒ fond ×20 à ×40, **déjà traité**
   par le piédestal par canal (jalon 122) + la neutralisation après étirement
   (123/124). **Ne pas modifier `veralux_core_headless.py` (tiers, GPL).**
-- **Halo d'étoile (À CORRIGER)** : couronne NEUTRE dans le brut, COLORÉE par le
-  STF (R +41 % / G +19 % / B +23 % à r = 14) ⇒ ce n'est pas l'empilement, c'est
-  l'étirement + le **clip par canal** : le remède agit là.
+- **Halo d'étoile (CORRIGÉ, 136)** : la couronne était bien neutre dans le
+  linéaire, mais le ciel ne l'était PAS par canal (R −14,0 % / B +25,6 %) et le
+  point noir commun du STF écrêtait R à 0 dans tout le fond (97,34 % des pixels).
+  Remède = **gains par canal avant la courbe** ; couronne ramenée à **R +5,0 % /
+  B −6,6 %** du fond local. Détail : `CLAUDE.md` § « Halo d'étoile coloré ».
+- **Neutralisation après étirement (136 → 137)** : elle vaut désormais en STF
+  (moteurs automatiques ; manuel exclu). En STF elle ne corrige qu'un RÉSIDU
+  (le 136 égalise déjà le ciel avec le même estimateur) ; la **teinte des coins
+  ±15-20 %** est un DÉGRADÉ et demande un modèle de fond réel — **décision
+  d'Alain**. Détail : `CLAUDE.md` § « Neutralisation APRÈS étirement ».
 - Boutons de données sans Siril (« ⬇ Gaia », « ⬇ Spectres », « ⬇ Base SPCC ») : sans
   objet depuis l'abandon de SPCC — à retirer ou laisser inertes (décision courte).
   **INDI** = jalon à part, après le portage Linux ; **Store** = cadence séparée

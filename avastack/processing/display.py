@@ -192,6 +192,88 @@ def saturation_canaux(x: Any, gains: Any) -> np.ndarray:
     return cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
 
 
+# ============================================================== jalon 136
+# HALO D'ÉTOILE COLORÉ — NEUTRALISER LE CIEL PAR CANAL AVANT L'ÉTIREMENT STF
+#
+# MESURÉ sur le run LRGB+Ha de M33 (v2.83.0, fichier LINÉAIRE livré) : les
+# niveaux de ciel des trois canaux sont PROPORTIONNELS et très différents —
+# R 0,02736 · G 0,03139 · B 0,03987, soit R −12,9 % et B +27,0 % par rapport au
+# vert, ÉGAL DANS LES QUATRE COINS et aux quatre milieux de bord (à 0,5 % près)
+# ⇒ c'est un CIEL, pas la galaxie, et c'est un écart MULTIPLICATIF (même rapport
+# partout), donc l'affaire de GAINS, pas d'offsets.
+#
+# L'étirement STF applique UN point noir commun (`lo`, calculé sur la
+# luminance). Avec lo = 0,03108, le canal R du fond passe SOUS le point noir :
+# il est écrêté à 0 dans TOUT le ciel, et la couronne d'une étoile — neutre
+# dans le linéaire — ne rallume R qu'au cœur. La MTF étant très raide, la
+# transition est amplifiée ⇒ couronne colorée (MESURÉ : le rendu par défaut du
+# fichier livré donne un ciel à R 0,00 / G 0,07 / B 0,71, et à r = 14 px d'une
+# étoile brillante R/G 0,11 et B/G 2,11 contre 0,88 et 1,30 dans le fond local).
+# Second effet, indépendant : la pente locale de la MTF vaut ~18 à hauteur de
+# ciel, si bien qu'un écart résiduel de 1 à 3 % d'un bout à l'autre du cadre
+# ressort à 20-100 % (MESURÉ sur le fichier « linéaire traité », dont le ciel
+# est neutre en moyenne mais varie de ±2 %).
+#
+# REMÈDE (et non un masque sur la couronne) : ramener les niveaux de ciel au
+# même niveau PAR GAINS avant la courbe — c'est `couleurs.gains_fond`, la
+# primitive d'espace LINÉAIRE du projet (même esprit que la neutralisation
+# appliquée avant l'étirement VeraLux, v2.36.1/jalon 62). MESURÉ sur le même
+# fichier, avec le vrai `DisplayProcessor` : l'écart de teinte de la couronne
+# tombe de « R perdu (97,34 % des pixels à 0) / B −81 % » à « R +5,0 % /
+# B −6,6 % », et le ciel du rendu de (0,00 ; 0,07 ; 0,71) à un gris teinté
+# (R +19,4 % / B +16,7 % — résidu de la pente évoquée ci-dessus, sans commune
+# mesure avec un ciel bleu vif).
+#
+# La garde borne la correction : `gains_fond` vaut 10 % par défaut (calibrée sur
+# un ciel déjà presque neutre — M31 : 3,6 %), insuffisante ici où les gains
+# mesurés valent ×1,1626 (R) et ×0,7964 (B), soit +16,3 % / −20,4 %. 35 %
+# couvre ce cas et borne le pire cas (cadrage dominé par un objet étendu, où la
+# « moitié sombre » n'est plus du ciel).
+GARDE_NEUTRE_STF = 0.35
+
+# En dessous de cet écart aux gains, on ne touche à RIEN (identité AU BIT) :
+# une image au ciel neutre doit produire exactement le rendu d'avant.
+SEUIL_NEUTRE_STF = 1e-3
+
+
+def gains_avant_etirement(img: Any) -> np.ndarray | None:
+    """Gains (R,V,B) qui neutralisent le CIEL avant l'étirement STF — None
+    quand il n'y a rien à corriger : image mono, canal vide, ou gains à moins
+    de `SEUIL_NEUTRE_STF` de 1,0 (le rendu reste alors identique AU BIT).
+
+    L'estimation se fait sur un SOUS-ÉCHANTILLON (un maximum de ~256×256
+    points) : `gains_fond` repose sur des médianes, insensibles au
+    sous-échantillonnage, et cela coûte ~8 ms au lieu de ~115 ms sur un aperçu
+    1600x904 (mesuré) — l'étirement STF doit rester réactif à chaque frame.
+    """
+    a = np.asarray(img)
+    if a.ndim != 3 or a.shape[-1] != 3:
+        return None                       # mono : pas de couleur à neutraliser
+    pas_y = max(1, a.shape[0] // 256)
+    pas_x = max(1, a.shape[1] // 256)
+    g = _couleurs.gains_fond(a[::pas_y, ::pas_x], garde=GARDE_NEUTRE_STF)
+    if g is None:
+        return None
+    gg = np.asarray(g, dtype=np.float32)
+    if bool(np.allclose(gg, 1.0, atol=SEUIL_NEUTRE_STF)):
+        return None                       # ciel déjà neutre : identité exacte
+    return gg
+
+
+def source_etirement(img: Any) -> tuple[np.ndarray, np.ndarray | None]:
+    """(image que voit la COURBE d'étirement, gains appliqués ou None).
+
+    L'étirement et ses statistiques doivent porter sur la MÊME image : quand
+    les canaux ne partent pas du même niveau, c'est l'image neutralisée qui
+    entre dans `_calc_stats`, sinon le point noir reste calé sur un ciel moyen
+    que deux canaux sur trois ne touchent jamais.
+    """
+    g = gains_avant_etirement(img)
+    if g is None:
+        return img, None
+    return (img * g.reshape(1, 1, 3)).astype(np.float32), g
+
+
 class DisplayProcessor:
     """Étirement temps réel.
 
@@ -289,6 +371,10 @@ class DisplayProcessor:
         # Jalon 75 : médian résolu du dernier rendu auto (repère de la bande
         # « brut » de l'histogramme : lo + m·(hi − lo)).
         self.last_m = 0.5
+        # JALON 136 : gains par canal appliqués AVANT l'étirement pour
+        # neutraliser un ciel coloré (None = aucun, cas d'un ciel neutre).
+        # Publié pour le diagnostic et le banc ; ne change aucun réglage.
+        self.gains_etirement = None
         self._stats: Any = None       # (médiane, σ, p99.9) lissées — anti-pompage
         self._ema = 0.25              # réactivité : 0 = figé, 1 = instantané
         # Jalon 79 : mémoire de la SORTIE DU MOTEUR d'étirement STF/manuel
@@ -492,6 +578,7 @@ class DisplayProcessor:
         self.bar_noir, self.bar_median, self.bar_blanc = 0.0, 0.5, 1.0
         self.fige = False
         self.dernier_brut_niveaux = None
+        self.gains_etirement = None   # jalon 136 : rien à garder d'une autre vue
         self._memo_moteur = None      # jalon 79 : rien à réutiliser d'une autre vue
         self.niveaux_new = True
         with self._vl_lock:
@@ -604,14 +691,22 @@ class DisplayProcessor:
             self.last_m = memo[5]
             return memo[2]
         if self.auto:
-            lo, hi, m = self._auto_params(img, live=live)
+            # JALON 136 : l'étirement ET ses statistiques portent sur l'image
+            # NEUTRALISÉE par canal quand les ciels des trois canaux ne
+            # partent pas du même niveau — sinon le point noir commun écrête
+            # le canal le plus faible et la couronne des étoiles se colore
+            # (halo coloré, mesure et rationale dans l'en-tête de section).
+            # Ciel neutre ⇒ `src is img` et le rendu est celui d'avant AU BIT.
+            src, gains = source_etirement(img)
+            self.gains_etirement = gains
+            lo, hi, m = self._auto_params(src, live=live)
             self.last_lo, self.last_hi = lo, hi
             # Jalon 75 : le médian résolu est conservé pour que la bande
             # « brut » de l'histogramme puisse placer son repère de médian
             # (lo + m·(hi − lo)) — sinon l'utilisateur verrait deux repères
             # sur trois et croirait à un oubli.
             self.last_m = m
-            x = self._mtf(np.clip((img - lo) / (hi - lo), 0.0, 1.0), m)
+            x = self._mtf(np.clip((src - lo) / (hi - lo), 0.0, 1.0), m)
         else:
             lo, hi = self.black, self.white
             if hi - lo < 1e-6:
@@ -1177,8 +1272,12 @@ class DisplayProcessor:
         # qui l'étire, et la rendre déjà étirée la ferait étirer DEUX FOIS.
         # Elle n'est pas nette (transitoire, quelques dixièmes de seconde).
         if self._veralux_actif():
-            lo, hi, m = self._auto_params(img, live=live)
-            return self._mtf(np.clip((img - lo) / (hi - lo), 0.0, 1.0), m)
+            # JALON 136 : même neutralisation par canal que `_moteur_stf` —
+            # l'image d'attente VeraLux est un STF auto, elle ne doit pas
+            # montrer un ciel bleu vif pendant le calcul.
+            src, _ = source_etirement(img)
+            lo, hi, m = self._auto_params(src, live=live)
+            return self._mtf(np.clip((src - lo) / (hi - lo), 0.0, 1.0), m)
         return img
 
     @staticmethod
@@ -1265,17 +1364,18 @@ class DisplayProcessor:
         self.dernier_brut_niveaux = x
         if niveaux_actifs(self.bar_noir, self.bar_median, self.bar_blanc):
             x = niveaux(x, self.bar_noir, self.bar_median, self.bar_blanc)
-        # JALON 124 : neutralisation de la couleur du fond (VeraLux) JUSTE
-        # AVANT gamma/saturation — les retouches vraiment finales (décision
-        # d'Alain, 12/10/2026). Elle a QUITTÉ le solveur (`_vl_worker`) : c'est
-        # ici qu'elle trouve sa place, après l'étage de niveaux.
+        # JALON 124 : neutralisation de la couleur du fond JUSTE AVANT
+        # gamma/saturation — les retouches vraiment finales (décision d'Alain,
+        # 12/10/2026). Elle a QUITTÉ le solveur (`_vl_worker`) : c'est ici
+        # qu'elle trouve sa place, après l'étage de niveaux. JALON 137 : elle
+        # vaut aussi en STF (moteurs AUTOMATIQUES), plus seulement en VeraLux.
         x = self._neutraliser_fond(x)
         x = self._finition(x, img.ndim == 3, self.gamma, self.saturation,
                            self.sat_canaux)
         return (x * 255).astype(np.uint8)
 
     def _neutraliser_fond(self, x: Any) -> Any:
-        """NEUTRALISATION de la couleur du fond (VeraLux) — jalon 124.
+        """NEUTRALISATION de la couleur du fond APRÈS l'étirement — jalon 124.
 
         Appliquée APRÈS l'étage de niveaux, JUSTE AVANT gamma/saturation, pour
         que ces dernières retouches ne la contredisent plus (appliquée plus tôt,
@@ -1284,11 +1384,22 @@ class DisplayProcessor:
         la finition, contre 1,0128 sans neutralisation du tout). Mesure les
         gains sur la SORTIE (ce que l'œil voit, `couleurs.gains_fond`) et les
         applique ; publie `vl_neutre_gains` (None si l'option est décochée, si
-        le moteur n'est pas VeraLux, ou si rien n'est corrigé) — l'UI s'en sert
-        pour ANNONCER la correction. MÊME étage que le fichier « tel que vu »
-        (`rendu_pleine_resolution`) : l'écran == le fichier."""
+        aucun moteur AUTOMATIQUE n'est à l'œuvre, ou si rien n'est corrigé) —
+        l'UI s'en sert pour ANNONCER la correction. MÊME étage que le fichier
+        « tel que vu » (`rendu_pleine_resolution`) : l'écran == le fichier.
+
+        JALON 137 : elle vaut pour **LES DEUX moteurs automatiques** — VeraLux
+        (son ANCRE amplifie le fond, c'était le cas d'origine) **ET le STF
+        auto**, où la case était VISIBLE et SANS EFFET (exactement le défaut
+        corrigé au jalon 127 pour la chroma : une case inerte est un mensonge
+        de l'interface). Le MODE MANUEL reste en dehors : l'utilisateur y règle
+        lui-même le point noir, souvent AU niveau du fond — il n'y a alors plus
+        de « couleur du fond » à mesurer (et une correction mesurée sur du noir
+        serait du bruit appliqué à toute l'image).
+        """
         self.vl_neutre_gains = None
-        if not (self._veralux_actif() and self.vl_neutre_fond):
+        if not (self.vl_neutre_fond
+                and (self.auto or self._veralux_actif())):
             return x
         g = _couleurs.gains_fond(x)
         if g is None or bool(np.allclose(g, 1.0, atol=1e-4)):
@@ -1352,6 +1463,10 @@ class DisplayProcessor:
                 params.update(mode=_veralux.MODE_LOG_D, log_d=log_d)
             x, _, _ = _veralux.etirer(img, **params)
         elif r("auto", self.auto):
+            # JALON 136 : même neutralisation par canal que l'écran — « tel que
+            # vu » doit rester l'écran au pixel près (règle du projet). Ciel
+            # neutre ⇒ `src is img` et le rendu est celui d'avant AU BIT.
+            src, _ = source_etirement(img)
             # Jalon 75 : étirement GELÉ (⏹) → le fichier doit reproduire
             # l'écran, donc utiliser les MÊMES stats gelées que l'affichage
             # (dict capturé côté UI) ; sinon « tel que vu » serait calculé sur
@@ -1361,11 +1476,11 @@ class DisplayProcessor:
             if gelees is not None:
                 med, sigma, p999 = gelees
             else:
-                med, sigma, p999 = self._calc_stats(img)
+                med, sigma, p999 = self._calc_stats(src)
             lo = med - r("sigma_k", self.sigma_k) * sigma
             hi = max(p999, med + 10.0 * sigma, lo + 1e-8)
             m = self._solve_m((med - lo) / (hi - lo), r("target", self.target))
-            x = self._mtf(np.clip((img - lo) / (hi - lo), 0.0, 1.0), m)
+            x = self._mtf(np.clip((src - lo) / (hi - lo), 0.0, 1.0), m)
         else:
             lo, hi = r("black", self.black), r("white", self.white)
             if hi - lo < 1e-6:
@@ -1399,9 +1514,12 @@ class DisplayProcessor:
         # l'étage de niveaux, JUSTE AVANT gamma/saturation (décision d'Alain,
         # 12/10/2026) — MÊME étage que l'affichage (`process()._neutraliser_fond`),
         # pour que le fichier « tel que vu » reste l'écran au pixel près.
-        # Réservée au moteur VeraLux (son ANCRE amplifie le fond).
-        if (stretch == "veralux" and _veralux.moteur_disponible()
-                and bool(r("vl_neutre_fond", self.vl_neutre_fond))):
+        # JALON 137 : LES DEUX moteurs automatiques (STF auto ET VeraLux) — la
+        # condition doit rester le MIROIR de `_neutraliser_fond`, sinon l'écran
+        # et le fichier divergent (le banc 137 vérifie la parité au bit).
+        if (bool(r("vl_neutre_fond", self.vl_neutre_fond))
+                and (bool(r("auto", self.auto))
+                     or (stretch == "veralux" and _veralux.moteur_disponible()))):
             x = _couleurs.neutraliser_apres_etirement(x)
         return self._finition(x, img.ndim == 3,
                               r("gamma", self.gamma),
