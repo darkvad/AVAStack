@@ -989,10 +989,11 @@ class AcquisitionWorker:
         # troisième aligneur, privé, mesure ce recalage.
         self.aligner_ha = StarAligner()
         self._recalage_ha_aligneur = StarAligner()
-        # Étape ① du plan ⑪ : ces DEUX aligneurs gardent le repli « phase »
-        # (valeur par défaut True) — le Ha est un canal NARROWBAND, son périmètre
-        # est l'étape ③ du plan, pas le ①. L'aligneur PARTAGÉ, lui, reçoit son
-        # interrupteur à la création de l'empileur (cf. `_worker_empiler_frame`).
+        # Étapes ① et ③ du plan ⑪ : ces DEUX aligneurs gardent le repli « phase »
+        # (valeur par défaut True) — ils servent la VOIE A (Ha FUSIONNÉ d'une
+        # composition BROADBAND+Ha, repère propre, hors périmètre des ① et ③).
+        # L'aligneur PARTAGÉ, lui, reçoit son interrupteur à la création de
+        # l'empileur (cf. `_worker_empiler_frame` : False dans les deux modes).
         self._ha_ref_posee = False
         self._ha_ref_bad = 0
         self.stacker = None
@@ -1244,12 +1245,13 @@ class AcquisitionWorker:
             # Jalon 21 : HOO/SHO → TRIANGLES seuls pour toute la session.
             narrowband = self._narrowband_ha()
             self.aligner.triangles_seuls = narrowband
-            # ÉTAPE ① DU PLAN ⑪ (18/10/2026) : en BROADBAND, le repli « phase »
+            # ÉTAPES ① ET ③ DU PLAN ⑪ (18/10/2026) : le repli « phase »
             # (translation seule) est ÉCARTÉ — mesuré au ⑩, il posait 11-12
             # frames B À L'ENVERS sur un champ retourné de +177,07° au lieu de
-            # laisser le réessai +180° les retourner. En HOO/SHO il reste actif
-            # (étape ③ : mesurer ce qu'il apporte). L'ordre de la cascade ne
-            # change pas : ORB → triangles → étoiles → (phase).
+            # laisser le réessai +180° les retourner. En HOO/SHO la MESURE de
+            # l'étape ③ (109 frames réelles) n'a trouvé AUCUNE frame où la phase
+            # était le chemin retenu : la retirer ne coûte aucun refus. L'ordre
+            # de la cascade ne change pas : triangles → étoiles → (phase).
             self.aligner.repli_phase = repli_phase_session(narrowband)
             # Étape ⑦ : la PREMIÈRE référence est une BRUTE du rôle courant —
             # le motif et le rôle sont journalisés (sans quoi « quelle

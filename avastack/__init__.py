@@ -19,7 +19,63 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.83.0"
+AVASTACK_VERSION = "2.84.0"
+
+# v2.84.0 : PLUS DE REPLI « PHASE » EN NARROWBAND (étape ③ du plan ⑪ du chantier
+#   CAUSE AMONT — jalon 135, 18/10/2026). Décision d'Alain après MESURE réelle.
+#   POURQUOI : en HOO/SHO la cascade est TRIANGLES → ÉTOILES → PHASE, et une
+#   « réussite » de phase (translation SEULE) court-circuite le réessai +180° de
+#   `compute` — c'est EXACTEMENT la cause mesurée au ⑩ en broadband (11/50 puis
+#   12/49 frames B empilées à l'envers sur un champ à +177,07°). Le risque est
+#   donc identique en narrowband ; la seule question était son COÛT.
+#   MESURE (hors dépôt, `_mesure_156_phase_narrowband.py` ; aucune ligne du
+#   dépôt modifiée) : brutes RÉELLES rejouées dans l'ordre de l'appli
+#   (`MultiFolderCamera`), dark maître 300 s, référence = 1re brute Ha (jalon 21),
+#   DEUX `StarAligner` au code inchangé ne différant QUE par l'interrupteur.
+#   109 frames, 3 jeux MULTI-NUITS (SHO Rosette 53 · HOO NGC 7000 26 · SHO
+#   IC 443 30), références à 250 étoiles : 0 refus AVANT, 0 refus APRÈS,
+#   méthodes IDENTIQUES frame par frame (triangles 61 · étoiles 44 ·
+#   triangles+étoiles(n) 4). La phase n'a JAMAIS été le chemin retenu.
+#   ⚠ Limite mesurée : aucun frame de ces jeux n'exigeait le réessai +180°
+#   (0 frame à |angle| > 170°) — le cas dangereux du ⑩ n'y figure pas ; ces
+#   jeux disent le COÛT (nul), pas le RISQUE. Le contrôle positif 200 étoiles
+#   (obligatoire, PASS : 199 détectées, 198 appariements, 0,0551 px à la vraie
+#   matrice, 1,4977 px pour une erreur connue de 1,5 px) porte en plus un volet
+#   « PHASE SEULE » qui prouve que l'instrument VOIT la phase quand elle est le
+#   seul chemin (AVANT l'accepte à 0,10 px de la translation connue, APRÈS la
+#   refuse).
+#   MESURE DÉCISIVE — jeu d'Alain SH2-132 (Ha 55 · OIII 71 · SII 80, 240 s,
+#   4-5 nuits, dark 240 s) : 204 frames (S2 79 · Ha 54 · O3 71), 0 refus dans les
+#   DEUX branches, 31 RETOURNEMENTS (S2 24 · O3 7) correctement retournés. Mais
+#   la phase était le chemin FINAL de 22 frames :
+#   · Ha (21 frames) : résidu médian 0,857 px (max 1,071) — translation fausse de
+#     1,1 à 2,3 px acceptée comme finale ; sans phase (ORB étoffé après échec du
+#     direct) 0,065 px (max 0,071). La couche Ha est le canal VERT du SHO : le
+#     flou était visible ;
+#   · O3 (1 frame) : empilée À L'ENVERS — phase Δ=(−0,33 ; +0,53) px, angle 0 et
+#     0 appariement, contre |angle| 173,4° et 4 435 px d'écart pour la branche
+#     sans phase. C'est le défaut du ⑩, reproduit en narrowband.
+#   ⇒ l'étape ③ est un CORRECTIF mesuré (0 refus, 21 Ha mieux alignées, 1 O3 plus
+#   jamais à l'envers), pas un compromis. Les 109 frames du premier jeu ne
+#   contenaient AUCUN retournement : elles mesuraient l'absence de coût, pas le
+#   risque.
+#   CONTENU :
+#   · `PHASE_EN_NARROWBAND = False` à côté de `PHASE_EN_BROADBAND`, et
+#     `repli_phase_session(narrowband)` qui lit L'UN OU L'AUTRE (un seul endroit
+#     décide ; les deux constantes restent basculables à la main pour rejouer un
+#     run « avec » phase) ;
+#   · l'interrupteur par session, le verrou à DEUX conditions de `_sans_phase` et
+#     l'ordre de la cascade sont INCHANGÉS (triangles → étoiles → phase) ;
+#   · les DEUX aligneurs du Ha de la VOIE A (composition BROADBAND+Ha, repère
+#     propre) gardent le comportement historique : hors périmètre des ① et ③ ;
+#   BANC NEUF `bancs/_test_phase_narrowband_jalon135.py` : interrupteur
+#   (narrowband → False, bascule des deux constantes), `StarAligner()` toujours
+#   à True (compat), cascade narrowband où une frame « phase seule » est REFUSÉE
+#   sans que `_phase` soit appelée, champ retourné de 177,07° toujours RETOURNÉ,
+#   table PAR RÔLE (S2/Ha/O3, phases ON/OFF) et SESSION HOO RÉELLE qui applique
+#   l'interrupteur et n'utilise jamais « phase ».
+#   PAS de release : le run de validation réel (SHO de Sh2-132, retournements)
+#   est fait par Alain.
 
 # v2.83.0 : RAFFINEMENT `triangles` SEULEMENT AU-DELÀ DU SEUIL (étape ② du plan ⑪
 #   du chantier CAUSE AMONT — jalon 134, 18/10/2026). Choix C d'Alain après

@@ -1475,19 +1475,33 @@ ce qui manquait n'était pas une correction mais une MESURE.
   `repli_phase=True`, APRÈS `repli_phase=False`. Preuves hors dépôt :
   `_156_mesure.jsonl`, `_156_synthese.txt`, `_156_controle.json` (+ `_156b_*`
   pour IC 443).
-- **RÉSULTAT — COÛT MESURÉ NUL** : **109 frames** réelles, **3 jeux
-  multi-nuits** (SHO Rosette 53 · HOO NGC 7000 26 · SHO IC 443 30), références
-  à **250 étoiles** : **0 refus AVANT, 0 refus APRÈS**, méthodes IDENTIQUES
-  frame par frame (`triangles` 61, `étoiles` 44, `triangles+étoiles(n)` 4). La
-  phase n'a JAMAIS été le chemin retenu ⇒ la retirer ne coûte rien sur cette
-  population. Bonus : 1re mesure du chemin ② (`triangles+étoiles(n)`) en
-  narrowband.
-- **CE QUE CETTE MESURE NE DIT PAS** : aucun frame de la population n'a exigé
-  le réessai **+180°** (0 frame à |angle| > 170°) — le cas DANGEREUX
-  (retournement + peu d'étoiles communes, celui du ⑩) n'y figure PAS. Le
-  contrôle positif prouve seulement que l'instrument LE VERRAIT. ⇒ ③ se
-  tranche sur « coût mesuré 0 » + « risque non mesuré » (arbitrage d'Alain),
-  jamais sur une preuve d'innocuité.
+- **RÉSULTAT 1 — COÛT NUL sur un jeu SANS retournement** : **109 frames** réelles,
+  **3 jeux multi-nuits** (SHO Rosette 53 · HOO NGC 7000 26 · SHO IC 443 30),
+  références à **250 étoiles** : **0 refus AVANT, 0 refus APRÈS**, méthodes
+  IDENTIQUES frame par frame (`triangles` 61, `étoiles` 44,
+  `triangles+étoiles(n)` 4). La phase n'a JAMAIS été le chemin retenu.
+- **RÉSULTAT 2 — DÉCISIF, jeu AVEC retournements (SH2-132, 18/10)** :
+  `\\192.168.155.45\…\SV555\SH2-132\240.00` (Ha 55 · OIII 71 · SII 80, 240 s,
+  4-5 nuits, dark 240 s), **204 frames réelles** (S2 79 · Ha 54 · O3 71), ancre
+  Ha, 250 étoiles : **0 refus dans les deux branches**, **31 retournements**
+  (S2 24 · O3 7) tous correctement RETOURNÉS. Mais la phase était le chemin
+  FINAL sur **22 frames (Ha 21 · O3 1)** :
+  · Ha : matrice de phase à **résidu médian 0,857 px** (max 1,071) — une
+    translation seule fausse de **1,1 à 2,3 px**, acceptée comme finale ; la
+    branche APRÈS (ORB étoffé après échec du direct) donne **0,065 px**
+    (max 0,071) ⇒ 21 frames Ha étaient empilées **nettement moins bien** (la
+    couche Ha est le canal VERT du SHO : flou visible) ;
+  · O3 : **1 frame empilée À L'ENVERS** — phase Δ=(−0,33 ; +0,53) px, angle 0,
+    **0 appariement** (acceptation non vérifiable) contre **|angle| = 173,4°** et
+    **4 435 px** d'écart de translation pour la branche APRÈS : c'est LE défaut
+    du ⑩, reproduit en narrowband sur une vraie brute.
+  ⇒ l'étape ③ n'est pas un compromis « on perd 0 frame » : c'est un **CORRECTIF**
+  (0 refus, 21 frames Ha mieux alignées, 1 frame O3 plus jamais à l'envers).
+- **CE QUE LA PREMIÈRE MESURE NE DISAIT PAS** : ses 3 jeux n'avaient **aucun**
+  frame à retourner (0 frame à |angle| > 170°) — d'où « coût 0 » sans preuve de
+  risque. Le jeu d'Alain, lui, contient 31 retournements : c'est LUI qui tranche.
+  Leçon : une population sans le défaut ne mesure que l'absence de coût.
+
 - **CONTRÔLE POSITIF 200 ÉTOILES (obligatoire, PASS)** : 199 détectées, 198
   appariements, résidu **0,0551 px** à la vraie matrice, **1,4977 px** pour une
   erreur connue de 1,5 px, estimation 0,0548 px. Volet « PHASE SEULE » (fond

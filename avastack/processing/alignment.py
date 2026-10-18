@@ -22,12 +22,14 @@
    avant `phaseCorrelate`, et la translation n'est acceptée que si la SSD
    contre la référence s'améliore NETTEMENT — sinon la frame est refusée
    (comptée « non alignée ») au lieu d'être empilée à l'identité.
-   ÉTAPE ① DU PLAN ⑪ (18/10/2026) : ce repli est DÉSACTIVÉ en BROADBAND
-   (`StarAligner.repli_phase` à False, cf. `PHASE_EN_BROADBAND`). Le garde-fou
-   SSD ne suffit pas : sur un champ RETOURNÉ de +177,07°, mesuré au ⑩, la phase
-   gagnait 10 % de SSD sur le fond et le motif fixe du capteur et posait la
-   frame À L'ENVERS (angle 0) au lieu de laisser le réessai +180° faire son
-   travail. En narrowband (HOO/SHO) le repli reste actif (étape ③ à mesurer).
+   ÉTAPES ① ET ③ DU PLAN ⑪ (18/10/2026) : ce repli est DÉSACTIVÉ dans les DEUX
+   modes (`StarAligner.repli_phase` à False, cf. `PHASE_EN_BROADBAND` et
+   `PHASE_EN_NARROWBAND`). Le garde-fou SSD ne suffit pas : sur un champ
+   RETOURNÉ de +177,07°, mesuré au ⑩, la phase gagnait 10 % de SSD sur le fond
+   et le motif fixe du capteur et posait la frame À L'ENVERS (angle 0) au lieu
+   de laisser le réessai +180° faire son travail. En narrowband, la MESURE de
+   l'étape ③ (109 frames réelles, 3 jeux multi-nuits) a trouvé 0 frame où la
+   phase était le chemin retenu : la retirer ne coûte aucun refus.
 
 Tous les chemins travaillent sur le CANAL VERT des images couleur (esprit
 Siril, qui aligne sur le canal vert de la brute CFA) : 2 sites verts sur 4
@@ -114,21 +116,45 @@ PHASE_GAIN_MIN: float = 0.10
 #
 # False (décision de l'étape ①) = le repli est ÉCARTÉ en broadband : la frame est
 # alors RETOURNÉE par le réessai +180° (ou par l'ORB étoffé), sinon REFUSÉE.
-# True = ancien comportement, à rebasculer pour comparer. NARROWBAND (HOO/SHO)
-# garde son repli : l'étape ③ du plan mesurera ce qu'il y apporte.
+# True = ancien comportement, à rebasculer pour comparer.
 PHASE_EN_BROADBAND: bool = False
+# INTERRUPTEUR DE L'ÉTAPE ③ DU PLAN ⑪ (jalon 135, v2.84.0 — 18/10/2026) : le
+# repli « phase » est-il utilisé en NARROWBAND (HOO/SHO) ?
+#
+# MESURÉ le 18/10 sur 109 frames RÉELLES (SHO Rosette 53 · HOO NGC 7000 26 ·
+# SHO IC 443 30 ; dossiers multi-nuits, dark maître 300 s, références à
+# 250 étoiles) : la phase n'a JAMAIS été le chemin retenu — 0 refus AVANT comme
+# APRÈS, méthodes IDENTIQUES frame par frame (`triangles` 61, `étoiles` 44,
+# `triangles+étoiles(n)` 4).
+# PUIS, DÉCISIF, sur le jeu d'Alain SH2-132 (Ha 55 · OIII 71 · SII 80, 240 s,
+# 4-5 nuits) : 204 frames, 0 refus dans les deux branches, 31 RETOURNEMENTS
+# (S2 24 · O3 7) correctement retournés — mais la phase était le chemin FINAL de
+# 22 frames : 21 Ha à résidu médian 0,857 px (translation fausse de 1,1 à
+# 2,3 px) là où la branche sans phase donne 0,065 px, et 1 O3 empilée À L'ENVERS
+# (phase angle 0 / 0 appariement contre |angle| 173,4° et 4 435 px d'écart).
+# False (décision de l'étape ③) = la phase est ÉCARTÉE DANS LES DEUX MODES :
+# c'est un CORRECTIF mesuré, pas un compromis ; True = ancien comportement
+# narrowband, à rebasculer pour comparer
+# (`bancs/_test_phase_narrowband_jalon135.py` le fait et le mesure).
+PHASE_EN_NARROWBAND: bool = False
 
 
 def repli_phase_session(narrowband: bool) -> bool:
     """Valeur de l'INTERRUPTEUR `StarAligner.repli_phase` pour une session.
 
-    Étape ① du plan ⑪ : le repli « phase » (translation SEULE) est ÉCARTÉ en
-    BROADBAND — une translation ne peut pas aligner un champ retourné de 180°
-    (résidu mesuré ≥ 2 591 px à +177,07°) — et CONSERVÉ en NARROWBAND (HOO/SHO),
-    où la cascade est déjà triangles → étoiles → phase et où l'étape ③ mesurera
-    son apport. Un seul endroit décide : le worker ne fait qu'appliquer.
-    → True si la phase est autorisée, False sinon."""
-    return bool(PHASE_EN_BROADBAND) or bool(narrowband)
+    UN SEUL endroit décide (le worker ne fait qu'appliquer) :
+      · BROADBAND (RGB/LRGB±Ha, mono, OSC) : `PHASE_EN_BROADBAND` — False depuis
+        l'étape ① (une translation ne peut pas aligner un champ retourné de
+        180°, résidu mesuré ≥ 2 591 px à +177,07°) ;
+      · NARROWBAND (HOO/SHO) : `PHASE_EN_NARROWBAND` — False depuis l'étape ③
+        (mesuré : la phase n'a jamais été retenue sur 109 frames réelles ; le
+        risque du ⑩ n'est pas mesurable sur ces jeux, cf. CLAUDE.md).
+    → True si la phase est autorisée, False sinon. Les DEUX constantes sont
+    basculables à la main : c'est ainsi qu'on rejoue un run « avec » phase.
+    """
+    if bool(narrowband):
+        return bool(PHASE_EN_NARROWBAND)
+    return bool(PHASE_EN_BROADBAND)
 
 
 # Inliers minimum du chemin ÉTOILES (jalon 13) : 6 suffit parce que chaque
@@ -325,10 +351,11 @@ class StarAligner:
         # phase (retour réel : trop de refus quand le canal narrowband montre
         # peu d'étoiles).
         self.triangles_seuls: bool = False
-        # INTERRUPTEUR DU REPLI « PHASE » (étape ① du plan ⑪). Le worker le fixe
-        # PAR SESSION (`repli_phase_session`) : False en BROADBAND, True en
-        # NARROWBAND. Ici True = comportement HISTORIQUE, pour que les bancs et
-        # les appelants directs ne changent pas de résultat sans le vouloir.
+        # INTERRUPTEUR DU REPLI « PHASE » (étapes ① et ③ du plan ⑪). Le worker le
+        # fixe PAR SESSION (`repli_phase_session`) : False en BROADBAND (①) et
+        # False en NARROWBAND (③, mesuré sans coût — cf. `PHASE_EN_NARROWBAND`).
+        # Ici True = comportement HISTORIQUE, pour que les bancs et les appelants
+        # directs ne changent pas de résultat sans le vouloir.
         self.repli_phase: bool = True
         self.reset()
 
@@ -645,13 +672,14 @@ class StarAligner:
         sert au repli 180° de `compute`, car la phase (traduction SEULE) suppose
         des images de MÊME orientation et validerait du bruit retourné.
 
-        ÉTAPE ① DU PLAN ⑪ (18/10/2026) : l'interrupteur de session
-        `self.repli_phase` s'ajoute à `avec_phase`. Quand il est faux (broadband),
-        le chemin direct ne peut PLUS « réussir » par une translation seule : un
-        champ retourné échoue ici, ce qui laisse `compute` tenter son réessai
-        +180° (puis l'ORB étoffé) au lieu d'empiler la frame à l'envers. Sans ce
-        verrou, `phase` court-circuitait le réessai — c'est la cause MESURÉE au
-        ⑩ (11/50 puis 12/49 frames B à l'envers sur un champ à +177,07°).
+        ÉTAPES ① ET ③ DU PLAN ⑪ (18/10/2026) : l'interrupteur de session
+        `self.repli_phase` s'ajoute à `avec_phase`. Quand il est faux — c'est le
+        cas en broadband depuis ① ET en narrowband depuis ③ — le chemin direct ne
+        peut PLUS « réussir » par une translation seule : un champ retourné
+        échoue ici, ce qui laisse `compute` tenter son réessai +180° (puis l'ORB
+        étoffé) au lieu d'empiler la frame à l'envers. Sans ce verrou, `phase`
+        court-circuitait le réessai — c'est la cause MESURÉE au ⑩ (11/50 puis
+        12/49 frames B à l'envers sur un champ à +177,07°).
 
         v2.68.0 (jalon 116 ①) : l'ORB travaille sur la frame normalisée sur SES
         PROPRES percentiles, et non plus sur ceux de la référence — d'une nuit
@@ -735,9 +763,10 @@ class StarAligner:
     def _sans_phase(self, g: Any, avec_phase: bool) -> tuple[Any, bool]:
         """Repli « corrélation de phase » (traduction SEULE), ou REFUS quand
         `avec_phase` est faux — cf. `_compute_direct` (repli 180°) — ou quand
-        l'INTERRUPTEUR de session `repli_phase` est faux (étape ① du plan ⑪ :
-        en broadband, une translation ne peut pas aligner un champ retourné de
-        180°, et une « réussite » de la phase court-circuite le réessai +180°)."""
+        l'INTERRUPTEUR de session `repli_phase` est faux (étapes ① et ③ du
+        plan ⑪ : une translation ne peut pas aligner un champ retourné de 180°,
+        et une « réussite » de la phase court-circuite le réessai +180° ; le
+        repli est donc écarté en broadband DEPUIS ① et en narrowband DEPUIS ③)."""
         if not (avec_phase and self.repli_phase):
             return np.eye(2, 3), False
         return self._phase(g)

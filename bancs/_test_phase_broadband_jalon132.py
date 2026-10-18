@@ -12,8 +12,10 @@ que si le direct ÉCHOUE.
 ÉTAPE ① LIVRÉE ICI : l'interrupteur `StarAligner.repli_phase` (décidé par
 `repli_phase_session`, constant `PHASE_EN_BROADBAND`) écarte la phase en
 BROADBAND ; le worker l'applique par session (compositions sans Ha, mono, OSC)
-et la CONSERVE en HOO/SHO (étape ③ du plan). L'ordre de la cascade ne change
-pas : ORB → triangles → étoiles → (phase).
+et la CONSERVAIT en HOO/SHO — l'étape ③ (v2.84.0, banc
+`_test_phase_narrowband_jalon135.py`) l'écarte désormais LÀ AUSSI : le volet [1]
+ci-dessous est à jour et vérifie la BASCULE de la constante narrowband. L'ordre
+de la cascade ne change pas : ORB → triangles → étoiles → (phase).
 
 Ce banc vérifie :
   [1] L'INTERRUPTEUR : `repli_phase_session` (narrowband → True, broadband →
@@ -151,13 +153,22 @@ def angle_deg(M):
 
 
 # ==================================== [1] L'INTERRUPTEUR
-print("[1] repli_phase_session : broadband → False, narrowband → True")
+print("[1] repli_phase_session : broadband → False, narrowband → False (③)")
 verifie(align_mod.PHASE_EN_BROADBAND is False,
         "PHASE_EN_BROADBAND vaut False (décision de l'étape ①)")
 verifie(align_mod.repli_phase_session(False) is False,
         "broadband (RGB/LRGB±Ha, mono, OSC) : repli « phase » ÉCARTÉ")
+# ÉTAPE ③ (v2.84.0) : le narrowband est écarté AUSSI — ce banc datait d'avant.
+verifie(align_mod.repli_phase_session(True) is False,
+        "narrowband (HOO/SHO) : repli « phase » ÉCARTÉ depuis l'étape ③ "
+        "(mesure : 0 frame sauvée par la phase sur 109 réelles)")
+align_mod.PHASE_EN_NARROWBAND = True         # la bascule reste possible
 verifie(align_mod.repli_phase_session(True) is True,
-        "narrowband (HOO/SHO) : repli « phase » CONSERVÉ (étape ③ à mesurer)")
+        "…et la constante narrowband reste BASCULABLE (ancien comportement "
+        "rejouable pour comparer)")
+align_mod.PHASE_EN_NARROWBAND = False
+verifie(align_mod.repli_phase_session(True) is False,
+        "…constante remise : narrowband de nouveau écarté")
 align_mod.PHASE_EN_BROADBAND = True          # bascule de l'interrupteur
 verifie(align_mod.repli_phase_session(False) is True,
         "interrupteur basculé à la main : la phase revient en broadband "

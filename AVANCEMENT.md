@@ -15,8 +15,9 @@ pièges actifs, prochaine action. Le détail daté vit dans `avastack/__init__.p
 > sur `LRGBHa`. `master` = branche stable, releases uniquement ; merge vers `master`
 > seulement sur validation explicite (release).
 
-Versions : `LRGBHa` = **v2.83.0** (⑦ v2.82.1 + ① + **garde 133** en v2.82.2,
-`586f860` ; **② choix C** = jalon 134, **VALIDÉ en réel**) · `master` publié =
+Versions : `LRGBHa` = **v2.84.0** (⑦ v2.82.1 + ① + **garde 133** en v2.82.2,
+`586f860` ; **② choix C** jalon 134 `4dd335b`, validé en réel ; **③ jalon 135**
+= phase retirée en narrowband, à valider en réel sur Sh2-132) · `master` publié =
 **v2.80.0** · Store publié = **v2.71.1**.
 
 **Gouvernance** : **aucune release GitHub sans l'accord d'Alain** ; **à CHAQUE jalon validé,
@@ -25,7 +26,7 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 
 ---
 
-## Session du 18/10/2026 — ① + 133 (v2.82.2), ② choix C LIVRÉ (v2.83.0, jalon 134), ③ MESURÉE
+## Session du 18/10/2026 — ① + 133 (v2.82.2), ② choix C (v2.83.0), ③ LIVRÉE (v2.84.0)
 
 ### Ce qui est livré
 - **v2.82.2, commitée et poussée `586f860`** — **étape ①** (plus de repli `phase`
@@ -38,6 +39,10 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
   reçoit `pos=` (centroïdes déjà en main : **0 re-détection**) ; méthode
   `triangles+étoiles(n)` ; `_last_t` posé avec la matrice FINALE. Banc neuf 134
   (7 volets, 30 vérifications, vert).
+- **v2.84.0 — étape ③ (jalon 135)** : `PHASE_EN_NARROWBAND = False` +
+  `repli_phase_session()` qui lit l'une OU l'autre constante ; le repli « phase »
+  n'existe plus dans les DEUX modes. Banc neuf 135 (7 volets) vert, banc 132
+  mis à jour. **À valider en réel sur Sh2-132.**
 - **Verdict ⑩** (rappel) : 11/50 puis 12/49 frames B empilées à l'envers par
   `phase` sur un champ à +177,07° — détail `CLAUDE.md`.
 
@@ -63,26 +68,33 @@ retient l'en-tête et REPOSE `suivi_astro.indice()`. Détail : `CLAUDE.md` §130
 - **Mesures hors dépôt** : `_espion_155.py`, `_lance_155.py`, `_diag_155{a,b,c,d}*.py`,
   `_attendre_155.py` ; preuves `_155_centroides.jsonl`, `_trace155/155.jsonl`.
 
-### Étape ③ du plan ⑪ — MESURÉE le 18/10 (aucune ligne de code touchée)
-- **Coût de retirer `phase` en narrowband = 0 refus** sur **109 frames réelles**
-  (SHO Rosette 53 · HOO NGC 7000 26 · SHO IC 443 30 ; dossiers **multi-nuits**,
-  dark maître 300 s, référence Ha à **250 étoiles**) : **0 refus AVANT, 0 refus
-  APRÈS**, méthodes **identiques frame par frame** — `triangles` 61,
-  `étoiles` 44, `triangles+étoiles(n)` 4 (1re mesure du chemin ② en narrowband).
-  La phase n'a **jamais** été le chemin retenu.
-- **Contrôle positif 200 étoiles : PASS** — 199 étoiles, 198 appariements,
-  résidu **0,0551 px** à la vraie matrice, **1,4977 px** pour une erreur connue
-  de 1,5 px ; volet « phase seule » : AVANT accepte par `phase` (Δ −7,20/+4,08
-  pour un attendu −7,3/+4,1 ⇒ 0,10 px), APRÈS **refuse**.
-- **LIMITE MESURÉE** : aucun frame des jeux n'a exigé le réessai **+180°**
-  (0 frame à |angle| > 170°) ⇒ le cas dangereux du ⑩ n'est PAS dans la
-  population ; le contrôle prouve seulement que l'instrument le verrait.
-- **Outils hors dépôt** : `_mesure_156_phase_narrowband.py` (A/B sur DEUX
-  `StarAligner` au code inchangé, `--controle`, `--jeu`, `--tag`, `--max`),
-  preuves `_156_controle.json`, `_156_mesure.jsonl`, `_156_synthese.txt`,
-  `_156b_*`. Détail durable : `CLAUDE.md` § « Étape ③ du plan ⑪ ».
-- **DÉCISION D'ALAIN ATTENDUE** : retirer `phase` en narrowband (coût mesuré
-  0, risque non mesuré) ou le conserver.
+### Étape ③ du plan ⑪ — MESURÉE puis LIVRÉE (v2.84.0, jalon 135)
+- **Mesure 1 (jeux SANS retournement)** : **109 frames** (SHO Rosette 53 · HOO
+  NGC 7000 26 · SHO IC 443 30 ; 300 s, multi-nuits, ancre Ha à **250 étoiles**) →
+  **0 refus AVANT / 0 APRÈS**, méthodes identiques frame par frame, phase jamais
+  retenue. Contrôle positif 200 étoiles **PASS** (199 étoiles, 198 appariements,
+  0,0551 px à la vraie matrice, 1,4977 px pour 1,5 px ; volet « phase seule » :
+  AVANT accepte à 0,10 px, APRÈS refuse).
+- **Mesure 2 — DÉCISIVE (jeu d'Alain `SV555\SH2-132\240.00`)** : Ha 55 · OIII 71 ·
+  SII 80 à 240 s, 4-5 nuits, dark 240 s → **204 frames** (S2 79 · Ha 54 · O3 71),
+  **0 refus** dans les deux branches, **31 retournements** (S2 24 · O3 7) tous
+  retournés. La phase était le chemin **FINAL de 22 frames** :
+  · **Ha 21 frames** : résidu médian **0,857 px** (max 1,071) — translation fausse
+    de 1,1 à 2,3 px acceptée telle quelle ; sans phase (ORB étoffé) **0,065 px**.
+    La couche Ha = canal VERT du SHO ⇒ flou réel dans l'image livrée ;
+  · **O3 1 frame empilée À L'ENVERS** : phase angle 0 avec **0 appariement**
+    contre |angle| **173,4°** et **4 435 px** d'écart ⇒ le défaut du ⑩, reproduit.
+- **Livré** : `PHASE_EN_NARROWBAND = False` et `repli_phase_session()` qui lit
+  L'UNE OU L'AUTRE constante (①/③, un seul endroit décide, les deux restent
+  basculables). Cascade, verrou à deux conditions et aligneurs Ha de la VOIE A
+  INCHANGÉS. Banc neuf **135** (7 volets) vert ; banc **132** mis à jour (son
+  volet [1] datait d'avant ③) ; non-régression 13/15/21/116/117/129b/131/132/133/
+  134 verte.
+- **Outils hors dépôt** : `_mesure_156_phase_narrowband.py` (`--controle`,
+  `--jeu`, `--tag`, `--max`), preuves `_156_*` et `_156b_*` (3 jeux) +
+  `_156c_*` (Sh2-132). Détail durable : `CLAUDE.md` § « Étape ③ du plan ⑪ ».
+- **DÉCISION D'ALAIN** : ③ retenu et livré ; **reste la validation en réel** sur
+  son run SHO de Sh2-132 (le jeu qui contient les retournements).
 
 ### Run de VALIDATION du ② (Alain, 18/10, v2.83.0) — MESURÉ
 - **472 frames empilées** (L 240 · R 79 · G 62 · B 51 · Ha 40), **2 non alignées
@@ -107,19 +119,21 @@ retient l'en-tête et REPOSE `suivi_astro.indice()`. Détail : `CLAUDE.md` §130
   qu'avec les gains Gaia ⇒ à instruire, pas à corriger à l'aveugle.
 
 ### État actuel
-- **Code** : **v2.83.0** (② choix C, jalon 134) — commitée et poussée ; banc 134
-  vert et **run réel d'Alain VALIDÉ** (aucune régression mesurée).
+- **Code** : **v2.84.0** (③, jalon 135) — bancs 135 neuf + non-régression verte ;
+  **validation réelle Sh2-132 à faire par Alain**.
 - **RUN RÉEL LRGB (Alain, 18/10)** : plus aucune tache bleue NI rouge ⇒ `phase`
   en broadband était la seule cause. Astrométrie réussie (garde 133).
-- **Reste à faire** : **③ MESURÉE le 18/10** (coût 0 sur 109 frames ; décision
-  d'Alain attendue) — détails ci-dessus.
+- **Reste à faire** : **valider ③ en réel** (run SHO de Sh2-132 : 31
+  retournements, 22 frames que la phase finalisait à tort).
 - **Combine** innocenté trois fois (140/142/143) : `_ratio_combine` intact.
 
-### Fichiers modifiés dans cette phase (v2.83.0)
-- `avastack/processing/alignment.py` (`TRI_RAFFIN_SEUIL`, branchement dans
-  `_triangles`, `pos=None`), `avastack/__init__.py` (**v2.83.0** + changelog),
-  `bancs/_test_triangles_raffin_jalon134.py` (banc NEUF, 7 volets, 30 vérifs),
-  `CLAUDE.md` et `AVANCEMENT.md`. Rappel v2.82.2 : voir `586f860`.
+### Fichiers modifiés dans cette phase (v2.84.0)
+- `avastack/processing/alignment.py` (`PHASE_EN_NARROWBAND`, `repli_phase_session`
+  par mode, docstrings), `avastack/core/worker.py` (commentaires ③ ; aligneurs
+  Ha de la VOIE A explicitement hors périmètre), `avastack/__init__.py`
+  (**v2.84.0** + changelog), `bancs/_test_phase_narrowband_jalon135.py` (NEUF,
+  7 volets), `bancs/_test_phase_broadband_jalon132.py` (volet [1] mis à jour),
+  `CLAUDE.md` et `AVANCEMENT.md`. Rappel v2.83.0 : `4dd335b`.
 
 ### Mesures du chantier (détail dans `CLAUDE.md` et le changelog v2.82.2)
 140 RGB propre · 142 LRGB R +103,9 % / B +132,1 % · 143 B +80,7 % · 144 B +34,6 % ·
@@ -156,12 +170,13 @@ Leçon durable et preuves : `CLAUDE.md` § « Diagnostic de l'entrée d'astromé
 - **VeraLux** : à instruire (ancre calculée puis soustraite par canal) — APRÈS ②/③.
 
 ### Prochaines étapes
-1. **③ — MESURÉE, décision d'Alain** : coût **0 refus** (109 frames, 3 jeux
-   narrowband multi-nuits) mais **risque non mesuré** (aucun frame à retourner
-   dans la population). Deux options : retirer `phase` en narrowband
-   (`repli_phase_session` → False partout) et VALIDER en réel sur un run SHO,
-   ou le garder. Contrôle positif 200 étoiles à rejouer à chaque mesure
-   (`_mesure_156_phase_narrowband.py --controle`).
+1. **③ — LIVRÉE (v2.84.0), VALIDATION RÉELLE à faire** : run SHO sur
+   `SV555\SH2-132\240.00` (dossiers `Ha` · `OIII` · `SII`, dark maître 240 s,
+   composition **SHO**), avec `AVASTACK_TRACE_ROLES=<dossier>` pour compter les
+   méthodes. À vérifier : **0 refus** par rôle, **retournements corrects**, plus
+   aucune méthode « phase », et un canal Ha **net** (les 21 frames que la phase
+   finalisait étaient à ~0,86 px de résidu). Si le rendu régresse : la constante
+   `PHASE_EN_NARROWBAND` suffit à revenir en arrière (banc 135 le prouve).
 2. **SPCC** à instruire (pente B/G 1,626 hors [0,5 ; 1,5]) — APRÈS ③.
 3. Interface 141 (A/B/C) et **VeraLux** restent en attente.
 
@@ -187,12 +202,14 @@ Leçon durable et preuves : `CLAUDE.md` § « Diagnostic de l'entrée d'astromé
   exigent `== "triangles"` et restent verts (leur résidu est ~0,03 px).
 
 ### Contexte de reprise (à coller)
-Arbre propre, **`4dd335b` poussé** : ② choix C (jalon 134, v2.83.0) **LIVRÉ ET
-VALIDÉ en réel**, et **③ MESURÉE le 18/10** (coût **0 refus** sur 109 frames
-narrowband multi-nuits, contrôle positif 200 étoiles PASS, **aucun frame à
-retourner** dans la population). Prochaine action unique : **décision d'Alain
-sur ③** (retirer `phase` en narrowband puis valider en réel, ou le garder) —
-aucune ligne de code avant cette décision.
+Arbre propre, **v2.84.0** : étapes ① (v2.82.2), ② choix C (v2.83.0, validée en
+réel) et **③ LIVRÉE (jalon 135)** — `PHASE_EN_NARROWBAND = False`, bancs 135 neuf
+et non-régression verte. Mesure décisive : sur **Sh2-132** (204 frames, 31
+retournements), la phase finalisait **22 frames** à tort — 21 Ha à **0,857 px**
+de résidu (au lieu de 0,065) et **1 O3 empilée à l'envers** (|angle| 173,4°).
+Prochaine action unique : **validation réelle par Alain** d'un run SHO de Sh2-132
+(0 refus, retournements corrects, aucune méthode « phase », canal Ha net) — pas
+de nouvelle modification de code avant ce verdict.
 
 ---
 
@@ -256,11 +273,10 @@ identifiants en français (`synthetise`).
 - **Reprise** : `CLAUDE.md` § « Diagnostic de l'entrée d'astrométrie » (lire
   `indices` dans le dump AVANT tout) ; mesures dans `C:\Astro\test\`
   (`_dump154_*`, `_diag_astro_152/153*.py`, `_astap148*\`) — astrométrie RÉSOLUE.
-- **Décisions d'Alain** : le **② est TRANCHÉ (C), LIVRÉ et VALIDÉ en réel**
-  (v2.83.0) ; **③ est MESURÉE** (coût 0 refus sur 109 frames) et attend sa
-  **décision** (retirer `phase` en narrowband ou le garder) ; restent l'interface
-  141 (A/B/C), SPCC et VeraLux. Une release GitHub ne se fera QUE sur accord
-  explicite.
+- **Décisions d'Alain** : **② TRANCHÉ (C), LIVRÉ et VALIDÉ en réel** (v2.83.0) ;
+  **③ TRANCHÉ (retirer `phase` en narrowband), LIVRÉ en v2.84.0** — attend sa
+  **validation réelle** sur Sh2-132 ; restent l'interface 141 (A/B/C), SPCC et
+  VeraLux. Une release GitHub ne se fera QUE sur accord explicite.
 - **RÉSOLU (141)** : « M33 en RGB montre les mêmes taches » = session **LRGB+Ha**
   avec l'interface passée en « RGB » **pendant** l'empilement (`AVACOMPO=LRGB+Ha…`).
 - **VeraLux** : ancre calculée sur la luminance pondérée puis soustraite par canal
@@ -291,12 +307,13 @@ identifiants en français (`synthetise`).
 
 ## Pièges récents (encore actifs — le reste est passé dans `CLAUDE.md`)
 
-- **« La phase n'a jamais servi » ne vaut que pour la population mesurée** :
-  sur 109 frames narrowband (3 jeux multi-nuits, 250 étoiles de référence), la
-  phase n'a JAMAIS été retenue et retirer le repli ne coûte **0 refus** — mais
-  **aucun** frame n'y exigeait le réessai +180° (0 frame à |angle| > 170°). Un
-  coût mesuré nul ne prouve pas l'innocuité : le cas du ⑩ n'était pas dedans.
-  ⇒ ces jeux disent le COÛT, pas le RISQUE.
+- **Un jeu SANS le défaut ne mesure que l'ABSENCE DE COÛT** : 109 frames
+  narrowband sans aucun retournement donnaient « retirer `phase` ne change rien » ;
+  sur **Sh2-132** (204 frames, **31 retournements**), la phase finalisait
+  **22 frames** — 21 Ha **fausses de 1,1 à 2,3 px** (résidu 0,857 px au lieu de
+  0,065) et **1 O3 À L'ENVERS** (0 appariement, |angle| 173,4°). Avant de conclure
+  « aucun coût », vérifier que le défaut est REPRÉSENTÉ dans le jeu (compter les
+  |angle| > 170° ET les méthodes retenues, pas seulement les refus).
 - **Mesure A/B d'un interrupteur** : deux `StarAligner` au code inchangé, même
   référence, même ordre, même calibration ; seule la valeur testée diffère.
   Une mesure qui rejoue une seule branche ne dit rien du delta.
