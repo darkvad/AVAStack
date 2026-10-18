@@ -1461,6 +1461,46 @@ ce qui manquait n'était pas une correction mais une MESURE.
   Non-régression : **13, 15, 21, 116, 117, 129b, 131, 132, 133** verts.
 
 
+## Étape ③ du plan ⑪ — repli `phase` en NARROWBAND : MESURE (18/10/2026)
+
+- **QUESTION** : en HOO/SHO la cascade est TRIANGLES → ÉTOILES → PHASE ; une
+  « réussite » de phase (translation SEULE) court-circuite le réessai +180° de
+  `compute` — c'est le défaut mesuré au ⑩ en broadband. L'étape ③ demande ce
+  que COÛTE de la retirer aussi en narrowband.
+- **PROTOCOLE (aucune ligne du dépôt modifiée)** :
+  `_mesure_156_phase_narrowband.py` rejoue les brutes RÉELLES, même ordre
+  (`MultiFolderCamera` : round-robin des dossiers, chaque dossier trié
+  (mtime, nom)), même dark maître 300 s, même référence (1re brute Ha,
+  jalon 21), sur DEUX `StarAligner` au code INCHANGÉ : AVANT
+  `repli_phase=True`, APRÈS `repli_phase=False`. Preuves hors dépôt :
+  `_156_mesure.jsonl`, `_156_synthese.txt`, `_156_controle.json` (+ `_156b_*`
+  pour IC 443).
+- **RÉSULTAT — COÛT MESURÉ NUL** : **109 frames** réelles, **3 jeux
+  multi-nuits** (SHO Rosette 53 · HOO NGC 7000 26 · SHO IC 443 30), références
+  à **250 étoiles** : **0 refus AVANT, 0 refus APRÈS**, méthodes IDENTIQUES
+  frame par frame (`triangles` 61, `étoiles` 44, `triangles+étoiles(n)` 4). La
+  phase n'a JAMAIS été le chemin retenu ⇒ la retirer ne coûte rien sur cette
+  population. Bonus : 1re mesure du chemin ② (`triangles+étoiles(n)`) en
+  narrowband.
+- **CE QUE CETTE MESURE NE DIT PAS** : aucun frame de la population n'a exigé
+  le réessai **+180°** (0 frame à |angle| > 170°) — le cas DANGEREUX
+  (retournement + peu d'étoiles communes, celui du ⑩) n'y figure PAS. Le
+  contrôle positif prouve seulement que l'instrument LE VERRAIT. ⇒ ③ se
+  tranche sur « coût mesuré 0 » + « risque non mesuré » (arbitrage d'Alain),
+  jamais sur une preuve d'innocuité.
+- **CONTRÔLE POSITIF 200 ÉTOILES (obligatoire, PASS)** : 199 détectées, 198
+  appariements, résidu **0,0551 px** à la vraie matrice, **1,4977 px** pour une
+  erreur connue de 1,5 px, estimation 0,0548 px. Volet « PHASE SEULE » (fond
+  décalé, 3 étoiles ⇒ triangles et étoiles impossibles) : AVANT accepte par
+  `phase` avec Δ = (−7,20 ; +4,08) pour un attendu (−7,3 ; +4,1) ⇒ **0,10 px** ;
+  APRÈS REFUSE. Sans ce volet, « 0 frame par phase » ne prouverait RIEN.
+- **PIÈGE — mesurer un décalage synthétique À L'ENVERS** : `warpAffine(ref, vrai)`
+  transporte la référence VERS la frame ; `compute` rend l'INVERSE (frame →
+  référence). Mesurer le résidu avec `vrai` au lieu de
+  `cv2.invertAffineTransform(vrai)` donne 1,28 px à la « vraie » matrice contre
+  0,055 px à l'estimation : le faux verdict venait de la mesure, pas du code.
+
+
 ## Diagnostic de l'entrée d'astrométrie (18/10/2026) — lire le message AVANT de corriger
 
 - **CAUSE TROUVÉE LE 18/10/2026 — CE N'ÉTAIT NI L'IMAGE NI LE CODE : LES INDICES

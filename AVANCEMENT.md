@@ -25,7 +25,7 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 
 ---
 
-## Session du 18/10/2026 — ① + 133 (v2.82.2) puis ② choix C LIVRÉ (v2.83.0, jalon 134)
+## Session du 18/10/2026 — ① + 133 (v2.82.2), ② choix C LIVRÉ (v2.83.0, jalon 134), ③ MESURÉE
 
 ### Ce qui est livré
 - **v2.82.2, commitée et poussée `586f860`** — **étape ①** (plus de repli `phase`
@@ -63,6 +63,27 @@ retient l'en-tête et REPOSE `suivi_astro.indice()`. Détail : `CLAUDE.md` §130
 - **Mesures hors dépôt** : `_espion_155.py`, `_lance_155.py`, `_diag_155{a,b,c,d}*.py`,
   `_attendre_155.py` ; preuves `_155_centroides.jsonl`, `_trace155/155.jsonl`.
 
+### Étape ③ du plan ⑪ — MESURÉE le 18/10 (aucune ligne de code touchée)
+- **Coût de retirer `phase` en narrowband = 0 refus** sur **109 frames réelles**
+  (SHO Rosette 53 · HOO NGC 7000 26 · SHO IC 443 30 ; dossiers **multi-nuits**,
+  dark maître 300 s, référence Ha à **250 étoiles**) : **0 refus AVANT, 0 refus
+  APRÈS**, méthodes **identiques frame par frame** — `triangles` 61,
+  `étoiles` 44, `triangles+étoiles(n)` 4 (1re mesure du chemin ② en narrowband).
+  La phase n'a **jamais** été le chemin retenu.
+- **Contrôle positif 200 étoiles : PASS** — 199 étoiles, 198 appariements,
+  résidu **0,0551 px** à la vraie matrice, **1,4977 px** pour une erreur connue
+  de 1,5 px ; volet « phase seule » : AVANT accepte par `phase` (Δ −7,20/+4,08
+  pour un attendu −7,3/+4,1 ⇒ 0,10 px), APRÈS **refuse**.
+- **LIMITE MESURÉE** : aucun frame des jeux n'a exigé le réessai **+180°**
+  (0 frame à |angle| > 170°) ⇒ le cas dangereux du ⑩ n'est PAS dans la
+  population ; le contrôle prouve seulement que l'instrument le verrait.
+- **Outils hors dépôt** : `_mesure_156_phase_narrowband.py` (A/B sur DEUX
+  `StarAligner` au code inchangé, `--controle`, `--jeu`, `--tag`, `--max`),
+  preuves `_156_controle.json`, `_156_mesure.jsonl`, `_156_synthese.txt`,
+  `_156b_*`. Détail durable : `CLAUDE.md` § « Étape ③ du plan ⑪ ».
+- **DÉCISION D'ALAIN ATTENDUE** : retirer `phase` en narrowband (coût mesuré
+  0, risque non mesuré) ou le conserver.
+
 ### Run de VALIDATION du ② (Alain, 18/10, v2.83.0) — MESURÉ
 - **472 frames empilées** (L 240 · R 79 · G 62 · B 51 · Ha 40), **2 non alignées
   (G 1 · R 1)**, 1 floue, 474 en archive. Total des refus **identique** au run de
@@ -90,7 +111,8 @@ retient l'en-tête et REPOSE `suivi_astro.indice()`. Détail : `CLAUDE.md` §130
   vert et **run réel d'Alain VALIDÉ** (aucune régression mesurée).
 - **RUN RÉEL LRGB (Alain, 18/10)** : plus aucune tache bleue NI rouge ⇒ `phase`
   en broadband était la seule cause. Astrométrie réussie (garde 133).
-- **Reste à faire** : **③** (SHO/HOO sans `phase`) — mesure du coût avant décision.
+- **Reste à faire** : **③ MESURÉE le 18/10** (coût 0 sur 109 frames ; décision
+  d'Alain attendue) — détails ci-dessus.
 - **Combine** innocenté trois fois (140/142/143) : `_ratio_combine` intact.
 
 ### Fichiers modifiés dans cette phase (v2.83.0)
@@ -134,10 +156,12 @@ Leçon durable et preuves : `CLAUDE.md` § « Diagnostic de l'entrée d'astromé
 - **VeraLux** : à instruire (ancre calculée puis soustraite par canal) — APRÈS ②/③.
 
 ### Prochaines étapes
-1. **③** : SHO/HOO sans `phase` — MESURER le coût (refus par rôle) AVANT toute
-   décision. Contrôle positif 200 étoiles OBLIGATOIRE à chaque mesure ; si un run
-   réel est fait, l'activer avec `AVASTACK_TRACE_ROLES=<dossier>` (on pourra alors
-   compter `triangles+étoiles(n)` vs `triangles`, jamais mesuré à ce jour).
+1. **③ — MESURÉE, décision d'Alain** : coût **0 refus** (109 frames, 3 jeux
+   narrowband multi-nuits) mais **risque non mesuré** (aucun frame à retourner
+   dans la population). Deux options : retirer `phase` en narrowband
+   (`repli_phase_session` → False partout) et VALIDER en réel sur un run SHO,
+   ou le garder. Contrôle positif 200 étoiles à rejouer à chaque mesure
+   (`_mesure_156_phase_narrowband.py --controle`).
 2. **SPCC** à instruire (pente B/G 1,626 hors [0,5 ; 1,5]) — APRÈS ③.
 3. Interface 141 (A/B/C) et **VeraLux** restent en attente.
 
@@ -163,11 +187,12 @@ Leçon durable et preuves : `CLAUDE.md` § « Diagnostic de l'entrée d'astromé
   exigent `== "triangles"` et restent verts (leur résidu est ~0,03 px).
 
 ### Contexte de reprise (à coller)
-Arbre propre, **`4dd335b` poussé** : le ② choix C (jalon 134, v2.83.0) est
-**LIVRÉ ET VALIDÉ en réel** (472 frames, 2 refus G 1 · R 1, canaux à
-0,079 / 0,130 px, aucune régression). Prochaine action unique : **MESURER
-l'étape ③ (SHO/HOO sans `phase`)** — refus par rôle AVANT/APRÈS et contrôle
-positif 200 étoiles —, **sans toucher au code avant d'avoir les chiffres**.
+Arbre propre, **`4dd335b` poussé** : ② choix C (jalon 134, v2.83.0) **LIVRÉ ET
+VALIDÉ en réel**, et **③ MESURÉE le 18/10** (coût **0 refus** sur 109 frames
+narrowband multi-nuits, contrôle positif 200 étoiles PASS, **aucun frame à
+retourner** dans la population). Prochaine action unique : **décision d'Alain
+sur ③** (retirer `phase` en narrowband puis valider en réel, ou le garder) —
+aucune ligne de code avant cette décision.
 
 ---
 
@@ -231,9 +256,11 @@ identifiants en français (`synthetise`).
 - **Reprise** : `CLAUDE.md` § « Diagnostic de l'entrée d'astrométrie » (lire
   `indices` dans le dump AVANT tout) ; mesures dans `C:\Astro\test\`
   (`_dump154_*`, `_diag_astro_152/153*.py`, `_astap148*\`) — astrométrie RÉSOLUE.
-- **Décisions d'Alain** : le **② est TRANCHÉ (C) et LIVRÉ** (v2.83.0) — il reste à
-  le valider en réel ; restent **③** (SHO/HOO sans `phase`) et l'interface 141
-  (A/B/C). Une release GitHub ne se fera QUE sur accord explicite.
+- **Décisions d'Alain** : le **② est TRANCHÉ (C), LIVRÉ et VALIDÉ en réel**
+  (v2.83.0) ; **③ est MESURÉE** (coût 0 refus sur 109 frames) et attend sa
+  **décision** (retirer `phase` en narrowband ou le garder) ; restent l'interface
+  141 (A/B/C), SPCC et VeraLux. Une release GitHub ne se fera QUE sur accord
+  explicite.
 - **RÉSOLU (141)** : « M33 en RGB montre les mêmes taches » = session **LRGB+Ha**
   avec l'interface passée en « RGB » **pendant** l'empilement (`AVACOMPO=LRGB+Ha…`).
 - **VeraLux** : ancre calculée sur la luminance pondérée puis soustraite par canal
@@ -263,6 +290,16 @@ identifiants en français (`synthetise`).
 ---
 
 ## Pièges récents (encore actifs — le reste est passé dans `CLAUDE.md`)
+
+- **« La phase n'a jamais servi » ne vaut que pour la population mesurée** :
+  sur 109 frames narrowband (3 jeux multi-nuits, 250 étoiles de référence), la
+  phase n'a JAMAIS été retenue et retirer le repli ne coûte **0 refus** — mais
+  **aucun** frame n'y exigeait le réessai +180° (0 frame à |angle| > 170°). Un
+  coût mesuré nul ne prouve pas l'innocuité : le cas du ⑩ n'était pas dedans.
+  ⇒ ces jeux disent le COÛT, pas le RISQUE.
+- **Mesure A/B d'un interrupteur** : deux `StarAligner` au code inchangé, même
+  référence, même ordre, même calibration ; seule la valeur testée diffère.
+  Une mesure qui rejoue une seule branche ne dit rien du delta.
 
 - **Une réussite de repli n'est pas une preuve d'alignement** : `phase` en
   translation seule a posé 11/50 puis 12/49 frames B **à l'envers**. Depuis ①,
