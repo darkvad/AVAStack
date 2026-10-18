@@ -153,9 +153,9 @@ retient l'en-tête et REPOSE `suivi_astro.indice()`. Détail : `CLAUDE.md` §130
   qu'avec les gains Gaia ⇒ à instruire, pas à corriger à l'aveugle.
 
 ### État actuel
-- **Code** : **v2.86.0** — jalons **136** (halo coloré) et **137** (neutralisation
-  après étirement en STF) livrés, bancs 136 et 137 neufs + non-régression verte ;
-  ①/②/③ livrés et validés en réel.
+- **Code** : **v2.86.0**, commité et poussé **`7e6cc88`** — jalons **136** (halo
+  coloré) et **137** (neutralisation après étirement en STF) livrés, bancs 136 et
+  137 neufs + non-régression verte ; ①/②/③ livrés et validés en réel.
 - **RUN RÉEL LRGB (Alain, 18/10)** : plus aucune tache bleue NI rouge ⇒ `phase`
   en broadband était la seule cause. Astrométrie réussie (garde 133).
 - **À FAIRE PAR ALAIN** : juger à l'écran le halo ET la neutralisation STF sur une
@@ -203,8 +203,7 @@ Leçon durable et preuves : `CLAUDE.md` § « Diagnostic de l'entrée d'astromé
   95/143 frames (66 %) ⇒ inutile de toucher une matrice déjà bonne ; là où il sert
   (7 frames > 1 px, pires 1,385 → 0,651) il corrige 12 à 50 % de l'erreur.
 - **La composition d'un fichier se lit dans son `AVACOMPO`**, jamais dans l'interface (141).
-- **134c invalide** (brute dithérée) ; **135/136/138** annulées. **Interface (141)** :
-  (A) documenter, (B) prévenir, (C) invalider — à trancher.
+- **134c invalide** (brute dithérée) ; **135/136/138** annulées ; **141 = B** (tranché).
 
 ### Décisions d'Alain du 18/10 (après ③) — TRANCHÉES
 - **Interface 141 = option B (PRÉVENIR)** : la composition affichée ne doit plus
@@ -215,18 +214,15 @@ Leçon durable et preuves : `CLAUDE.md` § « Diagnostic de l'entrée d'astromé
   quelle et **`veralux_core_headless.py` (tiers, GPL) n'est PAS modifié**.
 - **Halo d'étoile coloré = CORRIGÉ en v2.85.0 (136)** : la fiche du 18/10 disait
   « clip par canal après étirement » ; la mesure a trouvé la cause EN AMONT —
-  ciel par canal R −14,0 % / B +25,6 % (multiplicatif, identique dans les coins)
-  + point noir COMMUN du STF au-dessus du ciel R ⇒ 97,34 % des pixels à 0 dans R.
-  Remède = **gains par canal AVANT la courbe** (`gains_fond`, garde 0,35) + stats
-  recalculées sur l'image neutralisée.
-- **Neutralisation APRÈS étirement = EN STF AUSSI en v2.86.0 (137)** : elle était
-  réservée à VeraLux ⇒ case **visible et inerte** en STF. Portée : option + moteur
-  AUTOMATIQUE (mode manuel exclu). Mesuré : scène décisive 0,130 → 0,045 ; run
-  réel `lineaire` gains [1,0106 · 1,0 · 0,9535], coins B +19,7 → +14,1 %.
+  ciel par canal R −14,0 % / B +25,6 % (multiplicatif) + point noir COMMUN du STF
+  au-dessus du ciel R ⇒ 97,34 % des pixels à 0 dans R. Remède = **gains par canal
+  AVANT la courbe** (`gains_fond`, garde 0,35) + stats sur l'image neutralisée.
+- **Neutralisation APRÈS étirement = EN STF AUSSI en v2.86.0 (137)** : case
+  **visible et inerte** en STF jusqu'ici. Portée : option + moteur AUTOMATIQUE
+  (manuel exclu). Scène décisive 0,130 → 0,045 ; run réel coins B +19,7 → +14,1 %.
 - **Résidu de teinte des COINS (±15-20 %)** = **DÉGRADÉ**, pas une dominante :
-  1,3 % en linéaire entre les coins et la moitié sombre, ×18 par la pente de la
-  MTF. Un gain global n'y peut rien ⇒ modèle de fond réel (GraXpert/ABE, déjà
-  dans l'appli) ou estimateur par région — **décision d'Alain**.
+  1,3 % en linéaire, ×18 par la pente de la MTF. Un gain global n'y peut rien ⇒
+  GraXpert/ABE (déjà dans l'appli) ou estimateur par région — **décision d'Alain**.
 - **Résidu de la couche L (~0,48 px) = ABANDONNÉ** : on ne l'instruit plus ; une
   trace courte reste dans `CLAUDE.md` (§ « Limites connues et assumées »).
 
@@ -266,17 +262,14 @@ Leçon durable et preuves : `CLAUDE.md` § « Diagnostic de l'entrée d'astromé
   `triangles+étoiles(n)` sont deux méthodes distinctes : les bancs 15 et 21
   exigent `== "triangles"` et restent verts (leur résidu est ~0,03 px).
 
-### Contexte de reprise (à coller)
-Arbre **v2.86.0** : ①/②/③ **livrés et validés en réel** (③ = 206 frames Sh2-132,
-0 non alignée, plus aucune phase) ; **136 = halo d'étoile coloré CORRIGÉ** (gains
-par canal AVANT le STF, garde 0,35 — cause : ciel R −14 % / B +26 % + point noir
-commun ⇒ 97 % des pixels à 0 dans R) et **137 = la neutralisation APRÈS étirement
-vaut désormais aussi en STF** (moteurs automatiques seulement ; mode manuel
-exclu). Décisions du 18/10 : **141 = B (prévenir)**, **VeraLux clos** (ne pas
-toucher au fichier GPL), **résidu de la couche L abandonné**, **SPCC abandonné**.
-Deux choses attendent Alain : **juger à l'écran** (halo + neutralisation) et
-trancher la **teinte des COINS ±15-20 %** (dégradé : GraXpert/ABE ou estimateur
-par région ?). Prochain jalon de code : **141-B** ; **aucune release sans accord**.
+### Contexte de reprise (à coller — 2 phrases)
+Arbre **v2.86.0** propre et poussé (`7e6cc88`) : ①/②/③ validés en réel, **136**
+(halo d'étoile coloré) et **137** (neutralisation après étirement en STF) livrés,
+bancs 136 et 137 verts, aucune release faite. Prochaine action unique :
+l'**interface 141-B** (prévenir quand la composition change en session), puis le
+chantier **LRGB+Ha J2 → J5** — restent deux décisions d'Alain (teinte des COINS
+±15-20 % = dégradé ; neutralisation en mode manuel) et **aucune release sans son
+accord**.
 
 ---
 
@@ -298,7 +291,15 @@ identifiants en français (`synthetise`).
 
 ---
 
-## En attente / prochaine session (état au 18/10)
+## En attente / prochaine session (état au 18/10, fin de session — commit `7e6cc88`)
+
+- **Prochaine action unique** : **interface 141-B** — quand la composition change
+  en session, l'interface doit le DIRE (le fichier est correct via `AVACOMPO`).
+- **Décisions d'Alain en attente** : ① **teinte des COINS ±15-20 %** (dégradé
+  mesuré) — GraXpert/ABE (déjà dans l'appli) ou estimateur par région ?
+  ② **neutralisation en mode manuel** (aujourd'hui exclue) — la laisser dehors ou
+  l'étendre ? ③ boutons de données sans Siril (⬇ Gaia / Spectres / Base SPCC) :
+  retirer ou laisser inertes. ④ **release v2.86.0** : sur accord explicite.
 
 - **Validé en réel (18/10)** : run LRGB **sans aucune tache bleue ni rouge**,
   **2 refus R + 1 G**, astrométrie **réussie** avec les bons indices.
