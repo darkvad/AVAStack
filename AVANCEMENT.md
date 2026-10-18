@@ -163,10 +163,11 @@ Leçon durable et preuves : `CLAUDE.md` § « Diagnostic de l'entrée d'astromé
   exigent `== "triangles"` et restent verts (leur résidu est ~0,03 px).
 
 ### Contexte de reprise (à coller)
-Arbre modifié (v2.83.0 **non commitée**) : le ② choix C est **LIVRÉ** — banc 134
-vert (30 vérifs) et non-régression 13/15/21/116/117/129b/131/132/133 verte.
-Prochaine action unique : **faire valider par Alain** le run réel LRGB+Ha (refus
-par rôle inchangés, trace ⑦ montrant `triangles+étoiles(n)`), puis commit/push.
+Arbre propre, **`4dd335b` poussé** : le ② choix C (jalon 134, v2.83.0) est
+**LIVRÉ ET VALIDÉ en réel** (472 frames, 2 refus G 1 · R 1, canaux à
+0,079 / 0,130 px, aucune régression). Prochaine action unique : **MESURER
+l'étape ③ (SHO/HOO sans `phase`)** — refus par rôle AVANT/APRÈS et contrôle
+positif 200 étoiles —, **sans toucher au code avant d'avoir les chiffres**.
 
 ---
 
