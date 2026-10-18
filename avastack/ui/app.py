@@ -425,6 +425,10 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # d'étoiles — OPT-IN, case DÉCOCHÉE = combine d'avant le 117c.
         self._compo_lissage_halos = False
         self._compo_seuil_halos = composition_mod.SEUIL_MASQUE_SIGMA
+        # Jalon J2 (v2.88.0) : FUSION DU Ha au rouge (RGB+Ha, LRGB+Ha). None =
+        # défauts figés (`fusion_ha_effectif` les complète) ; sinon dict
+        # {mode, poids} saisi dans le cadre « Fusion Ha ».
+        self._compo_fusion_ha = None
         self._compo_mode_l = "synthetise"
         # Jalon 55 : un réglage compo/fit changé SANS nouvelle brute (mode
         # dossier consommé) doit quand même rafraîchir le rendu — le worker
@@ -3218,6 +3222,9 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             + (self.var_compo_roles[i].get() or "rôle ?") + " »")
         if d:
             self.var_compo_dossiers[i].set(d)
+            # Jalon J2 : le continuum n'a de sens qu'avec une couche R — la
+            # case et Q se désactivent dès qu'on sait qu'il n'y en a pas.
+            self._maj_fusion_ha()
 
     def _detecter_filtres(self) -> None:
         """Auto-détection (jalon 19) : pour chaque dossier rempli, lit le
@@ -3681,6 +3688,10 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         """Ligne d'aide : mapping de la composition ; la radio « Canal L »
         n'est active qu'en LRGB (inutile ailleurs)."""
         nom = self.var_compo.get()
+        # Jalon J2 (v2.88.0) : le cadre « Fusion Ha » n'a de sens que si la
+        # composition porte un Ha FUSIONNÉ (RGB+Ha, LRGB+Ha) — arbitrage figé
+        # du 15/10/2026. Il suit donc le menu, pas la session.
+        self._maj_fusion_ha()
         spec = COMPOSITIONS.get(nom)
         if spec is None:
             self.lbl_compo_info.config(text="—")
@@ -3785,6 +3796,109 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._refresh_preview()
         self.disp.notify_new_stack()
 
+    # --- Jalon J2 (v2.88.0) : FUSION DU Ha au rouge --------------------------
+    def _dossier_role_compo(self, role: str) -> str:
+        """Dossier saisi pour un rôle dans les lignes de composition ("" si le
+        rôle n'est sur aucune ligne ou si le dossier est vide). Lecture de
+        variables Tk : THREAD PRINCIPAL uniquement."""
+        for i in range(composition_mod.NB_LIGNES_COMPO):
+            if self.var_compo_roles[i].get().strip() == role:
+                return self.var_compo_dossiers[i].get().strip()
+        return ""
+
+    def _maj_fusion_ha(self) -> None:
+        """Cadre « Fusion Ha » visible SEULEMENT si la composition contient un
+        Ha FUSIONNÉ (RGB+Ha, LRGB+Ha).
+
+        Arbitrage figé d'Alain (15/10/2026) : hors de ces compositions le Ha
+        est un CANAL (HOO/SHO) ou n'existe pas, et le cadre n'aurait rien à
+        régler. `winfo_manager()` évite de re-packer à chaque appel (la
+        méthode suit le menu, appelée à chaque frappe qui le change).
+
+        Le CONTINUUM (J2) dépend de la couche R : sans dossier R, la case et
+        Q sont DÉSACTIVÉS — il n'y a rien pour estimer le continuum."""
+        cadre = getattr(self, "frm_fusion_ha", None)
+        if cadre is None:
+            return
+        if composition_mod.composition_avec_ha(self.var_compo.get()):
+            if not cadre.winfo_manager():
+                cadre.pack(fill="x", pady=(6, 0))
+        else:
+            cadre.pack_forget()
+        etat = "normal" if self._dossier_role_compo("R") else "disabled"
+        for w in (getattr(self, "chk_fusion_ha_continuum", None),
+                  getattr(self, "sp_fusion_ha_q", None)):
+            if w is not None:
+                w.config(state=etat)
+        # J3 (v2.89.0) : α ne sert QU'AU mode fondu — le champ est désactivé
+        # ailleurs (sa valeur reste lue et persistée : changer de mode ne doit
+        # pas perdre le réglage).
+        sp_alpha = getattr(self, "sp_fusion_ha_alpha", None)
+        if sp_alpha is not None:
+            sp_alpha.config(
+                state="normal"
+                if str(self.var_fusion_ha_mode.get()) == "fondu_rouge"
+                else "disabled")
+
+    def _lire_fusion_ha(self) -> dict[str, Any]:
+        """Réglages saisis dans le cadre « Fusion Ha » : mode, poids, α, continuum.
+
+        Appelé côté THREAD PRINCIPAL seulement (variables Tk) ; le thread
+        worker consomme l'instantané `_compo_fusion_ha`, comme pour les gains
+        et le lissage LRGB. Le poids est BORNÉ à
+        [`POIDS_HA_MIN` ; `POIDS_HA_MAX`], α à [`ALPHA_HA_MIN` ;
+        `ALPHA_HA_MAX`], Q à [`Q_HA_MIN` ; `Q_HA_MAX`] — une saisie illisible
+        retombe sur le défaut figé (jamais sur 0, un réglage muet passerait
+        pour « sans effet »). Le continuum est FORCÉ à False quand aucun dossier
+        R n'est renseigné : sans R il n'y a rien à soustraire, et la fiche ne
+        doit pas prétendre le contraire."""
+        mode = str(self.var_fusion_ha_mode.get()
+                   or composition_mod.FUSION_HA_DEFAUT)
+        try:
+            poids = float(self.var_fusion_ha_poids.get())
+        except (tk.TclError, ValueError, TypeError):
+            poids = composition_mod.POIDS_HA_DEFAUT
+        if not math.isfinite(poids):
+            poids = composition_mod.POIDS_HA_DEFAUT
+        poids = float(min(composition_mod.POIDS_HA_MAX,
+                          max(composition_mod.POIDS_HA_MIN, poids)))
+        try:
+            alpha = float(self.var_fusion_ha_alpha.get())
+        except (tk.TclError, ValueError, TypeError):
+            alpha = composition_mod.ALPHA_HA_DEFAUT
+        if not math.isfinite(alpha):
+            alpha = composition_mod.ALPHA_HA_DEFAUT
+        alpha = float(min(composition_mod.ALPHA_HA_MAX,
+                          max(composition_mod.ALPHA_HA_MIN, alpha)))
+        try:
+            q = float(self.var_fusion_ha_q.get())
+        except (tk.TclError, ValueError, TypeError):
+            q = composition_mod.Q_HA_DEFAUT
+        if not math.isfinite(q):
+            q = composition_mod.Q_HA_DEFAUT
+        q = float(min(composition_mod.Q_HA_MAX,
+                      max(composition_mod.Q_HA_MIN, q)))
+        continuum = (bool(self.var_fusion_ha_continuum.get())
+                     and bool(self._dossier_role_compo("R")))
+        return {"mode": mode, "poids": poids, "alpha": alpha,
+                "recentrer": True,      # case du J4 (déjà le défaut du J2)
+                "continuum": continuum, "q": q,
+                "methode_continuum":
+                    composition_mod.METHODE_CONTINUUM_DEFAUT}
+
+    def _on_fusion_ha(self) -> None:
+        """Cadre « Fusion Ha » (mode/poids) — posé sur l'empilement courant et
+        appliqué dès le prochain rendu, SANS redémarrer la session (la fusion
+        est refaite à chaque composite, comme le combine LRGB). L'instantané
+        `_compo_fusion_ha` est celui que lit le worker (jamais une variable Tk
+        hors du thread principal)."""
+        self._compo_fusion_ha = self._lire_fusion_ha()
+        if self.stacker is not None and hasattr(self.stacker, "fusion_ha"):
+            self.stacker.fusion_ha = dict(self._compo_fusion_ha)
+        self._rafraichir_rendu = True
+        self._refresh_preview()
+        self.disp.notify_new_stack()
+
     def _lire_gains(self) -> dict[str, float]:
         """Gains R/G/B saisis (texte → float, virgule acceptée, défaut 1.0,
         borné 0..10). Appelé côté THREAD PRINCIPAL seulement (variables Tk) ;
@@ -3862,6 +3976,9 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # Jalon 117d : lissage du combine LRGB (halos) + seuil du masque.
         self._compo_lissage_halos = bool(self.var_lissage_halos.get())
         self._compo_seuil_halos = self._lire_seuil_halos()
+        # Jalon J2 (v2.88.0) : fusion du Ha (mode + poids) — instantané pour le
+        # worker, depuis les variables Tk du cadre « Fusion Ha ».
+        self._compo_fusion_ha = self._lire_fusion_ha()
         # Jalon 54 : instantané du recalage Linear Fit pour le thread.
         self._fit_actif = bool(self.var_fit.get())
         self._fit_mode = self._code_fit_methode()
@@ -3895,6 +4012,9 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # Jalon 117d : lissage du combine LRGB (halos) + seuil du masque.
         self._compo_lissage_halos = bool(self.var_lissage_halos.get())
         self._compo_seuil_halos = self._lire_seuil_halos()
+        # Jalon J2 (v2.88.0) : fusion du Ha (mode + poids) — instantané pour le
+        # worker (deuxième point de démarrage, cf. chemin de REPLI).
+        self._compo_fusion_ha = self._lire_fusion_ha()
         self._fit_actif = bool(self.var_fit.get())   # jalon 54 (thread)
         self._fit_mode = self._code_fit_methode()    # jalon 54b (méthode)
         # Jalon 141-B : la composition de la session qui DÉMARRE est celle des
@@ -5462,7 +5582,13 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                                                 "lissage_halos", False)),
                                    float(getattr(
                                        self.stacker, "seuil_masque_halos",
-                                       composition_mod.SEUIL_MASQUE_SIGMA))))
+                                       composition_mod.SEUIL_MASQUE_SIGMA))),
+                                  # 9e élément (jalon J2) : FUSION du Ha
+                                  # (mode, poids) — déballage tolérant côté
+                                  # display (`params_fusion_ha`).
+                                  (dict(self._compo_fusion_ha)
+                                   if isinstance(self._compo_fusion_ha, dict)
+                                   else None))
         else:
             self.disp.vl_compo = None
         # v2.37.0 : les lignes de MESURE du dict réutilisé sont RAFRAÎCHIES
@@ -5759,13 +5885,17 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # suivent la même règle que les gains (relecture côté thread principal).
         lissage_halos = bool(self.var_lissage_halos.get())
         seuil_halos = self._lire_seuil_halos()
+        # Jalon J2 : fusion du Ha (mode + poids) — même règle que les gains.
+        fusion_ha = self._lire_fusion_ha()
         if (gains != self._compo_gains or mode_l != self._compo_mode_l
                 or lissage_halos != self._compo_lissage_halos
-                or seuil_halos != self._compo_seuil_halos):
+                or seuil_halos != self._compo_seuil_halos
+                or fusion_ha != self._compo_fusion_ha):
             self._compo_gains = gains
             self._compo_mode_l = mode_l
             self._compo_lissage_halos = lissage_halos
             self._compo_seuil_halos = seuil_halos
+            self._compo_fusion_ha = fusion_ha
             # Jalon 55 : le rendu suit SANS attendre la prochaine brute
             # (le worker resynchronise et recalcule), et la résolution
             # VeraLux est forcée — les gains ne font pas partie de sa clé,

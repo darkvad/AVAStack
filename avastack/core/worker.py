@@ -218,6 +218,7 @@ class AcquisitionWorker:
     _astro_wcs_secours: Any
     _autoriser_lecture: Any
     _cadence_dossier: Any
+    _compo_fusion_ha: Any
     _compo_gains: Any
     _compo_lissage_halos: Any
     _compo_mode_l: Any
@@ -578,6 +579,14 @@ class AcquisitionWorker:
                             self._compo_lissage_halos)
                         self.stacker.seuil_masque_halos = float(
                             self._compo_seuil_halos)
+                    # Jalon J2 (v2.88.0) : FUSION DU Ha au rouge (RGB+Ha,
+                    # LRGB+Ha) — mêmes règles : le réglage suit l'interface sans
+                    # redémarrer la session. None = défauts figés du module.
+                    if hasattr(self.stacker, "fusion_ha"):
+                        self.stacker.fusion_ha = (dict(self._compo_fusion_ha)
+                                                  if isinstance(
+                                                      self._compo_fusion_ha,
+                                                      dict) else None)
                 self.stacker.linear_fit = bool(self._fit_actif)
                 self.stacker.linear_fit_mode = self._fit_mode
                 # Jalon 56 (étape 5) : gains PHOTOMÉTRIQUES par rôle — écrits
@@ -783,6 +792,11 @@ class AcquisitionWorker:
                 gains_eff = (self.stacker.gains_effectifs()  # pyright: ignore[reportOptionalMemberAccess]
                              if hasattr(self.stacker, "gains_effectifs")
                              else self._compo_gains)
+                # Jalon J2 (v2.88.0) : FUSION du Ha — dict ou None, calculé UNE
+                # fois (le tuple ci-dessous est relu par le solveur, qui le
+                # déballe de façon TOLÉRANTE via `params_fusion_ha`).
+                _fus = getattr(self.stacker, "fusion_ha", None)
+                fusion_ha = dict(_fus) if isinstance(_fus, dict) else None
                 self.disp.vl_compo = (dict(canaux), self.stacker.composition,  # pyright: ignore[reportOptionalMemberAccess]
                                       gains_eff, self._compo_mode_l,
                                       # 5e élément (jalon 54) : recalage
@@ -812,7 +826,12 @@ class AcquisitionWorker:
                                                     "lissage_halos", False)),
                                        float(getattr(self.stacker,
                                                      "seuil_masque_halos",
-                                                     SEUIL_MASQUE_SIGMA))))
+                                                     SEUIL_MASQUE_SIGMA))),
+                                      # 9e élément (jalon J2, v2.88.0) : FUSION
+                                      # DU Ha (mode, poids, recentrage) ou None
+                                      # — déballage tolérant côté display
+                                      # (`params_fusion_ha`).
+                                      fusion_ha)
             else:
                 self.disp.vl_compo = None
 

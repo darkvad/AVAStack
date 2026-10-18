@@ -17,9 +17,14 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Any, Callable
 
-from ...processing.composition import (COMPOSITIONS, NB_LIGNES_COMPO, ROLES,
-                                       SEUIL_MASQUE_MAX, SEUIL_MASQUE_MIN,
-                                       SEUIL_MASQUE_SIGMA)
+from ...processing.composition import (ALPHA_HA_DEFAUT, ALPHA_HA_MAX,
+                                       ALPHA_HA_MIN, COMPOSITIONS,
+                                       CONTINUUM_HA_DEFAUT, FUSION_HA_DEFAUT,
+                                       MODES_FUSION_HA, NB_LIGNES_COMPO,
+                                       POIDS_HA_DEFAUT, POIDS_HA_MAX,
+                                       POIDS_HA_MIN, Q_HA_DEFAUT, Q_HA_MAX,
+                                       Q_HA_MIN, ROLES, SEUIL_MASQUE_MAX,
+                                       SEUIL_MASQUE_MIN, SEUIL_MASQUE_SIGMA)
 
 
 class PanneauComposition:
@@ -37,6 +42,17 @@ class PanneauComposition:
     var_norm_commune: tk.Variable
     var_lissage_halos: tk.Variable
     var_lissage_halos_sigma: tk.Variable
+    # Jalon J2 (v2.88.0) : cadre « Fusion Ha » — mode + poids du Ha ajouté au
+    # rouge des compositions RGB+Ha / LRGB+Ha.
+    frm_fusion_ha: ttk.LabelFrame
+    var_fusion_ha_mode: tk.Variable
+    var_fusion_ha_poids: tk.Variable
+    var_fusion_ha_alpha: tk.Variable
+    var_fusion_ha_continuum: tk.Variable
+    var_fusion_ha_q: tk.Variable
+    chk_fusion_ha_continuum: ttk.Checkbutton
+    sp_fusion_ha_alpha: ttk.Spinbox
+    sp_fusion_ha_q: ttk.Spinbox
     var_compo_dossiers: list[tk.StringVar]
     var_compo_roles: list[tk.StringVar]
     var_compo_gains: dict[str, tk.StringVar]
@@ -48,6 +64,7 @@ class PanneauComposition:
     _detecter_filtres: Callable[..., Any]
     _on_norm_commune: Callable[..., Any]
     _on_lissage_halos: Callable[..., Any]
+    _on_fusion_ha: Callable[..., Any]
 
     # --- Jalon 105b : construction du panneau « Composition multi-filtres » --
     def _poser_panneau_compo(self, parent: tk.Misc) -> None:
@@ -191,4 +208,98 @@ class PanneauComposition:
             foreground="#888888", wraplength=310).pack(anchor="w")
         # Jalon 45/47 : le choix de cadence est COMMUN aux deux modes —
         # voir le cadre unique `frm_rafale` (plus de combobox ici).
+        # --- Jalon J2 (v2.88.0) : CADRE « FUSION Ha » -------------------------
+        # Le rôle Ha de RGB+Ha / LRGB+Ha n'alimente AUCUN canal : il est AJOUTÉ
+        # au ROUGE du composite, après le combine L. Le cadre est MONTRÉ
+        # SEULEMENT quand la composition contient un Ha fusionné (arbitrage figé
+        # du 15/10/2026) — c'est `_maj_fusion_ha()` (app.py) qui le pack/forget,
+        # ici il est construit mais PAS packé. Le J3 ajoutera les autres modes
+        # (fondu, écran, éclaircir, luminance) et le J4 le continuum : la liste
+        # des modes est lue dans `MODES_FUSION_HA`, jamais recopiée.
+        self.frm_fusion_ha = ttk.LabelFrame(box, text="Fusion Ha")
+        row_fm = ttk.Frame(self.frm_fusion_ha)
+        row_fm.pack(fill="x", padx=4, pady=(2, 0))
+        ttk.Label(row_fm, text="Mode :").pack(side="left")
+        self.var_fusion_ha_mode = tk.StringVar(value=FUSION_HA_DEFAUT)
+        self.cb_fusion_ha = ttk.Combobox(row_fm,
+                                         textvariable=self.var_fusion_ha_mode,
+                                         state="readonly", width=14,
+                                         values=list(MODES_FUSION_HA))
+        self.cb_fusion_ha.pack(side="left", padx=(4, 0))
+        self.cb_fusion_ha.bind("<<ComboboxSelected>>",
+                               lambda e: self._on_fusion_ha())
+        # --- J3 (v2.89.0) : profondeur du FONDU (α). N'agit que sur le mode
+        # `fondu_rouge` ; le Spinbox est DÉSACTIVÉ pour les autres modes
+        # (`_maj_fusion_ha()`), mais sa valeur est TOUJOURS lue et persistée :
+        # changer de mode ne doit pas perdre le réglage.
+        row_fa = ttk.Frame(self.frm_fusion_ha)
+        row_fa.pack(fill="x", padx=4, pady=(2, 0))
+        ttk.Label(row_fa, text="Fondu α (mode fondu) :").pack(side="left")
+        self.var_fusion_ha_alpha = tk.DoubleVar(value=ALPHA_HA_DEFAUT)
+        self.sp_fusion_ha_alpha = ttk.Spinbox(
+            row_fa, from_=ALPHA_HA_MIN, to=ALPHA_HA_MAX, increment=0.05,
+            width=6, textvariable=self.var_fusion_ha_alpha,
+            command=self._on_fusion_ha)
+        self.sp_fusion_ha_alpha.pack(side="left", padx=(4, 0))
+        self.sp_fusion_ha_alpha.bind("<Return>", lambda e: self._on_fusion_ha())
+        self.sp_fusion_ha_alpha.bind("<FocusOut>",
+                                     lambda e: self._on_fusion_ha())
+        row_fp = ttk.Frame(self.frm_fusion_ha)
+        row_fp.pack(fill="x", padx=4, pady=(2, 0))
+        ttk.Label(row_fp, text="Poids du Ha :").pack(side="left")
+        self.var_fusion_ha_poids = tk.DoubleVar(value=POIDS_HA_DEFAUT)
+        self.sp_fusion_ha_poids = ttk.Spinbox(
+            row_fp, from_=POIDS_HA_MIN, to=POIDS_HA_MAX, increment=0.1,
+            width=6, textvariable=self.var_fusion_ha_poids,
+            command=self._on_fusion_ha)
+        self.sp_fusion_ha_poids.pack(side="left", padx=(4, 0))
+        # La saisie au clavier (Entrée ou perte de focus) applique aussi — la
+        # flèche du Spinbox ne suffit pas (même règle qu'au lissage LRGB).
+        self.sp_fusion_ha_poids.bind("<Return>",
+                                     lambda e: self._on_fusion_ha())
+        self.sp_fusion_ha_poids.bind("<FocusOut>",
+                                     lambda e: self._on_fusion_ha())
+        # --- CONTINUUM (J2, demande d'Alain du 18/10 : pouvoir l'ACTIVER ou le
+        # COUPER dès maintenant, pour juger AVEC et SANS — et ne pas attribuer
+        # au Ha un défaut qui n'est que du continuum non soustrait). Référence
+        # = couche R (jamais L), bandes passantes Ha 7 nm / R 100 nm, force Q.
+        # DÉSACTIVÉ quand aucun dossier R n'est renseigné (il n'y a alors rien
+        # pour estimer le continuum) — `_maj_fusion_ha()`.
+        self.var_fusion_ha_continuum = tk.BooleanVar(
+            value=CONTINUUM_HA_DEFAUT)
+        self.chk_fusion_ha_continuum = ttk.Checkbutton(
+            self.frm_fusion_ha, text="Soustraire le continuum (référence R)",
+            variable=self.var_fusion_ha_continuum,
+            command=self._on_fusion_ha)
+        self.chk_fusion_ha_continuum.pack(anchor="w", padx=4, pady=(4, 0))
+        row_fq = ttk.Frame(self.frm_fusion_ha)
+        row_fq.pack(fill="x", padx=4, pady=(2, 0))
+        ttk.Label(row_fq, text="Force Q du continuum :").pack(side="left")
+        self.var_fusion_ha_q = tk.DoubleVar(value=Q_HA_DEFAUT)
+        self.sp_fusion_ha_q = ttk.Spinbox(
+            row_fq, from_=Q_HA_MIN, to=Q_HA_MAX, increment=0.05,
+            width=6, textvariable=self.var_fusion_ha_q,
+            command=self._on_fusion_ha)
+        self.sp_fusion_ha_q.pack(side="left", padx=(4, 0))
+        self.sp_fusion_ha_q.bind("<Return>", lambda e: self._on_fusion_ha())
+        self.sp_fusion_ha_q.bind("<FocusOut>", lambda e: self._on_fusion_ha())
+        ttk.Label(self.frm_fusion_ha, text=(
+            "Principe : le Ha est FUSIONNÉ au composite — "
+            "résultat = composite + poids × (mode − composite). Poids 1 = le "
+            "mode tel quel, 0 = aucun effet, au-delà de 1 on le renforce. "
+            "MODES : ajout_rouge (ajout pur au rouge), fondu_rouge (mélange "
+            "rouge ↔ Ha réglé par α), ecran_rouge (écran : monte sans écraser), "
+            "eclaircir_rouge (garde le plus clair de R et du Ha), "
+            "ha_luminance (le Ha éclaire les TROIS canaux). Le Ha est recentré "
+            "sur son propre fond, donc le fond du ciel ne dérive pas ; hors "
+            "luminance, VERT et BLEU ne sont jamais touchés. "
+            "CONTINUUM : un filtre Ha de 7 nm laisse passer "
+            "aussi la lumière blanche de l'objet et du ciel ; la case le "
+            "retranche (estimé sur R, ramené par 7 nm / 100 nm, réglé par Q, "
+            "puis écrêté à [0 ; 1]) — la COUPER permet de comparer, mais un "
+            "défaut vu sans elle peut n'être que du continuum non soustrait. "
+            "Elle se désactive si aucun dossier R n'est renseigné. "
+            "S'applique aux compositions RGB+Ha et LRGB+Ha."),
+            foreground="#888888", wraplength=300).pack(anchor="w", padx=4,
+                                                       pady=(2, 4))
         self._on_compo()    # pré-remplit les lignes de rôle de la compo par défaut

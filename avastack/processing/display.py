@@ -31,6 +31,20 @@ def params_lissage_halos(compo: Any) -> tuple[bool, float | None]:
     return actif, seuil
 
 
+def params_fusion_ha(compo: Any) -> dict | None:
+    """Réglages de FUSION DU Ha lus dans le 9e élément du job de composition
+    (jalon J2, v2.88.0).
+
+    Déballage TOLÉRANT : `compo` peut être None, un tuple d'avant le J2 (8
+    éléments) ou d'AVANT le jalon 124 — où le 9e élément était la
+    NEUTRALISATION (`bool`, désormais ignorée par le solveur). Seul un DICT est
+    accepté : un booléen ou toute autre valeur rend None (aucune fusion, donc
+    comportement d'avant le J2). Extrait du chemin live pour être testable sans
+    lancer le solveur, comme `params_lissage_halos`."""
+    fusion = compo[8] if compo is not None and len(compo) > 8 else None
+    return dict(fusion) if isinstance(fusion, dict) else None
+
+
 # ============================================================== jalon 75
 # ÉTAGE « NIVEAUX » DE L'ÉCRAN (les 3 barres de l'histogramme : Noir /
 # Médian / Blanc) et SATURATION PAR COULEUR.
@@ -963,7 +977,12 @@ class DisplayProcessor:
                         # Jalon 117d : la vue « traitée » recompose comme la vue
                         # « empilement » — case décochée → σ = 0 (aucun flou).
                         sigma_l=None if lissage_halos else 0.0,
-                        seuil_masque_sigma=seuil_halos)
+                        seuil_masque_sigma=seuil_halos,
+                        # Jalon J2 : la FUSION DU Ha fait partie du COMPOSITE
+                        # (pas des corrections) — la vue « traitée » doit la
+                        # refaire à l'identique, sinon l'écran et le fichier
+                        # « tel que vu » ne montreraient pas la même image.
+                        fusion_ha=params_fusion_ha(compo))
                 except Exception as exc:    # formes hétérogènes (ne doit pas
                     comp = None             # arriver : cadre commun) → repli
                     msgs.append(f"Recomposition : {exc}")

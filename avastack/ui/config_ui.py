@@ -22,9 +22,12 @@ from ..processing import DisplayProcessor
 from ..processing import couleurs as couleurs_mod
 from ..processing import sharpness as nettete_live
 from ..processing import veralux as veralux_moteur
-from ..processing.composition import (COMPOSITIONS, MODES_L, NB_LIGNES_COMPO,
-                                       ROLES, SEUIL_MASQUE_MAX,
-                                       SEUIL_MASQUE_MIN, SEUIL_MASQUE_SIGMA)
+from ..processing.composition import (ALPHA_HA_MAX, ALPHA_HA_MIN, COMPOSITIONS,
+                                       MODES_FUSION_HA, MODES_L,
+                                       NB_LIGNES_COMPO, POIDS_HA_MAX,
+                                       POIDS_HA_MIN, Q_HA_MAX, Q_HA_MIN, ROLES,
+                                       SEUIL_MASQUE_MAX, SEUIL_MASQUE_MIN,
+                                       SEUIL_MASQUE_SIGMA)
 
 
 def _globals_app():
@@ -75,6 +78,8 @@ class ConfigUI:
     _norm_commune: bool
     _compo_lissage_halos: bool
     _compo_seuil_halos: float
+    _compo_fusion_ha: dict[str, Any] | None
+    _lire_fusion_ha: Callable[..., Any]
     _spcc_vars: dict[str, tk.Variable]
     _spcc_noms: dict[str, Any]
 
@@ -105,6 +110,11 @@ class ConfigUI:
     var_fit: tk.Variable
     var_fit_methode: tk.Variable
     var_folder: tk.Variable
+    var_fusion_ha_mode: tk.Variable
+    var_fusion_ha_poids: tk.Variable
+    var_fusion_ha_alpha: tk.Variable
+    var_fusion_ha_continuum: tk.Variable
+    var_fusion_ha_q: tk.Variable
     var_gamma: tk.Variable
     var_hist_lineaire: tk.Variable
     var_hist_mode: tk.Variable
@@ -247,6 +257,32 @@ class ConfigUI:
             sig = float(min(SEUIL_MASQUE_MAX, max(SEUIL_MASQUE_MIN, float(v))))
             self.var_lissage_halos_sigma.set(sig)
             self._compo_seuil_halos = sig
+        # v2.88.0 (jalon J2) : FUSION DU Ha (mode + poids). Restaurée seulement
+        # si la config en porte au moins une clé — sinon l'instantané reste
+        # None, c'est-à-dire les DÉFAUTS figés du module (ajout_rouge, poids
+        # 1,0), sans écrire de valeur dans l'interface.
+        if ("fusion_ha_mode" in c or "fusion_ha_poids" in c
+                or "fusion_ha_alpha" in c):
+            if c.get("fusion_ha_mode") in MODES_FUSION_HA:
+                self.var_fusion_ha_mode.set(c["fusion_ha_mode"])
+            v = c.get("fusion_ha_poids")
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                self.var_fusion_ha_poids.set(
+                    float(min(POIDS_HA_MAX, max(POIDS_HA_MIN, float(v)))))
+            # J3 (v2.89.0) : α du fondu — borné comme à la saisie.
+            v = c.get("fusion_ha_alpha")
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                self.var_fusion_ha_alpha.set(
+                    float(min(ALPHA_HA_MAX, max(ALPHA_HA_MIN, float(v)))))
+            # J2 : le CONTINUUM (case + force Q) — mêmes règles de bornage.
+            cont = c.get("fusion_ha_continuum")
+            if isinstance(cont, bool):
+                self.var_fusion_ha_continuum.set(cont)
+            v = c.get("fusion_ha_q")
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                self.var_fusion_ha_q.set(
+                    float(min(Q_HA_MAX, max(Q_HA_MIN, float(v)))))
+            self._compo_fusion_ha = self._lire_fusion_ha()
         self._on_compo_roles()   # composition recollée aux rôles restaurés
         if c.get("process_existing") is False:
             self.var_process_existing.set(False)
@@ -629,6 +665,18 @@ class ConfigUI:
         # seuil de masque borné aux limites du module.
         c["lissage_halos"] = bool(self.var_lissage_halos.get())
         c["lissage_halos_sigma"] = float(self._lire_seuil_halos())
+        # v2.88.0 (jalon J2) puis v2.89.0 (J3) : FUSION DU Ha — mode, poids, α
+        # BORNÉS, relus par `_lire_fusion_ha` (une saisie hors bornes ne doit pas
+        # être persistée).
+        fus = self._lire_fusion_ha()
+        c["fusion_ha_mode"] = fus["mode"]
+        c["fusion_ha_poids"] = float(fus["poids"])
+        c["fusion_ha_alpha"] = float(fus["alpha"])
+        # La CASE est persistée TELLE QUELLE (pas la valeur effective : elle
+        # est forcée à False tant qu'aucun dossier R n'est renseigné, et cet
+        # état ne doit pas écraser le choix de l'utilisateur).
+        c["fusion_ha_continuum"] = bool(self.var_fusion_ha_continuum.get())
+        c["fusion_ha_q"] = float(fus["q"])
         c["process_existing"] = self.var_process_existing.get()
         # Les commandes ne sont persistées que si leur OUTIL EXISTE (v2.38.5) :
         # une commande de repli (« graxpert … », binaire nu) figée dans

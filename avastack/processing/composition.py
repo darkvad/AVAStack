@@ -126,6 +126,85 @@ COMPOSITIONS_HA: tuple[str, ...] = ("RGB+Ha", "LRGB+Ha")
 
 MODES_L: tuple[str, ...] = ("synthetise", "degrade")   # radio « Canal L » (L vide)
 
+# ---------------------------------------------- FUSION DU Ha (jalon J2) ------
+# Le Ha des compositions *+Ha n'alimente AUCUN canal (`canaux_rgb` ne le cite
+# pas) : il est AJOUTÉ au composite APRÈS le combine L. Le plan du chantier
+# (13 arbitrages d'Alain du 15/10/2026) fige les identifiants en FRANÇAIS et
+# les défauts/bornes ci-dessous.
+#
+# J2 (v2.88.0) a livré LE PREMIER MODE et le CADRE « Fusion Ha » de l'interface ;
+# J3 (v2.89.0) livre les QUATRE AUTRES. Tous partagent le MÊME signal préparé :
+#     s = (Ha − fond(Ha)) − continuum        (continuum écrêté [0 ; 1])
+# et le MÊME rôle du POIDS : une FORCE GLOBALE qui interpole entre le composite
+# d'origine et le résultat du mode —
+#     résultat = composite + poids × (opérateur(composite, s) − composite)
+# ce qui garantit, pour TOUS les modes, `poids 0` = composite du J1 AU BIT (la
+# sortie d'urgence validée en réel au J2) et `poids 1` = l'opérateur exact :
+#   · `ajout_rouge`      : R' = R + p × s                     (J2, inchangé)
+#   · `fondu_rouge` (α)  : R' = R + p × α × (s − R)
+#                          (fondu classique R×(1−α) + s×α, α 0,5 par défaut)
+#   · `ecran_rouge`      : R' = R + p × s × (1 − R)
+#                          (écran 1 − (1−R)(1−s) : ajoute sans jamais écraser)
+#   · `eclaircir_rouge`  : R' = R + p × max(0, s − R)
+#                          (éclaircir = max(R, s) : ne fait que MONTER le rouge)
+#   · `ha_luminance`     : R', V' et B' += p × s
+#                          (le Ha ÉCLAIRE les trois canaux — seule exception à
+#                          « V et B jamais touchés », c'est son objet même)
+# J4 complétera le continuum (méthodes médiane / étoiles 5σ, case « recentrer le
+# Ha sur son fond ») ; J5 l'ancre réelle, la fiche de rendu et la doc.
+#
+# POURQUOI RECENTRER PAR DÉFAUT (case du J4, DÉJÀ le comportement du J2) :
+# `composer()` normalise chaque rôle par ses percentiles — mais avec l'option
+# « Normalisation commune des canaux » AUCUN point noir n'est soustrait : le
+# fond du Ha y vaut alors ~1 (son niveau physique divisé par l'amplitude du
+# vert) et l'AJOUTER tel quel inonderait le rouge. Retrancher le fond du Ha est
+# donc la seule façon d'avoir un ajout SANS dérive du fond, quel que soit le
+# mode de normalisation ; c'est aussi le défaut figé du J4 (case cochée).
+# L'ORDRE fait l'interface (Combobox) : le défaut validé en réel d'abord, puis
+# les quatre modes du J3. Ne jamais retirer `ajout_rouge` : c'est le défaut
+# figé du 15/10 ET la valeur retombée quand un mode est illisible.
+MODES_FUSION_HA: tuple[str, ...] = ("ajout_rouge", "fondu_rouge",
+                                    "ecran_rouge", "eclaircir_rouge",
+                                    "ha_luminance")
+FUSION_HA_DEFAUT: str = "ajout_rouge"
+POIDS_HA_DEFAUT: float = 1.0
+POIDS_HA_MIN: float = 0.0
+POIDS_HA_MAX: float = 10.0
+# ------------------------------------------------- CONTINUUM (J2 inclus) ------
+# Le Ha d'un filtre 7 nm ne contient pas QUE la raie : il porte aussi le
+# CONTINUUM (la lumière blanche de l'objet et du ciel dans la bande). L'ajouter
+# tel quel au rouge AJOUTE DONC AUSSI DU CONTINUUM — c'est ce qui fait conclure
+# à tort à des « défauts » du Ha. On estime ce continuum avec la couche
+# BROADBAND de RÉFÉRENCE (R, JAMAIS L — arbitrage figé du 15/10), ramenée à la
+# bande du Ha par le rapport des BANDES PASSANTES :
+#     continuum = Q × (BW_Ha / BW_RGB) × (R − fond(R)) / échelle(Ha)
+# `Q` (0,10–2,00, défaut 0,80) absorbe ce que le rapport de bandes ne dit pas
+# (transmission du filtre, temps de pose, optique) : c'est le réglage à
+# ajuster À L'ŒIL. La soustraction est ACTIVE PAR DÉFAUT (Alain, 18/10 : « ne
+# pas conclure à des défauts sans lui ») et se COUPE d'une case.
+#
+# Les DEUX AUTRES méthodes prévues au plan (médiane, étoiles 5σ) restent au
+# jalon J4 : `METHODES_CONTINUUM_HA` les accueillera sans changer l'API.
+BW_HA_NM: float = 7.0            # bande passante du filtre Ha
+BW_RGB_NM: float = 100.0         # bande passante de la référence (R)
+METHODES_CONTINUUM_HA: tuple[str, ...] = ("bandes_passantes",)
+METHODE_CONTINUUM_DEFAUT: str = "bandes_passantes"
+CONTINUUM_HA_DEFAUT: bool = True
+# Écrêtage du signal Ha APRÈS soustraction du continuum (arbitrage figé) :
+# pas de négatif (une émission ne peut pas être « moins que rien ») et pas de
+# valeur > 1 (le signal Ha est normalisé sur ses propres percentiles).
+CLIP_HA_MIN: float = 0.0
+CLIP_HA_MAX: float = 1.0
+# Réservés aux volets suivants — définis ICI pour que les défauts soient UN
+# SEUL endroit (et pour que la fiche/les bancs puissent les citer dès J2).
+ALPHA_HA_DEFAUT: float = 0.5          # J3 : mode `fondu_rouge`
+ALPHA_HA_MIN: float = 0.0
+ALPHA_HA_MAX: float = 1.0
+Q_HA_DEFAUT: float = 0.80             # J4 : continuum (bandes passantes)
+Q_HA_MIN: float = 0.10
+Q_HA_MAX: float = 2.00
+RECENTRER_HA_DEFAUT: bool = True      # J4 : case « recentrer le Ha sur son fond »
+
 
 def roles_de(composition: str) -> tuple[str, ...]:
     """Rôles attendus d'une composition (dans l'ordre de saisie UI)."""
@@ -277,6 +356,183 @@ def _luma(rgb: np.ndarray) -> np.ndarray:
     """Luminance pondérée d'un composite (H, W, 3)."""
     return (_POIDS_LUMA[0] * rgb[..., 0] + _POIDS_LUMA[1] * rgb[..., 1]
             + _POIDS_LUMA[2] * rgb[..., 2])
+
+
+def _mediane(img: np.ndarray) -> float:
+    """Médiane ROBUSTE et BON MARCHÉ (sous-échantillon 512×512) — sert au
+    recentrage du Ha sur son fond. `np.median` sur 8 Mpx coûterait ~0,1 s par
+    rendu, pour un niveau de fond qui ne dépend pas du détail fin."""
+    return float(np.median(_echantillon(np.asarray(img, dtype=np.float32))))
+
+
+def _borne_float(valeur: Any, defaut: float, mini: float, maxi: float) -> float:
+    """Valeur numérique BORNÉE, ou `defaut` si elle est illisible/NaN/∞.
+
+    Un réglage hors bornes est RAMENÉ dans l'intervalle ; une valeur qu'on ne
+    peut pas lire ne doit jamais retomber sur 0 par accident (0 = « sans
+    effet », ce qui ferait croire que le réglage ne sert à rien)."""
+    try:
+        v = float(valeur)
+    except (TypeError, ValueError):
+        return float(defaut)
+    if not np.isfinite(v):
+        return float(defaut)
+    return float(min(maxi, max(mini, v)))
+
+
+def fusion_ha_effectif(composition: str, fusion: Any = None
+                       ) -> dict[str, Any] | None:
+    """Réglages de fusion Ha RÉELLEMENT applicables à cette composition.
+
+    → None quand la composition n'a pas de Ha FUSIONNÉ (HOO/SHO, RGB, Mono… :
+    le Ha y est un canal ou n'existe pas) — la fusion ne doit JAMAIS s'inviter
+    ailleurs. Sinon un dict COMPLET {mode, poids, alpha, recentrer, continuum,
+    q, methode_continuum}, borné et validé : un mode inconnu retombe sur
+    `FUSION_HA_DEFAUT`, un poids hors bornes est ramené dans
+    [POIDS_HA_MIN ; POIDS_HA_MAX], α dans [ALPHA_HA_MIN ; ALPHA_HA_MAX], une
+    valeur illisible prend le défaut. Source UNIQUE de vérité pour `composer()`,
+    la fiche de rendu, le transport vers le solveur et les bancs.
+
+    `fusion` est tolérant : None, dict partiel, ou dict d'une version
+    antérieure (clés manquantes) — c'est le format transporté dans les
+    requêtes de sauvegarde et dans `disp.vl_compo` (déballage tolérant)."""
+    if role_ha_fusionne(composition) is None:
+        return None
+    f = fusion if isinstance(fusion, dict) else {}
+    mode = str(f.get("mode") or FUSION_HA_DEFAUT).strip()
+    if mode not in MODES_FUSION_HA:
+        mode = FUSION_HA_DEFAUT
+    methode = str(f.get("methode_continuum")
+                  or METHODE_CONTINUUM_DEFAUT).strip()
+    if methode not in METHODES_CONTINUUM_HA:
+        methode = METHODE_CONTINUUM_DEFAUT
+    return {"mode": mode,
+            "poids": _borne_float(f.get("poids"), POIDS_HA_DEFAUT,
+                                  POIDS_HA_MIN, POIDS_HA_MAX),
+            # J3 : α n'agit que sur `fondu_rouge`, mais il est TOUJOURS borné et
+            # présent — un changement de mode ne doit pas perdre le réglage.
+            "alpha": _borne_float(f.get("alpha"), ALPHA_HA_DEFAUT,
+                                  ALPHA_HA_MIN, ALPHA_HA_MAX),
+            "recentrer": bool(f.get("recentrer", RECENTRER_HA_DEFAUT)),
+            "continuum": bool(f.get("continuum", CONTINUUM_HA_DEFAUT)),
+            "q": _borne_float(f.get("q"), Q_HA_DEFAUT, Q_HA_MIN, Q_HA_MAX),
+            "methode_continuum": methode}
+
+
+def fusionner_ha(rgb: np.ndarray, ha: Any, mode: str = FUSION_HA_DEFAUT,
+                 poids: float = POIDS_HA_DEFAUT,
+                 alpha: float = ALPHA_HA_DEFAUT,
+                 recentrer: bool = RECENTRER_HA_DEFAUT,
+                 continuum: bool = CONTINUUM_HA_DEFAUT,
+                 q: float = Q_HA_DEFAUT,
+                 methode_continuum: str = METHODE_CONTINUUM_DEFAUT,
+                 r_reference: Any = None,
+                 echelle_ha: float | None = None) -> np.ndarray:
+    """Fusionne la couche Ha au composite (jalons J2 et J3).
+
+    `rgb` : (H, W, 3) float32 — le composite APRÈS le combine L, dans l'espace
+            NORMALISÉ de `composer()` (les rôles y sont déjà calés).
+    `ha`  : (H, W) float32 — la couche Ha DANS LE MÊME ESPACE (norm["Ha"]).
+    `r_reference` : la couche R BRUTE (2D) servant au CONTINUUM, ou None.
+    `echelle_ha` : le dénominateur qui a servi à normaliser le Ha
+            (`hi − lo`, ou l'échelle commune) — il ramène le continuum brut
+            dans l'espace normalisé du Ha.
+
+    LE SIGNAL, commun aux cinq modes :
+        s = Ha − fond(Ha)
+          − Q × (7/100) × (R − fond(R)) / échelle(Ha)   (si continuum ACTIF)
+    écrêté dans [0 ; 1] seulement quand le continuum agit (sinon le J2 reste
+    linéaire, comportement validé en réel).
+
+    LE POIDS est une FORCE GLOBALE qui interpole entre le composite d'origine
+    et le résultat du mode : `sortie = composite + poids × (opérateur −
+    composite)`. À poids 1 on a donc EXACTEMENT l'opérateur du mode ; à poids 0
+    on rend `rgb` tel quel (composite du J1 AU BIT, tous modes confondus).
+    LES MODES (J3, sauf le premier livré au J2 — formule INCHANGÉE) :
+        · `ajout_rouge`     : R' = R + p × s
+        · `fondu_rouge`     : R' = R + p × α × (s − R)
+                              (fondu R×(1−α) + s×α ; α 0,5 par défaut)
+        · `ecran_rouge`     : R' = R + p × s × (1 − R)
+                              (écran 1 − (1−R)(1−s) : monte sans écraser)
+        · `eclaircir_rouge` : R' = R + p × max(0, s − R)
+                              (éclaircir = max(R, s) : ne fait que MONTER)
+        · `ha_luminance`    : R', V', B' += p × s
+                              (le Ha éclaire les TROIS canaux — seule
+                              exception à « V et B jamais touchés »)
+
+    POURQUOI LE CONTINUUM (actif par défaut) : un filtre Ha de 7 nm n'isole
+    pas la raie seule, il laisse passer le CONTINUUM de l'objet et du ciel.
+    L'ajouter tel quel au rouge ajoute donc AUSSI de la lumière blanche — et
+    c'est à ce mélange qu'on attribue à tort des « défauts du Ha ». Le
+    continuum est estimé avec la couche BROADBAND de RÉFÉRENCE (R, JAMAIS L,
+    arbitrage figé), ramenée à la bande du Ha par le rapport des bandes
+    passantes et corrigée par Q (0,10–2,00, défaut 0,80).
+
+    · le RECENTRAGE (`recentrer`) retranche le fond du Ha ET celui de R : avec
+      l'option « normalisation commune » aucun point noir n'est soustrait, le
+      fond du Ha y vaut ~1 et l'ajouter tel quel inonderait le rouge ;
+    · hors `ha_luminance`, V et B ne sont JAMAIS touchés ;
+    · sans continuum, aucun écrêtage (comportement d'avant, linéaire) ;
+    · continuité : poids ≤ 0, Ha absent, forme incompatible, ou R absent alors
+      que le continuum est demandé → aucun ajout / aucun continuum, jamais
+      d'exception.
+
+    → un NOUVEAU tableau (H, W, 3) float32, ou `rgb` tel quel si rien à faire.
+    """
+    if rgb is None or ha is None:
+        return rgb
+    a = np.asarray(rgb, dtype=np.float32)
+    h = np.asarray(ha, dtype=np.float32)
+    if a.ndim != 3 or a.shape[-1] != 3 or h.ndim != 2:
+        return rgb
+    if h.shape != a.shape[:2]:
+        return rgb
+    p = _borne_float(poids, POIDS_HA_DEFAUT, POIDS_HA_MIN, POIDS_HA_MAX)
+    if p <= 0.0:
+        return rgb
+    if mode not in MODES_FUSION_HA:
+        mode = FUSION_HA_DEFAUT
+    al = _borne_float(alpha, ALPHA_HA_DEFAUT, ALPHA_HA_MIN, ALPHA_HA_MAX)
+    if methode_continuum not in METHODES_CONTINUUM_HA:
+        methode_continuum = METHODE_CONTINUUM_DEFAUT
+    if recentrer:
+        h = h - _mediane(h)
+    # --- CONTINUUM (méthode par BANDES PASSANTES) --------------------------
+    if (continuum and r_reference is not None
+            and echelle_ha is not None and float(echelle_ha) > 0.0):
+        r = np.asarray(r_reference, dtype=np.float32)
+        if r.ndim == 2 and r.shape == h.shape:
+            if recentrer:
+                r = r - _mediane(r)
+            if methode_continuum == "bandes_passantes":
+                k = (_borne_float(q, Q_HA_DEFAUT, Q_HA_MIN, Q_HA_MAX)
+                     * (BW_HA_NM / BW_RGB_NM))
+                h = h - (np.float32(k / float(echelle_ha)) * r)
+                h = np.clip(h, CLIP_HA_MIN, CLIP_HA_MAX)
+    # --- OPÉRATEUR DU MODE, puis interpolation par le POIDS ----------------
+    # `sortie = composite + p × (opérateur − composite)` : à p = 1 c'est
+    # l'opérateur EXACT, et p ≤ 0 a déjà rendu `rgb` plus haut. Écrire le DELTA
+    # (et non le résultat) garde `ajout_rouge` AU BIT identique au J2.
+    out = a.copy()
+    if mode == "ha_luminance":
+        # Le Ha ÉCLAIRE les trois canaux (luminance neutre ; la couleur vient
+        # du RGB). C'est la seule exception à « V et B jamais touchés ».
+        out += p * h[..., None]
+        return out.astype(np.float32, copy=False)
+    r0 = a[..., 0]
+    if mode == "fondu_rouge":
+        # Fondu classique R×(1−α) + s×α  ⇒  delta = α × (s − R).
+        delta = np.float32(al) * (h - r0)
+    elif mode == "ecran_rouge":
+        # Écran 1 − (1−R)(1−s)  ⇒  delta = s × (1 − R) : monte sans écraser.
+        delta = h * (np.float32(1.0) - r0)
+    elif mode == "eclaircir_rouge":
+        # Éclaircir = max(R, s)  ⇒  delta = max(0, s − R) : ne fait que MONTER.
+        delta = np.maximum(h - r0, np.float32(0.0))
+    else:                       # `ajout_rouge` (mode validé plus haut)
+        delta = h
+    out[..., 0] = r0 + p * delta
+    return out.astype(np.float32, copy=False)
 
 
 # ------------------------------------ combine LRGB : lissage du ratio L/luma ---
@@ -576,7 +832,8 @@ def composer(canaux: Any, composition: str, bornes: Any = None,
              lo_pct: float = 0.25, hi_pct: float = 99.7,
              normalisation_commune: bool = False,
              sigma_l: float | None = None,
-             seuil_masque_sigma: float | None = None) -> np.ndarray | None:
+             seuil_masque_sigma: float | None = None,
+             fusion_ha: Any = None) -> np.ndarray | None:
     """Composite linéaire d'une composition.
 
     canaux   : dict rôle → carte 2D float32 (empilement du rôle), ou None
@@ -606,6 +863,16 @@ def composer(canaux: Any, composition: str, bornes: Any = None,
                car ce seuil est EMPIRIQUE : il dépend du fond (le disque d'une
                galaxie gonfle la MAD) — voir la constante et `_masque_etoiles`.
                N'a d'effet que si `sigma_l` déclenche effectivement le lissage.
+    fusion_ha : réglages de FUSION du Ha (jalons J2 et J3) — dict
+               {mode, poids, alpha, recentrer, continuum, q, methode_continuum}
+               ou None. Appliqué SEULEMENT aux compositions dont le Ha est
+               FUSIONNÉ (`COMPOSITIONS_HA` : RGB+Ha, LRGB+Ha) et SI le rôle Ha
+               a des frames ; partout ailleurs c'est un NO-OP (HOO/SHO ont le
+               Ha dans un canal). Cinq modes : `ajout_rouge` (défaut, J2),
+               `fondu_rouge` (α), `ecran_rouge`, `eclaircir_rouge`,
+               `ha_luminance` — formules dans `fusionner_ha`. Le POIDS est une
+               force globale : 0 = composite du J1 AU BIT, 1 = opérateur exact.
+               Validation et bornage par `fusion_ha_effectif()` (source unique).
 
     → (H, W, 3) float32 linéaire, (H, W) pour Mono, ou None si AUCUN rôle
     n'a de données. ValueError si les formes des rôles diffèrent (l'app
@@ -704,6 +971,45 @@ def composer(canaux: Any, composition: str, bornes: Any = None,
                 ratio = _lisser_ratio_masque(ratio, lum, float(sig),
                                              seuil_masque_sigma)
             rgb = (rgb * ratio[..., None]).astype(np.float32)
+
+    # 5) FUSION DU Ha (jalons J2 et J3) — APRÈS le combine L, comme le figent
+    #    les 13 arbitrages du 15/10 : dans RGB+Ha / LRGB+Ha le Ha n'alimente
+    #    aucun canal, il est FUSIONNÉ au composite (rouge, ou les trois canaux
+    #    en mode luminance). `fusion_ha_effectif` rend None hors de ces
+    #    compositions (HOO/SHO, RGB, Mono…) : la fusion ne s'invite JAMAIS
+    #    ailleurs. Le Ha absent (aucune frame) est un no-op.
+    fusion = fusion_ha_effectif(composition, fusion_ha)
+    if fusion is not None:
+        ha = norm.get("Ha")
+        if ha is not None:
+            # CONTINUUM (J2, actif par défaut) : la référence est la couche
+            # BROADBAND « R » (JAMAIS L), prise BRUTE ; le dénominateur est
+            # celui qui a normalisé le Ha — c'est lui qui ramène le continuum
+            # dans l'espace normalisé, quel que soit le mode de normalisation.
+            r_ref = None
+            ech_ha = None
+            if fusion["continuum"]:
+                ref_role = (spec["canaux_rgb"].get("R") or ("R",))[0]
+                r_ref = canaux.get(ref_role)
+                if r_ref is not None:
+                    if not normaliser_canal:
+                        ech_ha = 1.0      # les canaux sont DÉJÀ normalisés
+                    elif echelle is not None:
+                        ech_ha = float(echelle)
+                    else:
+                        lo_ha, hi_ha = (bornes.get("Ha")
+                                        or bornes_normalisation(
+                                            np.asarray(canaux["Ha"],
+                                                       dtype=np.float32)))
+                        ech_ha = float(hi_ha - lo_ha)
+            rgb = fusionner_ha(rgb, ha, mode=fusion["mode"],
+                               poids=fusion["poids"],
+                               alpha=fusion["alpha"],
+                               recentrer=fusion["recentrer"],
+                               continuum=fusion["continuum"],
+                               q=fusion["q"],
+                               methode_continuum=fusion["methode_continuum"],
+                               r_reference=r_ref, echelle_ha=ech_ha)
 
     return rgb
 
@@ -886,6 +1192,13 @@ class CompositeStacker:
         # empirique et dépend du fond (cf. `SEUIL_MASQUE_SIGMA`).
         self.lissage_halos: bool = False
         self.seuil_masque_halos: float = SEUIL_MASQUE_SIGMA
+        # Jalon J2 (v2.88.0) : FUSION DU Ha au ROUGE des compositions RGB+Ha /
+        # LRGB+Ha — dict {mode, poids, recentrer}, ou None = défauts figés
+        # (`fusion_ha_effectif` complète et borne). Ce réglage agit DANS le
+        # composite : il est donc aussi dans la sauvegarde linéaire (contrairement
+        # aux corrections de couleur, qui vivent dans la chaîne de sortie). Le
+        # worker le resynchronise à chaque tour, comme les gains et le canal L.
+        self.fusion_ha: Any = None
         self.mode_l: str = "synthetise"   # radio « Canal L » (UI, phase 3)
         # Recalage colorimétrique « Linear Fit » (jalon 54) : appliqué au
         # COMPOSITE SEUL — JAMAIS aux couches (le solveur live re-fait la
@@ -1202,9 +1515,20 @@ class CompositeStacker:
         # Jalon 117d : le LISSAGE DES HALOS (et son seuil de masque) entre dans
         # la CLÉ DE MÉMOÏSATION — sans quoi cocher/décocher la case ou changer σ
         # réafficherait le composite mémoïsé (réglage « sans effet » apparent).
+        # Jalon J2 (v2.88.0) : la FUSION DU Ha y entre AUSSI (mode, poids,
+        # recentrage) : bouger le poids du Ha doit refaire le composite. On y
+        # range une forme HACHABLE (pas le dict) via `fusion_ha_effectif`.
+        # J3 (v2.89.0) : α y entre (mode fondu) — sinon changer α resservirait
+        # le composite en cache (réglage « sans effet » apparent).
+        fus = fusion_ha_effectif(self.composition, self.fusion_ha)
+        cle_fus = ((fus["mode"], round(fus["poids"], 6), round(fus["alpha"], 6),
+                    fus["recentrer"], fus["continuum"], round(fus["q"], 6),
+                    fus["methode_continuum"])
+                   if fus is not None else None)
         cle = (n, bool(recadre), self.composition, self.mode_l,
                bool(self.normalisation_commune),
-               bool(self.lissage_halos), float(self.seuil_masque_halos))
+               bool(self.lissage_halos), float(self.seuil_masque_halos),
+               cle_fus)
         if self._memo_compo is not None and self._memo_compo[0] == cle:
             comp = self._memo_compo[1]
         else:
@@ -1218,7 +1542,8 @@ class CompositeStacker:
                                 mode_l=self.mode_l,
                                 normalisation_commune=self.normalisation_commune,
                                 sigma_l=sig_l,
-                                seuil_masque_sigma=self.seuil_masque_halos)
+                                seuil_masque_sigma=self.seuil_masque_halos,
+                                fusion_ha=self.fusion_ha)
             except ValueError:
                 comp = None               # formes hétérogènes (ne doit pas
             self._memo_compo = (cle, comp)

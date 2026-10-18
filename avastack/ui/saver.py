@@ -241,6 +241,28 @@ class Saver:
             # gelées que l'affichage, sinon le fichier dériverait de l'écran.
             stats_gelees=(d._stats if d.fige else None))
         st = self.stacker
+        # Jalon J2 (v2.88.0) / J3 (v2.89.0) : la FUSION DU Ha (mode, poids, α,
+        # recentrage, continuum) fait partie du COMPOSITE linéaire écrit — la
+        # fiche doit la dire, sinon elle serait muette sur un réglage qui change
+        # l'image. On ne la déclare que si elle AGIT réellement : composition à
+        # Ha FUSIONNÉ (RGB+Ha, LRGB+Ha) ET couche Ha non vide — sinon la fiche
+        # annoncerait un ajout qui n'a rien ajouté.
+        fusion_fiche = None
+        if st is not None:
+            fusion_fiche = composition_mod.fusion_ha_effectif(
+                str(getattr(st, "composition", "")),
+                getattr(st, "fusion_ha", None))
+            if fusion_fiche is not None:
+                stacks = getattr(st, "stackers", {}) or {}
+                ha_stack = stacks.get("Ha")
+                if ha_stack is None or int(getattr(ha_stack, "n", 0)) <= 0:
+                    fusion_fiche = None
+                elif fusion_fiche["continuum"]:
+                    # Pas de couche R → le continuum n'a rien pu retirer :
+                    # la fiche ne doit pas le prétendre.
+                    ref = stacks.get("R")
+                    if ref is None or int(getattr(ref, "n", 0)) <= 0:
+                        fusion_fiche["continuum"] = False
         if st is not None:
             # NB : en MONO, l'empilement porte AUSSI des corrections (équilibrage
             # et recalage s'appliquent à une image couleur d'un dossier OSC) —
@@ -262,7 +284,8 @@ class Saver:
                 compo_combine=("luminance" in composition_mod.COMPOSITIONS.get(
                     str(getattr(st, "composition", "")), {})),
                 compo_lissage=bool(getattr(st, "lissage_halos", False)),
-                compo_seuil=getattr(st, "seuil_masque_halos", None))
+                compo_seuil=getattr(st, "seuil_masque_halos", None),
+                compo_fusion=fusion_fiche)
         return reglages
 
     # ============================================================= fiche de rendu
@@ -378,6 +401,17 @@ class Saver:
                seuil_masque_sigma=r.get("compo_seuil"),
                plafond_ratio=composition_mod.RATIO_L_MAX,
                plancher_ratio_relatif=composition_mod.PLANCHER_RATIO_FRAC)
+        # Jalon J2 (v2.88.0) : la FUSION DU Ha se fait APRÈS le combine L et
+        # fait partie du composite linéaire — sans cette étape la fiche serait
+        # MUETTE sur le mode et le poids réellement appliqués. N'apparaît que
+        # pour les compositions à Ha FUSIONNÉ (RGB+Ha, LRGB+Ha).
+        fus = r.get("compo_fusion")
+        if fus:
+            ajoute("fusion Ha", True, mode=fus.get("mode"),
+                   poids=fus.get("poids"), alpha=fus.get("alpha"),
+                   recentrer=fus.get("recentrer"),
+                   continuum=fus.get("continuum"), q=fus.get("q"),
+                   methode_continuum=fus.get("methode_continuum"))
         ajoute("recadrage", bool(r.get("corr_cadre")), cadre=r.get("corr_cadre"))
         ajoute("gradient GraXpert live", r.get("vl_graxpert"),
                commande=r.get("vl_graxpert_cmd"))

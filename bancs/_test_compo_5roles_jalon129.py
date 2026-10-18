@@ -9,10 +9,11 @@ Vérifie :
   [2] `composition_pour_roles` : les cas nominaux EXACTS des deux +Ha, et la
       NON-RÉGRESSION du repli par sous-ensemble (« Ha » → HOO, « L,R,G » →
       LRGB, « L » → Mono) — les compositions +Ha sont testées EN DERNIER ;
-  [3] FAÇADE : « LRGB+Ha » empile bien une couche Ha, MAIS cette couche
-      n'entre pas dans l'image — composite IDENTIQUE AU BIT avec et sans Ha,
-      et identique à celui de « LRGB » sur les mêmes couches. C'est la garantie
-      du volet 1 : AUCUNE fusion n'est encore appliquée ;
+  [3] FAÇADE : « LRGB+Ha » empile bien une couche Ha, et depuis le jalon J2
+      (v2.88.0) cette couche ENTRE dans l'image — ajout au rouge PAR DÉFAUT
+      (poids 1,0), le rouge SEUL changeant ; poids 0 restaure AU BIT le
+      composite d'avant (volet 1). « LRGB+Ha » sans Ha reste identique à
+      « LRGB » ;
   [4] UI réelle (Tk, config vierge simulée) : 5 lignes rôle+dossier,
       pré-remplissage des rôles de LRGB+Ha, ligne d'aide « + Ha fusionné au
       rouge », radio « Canal L » ACTIVE en LRGB+Ha, détection des filtres FITS
@@ -137,7 +138,7 @@ verifie(composition_pour_roles(()) is None,
         "jeu vide → None")
 
 # =========================================== [3] le Ha n'entre pas dans l'image
-print("[3] façade : la couche Ha est empilée mais N'ENTRE PAS dans l'image")
+print("[3] façade : la couche Ha est empilée et, depuis le J2, FUSIONNÉE")
 
 
 def carte(graine, fond=0.05, h=48, w=64):
@@ -166,9 +167,18 @@ verifie("Ha" in canaux_avec_ha and canaux_avec_ha["Ha"] is not None,
 verifie(fa.n == 5 and fa.profondeur_min() == 1,
         f"compteurs : n = {fa.n} (somme des rôles), profondeur_min = "
         f"{fa.profondeur_min()}")
-verifie(np.array_equal(comp_avec_ha, comp_sans_ha),
-        "composite IDENTIQUE AU BIT avec et sans Ha → AUCUNE fusion appliquée "
-        "(volet 1 : plomberie seule)")
+verifie(not np.array_equal(comp_avec_ha[..., 0], comp_sans_ha[..., 0])
+        and np.array_equal(comp_avec_ha[..., 1:], comp_sans_ha[..., 1:]),
+        "J2 (v2.88.0) : la couche Ha ENTRE dans l'image — ajout au rouge par "
+        "DÉFAUT (poids 1,0), et le ROUGE seul change")
+fa.fusion_ha = {"mode": "ajout_rouge", "poids": 0.0}
+verifie(np.array_equal(fa.mean(recadre=False), comp_sans_ha),
+        "poids 0 → composite IDENTIQUE AU BIT avec et sans Ha (le comportement "
+        "du volet 1 reste accessible)")
+fa.fusion_ha = None
+verifie(np.array_equal(fa.mean(recadre=False), comp_avec_ha),
+        "retour aux défauts → le composite fusionné revient (le réglage entre "
+        "bien dans la clé de mémoïsation)")
 
 fa_lrgb = CompositeStacker("LRGB", k=None)
 for _role, _g in _LAYERS:

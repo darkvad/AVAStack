@@ -1601,6 +1601,151 @@ ce qui manquait n'était pas une correction mais une MESURE.
   restent comme avant ; la composition d'un fichier déjà écrit ne se corrige
   pas — c'est `AVACOMPO` qui fait foi.
 
+## Fusion du Ha au rouge (jalon J2, v2.88.0, 18/10/2026)
+
+- **LE PROBLÈME** : dans « RGB+Ha » et « LRGB+Ha » le rôle Ha n'alimente AUCUN
+  canal (`canaux_rgb` ne le cite pas). Depuis le 129 il s'empile et s'aligne
+  (voie A du 129b) mais le composite l'IGNORAIT : `Ha: N` s'affichait dans
+  l'état par rôle, l'image ne changeait pas d'un pixel.
+- **LA FORMULE (mode `ajout_rouge`, défaut figé du 15/10)** :
+  `R' = R + poids × signal`, appliquée dans `composer()` APRÈS le combine L,
+  dans l'espace NORMALISÉ des rôles, avec
+  `signal = [ (Ha − fond(Ha)) − continuum ]` ÉCRÊTÉ dans [0 ; 1].
+  `poids` = 1,0 par défaut, borné [0 ; 10]. G et B ne sont JAMAIS touchés.
+- **LE CONTINUUM EST DANS LE J2 (demande d'Alain du 18/10)** : un filtre Ha de
+  7 nm ne laisse pas passer QUE la raie, il porte aussi le continuum de l'objet
+  et du ciel ; l'ajouter tel quel ajoute de la lumière blanche — et c'est à ce
+  mélange qu'on attribue à tort des « défauts du Ha ». Les cinq étapes :
+  ① `continuum = Q × (BW_Ha / BW_RGB) × (R − fond(R)) / échelle(Ha)` ;
+  ② la référence est la couche BROADBAND **R** (JAMAIS L) ;
+  ③ `BW_Ha` = 7 nm, `BW_RGB` = 100 nm (constantes `BW_HA_NM` / `BW_RGB_NM`) ;
+  ④ `Q` (0,10–2,00, défaut **0,80**) absorbe ce que le rapport de bandes ne dit
+  pas (transmission, temps de pose, optique) — c'est le réglage À L'ŒIL ;
+  ⑤ le signal est ÉCRÊTÉ à [0 ; 1] (aucun rouge négatif, pas de rouge > 1).
+  **L'échelle(Ha)** est le dénominateur qui a normalisé la couche Ha : c'est
+  elle qui ramène le continuum brut de R dans l'espace normalisé du Ha, quel
+  que soit le mode de normalisation (percentiles par rôle, échelle commune, ou
+  canaux déjà normalisés → 1,0).
+  · Le continuum est **ACTIF PAR DÉFAUT** et se COUPE d'une case : c'est
+    précisément ce qui permet de juger AVEC et SANS — **ne jamais conclure à un
+    défaut du Ha sans avoir regardé le rendu avec le continuum**.
+  · **Case et Q DÉSACTIVÉS quand aucun dossier R n'est renseigné** (il n'y a
+    rien pour estimer le continuum) ; `_lire_fusion_ha()` force alors
+    `continuum = False`, et la fiche ne le déclare actif que si la couche R a
+    des frames.
+  · Méthode **bandes passantes** au J2 ; les deux autres du plan (médiane,
+    étoiles 5σ) restent au J4 — `METHODES_CONTINUUM_HA` les accueillera sans
+    changer l'API.
+- **POURQUOI LE Ha EST RECENTRÉ SUR SON FOND (médiane d'un sous-échantillon
+  512×512)** : avec l'option « normalisation commune des canaux », AUCUN point
+  noir n'est soustrait et le fond du Ha vaut alors ~1 (son niveau physique
+  divisé par l'amplitude du vert) — l'ajouter tel quel inonderait le rouge.
+  MESURÉ au banc : fond du ciel immobile à ±0,001 avec recentrage, +0,30 (tout
+  le fond du Ha) sans. C'est aussi le défaut figé du J4 (case cochée).
+- **LA FUSION EST ACTIVE PAR DÉFAUT** dès qu'une couche Ha a des frames :
+  `CompositeStacker.fusion_ha = None` signifie « défauts figés », PAS
+  « désactivé ». Pour revenir EXACTEMENT au composite du J1 : `{"poids": 0.0}`
+  (vérifié AU BIT au banc 129). Conséquence assumée : le volet « composite
+  identique avec et sans Ha » du banc 129 a été MIS À JOUR volontairement.
+- **`fusion_ha_effectif(composition, fusion)` EST LA SOURCE UNIQUE** : elle rend
+  None hors RGB+Ha/LRGB+Ha (HOO/SHO ont le Ha dans un canal : ne jamais les
+  toucher), complète un dict partiel, borne le poids et retombe sur le défaut
+  si la valeur est illisible. `composer()`, la fiche de rendu et les bancs la
+  lisent — ne pas recopier la validation ailleurs.
+- **PIÈGES DE CÂBLAGE, tous vérifiés par le banc** :
+  · le réglage entre dans la CLÉ DE MÉMOÏSATION du `CompositeStacker` (mode,
+    poids arrondi, recentrage, continuum, Q arrondi, méthode) — sans quoi
+    bouger le poids, Q ou la case resservirait le composite en cache (même
+    piège que le lissage du 117d) ;
+  · il voyage dans le 9e élément de `disp.vl_compo` (`display.params_fusion_ha`,
+    déballage TOLÉRANT : un ancien 9e élément booléen — la neutralisation
+    d'avant le 124 — est ignoré) pour que la vue « traitée » recompose à
+    l'identique ;
+  · le worker resynchronise `stacker.fusion_ha` À CHAQUE TOUR (comme les gains),
+    donc le réglage s'applique sans redémarrer la session ;
+  · la FICHE ne déclare l'étape « fusion Ha » que si la composition a un Ha
+    fusionné ET que la couche Ha a des frames — sinon elle annoncerait un
+    ajout qui n'a rien ajouté.
+- **INTERFACE** : cadre « Fusion Ha » du panneau Composition, visible SEULEMENT
+  si `composition_avec_ha(var_compo)` (le menu, pas la session) ; mode lu dans
+  `MODES_FUSION_HA` (cinq valeurs depuis le J3) ; poids 0–10
+  pas 0,1 ; case « Soustraire le continuum (référence R) » ; force Q
+  0,10–2,00 pas 0,05 ; persistés (`fusion_ha_mode`, `fusion_ha_poids`,
+  `fusion_ha_continuum`, `fusion_ha_q`, `fusion_ha_alpha`).
+- **VALIDÉ EN RÉEL (Alain, 19/10/2026)** : « avec continuum et réglage de force
+  visible ; sans continuum on voit la différence, les rouges s'éteignent un
+  peu » — le continuum se voit donc bien, et ne pas le soustraire fabrique
+  l'impression d'un défaut du Ha. Sur M33, poids poussé à **1,5** et **Q 0,80**
+  retenu : **le poids 1,5 est un réglage PAR CIBLE**, le défaut reste 1,0.
+- **DÉFINI POUR LA SUITE, PAS ENCORE UTILISÉ AU J2** : `ALPHA_HA_DEFAUT` 0,5
+  (livré au J3) ; `METHODES_CONTINUUM_HA` n'a que `bandes_passantes` (J4 :
+  médiane, étoiles 5σ). `RECENTRER_HA_DEFAUT` (True) est DÉJÀ le comportement du
+  J2 ; sa case sera exposée au J4.
+- Banc `bancs/_test_fusion_ha_jalon2.py` (8 volets) : défauts et bornes (dont Q),
+  formule au bit, G/B au bit, continuum exact au bit (`Q × 7/100 / échelle`,
+  écrêtage [0 ; 1]), continuum COUPÉ = ajout pur au bit, fond immobile, no-ops
+  rendant le MÊME objet, `composer()` (continuum par défaut, sans R, HOO,
+  RGB+Ha, Ha absent), clé de mémoïsation (poids, Q, recentrage), App réelle
+  (visibilité du cadre, case continuum désactivée sans R, bornes, persistance)
+  et fiche de rendu. Non-régression : 19 (×3), 117d, 121, 129 (mis à jour),
+  129b, 130, 136, 141, garde-fou vert, pyright 0.
+
+## Fusion du Ha — les cinq modes (jalon J3, v2.89.0, 19/10/2026)
+
+- **CE QUE LE J3 AJOUTE** : le J2 n'avait qu'`ajout_rouge` ; les quatre autres
+  modes du plan figé sont livrés avec α (0–1, pas 0,05, défaut 0,5). Le signal
+  est COMMUN aux cinq modes :
+  `s = (Ha − fond(Ha)) − continuum` (écrêté [0 ; 1] **seulement** si le
+  continuum agit — sans lui le J2 reste linéaire, validé en réel).
+- **LE POIDS EST UNE FORCE GLOBALE, PAS UN FACTEUR DE CHAQUE FORMULE** :
+  `sortie = composite + poids × (opérateur − composite)`. Conséquences, toutes
+  vérifiées AU BIT au banc :
+  · `poids 1` = l'opérateur EXACT du mode ;
+  · `poids 0` = le composite du J1 **AU BIT, pour les cinq modes** — la sortie
+    d'urgence validée en réel au J2 ne dépend donc pas du mode choisi ;
+  · `poids 2` EXTRAPOLE (2 × l'écart du mode), il n'est pas plafonné à 1.
+  Ne jamais réécrire une formule en y multipliant le signal par le poids : deux
+  modes deviendraient identiques au facteur près.
+- **LES CINQ MODES** (G et B INTOUCHÉS sauf le dernier) :
+  · `ajout_rouge` (J2, INCHANGÉ) : `R' = R + p·s` ;
+  · `fondu_rouge` : `R' = R + p·α·(s − R)` — fondu classique `R(1−α) + s·α` ;
+    α 0 = rouge intact, α 1 = rouge REMPLACÉ par le signal ;
+  · `ecran_rouge` : `R' = R + p·s·(1 − R)` — écran `1 − (1−R)(1−s)` : monte
+    sans écraser ;
+  · `eclaircir_rouge` : `R' = R + p·max(0, s − R)` — `max(R, s)` : ne fait que
+    MONTER le rouge ;
+  · `ha_luminance` : `R', V', B' += p·s` — le Ha éclaire les TROIS canaux
+    (luminance neutre, la couleur vient du RGB). C'est la SEULE exception à
+    « V et B jamais touchés », et c'est son objet.
+- **PIÈGE — le rouge seul ne distingue pas `ajout_rouge` de `ha_luminance`** :
+  les deux ajoutent `s` au rouge, le second l'ajoute AUSSI à V et B. Un banc
+  qui compare des rouges croit à un doublon ; comparer les TROIS canaux (c'est
+  ce que fait le volet [5] du banc J3).
+- **`fusion_ha_effectif` PORTE α** désormais : le dict complet est
+  `{mode, poids, alpha, recentrer, continuum, q, methode_continuum}`, α borné et
+  TOUJOURS présent même hors fondu (changer de mode ne perd pas le réglage).
+  Cette fonction reste la SOURCE UNIQUE — ne pas revalider α ailleurs.
+- **CLÉ DE MÉMOÏSATION** : `(mode, poids arrondi, alpha arrondi, recentrer,
+  continuum, Q arrondi, méthode)`. α y est INDISPENSABLE : sans lui, changer α
+  resservirait le composite en cache, et le réglage paraîtrait « sans effet »
+  (même piège que le poids au J2 et le lissage du 117d).
+- **INTERFACE** : champ « Fondu α (mode fondu) » dans le cadre « Fusion Ha »,
+  DÉSACTIVÉ hors `fondu_rouge` (`_maj_fusion_ha()`), mais TOUJOURS lu et
+  persisté (`fusion_ha_alpha`) ; l'aide en clair nomme les cinq modes. Le
+  Spinbox α ne doit pas être activé par la même règle que Q (qui, elle, dépend
+  du dossier R).
+- **FICHE DE RENDU** : l'étape « fusion Ha » porte `alpha` en plus de mode,
+  poids, recentrage, continuum, Q et méthode ; elle reste conditionnée à une
+  composition à Ha fusionné ET à une couche Ha non vide.
+- Banc `bancs/_test_fusion_ha_jalon3.py` (8 volets) : cinq modes, bornes d'α,
+  chaque formule AU BIT (dont α 0/1), poids 0 = même objet et 0,5 = mi-chemin
+  pour les cinq modes, continuum partagé, `composer()` (poids 0, formules,
+  HOO intact, mode inconnu), mémoïsation (α, mode), App réelle (α activé
+  seulement en fondu, borné, persisté, restauré) et fiche. **Le banc J2 a été
+  mis à jour VOLONTAIREMENT** sur trois volets (liste des modes, dict des
+  défauts, dict de la fiche) : il vérifiait « un seul mode », vrai au J2.
+  Non-régression : J2, 129, 130, 136, 137, 141, garde-fou, pyright.
+
 ## Halo d'étoile coloré — cause, correctif et résidu (jalon 136, v2.85.0, 18/10/2026)
 
 - **CE QUE LA PREMIÈRE FICHE DISAIT ÉTAIT INCOMPLET.** La note du 18/10 parlait
