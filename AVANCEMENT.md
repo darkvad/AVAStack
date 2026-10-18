@@ -147,10 +147,10 @@ retient l'en-tête et REPOSE `suivi_astro.indice()`. Détail : `CLAUDE.md` §130
   pas `triangles+étoiles(n)`, mais elles ne couvrent que 5 frames sur 472 — on ne
   peut PAS compter la branche ②. Pour la compter : relancer avec
   `AVASTACK_TRACE_ROLES=<dossier>` (champ `align_methode` par frame).
-- **SPCC (observation d'Alain)** : R ×0,7837 / G 1,0000 / B ×0,6299, pentes R/G
-  0,942 (σ 0,015) et B/G **1,626** (σ 0,031) sur 1013 étoiles ; l'alerte « hors
-  [0,5 ; 1,5] » est donc PAR CONSTRUCTION, et le rendu est jugé plus naturel
-  qu'avec les gains Gaia ⇒ à instruire, pas à corriger à l'aveugle.
+- **SPCC — LA FONCTION RESTE, l'enquête est CLOSE** (Alain, 18/10) : R ×0,7837 /
+  G 1,0000 / B ×0,6299, pentes R/G 0,942 (σ 0,015) et B/G **1,626** (σ 0,031) sur
+  1013 étoiles ⇒ l'alerte orange « hors [0,5 ; 1,5] » est **PAR CONSTRUCTION** et
+  le rendu est jugé **meilleur** qu'avec les gains Gaia : **ne pas rouvrir**.
 
 ### État actuel
 - **Code** : **v2.86.0**, commité et poussé **`7e6cc88`** — jalons **136** (halo
@@ -219,7 +219,7 @@ Leçon durable et preuves : `CLAUDE.md` § « Diagnostic de l'entrée d'astromé
   AVANT la courbe** (`gains_fond`, garde 0,35) + stats sur l'image neutralisée.
 - **Neutralisation APRÈS étirement = EN STF AUSSI en v2.86.0 (137)** : case
   **visible et inerte** en STF jusqu'ici. Portée : option + moteur AUTOMATIQUE
-  (manuel exclu). Scène décisive 0,130 → 0,045 ; run réel coins B +19,7 → +14,1 %.
+  (manuel exclu, **CONFIRMÉ par Alain**) ; run réel coins B +19,7 → +14,1 %.
 - **Résidu de teinte des COINS (±15-20 %)** = **DÉGRADÉ**, pas une dominante :
   1,3 % en linéaire, ×18 par la pente de la MTF. Un gain global n'y peut rien ⇒
   GraXpert/ABE (déjà dans l'appli) ou estimateur par région — **décision d'Alain**.
@@ -263,13 +263,12 @@ Leçon durable et preuves : `CLAUDE.md` § « Diagnostic de l'entrée d'astromé
   exigent `== "triangles"` et restent verts (leur résidu est ~0,03 px).
 
 ### Contexte de reprise (à coller — 2 phrases)
-Arbre **v2.86.0** propre et poussé (`7e6cc88`) : ①/②/③ validés en réel, **136**
-(halo d'étoile coloré) et **137** (neutralisation après étirement en STF) livrés,
-bancs 136 et 137 verts, aucune release faite. Prochaine action unique :
-l'**interface 141-B** (prévenir quand la composition change en session), puis le
-chantier **LRGB+Ha J2 → J5** — restent deux décisions d'Alain (teinte des COINS
-±15-20 % = dégradé ; neutralisation en mode manuel) et **aucune release sans son
-accord**.
+Arbre **v2.86.0** propre et poussé : ①/②/③ validés en réel, **136** (halo
+d'étoile coloré) et **137** (neutralisation après étirement en STF) livrés,
+bancs 136 et 137 verts, aucune release faite ; le mode manuel reste hors
+neutralisation et la teinte des coins ±15-20 % est notée sans action. Prochaine
+action unique : l'**interface 141-B** (prévenir quand la composition change en
+session), puis le chantier **LRGB+Ha J2 → J5** — aucune release sans accord.
 
 ---
 
@@ -295,11 +294,10 @@ identifiants en français (`synthetise`).
 
 - **Prochaine action unique** : **interface 141-B** — quand la composition change
   en session, l'interface doit le DIRE (le fichier est correct via `AVACOMPO`).
-- **Décisions d'Alain en attente** : ① **teinte des COINS ±15-20 %** (dégradé
-  mesuré) — GraXpert/ABE (déjà dans l'appli) ou estimateur par région ?
-  ② **neutralisation en mode manuel** (aujourd'hui exclue) — la laisser dehors ou
-  l'étendre ? ③ boutons de données sans Siril (⬇ Gaia / Spectres / Base SPCC) :
-  retirer ou laisser inertes. ④ **release v2.86.0** : sur accord explicite.
+- **DÉCIDÉ le 18/10 (Alain)** : neutralisation **hors mode manuel** (confirmé) ;
+  boutons sans Siril (⬇ Gaia / Spectres / Base SPCC) **laissés en l'état**
+  (secondaire) ; **teinte des COINS** **notée, sans action**. Seule attente :
+  **release v2.86.0**, sur accord explicite.
 
 - **Validé en réel (18/10)** : run LRGB **sans aucune tache bleue ni rouge**,
   **2 refus R + 1 G**, astrométrie **réussie** avec les bons indices.
@@ -309,9 +307,10 @@ identifiants en français (`synthetise`).
 - **Décisions d'Alain (18/10, après-midi)** : **①, ② (C) et ③** sont **LIVRÉS et
   VALIDÉS en réel** (v2.82.2 / v2.83.0 / v2.84.0) ; **141 = B (prévenir)** ;
   **VeraLux = clos** (piédestal + neutralisation suffisent, fichier GPL intact) ;
-  **halo coloré = CORRIGÉ en v2.85.0 (136)** ; **neutralisation après étirement
-  en STF = FAITE en v2.86.0 (137)** ; **résidu L = abandonné** (trace
-  `CLAUDE.md`) ; **SPCC = abandonné**. Prochain jalon de code : **141-B**.
+  **halo coloré = CORRIGÉ (136)** ; **neutralisation après étirement en STF =
+  FAITE (137)** ; **résidu L = abandonné** (trace `CLAUDE.md`) ; **la FONCTION
+  SPCC RESTE** — seule l'enquête sur l'alerte orange est close. Prochain
+  jalon : **141-B**.
 - **RÉSOLU (141)** : « M33 en RGB montre les mêmes taches » = session **LRGB+Ha**
   avec l'interface passée en « RGB » **pendant** l'empilement (`AVACOMPO=LRGB+Ha…`).
   ⇒ remède retenu (B) : **prévenir** quand la composition change en session.
@@ -329,8 +328,9 @@ identifiants en français (`synthetise`).
   (le 136 égalise déjà le ciel avec le même estimateur) ; la **teinte des coins
   ±15-20 %** est un DÉGRADÉ et demande un modèle de fond réel — **décision
   d'Alain**. Détail : `CLAUDE.md` § « Neutralisation APRÈS étirement ».
-- Boutons de données sans Siril (« ⬇ Gaia », « ⬇ Spectres », « ⬇ Base SPCC ») : sans
-  objet depuis l'abandon de SPCC — à retirer ou laisser inertes (décision courte).
+- Boutons de données sans Siril (« ⬇ Gaia », « ⬇ Spectres », « ⬇ Base SPCC ») :
+  **LAISSÉS EN L'ÉTAT** (décision d'Alain, 18/10) — ils téléchargent les
+  CATALOGUES (Gaia, spectres, base SPCC), pas la correction elle-même.
   **INDI** = jalon à part, après le portage Linux ; **Store** = cadence séparée
   (v2.71.1 publiée).
 - Retour arrière en un geste : `git checkout -- avastack/processing/composition.py`.

@@ -2659,6 +2659,14 @@ ce qui manquait n'était pas une correction mais une MESURE.
   COULEUR s'appliquent par `LiveStacker.gains` (avant l'équilibrage et le Linear
   Fit) et **jamais** sur l'empilement brut `corrections=False`. Banc :
   `_test_spcc_osc.py` (bout en bout : gains vrais 0,70 / 1,30 retrouvés à 1 %).
+- **L'ALERTE « SPCC non fiable » (orange) N'EST PAS UN DÉFAUT D'IMAGE — NE PAS
+  ROUVRIR** (décision d'Alain, 18/10/2026). Mesure consignée : R ×0,7837 /
+  G 1,0000 / B ×0,6299, pentes R/G 0,942 (σ 0,015) et B/G 1,626 (σ 0,031) sur
+  1013 étoiles ⇒ l'alerte « hors [0,5 ; 1,5] » est **PAR CONSTRUCTION** sur ses
+  images, et le rendu est jugé **meilleur** qu'avec les gains Gaia. Ce qui est
+  abandonné, c'est l'**ENQUÊTE** sur cet écart — **PAS la fonction SPCC**.
+  ⚠ Erreur de consignation du handoff du 18/10 (écrit « SPCC = abandonné »),
+  corrigée le même jour : **ne jamais écrire que la SPCC est abandonnée**.
 - **LES MESURES ASTRO/PHOTOMÉTRIE/SPCC SONT RELANCÉES PAR LE WORKER, PAS PAR
   L'UI** (constat réel d'Alain du 25/09/2026, v2.37.0 : « je voulais refaire
   calculer la SPCC mais étant en fin de stack, ben ça le fait pas en décochant et
