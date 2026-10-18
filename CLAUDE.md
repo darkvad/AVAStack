@@ -1349,6 +1349,75 @@ ce qui manquait n'était pas une correction mais une MESURE.
   Le compteur de refus par rôle (`bad_frames_par_role`, ligne « Non alignées par
   rôle ») reste la mesure de terrain.
 
+## Étape ② du plan ⑪ — centroïdes APRÈS `triangles` : MESURE (18/10/2026)
+
+- **QUESTION** : `_triangles` rend-il une matrice MOINS précise que les chemins
+  ORB et `étoiles`, qui la raffinent sur les centroïdes
+  (`_raffiner_centroides`) ? Le plan ⑪ le supposait (« la matrice LMEDS brute ») ;
+  le code, lui, **consolide déjà** (correspondances mutuelles ≤ 2,5 px → RANSAC
+  2,5 px → LMEDS → contre-test final d'appariements mutuels). Mesure AVANT toute
+  correction, comme au ①.
+- **PROTOCOLE (reproductible)** : run **réel LRGB+Ha** par le vrai `ui.App`
+  (`_run_133b_fresh_linear.py` : mêmes brutes, mêmes masters dark, même ordre,
+  même politique de référence, `--no-save`, `--trace`), avec un espion PASSIF
+  greffé sur la CLASSE `StarAligner` **avant** la construction de l'appli
+  (`_espion_155.py`). Pour chaque matrice `triangles` réussie il écrit : l'empreinte
+  de la brute, le domaine (`direct` / `retournee`), les étoiles détectées, le
+  couple (`n_avant`, `res_avant`) de `_verif_centroides` sur la matrice de
+  `triangles`, puis `n_raff` de `_raffiner_centroides` et le couple
+  (`n_apres`, `res_apres`) **sur le MÊME jeu de centroïdes**, plus `d_px`,
+  `d_angle`, `d_echelle` et les deux matrices. L'espion rend EXACTEMENT
+  `(M, ok)` de l'original, avale toute erreur, et n'est jamais sur le chemin
+  d'une décision.
+- **PIÈGE D'INSTRUMENTATION — L'EMPREINTE NE SUFFIT PAS À JOINDRE UNE FRAME** :
+  les re-stacks (`_do_restack`, `_do_restack_compo`), le recalage de la couche
+  Ha (`_recaler_ha`) et la propagation d'astrométrie (`_astro_propager_restack`)
+  réalignent des **EMPILEMENTS**. Leur empreinte peut COÏNCIDER avec une brute
+  (couche Ha à **1 frame** = la brute elle-même) : mesuré au 1er essai, une
+  « frame Ha » était en réalité le recalage de la couche, et la jointure avec la
+  trace ⑦ attribuait à une frame un chemin qu'elle n'avait pas pris. Il faut
+  MARQUER ces trois chemins (`marquer_restack`) et les exclure — 40 frames vues
+  passer en re-stack dans le run final, aucune mesurée.
+- **POPULATION MESURÉE** (475 lues → **472 empilées**, 1 floue, **2 refus G**) :
+  `triangles` porte **143 frames (30,3 %)** — B 16/51, G 33/61, **Ha 39/40**,
+  L 31/240, R 24/80. Les refus sont **G 2**, sur référence `G/auto` : un
+  raffinement ne REFUSE jamais, le ② ne peut donc en retirer aucun.
+- **RÉSIDU DE LA MATRICE `triangles` SUR LES ÉTOILES** : méd **0,083 px** ·
+  p90 **0,675** · max **1,385**. Classes : **87/143 ≤ 0,10 px** · 13 dans
+  0,10-0,30 · 30 dans 0,30-0,70 · 13 > 0,70.
+- **CE QUE LES CENTROÏDES CHANGENT** : candidate gardée **112/143** (78 %), 31
+  inchangées ; résidu méd 0,0855 · p90 0,644 · max **1,141** ; 107 meilleures,
+  5 égales (plus d'appariements), **0 pire** (par construction). Gain :
+  **90 frames < 0,05 px**, 4 dans 0,05-0,10, 12 dans 0,1-0,3, **1 seule ≥ 0,3**
+  (max 0,734) ; méd **0,002 px**. Translation déplacée : méd 0,018 px, p90 0,784,
+  max 2,934 — **7 frames seulement > 1 px**, et ce sont les pires (ex.
+  1,385 → 0,651 px).
+- **PAR RÔLE (résidu méd avant → après)** : B 0,060 → 0,060 · G 0,082 → 0,084 ·
+  Ha 0,070 → 0,069 · **L 0,484 → 0,467** · R 0,083 → 0,082.
+- **CONTRÔLE POSITIF 200 ÉTOILES** (transformation CONNUE) : **202**
+  appariements, résidu **0,0438 px** à la vraie matrice, **1,4904 px** pour une
+  erreur connue de 1,5 px (lu − connu = −0,0096), retour à **0,0104 px** après
+  raffinement ; scénario rotation 0,15° + échelle : 176 appariements, 0,0533 px,
+  erreur retrouvée à 0,0148 px. ⇒ la chaîne de mesure réagit à une erreur connue.
+- **COÛT** de `_raffiner_centroides` par frame `triangles` : méd **100 ms** ·
+  p90 160 · max 405 (l'alignement d'une frame dure des secondes : le ② serait
+  indolore).
+- **LECTURE** : le gain est NÉGLIGEABLE sur 95/143 frames (66 %, < 0,05 px,
+  dont 5 nuls) même si une candidate est GARDÉE sur 112/143 ; il est réel
+  seulement sur les 7 pires (correction PARTIELLE, 12 à 50 % de l'erreur).
+  Le résidu systématique de la couche **L (~0,48 px)** n'est PAS touché : c'est
+  la **distorsion inter-nuits** du jalon 117 (palier ~0,8 px, qu'un affine
+  n'améliore pas), ce n'est pas une translation. Conclusion de mesure, pas de
+  correctif : la décision A/B/C appartient à Alain.
+- **OUTILS hors dépôt** : `_espion_155.py` (espion), `_lance_155.py` /
+  `_lance_155_fond.py` (run réel détaché), `_diag_155a_methodes.py` (méthodes des
+  traces 140/143), `_diag_155b_controle.py` (contrôle 200 étoiles),
+  `_diag_155c_analyse.py` (jointure + agrégats), `_diag_155d_detail.py`
+  (distribution des gains, refus), `_attendre_155.py`. Preuves :
+  `_155_centroides.jsonl`, `_trace155/155.jsonl`, `_155b_controle.json`,
+  `_155_resultat.txt`.
+
+
 ## Diagnostic de l'entrée d'astrométrie (18/10/2026) — lire le message AVANT de corriger
 
 - **CAUSE TROUVÉE LE 18/10/2026 — CE N'ÉTAIT NI L'IMAGE NI LE CODE : LES INDICES

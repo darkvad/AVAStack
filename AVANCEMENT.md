@@ -25,29 +25,21 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 
 ---
 
-## Session du 18/10/2026 — plan ⑪ : étape ① + garde 133 LIVRÉES (v2.82.2), bancs verts
+## Session du 18/10/2026 — ① + garde 133 livrées (v2.82.2) puis étape ② MESURÉE
 
-### Ce qui est livré
-- **Étape ① : plus de repli `phase` en BROADBAND.** `StarAligner.repli_phase`
-  (défaut **True** = comportement historique) + `PHASE_EN_BROADBAND = False` +
-  `repli_phase_session(narrowband)` dans `processing/alignment.py` ; le worker
-  l'applique **PAR SESSION** à la création de l'empileur : **False** en
-  broadband (RGB/LRGB±Ha, mono, OSC), **True** en HOO/SHO (étape ③).
-  `_sans_phase` exige les DEUX verrous (`avec_phase` du réessai +180° **et**
-  `repli_phase`) ; l'ordre **ORB → triangles** est INCHANGÉ.
-- **Conséquence VOULUE** : une « réussite » de phase en translation seule n'est
-  plus finale ⇒ `compute` atteint son réessai **+180°** (puis l'ORB étoffé) ; un
-  champ retourné est RETOURNÉ ou REFUSÉ, jamais empilé à l'envers.
-- **Banc NEUF** `bancs/_test_phase_broadband_jalon132.py` (8 volets, **VERT**) :
-  piège reproduit (angle 0 quand l'interrupteur est à True), `_phase` plus jamais
-  appelée à False, retournée 177,07° à **0,01 px** de la pose vraie, table
-  **par rôle** (L/R/G/B) : **6/8** faibles refusées contre **1/8** avec la phase,
-  **0 frame à l'envers**. Non-régression : bancs 21, 13, 116, 131, 129b **verts**.
-- **Verdict ⑩ (rappel — détail dans `CLAUDE.md` § « Pose vraie contre pose
-  appliquée »)** : les 4 divergentes sont fausses dans LES DEUX runs ; **11/50**
-  (140) et **12/49** (143) frames B ont été empilées **à l'envers** par `phase`
-  sur un champ à **+177,07°** (résidu d'une translation ≥ **2 591 px**) ; ce n'est
-  ni la référence ni le rejet par kappa-sigma.
+### Ce qui est livré (v2.82.2, commité et poussé `586f860`)
+- **Étape ①** : plus de repli `phase` en BROADBAND (`PHASE_EN_BROADBAND = False`,
+  `repli_phase_session(narrowband)`, verrou dans `_sans_phase` : il exige
+  `avec_phase` **et** `repli_phase`) ; ordre ORB → triangles INCHANGÉ. Un champ
+  retourné est RETOURNÉ (réessai +180°) ou REFUSÉ, jamais empilé à l'envers.
+  Banc neuf 132 (8 volets, vert), non-régression 21/13/116/131/129b.
+- **Garde d'interface d'astrométrie (jalon 133)** : `_astro_indices_garde()`
+  compare la saisie à `OBJCTRA/OBJCTDEC` de la brute (seuil 0,25 × champ),
+  retient l'en-tête au-delà et REPOSE `suivi_astro.indice()` ; une seule
+  comparaison par jeu d'indices. Banc neuf 133 (6 volets, vert).
+- **Verdict ⑩** : 11/50 puis 12/49 frames B empilées à l'envers par `phase` sur
+  un champ à +177,07° (translation ≥ 2 591 px impossible) — détail `CLAUDE.md`.
+
 
 ### Garde d'interface d'astrométrie (jalon 133) — LIVRÉE le 18/10
 - **Où** : `worker._astro_indices_garde()`, appelée par `_astro_tour` **après**
@@ -71,40 +63,72 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 - **Non-régression** : bancs **132, 115, 113, 56, 76** verts (banc 115 : son
   bouchon d'aligneur porte `repli_phase`, attribut né à l'étape ①).
 
+### Étape ② du plan ⑪ — MESURÉE le 18/10 (AUCUNE ligne de code touchée)
+- **Protocole** : run RÉEL LRGB+Ha instrumenté PASSIVEMENT (vrai `ui.App`, mêmes
+  brutes/darks/ordre : L 240, R 80, G 64, B 51, Ha 40 ; `--no-save`), espion sur
+  `StarAligner._triangles` qui mesure les centroïdes AVANT (`_verif_centroides`,
+  appariements mutuels ≤ 2,5 px) et le candidat de `_raffiner_centroides` APRÈS,
+  sans rien changer à la cascade. Re-stacks, recalage Ha et propagation
+  d'astrométrie EXCLUS (ils réalignent des EMPILEMENTS). 475 frames lues,
+  **472 empilées, 1 floue, 2 refus (G)**, 143 mesures, 0 erreur d'espion.
+- **Population `triangles`** : **143 / 472 frames (30,3 %)** — B 16/51,
+  G 33/61, **Ha 39/40**, L 31/240, R 24/80. Les refus restent **G 2**
+  (réf `G/auto`, seq 215 et 271) : le ② ne peut PAS en retirer, un raffinement
+  ne refuse jamais une frame.
+- **Résidu de la matrice `triangles` sur les étoiles (AVANT)** : méd 0,083 px ·
+  p90 0,675 · max 1,385. Par classe : **87/143 ≤ 0,10 px**, 13 dans 0,10-0,30,
+  30 dans 0,30-0,70, 13 > 0,70.
+- **Ce que les centroïdes changent (APRÈS)** : candidate GARDÉE **112/143**
+  (78 %), 31 inchangées ; résidu méd 0,0855 · p90 0,644 · **max 1,141** ;
+  107 meilleures, 5 égales (plus d'appariements), **0 pire** (par construction).
+  Gain : **90 frames < 0,05 px**, 4 dans 0,05-0,10, 12 dans 0,1-0,3, **1 seule
+  ≥ 0,3** (max 0,734) ; méd 0,002 px. Déplacement de translation : méd 0,018 px,
+  p90 0,784, max 2,934 — **7 frames seulement > 1 px**, et ce sont les pires
+  (ex. 1,385 → 0,651 px).
+- **PAR RÔLE (résidu méd avant → après · déplacement méd)** : B 0,060 → 0,060
+  (0,035 px) · G 0,082 → 0,084 (0,005) · Ha 0,070 → 0,069 (0,006) ·
+  **L 0,484 → 0,467 (0,164)** · R 0,083 → 0,082 (0,024).
+- **LECTURE** : `_triangles` n'est PAS « la matrice LMEDS brute » — il consolide
+  déjà (RANSAC 2,5 px + LMEDS + contre-test mutuel 2,5 px). Le ② garde une
+  candidate sur 112/143 frames mais le gain reste **< 0,05 px sur 95/143
+  (66 %)** ; il corrige PARTIELLEMENT les 7 pires et ne touche PAS le résidu
+  systématique de la couche **L (~0,48 px)**, qui est une DISTORSION inter-nuits
+  (le palier ~0,8 px du jalon 117, qu'un affine n'améliore pas) : ce n'est pas
+  la translation que les centroïdes corrigent.
+- **Contrôle positif 200 étoiles** (transformation CONNUE) : 202 appariements,
+  résidu **0,0438 px** à la vraie matrice, **1,4904 px** pour une erreur connue
+  de 1,5 px (lu − connu = −0,0096), retour à **0,0104 px** après raffinement ;
+  scénario rotation+échelle : 176 appariements, 0,0533 px, erreur retrouvée à
+  0,0148 px. ⇒ la mesure réagit à une erreur connue.
+- **Outils hors dépôt** : `_espion_155.py`, `_lance_155.py`,
+  `_diag_155b_controle.py`, `_diag_155c_analyse.py`, `_diag_155d_detail.py`,
+  `_diag_155a_methodes.py` ; preuves `_155_centroides.jsonl`,
+  `_trace155/155.jsonl`, `_155b_controle.json`, `_155_resultat.txt`.
+
 ### État actuel
-- **Code** : ⑦ (v2.82.1), ① et la garde 133 sont **COMMITÉS ET POUSSÉS**
-  (`586f860`, `origin/LRGBHa`) — arbre de travail propre. Bancs 131, 132, **133**,
-  115, 113, 56, 76 verts.
-- **RUN RÉEL LRGB (Alain, 18/10)** : **plus aucune tache bleue NI rouge**, très
-  peu de rejets (**2 R + 1 G**, à confirmer sur la trace) ⇒ `phase` en broadband
-  était la **seule** cause des deux couleurs. Test taches **TERMINÉ**.
-- **Astrométrie** : run relancé avec les **bons indices** ⇒ **réussie** ; cause
-  = AD/Dec de **M31** restées dans les champs ⇒ **garde 133 LIVRÉE** (le piège
-  est fermé côté worker).
-- **Reste à faire** : ② puis ③ du plan ⑪.
+- **Code** : v2.82.2 **COMMITÉE ET POUSSÉE** (`586f860`, `origin/LRGBHa`) ;
+  arbre de travail **propre** — le ② n'a modifié AUCUN fichier du dépôt.
+- **RUN RÉEL LRGB (Alain, 18/10)** : plus aucune tache bleue NI rouge ⇒ `phase`
+  en broadband était la seule cause. Test taches **TERMINÉ**.
+- **Astrométrie** : réussie après correction des indices (garde 133 livrée).
+- **Reste à faire** : décider du ② (mesure faite, gain marginal) puis ③
+  (SHO/HOO sans `phase`).
 - **Combine** innocenté trois fois (140/142/143) : `_ratio_combine` intact.
 
+
 ### Fichiers modifiés dans cette phase
-- `avastack/processing/alignment.py` : `PHASE_EN_BROADBAND`,
-  `repli_phase_session`, `StarAligner.repli_phase`, verrou dans `_sans_phase`,
-  doc du module et de `_compute_direct`.
-- `avastack/core/worker.py` : interrupteur appliqué par session (création de
-  l'empileur), copié par l'aligneur de propagation WCS, note sur les aligneurs Ha ;
-  **diagnostic `AVASTACK_DUMP_ASTRO`** (inactif par défaut) : dump de l'image
-  exacte donnée au solveur d'astrométrie + JSON + verdict ; **garde 133** :
-  `_astro_indices_garde`, `_astro_journal`, `_brute_courante` (extrait de
-  `_astro_indices_entete`), appel dans `_astro_tour` ; `_nom_cible_proche`.
-- `avastack/processing/astrometrie.py` : `GARDE_INDICES_FRACTION` (0,25),
-  `separation_deg()` (haversine).
-- `avastack/ui/app.py` : `_astro_garde_pour` initialisé avec les autres états
-  d'astrométrie.
-- `avastack/processing/trace_roles.py` : champ `repli_phase` (ligne `reference`).
-- `avastack/__init__.py` : **v2.82.2** + changelog (①, dump astro, garde 133).
-- `bancs/_test_phase_broadband_jalon132.py` : **NEUF** (8 volets).
-- `bancs/_test_astro_indices_garde_jalon133.py` : **NEUF** (6 volets).
-- `bancs/_test_astro_domaine_jalon115.py` : bouchons d'aligneur complets
-  (`repli_phase`).
-- `CLAUDE.md` (§ étape ①, § garde 133) et `AVANCEMENT.md`.
+- **Étape ② : AUCUN fichier du dépôt** (mesure hors dépôt ; outils listés dans
+  la section ② ci-dessus). Les fichiers ci-dessous sont ceux de la v2.82.2.
+- `avastack/processing/alignment.py` (interrupteur + verrou `_sans_phase`),
+  `avastack/core/worker.py` (session, dump astro, garde 133),
+  `avastack/processing/astrometrie.py` (`separation_deg`, seuil),
+  `avastack/processing/trace_roles.py` (`repli_phase`), `avastack/ui/app.py`,
+  `avastack/__init__.py` (**v2.82.2** + changelog).
+- Bancs NEUFS : `_test_phase_broadband_jalon132.py` (8 volets),
+  `_test_astro_indices_garde_jalon133.py` (6 volets) ; bouchons d'aligneur du
+  banc 115 complétés (`repli_phase`).
+- `CLAUDE.md` (§ étape ①, § garde 133, § étape ②) et `AVANCEMENT.md`.
+
 
 ### Mesures du chantier (détail dans `CLAUDE.md` et le changelog v2.82.2)
 - **140** RGB : aucune tache. **142** LRGB : R +103,9 % · B +132,1 %.
@@ -113,20 +137,12 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
   taches ; couches B entre runs r 0,985 · **Δ méd +72,3** aux 243 taches.
 
 ### Astrométrie — RÉSOLUE le 18/10 : les AD/Dec étaient celles de M31
-- **Cause** : les champs d'astrométrie avaient gardé **M31** (10,683333 /
-  +41,268611) alors que les brutes étaient **M33** (en-tête 23,4625 / +30,66) ;
-  Alain a corrigé la saisie, le run suivant **résout**. Détail et leçon durable :
-  `CLAUDE.md` § « Diagnostic de l'entrée d'astrométrie ».
-- **Preuve** (dump, vrai `ui.App`, 12 brutes M33 du 22/09, 3/rôle) : les deux
-  entrées sont **identiques au pixel** (r = 1,000000, écart médian 0) ;
-  indices M31 → **échec** « 5 étoiles, 4 inliers, 1,615″/px » (le sien :
-  3 inliers, 1,603) ; indices M33 → **OK, 115 appariements, 2,469″/px,
-  rms 0,30 px**. Le champ (2,637°) ne distinguait PAS les deux cibles.
-- **Mécanisme** : à l'ouverture, `_source_fichiers_obsolete()` rend `False`
-  (aucune caméra) ⇒ les AD/Dec restaurées de la config servent à la NOUVELLE
-  cible. D'où la **garde d'interface** en prochaine action.
-- **Outils hors dépôt** : `_run_astro_154_capture.py`, `_diag_astro_154d_jeu.py`,
-  `_diag_astro_154e_compare.py` ; preuves `_dump154_indicesM31\`, `_dump154_off\`.
+- **Cause** : les champs gardaient **M31** (10,683333 / +41,268611) alors que les
+  brutes étaient **M33** ; après correction de la saisie, le solve **résout**
+  (115 appariements, 2,469″/px, rms 0,30 px). Le champ (2,637°) ne distinguait
+  pas les deux cibles. Leçon durable : `CLAUDE.md` § « Diagnostic de l'entrée
+  d'astrométrie » ; preuves `_dump154_indicesM31\`, `_dump154_off\`.
+
 
 ### Décisions prises
 - **Combine hors de cause** (140/142/143) ⇒ on ne touche pas à `_ratio_combine`.
@@ -147,15 +163,20 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 - **Interface (141)** : (A) documenter, (B) prévenir, (C) invalider — à trancher.
 
 ### Problèmes ouverts
+- **Décision ②** : la mesure est faite (gain méd 0,002 px ; 7 frames > 1 px dont
+  les pires 1,385 → 0,651). Options : (A) ne RIEN ajouter, (B) ajouter le
+  raffinement tel quel (coût mesuré : **~0,10 s** par frame `triangles`, max
+  0,41 s, sur 143 frames), (C) ne l'appliquer qu'aux matrices dont le résidu
+  dépasse un seuil. **Alain tranche.**
+- **Résidu systématique de la couche L (0,48 px)** : distorsion inter-nuits
+  (palier ~0,8 px du jalon 117) que ni la similitude ni l'affine ne corrige —
+  à instruire SÉPARÉMENT (ce n'est pas le ②).
 - **VeraLux** : à instruire (ancre calculée puis soustraite par canal) — APRÈS ②/③.
-- **② du plan ⑪** : accord donné le 18/10 (commit v2.82.2 fait) — à DÉMARRER.
 
 ### Prochaines étapes
-1. **② du plan ⑪ (PROCHAINE ACTION)** : centroïdes APRÈS `triangles` — MESURE
-   seule, aucune correction avant d'avoir nommé ce que les centroïdes changent
-   (ordre actuel : ORB → triangles → étoiles → (phase)). Contrôle positif
-   200 étoiles obligatoire, refus comptés PAR RÔLE.
-2. **③** : SHO/HOO sans `phase` — décision après mesure du coût.
+1. **Décision d'Alain sur le ②** (A/B/C ci-dessus) — aucune ligne de code n'est
+   écrite avant son accord.
+2. **③** : SHO/HOO sans `phase` — mesure du coût (refus par rôle) avant décision.
 3. Contrôle positif 200 étoiles OBLIGATOIRE à chaque mesure.
 
 ### Points d'attention
@@ -172,41 +193,34 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
   d'objets célèbres — le banc **patche `wk._nom_cible_proche`** (aucun catalogue
   requis) et vérifie le JOURNAL, pas seulement `astro_info` (la résolution
   remplace la ligne d'état par son résumé).
+- **Instrumentation de l'aligneur** : l'EMPREINTE seule ne suffit pas à joindre
+  une mesure à une frame — les re-stacks, le recalage de la couche Ha et la
+  propagation d'astrométrie réalignent des EMPILEMENTS dont l'empreinte peut
+  COÏNCIDER avec une brute (couche Ha à 1 frame). Les marquer et les exclure
+  (`_espion_155.marquer_restack`), sinon la population est doublée.
+- **`_triangles` n'est PAS « la matrice LMEDS brute »** : il consolide déjà
+  (RANSAC 2,5 px + LMEDS + contre-test mutuel). Ne pas réécrire cette phrase
+  dans un plan sans revérifier le code.
 
 ### Contexte de reprise (à coller)
-v2.82.2 **commitée et poussée** (`586f860`, `origin/LRGBHa`) : étape ① (plus de
-repli `phase` en broadband, run réel LRGB sans aucune tache bleue ni rouge) +
-trace par rôle ⑦ + **garde d'interface d'astrométrie** (jalon 133, banc vert).
-Prochaine action unique : **étape ② du plan ⑪** — mesurer les centroïdes APRÈS
-`triangles` (aucune correction avant la mesure), contrôle positif 200 étoiles.
+v2.82.2 **commitée et poussée** (`586f860`) ; arbre de travail **propre**.
+**Étape ② du plan ⑪ MESURÉE le 18/10** : 143/472 frames (30,3 %) posées par
+`triangles`, résidu méd 0,083 px (L 0,484), gain des centroïdes méd **0,002 px**
+(90/143 < 0,05), 7 frames seulement déplacées de plus de 1 px, **0 refus
+supprimable** ; contrôle positif 200 étoiles PASS. Prochaine action unique :
+**attendre la décision d'Alain (A ne rien ajouter / B ajouter / C sous seuil)**
+avant d'écrire la moindre ligne de code.
+
 
 ---
 
-## Chantier en cours — CAUSE AMONT (taches rouges/bleues du LRGB) — **CLOS le 18/10**
+## Chantier CLOS — CAUSE AMONT (taches rouges/bleues du LRGB) — clos le 18/10
+Cause UNIQUE mesurée : le repli `phase` en broadband (frames B empilées à
+l'envers sur un champ à +177,07°, 11/50 puis 12/49) ; **corrigé à l'étape ①**
+et validé par le run réel d'Alain (plus aucune tache bleue ni rouge).
+Trace complète : `CLAUDE.md` (§ pose vraie, § repli `phase`), changelog v2.82.2,
+`git log` (140 → 149) — **ne rejouer aucune de ces mesures**.
 
-> Conservé comme TRACE de la recherche : ne rejouer aucune de ces mesures. La
-> synthèse exploitable est dans `CLAUDE.md` (§ pose vraie, § repli `phase`) et
-> le changelog v2.82.2.
-
-**Objectif** : supprimer les taches vues sur M33 en LRGB (absentes en RGB et en mono).
-**Règles d'or** : aucune correction avant d'avoir nommé la cause ; contrôle positif de
-recalage à chaque mesure ; mesurer sur les couches du **même run** ; rien n'est corrigé
-sans l'accord d'Alain.
-
-| Étape | Contenu | État |
-|---|---|---|
-| ① 131→133 | étirement (×600 au fond) et dark innocentés ; `2.82.0 bis` reproductible au bit | fait |
-| ② 134→139 | analyse des taches ; 134c invalide ; 135/136/138 sur couches de 40 f ⇒ annulées | fait |
-| ③ **140** | RGB sans L : **AUCUNE tache** ⇒ le rôle L est nécessaire | fait |
-| ④ **142 / 142b / 142c** | taches DANS les couches R et B ; combine innocenté ; blob compact ×6,25 | fait |
-| ⑤ **143** | L ← dossier R : **rouge parti, bleu là** ⇒ deux causes | fait |
-| ⑥ **144** | L ← dossier B (dark 120 s) : **rouge toujours propre, bleu partiel** | fait |
-| ⑦ **145** (v2.82.1) | instrumentation du worker par rôle ; rejeu 140/143/144 (agrégats **globaux** : B inchangée) ; retournement 177° et σ de B empoisonné découverts | fait |
-| ⑧ **146** | rejeu avec `--canaux` + `--trace` : **force du bleu retrouvée (4,5 / 81,1 / 46,1 %)**, couches refaites **au bit** ; écart **local** (+72 points aux 243 taches) | **fait (18/10)** |
-| ⑨ **147** | cartes `poids`/`σ` aux 243 taches : **rejet ET géométrie** — poids 0,857 (témoin rouge 1,2 % sous p5), σ **×4,38** (témoin 1,00) ; 11,4 % des frames B posées à > 2 px d'un run à l'autre (max 32,8) | **fait (18/10)** |
-| ⑩ **148** | pose vraie mesurée hors appli (**ASTAP**) : les 4 divergentes sont fausses dans **les DEUX** runs ; **11/50** et **12/49** frames B empilées **à l'envers** par le repli `phase` (rotation 0 sur un champ à **+177,07°**) ⇒ ce n'est ni la référence ni le rejet | **fait (18/10)** |
-| ⑪ **① — 132 (v2.82.2)** | plan ⑪ étape ① : **plus de repli `phase` en broadband** (interrupteur `PHASE_EN_BROADBAND` + verrou dans `_sans_phase`) ; banc neuf (8 volets) : piège supprimé, retournée 177,07° à 0,01 px, refus **par rôle** mesurés | **LIVRÉ le 18/10** · banc vert · **NON COMMITÉ** |
-| ⑫ **run réel LRGB** | **VALIDATION EN RÉEL (Alain, 18/10)** : **plus aucune tache bleue ni rouge** ; rejets **2 R + 1 G** ; astrométrie **réussie** avec les bons indices ⇒ cause amont **CLOSE** | **validé** · reste le commit |
 
 ---
 
@@ -237,9 +251,10 @@ identifiants en français (`synthetise`).
   `indices` dans le dump AVANT tout). Mesures antérieures dans `C:\Astro\test\` :
   `_astap148*\`, `_148h_toutes.txt`, `_diag_astro_152.py`, `_diag_astro_153_entree.py`,
   et pour cette séance `_dump154_indicesM31\`, `_dump154_off\`, `_154*_etat.json`.
-- **Décisions d'Alain attendues** : rien de bloquant — v2.82.2 **commitée et
-  poussée** (`586f860`) ; restent **②** (centroïdes après `triangles`, mesure
-  seule) puis **③** (SHO/HOO sans `phase`) et l'interface 141 (A/B/C).
+- **Décisions d'Alain attendues** : le **②** est MESURÉ (gain méd 0,002 px,
+  7 frames > 1 px, 0 refus supprimable) ⇒ trancher **A** (ne rien ajouter),
+  **B** (ajouter le raffinement) ou **C** (seulement sous seuil de résidu) ;
+  restent **③** (SHO/HOO sans `phase`) et l'interface 141 (A/B/C).
   Une release GitHub ne se fera QUE sur accord explicite.
 - **RÉSOLU (141)** : « M33 en RGB montre les mêmes taches » = session **LRGB+Ha** avec
   l'interface passée en « RGB » **pendant** l'empilement ; le fichier porte
