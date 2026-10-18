@@ -31,8 +31,9 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 ### État actuel
 - **Code** : **v2.89.0** sur `LRGBHa` — **J2 VALIDÉ EN RÉEL** par Alain (19/10)
   et **J3 LIVRÉ** (les 4 autres modes + α) ; bancs J2/J3 verts, non-régressions
-  vertes, garde-fou vert, pyright 0. Commit unique de cette phase (le J2
-  n'avait pas encore été commité) ; **aucune release sans accord**.
+  vertes, garde-fou vert, pyright 0. **Commité et poussé** (`8714afb`) : J2 et J3
+  dans le MÊME commit (le J2 n'avait pas encore été commité) ; **aucune release
+  sans accord**.
 - **J4** = continuum (méthodes médiane / étoiles 5σ, case « recentrer ») ;
   **J5** = ancre réelle + doc.
 
