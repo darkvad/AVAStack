@@ -88,6 +88,10 @@ SURFACE_PUBLIQUE = frozenset((
     "nettete_live", "photo_mod", "reactivite_mod", "ressources",
     "role_de_filtre", "roles_de", "sauver_config", "save_image",
     "seeing_live", "spcc_mod", "tracer_evt", "travail", "veralux_moteur",
+    # Jalon 131 (v2.84.x) : trace des rôles importée au niveau module mais
+    # JAMAIS figée ici — le garde-fou signalait donc un « APPARU » à chaque
+    # passage. Constaté au jalon 141 ; la figer ne change rien au comportement.
+    "trace_roles",
 ))
 
 # [2] Noms CONSOMMÉS par d'autres fichiers (`AVAStack.py`, les bancs) : on

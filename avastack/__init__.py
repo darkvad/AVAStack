@@ -19,7 +19,42 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.86.0"
+AVASTACK_VERSION = "2.87.0"
+
+# v2.87.0 : INTERFACE 141-B — PRÉVENIR QUAND LA COMPOSITION CHANGE EN SESSION
+#   (jalon 141, décision d'Alain du 18/10/2026, option B). Défaut constaté en
+#   réel : une session LRGB+Ha menée avec le menu « Composition » passé en
+#   « RGB » PENDANT l'empilement. Le fichier était JUSTE — son en-tête
+#   `AVACOMPO` portait LRGB+Ha — mais l'écran affichait « RGB » : la composition
+#   de la session ne se lisait plus nulle part sans ouvrir le FITS, et l'écart
+#   était SILENCIEUX. Options écartées : A = documenter (l'écran continuerait de
+#   mentir), C = invalider l'empilement (perd une session qui est bonne).
+#   CONTENU :
+#   · `App._compo_session` : la composition de la SESSION ARMÉE, distincte de
+#     `_compo_nom` (qui suit la SOURCE) et de la composition AFFICHÉE. Armée par
+#     `_armer_compo_session()` en fin de « ▶ Démarrer » (sur les rôles des
+#     dossiers, donc sur le composite réel), effacée par la remise à zéro de
+#     session, par la fermeture de la source et par la déconnexion ;
+#   · `_compo_divergente()` / `_maj_compo_session()` : bandeau ORANGE sous le
+#     menu du panneau Composition, qui nomme la composition de la session ET
+#     celle qui est affichée, et dit que la seconde ne vaudra qu'à la session
+#     suivante (« Réinitialiser l'empilement » puis « ▶ Démarrer »). Vide quand
+#     tout concorde — donc invisible dans le cas normal ;
+#   · `_prevenir_compo_session()` : UNE boîte d'avertissement par couple
+#     (session, affichée) au moment où l'écart naît (`_on_compo`,
+#     `_on_compo_roles`), puis le bandeau seul : pas de boîte à chaque frappe
+#     dans les rôles, mais l'écart ne redevient jamais silencieux ;
+#   · AUCUN changement de comportement d'empilement : le composite, la voie A du
+#     Ha, `AVACOMPO` et la fiche de rendu restent ceux de la SESSION — c'est
+#     précisément ce que le bandeau dit, et le banc le vérifie sur l'en-tête.
+#   BANC NEUF `bancs/_test_compo_session_jalon141.py` (8 volets, App réelle, Tk,
+#   `_avertir` espionné) : pas de session → rien ; écart par le menu → bandeau +
+#   une boîte ; même écart rejoué → pas de seconde boîte ; autre écart → nouvelle
+#   boîte ; retour à la composition de la session → bandeau vidé ; écart né par
+#   les RÔLES ; `AVACOMPO` dit toujours la session ; nouveau « ▶ Démarrer » →
+#   bandeau vidé et alerte réarmée ; déconnexion → plus d'écart. Non-régression
+#   19 (UI + worker compo) / 61 / 117d / 129 / 136 / 137 et banc garde-fou verts.
+#   PAS de release : à valider par Alain.
 
 # v2.86.0 : LA NEUTRALISATION APRÈS ÉTIREMENT VAUT AUSSI EN STF (jalon 137,
 #   18/10/2026). Demandé par Alain après le correctif du halo (136) : « permet la

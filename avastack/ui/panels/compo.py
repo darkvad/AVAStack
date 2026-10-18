@@ -30,6 +30,7 @@ class PanneauComposition:
     frm_compo: ttk.Frame
     var_compo: tk.Variable
     lbl_compo_info: ttk.Label
+    lbl_compo_session: ttk.Label
     rb_l_syn: ttk.Radiobutton
     rb_l_deg: ttk.Radiobutton
     var_compo_mode_l: tk.Variable
@@ -72,6 +73,16 @@ class PanneauComposition:
         cb_compo.bind("<<ComboboxSelected>>", lambda e: self._on_compo())
         self.lbl_compo_info = ttk.Label(box, text="", foreground="#666666")
         self.lbl_compo_info.pack(anchor="w")
+        # Jalon 141-B (décision d'Alain du 18/10/2026 — option B : PRÉVENIR).
+        # Le menu ci-dessus dit ce que l'on CHOISIT ; il ne dit pas ce que la
+        # SESSION en cours empile réellement. Changer la composition en cours de
+        # route laissait donc l'interface afficher « RGB » pendant que le
+        # composite (et l'en-tête AVACOMPO du fichier) restaient en LRGB+Ha : le
+        # fichier était juste, l'écran mentait en silence. Ce bandeau le dit, en
+        # orange, tant que l'écart dure ; il est vide le reste du temps.
+        self.lbl_compo_session = ttk.Label(box, text="", foreground="#c98a00",
+                                           wraplength=310)
+        self.lbl_compo_session.pack(anchor="w")
         # NB_LIGNES_COMPO lignes fixes : rôle (filtre) + dossier. Une ligne sans
         # rôle = non utilisée ; le remplissage des rôles CONTRAINT la composition
         # (cf. _on_compo_roles), la composition pré-remplit les rôles.

@@ -407,6 +407,16 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # par rôle, mean() → composite) et l'archive est tenue PAR RÔLE.
         self._mode_compo = False
         self._compo_nom = None
+        # Jalon 141-B (décision d'Alain du 18/10/2026, option B : PRÉVENIR) :
+        # composition avec laquelle la SESSION ARMÉE empile. Elle n'est PAS la
+        # composition affichée dans le panneau (on peut changer le menu en cours
+        # de route sans que le composite change) ni exactement `_compo_nom`, qui
+        # suit la SOURCE : elle naît au « ▶ Démarrer », survit à une pause
+        # (« ■ Arrêter ») et meurt au reset / à la déconnexion.
+        self._compo_session = None
+        # Couple (session, affichée) déjà ANNONCÉ par une boîte : l'utilisateur
+        # ne reçoit qu'un avertissement par écart, le bandeau restant affiché.
+        self._compo_alerte = None
         # Jalon 19 phase 3 : instantanés pour le thread worker (jamais de
         # lecture de variables Tk hors du thread principal — cf. pièges).
         self._compo_gains = None         # dict R/G/B → facteur
@@ -3593,6 +3603,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         for i in range(composition_mod.NB_LIGNES_COMPO):
             self.var_compo_roles[i].set(roles[i] if i < len(roles) else "")
         self._maj_compo_info()
+        self._prevenir_compo_session()
 
     def _on_compo_roles(self, *_) -> None:
         """Changement manuel d'un rôle (override de la détection) → la
@@ -3605,6 +3616,66 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         if comp and comp != self.var_compo.get():
             self.var_compo.set(comp)
         self._maj_compo_info()
+        self._prevenir_compo_session()
+
+    # --- Jalon 141-B : la composition AFFICHÉE peut différer de la SESSION ----
+    def _compo_divergente(self) -> str | None:
+        """Composition de la SESSION quand elle DIFFÈRE de celle affichée.
+
+        → le nom de la session (p.ex. « LRGB+Ha ») si l'écart existe, sinon
+        None. C'est le SEUL fait que l'interface doit dire : la composition
+        affichée ne décrit plus ce qui s'empile (le fichier, lui, reste correct
+        — son en-tête `AVACOMPO` porte la composition de la SESSION)."""
+        nom = self._compo_session
+        if not nom:
+            return None                    # aucune session armée : rien à dire
+        return nom if self.var_compo.get() != nom else None
+
+    def _maj_compo_session(self) -> None:
+        """Bandeau du panneau « Composition » : DIT l'écart (jalon 141-B).
+
+        Vide quand la composition affichée est celle de la session — le cas
+        normal, et le seul qui existait avant ce jalon."""
+        nom = self._compo_divergente()
+        if not nom:
+            self.lbl_compo_session.config(text="")
+            return
+        self.lbl_compo_session.config(
+            text=("⚠ La session en cours empile en « %s » : le composite "
+                  "affiché et le fichier enregistré gardent cette composition. "
+                  "« %s » ne s'appliquera qu'à la session suivante."
+                  % (nom, self.var_compo.get())))
+
+    def _prevenir_compo_session(self) -> None:
+        """Prévient UNE FOIS par écart (option B d'Alain, jalon 141-B) : une
+        boîte d'avertissement au moment où la composition affichée cesse de
+        décrire la session, puis le bandeau seul tant que l'écart dure. Le
+        garde `_compo_alerte` évite la boîte à chaque frappe dans les rôles."""
+        nom = self._compo_divergente()
+        if not nom:
+            self._compo_alerte = None
+            return
+        paire = (nom, self.var_compo.get())
+        if self._compo_alerte == paire:
+            return
+        self._compo_alerte = paire
+        self._avertir(
+            "Composition de la session",
+            "La session en cours empile en « %s ».\n\n"
+            "Changer la composition ici ne la change PAS en cours de session : "
+            "le composite affiché et le fichier enregistré restent « %s » "
+            "(l'en-tête AVACOMPO du FITS le dit).\n\n"
+            "« %s » ne s'appliquera qu'à la session SUIVANTE : « Réinitialiser "
+            "l'empilement » puis « ▶ Démarrer »."
+            % (nom, nom, self.var_compo.get()))
+
+    def _armer_compo_session(self) -> None:
+        """« ▶ Démarrer » : mémorise la composition que la session qui part va
+        employer (celle des rôles des dossiers, donc du composite) et remet
+        l'alerte à zéro — le bandeau est rafraîchi dans la foulée."""
+        self._compo_session = self._compo_nom if self._mode_compo else None
+        self._compo_alerte = None
+        self._maj_compo_info()
 
     def _maj_compo_info(self) -> None:
         """Ligne d'aide : mapping de la composition ; la radio « Canal L »
@@ -3613,6 +3684,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         spec = COMPOSITIONS.get(nom)
         if spec is None:
             self.lbl_compo_info.config(text="—")
+            self._maj_compo_session()
             return
         if "canaux_rgb" not in spec:
             txt = "Mono : un seul dossier, composite monochrome."
@@ -3633,6 +3705,9 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self.rb_l_syn.config(state=etat)
         self.rb_l_deg.config(state=etat)
         self._maj_libelles_calib()   # jalon 53 : le détail suit les rôles
+        # Jalon 141-B : le bandeau qui dit l'écart avec la composition de la
+        # SESSION suit la même ligne d'aide (vide quand tout concorde).
+        self._maj_compo_session()
 
     def _pick_folder(self) -> None:
         d = self._demander_dossier("Dossier où arrivent les brutes")
@@ -3822,6 +3897,11 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._compo_seuil_halos = self._lire_seuil_halos()
         self._fit_actif = bool(self.var_fit.get())   # jalon 54 (thread)
         self._fit_mode = self._code_fit_methode()    # jalon 54b (méthode)
+        # Jalon 141-B : la composition de la session qui DÉMARRE est celle des
+        # rôles des dossiers (donc du composite) — pas forcément celle que le
+        # menu affichera ensuite. Armée ICI, après les remises à zéro, et le
+        # bandeau du panneau est remis d'accord tout de suite.
+        self._armer_compo_session()
         # v2.41.0 : les remises à zéro de session viennent d'être faites par
         # `_reinit_etat_session()` (avant l'armement de la demande au worker),
         # et le worker les refait de son côté : plus AUCUNE ici.
@@ -3873,6 +3953,11 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._ha_ref_posee = False
         self._ha_ref_bad = 0
         self.stacker = None
+        # Jalon 141-B : session neuve → aucune composition armée (le bandeau du
+        # panneau est rafraîchi par `_refermer_source_fichiers` ou, au
+        # démarrage, par `_armer_compo_session`).
+        self._compo_session = None
+        self._compo_alerte = None
         self.disp.reset()                      # stats d'affichage repartent de zéro
         self._vl_frames = None                 # le 1er empilement relancera le solveur
         self._rendu_differ = None              # jalon 80 : aucun rendu en attente
@@ -4143,9 +4228,14 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self.cam_pilotee = None
         self._mode_compo = False
         self._compo_nom = None
+        # Jalon 141-B : la source refermée emporte la composition de la session
+        # (le prochain « ▶ Démarrer » la réarmera sur la configuration affichée).
+        self._compo_session = None
+        self._compo_alerte = None
         self.btn_deconnect.config(state="disabled")
         self.btn_start.config(state="normal")
         self.lbl_detect.config(text="")
+        self._maj_compo_info()       # jalon 141-B : le bandeau suit la session
         return True
 
     # `_vider_ecran` a été EXTRAITE au jalon 107 du chantier de refactoring
@@ -4188,6 +4278,11 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self.lbl_tec.config(text="Capteur : — · TEC : —", foreground="#888888")
         self.lbl_detect.config(text="")
         self._qhy_id = ""
+        # Jalon 141-B : caméra déconnectée → plus de session, donc plus d'écart
+        # composition à signaler (le bandeau est remis à vide).
+        self._compo_session = None
+        self._compo_alerte = None
+        self._maj_compo_info()
         self.lbl_status.config(text="Caméra déconnectée.")
 
     def _on_close(self) -> None:

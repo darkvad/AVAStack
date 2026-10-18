@@ -1529,10 +1529,12 @@ ce qui manquait n'était pas une correction mais une MESURE.
   COMMUN du STF écrêtait donc le canal le plus faible (97,34 % des pixels à 0
   dans R !) et la couronne des étoiles se colorait ; le correctif applique des
   GAINS par canal AVANT la courbe.
-- **INTERFACE 141 = B (PRÉVENIR)** : la composition d'un FICHIER se lit dans son
-  en-tête `AVACOMPO`, jamais dans l'interface ; si la composition change PENDANT
-  une session, l'interface doit **le dire** au lieu de laisser croire que la
-  session en cours a changé (le fichier, lui, reste correct).
+- **INTERFACE 141 = B (PRÉVENIR), LIVRÉE EN v2.87.0** : la composition d'un
+  FICHIER se lit dans son en-tête `AVACOMPO`, jamais dans l'interface ; si la
+  composition change PENDANT une session, l'interface doit **le dire** au lieu
+  de laisser croire que la session en cours a changé (le fichier, lui, reste
+  correct). Mise en œuvre, pièges et banc : § « Interface 141-B — la composition
+  de la SESSION n'est pas celle du menu » plus bas.
 
 - **CE QUE LA PREMIÈRE MESURE NE DISAIT PAS** : ses 3 jeux n'avaient **aucun**
   frame à retourner (0 frame à |angle| > 170°) — d'où « coût 0 » sans preuve de
@@ -1551,6 +1553,53 @@ ce qui manquait n'était pas une correction mais une MESURE.
   `cv2.invertAffineTransform(vrai)` donne 1,28 px à la « vraie » matrice contre
   0,055 px à l'estimation : le faux verdict venait de la mesure, pas du code.
 
+
+## Interface 141-B — la composition de la SESSION n'est pas celle du menu (jalon 141, v2.87.0, 18/10/2026)
+
+- **LE DÉFAUT ÉTAIT SILENCIEUX, PAS FAUX.** Session **LRGB+Ha** conduite avec le
+  menu « Composition » passé en « RGB » **pendant** l'empilement : le fichier
+  était JUSTE (`AVACOMPO = LRGB+Ha, …`, écrit depuis `stacker.composition`) mais
+  l'écran affichait « RGB ». La composition réellement empilée ne se lisait donc
+  plus nulle part sans ouvrir le FITS. Option **B = PRÉVENIR** (Alain) ;
+  A = documenter (l'écran continuerait de mentir) et C = invalider l'empilement
+  (perd une session qui est bonne) sont écartées.
+- **TROIS NOMS À NE PAS CONFONDRE** : ① `stacker.composition` / `_compo_nom` =
+  ce que la SOURCE empile (c'est lui qui pilote la voie A du Ha, la profondeur,
+  et `AVACOMPO`) ; ② `_compo_session` = la composition ARMÉE au « ▶ Démarrer »
+  (elle survit à une pause « ■ Arrêter » et meurt à la remise à zéro, à la
+  fermeture de la source et à la déconnexion) ; ③ `var_compo` = ce que le MENU
+  affiche. Le jalon ne compare que ② et ③ ; il ne touche NI ① NI l'empilement.
+- **OÙ LE DIRE** : bandeau `lbl_compo_session` du panneau Composition (orange
+  `#c98a00`, `wraplength=310`), **vide** quand tout concorde, donc invisible
+  dans le cas normal ; PLUS **une** boîte (`_avertir`) par couple
+  (session, affichée) au moment où l'écart naît — `_compo_alerte` empêche la
+  boîte à chaque frappe dans les rôles, et `_armer_compo_session()` remet ce
+  garde à zéro. Le bandeau seul resterait manquable (section pliable fermée) ;
+  la boîte seule serait oubliable une fois fermée : les deux.
+- **POINTS D'ACCROCHAGE** : `_on_compo` et `_on_compo_roles` (naissance de
+  l'écart), `_start` → `_armer_compo_session()` (APRÈS `_reinit_etat_session` et
+  après la pose de `_compo_nom`, sinon l'armement est effacé),
+  `_reinit_etat_session`, `_refermer_source_fichiers` et `_deconnecter_camera`
+  (effacement + rafraîchissement du bandeau). `_maj_compo_info()` termine
+  TOUJOURS par `_maj_compo_session()` — y compris sur son retour anticipé
+  (`spec is None`), sinon le bandeau resterait figé sur un texte périmé.
+- **PIÈGE DE MESURE — LES NOMS SE CONTIENNENT** : `"RGB+Ha"` est une
+  SOUS-CHAÎNE de `"LRGB+Ha"` ⇒ jamais `startswith`/`in` pour prouver quelle
+  composition est écrite. Le banc lit `ent.split(",")[0].strip() == "LRGB+Ha"`.
+  Autre piège du même genre : au démarrage le menu vaut « HOO » ; armer une
+  session « LRGB+Ha » sans poser le menu crée un écart LÉGITIME — le banc pose
+  donc le menu avant d'armer.
+- Banc `bancs/_test_compo_session_jalon141.py` (8 volets, App réelle, Tk,
+  `App._avertir` espionné au niveau CLASSE — une boîte modale bloquerait le
+  banc) : pas de session → rien ; écart par le menu → bandeau + une boîte ;
+  même écart rejoué → pas de seconde boîte ; autre écart → nouvelle boîte ;
+  retour à la composition de la session → bandeau vidé ; écart né par les
+  rôles ; `AVACOMPO` dit toujours la SESSION ; nouveau « ▶ Démarrer » →
+  bandeau vidé + alerte réarmée ; déconnexion → plus d'écart. Non-régression
+  19 (UI + worker compo) / 61 / 117d / 129 / 136 / 137 et garde-fou verts.
+- **HORS PÉRIMÈTRE, ASSUMÉ** : la teinte des COINS (±15-20 %) et le mode MANUEL
+  restent comme avant ; la composition d'un fichier déjà écrit ne se corrige
+  pas — c'est `AVACOMPO` qui fait foi.
 
 ## Halo d'étoile coloré — cause, correctif et résidu (jalon 136, v2.85.0, 18/10/2026)
 
