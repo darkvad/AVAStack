@@ -3815,8 +3815,12 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         régler. `winfo_manager()` évite de re-packer à chaque appel (la
         méthode suit le menu, appelée à chaque frappe qui le change).
 
-        Le CONTINUUM (J2) dépend de la couche R : sans dossier R, la case et
-        Q sont DÉSACTIVÉS — il n'y a rien pour estimer le continuum."""
+        Le CONTINUUM (J2) dépend de la couche R : sans dossier R, la case, Q,
+        les trois MÉTHODES (J4) et le recentrage sont DÉSACTIVÉS — aucune des
+        trois méthodes ne peut estimer le continuum sans la couche R.
+
+        J4 (v2.91.0) : la BANDE PASSANTE du filtre ne sert qu'à la méthode
+        « bandes passantes » — grisée ailleurs, comme α l'est hors du fondu."""
         cadre = getattr(self, "frm_fusion_ha", None)
         if cadre is None:
             return
@@ -3825,11 +3829,22 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 cadre.pack(fill="x", pady=(6, 0))
         else:
             cadre.pack_forget()
-        etat = "normal" if self._dossier_role_compo("R") else "disabled"
+        methode = str(self.var_fusion_ha_methode.get()
+                      or composition_mod.METHODE_CONTINUUM_DEFAUT)
+        a_r = bool(self._dossier_role_compo("R"))
+        etat = "normal" if a_r else "disabled"
         for w in (getattr(self, "chk_fusion_ha_continuum", None),
-                  getattr(self, "sp_fusion_ha_q", None)):
+                  getattr(self, "sp_fusion_ha_q", None),
+                  getattr(self, "chk_fusion_ha_recentrer", None)):
             if w is not None:
                 w.config(state=etat)
+        for rb in getattr(self, "rb_fusion_ha_methode", {}).values():
+            rb.config(state=etat)
+        cb_bw = getattr(self, "cb_fusion_ha_bw", None)
+        if cb_bw is not None:
+            cb_bw.config(state=("readonly"
+                                if (a_r and methode == "bandes_passantes")
+                                else "disabled"))
         # J3 (v2.89.0) : α ne sert QU'AU mode fondu — le champ est désactivé
         # ailleurs (sa valeur reste lue et persistée : changer de mode ne doit
         # pas perdre le réglage).
@@ -3839,9 +3854,69 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 state="normal"
                 if str(self.var_fusion_ha_mode.get()) == "fondu_rouge"
                 else "disabled")
+        # J4 : les CASES disent ce qui a réellement tourné (repli compris).
+        self._refléter_methode_continuum()
+
+    def _refléter_methode_continuum(self) -> None:
+        """Montre SUR LES CASES la méthode de continuum RÉELLEMENT appliquée.
+
+        Décision d'Alain (19/10/2026) : le repli d'une mesure ne doit pas
+        rester invisible. Trois signaux, tous au même endroit :
+          · la case de la méthode appliquée porte « ← appliquée » ;
+          · la ligne d'état DIT le facteur mesuré, ou la RAISON du repli ;
+          · en repli, la ligne passe en orange (couleur d'avertissement du
+            projet, comme le bandeau de composition du 141-B).
+        `info_fusion_ha` est écrit par le thread worker (affectation d'un dict,
+        atomique) et lu ici — jamais de variable Tk hors du thread principal.
+        Les textes ne sont réécrits QUE s'ils changent : cette méthode tourne à
+        chaque battement d'interface (~20×/s)."""
+        info = getattr(self.stacker, "info_fusion_ha", None)
+        inf = info if isinstance(info, dict) else {}
+        eff = inf.get("methode_effective")
+        repli = bool(inf.get("repli"))
+        for m, rb in getattr(self, "rb_fusion_ha_methode", {}).items():
+            base = str(composition_mod.METHODES_CONTINUUM_LIBELLES.get(m, m))
+            texte = base + ("   ← appliquée" if m == eff else "")
+            if str(rb.cget("text")) != texte:
+                rb.config(text=texte)
+        lbl = getattr(self, "lbl_fusion_ha_note", None)
+        if lbl is None:
+            return
+        if not eff:
+            texte, couleur = "", "#888888"
+        elif repli:
+            raison = str(inf.get("raison") or "mesure non concluante")
+            nom = composition_mod.METHODES_CONTINUUM_LIBELLES.get(str(eff),
+                                                                  str(eff))
+            texte = f"Appliquée : {nom} — REPLI ({raison})"
+            couleur = "#c98a00"
+        else:
+            nom = composition_mod.METHODES_CONTINUUM_LIBELLES.get(str(eff),
+                                                                  str(eff))
+            mesure = str(inf.get("facteur_mesure") or "")
+            texte = f"Appliquée : {nom}"
+            if mesure:
+                texte += f" (facteur mesuré {mesure})"
+            couleur = "#888888"
+        if str(lbl.cget("text")) != texte:
+            lbl.config(text=texte)
+        if str(lbl.cget("foreground")) != couleur:
+            lbl.config(foreground=couleur)
+
+    def _on_methode_continuum(self) -> None:
+        """Choix de la MÉTHODE de continuum (cases exclusives, J4).
+
+        Q repart au défaut de la méthode choisie : 0,80 en bandes passantes
+        (c'est LE réglage), 1,00 sur une mesure (ajustement fin). Le faire ICI,
+        et pas dans `_lire_fusion_ha`, évite d'écraser une valeur PERSISTÉE au
+        démarrage (cette méthode n'est appelée que par les cases)."""
+        self.var_fusion_ha_q.set(composition_mod.q_ha_defaut(
+            str(self.var_fusion_ha_methode.get())))
+        self._on_fusion_ha()
 
     def _lire_fusion_ha(self) -> dict[str, Any]:
-        """Réglages saisis dans le cadre « Fusion Ha » : mode, poids, α, continuum.
+        """Réglages saisis dans le cadre « Fusion Ha » : mode, poids, α,
+        continuum, MÉTHODE et bande passante (J4), recentrage.
 
         Appelé côté THREAD PRINCIPAL seulement (variables Tk) ; le thread
         worker consomme l'instantané `_compo_fusion_ha`, comme pour les gains
@@ -3849,7 +3924,9 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         [`POIDS_HA_MIN` ; `POIDS_HA_MAX`], α à [`ALPHA_HA_MIN` ;
         `ALPHA_HA_MAX`], Q à [`Q_HA_MIN` ; `Q_HA_MAX`] — une saisie illisible
         retombe sur le défaut figé (jamais sur 0, un réglage muet passerait
-        pour « sans effet »). Le continuum est FORCÉ à False quand aucun dossier
+        pour « sans effet »). La méthode inconnue retombe sur
+        `METHODE_CONTINUUM_DEFAUT`, la bande sur une option connue
+        (`borne_bw_ha`). Le continuum est FORCÉ à False quand aucun dossier
         R n'est renseigné : sans R il n'y a rien à soustraire, et la fiche ne
         doit pas prétendre le contraire."""
         mode = str(self.var_fusion_ha_mode.get()
@@ -3878,13 +3955,22 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             q = composition_mod.Q_HA_DEFAUT
         q = float(min(composition_mod.Q_HA_MAX,
                       max(composition_mod.Q_HA_MIN, q)))
+        methode = str(self.var_fusion_ha_methode.get()
+                      or composition_mod.METHODE_CONTINUUM_DEFAUT).strip()
+        if methode not in composition_mod.METHODES_CONTINUUM_HA:
+            methode = composition_mod.METHODE_CONTINUUM_DEFAUT
+        bw = composition_mod.BW_HA_NM
+        try:
+            bw = float(str(self.var_fusion_ha_bw.get()).split(" ")[0])
+        except (tk.TclError, ValueError, TypeError):
+            bw = composition_mod.BW_HA_NM
+        bw = composition_mod.borne_bw_ha(bw)
         continuum = (bool(self.var_fusion_ha_continuum.get())
                      and bool(self._dossier_role_compo("R")))
         return {"mode": mode, "poids": poids, "alpha": alpha,
-                "recentrer": True,      # case du J4 (déjà le défaut du J2)
+                "recentrer": bool(self.var_fusion_ha_recentrer.get()),
                 "continuum": continuum, "q": q,
-                "methode_continuum":
-                    composition_mod.METHODE_CONTINUUM_DEFAUT}
+                "methode_continuum": methode, "bw_ha": bw}
 
     def _on_fusion_ha(self) -> None:
         """Cadre « Fusion Ha » (mode/poids/α) — posé sur l'empilement courant et
@@ -5917,6 +6003,10 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._fit_actif = bool(self.var_fit.get())
         self._fit_mode = self._code_fit_methode()   # jalon 54b (méthode)
         self._maj_libelle_fit()
+        # J4 (v2.91.0) : la méthode de continuum RÉELLEMENT appliquée (et son
+        # éventuel repli) est écrite par le worker sur le stacker — on la
+        # recopie ici, sur les cases et la ligne d'état du cadre « Fusion Ha ».
+        self._refléter_methode_continuum()
         # Jalon 25/26 : lecture de la température/PWM du TEC (attributs
         # simples écrits par le thread de travail — jamais de variable Tk
         # dans le worker) + activer les lignes Filtre/TEC quand le sondage

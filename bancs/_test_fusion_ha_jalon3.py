@@ -197,7 +197,8 @@ verifie(ALPHA_HA_DEFAUT == 0.5
         f"[{ALPHA_HA_MIN} ; {ALPHA_HA_MAX}]")
 f = fusion_ha_effectif("LRGB+Ha", None)
 verifie(set(f) == {"mode", "poids", "alpha", "recentrer", "continuum", "q",
-                   "methode_continuum"} and f["alpha"] == ALPHA_HA_DEFAUT,
+                   "methode_continuum", "bw_ha"} and
+        f["alpha"] == ALPHA_HA_DEFAUT,
         f"le dict COMPLET porte α : {sorted(f)}")
 verifie(fusion_ha_effectif("LRGB+Ha", {"alpha": 9})["alpha"] == ALPHA_HA_MAX
         and fusion_ha_effectif("LRGB+Ha", {"alpha": -1})["alpha"] == ALPHA_HA_MIN,
@@ -608,7 +609,7 @@ app._on_fusion_ha()
 reg = app._reglages_rendu()
 att = {"mode": "fondu_rouge", "poids": 2.5, "alpha": 0.35,
        "recentrer": True, "continuum": True, "q": Q_HA_DEFAUT,
-       "methode_continuum": "bandes_passantes"}
+       "methode_continuum": "bandes_passantes", "bw_ha": 7.0}
 verifie(reg.get("compo_fusion") == att,
         f"réglages capturés : {reg.get('compo_fusion')}")
 chaine = app._fiche_chaine(reg, "empilement", False)

@@ -411,7 +411,8 @@ class Saver:
                    poids=fus.get("poids"), alpha=fus.get("alpha"),
                    recentrer=fus.get("recentrer"),
                    continuum=fus.get("continuum"), q=fus.get("q"),
-                   methode_continuum=fus.get("methode_continuum"))
+                   methode_continuum=fus.get("methode_continuum"),
+                   bw_ha_nm=fus.get("bw_ha"))
         ajoute("recadrage", bool(r.get("corr_cadre")), cadre=r.get("corr_cadre"))
         ajoute("gradient GraXpert live", r.get("vl_graxpert"),
                commande=r.get("vl_graxpert_cmd"))

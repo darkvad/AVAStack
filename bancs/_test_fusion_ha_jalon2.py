@@ -124,7 +124,7 @@ verifie(ALPHA_HA_DEFAUT == 0.5 and Q_HA_DEFAUT == 0.80
 d = fusion_ha_effectif("LRGB+Ha", None)
 attendu_defauts = {"mode": "ajout_rouge", "poids": 1.0, "alpha": ALPHA_HA_DEFAUT,
                    "recentrer": True, "continuum": True, "q": 0.80,
-                   "methode_continuum": "bandes_passantes"}
+                   "methode_continuum": "bandes_passantes", "bw_ha": 7.0}
 verifie(d == attendu_defauts,
         f"LRGB+Ha sans réglage → défauts complets : {d}")
 verifie(BW_HA_NM == 7.0 and BW_RGB_NM == 100.0
@@ -474,7 +474,7 @@ app._on_fusion_ha()
 reg = app._reglages_rendu()
 attendu = {"mode": "ajout_rouge", "poids": 2.5, "alpha": ALPHA_HA_DEFAUT,
            "recentrer": True, "continuum": True, "q": Q_HA_DEFAUT,
-           "methode_continuum": "bandes_passantes"}
+           "methode_continuum": "bandes_passantes", "bw_ha": 7.0}
 verifie(reg.get("compo_fusion") == attendu,
         f"réglages capturés : {reg.get('compo_fusion')}")
 chaine = app._fiche_chaine(reg, "empilement", False)

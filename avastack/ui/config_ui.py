@@ -22,12 +22,13 @@ from ..processing import DisplayProcessor
 from ..processing import couleurs as couleurs_mod
 from ..processing import sharpness as nettete_live
 from ..processing import veralux as veralux_moteur
-from ..processing.composition import (ALPHA_HA_MAX, ALPHA_HA_MIN, COMPOSITIONS,
+from ..processing.composition import (ALPHA_HA_MAX, ALPHA_HA_MIN,
+                                       METHODES_CONTINUUM_HA, COMPOSITIONS,
                                        MODES_FUSION_HA, MODES_L,
                                        NB_LIGNES_COMPO, POIDS_HA_MAX,
                                        POIDS_HA_MIN, Q_HA_MAX, Q_HA_MIN, ROLES,
                                        SEUIL_MASQUE_MAX, SEUIL_MASQUE_MIN,
-                                       SEUIL_MASQUE_SIGMA)
+                                       borne_bw_ha)
 
 
 def _globals_app():
@@ -115,6 +116,11 @@ class ConfigUI:
     var_fusion_ha_alpha: tk.Variable
     var_fusion_ha_continuum: tk.Variable
     var_fusion_ha_q: tk.Variable
+    # J4 (v2.91.0) : méthode de continuum, bande passante du filtre Ha,
+    # recentrage du Ha sur son fond.
+    var_fusion_ha_methode: tk.Variable
+    var_fusion_ha_bw: tk.Variable
+    var_fusion_ha_recentrer: tk.Variable
     var_gamma: tk.Variable
     var_hist_lineaire: tk.Variable
     var_hist_mode: tk.Variable
@@ -262,7 +268,8 @@ class ConfigUI:
         # None, c'est-à-dire les DÉFAUTS figés du module (ajout_rouge, poids
         # 1,0), sans écrire de valeur dans l'interface.
         if ("fusion_ha_mode" in c or "fusion_ha_poids" in c
-                or "fusion_ha_alpha" in c):
+                or "fusion_ha_alpha" in c or "fusion_ha_methode" in c
+                or "fusion_ha_bw" in c or "fusion_ha_recentrer" in c):
             if c.get("fusion_ha_mode") in MODES_FUSION_HA:
                 self.var_fusion_ha_mode.set(c["fusion_ha_mode"])
             v = c.get("fusion_ha_poids")
@@ -282,6 +289,18 @@ class ConfigUI:
             if isinstance(v, (int, float)) and not isinstance(v, bool):
                 self.var_fusion_ha_q.set(
                     float(min(Q_HA_MAX, max(Q_HA_MIN, float(v)))))
+            # J4 (v2.91.0) : MÉTHODE de continuum, bande passante du filtre Ha
+            # et recentrage — validés ici (une valeur inconnue ne doit pas
+            # entrer dans l'interface, encore moins dans config.json).
+            m = c.get("fusion_ha_methode")
+            if m in METHODES_CONTINUUM_HA:
+                self.var_fusion_ha_methode.set(m)
+            v = c.get("fusion_ha_bw")
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                self.var_fusion_ha_bw.set(f"{borne_bw_ha(float(v)):g} nm")
+            v = c.get("fusion_ha_recentrer")
+            if isinstance(v, bool):
+                self.var_fusion_ha_recentrer.set(v)
             self._compo_fusion_ha = self._lire_fusion_ha()
         self._on_compo_roles()   # composition recollée aux rôles restaurés
         if c.get("process_existing") is False:
@@ -677,6 +696,12 @@ class ConfigUI:
         # état ne doit pas écraser le choix de l'utilisateur).
         c["fusion_ha_continuum"] = bool(self.var_fusion_ha_continuum.get())
         c["fusion_ha_q"] = float(fus["q"])
+        # J4 (v2.91.0) : méthode (validée), bande passante (option connue) et
+        # recentrage. La CASE recentrer est persistée TELLE QUELLE, comme la
+        # case continuum : c'est le choix de l'utilisateur, pas l'état effectif.
+        c["fusion_ha_methode"] = fus["methode_continuum"]
+        c["fusion_ha_bw"] = float(fus["bw_ha"])
+        c["fusion_ha_recentrer"] = bool(self.var_fusion_ha_recentrer.get())
         c["process_existing"] = self.var_process_existing.get()
         # Les commandes ne sont persistées que si leur OUTIL EXISTE (v2.38.5) :
         # une commande de repli (« graxpert … », binaire nu) figée dans

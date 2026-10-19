@@ -1830,6 +1830,72 @@ ce qui manquait n'était pas une correction mais une MESURE.
   d'interface doit rejouer le **chemin RÉEL** (la commande du widget), pas la
   méthode d'état.
 
+## Continuum du Ha — TROIS méthodes, repli VISIBLE (jalon J4, v2.91.0, 19/10/2026)
+
+- **CE QUE LE J4 AJOUTE** : le J2 n'estimait le continuum que par les BANDES
+  PASSANTES (`k = Q × 7/100`, un rapport THÉORIQUE corrigé à la main). Trois
+  méthodes estiment désormais le MÊME facteur `k` (fraction de continuum de R
+  qui tombe dans la bande du Ha) :
+  · `bandes_passantes` : `k = Q × (bw_ha / BW_RGB)` — **la formule du J2**, avec
+    `bw_ha` = 7 nm (défaut validé) ou **3 nm** (filtres serrés, courants). Le
+    rapport suit donc le filtre RÉEL : 7/100 ou 3/100 ;
+  · `mediane` : médiane de `Ha × échelle / R` sur les pixels de continuum FRANC
+    (R recentré au-dessus de p70 et sous p99,5 — les cœurs saturés sont
+    écartés), avec rejet par dispersion (MAD/médiane ≤ 0,50) ;
+  · `etoiles_5sigma` : `stars.detecter_positions(R, 5σ)` puis
+    `photometrie.flux_ouverture` sur Ha ET R ; médiane des rapports, rejet à
+    2,5 MAD, **au moins 5 étoiles**. Les étoiles sont du continuum PUR : c'est
+    la mesure la plus directe (transmission, temps de pose et optique comprises
+    — exactement ce que Q compense à la main).
+- **LE REPLI EST UNE RÈGLE, PAS UN ACCIDENT** : une mesure qui échoue (champ
+  sans continuum franc, moins de 5 étoiles, rapports dispersés, facteur absurde
+  > 0,5) retombe sur `bandes_passantes` **avec le Q courant**, et la sortie est
+  alors **AU BIT** celle de la méthode choisie explicitement. Le facteur mesuré
+  est multiplié par Q (ajustement fin) puis borné à [0 ; 0,5].
+- **LE REPLI SE MONTRE SUR LES CASES** (décision d'Alain du 19/10) :
+  `fusionner_ha` remplit un dict `info` (`methode_demandee`, `methode_effective`,
+  `repli`, `raison`, `facteur`, `facteur_mesure`), `composer()` le remonte et
+  `CompositeStacker.info_fusion_ha` l'expose (mémorisé AVEC le composite : un
+  cache-hit doit rendre la même info). L'interface (`_tick_corps`) marque la
+  case appliquée « ← appliquée » et écrit la raison en orange. **Ne jamais
+  recalculer la mesure côté interface** : elle ne lit pas les canaux, et
+  `config.json` ne dit que le CHOIX, jamais ce qui a tourné.
+- **Q PAR DÉFAUT SELON LA MÉTHODE** (`q_ha_defaut`) : **0,80** en bandes
+  passantes (c'est LE réglage, validé en réel) ; **1,00** sur une mesure
+  (ajustement fin). Le passage au défaut se fait dans `_on_methode_continuum`
+  (le chemin des CASES), jamais dans `_lire_fusion_ha` — sinon une valeur
+  persistée serait écrasée à chaque battement d'interface (~20×/s).
+- **LA BANDE PASSANTE EST UN RÉGLAGE** : `bw_ha` entre dans le dict de
+  `fusion_ha_effectif` (validé par `borne_bw_ha` : 3 ou 7 nm, l'option la plus
+  proche, jamais d'exception), dans la **clé de mémoïsation** (sinon 7 → 3 nm
+  ne refait rien) et dans la **fiche de rendu** (`bw_ha_nm`). La liste des
+  options et les libellés des méthodes vivent dans `composition.py`
+  (`BW_HA_NM_OPTIONS`, `METHODES_CONTINUUM_LIBELLES`) : l'interface ne recopie
+  ni l'un ni l'autre.
+- **POURQUOI LA MÉDIANE PEUT SE TROMPER** (risque ASSUMÉ, à connaître) : sur un
+  objet qui REMPLIT le cadre (grande nébuleuse), le « continuum franc » est
+  lui-même dominé par la raie → rapports dispersés → repli. Sur une galaxie
+  (M33), le corps de la galaxie fournit un continuum propre et la mesure est
+  bonne. C'est pour cela que les bandes passantes restent le DÉFAUT.
+- **POURQUOI LES ÉTOILES PEUVENT SE TROMPER** : champ pauvre en étoiles (moins
+  de 5 détectées à 5σ) ou étoiles saturées/filées (rejetées par le MAD). Dans
+  les deux cas, repli.
+- **IMPORT LOCAL de `photometrie`** dans `_facteur_etoiles` : ce module tire les
+  catalogues Gaia/Siril ; on ne le paie que si la méthode est choisie (jamais
+  d'import au chargement de `composition.py`).
+- **PIÈGE DE BANC** : une scène où le Ha n'est PAS `k·(R − fond) + raie` fait
+  REJETER la mesure (dispersion) — c'est le garde-fou, pas un bug. Le banc J4
+  construit donc `Ha = 0,10 + k·(R − 0,10) + raie` (raie COMPACTE et DÉCALÉE du
+  maximum de R, leçon du J3bis) et retrouve k = 0,070 à −5,6 % (médiane) et
+  −1,6 % (étoiles), avec égalité AU BIT en repli.
+- Banc `bancs/_test_fusion_ha_jalon4.py` (7 volets) : trois méthodes et défauts,
+  bandes 7 nm AU BIT / 3 nm, mesure médiane et son repli, mesure étoiles et son
+  repli, `composer()` + `CompositeStacker` (info, mémoïsation méthode/bande),
+  interface (cases exclusives, grisages, Q au défaut, persistance/restauration,
+  repli affiché), fiche de rendu. Non-régressions : J2, J3, 129, 129b, 130, 136,
+  137, 141, garde-fou (pyright 0 sur la liste blanche).
+
+
 ## Halo d'étoile coloré — cause, correctif et résidu (jalon 136, v2.85.0, 18/10/2026)
 
 - **CE QUE LA PREMIÈRE FICHE DISAIT ÉTAIT INCOMPLET.** La note du 18/10 parlait

@@ -18,13 +18,18 @@ from tkinter import ttk
 from typing import Any, Callable
 
 from ...processing.composition import (ALPHA_HA_DEFAUT, ALPHA_HA_MAX,
-                                       ALPHA_HA_MIN, COMPOSITIONS,
+                                       ALPHA_HA_MIN, BW_HA_NM,
+                                       BW_HA_NM_OPTIONS, COMPOSITIONS,
                                        CONTINUUM_HA_DEFAUT, FUSION_HA_DEFAUT,
+                                       METHODES_CONTINUUM_HA,
+                                       METHODES_CONTINUUM_LIBELLES,
+                                       METHODE_CONTINUUM_DEFAUT,
                                        MODES_FUSION_HA, NB_LIGNES_COMPO,
                                        POIDS_HA_DEFAUT, POIDS_HA_MAX,
                                        POIDS_HA_MIN, Q_HA_DEFAUT, Q_HA_MAX,
-                                       Q_HA_MIN, ROLES, SEUIL_MASQUE_MAX,
-                                       SEUIL_MASQUE_MIN, SEUIL_MASQUE_SIGMA)
+                                       Q_HA_MIN, RECENTRER_HA_DEFAUT, ROLES,
+                                       SEUIL_MASQUE_MAX, SEUIL_MASQUE_MIN,
+                                       SEUIL_MASQUE_SIGMA)
 
 
 class PanneauComposition:
@@ -50,6 +55,15 @@ class PanneauComposition:
     var_fusion_ha_alpha: tk.Variable
     var_fusion_ha_continuum: tk.Variable
     var_fusion_ha_q: tk.Variable
+    # J4 (v2.91.0) : méthode de continuum (cases EXCLUSIVES), bande passante du
+    # filtre Ha, recentrage du Ha sur son fond (case + libellé de risque).
+    var_fusion_ha_methode: tk.Variable
+    var_fusion_ha_bw: tk.Variable
+    var_fusion_ha_recentrer: tk.Variable
+    rb_fusion_ha_methode: dict[str, ttk.Radiobutton]
+    cb_fusion_ha_bw: ttk.Combobox
+    chk_fusion_ha_recentrer: ttk.Checkbutton
+    lbl_fusion_ha_note: ttk.Label
     chk_fusion_ha_continuum: ttk.Checkbutton
     sp_fusion_ha_alpha: ttk.Spinbox
     sp_fusion_ha_q: ttk.Spinbox
@@ -65,6 +79,7 @@ class PanneauComposition:
     _on_norm_commune: Callable[..., Any]
     _on_lissage_halos: Callable[..., Any]
     _on_fusion_ha: Callable[..., Any]
+    _on_methode_continuum: Callable[..., Any]
 
     # --- Jalon 105b : construction du panneau « Composition multi-filtres » --
     def _poser_panneau_compo(self, parent: tk.Misc) -> None:
@@ -272,6 +287,59 @@ class PanneauComposition:
             variable=self.var_fusion_ha_continuum,
             command=self._on_fusion_ha)
         self.chk_fusion_ha_continuum.pack(anchor="w", padx=4, pady=(4, 0))
+        # --- J4 (v2.91.0) : MÉTHODE de continuum — cases EXCLUSIVES (même
+        # variable : une seule cochée, décision d'Alain du 19/10). Les valeurs
+        # sont lues dans `METHODES_CONTINUUM_HA` et les libellés dans
+        # `METHODES_CONTINUUM_LIBELLES` : jamais recopiés ici. Le repli d'une
+        # mesure est MONTRÉ sur ces cases (`_refléter_methode_continuum`).
+        ttk.Label(self.frm_fusion_ha, text="Méthode du continuum :").pack(
+            anchor="w", padx=4, pady=(4, 0))
+        self.var_fusion_ha_methode = tk.StringVar(
+            value=METHODE_CONTINUUM_DEFAUT)
+        self.rb_fusion_ha_methode = {}
+        for m in METHODES_CONTINUUM_HA:
+            rb = ttk.Radiobutton(
+                self.frm_fusion_ha,
+                text=METHODES_CONTINUUM_LIBELLES.get(m, m),
+                value=m, variable=self.var_fusion_ha_methode,
+                command=self._on_methode_continuum)
+            rb.pack(anchor="w", padx=(12, 0))
+            self.rb_fusion_ha_methode[m] = rb
+        # Bande passante du filtre Ha : le 7 nm est le défaut validé, le 3 nm
+        # se répand (il ne laisse passer QUE la raie). N'agit que sur la
+        # méthode « bandes passantes » — grisé ailleurs (`_maj_fusion_ha`).
+        row_fb = ttk.Frame(self.frm_fusion_ha)
+        row_fb.pack(fill="x", padx=4, pady=(2, 0))
+        ttk.Label(row_fb, text="Filtre Ha :").pack(side="left")
+        self.var_fusion_ha_bw = tk.StringVar(value=f"{BW_HA_NM:g} nm")
+        self.cb_fusion_ha_bw = ttk.Combobox(
+            row_fb, textvariable=self.var_fusion_ha_bw, state="readonly",
+            width=8, values=[f"{bw:g} nm" for bw in BW_HA_NM_OPTIONS])
+        self.cb_fusion_ha_bw.set(f"{BW_HA_NM:g} nm")
+        self.cb_fusion_ha_bw.pack(side="left", padx=(4, 0))
+        self.cb_fusion_ha_bw.bind("<<ComboboxSelected>>",
+                                  lambda e: self._on_fusion_ha())
+        # --- J4 : RECENTRER le Ha sur son fond (case du plan, DÉJÀ le
+        # comportement de J2 — elle est ici pour pouvoir le VOIR et comparer).
+        # Le risque est écrit SUR la case : décochée, le fond du Ha (~1 en
+        # normalisation commune) est ajouté au rouge ⇒ voile rouge sur tout le
+        # ciel (mesuré : +0,30 sur le fond, contre ±0,001 coché).
+        self.var_fusion_ha_recentrer = tk.BooleanVar(
+            value=RECENTRER_HA_DEFAUT)
+        self.chk_fusion_ha_recentrer = ttk.Checkbutton(
+            self.frm_fusion_ha,
+            text=("Recentrer le Ha sur son fond  "
+                  "(décoché = voile rouge sur tout le ciel)"),
+            variable=self.var_fusion_ha_recentrer,
+            command=self._on_fusion_ha)
+        self.chk_fusion_ha_recentrer.pack(anchor="w", padx=4, pady=(4, 0))
+        # Ligne d'état de la méthode : elle DIT ce qui a réellement tourné
+        # (« Appliquée : … ») et, en cas de repli, pourquoi. Remplie par
+        # `_refléter_methode_continuum` (app.py) — jamais par ce panneau.
+        self.lbl_fusion_ha_note = ttk.Label(self.frm_fusion_ha, text="",
+                                            foreground="#888888",
+                                            wraplength=300)
+        self.lbl_fusion_ha_note.pack(anchor="w", padx=4, pady=(2, 0))
         row_fq = ttk.Frame(self.frm_fusion_ha)
         row_fq.pack(fill="x", padx=4, pady=(2, 0))
         ttk.Label(row_fq, text="Force Q du continuum :").pack(side="left")
@@ -291,15 +359,16 @@ class PanneauComposition:
             "rouge ↔ Ha réglé par α), ecran_rouge (écran : monte sans écraser), "
             "eclaircir_rouge (garde le plus clair de R et du Ha), "
             "ha_luminance (multiplie le ROUGE là où le Ha est franc — le fond "
-            "et le halo restent intacts). Le Ha est recentré "
-            "sur son propre fond, donc le fond du ciel ne dérive pas ; les CINQ "
-            "modes laissent VERT et BLEU intacts. "
-            "CONTINUUM : un filtre Ha de 7 nm laisse passer "
-            "aussi la lumière blanche de l'objet et du ciel ; la case le "
-            "retranche (estimé sur R, ramené par 7 nm / 100 nm, réglé par Q, "
-            "puis écrêté à [0 ; 1]) — la COUPER permet de comparer, mais un "
-            "défaut vu sans elle peut n'être que du continuum non soustrait. "
-            "Elle se désactive si aucun dossier R n'est renseigné. "
+            "et le halo restent intacts). Les CINQ modes laissent VERT et "
+            "BLEU intacts. CONTINUUM : un filtre Ha laisse passer aussi la "
+            "lumière blanche de l'objet et du ciel ; la case le retranche. "
+            "TROIS MÉTHODES : bandes passantes (la théorie 7/100 ou 3/100, "
+            "réglée par Q), médiane (mesurée sur le continuum du champ), "
+            "étoiles 5σ (mesurée sur les étoiles — la plus directe). Si une "
+            "mesure échoue, la ligne d'état le DIT et le calcul retombe sur "
+            "les bandes passantes. Q n'est plus qu'un ajustement fin sur une "
+            "mesure (départ 1,00). La COUPER permet de comparer, mais un défaut "
+            "vu sans elle peut n'être que du continuum non soustrait. "
             "S'applique aux compositions RGB+Ha et LRGB+Ha."),
             foreground="#888888", wraplength=300).pack(anchor="w", padx=4,
                                                        pady=(2, 4))

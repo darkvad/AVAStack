@@ -19,7 +19,28 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.90.2"
+AVASTACK_VERSION = "2.91.0"
+
+# v2.91.0 : CONTINUUM DU Ha — les DEUX AUTRES MÉTHODES (jalon J4, décisions
+#   d'Alain du 19/10/2026). Le J2 n'avait que `bandes_passantes` (théorie 7/100
+#   × Q). Trois méthodes estiment désormais le MÊME facteur k :
+#     · `bandes_passantes` : Q × (bw_ha / 100) — bw_ha = 7 nm (défaut validé) ou
+#       3 nm (filtres serrés, courants) : la bande du filtre est CHOISIE ;
+#     · `mediane`         : médiane du rapport Ha/R sur le continuum FRANC du
+#       champ (haut de R sous les cœurs saturés), avec garde-fous de dispersion ;
+#     · `etoiles_5sigma`  : rapport des flux Ha/R des ÉTOILES détectées à 5σ
+#       (`stars.detecter_positions` + `photometrie.flux_ouverture`, rejet MAD).
+#   Les deux mesures peuvent échouer (champ sans continuum franc, moins de
+#   5 étoiles, rapports dispersés) : REPLI sur `bandes_passantes` avec le Q
+#   courant, et le repli est MONTRÉ SUR LES CASES (« ← appliquée » + ligne
+#   d'état orange donnant la raison) — jamais silencieux.
+#   Q par défaut SELON la méthode : 0,80 en bandes passantes (LE réglage),
+#   1,00 sur une mesure (ajustement fin). `bw_ha`, la méthode et le recentrage
+#   entrent dans la CLÉ DE MÉMOÏSATION et dans la fiche ; la case « Recentrer le
+#   Ha sur son fond » est exposée (cochée = comportement du J2, au bit) avec son
+#   risque écrit sur le libellé ; `fusion_ha_methode`, `fusion_ha_bw` et
+#   `fusion_ha_recentrer` sont persistés. `ajout_rouge` et les cinq modes sont
+#   INCHANGÉS ; le continuum `bandes_passantes` 7 nm reste AU BIT.
 
 # v2.90.2 : `ha_luminance` — GAIN À PORTE (choix d'Alain sur aperçus, 19/10).
 #   La v2.90.1 ne touchait que le signal AU-DESSUS DU FOND : ciel intact, mais

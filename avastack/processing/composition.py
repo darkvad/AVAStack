@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """Compositions multi-filtres (jalon 19) : RGB, HOO, SHO, LRGB, Mono, *+Ha.
 
 Rôles et mapping
@@ -208,13 +208,45 @@ POIDS_HA_MAX: float = 10.0
 # ajuster À L'ŒIL. La soustraction est ACTIVE PAR DÉFAUT (Alain, 18/10 : « ne
 # pas conclure à des défauts sans lui ») et se COUPE d'une case.
 #
-# Les DEUX AUTRES méthodes prévues au plan (médiane, étoiles 5σ) restent au
-# jalon J4 : `METHODES_CONTINUUM_HA` les accueillera sans changer l'API.
-BW_HA_NM: float = 7.0            # bande passante du filtre Ha
+# LES TROIS MÉTHODES (J2 pour la première, J4 pour les deux autres) estiment le
+# MÊME facteur d'échelle k entre le continuum de R et la bande du Ha :
+#   · `bandes_passantes` : la THÉORIE (BW_Ha / BW_RGB), corrigée à l'œil par Q ;
+#   · `mediane`          : les statistiques du CHAMP — médiane du rapport Ha/R
+#                          sur les pixels de continuum FRANC (haut de R, sous
+#                          les cœurs saturés) avec rejet hors dispersion ;
+#   · `etoiles_5sigma`   : la PHOTOMÉTRIE des étoiles — les étoiles sont du
+#                          continuum PUR : le rapport de leurs flux Ha/R donne
+#                          directement la proportion réelle du filtre (médiane
+#                          des rapports, rejet MAD, étoiles détectées à ≥ 5σ).
+# Les deux méthodes MESURÉES rendent un facteur k : Q n'y sert plus que
+# d'ajustement FIN (défaut 1,00) ; en `bandes_passantes` Q reste LE réglage
+# (défaut 0,80, validé en réel sur M33). Un échec de mesure (champ sans
+# continuum franc, trop peu d'étoiles, rapports dispersés) NE CASSE RIEN : on
+# retombe sur `bandes_passantes`, et `info["repli"]` le DIT (l'interface
+# l'affiche SUR LES CASES — décision d'Alain du 19/10/2026).
+BW_HA_NM: float = 7.0            # bande passante du filtre Ha (défaut figé)
 BW_RGB_NM: float = 100.0         # bande passante de la référence (R)
-METHODES_CONTINUUM_HA: tuple[str, ...] = ("bandes_passantes",)
+# J4 (v2.91.0) : le 7 nm n'est plus le seul filtre — les 3 nm se répandent et ne
+# laissent passer QUE la raie. L'utilisateur choisit SA bande ; le rapport
+# théorique suit (3/100 au lieu de 7/100). Le 7 nm reste le défaut (validé).
+BW_HA_NM_OPTIONS: tuple[float, ...] = (7.0, 3.0)
+METHODES_CONTINUUM_HA: tuple[str, ...] = ("bandes_passantes", "mediane",
+                                          "etoiles_5sigma")
 METHODE_CONTINUUM_DEFAUT: str = "bandes_passantes"
+# Libellés d'interface et de fiche : UN SEUL endroit (jamais recopiés).
+METHODES_CONTINUUM_LIBELLES: dict[str, str] = {
+    "bandes_passantes": "Bandes passantes",
+    "mediane": "Médiane (mesurée sur l'image)",
+    "etoiles_5sigma": "Étoiles 5σ (mesurée sur les étoiles)"}
 CONTINUUM_HA_DEFAUT: bool = True
+# --- MESURE du continuum (J4) — seuils UNIQUES, jamais recopiés ailleurs -----
+SEUIL_ETOILES_SIGMA: float = 5.0     # détection des étoiles (le « 5σ » du nom)
+ETOILES_CONTINUUM_MAX: int = 40       # étoiles examinées (coût borné)
+ETOILES_CONTINUUM_MIN: int = 5        # en dessous : mesure non fiable → repli
+DISPERSION_MAX: float = 0.5           # MAD/médiane toléré sur le rapport
+MEDIANE_PCT_BAS: float = 70.0         # `mediane` : pixels de continuum franc
+MEDIANE_PCT_HAUT: float = 99.5        # au-delà : cœurs d'étoiles / objets
+FACTEUR_CONTINUUM_MAX: float = 0.5    # k au-delà : mesure absurde → repli
 # Écrêtage du signal Ha APRÈS soustraction du continuum (arbitrage figé) :
 # pas de négatif (une émission ne peut pas être « moins que rien ») et pas de
 # valeur > 1 (le signal Ha est normalisé sur ses propres percentiles).
@@ -237,9 +269,15 @@ ALPHA_HA_MAX: float = 1.0
 # le halo ; 0,20-0,50 est trop fermée (12 % de la bande touchée).
 PORTE_HA_DEBUT: float = 0.05
 PORTE_HA_FIN: float = 0.25
-Q_HA_DEFAUT: float = 0.80             # J4 : continuum (bandes passantes)
+Q_HA_DEFAUT: float = 0.80             # continuum : bandes passantes (validé)
 Q_HA_MIN: float = 0.10
 Q_HA_MAX: float = 2.00
+# J4 : Q par défaut SELON la méthode. En bandes passantes c'est LE réglage
+# (0,80, validé en réel sur M33) ; sur une mesure, la valeur de départ est 1,00
+# (on ne corrige plus une théorie approximative, on ajuste finement).
+Q_HA_DEFAUT_PAR_METHODE: dict[str, float] = {"bandes_passantes": 0.80,
+                                             "mediane": 1.00,
+                                             "etoiles_5sigma": 1.00}
 RECENTRER_HA_DEFAUT: bool = True      # J4 : case « recentrer le Ha sur son fond »
 
 
@@ -417,6 +455,168 @@ def _borne_float(valeur: Any, defaut: float, mini: float, maxi: float) -> float:
     return float(min(maxi, max(mini, v)))
 
 
+def q_ha_defaut(methode: str) -> float:
+    """Q par défaut de la méthode de continuum (0,80 en bandes passantes,
+    1,00 sur les deux méthodes MESURÉES) — un seul endroit (J4)."""
+    return float(Q_HA_DEFAUT_PAR_METHODE.get(str(methode), Q_HA_DEFAUT))
+
+
+def borne_bw_ha(valeur: Any) -> float:
+    """Bande passante Ha RAMENÉE à une option connue (3 nm ou 7 nm).
+
+    Une valeur illisible ou inconnue prend le défaut figé (7 nm, validé en
+    réel). Une valeur intermédiaire est rapprochée de l'option la plus proche :
+    jamais d'exception, et jamais un rapport de bandes inventé."""
+    try:
+        v = float(valeur)
+    except (TypeError, ValueError):
+        return float(BW_HA_NM)
+    if not np.isfinite(v):
+        return float(BW_HA_NM)
+    if v in BW_HA_NM_OPTIONS:
+        return float(v)
+    return float(min(BW_HA_NM_OPTIONS, key=lambda o: abs(o - v)))
+
+
+def _facteur_bandes_passantes(q: float, bw_ha: float) -> float:
+    """k THÉORIQUE : Q × (bande du Ha / bande de R)."""
+    return (float(_borne_float(q, Q_HA_DEFAUT, Q_HA_MIN, Q_HA_MAX))
+            * borne_bw_ha(bw_ha) / float(BW_RGB_NM))
+
+
+def _facteur_mediane(ha: np.ndarray, r: np.ndarray,
+                     echelle_ha: float) -> tuple[float | None, str]:
+    """k MESURÉ par les statistiques du champ (méthode « médiane », J4).
+
+    On cherche le rapport Ha/R sur les pixels où le CONTINUUM est FRANC : le
+    haut de R (au-dessus de `MEDIANE_PCT_BAS`, sous `MEDIANE_PCT_HAUT` — les
+    cœurs d'étoiles et d'objets saturés sont écartés). Là, le Ha ne porte que
+    le continuum, donc `Ha × échelle / R` vaut directement k.
+
+    Les deux cartes sont DÉJÀ recentrées (médiane 0) et de même forme. La
+    médiane du rapport est ROBUSTE ; la dispersion (MAD/médiane) sert de
+    garde-fou : un champ dominé par la raie (grande nébuleuse remplissant le
+    cadre) donne des rapports dispersés → `(None, raison)` et l'appelant
+    retombe sur `bandes_passantes`. C'est le risque ASSUMÉ de cette méthode,
+    rendu VISIBLE dans l'interface (décision d'Alain, 19/10/2026).
+
+    → (k, "") en succès, (None, raison lisible) sinon. Ne lève jamais."""
+    hs = _echantillon(np.asarray(ha, dtype=np.float32))
+    rs = _echantillon(np.asarray(r, dtype=np.float32))
+    if hs.size < 64 or rs.size != hs.size:
+        return None, "image trop petite pour la mesure"
+    haut = float(np.percentile(rs, MEDIANE_PCT_BAS))
+    plafond = float(np.percentile(rs, MEDIANE_PCT_HAUT))
+    sel = (rs > haut) & (rs <= plafond) & (rs > 0.0)
+    if int(sel.sum()) < 32:
+        return None, "pas de continuum franc dans le champ"
+    ratio = (hs[sel] / rs[sel]).astype(np.float64) * float(echelle_ha)
+    ratio = ratio[np.isfinite(ratio)]
+    if ratio.size < 32:
+        return None, "rapports inexploitables"
+    med = float(np.median(ratio))
+    if not np.isfinite(med) or med <= 0.0:
+        return None, "facteur non concluant"
+    mad = float(np.median(np.abs(ratio - med))) * 1.4826
+    if mad > DISPERSION_MAX * med:
+        return None, (f"rapports trop dispersés (MAD/médiane "
+                      f"{mad / med:.2f} > {DISPERSION_MAX:.2f})")
+    if med > FACTEUR_CONTINUUM_MAX:
+        return None, (f"facteur absurde ({med:.3f} > "
+                      f"{FACTEUR_CONTINUUM_MAX:.2f})")
+    return med, ""
+
+
+def _facteur_etoiles(ha: np.ndarray, r: np.ndarray,
+                     echelle_ha: float) -> tuple[float | None, str]:
+    """k MESURÉ par la PHOTOMÉTRIE DES ÉTOILES (méthode « étoiles 5σ », J4).
+
+    Les étoiles sont du continuum PUR : le rapport de leurs flux Ha/R donne
+    directement la proportion réelle du filtre (transmission, temps de pose et
+    optique COMPRISES — c'est ce que Q compense à la main en bandes
+    passantes). On réutilise les briques du projet, jamais une photométrie
+    réécrite : `stars.detecter_positions` (seuil 5σ) et
+    `photometrie.flux_ouverture` (disque moins fond local en anneau).
+
+    Rejet MAD sur les rapports (une étoile saturée ou filée s'écarte), puis
+    garde-fous : au moins `ETOILES_CONTINUUM_MIN` étoiles retenues et une
+    dispersion (MAD/médiane) sous `DISPERSION_MAX`. Sinon `(None, raison)` et
+    repli sur `bandes_passantes` — la mesure ne se voit pas dans le ciel.
+
+    → (k, "") en succès, (None, raison lisible) sinon. Ne lève jamais."""
+    # Import LOCAL : `photometrie` tire les catalogues (Gaia/Siril), inutile
+    # pour la plupart des rendus — on ne le paie que si la méthode est choisie.
+    from . import photometrie as _photo
+    try:
+        pos, msg = _stars.detecter_positions(
+            np.asarray(r, dtype=np.float32),
+            max_etoiles=ETOILES_CONTINUUM_MAX,
+            seuil_sigma=SEUIL_ETOILES_SIGMA)
+    except Exception as exc:                 # image dégénérée, mémoire…
+        return None, f"détection impossible ({exc})"
+    n = 0 if pos is None else int(len(pos))
+    if n < ETOILES_CONTINUUM_MIN:
+        return None, (f"{n} étoiles détectées (< {ETOILES_CONTINUUM_MIN})"
+                      f"{(' — ' + msg) if msg else ''}")
+    fr = _photo.flux_ouverture(np.asarray(r, dtype=np.float64), pos)
+    fh = _photo.flux_ouverture(np.asarray(ha, dtype=np.float64), pos)
+    ok = np.isfinite(fr) & np.isfinite(fh) & (fr > 0.0) & (fh > 0.0)
+    if int(ok.sum()) < ETOILES_CONTINUUM_MIN:
+        return None, (f"{int(ok.sum())} étoiles mesurables "
+                      f"(< {ETOILES_CONTINUUM_MIN})")
+    ratio = (fh[ok] / fr[ok]) * float(echelle_ha)
+    med = float(np.median(ratio))
+    if not np.isfinite(med) or med <= 0.0:
+        return None, "rapport non concluant"
+    mad = float(np.median(np.abs(ratio - med))) * 1.4826
+    if mad > 0.0:                            # rejet des étoiles aberrantes
+        garde = np.abs(ratio - med) <= 2.5 * mad
+        if int(garde.sum()) >= ETOILES_CONTINUUM_MIN:
+            ratio = ratio[garde]
+            med = float(np.median(ratio))
+            mad = float(np.median(np.abs(ratio - med))) * 1.4826
+    if int(ratio.size) < ETOILES_CONTINUUM_MIN:
+        return None, (f"{int(ratio.size)} étoiles après rejet "
+                      f"(< {ETOILES_CONTINUUM_MIN})")
+    if med <= 0.0 or not np.isfinite(med):
+        return None, "rapport non concluant"
+    if mad > DISPERSION_MAX * med:
+        return None, (f"étoiles trop dispersées (MAD/médiane "
+                      f"{mad / med:.2f} > {DISPERSION_MAX:.2f})")
+    if med > FACTEUR_CONTINUUM_MAX:
+        return None, (f"facteur absurde ({med:.3f} > "
+                      f"{FACTEUR_CONTINUUM_MAX:.2f})")
+    return med, ""
+
+
+def _facteur_continuum(ha: np.ndarray, r: np.ndarray, echelle_ha: float,
+                       q: float, bw_ha: float, methode: str
+                       ) -> tuple[float, str, str, str]:
+    """Facteur k du continuum et méthode RÉELLEMENT utilisée (J4).
+
+    → (k, méthode effective, raison du repli ("" sinon), facteur mesuré).
+    `bandes_passantes` ne peut pas échouer ; les deux méthodes mesurées
+    retombent dessus — avec la MÊME formule que si l'utilisateur l'avait
+    choisie, donc avec son Q courant — et le disent (`repli`)."""
+    if methode == "mediane":
+        k, raison = _facteur_mediane(ha, r, echelle_ha)
+    elif methode == "etoiles_5sigma":
+        k, raison = _facteur_etoiles(ha, r, echelle_ha)
+    else:
+        return (_facteur_bandes_passantes(q, bw_ha),
+                METHODE_CONTINUUM_DEFAUT, "", "")
+    if k is None:
+        return (_facteur_bandes_passantes(q, bw_ha), METHODE_CONTINUUM_DEFAUT,
+                (raison or "mesure non concluante"), "")
+    k_mesure = float(k)
+    # Q est un AJUSTEMENT FIN sur une mesure (défaut 1,00) : le produit reste
+    # borné pour qu'aucun réglage ne puisse verser une soustraction absurde.
+    k_final = float(np.clip(k_mesure * _borne_float(q, q_ha_defaut(methode),
+                                                    Q_HA_MIN, Q_HA_MAX),
+                            0.0, FACTEUR_CONTINUUM_MAX))
+    return k_final, methode, "", f"{k_mesure:.4f}"
+
+
 def fusion_ha_effectif(composition: str, fusion: Any = None
                        ) -> dict[str, Any] | None:
     """Réglages de fusion Ha RÉELLEMENT applicables à cette composition.
@@ -424,11 +624,13 @@ def fusion_ha_effectif(composition: str, fusion: Any = None
     → None quand la composition n'a pas de Ha FUSIONNÉ (HOO/SHO, RGB, Mono… :
     le Ha y est un canal ou n'existe pas) — la fusion ne doit JAMAIS s'inviter
     ailleurs. Sinon un dict COMPLET {mode, poids, alpha, recentrer, continuum,
-    q, methode_continuum}, borné et validé : un mode inconnu retombe sur
+    q, methode_continuum, bw_ha}, borné et validé : un mode inconnu retombe sur
     `FUSION_HA_DEFAUT`, un poids hors bornes est ramené dans
-    [POIDS_HA_MIN ; POIDS_HA_MAX], α dans [ALPHA_HA_MIN ; ALPHA_HA_MAX], une
-    valeur illisible prend le défaut. Source UNIQUE de vérité pour `composer()`,
-    la fiche de rendu, le transport vers le solveur et les bancs.
+    [POIDS_HA_MIN ; POIDS_HA_MAX], α dans [ALPHA_HA_MIN ; ALPHA_HA_MAX], la
+    méthode inconnue sur `METHODE_CONTINUUM_DEFAUT`, la bande passante sur une
+    option connue (3 ou 7 nm), une valeur illisible prend le défaut — Q par
+    défaut SELON la méthode (`q_ha_defaut`, J4). Source UNIQUE de vérité pour
+    `composer()`, la fiche de rendu, le transport vers le solveur et les bancs.
 
     `fusion` est tolérant : None, dict partiel, ou dict d'une version
     antérieure (clés manquantes) — c'est le format transporté dans les
@@ -452,8 +654,13 @@ def fusion_ha_effectif(composition: str, fusion: Any = None
                                   ALPHA_HA_MIN, ALPHA_HA_MAX),
             "recentrer": bool(f.get("recentrer", RECENTRER_HA_DEFAUT)),
             "continuum": bool(f.get("continuum", CONTINUUM_HA_DEFAUT)),
-            "q": _borne_float(f.get("q"), Q_HA_DEFAUT, Q_HA_MIN, Q_HA_MAX),
-            "methode_continuum": methode}
+            # J4 : Q par défaut de la MÉTHODE (0,80 en bandes passantes, 1,00
+            # sur une mesure) — la valeur saisie reste prioritaire.
+            "q": _borne_float(f.get("q"), q_ha_defaut(methode),
+                              Q_HA_MIN, Q_HA_MAX),
+            "methode_continuum": methode,
+            # J4 : bande passante du filtre Ha (3 nm de plus en plus courant).
+            "bw_ha": borne_bw_ha(f.get("bw_ha"))}
 
 
 def _reperes_fusion_ha(rouge: np.ndarray, s: np.ndarray
@@ -495,7 +702,9 @@ def fusionner_ha(rgb: np.ndarray, ha: Any, mode: str = FUSION_HA_DEFAUT,
                  q: float = Q_HA_DEFAUT,
                  methode_continuum: str = METHODE_CONTINUUM_DEFAUT,
                  r_reference: Any = None,
-                 echelle_ha: float | None = None) -> np.ndarray:
+                 echelle_ha: float | None = None,
+                 bw_ha: float = BW_HA_NM,
+                 info: dict | None = None) -> np.ndarray:
     """Fusionne la couche Ha au composite (jalons J2 et J3).
 
     `rgb` : (H, W, 3) float32 — le composite APRÈS le combine L, dans l'espace
@@ -552,8 +761,20 @@ def fusionner_ha(rgb: np.ndarray, ha: Any, mode: str = FUSION_HA_DEFAUT,
     L'ajouter tel quel au rouge ajoute donc AUSSI de la lumière blanche — et
     c'est à ce mélange qu'on attribue à tort des « défauts du Ha ». Le
     continuum est estimé avec la couche BROADBAND de RÉFÉRENCE (R, JAMAIS L,
-    arbitrage figé), ramenée à la bande du Ha par le rapport des bandes
-    passantes et corrigée par Q (0,10–2,00, défaut 0,80).
+    arbitrage figé), ramené dans l'espace du Ha par `échelle(Ha)`.
+
+    TROIS MÉTHODES (J4) donnent le facteur k (`_facteur_continuum`) :
+      · `bandes_passantes` : k = Q × (bw_ha / BW_RGB) — `bw_ha` vaut 7 nm
+        (défaut validé) ou 3 nm (filtres serrés, courants aujourd'hui) ;
+      · `mediane` : k mesuré sur le continuum FRANC du champ ;
+      · `etoiles_5sigma` : k mesuré sur les ÉTOILES (continuum pur).
+    Les deux mesures peuvent ÉCHOUER : repli sur `bandes_passantes` avec le Q
+    courant, et `info["repli"]` + `info["raison"]` le disent (l'interface
+    l'affiche sur les cases — décision d'Alain du 19/10/2026).
+
+    `info` (facultatif) est REMPLI, jamais lu : {methode_demandee,
+    methode_effective, repli, raison, facteur, facteur_mesure, actif}. C'est
+    par lui que l'interface montre ce qui a RÉELLEMENT tourné.
 
     · le RECENTRAGE (`recentrer`) retranche le fond du Ha ET celui de R : avec
       l'option « normalisation commune » aucun point noir n'est soustrait, le
@@ -566,6 +787,12 @@ def fusionner_ha(rgb: np.ndarray, ha: Any, mode: str = FUSION_HA_DEFAUT,
 
     → un NOUVEAU tableau (H, W, 3) float32, ou `rgb` tel quel si rien à faire.
     """
+    if info is not None:
+        info.clear()
+        info.update({"methode_demandee": methode_continuum,
+                     "methode_effective": None, "repli": False,
+                     "raison": "", "facteur": None, "facteur_mesure": "",
+                     "actif": False})
     if rgb is None or ha is None:
         return rgb
     a = np.asarray(rgb, dtype=np.float32)
@@ -584,18 +811,22 @@ def fusionner_ha(rgb: np.ndarray, ha: Any, mode: str = FUSION_HA_DEFAUT,
         methode_continuum = METHODE_CONTINUUM_DEFAUT
     if recentrer:
         h = h - _mediane(h)
-    # --- CONTINUUM (méthode par BANDES PASSANTES) --------------------------
+    # --- CONTINUUM (J2 : bandes passantes ; J4 : médiane, étoiles 5σ) ------
     if (continuum and r_reference is not None
             and echelle_ha is not None and float(echelle_ha) > 0.0):
         r = np.asarray(r_reference, dtype=np.float32)
         if r.ndim == 2 and r.shape == h.shape:
             if recentrer:
                 r = r - _mediane(r)
-            if methode_continuum == "bandes_passantes":
-                k = (_borne_float(q, Q_HA_DEFAUT, Q_HA_MIN, Q_HA_MAX)
-                     * (BW_HA_NM / BW_RGB_NM))
-                h = h - (np.float32(k / float(echelle_ha)) * r)
-                h = np.clip(h, CLIP_HA_MIN, CLIP_HA_MAX)
+            k, m_eff, raison, mesure = _facteur_continuum(
+                h, r, float(echelle_ha), q, bw_ha, methode_continuum)
+            h = h - (np.float32(k / float(echelle_ha)) * r)
+            h = np.clip(h, CLIP_HA_MIN, CLIP_HA_MAX)
+            if info is not None:
+                info.update({"methode_effective": m_eff,
+                             "repli": bool(m_eff != methode_continuum),
+                             "raison": raison, "facteur": float(k),
+                             "facteur_mesure": mesure, "actif": True})
     # --- OPÉRATEUR DU MODE, puis interpolation par le POIDS ----------------
     # `sortie = composite + p × (opérateur − composite)` : à p = 1 c'est
     # l'opérateur EXACT, et p ≤ 0 a déjà rendu `rgb` plus haut.
@@ -961,7 +1192,8 @@ def composer(canaux: Any, composition: str, bornes: Any = None,
              normalisation_commune: bool = False,
              sigma_l: float | None = None,
              seuil_masque_sigma: float | None = None,
-             fusion_ha: Any = None) -> np.ndarray | None:
+             fusion_ha: Any = None,
+             info_fusion_ha: dict | None = None) -> np.ndarray | None:
     """Composite linéaire d'une composition.
 
     canaux   : dict rôle → carte 2D float32 (empilement du rôle), ou None
@@ -1137,7 +1369,9 @@ def composer(canaux: Any, composition: str, bornes: Any = None,
                                continuum=fusion["continuum"],
                                q=fusion["q"],
                                methode_continuum=fusion["methode_continuum"],
-                               r_reference=r_ref, echelle_ha=ech_ha)
+                               r_reference=r_ref, echelle_ha=ech_ha,
+                               bw_ha=fusion["bw_ha"],
+                               info=info_fusion_ha)
 
     return rgb
 
@@ -1348,8 +1582,14 @@ class CompositeStacker:
         self.cadre: Any = None            # cadre commun (y0, x0, y1, x1)
         # Jalon 79 : mémoire du COMPOSITE BRUT (avant corrections de couleur) et
         # bornes de normalisation figées — cf. `mean_avec_canaux`.
-        self._memo_compo: Any = None      # (clé, composite)
+        self._memo_compo: Any = None      # (clé, composite, info fusion Ha)
         self._bornes_cache: Any = None    # (n, {rôle: (lo, hi)})
+        # J4 (v2.91.0) : méthode de continuum RÉELLEMENT utilisée au dernier
+        # composite ({methode_demandee, methode_effective, repli, raison…}).
+        # Écrit par le thread worker, LU par l'interface (`_tick_corps`) pour
+        # montrer le repli SUR LES CASES — une affectation de dict est atomique,
+        # même convention que `fit_diag`.
+        self.info_fusion_ha: dict[str, Any] | None = None
         # Jalon 129b (voie A) : recalage d'EMPILEMENT d'un rôle dont les frames
         # n'ont PAS été alignées sur la référence PARTAGÉE — le Ha FUSIONNÉ,
         # aligné sur lui-même (cf. `role_ha_fusionne`). {rôle: M 2×3} : M porte
@@ -1529,6 +1769,7 @@ class CompositeStacker:
         self._memo_compo = None           # jalon 79 : composite mémoïsé (clé → n,
                                           # cadre, composition, mode L, option)
         self._bornes_cache = None         # jalon 79 : bornes figées par frame
+        self.info_fusion_ha = None        # J4 : méthode de continuum appliquée
 
     # -- lecture du composite -------------------------------------------------
     def _recadrer(self, img: np.ndarray) -> np.ndarray:
@@ -1630,6 +1871,7 @@ class CompositeStacker:
         → (composite ou None, dict — vide si aucun rôle n'a de frame)."""
         canaux = self.moyennes(recadre=recadre)
         if not canaux:
+            self.info_fusion_ha = None    # J4 : plus rien à décrire
             return None, None
         # Jalon 79 : le composite BRUT (avant corrections de couleur) est
         # MÉMOÏSÉ — il ne dépend que de l'accumulation des rôles et de la
@@ -1651,14 +1893,20 @@ class CompositeStacker:
         fus = fusion_ha_effectif(self.composition, self.fusion_ha)
         cle_fus = ((fus["mode"], round(fus["poids"], 6), round(fus["alpha"], 6),
                     fus["recentrer"], fus["continuum"], round(fus["q"], 6),
-                    fus["methode_continuum"])
+                    fus["methode_continuum"], float(fus["bw_ha"]))
                    if fus is not None else None)
         cle = (n, bool(recadre), self.composition, self.mode_l,
                bool(self.normalisation_commune),
                bool(self.lissage_halos), float(self.seuil_masque_halos),
                cle_fus)
+        # J4 : la MÉTHODE réellement appliquée (et son éventuel repli) sort du
+        # composite pour être lue par l'interface. Elle est mémorisée AVEC le
+        # composite : un cache-hit doit rendre la même information, sinon
+        # l'affichage se viderait au deuxième appel.
+        info: dict[str, Any] = {}
         if self._memo_compo is not None and self._memo_compo[0] == cle:
             comp = self._memo_compo[1]
+            info = dict(self._memo_compo[2] or {})
         else:
             # Case décochée (défaut) → σ = 0 : AUCUN flou = combine d'avant le
             # 117c (bit-identique). Cochée → σ = None (auto, 1,7 × FWHM) + le
@@ -1671,10 +1919,12 @@ class CompositeStacker:
                                 normalisation_commune=self.normalisation_commune,
                                 sigma_l=sig_l,
                                 seuil_masque_sigma=self.seuil_masque_halos,
-                                fusion_ha=self.fusion_ha)
+                                fusion_ha=self.fusion_ha,
+                                info_fusion_ha=info)
             except ValueError:
                 comp = None               # formes hétérogènes (ne doit pas
-            self._memo_compo = (cle, comp)
+            self._memo_compo = (cle, comp, dict(info))
+        self.info_fusion_ha = dict(info) if info else None
         # Jalon 58b/chantier 24-09 : ÉQUILIBRAGE DES CANAUX (auto, jalon 13)
         # sur le COMPOSITE, puis RECALAGE « Linear Fit » — et, en amont, les
         # GAINS (manuels × SPCC/Gaia). BUG CORRIGÉ (constat Alain, 24/09/2026) :
