@@ -34,8 +34,9 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 ## Session du 19/10/2026 (soir) — **LOT 2 = P1 VALIDÉ EN RÉEL** (v2.94.0) → **Lot 3 = P4**
 
 ### État actuel
-- **v2.94.0 sur `LRGBHa`** — **aucune release**, commit + push faits dans cette
-  session. Base poussée précédente : `d765abc` (v2.93.1 + documentation P7).
+- **v2.94.0 sur `LRGBHa`** — **aucune release**. Code P1 = commit `cb75201`,
+  **poussé** (`origin/LRGBHa`). Base poussée précédente : `d765abc` (v2.93.1 +
+  documentation P7).
 - **P1 VALIDÉ EN RÉEL par Alain (19/10)** : sur un jeu réel, les mesures se
   rafraîchissent en s'approfondissant (3 → 6 → 12…) et la passe finale part en
   fin de source.
