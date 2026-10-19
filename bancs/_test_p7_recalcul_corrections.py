@@ -26,8 +26,8 @@ Vérifie :
   [1] `_vl_params()` change quand les CORRECTIONS de la composition changent
       (gains effectifs, équilibrage, Linear Fit) ;
   [2] `App._pousser_rendu()` (rendu SANS nouvelle frame) FORCE la chaîne ;
-  [3] STF + débruitage : le rendu publié est bien celui de la NOUVELLE
-      correction, pas celui d'avant ;
+  [3] STF + chroma (chaîne pré-étirement ACTIVE hors couches) : le rendu
+      publié est bien celui de la NOUVELLE correction, pas celui d'avant ;
   [4] VeraLux (si le moteur est disponible) : même exigence — le symptôme
       d'origine était « il garde le choix précédent » ;
   [5] chemin PAR COUCHE : changer les gains SEUL relance la chaîne et change
