@@ -35,9 +35,9 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 ## Session du 19/10/2026 (nuit) — **LOT 3 = P4 LIVRÉ** (v2.95.0) → **à valider en réel**
 
 ### État actuel
-- **v2.95.0 sur `LRGBHa`** — **aucune release**, **PAS ENCORE POUSSÉ** (à faire
-  après la validation ou tout de suite, au choix d'Alain). Version précédente
-  poussée : v2.94.0 (code P1 = `cb75201`, doc `e53d7eb`).
+- **v2.95.0 sur `LRGBHa`** — **aucune release**. Code P4 = commit `2ab5d82`,
+  **poussé** (`origin/LRGBHa`). Base poussée précédente : `e53d7eb` (doc P1,
+  code P1 = `cb75201`).
 - **P4 est CODÉ, MESURÉ et BANCS VERTS ; reste la VALIDATION EN RÉEL.**
   Les 13 textes d'aide de la colonne gauche sont devenus des infobulles
   derrière un « ⓘ » ; l'option « Aides en texte dans la colonne » rétablit
