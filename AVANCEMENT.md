@@ -33,8 +33,14 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 
 ### État actuel
 - **v2.93.0 sur `LRGBHa`** — **aucune release**. **Lot 1 = P2 + P3** livré,
-  couvert par un banc neuf (6 volets, **44 vérifications**, dont le cas réel
+  couvert par un banc neuf (7 volets, **51 vérifications**, dont le cas réel
   `Antlia R` → `QHYCCD MiniCam8M Red` avec la **VRAIE** base).
+- **Test réel du 19/10 : deux défauts du Lot 1 corrigés.** ① le champ
+  « Filtre R » recevait toujours `osc_filtres` → les filtres MiniCam étaient
+  **introuvables au clic** (valeur affichée hors liste) ; les listes suivent
+  désormais le **TYPE** de capteur. ② l'avis « profil remplacé » restait
+  **rouge et permanent** et masquait l'état de mesure : il est **ambre et
+  temporisé** (12 s), les vrais problèmes seuls restent en rouge.
 - **P2** : `dossier_base()` retient la base **la plus riche** (Siril 13 >
   copie AVAStack 12) — **sans rien copier ni réparer à la main** ; choix et
   compteurs au journal. Plus aucune **substitution silencieuse** : défauts
@@ -189,7 +195,9 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 - **P3** : `_astro_demande` (cochage / indices / **fin de source** / reset),
   service **astro → photo → SPCC**, repose des mesures après une résolution,
   demande consommée **une fois**.
-- **Banc** : `bancs/_test_lot1_p2_p3.py` (6 volets, 44 vérifications) — vert.
+- **Banc** : `bancs/_test_lot1_p2_p3.py` (7 volets, 51 vérifications) — vert,
+  dont la liste R réelle (50 filtres mono, valeur affichée présente) et l'avis
+  de correction effacé.
 
 ### P1 — cadence (lot 2)
 - Re-mesure quand la profondeur **double** (3 → 6 → 12 → 24…), délai minimal

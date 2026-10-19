@@ -269,6 +269,9 @@ class FauxAppSPCC:
         self._spcc_alerte = ""
         self._spcc_osc = lambda: False
         self._maj_spcc_vue = lambda: None
+        # L'avis de correction est temporisé par un `after` Tk : un hôte sans
+        # `root` se contente de le poser (le banc vérifie le texte, pas le délai).
+        self._armer_effacement_correction = lambda: None
 
 
 CAS = FauxAppSPCC()
@@ -276,8 +279,14 @@ app_mod.App._spcc_verifier_profils(CAS)
 verifie(CAS._spcc_vars["fr"].get() == "QHYCCD MiniCam8M Red",
         "CAS RÉEL : `Antlia R` REPOSÉ en `QHYCCD MiniCam8M Red` "
         "(modèle des filtres G/B)")
-verifie("remplacé par" in CAS._spcc_alerte and "MiniCam8M Red" in CAS._spcc_alerte,
-        f"…et le remplacement est DIT (« {CAS._spcc_alerte[:60]}… »)")
+verifie("remplacé par" in CAS._spcc_correction
+        and "MiniCam8M Red" in CAS._spcc_correction,
+        f"…et le remplacement est DIT (« {CAS._spcc_correction[:60]}… »)")
+verifie(not CAS._spcc_alerte,
+        "…comme AVIS de correction (ambre), pas comme problème persistant (rouge)")
+app_mod.App._effacer_spcc_correction(CAS)
+verifie(CAS._spcc_correction == "",
+        "l'avis de correction s'EFFACE : l'état de la mesure reprend la main")
 
 CAS2 = FauxAppSPCC()
 CAS2._spcc_vars["fr"].set("Profil disparu")
@@ -304,6 +313,8 @@ if (SP.profils_filtres().get("QHYCCD MiniCam8M Red")):
     verifie(REEL._spcc_vars["fr"].get() == "QHYCCD MiniCam8M Red",
             "VRAIE base : « Antlia R » → « QHYCCD MiniCam8M Red » "
             "(sans réparer la base à la main)")
+    verifie("remplacé par" in REEL._spcc_correction,
+            "…et l'avis de correction est posé (il sera temporisé à l'écran)")
 else:
     print("  (base réelle sans QHYCCD MiniCam8M : contrôle réel ignoré)")
 
@@ -479,6 +490,41 @@ fits.PrimaryHDU(np.zeros((4, 4), np.float32), ENTETE).writeto(BRUTE,
 verifie(app_mod.App._spcc_garde_filtre(GARDE) == "",
         "FILTER réduit à un rôle (« R ») : rien à conclure, aucun bruit")
 SP.profils_filtres = _vrai_profils
+
+
+# ================================================ [7] UI réelle : listes SPCC
+print("\n[7] UI réelle : la liste du filtre R propose les filtres MONO (MiniCam)")
+try:
+    import tkinter as tk            # noqa: PLC0415 (pas de Tk au chargement)
+    root = tk.Tk()
+    root.withdraw()
+except Exception as exc:            # pas d'affichage : contrôle ignoré
+    print(f"  (Tk indisponible : contrôle ignoré — {exc})")
+else:
+    app = app_mod.App(root)
+    for _ in range(20):
+        root.update()
+    vals = tuple(app._spcc_cbs["fr"].cget("values"))
+    if any("MiniCam" in v for v in vals):
+        verifie(app._spcc_vars["fr"].get() in vals,
+                f"la valeur affichée « {app._spcc_vars['fr'].get()} » FIGURE "
+                f"dans la liste R ({len(vals)} entrées)")
+        verifie(any("MiniCam" in v for v in vals),
+                "…et les filtres MiniCam sont proposés au clic")
+        verifie(bool(app._spcc_correction) and not app._spcc_alerte,
+                "le profil corrigé est annoncé en AVIS (ambre), pas en alerte")
+        app._effacer_spcc_correction()
+        verifie(not app._spcc_correction and not app._spcc_alerte,
+                "l'avis s'efface ensuite sans laisser de rouge permanent")
+    else:
+        print("  (base réelle sans MiniCam : contrôles UI ignorés)")
+    if app._spcc_correction_after is not None:
+        try:
+            root.after_cancel(app._spcc_correction_after)
+        except Exception:
+            pass
+        app._spcc_correction_after = None
+    root.destroy()
 
 
 # ================================================ nettoyage et verdict

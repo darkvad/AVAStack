@@ -269,6 +269,10 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
 
     SPCC_TYPE_MONO = _const.SPCC_TYPE_MONO
     SPCC_TYPE_OSC = _const.SPCC_TYPE_OSC
+    # Durée d'affichage de l'AVIS de correction de profil SPCC (déjà appliquée).
+    # Court : il ne doit pas masquer durablement l'état de la mesure ; le
+    # journal garde la trace complète.
+    SPCC_CORRECTION_MS = 12000
 
     SECTIONS_NOM_MAP = _const.SECTIONS_NOM_MAP
 
@@ -531,12 +535,17 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._spcc_dernier = 0.0         # instant de la dernière tentative
         self._spcc_demande: bool = False       # v2.37.0 : mesure redemandée par la case
         # Lot 1 / P2 : jamais de substitution SILENCIEUSE d'un profil SPCC.
-        # `_spcc_alerte` porte le message (valeur absente conservée, profil
-        # reposé…) et `_spcc_garde` l'avertissement FILTER de la brute
-        # courante (écrit par le worker) ; `_maj_spcc_vue` les affiche en
-        # rouge sous la case, et le journal en garde une trace.
+        # `_spcc_alerte` porte les PROBLÈMES ACTUELS (valeur absente, mauvais
+        # canal) et `_spcc_garde` l'avertissement FILTER de la brute courante
+        # (écrit par le worker) : les deux restent affichés en rouge tant que le
+        # problème existe. `_spcc_correction` est un AVIS de correction déjà
+        # appliquée (profil reposé) : il s'affiche en ambre quelques secondes
+        # puis s'efface — sinon il masquerait l'état de la mesure en
+        # permanence (constat d'Alain au test réel du 19/10).
         self._spcc_alerte: str = ""
         self._spcc_garde: str = ""
+        self._spcc_correction: str = ""
+        self._spcc_correction_after: Any = None
         # Jalon 56 (étape 5) : CASE À PART, DÉCOCHÉE PAR DÉFAUT (opt-in demandé
         # par Alain, 23/09/2026) — c'est elle, et elle seule, qui fait écrire
         # les gains photométriques dans le stacker (donc qui CHANGE l'image).
@@ -1756,6 +1765,14 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         calculés pour d'autres bandes seraient faux."""
         self._spcc_alerte = ""
         self._spcc_garde = ""
+        self._spcc_correction = ""
+        after = getattr(self, "_spcc_correction_after", None)
+        if after is not None:
+            try:
+                self.root.after_cancel(after)
+            except Exception:
+                pass
+            self._spcc_correction_after = None
         self._on_spcc()
 
     def _on_spcc(self) -> None:
@@ -1794,15 +1811,37 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         except Exception:
             return "", {}, ""
 
-    def _spcc_alerte_courte(self) -> str:
-        """Résumé AFFICHABLE de `_spcc_alerte` : la première ligne, plus le
+    @staticmethod
+    def _spcc_resume(texte: Any) -> str:
+        """Résumé AFFICHABLE d'un message SPCC : la première ligne, plus le
         nombre d'autres. Le détail complet reste au JOURNAL — une colonne de
         texte de huit lignes casserait la mise en page (mesuré au banc 77)."""
-        alertes = [a for a in str(getattr(self, "_spcc_alerte", "")).split(" ; ")
-                   if a]
+        alertes = [a for a in str(texte or "").split(" ; ") if a]
         if len(alertes) <= 1:
             return alertes[0] if alertes else ""
         return (f"{alertes[0]} (+{len(alertes) - 1} autre(s) — voir le journal)")
+
+    def _effacer_spcc_correction(self) -> None:
+        """Efface l'AVIS de correction (déjà appliquée) et rend la parole à
+        l'état de la mesure. L'information complète reste au journal."""
+        self._spcc_correction = ""
+        self._spcc_correction_after = None
+        self._maj_spcc_vue()
+
+    def _armer_effacement_correction(self) -> None:
+        """Programme l'effacement de l'avis de correction (`SPCC_CORRECTION_MS`).
+        Un nouvel avis annule le précédent. Jamais d'exception : un hôte de
+        banc n'a pas forcément de `root`."""
+        racine = getattr(self, "root", None)
+        if racine is None:
+            return
+        try:
+            if self._spcc_correction_after is not None:
+                racine.after_cancel(self._spcc_correction_after)
+            self._spcc_correction_after = racine.after(
+                self.SPCC_CORRECTION_MS, self._effacer_spcc_correction)
+        except Exception:
+            self._spcc_correction_after = None
 
     def _spcc_verifier_profils(self, alertes_sup: Any = ()) -> None:
         """Cohérence des profils SPCC avec la BASE RETENUE — jamais en silence.
@@ -1821,7 +1860,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         · toute alerte part au JOURNAL et s'affiche en rouge sous la case.
         """
         alertes = [str(a) for a in (alertes_sup or ()) if str(a)]
-        alerte_avant = str(getattr(self, "_spcc_alerte", "") or "")
+        corrections = []          # corrections APPLIQUÉES (avis temporisé)
         vars_ = getattr(self, "_spcc_vars", {}) or {}
         noms = getattr(self, "_spcc_noms", {}) or {}
         if vars_ and not self._spcc_osc():
@@ -1864,7 +1903,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                         f"profil « {vals[cle]} » (modèle {modeles[cle]}) "
                         f"incohérent avec {modele} — conservé")
                     continue
-                alertes.append(
+                corrections.append(
                     f"profil « {vals[cle]} » remplacé par « {defaut} » "
                     f"(modèle {modele}, celui des autres canaux)")
                 vars_[cle].set(defaut)
@@ -1874,12 +1913,13 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 if v and liste_c and v not in liste_c:
                     alertes.append(f"profil « {v} » absent de la base — conservé")
         self._spcc_alerte = " ; ".join(alertes)
-        if not alertes and "remplacé par" in alerte_avant:
-            # La correction de profil reste DITE : une vérification ultérieure
-            # sans rien à signaler (sonde de base, rafraîchissement) ne doit pas
-            # effacer le message qui explique POURQUOI `config.json` a changé.
-            # Il disparaît dès que l'utilisateur choisit un profil lui-même.
-            self._spcc_alerte = alerte_avant
+        if corrections:
+            # Correction DÉJÀ appliquée : avis AMBRE temporisé (jamais rouge,
+            # jamais permanent) — sinon il masquerait l'état de la mesure à
+            # chaque rafraîchissement (constat d'Alain au test réel du 19/10).
+            self._spcc_correction = " ; ".join(corrections)
+            journal.note("SPCC", self._spcc_correction)
+            self._armer_effacement_correction()
         if alertes:
             journal.note("SPCC", self._spcc_alerte)
         self._maj_spcc_vue()
@@ -1917,12 +1957,20 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         rien ne l'est — jamais muet quand la case est cochée."""
         if getattr(self, "lbl_spcc", None) is None:
             return
+        alerte = self._spcc_resume(getattr(self, "_spcc_alerte", ""))
+        correction = self._spcc_resume(getattr(self, "_spcc_correction", ""))
+        garde = str(getattr(self, "_spcc_garde", "") or "")
         if not self._spcc_actif:
             # Même DÉCOCHÉE, une correction de profil doit se voir (elle a
-            # modifié la configuration enregistrée : Lot 1 / P2).
-            alerte = self._spcc_alerte_courte()
-            self.lbl_spcc.config(text=("SPCC : ⚠ " + alerte) if alerte else "",
-                                 foreground="#d04040" if alerte else "#888888")
+            # modifié la configuration enregistrée : Lot 1 / P2). Elle est en
+            # AMBRE et TEMPORISÉE ; un vrai problème reste en ROUGE.
+            txt = " ; ".join(t for t in (garde, alerte, correction) if t)
+            if not txt:
+                self.lbl_spcc.config(text="", foreground="#888888")
+                return
+            rouge = bool(garde or alerte)
+            self.lbl_spcc.config(text=("SPCC : ⚠ " if rouge else "SPCC : ") + txt,
+                                 foreground="#d04040" if rouge else "#c98a00")
             return
         if not self._spcc_dispo:
             self.lbl_spcc.config(
@@ -1932,14 +1980,16 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 foreground="#c98a00")
             return
         # Lot 1 / P2 : les avertissements de PROFIL passent avant le reste —
-        # une couleur fausse se voit AVANT la mesure, pas après.
-        garde = getattr(self, "_spcc_garde", "")
-        alerte = self._spcc_alerte_courte()
+        # une couleur fausse se voit AVANT la mesure, pas après. Les VRAIS
+        # problèmes (rouge) restent ; l'avis de correction (ambre) s'efface
+        # après quelques secondes pour rendre la parole à l'état de mesure.
         if garde or alerte:
-            txt = garde or alerte
-            if garde and alerte:
-                txt = f"{garde} ; {alerte}"
+            txt = " ; ".join(t for t in (garde, alerte) if t)
             self.lbl_spcc.config(text="SPCC : ⚠ " + txt, foreground="#d04040")
+            return
+        if correction:
+            self.lbl_spcc.config(text="SPCC : " + correction,
+                                 foreground="#c98a00")
             return
         if not (self._mode_compo or self._source_rgb(getattr(self, "stacker", None))):
             # v2.37.1 : au LANCEMENT, aucune source n'est encore choisie —
@@ -2245,8 +2295,14 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self._spcc_noms = noms
             # Peuplement des cinq listes, puis application du TYPE choisi (qui
             # pose les valeurs par défaut et remet la vue à jour).
-            for cle, cle_noms in (("capteur", "osc_capteurs"),
-                                  ("fr", "osc_filtres"),
+            # PIÈGE CORRIGÉ (test réel du 19/10) : le champ « Filtre R » recevait
+            # TOUJOURS `osc_filtres`. En mono, la valeur affichée
+            # (« QHYCCD MiniCam8M Red ») n'existait donc pas dans la liste
+            # déroulante — les filtres MiniCam étaient introuvables au clic.
+            # Les listes suivent désormais le TYPE de capteur.
+            osc = self._spcc_osc()
+            for cle, cle_noms in (("capteur", "osc_capteurs" if osc else "capteur"),
+                                  ("fr", "osc_filtres" if osc else "filtres"),
                                   ("fg", "filtres"),
                                   ("fb", "filtres"),
                                   ("blanc", "blancs")):
@@ -4724,6 +4780,14 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             except Exception:
                 pass
             self._tick_id = None
+        # Lot 1 : même précaution pour l'avis de correction SPCC temporisé.
+        spcc_after = getattr(self, "_spcc_correction_after", None)
+        if spcc_after is not None:
+            try:
+                self.root.after_cancel(spcc_after)
+            except Exception:
+                pass
+            self._spcc_correction_after = None
         self.root.destroy()
 
     # `_save`, `_gx_live_prete`, `_reglages_rendu`, `_save_asseen`,

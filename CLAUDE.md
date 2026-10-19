@@ -2058,6 +2058,17 @@ ce qui manquait n'était pas une correction mais une MESURE.
   mot-clé FILTER de la brute courante est confronté aux MODÈLES des filtres
   choisis (`filtre_compatible`) → avertissement ROUGE, jamais un refus. Un
   FILTER réduit à un rôle (« R », « Ha », « L ») ne dit rien : aucun bruit.
+- **Les listes de profils SPCC suivent le TYPE de capteur**
+  (`App._appliquer_spcc_base_vue`) : `fr` recevait TOUJOURS `osc_filtres`
+  (reliquat OSC) — en mono la valeur affichée (« QHYCCD MiniCam8M Red »)
+  n'existait pas dans la liste déroulante, donc introuvable au clic (test réel
+  du 19/10). Mono → `capteur`/`filtres` ; OSC → `osc_capteurs`/`osc_filtres`.
+- **Une correction APPLIQUÉE ne s'affiche jamais en rouge permanent** : l'avis
+  « profil remplacé » est AMBRE et **temporisé** (`_spcc_correction`,
+  `SPCC_CORRECTION_MS = 12 s`, `after` annulé à la fermeture) ; il rend ensuite
+  la parole à l'état de mesure. Seuls les problèmes ACTUELS (`_spcc_alerte` :
+  valeur absente, mauvais canal ; `_spcc_garde` : FILTER) restent en rouge.
+  Le journal garde le détail des deux.
 - **`_astro_demande`** (`ui/app.py`) : posée par `_on_astro` (cochage,
   changement d'indices, WCS non résolu), par la FIN DE SOURCE (worker) et par
   une remise à zéro. `_servir_demandes_sans_frame` sert **ASTRO → PHOTO →

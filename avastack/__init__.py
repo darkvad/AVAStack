@@ -52,7 +52,18 @@ AVASTACK_VERSION = "2.93.0"
 #   reste ») ; la demande est consommée UNE fois, les essais/délais/WCS
 #   restent seuls juges. La fin de source arme l'astro UNE fois (TRANSITION
 #   seulement ; jamais sur une caméra live, où un `read()` vide est normal).
-#   Banc neuf `bancs/_test_lot1_p2_p3.py` (6 volets, 44 vérifications, dont le
+#   TEST RÉEL DU 19/10 (retours d'Alain) — DEUX DÉFAUTS DU LOT 1 CORRIGÉS :
+#   ① le champ « Filtre R » recevait TOUJOURS `osc_filtres` (reliquat OSC) : la
+#   valeur affichée (MiniCam) n'existait pas dans la liste déroulante, les
+#   filtres MiniCam étaient INTROUVABLES au clic. Les listes suivent désormais
+#   le TYPE de capteur (mono → `filtres`, OSC → `osc_filtres`). ② l'avis
+#   « profil remplacé » restait ROUGE et PERMANENT et masquait l'état de la
+#   mesure à chaque rafraîchissement : il est désormais AMBRE et TEMPORISÉ
+#   (12 s, `SPCC_CORRECTION_MS`, `after` annulé à la fermeture) ; seuls les
+#   VRAIS problèmes (valeur absente, mauvais canal, garde FILTER) restent en
+#   rouge. Le journal garde tout. Banc : volets [4] et [7] (UI réelle : 50
+#   filtres mono, valeur affichée présente, avis effacé).
+#   Banc neuf `bancs/_test_lot1_p2_p3.py` (7 volets, 51 vérifications, dont le
 #   cas réel avec la VRAIE base). Non-régressions 58 / 58 bis / 56 astro /
 #   56 photo / 6 / 5 / 113 / 133 / 124 vertes ; banc 77 : seules ses DEUX
 #   mesures de mise en page échouent — vérifié sur HEAD dans un worktree, donc
