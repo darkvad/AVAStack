@@ -1746,6 +1746,33 @@ ce qui manquait n'était pas une correction mais une MESURE.
   défauts, dict de la fiche) : il vérifiait « un seul mode », vrai au J2.
   Non-régression : J2, 129, 130, 136, 137, 141, garde-fou, pyright.
 
+- **VERDICT RÉEL DU J3 (Alain, 19/10, M33, SPCC) : À REPRENDRE (J3bis)** — les
+  quatre modes ne sont PAS validés :
+  · `fondu` : image BLEUIE, Ha invisible en zone rouge, étoiles bleues/vertes,
+  zones Ha blanches/bleu très clair ;
+  · `ecran` : zones Ha CYAN ;
+  · `eclaircir` : quasi normal, Ha à peine rosé, et **le poids est SANS EFFET**
+  (identique à 0 et à 3) — le mode est INERTE ;
+  · `ha_luminance` : effet visible, zones Ha plus lumineuses mais plus blanches.
+  Avec les gains Gaia au lieu de SPCC, le rouge ressort (éclaircir) et le rose
+  apparaît (luminance) : **le niveau de R commande tout**.
+  **CAUSE (à MESURER avant de corriger)** : ces opérateurs COMPARENT `R` et le
+  Ha, alors que `composer()` normalise **chaque rôle séparément** — les échelles
+  ne sont pas appariées. Un remplacement (fondu ×(1−α)), un écran
+  `s·(1−R)` ou un `max(R, s)` sur des niveaux incomparables : divise le rouge du
+  FOND de moitié (fondu α 0,5 ⇒ dominante cyan/bleue), produit un delta négatif
+  là où `R > 1` (écran ⇒ cyan), ou un delta NUL partout quand `s < R` (éclaircir
+  ⇒ poids sans effet, puisqu'il ne multiplie que zéro). `ajout_rouge` échappe au
+  piège : il est purement ADDITIF. **Piste J3bis** : APPARIER le Ha à l'échelle
+  de R (facteur d'amplitude p0,25–p99,7, ou médiane/MAD) avant tout opérateur
+  qui compare, puis re-juger les formules ; ne pas toucher au J2.
+- **PIÈGE D'INTERFACE (défaut réel du 19/10, corrigé en v2.89.1)** : le champ α
+  restait GRISÉ en passant en mode fondu. La Combobox appelle `_on_fusion_ha`,
+  qui ne rafraîchissait pas l'état des widgets ; le banc appelait
+  `_maj_fusion_ha()` **lui-même** et ne pouvait donc pas voir le défaut. Un banc
+  d'interface doit rejouer le **chemin RÉEL** (la commande du widget), pas la
+  méthode d'état.
+
 ## Halo d'étoile coloré — cause, correctif et résidu (jalon 136, v2.85.0, 18/10/2026)
 
 - **CE QUE LA PREMIÈRE FICHE DISAIT ÉTAIT INCOMPLET.** La note du 18/10 parlait

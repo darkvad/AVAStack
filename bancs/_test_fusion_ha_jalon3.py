@@ -352,6 +352,18 @@ app.var_fusion_ha_mode.set("fondu_rouge")
 app._maj_fusion_ha()
 verifie(str(app.sp_fusion_ha_alpha.cget("state")) == "normal",
         "mode fondu_rouge : champ α ACTIVÉ")
+# ⚠ DÉFAUT RÉEL du 19/10 : le vrai chemin est `_on_fusion_ha` (Combobox), pas
+# `_maj_fusion_ha()` appelée à la main — le banc précédent ne voyait donc pas
+# que le champ α RESTAIT GRISÉ en passant en fondu. On rejoue le chemin réel.
+app.var_fusion_ha_mode.set("ajout_rouge")
+app._on_fusion_ha()
+verifie(str(app.sp_fusion_ha_alpha.cget("state")) == "disabled",
+        "chemin RÉEL (Combobox → _on_fusion_ha) : α désactivé en ajout")
+app.var_fusion_ha_mode.set("fondu_rouge")
+app._on_fusion_ha()
+verifie(str(app.sp_fusion_ha_alpha.cget("state")) == "normal",
+        "chemin RÉEL (Combobox → _on_fusion_ha) : α ACTIVÉ en fondu — "
+        "défaut du 19/10 corrigé")
 app.var_fusion_ha_alpha.set(9.0)
 verifie(app._lire_fusion_ha()["alpha"] == ALPHA_HA_MAX,
         f"saisie α 9 → borné à {ALPHA_HA_MAX}")

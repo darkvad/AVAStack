@@ -19,7 +19,36 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.89.0"
+AVASTACK_VERSION = "2.89.1"
+
+# v2.89.1 : RÉPARATION DU CHAMP α (défaut RÉEL du 19/10) + VERDICT RÉEL DU J3.
+#   · DÉFAUT RÉEL : le champ « Fondu α » restait GRISÉ en passant en mode
+#     `fondu_rouge`. La Combobox appelle `_on_fusion_ha`, qui ne rafraîchissait
+#     pas l'état des widgets (`_maj_fusion_ha`) — seul un changement de
+#     COMPOSITION le faisait. Le banc J3 appelait `_maj_fusion_ha()` lui-même :
+#     il ne pouvait PAS voir le défaut. Leçon : un banc d'interface doit rejouer
+#     le CHEMIN RÉEL (la commande du widget), pas la méthode d'état.
+#     Corrigé (`_on_fusion_ha` appelle `_maj_fusion_ha`) + volet ajouté au banc.
+#   · VERDICT RÉEL DU J3 (Alain, 19/10, run M33 avec SPCC) : les quatre nouveaux
+#     modes NE SONT PAS VALIDÉS — À REPRENDRE (J3bis) :
+#     – fondu : image BLEUIE, Ha invisible en zone rouge, étoiles bleues/vertes,
+#       les zones Ha sortent blanches/bleu très clair ;
+#     – écran : les zones Ha apparaissent CYAN ;
+#     – éclaircir : quasi normal mais Ha à peine rosé, et le POIDS est SANS
+#       EFFET (identique à 0 et à 3) — le mode est INERTE ;
+#     – luminance : effet visible, zones Ha plus lumineuses mais plus blanches.
+#     Avec les gains Gaia au lieu de SPCC : éclaircir laisse voir le rouge, et
+#     luminance donne un rose (très léger) — le niveau de R commande tout.
+#     CAUSE PROBABLE (à MESURER avant de corriger) : ces opérateurs COMPARENT R
+#     et Ha, alors que `composer()` normalise CHAQUE rôle séparément (échelles
+#     non appariées). Un remplacement (fondu), un écran ou un max() sur des
+#     niveaux incomparables divise le rouge du fond (bleu), fabrique du cyan,
+#     ou ne fait RIEN quand le delta est nul partout (poids sans effet).
+#     `ajout_rouge` (J2) échappe au piège : il est purement ADDITIF.
+#     Piste J3bis : APPARIER le Ha à l'échelle de R avant tout opérateur qui
+#     compare les deux, puis re-juger les formules. NE PAS toucher au J2.
+#   · Détail, mesures à faire et plan : AVANCEMENT.md (section « Verdict réel
+#     de J3 »).
 
 # v2.88.0 : FUSION DU Ha AU ROUGE (chantier LRGB+Ha, jalon J2). Le rôle Ha de
 #   « RGB+Ha » et « LRGB+Ha » n'alimente AUCUN canal (il est absent de

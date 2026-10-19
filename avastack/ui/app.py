@@ -3887,11 +3887,18 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                     composition_mod.METHODE_CONTINUUM_DEFAUT}
 
     def _on_fusion_ha(self) -> None:
-        """Cadre « Fusion Ha » (mode/poids) — posé sur l'empilement courant et
+        """Cadre « Fusion Ha » (mode/poids/α) — posé sur l'empilement courant et
         appliqué dès le prochain rendu, SANS redémarrer la session (la fusion
         est refaite à chaque composite, comme le combine LRGB). L'instantané
         `_compo_fusion_ha` est celui que lit le worker (jamais une variable Tk
-        hors du thread principal)."""
+        hors du thread principal).
+
+        ⚠ J3 (v2.89.1) : cette méthode est le SEUL chemin réel quand on change
+        le MODE dans la Combobox — elle doit donc rafraîchir l'état des widgets
+        (`_maj_fusion_ha`). Sans cela le champ α restait GRISÉ en passant en
+        mode fondu (défaut constaté en réel le 19/10 : le banc appelait
+        `_maj_fusion_ha()` lui-même et ne voyait pas le défaut)."""
+        self._maj_fusion_ha()          # état des widgets (α, continuum, Q)
         self._compo_fusion_ha = self._lire_fusion_ha()
         if self.stacker is not None and hasattr(self.stacker, "fusion_ha"):
             self.stacker.fusion_ha = dict(self._compo_fusion_ha)

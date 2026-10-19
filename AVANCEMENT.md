@@ -26,16 +26,16 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 
 ---
 
-## Session du 19/10/2026 — J2 VALIDÉ EN RÉEL + J3 LIVRÉ (cinq modes)
+## Session du 19/10/2026 — J2 VALIDÉ, J3 À REPRENDRE (verdict réel)
 
 ### État actuel
-- **Code** : **v2.89.0** sur `LRGBHa` — **J2 VALIDÉ EN RÉEL** par Alain (19/10)
-  et **J3 LIVRÉ** (les 4 autres modes + α) ; bancs J2/J3 verts, non-régressions
-  vertes, garde-fou vert, pyright 0. **Commité et poussé** (`8714afb`) : J2 et J3
-  dans le MÊME commit (le J2 n'avait pas encore été commité) ; **aucune release
-  sans accord**.
-- **J4** = continuum (méthodes médiane / étoiles 5σ, case « recentrer ») ;
-  **J5** = ancre réelle + doc.
+- **Code** : **v2.89.1** sur `LRGBHa` — **J2 VALIDÉ EN RÉEL** par Alain (19/10) ;
+  **J3 LIVRÉ mais À REPRENDRE** : le test réel des quatre nouveaux modes est
+  NÉGATIF (voir ci-dessous). Bancs J2/J3 verts, non-régressions vertes,
+  garde-fou vert, pyright 0. J2+J3 commités ensemble (`8714afb`, le J2 n'était
+  pas encore commité) ; **aucune release sans accord**.
+- **J3bis** = réparer les modes (appariement d'échelle R ↔ Ha) ; **J4** =
+  continuum (médiane / étoiles 5σ, case « recentrer ») ; **J5** = ancre + doc.
 
 ### Verdict réel de J2 (consigné)
 - **AVEC continuum** : réglage de force visible, rendu retenu. **SANS** : les
@@ -45,26 +45,56 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
   réglage **PAR CIBLE**, le défaut reste **1,0**. Aucun défaut bloquant signalé.
 - **Verdict global : VALIDÉ.**
 
+### Verdict réel de J3 (19/10, M33, SPCC) — **À REPRENDRE**
+- **`fondu_rouge`** : α affiché **GRISÉ** (défaut corrigé en v2.89.1) ; image
+  **BLEUIE**, **Ha invisible dans les zones rouges**, étoiles bleues/vertes ;
+  un SCNR retire le vert et laisse une forte dominante bleue ; zones Ha
+  **blanches / bleu très clair** (à α 0,5).
+- **`ecran_rouge`** : zones Ha **CYAN**.
+- **`eclaircir_rouge`** : image quasi normale, zones Ha **à peine rosées**, et
+  **la force est SANS EFFET** (identique à 0 et à 3) — le mode est INERTE.
+- **`ha_luminance`** : effet VISIBLE (zones Ha plus lumineuses) mais **plus
+  blanches**.
+- **Avec les gains Gaia au lieu de SPCC** : éclaircir laisse voir le rouge,
+  luminance donne un rose (très léger) ⇒ **le niveau de R commande tout**.
+- **CAUSE PROBABLE — échelles NON APPARIÉES** : `composer()` normalise CHAQUE
+  rôle séparément ; `s` (Ha) et `R` ne sont donc pas comparables. Un
+  remplacement (`fondu` ×(1−α)) divise le rouge du FOND (⇒ cyan/bleu) ; un
+  `s·(1−R)` devient négatif là où `R > 1` (⇒ cyan) ; un `max(R, s)` est nul
+  partout si `s < R` (⇒ le poids ne multiplie que zéro). `ajout_rouge` (J2) est
+  le seul à échapper au piège : il est purement ADDITIF.
+- **À MESURER AVANT DE CORRIGER** (sur le run M33) : p0,25 / p50 / p99,7 de `s`
+  et de `R` dans le composite, et le signe de `s − R` sur les zones Ha — c'est
+  la preuve chiffrée de l'écart d'échelle.
+- **Piste J3bis** : APPARIER le Ha à l'échelle de R (facteur d'amplitude
+  p0,25–p99,7, ou médiane/MAD) AVANT tout opérateur qui compare les deux, puis
+  re-juger chaque formule (fondu sans division du fond, écran borné,
+  éclaircir avec delta non nul, luminance préservant la saturation).
+  **Ne pas toucher au J2.**
+
 ### Fichiers modifiés dans cette phase
 - `avastack/processing/composition.py` : 5 modes, α, poids = interpolation,
   clé de mémoïsation (α), docstrings.
 - `avastack/ui/panels/compo.py` (champ α), `ui/app.py` (`_lire_fusion_ha`,
-  `_maj_fusion_ha`), `ui/config_ui.py` (`fusion_ha_alpha`), `ui/saver.py` (fiche).
-- `avastack/__init__.py` (**2.89.0** + changelog), `CLAUDE.md` (§ J3 + verdict J2).
-- `bancs/_test_fusion_ha_jalon3.py` (NEUF, 8 volets) ;
-  `bancs/_test_fusion_ha_jalon2.py` (3 volets mis à jour VOLONTAIREMENT).
+  `_maj_fusion_ha`, **`_on_fusion_ha` rafraîchit l'état des widgets**),
+  `ui/config_ui.py` (`fusion_ha_alpha`), `ui/saver.py` (fiche).
+- `avastack/__init__.py` (**2.89.1** + changelog), `CLAUDE.md` (§ J3, verdicts).
+- `bancs/_test_fusion_ha_jalon3.py` (NEUF, 8 volets + volet « chemin RÉEL de la
+  Combobox ») ; `bancs/_test_fusion_ha_jalon2.py` (3 volets mis à jour).
 
 ### Décisions prises
-- **J3 — le POIDS est une FORCE GLOBALE** : `sortie = composite + poids ×
-  (mode − composite)` ⇒ poids 0 = composite du J1 AU BIT pour les CINQ modes,
-  poids 1 = opérateur exact. Évite que α et poids se confondent.
-- **`ha_luminance` touche V et B** (ajout de `s` aux trois canaux) : seule
-  exception assumée à « V et B jamais touchés ».
-- **α n'agit que sur `fondu_rouge`** ; champ désactivé ailleurs, valeur conservée.
+- **J2 : rien ne change** — ajout au rouge + continuum validés en réel.
+- **J3 : les formules des 4 modes sont SUSPENDUES** : elles comparaient deux
+  couches normalisées séparément. Le poids reste une force globale (acquis) ;
+  ce sont les OPÉRATEURS qui doivent être appariés à l'échelle de R.
+- **`ha_luminance` touche V et B** : propriété du mode, pas un défaut — mais son
+  rendu « plus blanc » est à réévaluer en J3bis.
 
 ### Prochaines étapes
-1. **Test réel de J3 par Alain** (comparer les modes, surtout fondu et écran) ;
-2. **J4** sur son accord, puis **J5** ; **release v2.89.0 sur accord explicite**.
+1. **Mesurer** `s` vs `R` sur M33 (p0,25/p50/p99,7, signe de `s − R` en zone Ha) ;
+2. **J3bis** : appariement d'échelle + reprise des 4 opérateurs, banc enrichi
+   (aucun mode ne doit baisser le rouge du FOND ni rester inerte au poids) ;
+3. **test réel J3bis** ; puis **J4** et **J5** ; **release sur accord explicite**.
 
 ---
 
@@ -164,6 +194,10 @@ macOS jamais testé.
   quatre autres modes, eux, laissent V et B AU BIT.
 - **J3 — comparer les TROIS canaux** : `ajout_rouge` et `ha_luminance` ont le
   même rouge ; un banc qui ne lit que R croit à un doublon (piège rencontré).
+- **J3 — un banc d'INTERFACE doit rejouer le CHEMIN RÉEL** (la commande du
+  widget) : le 19/10, le champ α restait grisé en vrai alors que le banc était
+  vert, parce qu'il appelait `_maj_fusion_ha()` lui-même au lieu de
+  `_on_fusion_ha` (la commande de la Combobox). Corrigé en v2.89.1.
 - **Une brute est DITHÉRÉE** : seul un empilement ALIGNÉ prouve quelque chose.
 - **`--dossier` sans `--dark` = run invalide** dès que l'exposition change.
 - **Comparer deux BRUTES par corrélation est INVALIDE si le dossier mélange des
@@ -185,11 +219,13 @@ macOS jamais testé.
   exigent `== "triangles"` et restent verts (leur résidu est ~0,03 px).
 
 ### Contexte de reprise (à coller — 2 phrases)
-Arbre **v2.89.0** sur `LRGBHa` : **J2 VALIDÉ EN RÉEL** (19/10 — Q 0,80, poids 1,5
-sur M33, par cible ; défaut 1,0) et **J3 LIVRÉ** (cinq modes de fusion + α), bancs
-J2/J3 verts, non-régressions vertes, garde-fou vert, pyright 0. Prochaine action
-unique : **test réel de J3 par Alain** (comparer les modes), puis **J4** sur son
-accord — aucune release sans accord.
+Arbre **v2.89.1** sur `LRGBHa` : **J2 VALIDÉ EN RÉEL** (Q 0,80, poids 1,5 sur M33,
+par cible ; défaut 1,0) ; **J3 À REPRENDRE** — le test réel du 19/10 condamne les
+quatre modes (fondu bleui, écran cyan, éclaircir inerte, luminance blanchit),
+cause probable : R et Ha normalisés séparément, échelles non appariées ; le champ
+α grisé est corrigé. Prochaine action unique : **mesurer** p0,25/p50/p99,7 de `s`
+et `R` sur M33 et le signe de `s − R` en zone Ha, puis **J3bis** — aucune release
+sans accord.
 
 ---
 
@@ -203,7 +239,8 @@ Le rôle Ha **n'alimente aucun canal** : il est **FUSIONNÉ** au composite aprè
 | 129b | voie A (référence **PAR RÔLE** + recalage de l'empilement) + `profondeur_min` + refus par rôle | COMMITÉ ; validé en réel le 16/10 (441 frames, 2 refus en R) |
 | **130 (v2.82.0)** | combine LRGB borné [0 ; 5] + repli local + fiche + banc neuf | COMMITÉ + POUSSÉ (`ef0c35c`) |
 | **J2 (v2.88.0)** | fusion « ajout au rouge » + poids 1,0 + recentrage + **continuum (Q, case)** + cadre « Fusion Ha » | **VALIDÉ EN RÉEL le 19/10** |
-| **J3 (v2.89.0)** | `fondu_rouge` (α), `ecran_rouge`, `eclaircir_rouge`, `ha_luminance` + poids = force globale | **LIVRÉ** — test réel à faire |
+| **J3 (v2.89.0)** | `fondu_rouge` (α), `ecran_rouge`, `eclaircir_rouge`, `ha_luminance` + poids = force globale | **LIVRÉ mais À REPRENDRE** — verdict réel 19/10 : fondu bleui, écran cyan, éclaircir INERTE |
+| J3bis | appariement d'échelle R ↔ Ha puis reprise des 4 opérateurs | à faire |
 | J4 → J5 | continuum méthodes **médiane / étoiles 5σ** (+ case recentrer) ; ancre réelle + doc | à faire |
 
 Plan figé (13 arbitrages du 15/10) : poids **1,0** (0–10) · α **0,5** · Q **0,80**
@@ -215,18 +252,19 @@ identifiants en français (`synthetise`).
 
 ## En attente / prochaine session (état au 19/10 — J2 validé, J3 livré, `LRGBHa`)
 
-- **Prochaine action unique** : **test réel de J3 par Alain** — comparer les
-  modes (fondu et écran en priorité), régler α si besoin ; J4 ne s'ouvre
-  qu'après son verdict.
+- **Prochaine action unique** : **MESURER** `s` vs `R` sur le run M33 (p0,25 /
+  p50 / p99,7, signe de `s − R` dans les zones Ha), puis ouvrir **J3bis**
+  (appariement d'échelle + reprise des 4 opérateurs, banc enrichi).
 - **J2 VALIDÉ EN RÉEL (19/10)** : AVEC continuum, réglage de force visible et
   rendu retenu (Q 0,80) ; SANS, les rouges « s'éteignent un peu ». Poids 1,5
   poussé sur M33 = réglage **par cible** (défaut 1,0).
-- **J3 LIVRÉ (v2.89.0)** : cinq modes, poids = force globale (0 = composite du
-  J1 au bit), α du fondu persisté ; banc neuf vert.
+- **J3 À REPRENDRE (v2.89.1)** : les 4 modes ne sont pas validés (fondu bleui,
+  écran cyan, éclaircir inerte, luminance blanchit) ; **cause probable =
+  échelles R/Ha non appariées** ; le champ α grisé est **corrigé**.
 - **DÉCIDÉ le 18/10 (Alain)** : neutralisation **hors mode manuel** (confirmé) ;
   boutons sans Siril (⬇ Gaia / Spectres / Base SPCC) **laissés en l'état**
   (secondaire) ; **teinte des COINS** **notée, sans action**. Seule attente :
-  **release v2.89.0**, sur accord explicite.
+  **release**, sur accord explicite — **pas avant J3bis**.
 - **141-B VALIDÉE EN RÉEL (18/10)** : bandeau + boîte confirmés ; le fichier
   garde l'`AVACOMPO` de la session (comportement voulu). **Rien à retester.**
 - Rappel de méthode : un défaut vu **sans** continuum peut n'être que du
