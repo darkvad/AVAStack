@@ -22,7 +22,8 @@ ou python -m avastack.
 AVASTACK_VERSION = "2.95.0"
 
 # v2.95.0 : P4 — LES AIDES DE LA COLONNE PASSENT EN INFOBULLES « ⓘ » (lot 3 des
-#   améliorations d'usage, 19/10/2026). PAS DE RELEASE (à VALIDER EN RÉEL).
+#   améliorations d'usage, 19/10/2026). VALIDÉ EN RÉEL par Alain le 19/10 ;
+#   AUCUNE RELEASE.
 #   CONSTAT (Alain) : « la colonne de gauche est pleine de textes d'aide gris,
 #   on ne voit plus les réglages ». MESURÉ AVANT DE CODER, sur la VRAIE
 #   interface (`bancs/_mesure_p4_aides.py`, sections ouvertes) : 13 étiquettes

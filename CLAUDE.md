@@ -2151,7 +2151,7 @@ ce qui manquait n'était pas une correction mais une MESURE.
   profondeur par rôle, passe finale une seule fois, WCS jamais re-solu) et
   `bancs/_mesure_p1_cadence.py --autotest` (mécanique du banc de mesure).
 
-## Aides contextuelles de la colonne — infobulles « ⓘ » (P4, v2.95.0, 19/10/2026)
+## Aides contextuelles de la colonne — infobulles « ⓘ » (P4, v2.95.0, 19/10/2026 — VALIDÉ EN RÉEL)
 
 - **LE POINT DE PASSAGE EST UNIQUE** : toute explication posée dans la colonne
   gauche passe par `App._aide(parent, texte, ligne=…, padx=…, pady=…)`

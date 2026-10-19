@@ -23,7 +23,7 @@ méthodes et mesure indépendante de la case — tous **VALIDÉS EN RÉEL le 19/
 SPCC la plus riche + astrométrie servie sans frame, **VALIDÉ EN RÉEL le 19/10** ;
 **P7** recalcul après un choix de couleur, **CORRIGÉ ET VALIDÉ EN RÉEL le 19/10** ;
 **P1** cadence de re-mesure, **VALIDÉ EN RÉEL le 19/10** ; **P4** infobulles
-« ⓘ », **LIVRÉ le 19/10 — à valider en réel**)
+« ⓘ », **VALIDÉ EN RÉEL le 19/10**)
 · `master` publié = **v2.80.0** · Store publié = **v2.71.1**.
 
 **Gouvernance** : **aucune release GitHub sans l'accord d'Alain** ; **à CHAQUE jalon validé,
@@ -32,16 +32,16 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 
 ---
 
-## Session du 19/10/2026 (nuit) — **LOT 3 = P4 LIVRÉ** (v2.95.0) → **à valider en réel**
+## Session du 19/10/2026 (nuit) — **LOT 3 = P4 VALIDÉ EN RÉEL** (v2.95.0) → **Lot 4 = P5**
 
 ### État actuel
 - **v2.95.0 sur `LRGBHa`** — **aucune release**. Code P4 = commit `2ab5d82`,
   **poussé** (`origin/LRGBHa`). Base poussée précédente : `e53d7eb` (doc P1,
   code P1 = `cb75201`).
-- **P4 est CODÉ, MESURÉ et BANCS VERTS ; reste la VALIDATION EN RÉEL.**
-  Les 13 textes d'aide de la colonne gauche sont devenus des infobulles
-  derrière un « ⓘ » ; l'option « Aides en texte dans la colonne » rétablit
-  l'ancien affichage (défaut NON, bascule immédiate, persistée).
+- **P4 VALIDÉ EN RÉEL par Alain (19/10)** : les 13 textes d'aide de la colonne
+  sont des infobulles derrière un « ⓘ », et l'option « Aides en texte dans la
+  colonne » rétablit l'ancien affichage (défaut NON, bascule immédiate,
+  persistée).
 - **Mesure faite AVANT et APRÈS le code** (`bancs/_mesure_p4_aides.py`,
   VRAIE interface, sections ouvertes par le banc, JSON
   `bancs/_mesure_p4_aides.json`) : **avant** 13 aides = **1 267 px = 84,5
@@ -90,21 +90,18 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 - **Pas de bulle sur le panneau histogramme** (hors colonne gauche, à droite) :
   sa légende reste un texte ; à faire seulement si Alain le demande.
 
-### Problèmes ouverts (liste d'Alain du 19/10) — **P1, P2, P3, P7 VALIDÉS ; P4 à valider**
-- **P1, P2, P3, P7 : VALIDÉS EN RÉEL** le 19/10 (détails durables dans
+### Problèmes ouverts (liste d'Alain du 19/10) — **P1, P2, P3, P4, P7 TOUS VALIDÉS**
+- **P1, P2, P3, P4, P7 : VALIDÉS EN RÉEL** le 19/10 (détails durables dans
   `CLAUDE.md` : cadence de re-mesure, base SPCC la plus riche, astrométrie
-  servie en fin de source, recalcul après un choix de couleur).
-- **P4 — place perdue dans la colonne gauche : LIVRÉ (v2.95.0)**, à VALIDER
-  EN RÉEL : survoler les « ⓘ » (400 ms), vérifier qu'une bulle ne sort jamais
-  de l'écran, cocher « Aides en texte dans la colonne » (retour à l'ancien
-  affichage, sans redémarrer) et rouvrir l'application (choix conservé).
+  servie en fin de source, recalcul après un choix de couleur, infobulles ⓘ).
+- **Restent P5 (réactivité) et P6 (source « stacks » par fichiers)** — ce sont
+  les deux derniers points de la liste du 19/10.
 
 ### Prochaines étapes
-1. **VALIDER P4 EN RÉEL** (Alain) : bulles ⓘ, option texte, persistance.
-2. **Puis LOT 4 = P5** (audit MESURÉ de la réactivité) — **accord d'Alain
-   avant chaque lot**.
-3. **Puis LOT 5 = P6** (source « stacks » par fichiers).
-4. **Release v2.95.x** sur accord explicite (aucune release depuis v2.80.0).
+1. **LOT 4 = P5** (audit MESURÉ de la réactivité) : mesurer AVANT de corriger,
+   puis correctifs chiffrés. **Accord d'Alain avant de démarrer le lot 5.**
+2. **LOT 5 = P6** (source « stacks » par fichiers).
+3. **Release v2.95.x** sur accord explicite (aucune release depuis v2.80.0).
 
 ### Rappel des lots suivants (liste d'Alain du 19/10)
 - **P5 — contrôles moins réactifs** (cases, listes, spinners, curseurs) : audit
@@ -139,10 +136,10 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
   (boîte MODALE, sinon blocage), jamais `grid` + `pack` dans le même conteneur.
 
 ### Contexte de reprise (à coller — 2 phrases)
-Arbre **v2.95.0** sur `LRGBHa` : **LOT 3 = P4 LIVRÉ** (infobulles « ⓘ », option
-« Aides en texte », 702 px repris — mesuré), Lot 1 / P7 / P1 **validés en réel**
-le 19/10, **aucune release**, pas encore poussé. **Prochaine action** :
-**VALIDER P4 EN RÉEL**, puis **LOT 4 = P5** (audit mesuré de la réactivité).
+Arbre **v2.95.0** sur `LRGBHa` (**poussé**) : Lot 1, P7, P1 et **P4 validés en
+réel** le 19/10, **aucune release**. **Prochaine action** : **LOT 4 = P5** —
+mesurer la réactivité (curseurs, cases, listes, spinners, `_tick`, `pack/forget`)
+AVANT tout correctif, puis corriger ce qui est chiffré.
 
 ---
 
@@ -178,7 +175,7 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 |---|---|---|---|
 | **1** | **P2 + P3** | base SPCC la plus riche, zéro substitution silencieuse, `_astro_demande` | **VALIDÉ EN RÉEL le 19/10** ; **P7 validé en réel** (v2.93.1) |
 | 2 | P1 | cadence de re-mesure Gaia/SPCC | **VALIDÉ EN RÉEL le 19/10** (v2.94.0) |
-| 3 | P4 | infobulles ⓘ | **LIVRÉ (v2.95.0) — à VALIDER EN RÉEL** |
+| 3 | P4 | infobulles ⓘ | **VALIDÉ EN RÉEL le 19/10** (v2.95.0) |
 | 4 | P5 | audit MESURÉ de la réactivité | en attente |
 | 5 | P6 | source « stacks » : fichiers choisis, **rôles saisis**, seuil de profondeur = 1 | en attente |
 
@@ -211,7 +208,7 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 - **Validé en réel** : les lignes Photométrie/SPCC disent la profondeur mesurée
   et la prochaine échéance, et la mesure se rafraîchit en s'approfondissant.
 
-### P4 — infobulles (lot 3) — **LIVRÉ (v2.95.0), à valider en réel**
+### P4 — infobulles (lot 3) — **VALIDÉ EN RÉEL le 19/10 (v2.95.0)**
 - `avastack/ui/bulles.py` (neuf, typé) : `Bulle` (Toplevel `overrideredirect`,
   400 ms, **une seule à la fois**, ramenée dans l'écran) et `astuce(widget,
   texte)` (souris + clavier : survol, FocusIn/Out, Échap, clic) ; mixin
@@ -226,13 +223,17 @@ main — le correctif de code doit suffire, et le test réel le prouve.
   **702 px repris** (46,8 lignes, 13 % de la colonne ; 5 405 → 4 703 px).
 - **Banc** : `bancs/_test_p4_aides.py`, 34 vérifications, VERT.
 
-### P5 — réactivité (lot 4)
-- Mesurer d'abord : `Guet.SEUIL_S` à 0,25 s temporairement, banc
-  `_test_perf_reactivite_jalon79` étendu aux cases/listes/spinners.
-- Chiffrer : `_add_slider.onchange` à chaque pixel, `_tick` 30 ms, combobox de
-  147/200 valeurs, `pack/forget` de `_maj_visibilite_cadres`.
-- Correctifs APRÈS les chiffres (coalescing ~20 Hz, écritures conditionnelles,
-  tick adaptatif). Audit d'architecture éventuel : mode plan, AVEC ces mesures.
+### P5 — réactivité (lot 4) — **PROCHAIN**
+- **Mesurer d'abord, corriger ensuite** : outil de mesure nommé
+  `bancs/_mesure_p5_reactivite.py` (motif P1/P4 : chiffres AVANT le code,
+  JSON conservé), plus `Guet.SEUIL_S` à 0,25 s temporairement et
+  `_test_perf_reactivite_jalon79` étendu aux **cases / listes / spinners**.
+- **Chiffrer** : `_add_slider.onchange` à chaque pixel, `_tick` à 30 ms,
+  combobox de 147/200 valeurs, `pack/forget` de `_maj_visibilite_cadres`,
+  réactivité des cases (`var.set` + `command`).
+- **Correctifs APRÈS les chiffres** (coalescing ~20 Hz, écritures
+  conditionnelles, tick adaptatif). Audit d'architecture éventuel : mode plan,
+  AVEC ces mesures. **Un lot = un jalon, avec l'accord d'Alain.**
 
 ### P6 — source « Stacks (fichiers FITS) » (lot 5)
 - **Sélection de FICHIERS**, pas un dossier : jusqu'à `NB_LIGNES_COMPO` (5)
@@ -266,15 +267,16 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 - **P1 VALIDÉ EN RÉEL** le 19/10 (v2.94.0) : `processing/cadence.py`, branches
   dans `_photo_tour` / `_spcc_tour` / `_astro_tour`, passe finale dans
   `_armer_astro_fin_source`, états avec échéance.
-- **P4 LIVRÉ** le 19/10 (v2.95.0), **à VALIDER EN RÉEL** : `ui/bulles.py`
-  (`Bulle` + `astuce` + mixin `Aides`), 13 aides migrées, option
-  `aides_texte` (« Aides en texte dans la colonne »), **702 px repris**.
+- **P4 VALIDÉ EN RÉEL** le 19/10 (v2.95.0) : `ui/bulles.py` (`Bulle` +
+  `astuce` + mixin `Aides`), 13 aides migrées, option `aides_texte`
+  (« Aides en texte dans la colonne »), **702 px repris** (mesuré).
   Détail en « P4 — infobulles ».
-- **Prochaine action unique** : **validation réelle de P4** (survol des ⓘ,
-  option texte, persistance après redémarrage).
-- **Ensuite** : **LOT 4 = P5** (audit MESURÉ de la réactivité), puis **P6**
-  (source stacks par fichiers) — **accord d'Alain avant chaque lot**.
-- **Puis** : **release v2.95.x** sur accord explicite (et `git push` du lot).
+- **Prochaine action unique** : **LOT 4 = P5** — **MESURER d'abord** la
+  réactivité (aucun correctif avant les chiffres), puis corriger ce qui est
+  chiffré. Détail en « P5 — réactivité ».
+- **Puis LOT 5 = P6** (source stacks par fichiers) — **accord d'Alain avant
+  chaque lot**.
+- **Puis** : **release v2.95.x** sur accord explicite.
 - **Optionnel** : cible qui REMPLIT le cadre (repli attendu et DIT) et filtre
   **3 nm** si Alain en a un.
 - **Référence chiffrée** : `C:\Astro\test\M33_Canaux_LRGBHa` (5 `canal_*.fit` +
@@ -335,7 +337,7 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 
 ## Clôtures précédentes
 
+- **19/10/2026** : **P4 VALIDÉ EN RÉEL** (v2.95.0) — 13 aides de la colonne en
+  infobulles « ⓘ » + option « Aides en texte » ; 702 px repris (mesuré).
 - **19/10/2026** : **P1 VALIDÉ EN RÉEL** (v2.94.0) — `processing/cadence.py`,
-  re-mesure 3→6→12…, passe finale en fin de source ; poussé, aucune release.
-- **19/10/2026** : **P7 VALIDÉ EN RÉEL** (v2.93.1) — un choix de correction de
-  couleur recalcule l'image (forçage du rendu + corrections dans la clé).
+  re-mesure 3→6→12…, passe finale en fin de source ; aucune release.
