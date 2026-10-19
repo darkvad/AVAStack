@@ -1874,9 +1874,11 @@ ce qui manquait n'était pas une correction mais une MESURE.
   ni l'un ni l'autre.
 - **POURQUOI LA MÉDIANE PEUT SE TROMPER** (risque ASSUMÉ, à connaître) : sur un
   objet qui REMPLIT le cadre (grande nébuleuse), le « continuum franc » est
-  lui-même dominé par la raie → rapports dispersés → repli. Sur une galaxie
-  (M33), le corps de la galaxie fournit un continuum propre et la mesure est
-  bonne. C'est pour cela que les bandes passantes restent le DÉFAUT.
+  lui-même dominé par la raie → rapports dispersés → repli. Sur M33, le corps de
+  la galaxie fournit un continuum propre : la mesure passe, mais la dispersion
+  RÉELLE y vaut **0,80** (régions HII) — c'est pour cela que le seuil de la
+  médiane est 1,20 et pas 0,50 (cf. « J4.1 » ci-dessous). Les bandes passantes
+  restent le DÉFAUT.
 - **POURQUOI LES ÉTOILES PEUVENT SE TROMPER** : champ pauvre en étoiles (moins
   de 5 détectées à 5σ) ou étoiles saturées/filées (rejetées par le MAD). Dans
   les deux cas, repli.
@@ -1886,14 +1888,64 @@ ce qui manquait n'était pas une correction mais une MESURE.
 - **PIÈGE DE BANC** : une scène où le Ha n'est PAS `k·(R − fond) + raie` fait
   REJETER la mesure (dispersion) — c'est le garde-fou, pas un bug. Le banc J4
   construit donc `Ha = 0,10 + k·(R − 0,10) + raie` (raie COMPACTE et DÉCALÉE du
-  maximum de R, leçon du J3bis) et retrouve k = 0,070 à −5,6 % (médiane) et
-  −1,6 % (étoiles), avec égalité AU BIT en repli.
-- Banc `bancs/_test_fusion_ha_jalon4.py` (7 volets) : trois méthodes et défauts,
-  bandes 7 nm AU BIT / 3 nm, mesure médiane et son repli, mesure étoiles et son
-  repli, `composer()` + `CompositeStacker` (info, mémoïsation méthode/bande),
-  interface (cases exclusives, grisages, Q au défaut, persistance/restauration,
-  repli affiché), fiche de rendu. Non-régressions : J2, J3, 129, 129b, 130, 136,
-  137, 141, garde-fou (pyright 0 sur la liste blanche).
+  maximum de R, leçon du J3bis) et retrouve k = 0,070 à **+1,7 %** (médiane,
+  depuis J4.1) et −1,6 % (étoiles), avec égalité AU BIT en repli.
+- Banc `bancs/_test_fusion_ha_jalon4.py` (8 volets, dont **[3bis]**) : trois
+  méthodes et défauts, bandes 7 nm AU BIT / 3 nm, mesure médiane et son repli,
+  mesure étoiles et son repli, **indépendance de la mesure vis-à-vis de la case
+  « recentrer »**, `composer()` + `CompositeStacker` (info, mémoïsation
+  méthode/bande), interface (cases exclusives, grisages, Q au défaut,
+  persistance/restauration, repli affiché), fiche de rendu. Non-régressions :
+  J2, J3, 129, 129b, 130, 136, 137, 141, garde-fou (pyright 0 sur la liste
+  blanche).
+
+
+## Continuum du Ha — la MESURE ne dépend pas de la case « recentrer » (J4.1, v2.91.1, VALIDÉ EN RÉEL le 19/10/2026)
+
+- **VALIDÉ EN RÉEL (19/10, soir)** : après correctif, « la médiane s'applique
+  quel que soit l'état de la case recentrer le Ha ». Bancs J4/J2/J3 verts,
+  `pyright` 0.
+
+- **DÉFAUT CONSTATÉ EN RÉEL** : `mediane` **REPLIAIT** case cochée
+  (« MAD/médiane 3,02 > 0,50 ») et **PASSAIT** décochée (« facteur 0,1511 ») ;
+  la case « recentrer » ne changeait rien à l'image, continuum actif ou coupé.
+- **CAUSE** : la mesure était faite sur les cartes **DÉJÀ recentrées par la
+  MÉDIANE GLOBALE** (`_mediane`). Sur une cible qui remplit une partie du cadre,
+  cette médiane monte avec la nébuleuse : le Ha recentré a des trous négatifs et
+  le rapport Ha/R se disperse (3,02). Décochée, le **piédestal de R** diluait la
+  dispersion (0,0168 sur les canaux M33) : la mesure passait **par accident**.
+  Deux mesures différentes pour un réglage d'AFFICHAGE.
+- **CORRECTIF** : `_fond_ciel` (médiane de la **MOITIÉ BASSE**, sous-échantillon
+  512×512) retire à CHAQUE carte son propre fond de ciel AVANT
+  `_facteur_continuum`, **quel que soit l'état de la case**. Le rapport redevient
+  le vrai k : **0,1794** sur les canaux M33, **identique en normalisation par
+  canal ET commune**. Le recentrage de SORTIE est **INCHANGÉ** (J2 au bit) : la
+  case agit toujours sur l'image, plus sur le facteur.
+- **SOUS CONTINUUM, recentrer les DEUX cartes est NEUTRE** :
+  `(h−mh) − c·(r−mr) = h − c·r − (mh − c·mr)` — un **offset constant**, absorbé
+  par l'écrêtage à 0. La case n'agit donc QUE sur la SORTIE, et seulement
+  **continuum COUPÉ** : elle y ajoute `médiane(Ha)` au rouge.
+- **MAIS CET OFFSET EST SOUVENT INVISIBLE À L'ÉCRAN** (mesuré sur les canaux
+  M33, 19/10, continuum coupé) : **+0,0590** par canal (= 315 % du fond rouge
+  0,0187) et **+0,1310** en normalisation commune (= 4,6 % d'un fond à 2,86) —
+  **uniforme**, donc l'étirement automatique recale le point noir et l'efface.
+  En `ha_luminance` il est **quasi NUL** (+0,0000 médian, +0,0008 au p90 : le
+  fond du Ha est sous la porte). Ne pas conclure « réglage mort » d'un écran :
+  c'est un réglage de **données LINÉAIRES**, visible dans l'image sauvegardée et
+  l'histogramme. Ne pas le retirer pour autant (comportement du J2, au bit).
+- **DEUX SEUILS DE DISPERSION** : `DISPERSION_MAX` (**0,50**) pour les ÉTOILES ;
+  `DISPERSION_MAX_MEDIANE` (**1,20**) pour la MÉDIANE. MESURÉ : M33 réelle =
+  **0,80** (0,50 rejetait donc TOUTE galaxie), champ sans continuum = **1,71**
+  (banc J4). 1,20 sépare les deux ; c'est le SEUL curseur si une cible réelle
+  replie encore.
+- **PHOTOMÉTRIE DES ÉTOILES** : `photometrie.flux_ouverture` retire DÉJÀ le fond
+  local en anneau ; la carte reçue (brute ou recentrée) ne change pas le
+  résultat — ne pas ajouter un second retrait.
+- **BANC** : volet **[3bis]** de `bancs/_test_fusion_ha_jalon4.py` — même facteur
+  coché/décoché, médiane APPLIQUÉE dans les deux cas, et `_fond_ciel` < médiane
+  globale sur une nébuleuse couvrant 54 % du cadre. Médiane du banc : k =
+  **0,0712** (+1,7 % du vrai 0,070 ; 0,0661 avant le correctif). J2 et J3 verts
+  AU BIT.
 
 
 ## Halo d'étoile coloré — cause, correctif et résidu (jalon 136, v2.85.0, 18/10/2026)

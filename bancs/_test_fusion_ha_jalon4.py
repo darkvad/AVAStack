@@ -25,6 +25,9 @@ Vérifie :
   [3] `mediane` retrouve un k CONNU sur une scène où le continuum est large et
       la raie compacte et décalée ; le repli quand le champ n'a pas de
       continuum franc ; l'égalité AU BIT avec `bandes_passantes` en repli ;
+      [3bis] J4.1 : la case « recentrer » ne change PAS le facteur mesuré (la
+      mesure se fait sur les cartes ramenées à leur fond de CIEL) et la médiane
+      s'applique cochée COMME décochée ;
   [4] `etoiles_5sigma` retrouve le même k par les étoiles ; repli quand il y a
       trop peu d'étoiles ;
   [5] `composer()` remonte l'info (et le repli), `CompositeStacker` aussi (et
@@ -206,6 +209,40 @@ o_bp = fusionner_ha(rgb, ha, mode="ajout_rouge", poids=1.0, recentrer=True,
                     r_reference=r, echelle_ha=ECH, bw_ha=7.0)
 verifie(float(np.max(np.abs(o_bp[..., 0] - o_m[..., 0]))) < 1e-3,
         "médiane ≡ bandes passantes avec Q équivalent (les deux visent le MÊME k)")
+
+# --- J4.1 : la case « recentrer » ne change PLUS la mesure --------------------
+# Défaut constaté EN RÉEL le 19/10 : avec la case cochée, la médiane repliait
+# (MAD/médiane 3,02) ; décochée, elle passait (facteur 0,1511). Un réglage
+# d'AFFICHAGE ne doit pas décider d'une MESURE : les deux cartes de mesure ont
+# désormais leur FOND DE CIEL retiré (`_fond_ciel`), quel que soit l'état de la
+# case.
+print("[3bis] recentrer coché/décoché : MÊME facteur, médiane appliquée dans les deux cas")
+info_sans = {}
+o_sans = fusionner_ha(rgb, ha, mode="ajout_rouge", poids=1.0, recentrer=False,
+                      continuum=True, q=1.0, methode_continuum="mediane",
+                      r_reference=r, echelle_ha=ECH, bw_ha=7.0, info=info_sans)
+verifie(info_sans.get("methode_effective") == "mediane"
+        and not info_sans.get("repli"),
+        f"recentrer DÉCOCHÉ : la médiane s'applique aussi "
+        f"(eff={info_sans.get('methode_effective')}, "
+        f"repli={info_sans.get('repli')})")
+verifie(info_sans.get("facteur") is not None
+        and abs(float(info_sans["facteur"]) - float(info.get("facteur") or 0.0))
+        <= 1e-12,
+        f"facteur IDENTIQUE cochée/décochée : {info.get('facteur')} / "
+        f"{info_sans.get('facteur')}")
+verifie(float(np.max(np.abs(o_sans[..., 0] - o_m[..., 0]))) > 1e-4,
+        "la CASE n'agit plus sur la MESURE mais agit toujours sur la SORTIE "
+        "(recentrage Ha/R : comportement du J2 inchangé)")
+# Le fond de MESURE est le CIEL (moitié basse), pas la médiane globale : une
+# nébuleuse qui remplit plus de la moitié du cadre fait MONTER la médiane
+# globale et creuserait des trous négatifs (c'est le 3,02 mesuré en réel).
+_rng_b = np.random.default_rng(31)
+h_large = (0.10 + _rng_b.normal(0.0, 0.005, (96, 96))).astype(np.float32)
+h_large[:, :52] += np.float32(0.60)          # « nébuleuse » sur 54 % du cadre
+verifie(compo._fond_ciel(h_large) < 0.20 < compo._mediane(h_large),
+        f"fond de mesure = CIEL ({compo._fond_ciel(h_large):.3f}) et non la "
+        f"médiane globale ({compo._mediane(h_large):.3f})")
 
 # Champ SANS continuum franc : R n'est que du ciel bruité → mesure impossible.
 rng = np.random.default_rng(21)

@@ -19,7 +19,32 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.91.0"
+AVASTACK_VERSION = "2.91.1"
+
+# v2.91.1 : CONTINUUM DU Ha — la MESURE ne dépend plus de la case « recentrer »
+#   (correctif du test réel de J4, 19/10/2026). Constaté À L'ÉCRAN : `mediane`
+#   REPLIAIT case cochée (MAD/médiane 3,02) et PASSAIT décochée (facteur
+#   0,1511) — un réglage d'affichage décidait d'une mesure. Cause : la mesure
+#   tournait sur les cartes DÉJÀ recentrées par la médiane GLOBALE, qui monte
+#   avec la nébuleuse et creuse des trous négatifs ; à l'inverse, décocher
+#   laissait le piédestal de R, ce qui diluait la dispersion (mesure juste par
+#   accident). Correctif : les cartes de MESURE sont ramenées à leur FOND DE
+#   CIEL (`_fond_ciel`, médiane de la MOITIÉ BASSE), quel que soit l'état de la
+#   case — le rapport Ha/R redevient le vrai k. Le recentrage de SORTIE est
+#   INCHANGÉ (J2 au bit) : la case agit toujours sur les données LINÉAIRES
+#   (offset constant, invisible à l'écran car l'étirement recale le noir), plus
+#   sur le facteur.
+#   MESURÉ sur les canaux M33 réels (C:\Astro\test\M33_Canaux_LRGBHa) :
+#     · avant : coché → REPLI 3,02 ; décoché → k 0,0168 (instable) ;
+#     · après : k = 0,1794 DANS LES DEUX CAS, dispersion 0,80, appliqué ;
+#     · identique en normalisation par canal ET commune (0,1794), le fond de
+#       chaque carte étant retiré chez soi ;
+#     · banc J4 : k retrouvé 0,0712 contre 0,0700 (+1,7 % ; avant 0,0661).
+#   Nouveau seuil PROPRE à la médiane : `DISPERSION_MAX_MEDIANE` = 1,20. 0,50
+#   rejetait TOUTE galaxie réelle (M33 : 0,80) ; un champ sans continuum donne
+#   1,71 (banc) → 1,20 sépare les deux. Le seuil des ÉTOILES reste 0,50.
+#   Banc J4 : volet [3bis] (facteur identique coché/décoché, médiane appliquée
+#   dans les deux cas, fond de mesure = ciel) ; J2 et J3 verts AU BIT.
 
 # v2.91.0 : CONTINUUM DU Ha — les DEUX AUTRES MÉTHODES (jalon J4, décisions
 #   d'Alain du 19/10/2026). Le J2 n'avait que `bandes_passantes` (théorie 7/100

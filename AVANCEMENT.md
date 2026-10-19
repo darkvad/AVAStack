@@ -15,11 +15,12 @@ pièges actifs, prochaine action. Le détail daté vit dans `avastack/__init__.p
 > sur `LRGBHa`. `master` = branche stable, releases uniquement ; merge vers `master`
 > seulement sur validation explicite (release).
 
-Versions : `LRGBHa` = **v2.91.0** (①/②/③ validés en réel ; **136** halo coloré,
+Versions : `LRGBHa` = **v2.91.1** (①/②/③ validés en réel ; **136** halo coloré,
 **137** neutralisation après étirement en STF, **141-B** interface, **J2** fusion
 du Ha au rouge + continuum **VALIDÉ EN RÉEL le 19/10**, **J3/J3bis** cinq modes
-**VALIDÉS EN RÉEL le 19/10**, **J4** continuum **trois méthodes** (médiane, étoiles
-5σ, bandes 7/3 nm) **LIVRÉ — à juger à l'écran**) ·
+**VALIDÉS EN RÉEL le 19/10**, **J4** continuum
+**trois méthodes** (médiane, étoiles 5σ, bandes 7/3 nm) et **J4.1** (mesure
+indépendante de la case « recentrer ») **VALIDÉS EN RÉEL le 19/10**) ·
 `master` publié = **v2.80.0** · Store publié = **v2.71.1**.
 
 **Gouvernance** : **aucune release GitHub sans l'accord d'Alain** ; **à CHAQUE jalon validé,
@@ -28,92 +29,84 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 
 ---
 
-## Session du 19/10/2026 — **J4 LIVRÉ** (v2.91.0, `LRGBHa`) — à valider en réel
+## Session du 19/10/2026 — **J4 + J4.1 VALIDÉS EN RÉEL** (v2.91.1, `LRGBHa`)
 
 ### État actuel
-- **Code** : **v2.91.0** sur `LRGBHa`. **J4 LIVRÉ** : trois méthodes de continuum
-  (`bandes_passantes` par défaut, `mediane`, `etoiles_5sigma`), choix du filtre
-  **7 / 3 nm**, **repli VISIBLE sur les cases**, case « recentrer » exposée avec
-  son risque écrit, Q par défaut selon la méthode (0,80 / 1,00).
-- **Bancs** : **J4 vert** (7 volets), **J2 et J3 verts**, non-régressions
-  129/129b/130/136/137/141 + garde-fou vertes ; `ruff` sans nouvelle erreur,
-  `pyright` **0** sur la liste blanche (50 fichiers). **Aucune release.**
-- **Suite** : **test réel de J4 par Alain**, puis **J5** = ancre réelle + doc.
+- **Code** : **v2.91.1** sur `LRGBHa`. **J4** = trois méthodes de continuum
+  (`bandes_passantes` 7/3 nm, `mediane`, `etoiles_5sigma`), repli VISIBLE, case
+  « recentrer ». **J4.1** : la MESURE ne dépend plus de la case — cartes de
+  mesure ramenées à leur **fond de CIEL** (`_fond_ciel`), recentrage de SORTIE
+  inchangé (J2 au bit). **VALIDÉ EN RÉEL le 19/10 (soir).**
+- **Bancs** : **J4 vert** (8 volets, dont **[3bis]**), **J2 et J3 verts**,
+  `ruff` propre, `pyright` **0** sur `composition.py`. **Aucune release.**
+- **Suite** : **J5** = ancre réelle + doc, **sur accord explicite d'Alain**
+  (ne pas démarrer de soi-même).
 
-### Rappel (clos — ne pas rouvrir)
-- **J2 et J3 VALIDÉS en réel le 19/10** ; détail dans le changelog
-  (`v2.88.0` → `v2.90.2`). Q retenu **0,80** ; le poids **1,5** était un réglage
-  **par cible** (M33), le défaut reste **1,0**.
+### Test réel J4 du 19/10 → correctif J4.1
 
-### Ce que fait J4 (4 décisions d'Alain du 19/10)
-
-| Décision | Effet dans le code |
+| Cas (AVANT correctif) | Ce que l'écran disait |
 |---|---|
-| Les deux méthodes + bandes passantes par défaut | défaut INCHANGÉ (validé en réel) |
-| « notion » des filtres 3 nm | `bw_ha` = 7 nm (défaut) ou 3 nm : rapport 7/100 ou 3/100 |
-| Repli VISIBLE sur les cases | « ← appliquée » + ligne d'état orange avec la raison |
-| Q = 1,00 sur une mesure | 0,80 reste LE réglage des bandes passantes |
+| `mediane` + recentrer **coché** | REPLI — « rapports trop dispersés (MAD/médiane 3.02 > 0.50) » |
+| `mediane`, recentrer **décoché** | « Appliquée : Médiane (facteur mesuré 0.1511) » |
+| `etoiles_5sigma` | « Appliquée : Étoiles 5σ (facteur mesuré 0.3495) » |
+| case **recentrer** | aucun effet visible, **continuum coché OU décoché** |
 
-### Comment chaque méthode trouve k
-- `bandes_passantes` : `k = Q x (bw_ha / 100)` — formule du J2, AU BIT.
-- `mediane` : médiane de `Ha x échelle / R` sur le continuum FRANC (R recentré
-  entre p70 et p99,5) ; dispersion MAD/médiane <= 0,50, sinon repli.
-- `etoiles_5sigma` : `stars.detecter_positions(r, 5σ)` +
-  `photometrie.flux_ouverture` (Ha ET R) : médiane des rapports, rejet à
-  2,5 MAD, **>= 5 étoiles** sinon repli.
-- Le facteur mesuré est multiplié par Q puis BORNÉ à [0 ; 0,5]. En repli, la
-  sortie est AU BIT celle de `bandes_passantes` avec le Q courant.
+- **Cause mesurée** : la mesure tournait sur les cartes DÉJÀ recentrées par la
+  médiane GLOBALE, qui monte avec la nébuleuse (dispersion 3,02) ; décochée, le
+  piédestal de R diluait la dispersion (mesure juste par accident : k 0,0168 sur
+  les canaux de référence). Et sous continuum, recentrer les DEUX cartes
+  s'annule dans `h − k/échelle·r` (offset constant) : la case ne peut rien y
+  changer.
+- **Correctif v2.91.1** : mesure sur `h − _fond_ciel(h)` et `r − _fond_ciel(r)`,
+  QUEL QUE SOIT l'état de la case ; seuil de dispersion PROPRE à la médiane,
+  `DISPERSION_MAX_MEDIANE = 1,20` (M33 réelle 0,80 ; champ sans continuum 1,71).
+- **Mesuré sur `C:\Astro\test\M33_Canaux_LRGBHa`** : k = **0,1794 dans les deux
+  états**, dispersion 0,80, méthode APPLIQUÉE ; identique en normalisation par
+  canal ET commune. Banc J4 : k retrouvé 0,0712 contre 0,0700 (+1,7 %).
+- **Résultat du RE-TEST (19/10, soir)** : « la médiane s'applique maintenant
+  quel que soit l'état de la case recentrer » → **JALON J4/J4.1 VALIDÉ EN RÉEL**.
+- **Case `recentrer` : NULLE sous continuum, quasi invisible ailleurs** — à
+  continuum coupé elle n'ajoute qu'un **offset** (`médiane(Ha)` : 0,059 par
+  canal, 0,131 en commune), **uniforme** donc absorbé par l'étirement ; en
+  `ha_luminance` mesuré **quasi nul** (0,0000 médian). Alain l'a constaté et
+  jugé **non vital** (19/10) : on n'y touche pas.
+
+### J4 — méthodes (plan figé, détail au changelog v2.91.0)
+- `bandes_passantes` : `k = Q × bw_ha/100`, 7 nm défaut, 3 nm = 3/100 (AU BIT).
+- `mediane` : médiane de `Ha × échelle / R` sur le haut de R (p70 → p99,5),
+  dispersion sous `DISPERSION_MAX_MEDIANE` (1,20), sinon repli.
+- `etoiles_5sigma` : flux Ha/R des étoiles 5σ (≥ 5, rejet 2,5 MAD), sinon repli.
+- Mesure × Q (1,00 ; 0,80 en bandes) bornée [0 ; 0,5] ; en repli la sortie est
+  AU BIT celle des bandes, montré « ← appliquée » + ligne d'état orange.
 
 ### Mesures du banc J4 (scènes synthétiques, k connu = 0,070)
-
-| méthode | k retrouvé | écart |
-|---|---|---|
-| `mediane` | 0,0661 | -5,6 % |
-| `etoiles_5sigma` | 0,0689 | -1,6 % |
-| `bandes_passantes` 7 nm | 0,0560 (= 0,80 x 7/100) | au bit |
-| `bandes_passantes` 3 nm | 0,0240 (= 0,80 x 3/100) | au bit |
-
-Les deux mesures CONCORDENT à 4 % ; repli vérifié (champ sans continuum,
-0 étoile) et ÉGALITÉ AU BIT avec les bandes passantes dans ce cas.
+`mediane` **0,0712** (+1,7 %), `etoiles_5sigma` **0,0689** (−1,6 %), bandes
+7 nm **0,0560** et 3 nm **0,0240** AU BIT. Repli vérifié (champ sans continuum,
+0 étoile) avec sortie AU BIT des bandes ; J4.1 : même facteur case
+cochée/décochée (contrôle sans continuum : dispersion 1,71 > seuil 1,20).
 
 ### Fichiers modifiés
-- `avastack/processing/composition.py` : `METHODES_CONTINUUM_HA` (3),
-  `BW_HA_NM_OPTIONS` (7/3), `q_ha_defaut`, `borne_bw_ha`, `_facteur_mediane`,
-  `_facteur_etoiles`, `_facteur_continuum`, `info` remplie par `fusionner_ha`,
-  `composer(info_fusion_ha=…)`, `CompositeStacker.info_fusion_ha` + clé de
-  mémoïsation (méthode ET bande).
-- `avastack/ui/panels/compo.py` : CASES EXCLUSIVES, filtre 7/3 nm, case
-  « recentrer » avec son risque, ligne d'état.
-- `avastack/ui/app.py` : `_lire_fusion_ha` (3 clés), `_on_methode_continuum`
-  (Q au défaut de la méthode), `_refléter_methode_continuum` (appelée par
-  `_tick_corps`), `_maj_fusion_ha` (grisages selon la méthode).
-- `avastack/ui/config_ui.py` : lecture/écriture des 3 clés (+ typage).
-- `avastack/ui/saver.py` : `bw_ha_nm` dans la fiche de rendu.
-- `avastack/__init__.py` : **2.91.0** + changelog.
-- `bancs/_test_fusion_ha_jalon4.py` : NEUF (7 volets) ; bancs J2/J3 recalés
-  (leurs dicts attendus portent `bw_ha`).
+- `avastack/processing/composition.py` : trois méthodes, bande 7/3 nm,
+  `q_ha_defaut`, `_facteur_mediane` / `_facteur_etoiles` / `_facteur_continuum`,
+  `info` par `fusionner_ha`, `composer(info_fusion_ha=…)`, clé de mémoïsation
+  (méthode ET bande). **J4.1** : `_fond_ciel`, `DISPERSION_MAX_MEDIANE` (1,20),
+  cartes de mesure dans `fusionner_ha`.
+- `avastack/ui/panels/compo.py` : cases exclusives, filtre 7/3 nm, case
+  « recentrer » (+ nuance J4.1 sur son effet réel), ligne d'état.
+- `avastack/ui/app.py` : `_lire_fusion_ha`, `_on_methode_continuum` (Q au défaut
+  de la méthode), `_refléter_methode_continuum`, `_maj_fusion_ha`.
+- `avastack/ui/config_ui.py` + `saver.py` : 3 clés persistées, `bw_ha_nm` dans
+  la fiche. `avastack/__init__.py` : **2.91.1** + changelog (J4.1).
+- `bancs/_test_fusion_ha_jalon4.py` : J4 (7 volets) + **[3bis]** (J4.1) ; bancs
+  J2/J3 recalés (leurs dicts attendus portent `bw_ha`).
 
 ### Prochaines étapes
-1. TEST RÉEL de J4 par Alain (M33) : ciel gris (pas de voile), extensions
-   pleines (pas creusées), étoiles blanches.
-2. Puis J5 (ancre réelle + doc). Release seulement sur accord explicite.
+1. **J5** (ancre réelle + doc) — **seulement sur accord explicite d'Alain**.
+2. Optionnel, quand l'occasion se présente : cible qui REMPLIT le cadre (repli
+   attendu et DIT) et filtre **3 nm** si Alain en a un.
 
 ---
-## HISTORIQUE — 18/10/2026 (détail : changelog v2.86.0 / v2.87.0 / v2.88.0 + git log)
-
-①/②/③, 136 et 137 livrés et validés ; 141-B livrée ; J2 livré (validé le 19/10).
-TRANCHÉ, **ne pas rouvrir** : combine LRGB innocenté (140/142/143) · `phase`
-écartée en broadband ET narrowband · VeraLux CLOS (122/123/124) · 141 = B.
-Astrométrie RÉSOLUE (AD/Dec de M31 saisies sur des brutes M33) — `CLAUDE.md`.
-Teinte des COINS = DÉGRADÉ mesuré, sans action (voir « Problèmes ouverts »).
-
-### Problèmes ouverts
-- **Aucun bloquant** sur ①/②/③/136/137/141-B/J2/J3bis : livrés, mesurés, bancs
-  verts. Reste à juger À L'ÉCRAN : le rendu des quatre modes J3bis (Alain).
-- En attente d'une décision : **teinte des COINS ±15-20 %** (dégradé) — GraXpert/
-  ABE ou estimateur par région, à trancher ; mesurée, non traitée.
-
-### Points d'attention
+## Points d'attention
 - **TROIS noms de composition** (141-B) : `stacker.composition`/`_compo_nom` (ce
   que la SOURCE empile, source de `AVACOMPO`), `_compo_session` (armée au
   « ▶ Démarrer »), `var_compo` (le MENU). Le bandeau ne compare que les deux
@@ -181,13 +174,11 @@ Teinte des COINS = DÉGRADÉ mesuré, sans action (voir « Problèmes ouverts »
   exigent `== "triangles"` et restent verts (leur résidu est ~0,03 px).
 
 ### Contexte de reprise (à coller — 2 phrases)
-Arbre **v2.91.0** sur `LRGBHa` : **J2 et J3 sont VALIDÉS en réel** (19/10) et
-**J4 est LIVRÉ** — continuum à **trois méthodes** (`bandes_passantes` 7/3 nm par
-défaut, `mediane`, `etoiles_5sigma`), **repli visible sur les cases**, case
-« recentrer » avec son risque ; banc J4 + J2/J3 + non-régressions verts, `pyright`
-0, **aucune release faite**. Prochaine action : **faire juger J4 à l'écran par
-Alain** (M33, puis une cible qui remplit le cadre pour voir le repli), ensuite J5
-(ancre + doc).
+Arbre **v2.91.1** sur `LRGBHa` : **J2, J3 et J4/J4.1 sont VALIDÉS en réel**
+(19/10) — trois méthodes de continuum, repli visible, et la MESURE ne dépend
+plus de la case « recentrer » (fond de ciel, seuil médiane 1,20 ; bancs J4/J2/J3
+verts, `pyright` 0, aucune release). **Prochaine action** : **J5** (ancre réelle
++ doc) **sur accord explicite d'Alain**.
 
 ---
 
@@ -203,7 +194,8 @@ Le rôle Ha **n'alimente aucun canal** : il est **FUSIONNÉ** au composite aprè
 | **J2 (v2.88.0)** | fusion « ajout au rouge » + poids 1,0 + recentrage + **continuum (Q, case)** + cadre « Fusion Ha » | **VALIDÉ EN RÉEL le 19/10** |
 | **J3 (v2.89.0)** | `fondu_rouge` (α), `ecran_rouge`, `eclaircir_rouge`, `ha_luminance` + poids = force globale | LIVRÉ — **verdict réel 19/10 : à reprendre** (fondu bleui, écran cyan, éclaircir inerte) |
 | **J3bis (v2.90.2)** | les 4 opérateurs dans l'espace de R ; `ha_luminance` = gain **à porte** (0,05–0,25) ; `ajout_rouge` au bit | **VALIDÉ EN RÉEL (19/10)** |
-| **J4 (v2.91.0)** | continuum **trois méthodes** (`bandes_passantes` 7/3 nm, `mediane`, `etoiles_5sigma`), **repli visible**, case « recentrer » | **LIVRÉ — à juger à l'écran** |
+| **J4 (v2.91.0)** | continuum **trois méthodes** (`bandes_passantes` 7/3 nm, `mediane`, `etoiles_5sigma`), **repli visible**, case « recentrer » | **VALIDÉ EN RÉEL le 19/10** |
+| **J4.1 (v2.91.1)** | la **mesure** ne dépend plus de la case (fond de ciel), seuil médiane 1,20 | **VALIDÉ EN RÉEL le 19/10 (soir)** |
 | J5 | ancre réelle + doc | à faire |
 
 Plan figé (13 arbitrages du 15/10) : poids **1,0** (0–10) · α **0,5** · Q **0,80**
@@ -213,18 +205,18 @@ identifiants en français (`synthetise`).
 
 ---
 
-## En attente / prochaine session (état au 19/10 — `LRGBHa`, v2.91.0)
+## En attente / prochaine session (état au 19/10 — `LRGBHa`, v2.91.1)
 
-- **J2 et J3 sont CLOS** (validés en réel le 19/10). Les cinq modes sont livrés :
-  `ajout_rouge` (J2, au bit), `fondu_rouge` (α), `ecran_rouge`, `eclaircir_rouge`,
-  `ha_luminance` à porte.
-- **J4 est LIVRÉ, PAS ENCORE JUGÉ** : bancs verts, aucune mesure réelle. **À
-  juger à l'écran** : la **médiane** et les **étoiles 5σ** sur M33 (et sur une
-  cible qui REMPLIT le cadre, pour voir le repli), le filtre **3 nm** si Alain
-  en a un, et la case **recentrer décochée** (voile rouge attendu, c'est le
-  témoin du risque).
-- **Prochaine action unique** : **test réel de J4 par Alain** ; ensuite **J5**
-  (ancre réelle + doc). Ne pas démarrer J5 de soi-même.
+- **J2, J3 et J4/J4.1 sont CLOS** (validés en réel le 19/10). Les cinq modes
+  sont livrés : `ajout_rouge` (J2, au bit), `fondu_rouge` (α), `ecran_rouge`,
+  `eclaircir_rouge`, `ha_luminance` à porte ; le continuum a trois méthodes
+  (bandes 7/3 nm, médiane, étoiles 5σ), repli VISIBLE, et sa MESURE ne dépend
+  plus de la case « recentrer » (k = 0,1794 sur les canaux M33, cochée comme
+  décochée).
+- **Prochaine action unique** : **J5** (ancre réelle + doc) — **sur accord
+  explicite d'Alain**. Ne pas démarrer de soi-même.
+- **Optionnel** : cible qui REMPLIT le cadre (repli attendu et DIT) et filtre
+  **3 nm** si Alain en a un.
 - **Référence chiffrée** : `C:\Astro\test\M33_Canaux_LRGBHa` (5 `canal_*.fit` +
   fiches ; `AVACOMPO` = LRGB+Ha, **normalisation COMMUNE**, lissage 117d).
   Rejouer : `python bancs/_diag_fusion_ha_echelles.py --canaux <dossier>
@@ -232,7 +224,8 @@ identifiants en français (`synthetise`).
 - **Ne pas retoucher** : `ajout_rouge` (AU BIT), la formule `bandes_passantes`
   7 nm, α, le poids, le principe « repli = bandes passantes AU BIT ».
 - **141-B validée** (rien à retester) ; **teinte des COINS** notée, sans action.
-- **Aucune release** sans accord explicite, et **pas avant le test réel de J4**.
+- **Aucune release** sans accord explicite (J4/J4.1 sont validés, J5 reste à
+  faire).
 - Retour arrière en un geste : `git checkout -- avastack/processing/composition.py`.
 
 ---
@@ -270,6 +263,18 @@ identifiants en français (`synthetise`).
 - **J4 — une scène où le Ha n'est PAS le continuum de R fait REJETER la
   mesure** (dispersion) : c'est le garde-fou voulu, pas un bug. Un banc qui veut
   une mesure CONCLUANTE doit construire `Ha = k·(R − fond) + raie`.
+- **J4.1 — la MESURE ne dépend PAS de la case « recentrer »** : les cartes de
+  mesure sont ramenées à leur **fond de CIEL** (`_fond_ciel`, médiane de la
+  moitié basse), jamais à la médiane globale (qui monte avec la nébuleuse).
+  Avant, coché → repli 3,02, décoché → 0,0168 : deux mesures différentes pour
+  un réglage d'affichage. Et sous continuum, recentrer les DEUX cartes s'annule
+  dans `h − k/échelle·r` (offset constant) : la case n'agit QUE sur les données
+  LINÉAIRES, continuum COUPÉ, et l'étirement l'efface à l'écran (sauf
+  `ha_luminance`, quasi nul par la porte). Ne pas la croire morte pour autant.
+- **J4.1 — deux seuils de dispersion, jamais un seul** : `DISPERSION_MAX`
+  (0,50) pour les ÉTOILES, `DISPERSION_MAX_MEDIANE` (1,20) pour la MÉDIANE. À
+  0,50, AUCUNE galaxie réelle ne passait (M33 : 0,80) ; un champ sans continuum
+  est à 1,71. Un banc qui change un seuil doit vérifier les DEUX côtés.
 - **141-B — les noms de composition se CONTIENNENT** : `"RGB+Ha"` est une
   sous-chaîne de `"LRGB+Ha"` ⇒ jamais `startswith`/`in` pour prouver ce qui est
   écrit ; lire `AVACOMPO` en coupant à la virgule (`split(",")[0].strip()`).
@@ -313,7 +318,8 @@ identifiants en français (`synthetise`).
 
 ## Clôtures précédentes
 
-- **19/10/2026** : **J4 LIVRÉ** (v2.91.0) — trois méthodes de continuum,
-  filtre 7/3 nm, repli visible sur les cases, case « recentrer » ; banc J4 vert.
+- **19/10/2026** : **J4/J4.1 VALIDÉS en réel** (v2.91.1) — trois méthodes de
+  continuum, mesure indépendante de la case « recentrer » (seuil médiane 1,20) ;
+  bancs J4/J2/J3 verts.
 - **19/10/2026** : **J2 et J3 VALIDÉS en réel** (J2 : Q 0,80 ; J3/J3bis : cinq
   modes, `ha_luminance` à porte 0,05–0,25 en v2.90.2).

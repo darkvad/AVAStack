@@ -324,6 +324,11 @@ class PanneauComposition:
         # Le risque est écrit SUR la case : décochée, le fond du Ha (~1 en
         # normalisation commune) est ajouté au rouge ⇒ voile rouge sur tout le
         # ciel (mesuré : +0,30 sur le fond, contre ±0,001 coché).
+        # J4.1 — NUANCE MESURÉE (canaux M33, 19/10) : sous continuum la case
+        # s'annule (offset constant) ; à continuum COUPÉ elle n'ajoute qu'un
+        # offset uniforme (0,059 par canal, 0,131 en commune), que l'étirement
+        # automatique recale → souvent invisible À L'ÉCRAN (quasi nul en
+        # `ha_luminance`). C'est un réglage de données LINÉAIRES.
         self.var_fusion_ha_recentrer = tk.BooleanVar(
             value=RECENTRER_HA_DEFAUT)
         self.chk_fusion_ha_recentrer = ttk.Checkbutton(

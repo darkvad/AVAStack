@@ -243,7 +243,13 @@ CONTINUUM_HA_DEFAUT: bool = True
 SEUIL_ETOILES_SIGMA: float = 5.0     # détection des étoiles (le « 5σ » du nom)
 ETOILES_CONTINUUM_MAX: int = 40       # étoiles examinées (coût borné)
 ETOILES_CONTINUUM_MIN: int = 5        # en dessous : mesure non fiable → repli
-DISPERSION_MAX: float = 0.5           # MAD/médiane toléré sur le rapport
+DISPERSION_MAX: float = 0.5           # MAD/médiane toléré (étoiles 5σ)
+# J4.1 — la MÉDIANE a son propre seuil, MESURÉ sur des données réelles : sous
+# `DISPERSION_MAX` (0,50), AUCUNE galaxie réelle ne passait (M33 : 0,80), parce
+# que le rapport Ha/R varie vraiment d'une région HII à l'autre. Un champ SANS
+# continuum, lui, donne 1,71 (banc J4, R = ciel bruité seul) : 1,20 sépare les
+# deux cas. Ne pas recopier ce seuil ailleurs.
+DISPERSION_MAX_MEDIANE: float = 1.20
 MEDIANE_PCT_BAS: float = 70.0         # `mediane` : pixels de continuum franc
 MEDIANE_PCT_HAUT: float = 99.5        # au-delà : cœurs d'étoiles / objets
 FACTEUR_CONTINUUM_MAX: float = 0.5    # k au-delà : mesure absurde → repli
@@ -440,6 +446,23 @@ def _mediane(img: np.ndarray) -> float:
     return float(np.median(_echantillon(np.asarray(img, dtype=np.float32))))
 
 
+def _fond_ciel(img: np.ndarray) -> float:
+    """Niveau du FOND DE CIEL (médiane de la MOITIÉ BASSE du sous-échantillon).
+
+    Sert à la MESURE du continuum (J4.1), jamais au recentrage de sortie. La
+    médiane GLOBALE (`_mediane`) monte avec la nébuleuse : sur une cible qui
+    remplit une partie du cadre, elle n'est plus le ciel et recentrer le Ha par
+    elle creuse des trous négatifs (dispersion mesurée 3,02 sur M33 en réel).
+    La moitié basse est le ciel quel que soit l'objet, et elle ne dépend pas du
+    mode de normalisation : les fonds de Ha et de R sont retirés CHACUN chez
+    soi, si bien que le rapport Ha/R redevient le vrai k (mesuré identique en
+    normalisation par canal et en normalisation commune)."""
+    e = _echantillon(np.asarray(img, dtype=np.float32))
+    p50 = float(np.percentile(e, 50.0))
+    bas = e[e <= p50]
+    return float(np.median(bas)) if bas.size else float(np.median(e))
+
+
 def _borne_float(valeur: Any, defaut: float, mini: float, maxi: float) -> float:
     """Valeur numérique BORNÉE, ou `defaut` si elle est illisible/NaN/∞.
 
@@ -493,12 +516,20 @@ def _facteur_mediane(ha: np.ndarray, r: np.ndarray,
     cœurs d'étoiles et d'objets saturés sont écartés). Là, le Ha ne porte que
     le continuum, donc `Ha × échelle / R` vaut directement k.
 
-    Les deux cartes sont DÉJÀ recentrées (médiane 0) et de même forme. La
-    médiane du rapport est ROBUSTE ; la dispersion (MAD/médiane) sert de
-    garde-fou : un champ dominé par la raie (grande nébuleuse remplissant le
-    cadre) donne des rapports dispersés → `(None, raison)` et l'appelant
-    retombe sur `bandes_passantes`. C'est le risque ASSUMÉ de cette méthode,
-    rendu VISIBLE dans l'interface (décision d'Alain, 19/10/2026).
+    Les deux cartes arrivent **DÉJÀ RAMENÉES À LEUR FOND DE CIEL** (`_fond_ciel`
+    dans `fusionner_ha`, J4.1) : la mesure ne dépend donc NI de la case
+    « recentrer » NI du mode de normalisation. C'est ce qui manquait au J4 —
+    cocher la case changeait le facteur mesuré (repli coché contre 0,1511
+    décoché, constaté en réel le 19/10).
+
+    La médiane du rapport est ROBUSTE ; la dispersion (MAD/médiane) sert de
+    garde-fou, avec le seuil PROPRE de cette méthode
+    (`DISPERSION_MAX_MEDIANE`, 1,20) : une galaxie réelle disperse à 0,80 (M33
+    mesurée), un champ sans continuum à 1,71 (banc J4). Un champ dominé par la
+    raie (grande nébuleuse remplissant le cadre) donne des rapports plus
+    dispersés → `(None, raison)` et l'appelant retombe sur `bandes_passantes`.
+    C'est le risque ASSUMÉ de cette méthode, rendu VISIBLE dans l'interface
+    (décision d'Alain, 19/10/2026).
 
     → (k, "") en succès, (None, raison lisible) sinon. Ne lève jamais."""
     hs = _echantillon(np.asarray(ha, dtype=np.float32))
@@ -518,9 +549,9 @@ def _facteur_mediane(ha: np.ndarray, r: np.ndarray,
     if not np.isfinite(med) or med <= 0.0:
         return None, "facteur non concluant"
     mad = float(np.median(np.abs(ratio - med))) * 1.4826
-    if mad > DISPERSION_MAX * med:
+    if mad > DISPERSION_MAX_MEDIANE * med:
         return None, (f"rapports trop dispersés (MAD/médiane "
-                      f"{mad / med:.2f} > {DISPERSION_MAX:.2f})")
+                      f"{mad / med:.2f} > {DISPERSION_MAX_MEDIANE:.2f})")
     if med > FACTEUR_CONTINUUM_MAX:
         return None, (f"facteur absurde ({med:.3f} > "
                       f"{FACTEUR_CONTINUUM_MAX:.2f})")
@@ -542,6 +573,10 @@ def _facteur_etoiles(ha: np.ndarray, r: np.ndarray,
     garde-fous : au moins `ETOILES_CONTINUUM_MIN` étoiles retenues et une
     dispersion (MAD/médiane) sous `DISPERSION_MAX`. Sinon `(None, raison)` et
     repli sur `bandes_passantes` — la mesure ne se voit pas dans le ciel.
+
+    J4.1 : `flux_ouverture` retirant DÉJÀ le fond local en anneau, la carte
+    reçue peut être brute ou recentrée — le résultat ne change pas (les cartes
+    arrivent de toute façon avec le fond de ciel retiré).
 
     → (k, "") en succès, (None, raison lisible) sinon. Ne lève jamais."""
     # Import LOCAL : `photometrie` tire les catalogues (Gaia/Siril), inutile
@@ -593,6 +628,10 @@ def _facteur_continuum(ha: np.ndarray, r: np.ndarray, echelle_ha: float,
                        q: float, bw_ha: float, methode: str
                        ) -> tuple[float, str, str, str]:
     """Facteur k du continuum et méthode RÉELLEMENT utilisée (J4).
+
+    `ha` et `r` sont les cartes de MESURE : fond de ciel déjà retiré par
+    `fusionner_ha` (`_fond_ciel`), donc indépendantes de la case « recentrer »
+    et du mode de normalisation (J4.1).
 
     → (k, méthode effective, raison du repli ("" sinon), facteur mesuré).
     `bandes_passantes` ne peut pas échouer ; les deux méthodes mesurées
@@ -778,7 +817,10 @@ def fusionner_ha(rgb: np.ndarray, ha: Any, mode: str = FUSION_HA_DEFAUT,
 
     · le RECENTRAGE (`recentrer`) retranche le fond du Ha ET celui de R : avec
       l'option « normalisation commune » aucun point noir n'est soustrait, le
-      fond du Ha y vaut ~1 et l'ajouter tel quel inonderait le rouge ;
+      fond du Ha y vaut ~1 et l'ajouter tel quel inonderait le rouge. Il ne
+      touche QUE la sortie : la MESURE du continuum se fait sur des cartes
+      ramenées à leur fond de ciel (`_fond_ciel`), identiques case cochée ou
+      pas (J4.1 — un réglage d'affichage ne décide pas d'une mesure) ;
     · hors `ha_luminance`, V et B ne sont JAMAIS touchés ;
     · sans continuum, aucun écrêtage (comportement d'avant, linéaire) ;
     · continuité : poids ≤ 0, Ha absent, forme incompatible, ou R absent alors
@@ -809,6 +851,16 @@ def fusionner_ha(rgb: np.ndarray, ha: Any, mode: str = FUSION_HA_DEFAUT,
     al = _borne_float(alpha, ALPHA_HA_DEFAUT, ALPHA_HA_MIN, ALPHA_HA_MAX)
     if methode_continuum not in METHODES_CONTINUUM_HA:
         methode_continuum = METHODE_CONTINUUM_DEFAUT
+    # --- CARTES DE MESURE (J4.1) : fond de ciel retiré, INDÉPENDANT de la case
+    # « recentrer ». Un réglage d'AFFICHAGE ne doit pas changer une MESURE :
+    # avant ce correctif, cocher la case changeait le facteur (repli coché
+    # contre 0,1511 décoché, M33 en réel le 19/10). On retire à CHAQUE carte son
+    # propre fond de ciel (`_fond_ciel`, moitié basse) : les fonds de Ha et de R
+    # ne sont pas liés par le même k (ciel, lune, passe-bande), et le rapport
+    # redevient le vrai k, que la normalisation soit par canal ou commune.
+    # ⚠ `_fond_ciel` est lu AVANT de recentrer `h` (sinon on mesurerait sur une
+    # carte déjà modifiée).
+    h_mes = h - np.float32(_fond_ciel(h))
     if recentrer:
         h = h - _mediane(h)
     # --- CONTINUUM (J2 : bandes passantes ; J4 : médiane, étoiles 5σ) ------
@@ -816,10 +868,11 @@ def fusionner_ha(rgb: np.ndarray, ha: Any, mode: str = FUSION_HA_DEFAUT,
             and echelle_ha is not None and float(echelle_ha) > 0.0):
         r = np.asarray(r_reference, dtype=np.float32)
         if r.ndim == 2 and r.shape == h.shape:
+            r_mes = r - np.float32(_fond_ciel(r))
             if recentrer:
                 r = r - _mediane(r)
             k, m_eff, raison, mesure = _facteur_continuum(
-                h, r, float(echelle_ha), q, bw_ha, methode_continuum)
+                h_mes, r_mes, float(echelle_ha), q, bw_ha, methode_continuum)
             h = h - (np.float32(k / float(echelle_ha)) * r)
             h = np.clip(h, CLIP_HA_MIN, CLIP_HA_MAX)
             if info is not None:
