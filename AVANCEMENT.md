@@ -33,9 +33,9 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 ## Session du 19/10/2026 (soir) — **P7 VALIDÉ EN RÉEL** (v2.93.1) → **Lot 2 = P1**
 
 ### État actuel
-- **v2.93.1 sur `LRGBHa`** — **aucune release**. Commits `011981c` (Lot 1) +
-  `d69add3` (correctifs du test réel) + `423503e` (handoff) + `8e90a2c` (P7) +
-  `5e2e63f` + `4ba6591`, **poussés** sur `origin/LRGBHa`.
+- **v2.93.1 sur `LRGBHa`** — **aucune release**. Commits `011981c` (Lot 1) →
+  `8e90a2c` (code P7), suivis de commits de documentation (AVANCEMENT,
+  libellé du banc) : **tout est poussé** sur `origin/LRGBHa`.
 - **Lot 1 VALIDÉ EN RÉEL par Alain (19/10)** : ① SPCC/MiniCam ; ② astrométrie
   à l'empilement arrêté.
 - **P7 VALIDÉ EN RÉEL par Alain (19/10)** : au clic sur un choix de correction
