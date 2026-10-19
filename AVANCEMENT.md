@@ -27,18 +27,19 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 
 ---
 
-## Session du 19/10/2026 — J3bis validé ; `ha_luminance` à porte (v2.90.2)
+## Session du 19/10/2026 — **J2 et J3 VALIDÉS en réel** (v2.90.2, `LRGBHa`)
 
 ### État actuel
-- **Code** : **v2.90.2** sur `LRGBHa` — **J2 VALIDÉ EN RÉEL** (19/10, inchangé,
-  **AU BIT**) ; **J3bis VALIDÉ EN RÉEL** pour `fondu`, `ecran` et `eclaircir` ;
-  `ha_luminance` blanchissait, puis était trop faible : elle est désormais
-  **multipliée à PORTE** (`R × (1 + p·s̃·porte)`, rampe 0,05 → 0,25 sur `s̃`) —
-  **choix d'Alain sur aperçus**, la bande diffuse reste intacte et V/B ne sont
-  plus touchés. Bancs J2 et J3 verts, non-régressions 129/130/136/137/141 +
-  garde-fou vertes ; **aucune release sans accord**.
-- **Ce qui reste** : **re-juger `ha_luminance` à l'écran**, puis **J4**
-  (continuum médiane / étoiles 5σ, case « recentrer ») et **J5** (ancre + doc).
+- **Code** : **v2.90.2** sur `LRGBHa`. **J2 VALIDÉ EN RÉEL** (ajout au rouge +
+  continuum, inchangé, **AU BIT**). **J3 VALIDÉ EN RÉEL** : `fondu`, `ecran` et
+  `eclaircir` sont OK (« bien mieux voire OK ») ; `ha_luminance` a été reprise
+  deux fois (blanchiment mesuré → objet seul → **gain à porte**, retenu sur
+  aperçus) et est livrée ainsi en v2.90.2.
+- **Bancs** : J2 vert AU BIT, J3 vert (9 volets), non-régressions
+  129/129b/130/136/137/141 + garde-fou vertes, `ruff`/`pyright` sans nouvelle
+  erreur. **Aucune release sans accord d'Alain.**
+- **Suite du chantier** : **J4** = continuum méthodes médiane / étoiles 5σ
+  (+ case « recentrer »), puis **J5** = ancre réelle + doc.
 
 ### Verdict réel de J2 (consigné)
 - **AVEC continuum** : réglage de force visible, rendu retenu. **SANS** : les
@@ -48,17 +49,12 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
   réglage **PAR CIBLE**, le défaut reste **1,0**. Aucun défaut bloquant signalé.
 - **Verdict global : VALIDÉ.**
 
-### Pourquoi le J3 avait échoué (MESURÉ le 19/10, couches M33) — traité par J3bis
-- En **normalisation COMMUNE**, le rouge du composite vit entre **2,86 et 5,71**
-  alors que `s` est écrêté dans **[0 ; 1]** : `1 − R < 0` PARTOUT (écran
-  soustrayait : −1,51 au cœur Ha), `max(0, s − R) = 0` PARTOUT (éclaircir
-  INERTE), `fondu` retirait α·R ≈ 1,43 = **la moitié du rouge du fond**, et la
-  luminance ajoutait `s` sur trois canaux dont V/B sont 5× plus faibles.
-- **Sans** normalisation commune les amplitudes SONT appariées (R/s = 1,06) :
-  c'est l'ESPACE, pas l'amplitude, qui était faux — d'où l'option A.
-- Outil : `bancs/_diag_fusion_ha_echelles.py --canaux C:\Astro\test\M33_Canaux_LRGBHa
-  --norm-commune --lissage-halos --poids 1.5` (`--autotest` le contrôle).
-  Détail chiffré : `CLAUDE.md` § « Verdict réel du J3 » + changelog v2.90.0.
+### Pourquoi le J3 avait échoué (MESURÉ, 19/10, couches M33) — corrigé par J3bis
+- En normalisation COMMUNE le rouge du composite vit entre **2,86 et 5,71**
+  alors que `s` est écrêté dans [0 ; 1] : `1 − R < 0` (écran soustracteur),
+  `max(0, s − R) = 0` (éclaircir inerte), et le fond perdait la moitié de son
+  rouge. Détail : `CLAUDE.md` § « Verdict réel du J3 », changelog v2.90.0 ;
+  contrôle de l'outil : `python bancs/_diag_fusion_ha_echelles.py --autotest`.
 
 ### Fichiers modifiés dans cette phase (J3bis v2.90.0, puis v2.90.1)
 - `avastack/processing/composition.py` : **`_reperes_fusion_ha`** (fond_R, A_R,
@@ -131,33 +127,27 @@ de division par ~0) ; rouge jamais négatif. `ajout_rouge` est **inchangé, au
 bit**, et n'entre JAMAIS dans cet espace. Contrôle de l'outil de mesure :
 `python bancs/_diag_fusion_ha_echelles.py --autotest`.
 
-### Verdict réel de J3bis (Alain, 19/10) et correction de `ha_luminance`
+### Verdict réel de J3 (Alain, 19/10) — **VALIDÉ** ; `ha_luminance` reprise 2 fois
 - `fondu`, `ecran`, `eclaircir` : **« bien mieux voire OK »** (validés).
 - `ha_luminance` **blanchissait** → **CAUSE MESURÉE** (code livré + **étirement
   d'affichage réel** : stats sur l'image, `sigma_k` 2,8, cible 0,25, fond
   neutralisé par canal) : le facteur `1 + s̃` multipliait **aussi le CIEL de G
   et B**, qui ne portent aucun Ha. Zone Ha large : saturation **0,19 → 0,12**
   (−37 %) pendant que la luminance montait (0,48 → 0,55).
-- Variantes mesurées (zone Ha large : chroma / luminance) — `ajout` 0,19/0,49
-  (référence) · blanchissante 0,12/0,55 · « signal au-dessus du ciel » 0,18/0,49
-  · R×k et G/B×k^0,25 0,20/0,53 · **R×k seul 0,29/0,51** ; « R×k sur l'objet »
-  = inerte à l'écran (l'objet est déjà au plafond).
 - **ÉTAPES RÉELLES** : v2.90.1 = « V9 objet seul » (plus de blanchiment, mais
   bande Ha **+0,016** seulement) → **v2.90.2 = PORTE douce 0,05–0,25, RETENUE
   par Alain sur aperçus** : `R' = R × (1 + p·s̃·porte)`. Sous la porte
   (**89,6 % des pixels**) le rouge est **AU BIT** ; bande **DIFFUSE 0 %**
-  touchée ; bande Ha **+0,037 médian / +0,665 p90** ; V/B au bit. Portes plus
-  ouvertes mesurées et ÉCARTÉES : 0,02–0,12 donne +0,148 mais verse +0,041 dans
-  le halo ; 0,20–0,50 est trop fermée (12 % de la bande).
-- Aperçus conservés : `C:\Astro\test\_j3bis_luminance\` — `A_LIVRE_objet` (v2.90.1),
-  `B_PORTE_tres_douce`, **`C_PORTE_douce` = la version livrée**, `D_PORTE_franche`.
+  touchée ; bande Ha **+0,037 médian / +0,665 p90** ; V/B au bit.
+- Portes mesurées et ÉCARTÉES : 0,02–0,12 (bande Ha +0,148 mais +0,041 dans le
+  halo), 0,20–0,50 (trop fermée, 12 % de la bande), et « facteur sur les trois
+  canaux » (blanchit). Aperçus : `C:\Astro\test\_j3bis_luminance\` —
+  `C_PORTE_douce` = la version livrée.
 
 ### Prochaines étapes
-1. **Re-juger `ha_luminance` à porte à l'écran** (mêmes réglages : LRGB+Ha,
-   normalisation COMMUNE, lissage 117d, poids 1,5) : le Ha doit ressortir ROUGE
-   sur la nébuleuse, sans voile ni bruit rouge dans le ciel ni dans le halo. Les
-   trois autres modes sont validés — **ne pas y toucher**.
-2. Si validé : **J4** (continuum médiane / étoiles 5σ, case « recentrer »), puis
+1. **J4** — continuum : méthodes **médiane** et **étoiles 5σ** (+ case
+   « recentrer »), puis **J5** (ancre réelle + doc). Aucun autre chantier ouvert.
+2. **Release seulement sur accord explicite d'Alain**, jamais avant.
    **J5** (ancre + doc).
 3. **Release seulement sur accord explicite d'Alain**, jamais avant.
 
@@ -245,17 +235,15 @@ Teinte des COINS = DÉGRADÉ mesuré, sans action (voir « Problèmes ouverts »
   exigent `== "triangles"` et restent verts (leur résidu est ~0,03 px).
 
 ### Contexte de reprise (à coller — 2 phrases)
-Arbre **v2.90.2** sur `LRGBHa` : **J2 validé en réel** (inchangé, AU BIT) et
-**J3bis validé en réel** pour `fondu`/`ecran`/`eclaircir` ; `ha_luminance`
-livrée **à porte** (0,05–0,25 : le rouge est multiplié là où le Ha est franc,
-**au bit** sous la porte, bande diffuse intacte, V/B jamais touchés), bancs
-J2/J3 et non-régressions verts. Prochaine action unique : **re-juger
-`ha_luminance` à l'écran** (M33, `C:\Astro\test\M33_Canaux_LRGBHa`) — ensuite
-J4/J5, aucune release sans accord.
+Arbre **v2.90.2** sur `LRGBHa` : **J2 et J3 VALIDÉS en réel** (19/10) — les cinq
+modes de fusion du Ha vivent dans l'espace de R, `ha_luminance` est un gain **à
+porte** (0,05–0,25), `ajout_rouge` reste AU BIT ; bancs J2/J3 et non-régressions
+verts, **aucune release faite**. Prochaine action : demander à Alain s'il ouvre
+**J4** (continuum médiane / étoiles 5σ + case « recentrer »), puis J5 (ancre + doc).
 
 ---
 
-## Chantier en cours — LRGB+Ha (jalons 129 → J5) — J2 et J3bis validés
+## Chantier en cours — LRGB+Ha (jalons 129 → J5) — **J2 et J3 VALIDÉS**
 
 Le rôle Ha **n'alimente aucun canal** : il est **FUSIONNÉ** au composite après le combine L.
 
@@ -266,7 +254,7 @@ Le rôle Ha **n'alimente aucun canal** : il est **FUSIONNÉ** au composite aprè
 | **130 (v2.82.0)** | combine LRGB borné [0 ; 5] + repli local + fiche + banc neuf | COMMITÉ + POUSSÉ (`ef0c35c`) |
 | **J2 (v2.88.0)** | fusion « ajout au rouge » + poids 1,0 + recentrage + **continuum (Q, case)** + cadre « Fusion Ha » | **VALIDÉ EN RÉEL le 19/10** |
 | **J3 (v2.89.0)** | `fondu_rouge` (α), `ecran_rouge`, `eclaircir_rouge`, `ha_luminance` + poids = force globale | LIVRÉ — **verdict réel 19/10 : à reprendre** (fondu bleui, écran cyan, éclaircir inerte) |
-| **J3bis (v2.90.2)** | les 4 opérateurs dans l'espace de R ; `ha_luminance` = gain **à porte** (0,05–0,25) ; `ajout_rouge` au bit | **VALIDÉ EN RÉEL (19/10)** pour fondu/écran/éclaircir ; luminance à porte, **à re-juger** |
+| **J3bis (v2.90.2)** | les 4 opérateurs dans l'espace de R ; `ha_luminance` = gain **à porte** (0,05–0,25) ; `ajout_rouge` au bit | **VALIDÉ EN RÉEL (19/10)** |
 | J4 → J5 | continuum méthodes **médiane / étoiles 5σ** (+ case recentrer) ; ancre réelle + doc | à faire |
 
 Plan figé (13 arbitrages du 15/10) : poids **1,0** (0–10) · α **0,5** · Q **0,80**
@@ -278,17 +266,18 @@ identifiants en français (`synthetise`).
 
 ## En attente / prochaine session (état au 19/10 — `LRGBHa`, v2.90.2)
 
-- **Prochaine action unique** : **re-juger `ha_luminance` à porte à l'écran** —
-  son ciel ET son halo doivent rester propres, le Ha ressortir ROUGE sur la
-  nébuleuse (réglages de la session : LRGB+Ha, normalisation COMMUNE, lissage
-  117d, poids 1,5). Les trois autres modes sont VALIDÉS. Ensuite seulement :
-  **J4** (continuum médiane / étoiles 5σ) et **J5** (ancre + doc).
+- **J2 et J3 sont CLOS** (validés en réel le 19/10). Les cinq modes sont livrés :
+  `ajout_rouge` (J2, au bit), `fondu_rouge` (α), `ecran_rouge`, `eclaircir_rouge`,
+  `ha_luminance` à porte.
+- **Prochaine action unique** : **demander à Alain s'il ouvre J4** (continuum
+  méthodes médiane / étoiles 5σ + case « recentrer ») — ne pas le démarrer de
+  soi-même. Ensuite **J5** (ancre réelle + doc).
 - **Référence chiffrée** : `C:\Astro\test\M33_Canaux_LRGBHa` (5 `canal_*.fit` +
   fiches ; `AVACOMPO` = LRGB+Ha, **normalisation COMMUNE**, lissage 117d).
   Rejouer : `python bancs/_diag_fusion_ha_echelles.py --canaux <dossier>
   --norm-commune --lissage-halos --poids 1.5` (`--autotest` contrôle l'outil).
-- **J2 reste VALIDÉ** (Q 0,80 ; poids 1,5 sur M33 = réglage PAR CIBLE ; défaut
-  1,0) : ne pas le retoucher — J3bis doit le laisser **AU BIT**.
+- **Ne pas retoucher** : `ajout_rouge` (AU BIT), le continuum, α, le poids,
+  l'interface, la fiche, la clé de mémoïsation.
 - **141-B validée** (rien à retester) ; **teinte des COINS** notée, sans action.
 - **Aucune release** sans accord explicite, et **pas avant le test réel de J3bis**.
 - Retour arrière en un geste : `git checkout -- avastack/processing/composition.py`.
@@ -356,9 +345,9 @@ identifiants en français (`synthetise`).
 
 ## Clôtures précédentes
 
-- **19/10/2026** : J2 validé en réel (Q 0,80 ; poids 1,5 sur M33, par cible) ;
-  J3 remplacé par **J3bis** (v2.90.0), puis `ha_luminance` réécrite deux fois
-  (v2.90.1 « objet seul », **v2.90.2 « porte 0,05–0,25 »** retenue sur aperçus)
-  après le verdict réel : 3 modes OK, elle blanchissait.
+- **19/10/2026** : **J2 et J3 VALIDÉS en réel**. J2 (v2.88.0) : Q 0,80, poids
+  1,5 sur M33 (par cible) ; J3/J3bis : cinq modes, `ha_luminance` reprise deux
+  fois (v2.90.1 « objet seul », **v2.90.2 « porte 0,05–0,25 »**) — branche
+  `LRGBHa`, v2.90.2 poussée.
 - **18/10/2026** : 141-B (v2.87.0) et J2 (v2.88.0) livrés ; ①/②/③, 136 et 137
   validés en réel.

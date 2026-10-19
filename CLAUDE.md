@@ -1819,9 +1819,10 @@ ce qui manquait n'était pas une correction mais une MESURE.
   · `ajout_rouge` : fond +0,000, cœur +0,443 — **le J2 n'a pas bougé d'un bit**.
   Le `fondu` baisse encore 38 % des pixels : ceux où le continuum R DÉPASSE le
   Ha (structures larges) — c'est son objet (remplacer), pas le fond.
-  **VERDICT RÉEL D'ALAIN** : `fondu`, `ecran` et `eclaircir` **OK** (« tout est
-  bien mieux voire OK », 19/10) ; `ha_luminance` réécrite deux fois (v2.90.1
-  objet, puis v2.90.2 à porte sur choix d'aperçus) — **à re-juger à l'écran**.
+  **VERDICT RÉEL D'ALAIN (19/10) : J2 et J3 VALIDÉS.** `fondu`, `ecran` et
+  `eclaircir` sont OK (« tout est bien mieux voire OK ») ; `ha_luminance`
+  réécrite deux fois (v2.90.1 objet, puis **v2.90.2 à porte** sur choix
+  d'aperçus) et livrée ainsi.
 - **PIÈGE D'INTERFACE (défaut réel du 19/10, corrigé en v2.89.1)** : le champ α
   restait GRISÉ en passant en mode fondu. La Combobox appelle `_on_fusion_ha`,
   qui ne rafraîchissait pas l'état des widgets ; le banc appelait
