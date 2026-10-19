@@ -1690,7 +1690,7 @@ ce qui manquait n'était pas une correction mais une MESURE.
   et fiche de rendu. Non-régression : 19 (×3), 117d, 121, 129 (mis à jour),
   129b, 130, 136, 141, garde-fou vert, pyright 0.
 
-## Fusion du Ha — les cinq modes (jalon J3, v2.89.0, 19/10/2026)
+## Fusion du Ha — les cinq modes (jalons J3 et J3bis, v2.90.0, 19/10/2026)
 
 - **CE QUE LE J3 AJOUTE** : le J2 n'avait qu'`ajout_rouge` ; les quatre autres
   modes du plan figé sont livrés avec α (0–1, pas 0,05, défaut 0,5). Le signal
@@ -1698,29 +1698,41 @@ ce qui manquait n'était pas une correction mais une MESURE.
   `s = (Ha − fond(Ha)) − continuum` (écrêté [0 ; 1] **seulement** si le
   continuum agit — sans lui le J2 reste linéaire, validé en réel).
 - **LE POIDS EST UNE FORCE GLOBALE, PAS UN FACTEUR DE CHAQUE FORMULE** :
-  `sortie = composite + poids × (opérateur − composite)`. Conséquences, toutes
-  vérifiées AU BIT au banc :
+  `sortie = composite + poids × (opérateur − composite)`. Conséquences :
   · `poids 1` = l'opérateur EXACT du mode ;
   · `poids 0` = le composite du J1 **AU BIT, pour les cinq modes** — la sortie
     d'urgence validée en réel au J2 ne dépend donc pas du mode choisi ;
   · `poids 2` EXTRAPOLE (2 × l'écart du mode), il n'est pas plafonné à 1.
   Ne jamais réécrire une formule en y multipliant le signal par le poids : deux
-  modes deviendraient identiques au facteur près.
+  modes deviendraient identiques au facteur près. Depuis J3bis, l'interpolation
+  porte sur le RÉSULTAT de l'opérateur (déjà revenu dans l'espace du composite) ;
+  `ha_luminance` l'applique au facteur (`1 + p·s̃`) — même algèbre, et la
+  couleur reste préservée.
+- **J3bis (v2.90.0) — LES QUATRE MODES VIVENT DANS L'ESPACE DE R** : voir le
+  verdict réel plus bas (ils comparaient `R` et `s` d'échelles différentes).
+  Repères, mesurés sur le COMPOSITE et le signal (aucun réglage n'y entre, donc
+  RIEN de plus dans la clé de mémoïsation) :
+  `fond_R` = médiane de `R` sur le fond (`s` ≤ sa médiane) · `A_R` = p99,7(`R`)
+  − `fond_R` · `p_s` = p99,7(`s`) ; puis `R̃ = (R − fond_R)/A_R` et `s̃ = s/p_s`
+  (« 0 au fond du ciel, ≈ 1 au p99,7 » pour les deux). Retour au composite :
+  `R' = max(0, fond_R + A_R·R̃')` puis `sortie_R = R + poids×(R' − R)`.
 - **LES CINQ MODES** (G et B INTOUCHÉS sauf le dernier) :
-  · `ajout_rouge` (J2, INCHANGÉ) : `R' = R + p·s` ;
-  · `fondu_rouge` : `R' = R + p·α·(s − R)` — fondu classique `R(1−α) + s·α` ;
-    α 0 = rouge intact, α 1 = rouge REMPLACÉ par le signal ;
-  · `ecran_rouge` : `R' = R + p·s·(1 − R)` — écran `1 − (1−R)(1−s)` : monte
-    sans écraser ;
-  · `eclaircir_rouge` : `R' = R + p·max(0, s − R)` — `max(R, s)` : ne fait que
-    MONTER le rouge ;
-  · `ha_luminance` : `R', V', B' += p·s` — le Ha éclaire les TROIS canaux
-    (luminance neutre, la couleur vient du RGB). C'est la SEULE exception à
-    « V et B jamais touchés », et c'est son objet.
+  · `ajout_rouge` (J2, INCHANGÉ AU BIT) : `R' = R + p·s`. Il est purement
+    ADDITIF : ne JAMAIS le faire passer par l'espace de R ;
+  · `fondu_rouge` : `R̃' = R̃ + α·(s̃ − R̃)` — fondu `R̃(1−α) + s̃·α`, donc
+    NEUTRE AU FOND (R̃ ≈ 0 et s̃ ≈ 0) ; α 0 = rouge intact, α 1 = rouge = s̃ ;
+  · `ecran_rouge` : `R̃' = R̃ + s̃·max(0, 1 − min(R̃, 1))` — écran
+    `1 − (1−R̃)(1−s̃)` : monte sans écraser, et **c'est lui qui BORNE** (R̃ peut
+    dépasser 1 aux cœurs et aux étoiles) ;
+  · `eclaircir_rouge` : `R̃' = R̃ + max(0, s̃ − R̃)` — `max(R̃, s̃)` : ne fait
+    que MONTER, et le poids n'est plus multiplié par zéro ;
+  · `ha_luminance` : `rgb' = rgb × (1 + p·s̃)` — le **MÊME facteur sur les
+    trois canaux** : la couleur est préservée PAR CONSTRUCTION. C'est la SEULE
+    exception à « V et B jamais touchés », et c'est son objet.
 - **PIÈGE — le rouge seul ne distingue pas `ajout_rouge` de `ha_luminance`** :
-  les deux ajoutent `s` au rouge, le second l'ajoute AUSSI à V et B. Un banc
-  qui compare des rouges croit à un doublon ; comparer les TROIS canaux (c'est
-  ce que fait le volet [5] du banc J3).
+  les deux touchent le rouge, la luminance touche AUSSI V et B (multiplicatif).
+  Un banc qui compare des rouges croit à un doublon ; comparer les TROIS canaux
+  (c'est ce que fait le volet [5] du banc J3).
 - **`fusion_ha_effectif` PORTE α** désormais : le dict complet est
   `{mode, poids, alpha, recentrer, continuum, q, methode_continuum}`, α borné et
   TOUJOURS présent même hors fondu (changer de mode ne perd pas le réglage).
@@ -1737,14 +1749,19 @@ ce qui manquait n'était pas une correction mais une MESURE.
 - **FICHE DE RENDU** : l'étape « fusion Ha » porte `alpha` en plus de mode,
   poids, recentrage, continuum, Q et méthode ; elle reste conditionnée à une
   composition à Ha fusionné ET à une couche Ha non vide.
-- Banc `bancs/_test_fusion_ha_jalon3.py` (8 volets) : cinq modes, bornes d'α,
-  chaque formule AU BIT (dont α 0/1), poids 0 = même objet et 0,5 = mi-chemin
-  pour les cinq modes, continuum partagé, `composer()` (poids 0, formules,
-  HOO intact, mode inconnu), mémoïsation (α, mode), App réelle (α activé
-  seulement en fondu, borné, persisté, restauré) et fiche. **Le banc J2 a été
-  mis à jour VOLONTAIREMENT** sur trois volets (liste des modes, dict des
-  défauts, dict de la fiche) : il vérifiait « un seul mode », vrai au J2.
-  Non-régression : J2, 129, 130, 136, 137, 141, garde-fou, pyright.
+- Banc `bancs/_test_fusion_ha_jalon3.py` (9 volets depuis J3bis) : cinq modes,
+  bornes d'α, chaque formule (espace de R ; `ajout_rouge` restant AU BIT), poids
+  0 = même objet et 0,5 = mi-chemin pour les cinq modes, continuum partagé,
+  `composer()` (poids 0, formules, HOO intact, mode inconnu), **volet [5b]
+  « composite HORS [0 ; 1] » (R ≈ 2,9-5,7)** qui exige : fond immobile (à 1 % de
+  `A_R` près), écran et éclaircir qui ne baissent JAMAIS, éclaircir qui AGIT et
+  dont le POIDS agit, fondu qui fait MONTER le Ha, luminance qui préserve les
+  rapports R/G/B ; mémoïsation (α, mode), App réelle (α activé seulement en
+  fondu, borné, persisté, restauré) et fiche. **Le banc J2 a été mis à jour
+  VOLONTAIREMENT** sur trois volets (liste des modes, dict des défauts, dict de
+  la fiche) : il vérifiait « un seul mode », vrai au J2.
+  Non-régression : J2 (vert **AU BIT**), 129, 130, 136, 137, 141, garde-fou,
+  pyright (aucune erreur dans `composition.py`).
 
 - **VERDICT RÉEL DU J3 (Alain, 19/10, M33, SPCC) : À REPRENDRE (J3bis)** — les
   quatre modes ne sont PAS validés :
@@ -1777,11 +1794,19 @@ ce qui manquait n'était pas une correction mais une MESURE.
   plancher de 0,0171, soit 2,3 % de son amplitude).
   ⇒ **RÈGLE** : un opérateur qui COMPARE `R` et `s` ne doit JAMAIS supposer que
   le composite tient dans [0 ; 1] — ni que `s` et `R` ont le même plancher.
-  **Piste J3bis MESURÉE** : exprimer les opérateurs dans l'espace de R
-  (`R̃ = (R − fond_R)/A_R`, `s̃ = s/amplitude(s)`) puis revenir — fondu neutre au
-  fond, écran qui n'AJOUTE plus que, éclaircir actif (66 %) — et rendre
-  `ha_luminance` MULTIPLICATIVE (`rgb × (1 + s̃)` : la couleur est préservée par
-  construction, aucun blanchiment). Ne pas toucher au J2.
+  **J3bis LIVRÉ (v2.90.0)** et **rejoué sur les couches M33 RÉELLES avec le code
+  livré** (`C:\Astro\test\M33_Canaux_LRGBHa`, Δ médian du rouge, poids 1) :
+  · fond : **−0,000 pour les QUATRE modes** (le J3 retirait 1,43) ;
+  · `fondu` α 0,5 : Ha large +0,037, cœur +0,020 — le Ha n'est plus retiré ;
+  · `ecran` : Ha large +0,22, cœur +0,66, **0 % de pixels en baisse** (J3 : −1,51) ;
+  · `eclaircir` : Ha large +0,075, cœur +0,040, **53 %** des pixels du cœur
+    montent (J3 : 0 %, strictement inerte) ;
+  · `ha_luminance` : cœur **×1,62** sur les TROIS canaux, rapports R/G/B
+    préservés à 5e-7 près (aucun blanchiment) ;
+  · `ajout_rouge` : fond +0,000, cœur +0,443 — **le J2 n'a pas bougé d'un bit**.
+  Le `fondu` baisse encore 38 % des pixels : ceux où le continuum R DÉPASSE le
+  Ha (structures larges) — c'est son objet (remplacer), pas le fond.
+  **Verdict réel d'Alain attendu** (le rendu à l'écran, pas ces chiffres).
 - **PIÈGE D'INTERFACE (défaut réel du 19/10, corrigé en v2.89.1)** : le champ α
   restait GRISÉ en passant en mode fondu. La Combobox appelle `_on_fusion_ha`,
   qui ne rafraîchissait pas l'état des widgets ; le banc appelait

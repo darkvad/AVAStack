@@ -19,7 +19,40 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.89.1"
+AVASTACK_VERSION = "2.90.0"
+
+# v2.90.0 : J3bis — LES QUATRE MODES DE FUSION DU Ha DANS L'ESPACE DE R
+#   (option A choisie par Alain le 19/10/2026). Le J3 livrait quatre modes
+#   (`fondu_rouge`, `ecran_rouge`, `eclaircir_rouge`, `ha_luminance`) qui
+#   COMPARAIENT `R` et `s` alors que `composer()` normalise chaque rôle de son
+#   côté : en « normalisation commune » le rouge du composite vit entre 2,86 et
+#   5,71 et `s` est écrêté dans [0 ; 1]. Mesuré sur les couches M33 réelles :
+#     · écran     : `1 − R < 0` PARTOUT ⇒ il SOUSTRAYAIT (−1,51 au cœur Ha) ;
+#     · éclaircir : `max(0, s − R) = 0` PARTOUT ⇒ STRICTEMENT INERTE (le poids
+#       ne multipliait que zéro : même image à 0 et à 3) ;
+#     · fondu     : retirait la moitié du rouge du FOND (image bleuie) ;
+#     · luminance : ajoutait `s` sur trois canaux dont V et B sont ~5× plus
+#       faibles que R (zones Ha blanches, +0,44 sur les trois).
+#   Les quatre opérateurs vivent désormais dans l'ESPACE DE R — « 0 au fond du
+#   ciel, ≈ 1 au p99,7 » pour les DEUX grandeurs :
+#       R̃ = (R − fond_R)/A_R        s̃ = s/p99,7(s)
+#   avec `fond_R` = médiane de R sur le fond (`s` ≤ sa médiane) et
+#   `A_R` = p99,7(R) − fond_R, mesurés sur le COMPOSITE et le signal (aucun
+#   réglage n'y entre : la clé de mémoïsation ne change pas). Formules :
+#       · fondu     : R̃' = R̃ + α·(s̃ − R̃)
+#       · écran     : R̃' = R̃ + s̃·max(0, 1 − min(R̃, 1))  (c'est lui qui BORNE)
+#       · éclaircir : R̃' = R̃ + max(0, s̃ − R̃)
+#       · luminance : rgb' = rgb × (1 + poids·s̃)   — le MÊME facteur sur R, V
+#         et B : la couleur est préservée par construction (plus de blanchiment)
+#   puis retour au composite pour les trois modes « rouge » :
+#   `R' = max(0, fond_R + A_R·R̃')` et `sortie_R = R + poids×(R' − R)`.
+#   `ajout_rouge` (J2, VALIDÉ EN RÉEL) est INCHANGÉ AU BIT : il est purement
+#   ADDITIF, donc hors du piège d'échelle. Garde-fous : canal plat ou signal
+#   vide ⇒ aucun ajout (jamais de division par ~0), rouge jamais négatif.
+#   Interface, poids, α, continuum, fiche de rendu et clé de mémoïsation :
+#   INCHANGÉS. Banc J3 recalé (volets [2]/[2b]/[4]/[5]) + volet [5b]
+#   « composite HORS [0 ; 1] » qui mesure les quatre défauts réels ; banc J2
+#   vert AU BIT, non-régressions 129/130/136/137/141 vertes.
 
 # v2.89.1 : RÉPARATION DU CHAMP α (défaut RÉEL du 19/10) + VERDICT RÉEL DU J3.
 #   · DÉFAUT RÉEL : le champ « Fondu α » restait GRISÉ en passant en mode

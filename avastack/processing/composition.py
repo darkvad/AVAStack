@@ -132,24 +132,44 @@ MODES_L: tuple[str, ...] = ("synthetise", "degrade")   # radio « Canal L » (L 
 # (13 arbitrages d'Alain du 15/10/2026) fige les identifiants en FRANÇAIS et
 # les défauts/bornes ci-dessous.
 #
-# J2 (v2.88.0) a livré LE PREMIER MODE et le CADRE « Fusion Ha » de l'interface ;
-# J3 (v2.89.0) livre les QUATRE AUTRES. Tous partagent le MÊME signal préparé :
+# J2 (v2.88.0) a livré LE PREMIER MODE et le CADRE « Fusion Ha » ; J3 (v2.89.0)
+# les QUATRE AUTRES ; J3bis (v2.90.0) les RÉÉCRIT dans un ESPACE DÉFINI (option A
+# choisie par Alain le 19/10/2026 — cf. AVANCEMENT.md et le § « Verdict réel du
+# J3 » de CLAUDE.md). Tous partagent le MÊME signal préparé :
 #     s = (Ha − fond(Ha)) − continuum        (continuum écrêté [0 ; 1])
 # et le MÊME rôle du POIDS : une FORCE GLOBALE qui interpole entre le composite
 # d'origine et le résultat du mode —
 #     résultat = composite + poids × (opérateur(composite, s) − composite)
 # ce qui garantit, pour TOUS les modes, `poids 0` = composite du J1 AU BIT (la
-# sortie d'urgence validée en réel au J2) et `poids 1` = l'opérateur exact :
-#   · `ajout_rouge`      : R' = R + p × s                     (J2, inchangé)
-#   · `fondu_rouge` (α)  : R' = R + p × α × (s − R)
-#                          (fondu classique R×(1−α) + s×α, α 0,5 par défaut)
-#   · `ecran_rouge`      : R' = R + p × s × (1 − R)
-#                          (écran 1 − (1−R)(1−s) : ajoute sans jamais écraser)
-#   · `eclaircir_rouge`  : R' = R + p × max(0, s − R)
-#                          (éclaircir = max(R, s) : ne fait que MONTER le rouge)
-#   · `ha_luminance`     : R', V' et B' += p × s
-#                          (le Ha ÉCLAIRE les trois canaux — seule exception à
-#                          « V et B jamais touchés », c'est son objet même)
+# sortie d'urgence validée en réel au J2) et `poids 1` = l'opérateur exact.
+#
+# ⚠ J3bis — POURQUOI LES QUATRE MODES ONT DÛ ÊTRE RÉÉCRITS : les formules du J3
+# comparaient `R` et `s` DIRECTEMENT. Or `composer()` normalise, et avec la
+# « normalisation commune » le rouge du composite vit entre 2,86 et 5,71
+# (mesuré sur les couches M33 réelles) alors que `s` est écrêté dans [0 ; 1] :
+# `1 − R` était négatif PARTOUT (l'écran SOUSTRAYAIT : −1,51 au cœur Ha),
+# `max(0, s − R)` valait 0 PARTOUT (éclaircir strictement INERTE, le poids ne
+# multipliait que zéro), le fondu retirait la moitié du rouge du FOND (image
+# bleuie) et la luminance ajoutait `s` sur trois canaux dont V et B sont ~5×
+# plus faibles que R (blanchiment MESURÉ, +0,44 sur les trois).
+# Les quatre opérateurs vivent donc désormais dans l'ESPACE DE R — « 0 au fond du
+# ciel, ≈ 1 au p99,7 » pour les DEUX grandeurs :
+#     R̃ = (R − fond_R) / A_R          s̃ = s / p99,7(s)
+# puis reviennent dans l'espace du COMPOSITE (`R' = max(0, fond_R + A_R·R̃')`) :
+#   · `ajout_rouge`      : R' = R + p × s                     (J2, INCHANGÉ — il
+#                          est purement ADDITIF, donc hors du piège d'échelle)
+#   · `fondu_rouge` (α)  : R̃' = R̃ + α × (s̃ − R̃)
+#                          (fondu classique R̃×(1−α) + s̃×α, α 0,5 par défaut)
+#   · `ecran_rouge`      : R̃' = R̃ + s̃ × max(0, 1 − min(R̃, 1))
+#                          (écran 1 − (1−R̃)(1−s̃) : monte sans écraser, et
+#                          c'est lui qui BORNE — R̃ peut dépasser 1)
+#   · `eclaircir_rouge`  : R̃' = R̃ + max(0, s̃ − R̃)
+#                          (éclaircir = max(R̃, s̃) : ne fait que MONTER)
+#   · `ha_luminance`     : rgb' = rgb × (1 + s̃)   ⇒ le MÊME facteur sur les
+#                          TROIS canaux : la COULEUR est préservée par
+#                          construction (plus de blanchiment additif)
+# `fond_R` et `A_R` dérivent du COMPOSITE, jamais d'un réglage : ils n'entrent
+# donc PAS dans la clé de mémoïsation de `CompositeStacker`.
 # J4 complétera le continuum (méthodes médiane / étoiles 5σ, case « recentrer le
 # Ha sur son fond ») ; J5 l'ancre réelle, la fiche de rendu et la doc.
 #
@@ -419,6 +439,37 @@ def fusion_ha_effectif(composition: str, fusion: Any = None
             "methode_continuum": methode}
 
 
+def _reperes_fusion_ha(rouge: np.ndarray, s: np.ndarray
+                       ) -> tuple[float, float, float]:
+    """Repères de l'ESPACE COMMUN de la fusion Ha (J3bis, option A).
+
+    → (fond_R, A_R, p_s) avec
+        fond_R = MÉDIANE de R sur le FOND — le fond est défini sur `s` (déjà
+                 recentré + continuum) : `s ≤ sa médiane`. Là, le Ha ne dit
+                 rien ; R n'y porte donc que le continuum du ciel ;
+        A_R    = p99,7(R) − fond_R, l'amplitude du rouge ;
+        p_s    = p99,7(s), l'amplitude du signal Ha.
+    Mesuré sur un SOUS-ÉCHANTILLON 512×512 (`_echantillon`, avec le MÊME pas
+    pour les deux cartes puisqu'elles ont la même forme) : coût CONSTANT même
+    en 16 Mpx, et un fond de ciel ne dépend pas du détail fin.
+
+    Ces trois nombres dérivent du COMPOSITE et du signal, JAMAIS d'un réglage :
+    ils n'ont donc pas à entrer dans la clé de mémoïsation de
+    `CompositeStacker`. Un canal plat rend A_R ≈ 0 (ou p_s ≈ 0) : c'est à
+    l'appelant de ne RIEN faire — cette fonction ne lève jamais d'exception.
+    """
+    r_ech = _echantillon(np.asarray(rouge, dtype=np.float32))
+    s_ech = _echantillon(np.asarray(s, dtype=np.float32))
+    fond = s_ech <= np.float32(np.percentile(s_ech, 50.0))
+    if bool(np.any(fond)):
+        fond_r = float(np.median(r_ech[fond]))
+    else:                        # image d'un seul niveau : pas de « fond »
+        fond_r = float(np.median(r_ech))
+    return (fond_r,
+            float(np.percentile(r_ech, 99.7)) - fond_r,
+            float(np.percentile(s_ech, 99.7)))
+
+
 def fusionner_ha(rgb: np.ndarray, ha: Any, mode: str = FUSION_HA_DEFAUT,
                  poids: float = POIDS_HA_DEFAUT,
                  alpha: float = ALPHA_HA_DEFAUT,
@@ -448,17 +499,33 @@ def fusionner_ha(rgb: np.ndarray, ha: Any, mode: str = FUSION_HA_DEFAUT,
     et le résultat du mode : `sortie = composite + poids × (opérateur −
     composite)`. À poids 1 on a donc EXACTEMENT l'opérateur du mode ; à poids 0
     on rend `rgb` tel quel (composite du J1 AU BIT, tous modes confondus).
-    LES MODES (J3, sauf le premier livré au J2 — formule INCHANGÉE) :
+    LES MODES (J3bis = option A ; le premier, livré au J2, est INCHANGÉ) :
+        repères mesurés SUR LE COMPOSITE (aucun réglage n'y entre) :
+            fond_R = médiane de R sur le fond (là où s ≤ sa médiane)
+            A_R    = p99,7(R) − fond_R
+            p_s    = p99,7(s)
+        et l'on travaille dans l'espace COMMUN « 0 au fond, ≈ 1 au p99,7 » :
+            R̃ = (R − fond_R)/A_R            s̃ = s/p_s
         · `ajout_rouge`     : R' = R + p × s
-        · `fondu_rouge`     : R' = R + p × α × (s − R)
-                              (fondu R×(1−α) + s×α ; α 0,5 par défaut)
-        · `ecran_rouge`     : R' = R + p × s × (1 − R)
-                              (écran 1 − (1−R)(1−s) : monte sans écraser)
-        · `eclaircir_rouge` : R' = R + p × max(0, s − R)
-                              (éclaircir = max(R, s) : ne fait que MONTER)
-        · `ha_luminance`    : R', V', B' += p × s
-                              (le Ha éclaire les TROIS canaux — seule
-                              exception à « V et B jamais touchés »)
+                              (ADDITIF : il ne COMPARE rien, donc hors du
+                              piège d'échelle qui a condamné les autres)
+        · `fondu_rouge`     : R̃' = R̃ + α × (s̃ − R̃)
+                              (fondu R̃×(1−α) + s̃×α ; α 0,5 par défaut :
+                              α 0 = rouge intact, α 1 = rouge remplacé)
+        · `ecran_rouge`     : R̃' = R̃ + s̃ × max(0, 1 − min(R̃, 1))
+                              (écran 1 − (1−R̃)(1−s̃) : monte sans écraser ;
+                              c'est LUI qui borne, R̃ pouvant dépasser 1)
+        · `eclaircir_rouge` : R̃' = R̃ + max(0, s̃ − R̃)
+                              (éclaircir = max(R̃, s̃) : ne fait que MONTER)
+        · `ha_luminance`    : rgb' = rgb × (1 + p × s̃)
+                              (le MÊME facteur sur les TROIS canaux : la
+                              couleur est préservée par construction — plus de
+                              blanchiment additif ; seule exception à « V et B
+                              jamais touchés », c'est son objet même)
+        retour dans l'espace du composite, pour les trois modes « rouge » :
+            R' = max(0, fond_R + A_R·R̃')    puis `sortie_R = R + p × (R' − R)`
+        `ha_luminance` ne fait AUCUN retour d'échelle : le facteur s'applique
+        au RGB entier.
 
     POURQUOI LE CONTINUUM (actif par défaut) : un filtre Ha de 7 nm n'isole
     pas la raie seule, il laisse passer le CONTINUUM de l'objet et du ciel.
@@ -511,27 +578,60 @@ def fusionner_ha(rgb: np.ndarray, ha: Any, mode: str = FUSION_HA_DEFAUT,
                 h = np.clip(h, CLIP_HA_MIN, CLIP_HA_MAX)
     # --- OPÉRATEUR DU MODE, puis interpolation par le POIDS ----------------
     # `sortie = composite + p × (opérateur − composite)` : à p = 1 c'est
-    # l'opérateur EXACT, et p ≤ 0 a déjà rendu `rgb` plus haut. Écrire le DELTA
-    # (et non le résultat) garde `ajout_rouge` AU BIT identique au J2.
-    out = a.copy()
-    if mode == "ha_luminance":
-        # Le Ha ÉCLAIRE les trois canaux (luminance neutre ; la couleur vient
-        # du RGB). C'est la seule exception à « V et B jamais touchés ».
-        out += p * h[..., None]
-        return out.astype(np.float32, copy=False)
+    # l'opérateur EXACT, et p ≤ 0 a déjà rendu `rgb` plus haut.
+    # ⚠ `ajout_rouge` (J2, VALIDÉ EN RÉEL) garde SA ligne `R' = R + p × s`,
+    # écrite telle quelle pour rester AU BIT (exigence du banc J2).
     r0 = a[..., 0]
+    if mode == "ajout_rouge":
+        out = a.copy()
+        out[..., 0] = r0 + p * h
+        return out.astype(np.float32, copy=False)
+
+    # --- J3bis, OPTION A : les QUATRE modes vivent dans l'ESPACE DE R ------
+    # MESURÉ le 19/10 (couches M33) : avec la normalisation COMMUNE, R vit
+    # entre 2,86 et 5,71 alors que `s` est écrêté dans [0 ; 1]. Comparer les
+    # deux directement SOUSTRAYAIT du rouge (écran), rendait éclaircir INERTE
+    # (max(0, s − R) = 0 partout), vidait le fond de son rouge (fondu) et
+    # blanchissait (luminance additive). On ramène donc les DEUX grandeurs à
+    # « 0 au fond, ≈ 1 au p99,7 », on applique l'opérateur, puis on revient
+    # dans l'espace du composite — c'est LÀ que le poids interpole.
+    fond_r, amp_r, amp_s = _reperes_fusion_ha(r0, h)
+    if (not np.isfinite(amp_r) or not np.isfinite(amp_s)
+            or amp_r < 1e-6 or amp_s < 1e-6):
+        # Canal plat / signal vide : aucun repère fiable ⇒ AUCUN ajout. Jamais
+        # d'exception, et surtout jamais une division par ~0 (le rapport
+        # astronomique qui en sortirait toucherait toute l'image).
+        return rgb
+    st = h / np.float32(amp_s)             # s̃ : 0 au fond, ≈ 1 au p99,7
+    if mode == "ha_luminance":
+        # Luminance MULTIPLICATIVE (option A) : le MÊME facteur (1 + p·s̃) sur
+        # les TROIS canaux ⇒ les rapports R/G/B sont préservés par
+        # construction, le blanchiment additif du J3 disparaît. Borné à 0 : un
+        # facteur négatif inverserait les couleurs (s̃ < −1 n'a pas de sens
+        # physique, mais `s` peut être négatif quand le continuum est coupé).
+        facteur = np.maximum(np.float32(1.0) + p * st, np.float32(0.0))
+        return (a * facteur[..., None]).astype(np.float32, copy=False)
+    rt = (r0 - np.float32(fond_r)) / np.float32(amp_r)        # R̃
     if mode == "fondu_rouge":
-        # Fondu classique R×(1−α) + s×α  ⇒  delta = α × (s − R).
-        delta = np.float32(al) * (h - r0)
+        # Fondu R̃×(1−α) + s̃×α  ⇒  R̃' = R̃ + α × (s̃ − R̃) : NEUTRE AU FOND
+        # (R̃ ≈ 0 et s̃ ≈ 0) — le rouge du ciel n'est plus divisé par deux.
+        rt = rt + np.float32(al) * (st - rt)
     elif mode == "ecran_rouge":
-        # Écran 1 − (1−R)(1−s)  ⇒  delta = s × (1 − R) : monte sans écraser.
-        delta = h * (np.float32(1.0) - r0)
-    elif mode == "eclaircir_rouge":
-        # Éclaircir = max(R, s)  ⇒  delta = max(0, s − R) : ne fait que MONTER.
-        delta = np.maximum(h - r0, np.float32(0.0))
-    else:                       # `ajout_rouge` (mode validé plus haut)
-        delta = h
-    out[..., 0] = r0 + p * delta
+        # Écran 1 − (1−R̃)(1−s̃) ⇒ R̃' = R̃ + s̃ × max(0, 1 − min(R̃, 1)).
+        # C'est L'ÉCRAN QUI BORNE : au-delà de R̃ = 1 il n'ajoute plus rien, au
+        # lieu de SOUSTRAIRE (défaut mesuré : −1,51 au cœur Ha).
+        rt = rt + st * np.maximum(np.float32(0.0),
+                                  np.float32(1.0)
+                                  - np.minimum(rt, np.float32(1.0)))
+    else:                       # `eclaircir_rouge`
+        # Éclaircir = max(R̃, s̃) ⇒ R̃' = R̃ + max(0, s̃ − R̃) : ne fait que
+        # MONTER (le poids ne multiplie plus zéro : le mode n'est plus inerte).
+        rt = rt + np.maximum(st - rt, np.float32(0.0))
+    # Retour dans l'espace du COMPOSITE — le rouge ne descend jamais sous 0.
+    r_mode = np.maximum(np.float32(fond_r) + np.float32(amp_r) * rt,
+                        np.float32(0.0))
+    out = a.copy()
+    out[..., 0] = r0 + p * (r_mode - r0)
     return out.astype(np.float32, copy=False)
 
 

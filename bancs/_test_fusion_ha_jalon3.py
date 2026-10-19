@@ -1,27 +1,45 @@
 # -*- coding: utf-8 -*-
-"""Banc v2.89.0 — JALON J3 : LES QUATRE AUTRES MODES DE FUSION DU Ha.
+"""Banc v2.90.0 — JALON J3bis : LES QUATRE MODES DANS L'ESPACE DE R.
 
 Le J2 (v2.88.0) a livré `ajout_rouge` et le cadre « Fusion Ha » ; il est VALIDÉ
-EN RÉEL (Alain, 19/10/2026) et sa formule ne change PAS. Le J3 livre les quatre
-modes du plan figé, avec le MÊME signal préparé
+EN RÉEL (Alain, 19/10/2026) et sa formule ne change PAS — il est purement
+ADDITIF, donc hors du piège d'échelle. Le J3 (v2.89.0) a livré les quatre autres
+modes, mais ses formules comparaient `R` et `s` DIRECTEMENT : condamnées en réel
+sur M33 et remplacées par le J3bis (option A, 19/10/2026).
+
+MESURE QUI A TRANCHÉ (couches M33 réelles, `_diag_fusion_ha_echelles.py`) : avec
+la « normalisation commune » le rouge du composite vit entre 2,86 et 5,71 alors
+que `s` est écrêté dans [0 ; 1] ⇒ `1 − R < 0` partout (l'écran SOUSTRAIT),
+`max(0, s − R) = 0` partout (éclaircir INERTE), le fondu retirait la moitié du
+rouge du fond, et la luminance blanchissait.
+
+DEPUIS J3bis, les quatre modes travaillent dans l'ESPACE DE R — « 0 au fond du
+ciel, ≈ 1 au p99,7 » pour les DEUX grandeurs :
+
+    fond_R = médiane de R sur le fond (s ≤ sa médiane)
+    A_R    = p99,7(R) − fond_R
+    R̃ = (R − fond_R)/A_R        s̃ = s/p99,7(s)
+
+    · fondu      : R̃' = R̃ + α·(s̃ − R̃)
+    · écran      : R̃' = R̃ + s̃·max(0, 1 − min(R̃, 1))
+    · éclaircir  : R̃' = R̃ + max(0, s̃ − R̃)
+    · luminance  : rgb' = rgb × (1 + poids·s̃)      (MÊME facteur sur R, V et B)
+
+puis retour au composite pour les trois modes « rouge » :
+`R' = max(0, fond_R + A_R·R̃')` et `sortie_R = R + poids × (R' − R)`.
+
+Le MÊME signal préparé et le MÊME rôle du POIDS qu'au J2/J3 :
 
     s = (Ha − fond(Ha)) − continuum      (écrêté [0 ; 1] si continuum actif)
-
-et le MÊME rôle du POIDS — une FORCE GLOBALE qui interpole entre le composite
-d'origine et le résultat du mode :
-
     sortie = composite + poids × (opérateur(composite, s) − composite)
-
-À poids 1 : l'opérateur exact ; à poids 0 : le composite du J1 AU BIT (la
-sortie d'urgence validée au J2 ne dépend donc pas du mode).
 
 Vérifie :
   [1] les CINQ modes (ordre, défaut inchangé), α 0,5 borné [0 ; 1], le dict
       complet de `fusion_ha_effectif` qui porte α, HOO/SHO toujours exclus ;
-  [2] CHAQUE FORMULE, AU BIT, à poids 1 et continuum coupé :
-      fondu R + α×(s − R) · écran R + s×(1 − R) · éclaircir R + max(0, s − R)
-      · luminance les TROIS canaux + s ; V/B au bit hors luminance ;
-  [2b] α : 0 → rouge INCHANGÉ, 1 → rouge remplacé par le signal, α n'agit QUE
+  [2] CHAQUE FORMULE, dans l'espace de R, à poids 1 et continuum coupé :
+      fondu/écran/éclaircir via R̃ et s̃, luminance multiplicative sur les TROIS
+      canaux ; `ajout_rouge` reste AU BIT (J2) ; V/B au bit hors luminance ;
+  [2b] α : 0 → rouge inchangé, 1 → rouge = s̃ ramené au composite, α n'agit QUE
       sur le fondu, valeur illisible → 0,5 ;
   [3] le POIDS comme force globale pour les CINQ modes : 0 rend le MÊME objet,
       0,5 est à mi-chemin, 2 extrapole ;
@@ -29,6 +47,9 @@ Vérifie :
       sans couche R il reste SANS EFFET quel que soit le mode ;
   [5] `composer()` : poids 0 au bit pour chaque mode, formules retrouvées sur le
       composite réel, HOO inchangé, mode inconnu = `ajout_rouge` ;
+  [5b] COMPOSITE HORS [0 ; 1] (R ≈ 2,9-5,7, comme la session M33) : aucun mode
+      ne baisse le rouge du FOND, écran n'abaisse JAMAIS, éclaircir AGIT,
+      le fondu ne retire plus le Ha, luminance préserve les rapports R/G/B ;
   [6] la CLÉ de mémoïsation suit α et le MODE (sinon réglage « sans effet ») ;
   [7] l'INTERFACE (App réelle) : champ α DÉSACTIVÉ hors fondu, borné, persisté
       et restauré, réglage poussé sur le stacker ;
@@ -56,7 +77,6 @@ from avastack.processing.composition import (ALPHA_HA_DEFAUT, ALPHA_HA_MAX,
                                              CLIP_HA_MAX, CLIP_HA_MIN,
                                              CompositeStacker, FUSION_HA_DEFAUT,
                                              MODES_FUSION_HA, POIDS_HA_DEFAUT,
-                                             POIDS_HA_MAX, POIDS_HA_MIN,
                                              Q_HA_DEFAUT, composer,
                                              fusion_ha_effectif, fusionner_ha,
                                              normaliser)
@@ -105,6 +125,52 @@ def rouge(base, delta):
     return out
 
 
+def reperes(base, sig):
+    """Repères de l'ESPACE DE R, calculés ICI (référence INDÉPENDANTE).
+
+    Mêmes définitions que la spec J3bis : `fond_R` = médiane du rouge sur le
+    fond (`s` ≤ sa médiane), `A_R` = p99,7(R) − fond_R, `p_s` = p99,7(s).
+    """
+    fond = sig <= np.percentile(sig, 50.0)
+    r0 = np.asarray(base[..., 0], dtype=np.float64)
+    fond_r = float(np.median(r0[fond]))
+    return (fond_r, float(np.percentile(r0, 99.7)) - fond_r,
+            float(np.percentile(sig, 99.7)))
+
+
+def mode_espace_r(base, sig, mode, alpha=0.5, poids=1.0):
+    """Rejoue l'opérateur J3bis (option A) tel que la SPEC l'écrit.
+
+    Écrit VOLONTAIREMENT à part de `fusionner_ha` : c'est la référence du banc.
+    Calculs en float64 ⇒ comparaison avec une TOLÉRANCE (l'aller-retour par R̃
+    coûte quelques ulp en float32). Seul `ajout_rouge` reste comparé AU BIT.
+    """
+    r0 = np.asarray(base[..., 0], dtype=np.float64)
+    fond_r, amp_r, amp_s = reperes(base, sig)
+    rt = (r0 - fond_r) / amp_r                      # R̃
+    st = np.asarray(sig, dtype=np.float64) / amp_s  # s̃
+    if mode == "fondu_rouge":
+        rt = rt + alpha * (st - rt)
+    elif mode == "ecran_rouge":
+        rt = rt + st * np.maximum(0.0, 1.0 - np.minimum(rt, 1.0))
+    elif mode == "eclaircir_rouge":
+        rt = rt + np.maximum(st - rt, 0.0)
+    else:
+        raise AssertionError(f"{mode} n'est pas un mode « rouge »")
+    r_mode = np.maximum(fond_r + amp_r * rt, 0.0)   # retour au composite
+    out = np.asarray(base, dtype=np.float64).copy()
+    out[..., 0] = r0 + poids * (r_mode - r0)        # force GLOBALE
+    return out
+
+
+def luminance_attendue(base, sig, poids=1.0):
+    """`ha_luminance` J3bis : le MÊME facteur (1 + poids·s̃) sur les 3 canaux."""
+    _f, _a, amp_s = reperes(base, sig)
+    facteur = 1.0 + poids * (np.asarray(sig, dtype=np.float64) / amp_s)
+    return np.asarray(base, dtype=np.float64) * np.maximum(
+        facteur, 0.0)[..., None]
+
+
 # ============================================== [1] cinq modes, défauts, bornes
 print("[1] cinq modes, défauts et bornes de α")
 verifie(MODES_FUSION_HA == ("ajout_rouge", "fondu_rouge", "ecran_rouge",
@@ -134,58 +200,69 @@ verifie(fusion_ha_effectif("HOO", {"mode": "fondu_rouge"}) is None
         and fusion_ha_effectif("LRGB", {"mode": "eclaircir_rouge"}) is None,
         "HOO/SHO (Ha = canal) et LRGB : aucun mode ne s'invite")
 
-# ================================= [2] chaque formule, AU BIT (poids 1, sans cont.)
-print("[2] formules EXACTES à poids 1, continuum coupé")
+# ================================ [2] chaque formule, dans l'ESPACE DE R (poids 1)
+print("[2] formules J3bis à poids 1, continuum coupé : les repères de R sont respectés")
 rgb = composite_rgb()
 ha = scene()["Ha"]
 r0 = rgb[..., 0].copy()
 s = (ha - np.float32(np.median(ha)))          # signal préparé (sans continuum)
+fond_r, amp_r, amp_s = reperes(rgb, s)
+print(f"    repères : fond_R={fond_r:.4f}  A_R={amp_r:.4f}  p99,7(s)={amp_s:.4f}")
+verifie(amp_r > 1e-6 and amp_s > 1e-6,
+        "les repères existent (ni canal plat, ni signal vide)")
 
 out = fusionner_ha(rgb, ha, mode="ajout_rouge", poids=1.0, continuum=False)
 verifie(np.array_equal(out, rouge(rgb, s)),
         "ajout_rouge : R' = R + s AU BIT — formule du J2 INCHANGÉE")
 
-out = fusionner_ha(rgb, ha, mode="fondu_rouge", alpha=0.5, poids=1.0,
-                   continuum=False)
-verifie(np.array_equal(out, rouge(rgb, np.float32(0.5) * (s - r0))),
-        "fondu_rouge α 0,5 : R' = R + 0,5 × (s − R) AU BIT")
-verifie(np.array_equal(out[..., 1:], rgb[..., 1:]),
+out_fondu = fusionner_ha(rgb, ha, mode="fondu_rouge", alpha=0.5, poids=1.0,
+                         continuum=False)
+verifie(np.allclose(out_fondu,
+                    mode_espace_r(rgb, s, "fondu_rouge", alpha=0.5),
+                    atol=1e-6, rtol=1e-6),
+        "fondu_rouge : R̃' = R̃ + α×(s̃ − R̃), puis retour au composite")
+verifie(np.array_equal(out_fondu[..., 1:], rgb[..., 1:]),
         "fondu : VERT et BLEU INCHANGÉS au bit")
+ancien = rouge(rgb, np.float32(0.5) * (s - r0))
+verifie(float(np.max(np.abs(out_fondu[..., 0] - ancien[..., 0]))) > 1e-3,
+        "le fondu ne fait PLUS R + α×(s − R) : l'espace de R est bien appliqué "
+        "(l'ancienne formule est abandonnée)")
 
 out = fusionner_ha(rgb, ha, mode="ecran_rouge", poids=1.0, continuum=False)
-verifie(np.array_equal(out, rouge(rgb, s * (np.float32(1.0) - r0))),
-        "ecran_rouge : R' = R + s × (1 − R) AU BIT [écran 1−(1−R)(1−s)]")
+verifie(np.allclose(out, mode_espace_r(rgb, s, "ecran_rouge"),
+                    atol=1e-6, rtol=1e-6),
+        "ecran_rouge : R̃' = R̃ + s̃ × max(0, 1 − min(R̃, 1)) [l'écran BORNE]")
 verifie(np.array_equal(out[..., 1:], rgb[..., 1:]),
         "écran : VERT et BLEU INCHANGÉS au bit")
 
 out = fusionner_ha(rgb, ha, mode="eclaircir_rouge", poids=1.0,
                    continuum=False)
-verifie(np.array_equal(out, rouge(rgb,
-                                  np.maximum(s - r0, np.float32(0.0)))),
-        "eclaircir_rouge : R' = R + max(0, s − R) AU BIT [max(R, s)]")
-verifie(np.all(out[..., 0] >= r0),
+verifie(np.allclose(out, mode_espace_r(rgb, s, "eclaircir_rouge"),
+                    atol=1e-6, rtol=1e-6),
+        "eclaircir_rouge : R̃' = R̃ + max(0, s̃ − R̃) [max(R̃, s̃)]")
+verifie(np.all(out[..., 0] >= r0 - 1e-6),
         "éclaircir ne fait que MONTER le rouge (jamais de baisse)")
 verifie(np.array_equal(out[..., 1:], rgb[..., 1:]),
         "éclaircir : VERT et BLEU INCHANGÉS au bit")
 
 out = fusionner_ha(rgb, ha, mode="ha_luminance", poids=1.0, continuum=False)
-att = rgb + s[..., None]
-verifie(np.array_equal(out, att),
-        "ha_luminance : les TROIS canaux reçoivent + s, AU BIT")
+verifie(np.allclose(out, luminance_attendue(rgb, s), atol=1e-6, rtol=1e-6),
+        "ha_luminance : les TROIS canaux × (1 + s̃) — MÊME facteur partout")
 verifie(not np.array_equal(out[..., 1:], rgb[..., 1:]),
         "luminance TOUCHE le vert et le bleu — c'est son objet (seule exception)")
 
 # ================================================================ [2b] α du fondu
-print("[2b] α : 0 = rouge inchangé, 1 = rouge remplacé, n'agit QUE sur le fondu")
+print("[2b] α : 0 = rouge inchangé, 1 = rouge = s̃, n'agit QUE sur le fondu")
 out0 = fusionner_ha(rgb, ha, mode="fondu_rouge", alpha=0.0, poids=1.0,
                     continuum=False)
-verifie(np.array_equal(out0[..., 0], r0)
+verifie(np.allclose(out0[..., 0], r0, atol=1e-6, rtol=0)
         and np.array_equal(out0[..., 1:], rgb[..., 1:]),
-        "α 0 : le rouge revient EXACTEMENT à R (aucun changement)")
+        "α 0 : le rouge revient à R (à l'aller-retour par R̃ près), V/B au bit")
 out1 = fusionner_ha(rgb, ha, mode="fondu_rouge", alpha=1.0, poids=1.0,
                     continuum=False)
-verifie(np.allclose(out1[..., 0], s, atol=1e-6, rtol=0),
-        "α 1 : R' = s (le rouge est REMPLACÉ par le signal, au bit près)")
+att1 = np.maximum(fond_r + amp_r * (s.astype(np.float64) / amp_s), 0.0)
+verifie(np.allclose(out1[..., 0], att1, atol=1e-6, rtol=1e-6),
+        "α 1 : le rouge prend s̃ (fond_R + A_R·s̃), plus le signal brut")
 a_alpha0 = fusionner_ha(rgb, ha, mode="ajout_rouge", alpha=0.0, poids=1.0,
                         continuum=False)
 a_alpha1 = fusionner_ha(rgb, ha, mode="ajout_rouge", alpha=1.0, poids=1.0,
@@ -223,18 +300,20 @@ sig = np.clip(s - kk * (r_raw - np.float32(np.median(r_raw))),
 CONT = {"continuum": True, "q": Q_HA_DEFAUT, "r_reference": r_raw,
         "echelle_ha": ECH}
 out = fusionner_ha(rgb, ha, mode="fondu_rouge", alpha=0.5, poids=1.0, **CONT)
-verifie(np.array_equal(out, rouge(rgb, np.float32(0.5) * (sig - r0))),
-        "fondu + continuum : R + 0,5 × (s_écrêté − R), AU BIT")
+verifie(np.allclose(out, mode_espace_r(rgb, sig, "fondu_rouge"),
+                    atol=1e-6, rtol=1e-6),
+        "fondu + continuum : même opérateur, sur s_écrêté")
 out = fusionner_ha(rgb, ha, mode="ecran_rouge", poids=1.0, **CONT)
-verifie(np.array_equal(out, rouge(rgb, sig * (np.float32(1.0) - r0))),
-        "écran + continuum : R + s_écrêté × (1 − R), AU BIT")
+verifie(np.allclose(out, mode_espace_r(rgb, sig, "ecran_rouge"),
+                    atol=1e-6, rtol=1e-6),
+        "écran + continuum : même opérateur, sur s_écrêté")
 out = fusionner_ha(rgb, ha, mode="eclaircir_rouge", poids=1.0, **CONT)
-verifie(np.array_equal(out, rouge(rgb,
-                                  np.maximum(sig - r0, np.float32(0.0)))),
-        "éclaircir + continuum : max(R, s_écrêté), AU BIT")
+verifie(np.allclose(out, mode_espace_r(rgb, sig, "eclaircir_rouge"),
+                    atol=1e-6, rtol=1e-6),
+        "éclaircir + continuum : même opérateur, sur s_écrêté")
 out = fusionner_ha(rgb, ha, mode="ha_luminance", poids=1.0, **CONT)
-verifie(np.array_equal(out, rgb + sig[..., None]),
-        "luminance + continuum : les trois canaux reçoivent s_écrêté, AU BIT")
+verifie(np.allclose(out, luminance_attendue(rgb, sig), atol=1e-6, rtol=1e-6),
+        "luminance + continuum : facteur (1 + s̃_écrêté) sur les trois canaux")
 for mode in ("fondu_rouge", "ecran_rouge", "eclaircir_rouge", "ha_luminance"):
     sans_r = fusionner_ha(rgb, ha, mode=mode, continuum=True,
                           r_reference=None)
@@ -251,15 +330,13 @@ base = composer(canaux, "LRGB+Ha", bornes=bornes, sigma_l=0.0,
                 fusion_ha={"poids": 0.0})       # référence SANS fusion
 norm_ha = normaliser(canaux["Ha"], *bornes["Ha"])
 sc = norm_ha - np.float32(np.median(norm_ha))
-br = base[..., 0].copy()
 ATTENDUS = {
     "ajout_rouge": lambda: rouge(base, sc),
-    "fondu_rouge": lambda: rouge(base,
-                                 np.float32(ALPHA_HA_DEFAUT) * (sc - br)),
-    "ecran_rouge": lambda: rouge(base, sc * (np.float32(1.0) - br)),
-    "eclaircir_rouge": lambda: rouge(base,
-                                     np.maximum(sc - br, np.float32(0.0))),
-    "ha_luminance": lambda: base + sc[..., None],
+    "fondu_rouge": lambda: mode_espace_r(base, sc, "fondu_rouge",
+                                         alpha=ALPHA_HA_DEFAUT),
+    "ecran_rouge": lambda: mode_espace_r(base, sc, "ecran_rouge"),
+    "eclaircir_rouge": lambda: mode_espace_r(base, sc, "eclaircir_rouge"),
+    "ha_luminance": lambda: luminance_attendue(base, sc),
 }
 for mode in MODES_FUSION_HA:
     c0 = composer(canaux, "LRGB+Ha", bornes=bornes, sigma_l=0.0,
@@ -268,8 +345,13 @@ for mode in MODES_FUSION_HA:
             f"{mode} : poids 0 → composite INCHANGÉ AU BIT (sortie d'urgence)")
     c1 = composer(canaux, "LRGB+Ha", bornes=bornes, sigma_l=0.0,
                   fusion_ha={"mode": mode, "poids": 1.0, "continuum": False})
-    verifie(np.array_equal(c1, ATTENDUS[mode]()),
-            f"{mode} : formule EXACTE retrouvée sur le composite réel")
+    if mode == "ajout_rouge":
+        verifie(np.array_equal(c1, ATTENDUS[mode]()),
+                f"{mode} : formule EXACTE retrouvée sur le composite réel (AU BIT)")
+    else:
+        verifie(np.allclose(c1, ATTENDUS[mode](), atol=1e-6, rtol=1e-6),
+                f"{mode} : formule EXACTE retrouvée sur le composite réel "
+                "(espace de R)")
 verifie(len({ATTENDUS[m]().tobytes() for m in MODES_FUSION_HA}) == 5,
         "les cinq modes donnent bien CINQ composites DIFFÉRENTS (comparés sur "
         "les TROIS canaux : le rouge seul ne sépare pas ajout de luminance, "
@@ -285,6 +367,88 @@ for mode in MODES_FUSION_HA:
                     fusion_ha={"mode": mode, "poids": 5.0})
     verifie(np.array_equal(hoo0, hoo1),
             f"HOO + {mode} : AUCUN effet (le Ha y est déjà le canal vert)")
+
+# ============================ [5b] composite HORS [0 ; 1] (le cas de la session)
+print("[5b] composite HORS [0 ; 1] (R ≈ 2,9-5,7) : les défauts du 19/10 disparaissent")
+# Scène CALQUÉE sur la mesure : continuum R large entre 2,86 et 5,71 (le rouge
+# du composite en normalisation commune), Ha COMPACT et AILLEURS que le maximum
+# de R (une émission Ha est bien plus concentrée que le continuum) — c'est
+# exactement la configuration où le J3 soustrayait, blanchissait et n'agissait
+# sur rien.
+_n = 160
+_yy, _xx = np.mgrid[0:_n, 0:_n].astype(np.float32)
+_rng = np.random.default_rng(11)
+_neb = np.exp(-(((_yy - 70.0) ** 2 + (_xx - 80.0) ** 2)
+                / (2.0 * 40.0 ** 2))).astype(np.float32)
+_ha = (np.exp(-(((_yy - 50.0) ** 2 + (_xx - 55.0) ** 2)
+                / (2.0 * 9.0 ** 2)))
+       + np.exp(-(((_yy - 100.0) ** 2 + (_xx - 120.0) ** 2)
+                  / (2.0 * 12.0 ** 2)))).astype(np.float32)
+_R = (2.86 + 2.85 * _neb + _rng.normal(0.0, 0.02, (_n, _n))).astype(np.float32)
+_V = (0.20 + 0.05 * _neb + _rng.normal(0.0, 0.01, (_n, _n))).astype(np.float32)
+_B = (0.15 + 0.04 * _neb + _rng.normal(0.0, 0.01, (_n, _n))).astype(np.float32)
+hors = np.stack([_R, _V, _B], axis=-1).astype(np.float32)
+sig_hors = np.clip(_ha - float(np.median(_ha))
+                   + _rng.normal(0.0, 0.01, (_n, _n)).astype(np.float32),
+                   np.float32(0.0), np.float32(1.0)).astype(np.float32)
+_p50, _p997 = (float(v) for v in np.percentile(_R, [50.0, 99.7]))
+print(f"    rouge du composite : p50={_p50:.2f}  p99,7={_p997:.2f} "
+      "(la mesure M33 : 2,86 / 5,71)")
+verifie(_p50 > 2.0 and _p997 > 4.0,
+        "le composite est bien HORS [0 ; 1] — le cas qui a condamné le J3")
+fond_h = sig_hors <= np.percentile(sig_hors, 50.0)
+coeur_h = sig_hors >= np.percentile(sig_hors, 99.0)
+_amp_h = reperes(hors, sig_hors)[1]        # amplitude du rouge (l'échelle du test)
+CONT5 = {"continuum": False, "recentrer": False}
+
+o = fusionner_ha(hors, sig_hors, mode="ajout_rouge", poids=1.0, **CONT5)
+verifie(np.array_equal(o, hors + sig_hors[..., None]
+                       * np.float32([1.0, 0.0, 0.0])),
+        "ajout_rouge reste PUREMENT ADDITIF hors [0 ; 1] — le J2 est intact")
+
+degrad = {}
+for mode in ("fondu_rouge", "ecran_rouge", "eclaircir_rouge"):
+    o = fusionner_ha(hors, sig_hors, mode=mode, poids=1.0, alpha=0.5, **CONT5)
+    d = o[..., 0] - _R
+    degrad[mode] = (o, d)
+    verifie(abs(float(np.median(d[fond_h]))) < 0.01 * _amp_h,
+            f"{mode} : le rouge du FOND ne bouge plus "
+            f"({100.0 * float(np.median(d[fond_h])) / _amp_h:+.2f} % de A_R) "
+            "— plus d'image bleuie")
+    if mode != "fondu_rouge":
+        verifie(float(d.min()) >= -1e-6,
+                f"{mode} : le rouge ne BAISSE JAMAIS (min {float(d.min()):+.6f}) "
+                "— plus de cyan")
+    verifie(np.array_equal(o[..., 1:], hors[..., 1:]),
+            f"{mode} : VERT et BLEU INCHANGÉS au bit")
+
+o_f, d_f = degrad["fondu_rouge"]
+verifie(float(np.median(d_f[coeur_h])) > 0.1,
+        f"fondu : le Ha MONTE au cœur ({float(np.median(d_f[coeur_h])):+.3f}) "
+        "— il n'est plus retiré du rouge")
+o_e, d_e = degrad["eclaircir_rouge"]
+monte = float(np.mean(d_e[coeur_h] > 1e-6))
+verifie(monte > 0.80,
+        f"éclaircir AGIT au cœur Ha : {100.0 * monte:.1f} % des pixels montent "
+        "(il était strictement INERTE)")
+o_e2 = fusionner_ha(hors, sig_hors, mode="eclaircir_rouge", poids=2.0,
+                    continuum=False, recentrer=False)
+verifie(float(np.max(np.abs(o_e2 - o_e))) > 1e-3,
+        "éclaircir : le POIDS n'est plus sans effet (poids 2 ≠ poids 1)")
+o_s, d_s = degrad["ecran_rouge"]
+verifie(float(np.median(d_s[coeur_h])) > 0.1,
+        f"écran : il AJOUTE au cœur Ha ({float(np.median(d_s[coeur_h])):+.3f}) "
+        "— le poids n'est plus multiplié par un (1 − R) négatif")
+
+o_l = fusionner_ha(hors, sig_hors, mode="ha_luminance", poids=1.0, **CONT5)
+_ratio = o_l / hors
+verifie(float(np.max(np.abs(_ratio - _ratio[..., :1]))) < 1e-5,
+        "ha_luminance : les rapports R/G/B sont PRÉSERVÉS — plus de blanchiment")
+verifie(float(np.min(o_l[..., 0] - _R)) >= -1e-6,
+        "ha_luminance n'éteint jamais le rouge")
+verifie(float(np.median(_ratio[..., 0][coeur_h])) > 1.2,
+        f"ha_luminance ÉCLAIRE au cœur Ha "
+        f"(×{float(np.median(_ratio[..., 0][coeur_h])):.2f}) sans toucher aux couleurs")
 
 # ==================================================== [6] clé de mémoïsation
 print("[6] mémoïsation : la CLÉ suit le MODE et α")
