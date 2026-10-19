@@ -50,6 +50,10 @@ from ..cameras import SOURCES                            # noqa: F401 (ré-expor
 from ..cameras.base import FILTRES_ROUE
 from ..cameras.qhy import lister_via_sous_processus, tracer_evt  # noqa: F401 (ré-export)
 from ..processing import Calibrator, StarAligner, LiveStacker, DisplayProcessor
+# P1 (lot 2) : la politique de cadence est importée SOUS UN NOM PRIVÉ — la
+# surface publique de `app.py` est FIGÉE (banc garde-fou du jalon 100) et
+# n'a aucune raison d'exposer `CadenceMesure` / `suffixe_etat`.
+from ..processing import cadence as _cadence_mod
 from ..processing import alignment as align_mod
 # Jalon 103 : `display_mod` n'est plus utilisé DANS `app.py` (le tracé de
 # l'histogramme a migré vers `ui/widgets/histogram.py`) mais reste RÉ-EXPORTÉ
@@ -553,6 +557,14 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._photo_gains_pose = {}      # derniers gains posés (suivi de rendu)
         self._photo_essais = 0           # tentatives de mesure (session)
         self._photo_dernier = 0.0        # monotonic du dernier essai
+        # P1 (lot 2) : cadence de re-mesure — UNE instance PAR mesure, remise à
+        # zéro avec la session (worker) et à chaque demande explicite de
+        # l'utilisateur. La politique vit dans `processing/cadence.py`.
+        self._cadence_astro = _cadence_mod.CadenceMesure("astrométrie")
+        self._cadence_photo = _cadence_mod.CadenceMesure("photométrie Gaia")
+        self._cadence_spcc = _cadence_mod.CadenceMesure("SPCC")
+        self._photo_raison = ""          # dernière décision (état/journal)
+        self._spcc_raison = ""
         self._astro_msg_indices = ""     # raison d'un refus des indices saisis
         self._astro_source = ""          # « saisie », « image <fichier> », « ASTAP »…
         # Jalon 133 : garde d'interface — jeu d'indices DÉJÀ comparé à
@@ -1649,10 +1661,19 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 # l'affichage repart de zéro.
                 self.astro_info = ""
                 self.astro_couleur = "#888888"
+                # P1 (lot 2) : nouvelle cible = nouvelle mesure (la profondeur
+                # de l'ancienne ne dit plus rien du nouveau champ).
+                _cad = getattr(self, "_cadence_astro", None)
+                if _cad is not None:
+                    _cad.reset()
                 # Nouveaux indices → nouvelle proposition de nom possible
                 self._astro_name_proposed = False
         if not self._astro_actif and self.suivi_astro is not None:
             self.suivi_astro.reset()
+        if not self._astro_actif:
+            _cad = getattr(self, "_cadence_astro", None)
+            if _cad is not None:
+                _cad.reset()
         # Lot 1 / P3 : DEMANDE de résolution — posée au COCHAGE, au CHANGEMENT
         # D'INDICES, et tant que le WCS n'est pas résolu. Le worker la sert
         # même sans nouvelle frame (`_servir_demandes_sans_frame`) ; les
@@ -1790,6 +1811,11 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         if not self._spcc_actif:
             if self.spcc is not None:
                 self.spcc.reset()
+            # P1 (lot 2) : case décochée = session SPCC neuve au prochain
+            # cochage (la cadence ne doit pas croire à une mesure en cours).
+            _cad = getattr(self, "_cadence_spcc", None)
+            if _cad is not None:
+                _cad.reset()
             self.spcc_info = "SPCC : désactivée"
             self.spcc_couleur = "#888888"
         else:
@@ -1797,6 +1823,12 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self.spcc_couleur = "#c98a00"
             self._spcc_essais = 0        # nouvelle mesure autorisée
             self._spcc_dernier = 0.0
+            # P1 (lot 2) : une DEMANDE explicite repart à la profondeur
+            # courante (le plafond et le délai d'une mesure précédente ne
+            # doivent pas la refuser).
+            _cad = getattr(self, "_cadence_spcc", None)
+            if _cad is not None:
+                _cad.reset()
             if self.spcc is not None and self.spcc.valide:
                 self._maj_spcc_etat()
         self._rafraichir_rendu = True
@@ -2044,6 +2076,10 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         if self.spcc is None:
             return
         txt = self.spcc.texte_resume()
+        suffixe = _cadence_mod.suffixe_etat(getattr(self, "_cadence_spcc", None),
+                                           self._profondeur_mesures())
+        if txt and suffixe:
+            txt = f"{txt} — {suffixe}"
         if txt and txt != self.spcc_info:
             self.spcc_info = txt
         if self.spcc.valide:
@@ -2101,6 +2137,12 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         la tentera au prochain tour, sur l'empilement courant)."""
         self._photo_actif = bool(self.var_photo.get())
         self._photo_demande = self._photo_actif   # v2.37.0 : mesure à (re)faire
+        # P1 (lot 2) : décocher ou recocher = session de mesure neuve (cadence
+        # remise à zéro dans les deux cas) — un plafond ou un délai hérité
+        # d'une mesure précédente ne doit pas refuser une demande explicite.
+        _cad = getattr(self, "_cadence_photo", None)
+        if _cad is not None:
+            _cad.reset()
         if not self._photo_actif:
             if self.photometrie is not None:
                 self.photometrie.reset()
@@ -4450,6 +4492,12 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self.photo_info = ""
         self.photo_couleur = "#888888"
         self._photo_essais = 0
+        # P1 (lot 2) : les trois cadences repartent de zéro avec la session
+        # (profondeur mesurée, échéance, plafond, passes finales).
+        for _nom_cad in ("_cadence_astro", "_cadence_photo", "_cadence_spcc"):
+            _cad = getattr(self, _nom_cad, None)
+            if _cad is not None:
+                _cad.reset()
         # Jalon 58 : même chose pour la SPCC absolue (coefficients d'une autre
         # cible ou d'une autre session = faux par construction).
         if getattr(self, "spcc", None) is not None:
@@ -5246,6 +5294,12 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         if self.suivi_astro is None:
             return
         txt = self.suivi_astro.texte_resume()
+        # P1 (lot 2) : l'état dit SUR COMBIEN DE FRAMES le WCS a été obtenu.
+        # Pas de « prochaine mesure » : le WCS n'est jamais re-solvé, il est
+        # propagé (jalon 56) — promettre une échéance serait faux.
+        cad = getattr(self, "_cadence_astro", None)
+        if txt and cad is not None and cad.deja_mesure and cad.profondeur > 0:
+            txt = f"{txt} — mesure faite sur {cad.profondeur} frames"
         if txt and txt != self.astro_info:
             self.astro_info = txt
         # Détecter la transition "non résolu → résolu" pour réinitialiser la proposition
@@ -5386,6 +5440,12 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         if self.photometrie is None:
             return
         txt = self.photometrie.texte_resume()
+        # P1 (lot 2) : la ligne dit la profondeur MESURÉE et la prochaine
+        # échéance (elle change donc quand la mesure se rafraîchit).
+        suffixe = _cadence_mod.suffixe_etat(getattr(self, "_cadence_photo", None),
+                                           self._profondeur_mesures())
+        if txt and suffixe:
+            txt = f"{txt} — {suffixe}"
         if txt and txt != self.photo_info:
             self.photo_info = txt
         if self.photometrie.valide:

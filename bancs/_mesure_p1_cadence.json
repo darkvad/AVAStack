@@ -1,0 +1,316 @@
+{
+ "horodatage": "2026-10-19 22:48:37",
+ "dossier": "C:\\Astro\\Images_Stack\\180.00s\\LIGHT",
+ "lignes": [
+  {
+   "profondeur": 3,
+   "total": 3,
+   "t_empilement_s": 2.4566,
+   "astro": {
+    "t_s": 3.1117,
+    "ok": true,
+    "msg": "Astrométrie : résolue — 120 étoiles, rms 0.40 px, 0.472″/px (paires-ransac) · AD 291.54583° Dec +22.75722° champ 0.501°",
+    "essais": 1
+   },
+   "photo": {
+    "t_s": 0.4367,
+    "ok": true,
+    "msg": "référence : ZP médian 14.073",
+    "gains": {
+     "bandes": {
+      "R": {
+       "zp": 14.345198530976747,
+       "rms_mag": 0.3216037651058243,
+       "n": 203,
+       "n_mutuels": 210,
+       "d_px": 0.4870116106159142,
+       "mag_min": 12.414,
+       "mag_max": 15.791
+      },
+      "G": {
+       "zp": 14.073152123626766,
+       "rms_mag": 0.5010295924750151,
+       "n": 168,
+       "n_mutuels": 171,
+       "d_px": 0.4209654918758699,
+       "mag_min": 11.922,
+       "mag_max": 15.725
+      },
+      "B": {
+       "zp": 12.964202425123956,
+       "rms_mag": 0.604733235232039,
+       "n": 81,
+       "n_mutuels": 84,
+       "d_px": 0.5872934381843145,
+       "mag_min": 11.922,
+       "mag_max": 15.508
+      }
+     },
+     "gains": {
+      "R": 0.7783616625986004,
+      "G": 1.0,
+      "B": 2.777025575000523
+     },
+     "n_paires": 452,
+     "motif": []
+    }
+   },
+   "spcc": {
+    "t_s": 0.7433,
+    "ok": true,
+    "msg": "SPCC Sony IMX585 : R ×0.1809 / G ×0.2749 / B ×1.0000 — pente R/G -4.410 (σ 0.152), B/G -0.448 (σ 0.025) sur 80 étoiles — ⚠ pente de régression hors de [0,5 ; 1,5] : les bandes modélisées décrivent mal cette image (gradient, profils de filtres) — correction à appliquer avec prudence",
+    "capteur": "Sony IMX585"
+   }
+  },
+  {
+   "profondeur": 6,
+   "total": 6,
+   "t_empilement_s": 6.7641,
+   "astro": {
+    "t_s": 0.0,
+    "ok": true,
+    "msg": "déjà résolu (pas de re-solve)"
+   },
+   "photo": {
+    "t_s": 0.5094,
+    "ok": true,
+    "msg": "référence : ZP médian 14.055",
+    "gains": {
+     "bandes": {
+      "R": {
+       "zp": 14.359064648378363,
+       "rms_mag": 0.32711568315558875,
+       "n": 211,
+       "n_mutuels": 219,
+       "d_px": 0.4181126643235473,
+       "mag_min": 12.534,
+       "mag_max": 15.791
+      },
+      "G": {
+       "zp": 14.055055027902792,
+       "rms_mag": 0.5062894036860586,
+       "n": 181,
+       "n_mutuels": 183,
+       "d_px": 0.3547190729842525,
+       "mag_min": 11.922,
+       "mag_max": 15.791
+      },
+      "B": {
+       "zp": 12.834272507496717,
+       "rms_mag": 0.5789436603543715,
+       "n": 93,
+       "n_mutuels": 96,
+       "d_px": 0.5980369367487619,
+       "mag_min": 11.922,
+       "mag_max": 15.575
+      }
+     },
+     "gains": {
+      "R": 0.7557813168346835,
+      "G": 1.0,
+      "B": 3.0783146427560677
+     },
+     "n_paires": 485,
+     "motif": []
+    }
+   },
+   "spcc": {
+    "t_s": 0.6697,
+    "ok": true,
+    "msg": "SPCC Sony IMX585 : R ×0.1761 / G ×0.2693 / B ×1.0000 — pente R/G -4.683 (σ 0.135), B/G -0.427 (σ 0.018) sur 81 étoiles — ⚠ pente de régression hors de [0,5 ; 1,5] : les bandes modélisées décrivent mal cette image (gradient, profils de filtres) — correction à appliquer avec prudence",
+    "capteur": "Sony IMX585"
+   }
+  },
+  {
+   "profondeur": 12,
+   "total": 12,
+   "t_empilement_s": 15.5084,
+   "astro": {
+    "t_s": 0.0,
+    "ok": true,
+    "msg": "déjà résolu (pas de re-solve)"
+   },
+   "photo": {
+    "t_s": 0.499,
+    "ok": true,
+    "msg": "référence : ZP médian 13.987",
+    "gains": {
+     "bandes": {
+      "R": {
+       "zp": 14.294253703510089,
+       "rms_mag": 0.31501151047329046,
+       "n": 204,
+       "n_mutuels": 213,
+       "d_px": 0.44231480792943056,
+       "mag_min": 12.534,
+       "mag_max": 15.791
+      },
+      "G": {
+       "zp": 13.986945889479312,
+       "rms_mag": 0.5112511969950575,
+       "n": 189,
+       "n_mutuels": 192,
+       "d_px": 0.37253137845877793,
+       "mag_min": 11.922,
+       "mag_max": 15.791
+      },
+      "B": {
+       "zp": 12.767827427896833,
+       "rms_mag": 0.6190286634019907,
+       "n": 94,
+       "n_mutuels": 97,
+       "d_px": 0.5885736209205384,
+       "mag_min": 11.922,
+       "mag_max": 15.72
+      }
+     },
+     "gains": {
+      "R": 0.7534889268687357,
+      "G": 1.0,
+      "B": 3.073600262673878
+     },
+     "n_paires": 487,
+     "motif": []
+    }
+   },
+   "spcc": {
+    "t_s": 0.7523,
+    "ok": true,
+    "msg": "SPCC Sony IMX585 : R ×0.1829 / G ×0.2762 / B ×1.0000 — pente R/G -3.929 (σ 0.150), B/G -0.535 (σ 0.023) sur 78 étoiles — ⚠ pente de régression hors de [0,5 ; 1,5] : les bandes modélisées décrivent mal cette image (gradient, profils de filtres) — correction à appliquer avec prudence",
+    "capteur": "Sony IMX585"
+   }
+  },
+  {
+   "profondeur": 24,
+   "total": 24,
+   "t_empilement_s": 31.8376,
+   "astro": {
+    "t_s": 0.0,
+    "ok": true,
+    "msg": "déjà résolu (pas de re-solve)"
+   },
+   "photo": {
+    "t_s": 0.558,
+    "ok": true,
+    "msg": "référence : ZP médian 14.071",
+    "gains": {
+     "bandes": {
+      "R": {
+       "zp": 14.359871991128973,
+       "rms_mag": 0.3189795632838674,
+       "n": 180,
+       "n_mutuels": 187,
+       "d_px": 0.5284460507840374,
+       "mag_min": 12.991,
+       "mag_max": 15.791
+      },
+      "G": {
+       "zp": 14.071107599370698,
+       "rms_mag": 0.4776948426111044,
+       "n": 192,
+       "n_mutuels": 197,
+       "d_px": 0.4418453361623646,
+       "mag_min": 11.922,
+       "mag_max": 15.791
+      },
+      "B": {
+       "zp": 12.652248540136146,
+       "rms_mag": 0.6449200839559573,
+       "n": 123,
+       "n_mutuels": 123,
+       "d_px": 0.8744185411410035,
+       "mag_min": 11.922,
+       "mag_max": 15.712
+      }
+     },
+     "gains": {
+      "R": 0.7664683803275271,
+      "G": 1.0,
+      "B": 3.6943975170800116
+     },
+     "n_paires": 495,
+     "motif": []
+    }
+   },
+   "spcc": {
+    "t_s": 0.7827,
+    "ok": true,
+    "msg": "SPCC Sony IMX585 : R ×0.2071 / G ×0.2980 / B ×1.0000 — pente R/G -3.418 (σ 0.158), B/G -0.763 (σ 0.037) sur 71 étoiles — ⚠ pente de régression hors de [0,5 ; 1,5] : les bandes modélisées décrivent mal cette image (gradient, profils de filtres) — correction à appliquer avec prudence",
+    "capteur": "Sony IMX585"
+   }
+  },
+  {
+   "profondeur": 48,
+   "total": 48,
+   "t_empilement_s": 65.0635,
+   "astro": {
+    "t_s": 0.0,
+    "ok": true,
+    "msg": "déjà résolu (pas de re-solve)"
+   },
+   "photo": {
+    "t_s": 0.9131,
+    "ok": true,
+    "msg": "référence : ZP médian 14.089",
+    "gains": {
+     "bandes": {
+      "R": {
+       "zp": 14.438469103068698,
+       "rms_mag": 0.3009427720503558,
+       "n": 185,
+       "n_mutuels": 192,
+       "d_px": 0.5067963865994833,
+       "mag_min": 12.991,
+       "mag_max": 15.791
+      },
+      "G": {
+       "zp": 14.08851586882041,
+       "rms_mag": 0.5029350912109896,
+       "n": 190,
+       "n_mutuels": 193,
+       "d_px": 0.4860789571454724,
+       "mag_min": 11.922,
+       "mag_max": 15.791
+      },
+      "B": {
+       "zp": 12.676453765150137,
+       "rms_mag": 0.6056201301824051,
+       "n": 124,
+       "n_mutuels": 125,
+       "d_px": 0.7816050740246822,
+       "mag_min": 11.922,
+       "mag_max": 15.768
+      }
+     },
+     "gains": {
+      "R": 0.7244671642678046,
+      "G": 1.0,
+      "B": 3.6713419901456645
+     },
+     "n_paires": 499,
+     "motif": []
+    }
+   },
+   "spcc": {
+    "t_s": 1.0069,
+    "ok": true,
+    "msg": "SPCC Sony IMX585 : R ×0.1652 / G ×0.2493 / B ×1.0000 — pente R/G -3.608 (σ 0.126), B/G -0.361 (σ 0.026) sur 69 étoiles — ⚠ pente de régression hors de [0,5 ; 1,5] : les bandes modélisées décrivent mal cette image (gradient, profils de filtres) — correction à appliquer avec prudence",
+    "capteur": "Sony IMX585"
+   }
+  }
+ ],
+ "paliers": [
+  3,
+  6,
+  12,
+  24,
+  48
+ ],
+ "retenus_doublants": [
+  3,
+  6,
+  12,
+  24,
+  48
+ ]
+}

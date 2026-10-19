@@ -1086,6 +1086,12 @@ class AcquisitionWorker:
         self.spcc_couleur = "#888888"
         self._spcc_essais = 0
         self._spcc_dernier = 0.0
+        # P1 (lot 2) : la cadence de re-mesure repart de zéro avec la session
+        # (profondeur mesurée, échéance, plafond et compteurs de passe finale).
+        for _nom_cad in ("_cadence_astro", "_cadence_photo", "_cadence_spcc"):
+            _cad = getattr(self, _nom_cad, None)
+            if _cad is not None:
+                _cad.reset()
         self.proc_show = self.proc_full = None
         self.proc_entete = None           # v2.38.3
         self.proc_new = False
@@ -1699,7 +1705,7 @@ class AcquisitionWorker:
 
         → min des profondeurs des rôles des bandes R/G/B ; repli sur
         `_profondeur_astro` si la composition ne mappe aucun canal (Mono)."""
-        if not self._mode_compo:
+        if not getattr(self, "_mode_compo", False):
             return self._profondeur_astro(stacker)
         spec = COMPOSITIONS.get(getattr(stacker, "composition", "")) or {}
         bandes = {r for roles in (spec.get("canaux_rgb") or {}).values()
@@ -1707,6 +1713,20 @@ class AcquisitionWorker:
         sks = getattr(stacker, "stackers", {}) or {}
         prof = [sks[r].n for r in bandes if r in sks and sks[r].n > 0]
         return min(prof) if prof else self._profondeur_astro(stacker)
+
+    def _profondeur_mesures(self):
+        """Profondeur des BANDES mesurées (photométrie/SPCC), ou None.
+
+        P1 (lot 2) : sert aux lignes d'état pour dire la profondeur MESURÉE et
+        la prochaine échéance. `None` quand aucun empilement n'existe encore —
+        l'appelant n'ajoute alors aucun suffixe (jamais « 0 frame »)."""
+        st = getattr(self, "stacker", None)
+        if st is None or getattr(st, "n", 0) <= 0:
+            return None
+        try:
+            return int(self._profondeur_spcc(st))
+        except Exception:
+            return None
 
     def _armer_astro_fin_source(self) -> None:
         """Lot 1 / P3 — FIN DE SOURCE d'une source FICHIERS : armer UNE fois la
@@ -1730,6 +1750,24 @@ class AcquisitionWorker:
         if (self._astro_actif and self.suivi_astro is not None
                 and not self.suivi_astro.resolu):
             self._astro_demande = True
+        # P1 (lot 2) : la PASSE FINALE des mesures qui s'approfondissent. Elle
+        # n'est armée que si une mesure a déjà eu lieu ET si la profondeur a
+        # augmenté depuis : la source est épuisée, il n'y aura plus d'occasion
+        # (attendre un empilement plus profond serait attendre pour rien).
+        # Les tours eux-mêmes revérifient la règle (`CadenceMesure`), donc un
+        # armement de trop ne coûte rien ; un armement manquant, si.
+        st = getattr(self, "stacker", None)
+        if st is not None and getattr(st, "n", 0) > 0:
+            n_mesure = self._profondeur_spcc(st)
+            for actif, attr, nom in (
+                    (getattr(self, "_photo_actif", False), "_photo_demande",
+                     "_cadence_photo"),
+                    (getattr(self, "_spcc_actif", False), "_spcc_demande",
+                     "_cadence_spcc")):
+                cad = getattr(self, nom, None)
+                if (actif and cad is not None and cad.deja_mesure
+                        and n_mesure > cad.profondeur):
+                    setattr(self, attr, True)
 
     def _astro_tour(self, stacker):
         """Appelé par le worker APRÈS le re-stack (la grille est alors celle
@@ -1746,6 +1784,13 @@ class AcquisitionWorker:
         if self.suivi_astro is None or stacker is None or stacker.n <= 0:
             return
         if self.suivi_astro.resolu:
+            # P1 (lot 2) : la profondeur de la mesure est celle du moment où le
+            # WCS a été obtenu. Le WCS n'est JAMAIS re-solvé ensuite (jalon 56 :
+            # il est PROPAGÉ), donc c'est une information d'état, pas une
+            # échéance de re-mesure.
+            cadence = getattr(self, "_cadence_astro", None)
+            if cadence is not None and not cadence.deja_mesure:
+                cadence.noter_mesure(self._profondeur_astro(stacker))
             self._maj_astro_etat()
             return
         if not self._astro_actif:
@@ -2015,13 +2060,17 @@ class AcquisitionWorker:
         WCS est indispensable : c'est lui qui relie les étoiles de l'image au
         catalogue Gaia), l'empilement assez profond et la case cochée.
 
-        Mesure UNE fois par session (réessais espacés, plafonnés) et SANS AUCUN
-        effet sur l'image : l'application de ces gains au stacker est l'étape 5.
-        Le catalogue (1,1 Go) n'est lu QUE par une mesure — d'où le plafond."""
+        P1 (lot 2, v2.94.0) — LA MESURE SE RAFRAÎCHIT EN S'APPROFONDISSANT :
+        la politique est celle de `processing.cadence.CadenceMesure` (première
+        mesure au seuil, re-mesure quand la profondeur DOUBLE, délai de 20 s,
+        plafond de 6 re-mesures, PASSE FINALE à la fin de source). Avant, la
+        ligne `if self.photometrie.valide: return` figeait la mesure faite sur
+        3 frames pour toute la session. Les ÉCHECS gardent leur politique
+        (`MAX_ESSAIS` + délai) : `_photo_essais` ne compte plus que les échecs,
+        sinon les succès épuiseraient le quota.
+        """
         if self.photometrie is None or stacker is None or stacker.n <= 0:
             return
-        if self.photometrie.valide:
-            return                     # déjà mesuré : rien à refaire
         if not self._photo_actif:
             return
         if self.suivi_astro is None or not self.suivi_astro.resolu:
@@ -2043,19 +2092,28 @@ class AcquisitionWorker:
         if (self._photo_essais
                 and t - self._photo_dernier < photo_mod.DELAI_ESSAI_S):
             return
+        # Jalon 129b : c'est la profondeur des BANDES mesurées (`_profondeur_spcc`
+        # — le Ha fusionné n'en est pas une : il ne doit pas tirer le libellé
+        # vers le bas, cf. sa docstring) qui pilote AUSSI la cadence : une
+        # re-mesure n'apporte rien si les bandes n'ont pas gagné une frame.
+        n_mesure = self._profondeur_spcc(stacker)
+        cadence = getattr(self, "_cadence_photo", None)
+        if cadence is not None:
+            doit, raison = cadence.doit_mesurer(
+                n_mesure, t, fin_source=bool(getattr(self, "_source_epuisee",
+                                                      False)))
+            if not doit:
+                self._photo_raison = raison
+                self._maj_photo_etat()      # l'état dit l'échéance
+                return
+            self._photo_raison = raison
         canaux, wcs, forme = self._photo_canaux(stacker)
         if not canaux or wcs is None:
             return
-        self._photo_essais += 1
-        self._photo_dernier = t
         # La profondeur ANNONCÉE est celle de la mesure (par rôle en
         # composition, comme l'astrométrie) ; le total est rappelé entre
         # parenthèses pour ne pas donner à croire que la mesure ne porte que sur
         # trois frames alors que l'empilement en compte davantage.
-        # Jalon 129b : c'est la profondeur des BANDES mesurées (`_profondeur_spcc`
-        # — le Ha fusionné n'en est pas une : il ne doit pas tirer le libellé
-        # vers le bas, cf. sa docstring).
-        n_mesure = self._profondeur_spcc(stacker)
         detail = (f"{n_mesure} frames par rôle ({stacker.n} au total)"
                   if self._mode_compo else f"{n_mesure} frames")
         self.photo_info = ("Photométrie : mesure du zéro-point en cours "
@@ -2067,11 +2125,18 @@ class AcquisitionWorker:
         except Exception as exc:       # une mesure ne tue jamais le worker
             res, msg = None, f"exception ({exc})"
         if res is None:
+            # SEUL un échec consomme le quota (et arme le délai de réessai).
+            self._photo_essais += 1
+            self._photo_dernier = t
             self.photo_info = f"Photométrie : {msg}"
             self.photo_couleur = ("#c98a00"
                                   if self._photo_essais < photo_mod.MAX_ESSAIS
                                   else "#d04040")
             return
+        if cadence is not None:
+            cadence.noter_mesure(n_mesure, t)
+            if bool(getattr(self, "_source_epuisee", False)):
+                cadence.noter_passe_finale()
         self._maj_photo_etat()
 
     @staticmethod
@@ -2132,13 +2197,17 @@ class AcquisitionWorker:
 
     # -------------------------------- jalon 58 : SPCC absolue
     def _spcc_tour(self, stacker):
-        """Calcule les coefficients SPCC de la session (une fois, réessais
-        espacés). Mêmes prérequis que la photométrie (WCS résolu, empilement
-        assez profond) PLUS les trois canaux R/G/B et la base de profils."""
+        """Calcule les coefficients SPCC de la session. Mêmes prérequis que la
+        photométrie (WCS résolu, empilement assez profond) PLUS les trois
+        canaux R/G/B et la base de profils.
+
+        P1 (lot 2, v2.94.0) — même cadence que la photométrie
+        (`processing.cadence.CadenceMesure`) : la mesure se RAFRAÎCHIT quand la
+        profondeur des bandes DOUBLE (délai 20 s, plafond, passe finale). Avant,
+        `if self.spcc.valide: return` gardait pour toute la session une mesure
+        faite sur 3 frames. `_spcc_essais` ne compte plus que les ÉCHECS."""
         if self.spcc is None or stacker is None or stacker.n <= 0:
             return
-        if self.spcc.valide:
-            return                     # déjà calibré : rien à refaire
         if not self._spcc_actif or not getattr(self, "_spcc_dispo", False):
             return
         if not (self._mode_compo or self._source_rgb(stacker)):
@@ -2161,6 +2230,19 @@ class AcquisitionWorker:
         if (self._spcc_essais
                 and t - self._spcc_dernier < spcc_mod.DELAI_ESSAI_S):
             return
+        # Jalon 129b : profondeur des BANDES MESURÉES — elle pilote la cadence
+        # (le Ha fusionné n'est pas une bande de la SPCC).
+        n_mesure = self._profondeur_spcc(stacker)
+        cadence = getattr(self, "_cadence_spcc", None)
+        if cadence is not None:
+            doit, raison = cadence.doit_mesurer(
+                n_mesure, t, fin_source=bool(getattr(self, "_source_epuisee",
+                                                      False)))
+            if not doit:
+                self._spcc_raison = raison
+                self._maj_spcc_etat()
+                return
+            self._spcc_raison = raison
         canaux, wcs, forme = self._photo_canaux(stacker)
         if not canaux or wcs is None:
             return
@@ -2169,14 +2251,11 @@ class AcquisitionWorker:
         # mesure : c'est l'utilisateur qui juge son matériel.
         self._spcc_garde = self._spcc_garde_filtre()
         capteur, filtres, blanc = self._spcc_profils()
-        self._spcc_essais += 1
-        self._spcc_dernier = t
         # Jalon 129b : le libellé annonce la profondeur des BANDES MESURÉES
         # (`_profondeur_spcc`) et non le MINIMUM de tous les rôles : en LRGB+Ha
         # ce minimum était celui du Ha (1-9 frames), une couche que la SPCC NE
         # MESURE PAS (elle lit R/G/B) — le libellé annonçait donc une profondeur
         # qui ne décrivait pas la mesure.
-        n_mesure = self._profondeur_spcc(stacker)
         detail = (f"{n_mesure} frames par rôle ({stacker.n} au total)"
                   if self._mode_compo else f"{n_mesure} frames")
         self.spcc_info = ("SPCC : calibration en cours (spectres Gaia × profils "
@@ -2190,15 +2269,22 @@ class AcquisitionWorker:
         except Exception as exc:       # une mesure ne tue jamais le worker
             res, msg = None, f"exception ({exc})"
         if res is None:
+            # SEUL un échec consomme le quota (et arme le délai de réessai).
+            self._spcc_essais += 1
+            self._spcc_dernier = t
             self.spcc_info = f"SPCC : {msg}"
             self.spcc_couleur = ("#c98a00"
                                  if self._spcc_essais < spcc_mod.MAX_ESSAIS
                                  else "#d04040")
             self._maj_spcc_vue()
             return
-        # Sur COMBIEN de frames la mesure a été faite : la mesure SPCC est faite
-        # UNE fois par session (SessionSpcc) — le dire évite de croire que la
-        # case ne « rafraîchit » plus rien (constat d'Alain, 25/09/2026).
+        if cadence is not None:
+            cadence.noter_mesure(n_mesure, t)
+            if bool(getattr(self, "_source_epuisee", False)):
+                cadence.noter_passe_finale()
+        # Sur COMBIEN de frames la mesure a été faite : le libellé le dit, et
+        # depuis P1 il change quand la mesure se rafraîchit (constat d'Alain,
+        # 25/09/2026 : « la case ne rafraîchit plus rien »).
         if isinstance(self.spcc.diag, dict):
             # La MESURE porte sur les couches PAR RÔLE : en composition, c'est
             # la profondeur des BANDES mesurées qui décrit la mesure (le total

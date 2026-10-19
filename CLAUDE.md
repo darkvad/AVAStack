@@ -2101,6 +2101,56 @@ ce qui manquait n'était pas une correction mais une MESURE.
   dans un `git worktree` : ils échouent AUSSI sans nos changements — ne pas
   les imputer à une modification.
 
+## Cadence de re-mesure astro / Gaia / SPCC (P1, v2.94.0, 19/10/2026 — VALIDÉ EN RÉEL)
+
+- **UNE SEULE politique** : `processing/cadence.py` (`CadenceMesure`), une
+  instance PAR mesure (`_cadence_astro`, `_cadence_photo`, `_cadence_spcc` sur
+  `App`). Règles, dans cet ordre : seuil (`SEUIL_PROFONDEUR = 3`, =
+  `ASTRO_MIN_FRAMES`) → **passe finale** si `fin_source` et profondeur
+  supérieure à la dernière mesure → **plafond** (`MAX_REMESURES = 6`) →
+  **doublement** de la profondeur mesurée → **délai** (`DELAI_MIN_S = 20`).
+  La passe finale passe AVANT le plafond et le délai : la source est épuisée,
+  il n'y aura plus d'occasion.
+- **Ne jamais réintroduire `if self.photometrie.valide: return`** (ni
+  `self.spcc.valide`) dans les tours : c'est le défaut P1 lui-même — la mesure
+  faite à 3 frames restait figée pour toute la session.
+- **La profondeur de DÉCISION est `_profondeur_spcc`** (bandes réellement
+  mesurées : min des rôles R/G/B en composition, Ha fusionné exclu), alors que
+  le SEUIL d'entrée reste `_profondeur_astro` (comme avant). En multi-dossier,
+  cela veut dire « une frame de plus dans CHAQUE bande ».
+- **`_photo_essais` / `_spcc_essais` ne comptent QUE les échecs** : le quota
+  `MAX_ESSAIS` et le délai de réessai protègent des échecs ; les succès ne les
+  consomment pas (sinon 3-4 re-mesures épuisaient le quota). Le délai des échecs
+  reste `DELAI_ESSAI_S` de `photometrie`/`spcc`, distinct du délai de cadence.
+- **Passe finale sans frame** : `_armer_astro_fin_source` arme AUSSI
+  `_photo_demande` / `_spcc_demande` (une fois, sur la TRANSITION
+  `_source_epuisee`), servies par `_servir_demandes_sans_frame`. Un armement de
+  trop ne coûte rien (le tour revérifie la règle) ; un armement manquant perd la
+  mesure.
+- **L'astrométrie n'a pas de re-mesure** : le WCS est résolu UNE fois puis
+  PROPAGÉ (jalon 56). Sa cadence est celle des ESSAIS
+  (`SuiviAstrometrie.peut_essayer` : doublé + backoff + plafond), inchangée ;
+  `_astro_tour` ne fait que consigner la profondeur du WCS pour l'état.
+- **Remises à zéro** : session neuve (worker `_worker_reinitialiser`, reset UI),
+  case recochée (`_on_photo`, `_on_spcc`), changement d'indices astro — sinon
+  un plafond ou un délai hérité refuserait une demande explicite de
+  l'utilisateur.
+- **État affiché** : `_maj_photo_etat` / `_maj_spcc_etat` ajoutent
+  `suffixe_etat(cadence, profondeur courante)` (« prochaine mesure à N frames »,
+  « re-mesure due à N frames (délai en cours) »). `_maj_astro_etat` ajoute
+  « mesure faite sur N frames » — jamais d'échéance pour un WCS propagé.
+- **COÛT MESURÉ avant de coder** (`bancs/_mesure_p1_cadence.py`, 89 brutes
+  réelles vdB 126 180 s OSC, empilement aligné, paliers 3/6/12/24/48) :
+  astro **3,11 s** au premier essai puis **0** ; gains Gaia 0,44 → **0,91 s** ;
+  SPCC 0,74 → **1,01 s**. Les DEUX mesures sur les cinq paliers = **6,87 s**
+  pour **65 s** d'empilement. **Conclusion durable : le coût de la cadence est
+  négligeable devant l'acquisition ; ne pas allonger le délai de 20 s « pour
+  économiser »** — c'est l'inverse qui coûtait (mesures faites trop tôt).
+- **Bancs** : `bancs/_test_p1_cadence.py` (29 vérifications, espion sur
+  `mesurer`, aucune mesure réelle : décision 1→24 frames, quota d'échecs,
+  profondeur par rôle, passe finale une seule fois, WCS jamais re-solu) et
+  `bancs/_mesure_p1_cadence.py --autotest` (mécanique du banc de mesure).
+
 ## Halo d'étoile coloré — cause, correctif et résidu (jalon 136, v2.85.0, 18/10/2026)
 
 

@@ -19,7 +19,44 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.93.1"
+AVASTACK_VERSION = "2.94.0"
+
+# v2.94.0 : P1 — LA CADENCE DE RE-MESURE (lot 2 des améliorations d'usage,
+#   19/10/2026). VALIDÉ EN RÉEL par Alain le 19/10 ; AUCUNE RELEASE.
+#   DÉFAUT : astrométrie, gains Gaia et SPCC mesuraient UNE fois, dès
+#   `ASTRO_MIN_FRAMES = 3` — donc au pire moment — puis restaient `valide`
+#   (`SessionSpcc.valide`, `Photometrie.valide`, WCS résolu puis propagé) : un
+#   empilement passé de 3 à 80 frames gardait la mesure faite sur 3 frames.
+#   CORRECTIF : `processing/cadence.py` (module NEUF, pur, typé) porte la
+#   politique UNIQUE des trois tours — première mesure au seuil, re-mesure quand
+#   la profondeur DOUBLE (3 → 6 → 12 → 24…), délai minimal de 20 s entre deux
+#   mesures RÉUSSIES, plafond de 6 re-mesures, PASSE FINALE à la fin de source
+#   (prioritaire sur le délai et le plafond : la source ne grossira plus).
+#   `_photo_tour` et `_spcc_tour` ne sortent plus sur `valide` : ils interrogent
+#   la cadence ; leur profondeur de décision est `_profondeur_spcc` (bandes
+#   mesurées, par rôle en composition — jamais la somme, jamais le Ha fusionné).
+#   `_photo_essais` / `_spcc_essais` ne comptent plus que les ÉCHECS : compter
+#   les succès épuisait le quota `MAX_ESSAIS` en quelques re-mesures.
+#   `_armer_astro_fin_source` arme AUSSI la passe finale photo/SPCC (une seule
+#   fois, sur la TRANSITION `_source_epuisee` du Lot 1 / P3).
+#   L'ASTROMÉTRIE n'est JAMAIS re-solue (le WCS est propagé, jalon 56) : sa
+#   cadence est celle des ESSAIS (`SuiviAstrometrie.peut_essayer` — doublé +
+#   backoff + plafond, INCHANGÉ) ; l'état dit désormais la profondeur mesurée.
+#   ÉTAT : chaque ligne dédiée dit la profondeur MESURÉE et la prochaine
+#   échéance (`CadenceMesure.prochaine`), la mesure restant en tête du texte.
+#   MESURÉ AVANT DE CODER (`bancs/_mesure_p1_cadence.py`, 89 brutes réelles
+#   vdB 126, 180 s, OSC, paliers 3/6/12/24/48, MESURES sur l'empilement
+#   aligné) : astro 3,11 s la première fois puis 0 (WCS propagé) ; gains Gaia
+#   0,44 → 0,91 s ; SPCC 0,74 → 1,01 s. Total des DEUX mesures sur les cinq
+#   paliers = 6,87 s, contre 65 s d'empilement : la cadence est dominée par
+#   l'acquisition, pas par la mesure. Le JSON du passage est conservé
+#   (`bancs/_mesure_p1_cadence.json`) ; le banc se rejoue sur un autre dossier.
+#   BANC : `bancs/_test_p1_cadence.py` (29 vérifications, espion sur `mesurer`,
+#   AUCUNE mesure réelle) : décision 1→24 frames (mesures à 3/6/12/24), échec
+#   (quota), profondeur par rôle (la somme 40 est ignorée), passe finale (une
+#   seule fois), WCS jamais re-solu. `cadence.py` entre dans la liste blanche
+#   typée du garde-fou (pyright 0 sur 51 fichiers).
+
 
 # v2.93.1 : P7 — UN CHOIX DE CORRECTION DE COULEUR RECALCULE TOUJOURS L'IMAGE
 #   (19/10/2026). VALIDÉ EN RÉEL par Alain le 19/10 ; aucune release.

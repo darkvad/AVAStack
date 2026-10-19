@@ -15,13 +15,14 @@ pièges actifs, prochaine action. Le détail daté vit dans `avastack/__init__.p
 > sur `LRGBHa`. `master` = branche stable, releases uniquement ; merge vers `master`
 > seulement sur validation explicite (release).
 
-Versions : `LRGBHa` = **v2.93.1** (①/②/③ validés en réel ; **136** halo coloré,
+Versions : `LRGBHa` = **v2.94.0** (**136** halo coloré,
 **137** neutralisation après étirement en STF, **141-B** interface, **J2** fusion
 du Ha au rouge + continuum, **J3/J3bis** cinq modes, **J4/J4.1** continuum trois
 méthodes et mesure indépendante de la case — tous **VALIDÉS EN RÉEL le 19/10** ;
 **J5** ancre = couche large bande, **VALIDÉ EN RÉEL** ; **Lot 1 (P2 + P3)** base
 SPCC la plus riche + astrométrie servie sans frame, **VALIDÉ EN RÉEL le 19/10** ;
-**P7** recalcul après un choix de couleur, **CORRIGÉ ET VALIDÉ EN RÉEL le 19/10**)
+**P7** recalcul après un choix de couleur, **CORRIGÉ ET VALIDÉ EN RÉEL le 19/10** ;
+**P1** cadence de re-mesure, **VALIDÉ EN RÉEL le 19/10**)
 · `master` publié = **v2.80.0** · Store publié = **v2.71.1**.
 
 **Gouvernance** : **aucune release GitHub sans l'accord d'Alain** ; **à CHAQUE jalon validé,
@@ -30,79 +31,65 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 
 ---
 
-## Session du 19/10/2026 (soir) — **P7 VALIDÉ EN RÉEL** (v2.93.1) → **Lot 2 = P1**
+## Session du 19/10/2026 (soir) — **LOT 2 = P1 VALIDÉ EN RÉEL** (v2.94.0) → **Lot 3 = P4**
 
 ### État actuel
-- **v2.93.1 sur `LRGBHa`** — **aucune release**. Commits `011981c` (Lot 1) →
-  `8e90a2c` (code P7), suivis de commits de documentation (AVANCEMENT,
-  libellé du banc) : **tout est poussé** sur `origin/LRGBHa`.
-- **Lot 1 VALIDÉ EN RÉEL par Alain (19/10)** : ① SPCC/MiniCam ; ② astrométrie
-  à l'empilement arrêté.
-- **P7 VALIDÉ EN RÉEL par Alain (19/10)** : au clic sur un choix de correction
-  de couleur, l'image se recalcule — STF **et** VeraLux. Mesure au banc :
-  écart **0,0000 → 0,3102 / 0,1913 / 0,4814** (STF / VeraLux / par couche).
-- **Bancs** : P7 vert (21 vérifications) ; non-régressions 125 / 124 / 12 / 62 /
-  128 / 123 / veralux 3 / 79 / compo UI 19 **vertes** ; `ruff` propre ;
-  `pyright` 0.
-- **Suite** : **Lot 2 = P1** (cadence de re-mesure) — plan ci-dessous.
+- **v2.94.0 sur `LRGBHa`** — **aucune release**, commit + push faits dans cette
+  session. Base poussée précédente : `d765abc` (v2.93.1 + documentation P7).
+- **P1 VALIDÉ EN RÉEL par Alain (19/10)** : sur un jeu réel, les mesures se
+  rafraîchissent en s'approfondissant (3 → 6 → 12…) et la passe finale part en
+  fin de source.
+- **Mesure faite AVANT le code** (`bancs/_mesure_p1_cadence.py`) sur 89 brutes
+  réelles (vdB 126, 180 s, OSC), empilement aligné, paliers 3/6/12/24/48 :
+  astro **3,11 s** au premier essai puis **0** (WCS propagé) ; **gains Gaia**
+  0,44 → 0,56 → 0,50 → 0,56 → **0,91 s** ; **SPCC** 0,74 → 0,67 → 0,75 → 0,78
+  → **1,01 s**. Les deux mesures sur les cinq paliers = **6,87 s** pour 65 s
+  d'empilement. JSON : `bancs/_mesure_p1_cadence.json`.
+- **Bancs** : P1 vert (29 vérifications) ; non-régressions 56 / 113 / 115 /
+  SPCC 58 / P7 / 124 / garde-fou 100 **vertes** ; `ruff` propre ; `pyright`
+  **0** sur 51 fichiers typés.
+- **Échec PRÉEXISTANT confirmé** : banc Lot 1 `[7]` « profil corrigé annoncé en
+  AVIS » échoue AUSSI sur le code d'origine (le `config.json` local porte déjà
+  `QHYCCD MiniCam8M Red` → plus rien à corriger).
 
 ### Décisions
-- **ⓐ ET ⓑ, pas l'un ou l'autre** : ⓐ `App._pousser_rendu()` arme
-  `disp.notify_new_stack()` (couvre TOUT rendu sans nouvelle frame, y compris
-  mono où le display ne voit aucune correction) ; ⓑ `display._vl_params()`
-  porte `params_corrections(self.vl_compo)` (couvre le chemin PAR COUCHE, où
-  `corrections_couleur()` est appliquée DANS le worker). Chaque volet suffit à
-  son cas ; ensemble ils ferment la course du « tour suivant ».
-- **La signature des corrections EXCLUT les couches** (`compo[0]`, tableaux
-  numpy) : trop coûteuse à chaque tick ; une nouvelle frame force déjà la chaîne.
-- **Le forçage est posé APRÈS la mise en file** : un message perdu (file pleine)
-  ne doit pas coûter un calcul.
-- **La richesse se compte en FICHIERS .json** (pas en objets) : compter les
-  objets parserait tous les JSON à chaque `dossier_base()`, appelée par chaque
-  `lister()`. Le choix est journalisé **une fois par décision**.
-- **`liste[0]` n'est JAMAIS un défaut** : défaut **par canal** ; sans défaut
-  possible, la valeur est **conservée et signalée** (journal + ligne rouge).
-- **Repose de modèle seulement avec majorité** : les DEUX autres canaux
-  doivent désigner le même modèle ET le défaut du canal doit exister dans ce
-  modèle ; sinon on avertit seulement. Un choix manuel fait toujours foi.
-- **P3 : la fin de source est une TRANSITION** (jamais un état) et ne concerne
-  que les sources FICHIERS ; sur une caméra live, `read()` vide entre deux
-  poses n'est pas une fin.
+- **Une politique unique** dans `processing/cadence.py` (`CadenceMesure`), une
+  instance par mesure (astro / photo / SPCC) : seuil 3 → **passe finale** →
+  **plafond 6** → **doublement** (3→6→12→24…) → **délai 20 s**. La passe finale
+  passe AVANT plafond et délai : la source épuisée ne grossira plus.
+- **`_photo_essais` / `_spcc_essais` ne comptent QUE les échecs** : compter les
+  succès épuisait `MAX_ESSAIS` en 3-4 re-mesures. Délai d'échec (`DELAI_ESSAI_S`)
+  distinct du délai de cadence.
+- **La profondeur de décision est `_profondeur_spcc`** (bandes mesurées) ; le
+  seuil d'entrée reste `_profondeur_astro` (inchangé depuis le jalon 115).
+- **L'astrométrie n'est jamais re-solue** : `peut_essayer` (doublé + backoff +
+  plafond) reste la seule politique ; on consigne seulement la profondeur du WCS
+  pour l'état (« mesure faite sur N frames »).
+- **Le coût ne justifie AUCUN délai plus long** : 1,9 s au pire par palier pour
+  les deux mesures. Ne pas « économiser » en allongeant les 20 s.
 
-### Fichiers modifiés (session P7)
-- `avastack/processing/display.py` : `params_corrections()` + `_hachable()`,
-  `_vl_params()` porte les corrections (déballage tolérant) ;
-- `avastack/ui/app.py` : `_pousser_rendu()` force la chaîne (après mise en file) ;
-- `bancs/_test_p7_recalcul_corrections.py` (neuf) ; `avastack/__init__.py`
-  (2.93.1 + changelog), `CLAUDE.md`, `AVANCEMENT.md`.
-- **Rappel Lot 1** : `catalogues/spcc_db.py`, `catalogues/telechargeur.py`,
-  `processing/spcc.py`, `ui/app.py` (astro), `ui/config_ui.py`,
-  `ui/panels/stack.py`, `core/worker.py`, `bancs/_test_lot1_p2_p3.py`.
-
-
+### Fichiers modifiés (session P1)
+- `avastack/processing/cadence.py` (neuf, typé) : `CadenceMesure`,
+  `suffixe_etat`, constantes de politique ;
+- `avastack/core/worker.py` : `_photo_tour` / `_spcc_tour` (cadence, quota
+  d'échecs), `_astro_tour` (profondeur consignée), `_armer_astro_fin_source`
+  (passe finale), `_profondeur_mesures`, resets de session ; `_profondeur_spcc`
+  tolérant (`getattr`) ;
+- `avastack/ui/app.py` : instances de cadence, resets (`_on_photo`, `_on_spcc`,
+  `_on_astro`, session), suffixes d'état des trois lignes ;
+- `bancs/_test_p1_cadence.py` (neuf, 29 vérifications),
+  `bancs/_mesure_p1_cadence.py` (neuf) + son JSON,
+  `bancs/_test_refactoring_garde_fou.py` (liste typée + `cadence.py`) ;
+  `avastack/__init__.py` (2.94.0 + changelog), `CLAUDE.md`, `AVANCEMENT.md`.
 
 ### Problèmes ouverts (liste d'Alain du 19/10) — **P2, P3 et P7 VALIDÉS EN RÉEL**
-- **P1 — mesures trop rares** (LOT 2) : astrométrie, gains Gaia et SPCC ne
-  mesurent qu'à la demande / **une seule fois** (`SessionSpcc.valide`,
-  `Photometrie.valide`, WCS résolu puis propagé), dès `ASTRO_MIN_FRAMES = 3`
-  — donc au pire moment. Voulu : re-mesurer en s'approfondissant, jusqu'à
-  **chaque frame** en mono-dossier / **1 frame par rôle** en multi.
-- **P2 — SPCC / filtres MiniCam8M : CORRIGÉ ET VALIDÉ EN RÉEL (19/10).**
-  Base Siril (13) retenue, filtres MiniCam proposés et appliqués, profil
-  `Antlia R` reposé en `QHYCCD MiniCam8M Red` (avis ambre temporisé + journal).
-- **P3 — astrométrie en fin de brutes : CORRIGÉ ET VALIDÉ EN RÉEL (19/10)** —
-  fonctionne **empilement arrêté**.
-- **P7 — choix de correction de couleur : CORRIGÉ ET VALIDÉ EN RÉEL (19/10,
-  v2.93.1).** Deux trous de transport, tous deux refermés :
-  · `_pousser_rendu()` poussait une image recalculée SANS nouvelle frame → le
-    `_tick` ne forçait pas la chaîne : elle rendait son cache. Désormais
-    `_pousser_rendu()` arme `notify_new_stack()` ;
-  · `_vl_params()` ne portait pas les corrections → le chemin PAR COUCHE
-    republiait l'image. Désormais `params_corrections(vl_compo)` y entre.
-  **Mesure** (banc `_test_p7_recalcul_corrections`) : avant = écart **0,0000**
-  dans les trois cas ; après = **0,3102** (STF) / **0,1913** (VeraLux) /
-  **0,4814** (par couche). **Validé en réel par Alain.**
-
+- **P1 — mesures trop rares** (LOT 2) : **CORRIGÉ ET VALIDÉ EN RÉEL (19/10,
+  v2.94.0)**. Une mesure faite à 3 frames n'est plus figée : elle se rafraîchit
+  quand la profondeur double (jusqu'à 3→6→12→24…), avec passe finale en fin de
+  source.
+- **P2, P3, P7 : VALIDÉS EN RÉEL** le 19/10 (détails durables dans `CLAUDE.md` :
+  base SPCC la plus riche, astrométrie servie en fin de source, recalcul après
+  un choix de couleur).
 - **P4 — place perdue dans la colonne gauche.** Les textes d'aide (31
   étiquettes grises `wraplength`) doivent devenir des **infobulles** sur un
   **ⓘ** posé à côté du champ concerné.
@@ -116,13 +103,12 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
   sans réempiler les brutes.
 
 ### Prochaines étapes
-1. **LOT 2 = P1** (cadence de re-mesure) : astrométrie / gains Gaia / SPCC
-   re-mesurés **en s'approfondissant** (profondeur qui double : 3 → 6 → 12 → 24…,
-   délai minimal ~20 s, plafond, **passe finale** en fin de source) au lieu
-   d'une seule mesure à `ASTRO_MIN_FRAMES = 3`. Détail en « P1 — cadence ».
-2. **Puis P4, P5, P6** — un lot par jalon, **accord d'Alain avant chaque lot**.
-3. **Release v2.93.x** sur accord explicite, une fois les lots voulus faits.
-   faits.
+1. **LOT 3 = P4** (infobulles ⓘ) : `ui/bulles.py` (`Bulle` + `astuce`), helper
+   `App._aide()`, migration des **31** étiquettes d'aide, option de config
+   « Aides en texte dans la colonne » (défaut NON). Commencer par Stack/mesure.
+   Mesurer avant : combien de lignes la colonne récupère réellement.
+2. **Puis P5, P6** — un lot par jalon, **accord d'Alain avant chaque lot**.
+3. **Release v2.94.x** sur accord explicite, une fois les lots voulus faits.
 
 
 ---
@@ -148,11 +134,10 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
   (boîte MODALE, sinon blocage), jamais `grid` + `pack` dans le même conteneur.
 
 ### Contexte de reprise (à coller — 2 phrases)
-Arbre **v2.93.1** sur `LRGBHa` (**poussé**) : Lot 1 (P2 + P3) et **P7 validés en
-réel** le 19/10, **aucune release**. **Prochaine action** : **LOT 2 = P1** —
-mesurer d'abord « profondeur → mesure → coût » pour l'astro, les gains Gaia et la
-SPCC, puis coder la cadence de re-mesure dans `core/worker.py` (`_astro_tour`,
-`_photo_tour`, `_spcc_tour`) avec un banc sur le chemin de décision.
+Arbre **v2.94.0** sur `LRGBHa` (**poussé**) : Lot 1, P7 et **P1 validés en réel**
+le 19/10, **aucune release**. **Prochaine action** : **LOT 3 = P4** (infobulles
+ⓘ) — mesurer la place récupérée par la colonne, puis remplacer les étiquettes
+d'aide par des bulles (`ui/bulles.py`), avec l'option « Aides en texte ».
 
 ---
 
@@ -187,8 +172,8 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 | Lot | Points | Contenu | État |
 |---|---|---|---|
 | **1** | **P2 + P3** | base SPCC la plus riche, zéro substitution silencieuse, `_astro_demande` | **VALIDÉ EN RÉEL le 19/10** ; **P7 validé en réel** (v2.93.1) |
-| 2 | P1 | cadence de re-mesure Gaia/SPCC | **PROCHAIN (lot en cours de démarrage)** |
-| 3 | P4 | infobulles ⓘ | en attente |
+| 2 | P1 | cadence de re-mesure Gaia/SPCC | **VALIDÉ EN RÉEL le 19/10** (v2.94.0) |
+| 3 | P4 | infobulles ⓘ | **PROCHAIN (lot en cours de démarrage)** |
 | 4 | P5 | audit MESURÉ de la réactivité | en attente |
 | 5 | P6 | source « stacks » : fichiers choisis, **rôles saisis**, seuil de profondeur = 1 | en attente |
 
@@ -204,23 +189,22 @@ main — le correctif de code doit suffire, et le test réel le prouve.
   dont la liste R réelle (50 filtres mono, valeur affichée présente) et l'avis
   de correction effacé.
 
-### P1 — cadence (lot 2) — **POINT DE DÉPART (relevé le 19/10)**
-- **Où ça bloque aujourd'hui** : les trois tours de mesure vivent dans
-  `core/worker.py` — `_astro_tour` (1734), `_photo_tour` (2013), `_spcc_tour`
-  (2134) — et chacun sort tôt sur
-  `self._profondeur_astro(stacker) < astro_mod.ASTRO_MIN_FRAMES` (3) puis sur
-  `MAX_ESSAIS` ; les sessions (`processing/spcc.py:909` `SessionSpcc`,
-  `processing/photometrie.py:345` `Photometrie`) mesurent **une fois** et
-  restent `valide`.
-- Re-mesure quand la profondeur **double** (3 → 6 → 12 → 24…), délai minimal
-  20 s, **plafond** de re-mesures ; **passe finale** quand la source s'épuise
-  (transition `_source_epuisee`, cf. P3 — jamais un état).
-- Multi-dossier : profondeur = **min des rôles R/G/B** (`_profondeur_spcc`),
-  donc « 1 frame de chaque ». WCS jamais re-solvé une fois résolu.
-- L'état affiché dit la profondeur mesurée et la prochaine échéance.
-- **Mesurer AVANT de coder** : journaliser profondeur → mesure → coût (SPCC sur
-  3 frames vs 30), puis banc sur le **chemin de décision** (espion), pas sur la
-  seule présence d'un compteur.
+### P1 — cadence (lot 2) — **VALIDÉ EN RÉEL le 19/10 (v2.94.0)**
+- **Mesuré AVANT de coder** (`bancs/_mesure_p1_cadence.py`, 89 brutes réelles
+  vdB 126 180 s OSC, paliers 3/6/12/24/48) : astro 3,11 s puis 0 (WCS
+  propagé) ; Gaia 0,44→0,91 s ; SPCC 0,74→1,01 s ; **6,87 s** de mesures pour
+  **65 s** d'empilement. Le coût ne justifie aucun délai plus long.
+- **Où c'est décidé maintenant** : `processing/cadence.py` (`CadenceMesure`),
+  appelé par `core/worker.py` `_astro_tour` (profondeur consignée),
+  `_photo_tour` et `_spcc_tour` (décision + quota d'échecs séparé) ;
+  `_armer_astro_fin_source` arme la passe finale photo/SPCC.
+- **Règles** : seuil 3 → passe finale → plafond 6 → doublement (3→6→12→24…)
+  → délai 20 s. La profondeur de décision est `_profondeur_spcc` (« min des
+  rôles R/G/B », donc 1 frame de plus dans CHAQUE bande). WCS jamais re-solu.
+- **Bancs** : `_test_p1_cadence.py` (29 vérifications, chemin de décision,
+  espion) ; `_mesure_p1_cadence.py --autotest`.
+- **Validé en réel** : les lignes Photométrie/SPCC disent la profondeur mesurée
+  et la prochaine échéance, et la mesure se rafraîchit en s'approfondissant.
 
 ### P4 — infobulles (lot 3)
 - `avastack/ui/bulles.py` : `Bulle` (Toplevel `overrideredirect`, 400 ms,
@@ -258,20 +242,23 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 
 ---
 
-## En attente / prochaine session (état au 19/10 — `LRGBHa`, v2.93.1)
+## En attente / prochaine session (état au 19/10 — `LRGBHa`, v2.94.0)
 
 - **J2 à J5 sont CLOS** (validés en réel le 19/10).
 - **Lot 1 (P2 + P3) VALIDÉ EN RÉEL** le 19/10 : SPCC/MiniCam et astrométrie à
   l'empilement arrêté.
 - **P7 VALIDÉ EN RÉEL** le 19/10 (v2.93.1) : `_pousser_rendu()` force la chaîne,
-  `_vl_params()` porte `params_corrections()`. Commit `8e90a2c`, **poussé**.
-- **Prochaine action unique** : **LOT 2 = P1** — commencer par MESURER la
-  séquence « profondeur → mesure → coût » (astro / Gaia / SPCC), puis coder la
-  cadence dans les trois tours (`core/worker.py`), avec un banc sur le chemin de
-  décision. Détail et ancres en « P1 — cadence ».
-- **Ensuite** : P4 (infobulles), P5 (audit réactivité), P6 (source stacks par
-  fichiers) — **accord d'Alain avant chaque lot**.
-- **Puis** : **release v2.93.x** sur accord explicite.
+  `_vl_params()` porte `params_corrections()`.
+- **P1 VALIDÉ EN RÉEL** le 19/10 (v2.94.0) : `processing/cadence.py`, branches
+  dans `_photo_tour` / `_spcc_tour` / `_astro_tour`, passe finale dans
+  `_armer_astro_fin_source`, états avec échéance.
+- **Prochaine action unique** : **LOT 3 = P4** (infobulles ⓘ). Mesurer d'abord
+  la place récupérée dans la colonne gauche, puis `ui/bulles.py` (`Bulle` +
+  `astuce`), helper `App._aide()`, migration des 31 étiquettes, option
+  « Aides en texte dans la colonne » (défaut NON). Détail en « P4 — infobulles ».
+- **Ensuite** : P5 (audit réactivité), P6 (source stacks par fichiers) —
+  **accord d'Alain avant chaque lot**.
+- **Puis** : **release v2.94.x** sur accord explicite.
 - **Optionnel** : cible qui REMPLIT le cadre (repli attendu et DIT) et filtre
   **3 nm** si Alain en a un.
 - **Référence chiffrée** : `C:\Astro\test\M33_Canaux_LRGBHa` (5 `canal_*.fit` +

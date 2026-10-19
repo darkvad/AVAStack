@@ -189,6 +189,10 @@ FICHIERS_TYPES = (
     "avastack/processing/stacking.py",
     "avastack/processing/stars.py",
     "avastack/processing/veralux.py",
+    # P1 (lot 2, v2.94.0) : la CADENCE DE RE-MESURE — module NEUF (politique
+    # pure : seuil, doublement, délai, plafond, passe finale), typé dès sa
+    # création comme tout module nouveau.
+    "avastack/processing/cadence.py",
     # Jalon 110 (chantier de refactoring) : TYPAGE RÉTROACTIF du RÉSIDU de `ui/`
     # — l'objet `App` et ses helpers (`ui/app.py`, annotations SEULES, aucun
     # changement de comportement), le GUET DE GEL du fil d'interface
