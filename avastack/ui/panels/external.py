@@ -49,6 +49,7 @@ class PanneauTraitementExterne:
 
     _creer_section_pliable: Callable[..., Any]
     _add_slider: Callable[..., Any]
+    _aide: Callable[..., Any]
     _pick_exe: Callable[..., Any]
     _maj_etat_outils: Callable[..., Any]
     _on_view: Callable[..., Any]
@@ -145,12 +146,12 @@ class PanneauTraitementExterne:
         # s'applique à l'affichage du résultat ⚡ comme à sa sauvegarde
         # « tel que vu ». Les clés de configuration `ext_scnr`, `ext_scnr_doux`
         # et `ext_demagenta` ne sont plus écrites ni relues (sans effet).
-        ttk.Label(box, text="4-6. Couleur (SCNR / SCNR doux / démagenta) et boost "
-                            "du rouge (SII) : réglés par la section « Couleur de "
-                            "l'objet (après étirement) » — appliqués APRÈS "
-                            "l'étirement, à l'écran comme dans le fichier.",
-                  foreground="#888888",
-                  wraplength=310).pack(anchor="w", pady=(4, 0))
+        self._aide(box,
+                   "4-6. Couleur (SCNR / SCNR doux / démagenta) et boost du "
+                   "rouge (SII) : réglés par la section « Couleur de l'objet "
+                   "(après étirement) » — appliqués APRÈS l'étirement, à l'écran "
+                   "comme dans le fichier.",
+                   pady=(4, 0))
         # JALON 123 : la case « 7. Neutraliser la couleur du fond » de cette
         # chaîne a été RETIRÉE. POURQUOI : la neutralisation s'applique désormais
         # APRÈS l'étirement (elle était AVANT, sur la sortie LINÉAIRE ici — donc
@@ -160,21 +161,21 @@ class PanneauTraitementExterne:
         # Seule la réduction du bruit chromatique reste une correction
         # pré-étirement de la chaîne externe (SPCC/Gaia/manuels déjà appliqués au
         # composite par `mean()`/`corrections_couleur`).
-        ttk.Label(box, text="7. Neutralisation du fond : APRÈS l'étirement "
-                            "(section « Couleur de l'objet (APRÈS étirement) »).",
-                  foreground="#888888",
-                  wraplength=310).pack(anchor="w", pady=(4, 0))
+        self._aide(box,
+                   "7. Neutralisation du fond : APRÈS l'étirement "
+                   "(section « Couleur de l'objet (APRÈS étirement) »).",
+                   pady=(4, 0))
         self.var_ext_chroma = tk.BooleanVar(value=False)  # OPT-IN (choix d'Alain)
         ttk.Checkbutton(box,
                         text="8. Réduire le bruit chromatique (force = curseur "
                              "« Couleur live »)",
                         variable=self.var_ext_chroma).pack(anchor="w")
-        ttk.Label(box, text="Placeholders : {input} · {output} (.fits complet) · "
-                           "{outbase} (sans extension, GraXpert). « … » : choisir "
-                           "l'exécutable, options conservées. Le débruitage "
-                           "Ondelettes/NLM n'utilise aucune commande (traité "
-                           "en mémoire).",
-                  foreground="#888888", wraplength=310).pack(anchor="w")
+        self._aide(box,
+                   "Placeholders : {input} · {output} (.fits complet) · "
+                   "{outbase} (sans extension, GraXpert). « … » : choisir "
+                   "l'exécutable, options conservées. Le débruitage "
+                   "Ondelettes/NLM n'utilise aucune commande (traité "
+                   "en mémoire).")
         rowv = ttk.Frame(box)
         rowv.pack(fill="x", pady=2)
         self.var_view = tk.StringVar(value="pile")

@@ -17,11 +17,24 @@ from tkinter import ttk
 from typing import Any, Callable
 
 
+def _globals_app():
+    """Globals du module d'application `avastack.ui.app` — résolution TARDIVE.
+
+    Écho du motif des jalons 104/105a : les bancs remplacent
+    `avastack.ui.app.CONFIG` / `.sauver_config` pour intercepter le VRAI
+    config.json. Lire ces globals au MOMENT DE L'APPEL préserve cette
+    interception ; en production c'est le MÊME objet.
+    (Import TARDIF : `avastack.ui.app` importe ce module.)"""
+    from .. import app as _app
+    return _app
+
+
 class PanneauFichiers:
     """Mixin : panneau « Fichiers de travail et journal » (cf. docstring)."""
 
     # --- Interface attendue sur l'hôte (`App`) — DÉCLARATIONS seulement ------
     var_debug: tk.Variable
+    var_aides_texte: tk.Variable
     lbl_travail: ttk.Label
     _lf_fichiers_travail: tk.Frame
 
@@ -29,6 +42,7 @@ class PanneauFichiers:
     _choisir_dossier_travail: Callable[..., Any]
     _ouvrir_dossier_travail: Callable[..., Any]
     _ouvrir_journal: Callable[..., Any]
+    _on_aides_texte: Callable[..., Any]
 
     # --- Jalon 105a : construction du panneau « Fichiers de travail » --------
     def _poser_panneau_fichiers_travail(self, parent: tk.Misc) -> None:
@@ -66,3 +80,17 @@ class PanneauFichiers:
         # DEBUG vont dans le journal, le réglage vit à côté de son bouton.
         ttk.Checkbutton(rowtr, text="Debug",
                         variable=self.var_debug).pack(side="left", padx=(8, 0))
+        # --- Lot 3 / P4 (v2.95.0) : OPTION « Aides en texte dans la colonne ».
+        # Les explications de la colonne sont des INFOBULLES derrière un « ⓘ »
+        # (défaut) : mesuré, les 13 textes d'aide prenaient 1 267 px — 84,5
+        # lignes, 23,5 % de la colonne — et poussaient les réglages sous le
+        # pli. Cette case rétablit l'ancien affichage (lire les aides d'un
+        # coup, capture d'écran) ; la bascule est IMMÉDIATE et persistée
+        # (`aides_texte`). Ligne DÉDIÉE : la ligne du dessus est déjà pleine
+        # (trois boutons + Debug — leçon du jalon 72).
+        self.var_aides_texte = tk.BooleanVar(
+            value=bool(_globals_app().CONFIG.get("aides_texte", False)))
+        ttk.Checkbutton(box, text="Aides en texte dans la colonne",
+                        variable=self.var_aides_texte,
+                        command=self._on_aides_texte).pack(anchor="w",
+                                                           pady=(3, 0))

@@ -62,6 +62,7 @@ class PanneauAffichage:
 
     _creer_section_pliable: Callable[..., Any]
     _add_slider: Callable[..., Any]
+    _aide: Callable[..., Any]
     _refresh_preview: Callable[..., Any]
     _on_moteur: Callable[..., Any]
     _on_auto: Callable[..., Any]
@@ -259,9 +260,8 @@ class PanneauAffichage:
                         variable=self.var_vl_pleine_res,
                         command=self._on_vl_pleine_res).pack(anchor="w",
                                                              pady=(6, 0))
-        ttk.Label(self.frm_veralux,
-                  text="L'écran étire l'image COMPLÈTE — empilement, ou résultat "
-                       "traité en vue « traitée » : le zoom montre de vrais "
-                       "pixels, identiques au fichier enregistré. Plus lent "
-                       "(~7-8 s par rendu, contre ~2 s pour l'aperçu).",
-                  foreground="#888888", wraplength=310).pack(anchor="w")
+        self._aide(self.frm_veralux,
+                   "L'écran étire l'image COMPLÈTE — empilement, ou résultat "
+                   "traité en vue « traitée » : le zoom montre de vrais "
+                   "pixels, identiques au fichier enregistré. Plus lent "
+                   "(~7-8 s par rendu, contre ~2 s pour l'aperçu).")

@@ -72,6 +72,7 @@ class PanneauComposition:
     var_compo_gains: dict[str, tk.StringVar]
 
     _creer_section_pliable: Callable[..., Any]
+    _aide: Callable[..., Any]
     _on_compo: Callable[..., Any]
     _on_compo_roles: Callable[..., Any]
     _pick_dossier_compo: Callable[..., Any]
@@ -174,17 +175,17 @@ class PanneauComposition:
                         variable=self.var_norm_commune,
                         command=self._on_norm_commune).pack(anchor="w",
                                                             pady=(6, 0))
-        ttk.Label(box, text=(
-            "Décoché : chaque canal est calé sur SES percentiles, avec SON point "
-            "noir — le fond du composite suit alors son propre bruit : empiler "
-            "plus ne réduit plus le grain du fond, et il reste coloré. "
-            "Coché : les trois canaux partagent la MÊME ÉCHELLE (celle du vert) "
-            "et aucun point noir n'est soustrait → le fond garde son niveau "
-            "physique (son grain diminue enfin en 1/√n) et les coefficients SPCC "
-            "s'appliquent sur la base où ils ont été mesurés. Le fond garde sa "
-            "couleur physique (bleu-rouge) : la neutraliser avec l'équilibrage "
-            "des canaux ou le recalage colorimétrique."),
-            foreground="#888888", wraplength=310).pack(anchor="w")
+        self._aide(box,
+                   "Décoché : chaque canal est calé sur SES percentiles, avec "
+                   "SON point noir — le fond du composite suit alors son propre "
+                   "bruit : empiler plus ne réduit plus le grain du fond, et il "
+                   "reste coloré. Coché : les trois canaux partagent la MÊME "
+                   "ÉCHELLE (celle du vert) et aucun point noir n'est soustrait "
+                   "→ le fond garde son niveau physique (son grain diminue "
+                   "enfin en 1/√n) et les coefficients SPCC s'appliquent sur la "
+                   "base où ils ont été mesurés. Le fond garde sa couleur "
+                   "physique (bleu-rouge) : la neutraliser avec l'équilibrage "
+                   "des canaux ou le recalage colorimétrique.")
         # --- Jalon 117d : LISSAGE DU COMBINE LRGB (halos d'étoiles), OPT-IN.
         # Décision d'Alain du 10/10/2026 : le rapport L/luma est lissé à l'échelle
         # des étoiles pour éteindre les halos colorés, mais SEULEMENT autour des
@@ -211,16 +212,17 @@ class PanneauComposition:
                                    lambda e: self._on_lissage_halos())
         self.sp_lissage_halos.bind("<FocusOut>",
                                    lambda e: self._on_lissage_halos())
-        ttk.Label(box, text=(
-            "Coché : le rapport L/luma est lissé à l'échelle des ÉTOILES pour "
-            "éteindre leur halo coloré, mais SEULEMENT dans le masque d'étoiles "
-            "brillantes — la nébuleuse garde tout le détail de L. Le seuil du "
-            "masque est un multiple de σ au-dessus du fond : 10-20 masque les "
-            "étoiles brillantes sans toucher la nébulosité ; l'AUGMENTER (plus "
-            "sélectif) si trop de détail part, le BAISSER si un halo survit. "
-            "Décoché (défaut) : combine d'avant le jalon 117c (halos visibles). "
-            "Ne s'applique qu'en LRGB, avec un dossier L non vide."),
-            foreground="#888888", wraplength=310).pack(anchor="w")
+        self._aide(box,
+                   "Coché : le rapport L/luma est lissé à l'échelle des ÉTOILES "
+                   "pour éteindre leur halo coloré, mais SEULEMENT dans le "
+                   "masque d'étoiles brillantes — la nébuleuse garde tout le "
+                   "détail de L. Le seuil du masque est un multiple de σ "
+                   "au-dessus du fond : 10-20 masque les étoiles brillantes "
+                   "sans toucher la nébulosité ; l'AUGMENTER (plus sélectif) si "
+                   "trop de détail part, le BAISSER si un halo survit. Décoché "
+                   "(défaut) : combine d'avant le jalon 117c (halos visibles). "
+                   "Ne s'applique qu'en LRGB, avec un dossier L non vide.",
+                   ligne=row_lh)
         # Jalon 45/47 : le choix de cadence est COMMUN aux deux modes —
         # voir le cadre unique `frm_rafale` (plus de combobox ici).
         # --- Jalon J2 (v2.88.0) : CADRE « FUSION Ha » -------------------------
@@ -356,25 +358,28 @@ class PanneauComposition:
         self.sp_fusion_ha_q.pack(side="left", padx=(4, 0))
         self.sp_fusion_ha_q.bind("<Return>", lambda e: self._on_fusion_ha())
         self.sp_fusion_ha_q.bind("<FocusOut>", lambda e: self._on_fusion_ha())
-        ttk.Label(self.frm_fusion_ha, text=(
-            "Principe : le Ha est FUSIONNÉ au composite — "
-            "résultat = composite + poids × (mode − composite). Poids 1 = le "
-            "mode tel quel, 0 = aucun effet, au-delà de 1 on le renforce. "
-            "MODES : ajout_rouge (ajout pur au rouge), fondu_rouge (mélange "
-            "rouge ↔ Ha réglé par α), ecran_rouge (écran : monte sans écraser), "
-            "eclaircir_rouge (garde le plus clair de R et du Ha), "
-            "ha_luminance (multiplie le ROUGE là où le Ha est franc — le fond "
-            "et le halo restent intacts). Les CINQ modes laissent VERT et "
-            "BLEU intacts. CONTINUUM : un filtre Ha laisse passer aussi la "
-            "lumière blanche de l'objet et du ciel ; la case le retranche. "
-            "TROIS MÉTHODES : bandes passantes (la théorie 7/100 ou 3/100, "
-            "réglée par Q), médiane (mesurée sur le continuum du champ), "
-            "étoiles 5σ (mesurée sur les étoiles — la plus directe). Si une "
-            "mesure échoue, la ligne d'état le DIT et le calcul retombe sur "
-            "les bandes passantes. Q n'est plus qu'un ajustement fin sur une "
-            "mesure (départ 1,00). La COUPER permet de comparer, mais un défaut "
-            "vu sans elle peut n'être que du continuum non soustrait. "
-            "S'applique aux compositions RGB+Ha et LRGB+Ha."),
-            foreground="#888888", wraplength=300).pack(anchor="w", padx=4,
-                                                       pady=(2, 4))
+        # Lot 3 / P4 : le « ⓘ » vit sur la ligne de la force Q (aucun widget
+        # `expand=True` dans cette ligne : il ne peut pas être abandonné).
+        self._aide(self.frm_fusion_ha,
+                   "Principe : le Ha est FUSIONNÉ au composite — "
+                   "résultat = composite + poids × (mode − composite). Poids 1 "
+                   "= le mode tel quel, 0 = aucun effet, au-delà de 1 on le "
+                   "renforce. MODES : ajout_rouge (ajout pur au rouge), "
+                   "fondu_rouge (mélange rouge ↔ Ha réglé par α), ecran_rouge "
+                   "(écran : monte sans écraser), eclaircir_rouge (garde le "
+                   "plus clair de R et du Ha), ha_luminance (multiplie le ROUGE "
+                   "là où le Ha est franc — le fond et le halo restent "
+                   "intacts). Les CINQ modes laissent VERT et BLEU intacts. "
+                   "CONTINUUM : un filtre Ha laisse passer aussi la lumière "
+                   "blanche de l'objet et du ciel ; la case le retranche. TROIS "
+                   "MÉTHODES : bandes passantes (la théorie 7/100 ou 3/100, "
+                   "réglée par Q), médiane (mesurée sur le continuum du champ), "
+                   "étoiles 5σ (mesurée sur les étoiles — la plus directe). Si "
+                   "une mesure échoue, la ligne d'état le DIT et le calcul "
+                   "retombe sur les bandes passantes. Q n'est plus qu'un "
+                   "ajustement fin sur une mesure (départ 1,00). La COUPER "
+                   "permet de comparer, mais un défaut vu sans elle peut n'être "
+                   "que du continuum non soustrait. S'applique aux compositions "
+                   "RGB+Ha et LRGB+Ha.",
+                   ligne=row_fq, padx=4, pady=(2, 4))
         self._on_compo()    # pré-remplit les lignes de rôle de la compo par défaut

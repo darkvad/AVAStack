@@ -1,0 +1,95 @@
+{
+  "texte": {
+    "mode": "texte",
+    "nb_aides": 11,
+    "nb_infos": 0,
+    "hauteur_aides_px": 884,
+    "hauteur_infos_px": 0,
+    "ligne_px": 15,
+    "lignes_equivalentes": 58.9,
+    "colonne_px": 5405,
+    "nb_sections": 14,
+    "part_pourcent": 16.4,
+    "detail": [
+      {
+        "texte": "Décoché : chaque canal est calé sur SES percentiles, avec SO",
+        "caracteres": 563,
+        "hauteur": 169,
+        "visible": true
+      },
+      {
+        "texte": "Coché : le rapport L/luma est lissé à l'échelle des ÉTOILES ",
+        "caracteres": 512,
+        "hauteur": 139,
+        "visible": true
+      },
+      {
+        "texte": "Lisse la COULEUR du grain (YCrCb) sans toucher à la luminanc",
+        "caracteres": 207,
+        "hauteur": 64,
+        "visible": true
+      },
+      {
+        "texte": "Rayon du flou qui lisse la couleur : plus grand = grain colo",
+        "caracteres": 245,
+        "hauteur": 79,
+        "visible": true
+      },
+      {
+        "texte": "STF et VeraLux : égalise les 3 canaux sur la MÉDIANE DE LA M",
+        "caracteres": 238,
+        "hauteur": 79,
+        "visible": true
+      },
+      {
+        "texte": "Sans elle, retirer du vert RETIRE DE LA LUMIÈRE : mesuré sur",
+        "caracteres": 218,
+        "hauteur": 64,
+        "visible": true
+      },
+      {
+        "texte": "Les deux cases sont INDÉPENDANTES (en SHO la teinte magenta ",
+        "caracteres": 160,
+        "hauteur": 49,
+        "visible": true
+      },
+      {
+        "texte": "À 3,00 la nébuleuse atteint le R:G du Linear Fit (mesuré 1,0",
+        "caracteres": 257,
+        "hauteur": 79,
+        "visible": true
+      },
+      {
+        "texte": "4-6. Couleur (SCNR / SCNR doux / démagenta) et boost du roug",
+        "caracteres": 196,
+        "hauteur": 64,
+        "visible": true
+      },
+      {
+        "texte": "7. Neutralisation du fond : APRÈS l'étirement (section « Cou",
+        "caracteres": 97,
+        "hauteur": 34,
+        "visible": true
+      },
+      {
+        "texte": "Placeholders : {input} · {output} (.fits complet) · {outbase",
+        "caracteres": 215,
+        "hauteur": 64,
+        "visible": true
+      }
+    ]
+  },
+  "bulles": {
+    "mode": "bulles",
+    "nb_aides": 0,
+    "nb_infos": 11,
+    "hauteur_aides_px": 0,
+    "hauteur_infos_px": 209,
+    "ligne_px": 15,
+    "lignes_equivalentes": 0.0,
+    "colonne_px": 4703,
+    "nb_sections": 14,
+    "part_pourcent": 4.4,
+    "detail": []
+  }
+}

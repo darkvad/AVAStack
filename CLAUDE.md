@@ -2151,6 +2151,48 @@ ce qui manquait n'était pas une correction mais une MESURE.
   profondeur par rôle, passe finale une seule fois, WCS jamais re-solu) et
   `bancs/_mesure_p1_cadence.py --autotest` (mécanique du banc de mesure).
 
+## Aides contextuelles de la colonne — infobulles « ⓘ » (P4, v2.95.0, 19/10/2026)
+
+- **LE POINT DE PASSAGE EST UNIQUE** : toute explication posée dans la colonne
+  gauche passe par `App._aide(parent, texte, ligne=…, padx=…, pady=…)`
+  (`avastack/ui/bulles.py`, mixin `Aides`). N'écrire JAMAIS un
+  `ttk.Label(..., foreground="#888888", wraplength=…)` d'aide à la main : il
+  échapperait à l'option « Aides en texte » et à la mesure.
+- **DEUX WIDGETS PAR AIDE**, créés ensemble : l'ÉTIQUETTE grise (ancien
+  affichage) et le « ⓘ » avec sa `Bulle`. `_placer_aide` en pose UN seul ;
+  `_maj_aides()` bascule TOUTES les aides à chaud (aucune reconstruction).
+- **OPTION `aides_texte`** (bool, **défaut NON** = bulles), case « Aides en
+  texte dans la colonne » dans le panneau « Fichiers de travail et journal »
+  (elle-même une ligne DÉDIÉE : la ligne des boutons est pleine, leçon du
+  jalon 72). Persistée DEUX fois : à la bascule (`_on_aides_texte`) et à la
+  fermeture (`_sauver_config_app`, booléen EXPLICITE).
+- **RÈGLE DE PLACEMENT** : quand la ligne du réglage existe, passer `ligne=…`
+  → le « ⓘ » s'y pose à droite (`side="right"`), COÛT ZÉRO. La ligne ne doit
+  contenir AUCUN widget `expand=True` (sinon `pack` abandonne le « ⓘ »,
+  exactement le défaut du bouton ⓘ du re-stack). Sans `ligne`, le « ⓘ » a une
+  ligne courte — déjà 2 à 8 lignes de gagnées.
+- **MESURÉ** (`bancs/_mesure_p4_aides.py`, VRAIE interface, sections ouvertes
+  par le banc) : 13 aides, **1 267 px = 84,5 lignes = 23,5 % de la colonne**
+  avant ; **702 px repris** après (46,8 lignes, 13 % de la colonne, 5 405 →
+  4 703 px) ; les ⓘ coûtent 247 px. Le JSON `bancs/_mesure_p4_aides.json`
+  conserve les deux modes (`texte`, `bulles`) et affiche le GAIN.
+- **CE QUI N'EST PAS UNE AIDE** : les lignes d'ÉTAT (`self.lbl_*` — grises,
+  souvent longues : « Photométrie :… », « mesure en cours… ») portent une
+  information VIVANTE, jamais une explication. Un banc les reconnaît en
+  remontant `dir(ui)` sur les attributs `lbl_*`.
+- **PIÈGES DE BANC** : `winfo_ismapped()` est TROMPEUR dans la colonne
+  DÉFILANTE (tout ce qui est sous le pli est « non mappé » sans être écrasé) →
+  vérifier `winfo_manager() == "pack"` ET `winfo_width() > 1`, en ignorant les
+  aides dont un cadre parent est fermé (Fusion Ha hors composition Ha,
+  VeraLux en STF). Échap est une TOUCHE : `event_generate("<Escape>")` ne
+  l'atteint que si le widget a le FOCUS (`focus_force()`), sinon le test passe
+  ou échoue pour la mauvaise raison.
+- **Banc** : `bancs/_test_p4_aides.py` — 34 vérifications (paresse de la
+  bulle, délai 400 ms, unicité, sortie/clic/Échap, destruction, 13 aides,
+  aucun texte gris orphelin, bascule aller-retour avec hauteur EXACTEMENT
+  retrouvée, aucun ⓘ écrasé). `ui/bulles.py` est dans la liste blanche typée
+  du garde-fou.
+
 ## Halo d'étoile coloré — cause, correctif et résidu (jalon 136, v2.85.0, 18/10/2026)
 
 

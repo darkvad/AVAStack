@@ -30,6 +30,7 @@ class PanneauFondGrain:
 
     _creer_section_pliable: Callable[..., Any]
     _add_slider: Callable[..., Any]
+    _aide: Callable[..., Any]
     _on_vl_chroma: Callable[..., Any]
     _on_vl_chroma_rayon: Callable[..., Any]
 
@@ -84,12 +85,12 @@ class PanneauFondGrain:
         self._add_slider(self.frm_fond, "Force du bruit chromatique",
                          self.var_vl_chroma_force, 0.0, 1.0, 0.05,
                          self._on_vl_chroma, "{:.2f}")
-        ttk.Label(self.frm_fond,
-                  text="Lisse la COULEUR du grain (YCrCb) sans toucher à la "
-                       "luminance : un gain par canal (SPCC en tête) amplifie le "
-                       "bruit du canal qu'il monte — mesuré : B/G 1,17 → ~1,00. "
-                       "Force = part du bruit chromatique retirée.",
-                  foreground="#888888", wraplength=310).pack(anchor="w")
+        # Lot 3 / P4 : texte d'aide → infobulle « ⓘ » (option « Aides en texte »).
+        self._aide(self.frm_fond,
+                   "Lisse la COULEUR du grain (YCrCb) sans toucher à la "
+                   "luminance : un gain par canal (SPCC en tête) amplifie le "
+                   "bruit du canal qu'il monte — mesuré : B/G 1,17 → ~1,00. "
+                   "Force = part du bruit chromatique retirée.")
         # --- v2.37.4 : RAYON DE RÉFÉRENCE du flou de chroma (demande d'Alain,
         # 26/09/2026 : « pour la visu live, mets à disposition le réglage du rayon
         # de référence pour pouvoir faire des tests »). Exprimé en pixels PLEINE
@@ -100,10 +101,9 @@ class PanneauFondGrain:
         self._add_slider(self.frm_fond, "Rayon de référence (px pleine rés.)",
                          self.var_vl_chroma_rayon, 0.5, 8.0, 0.25,
                          self._on_vl_chroma_rayon, "{:.2f}")
-        ttk.Label(self.frm_fond,
-                  text="Rayon du flou qui lisse la couleur : plus grand = grain "
-                       "coloré mieux retiré, mais couleur des étoiles plus "
-                       "étalée (halo de couleur). L'aperçu applique ce rayon à "
-                       "SON échelle, les fichiers à la pleine résolution — "
-                       "l'écran reste fidèle au fichier.",
-                  foreground="#888888", wraplength=310).pack(anchor="w")
+        self._aide(self.frm_fond,
+                   "Rayon du flou qui lisse la couleur : plus grand = grain "
+                   "coloré mieux retiré, mais couleur des étoiles plus "
+                   "étalée (halo de couleur). L'aperçu applique ce rayon à "
+                   "SON échelle, les fichiers à la pleine résolution — "
+                   "l'écran reste fidèle au fichier.")

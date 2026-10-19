@@ -19,7 +19,50 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.94.0"
+AVASTACK_VERSION = "2.95.0"
+
+# v2.95.0 : P4 — LES AIDES DE LA COLONNE PASSENT EN INFOBULLES « ⓘ » (lot 3 des
+#   améliorations d'usage, 19/10/2026). PAS DE RELEASE (à VALIDER EN RÉEL).
+#   CONSTAT (Alain) : « la colonne de gauche est pleine de textes d'aide gris,
+#   on ne voit plus les réglages ». MESURÉ AVANT DE CODER, sur la VRAIE
+#   interface (`bancs/_mesure_p4_aides.py`, sections ouvertes) : 13 étiquettes
+#   d'aide, 1 267 px = 84,5 lignes, 23,5 % de la colonne — la plus longue
+#   (« Principe : le Ha est FUSIONNÉ… ») en prenait 304 à elle seule.
+#   CORRECTIF : module NEUF `ui/bulles.py` (typé) —
+#   · `Bulle` : UNE seule fenêtre d'aide à la fois (`Toplevel` `overrideredirect`),
+#     affichée après 400 ms, placée sous le widget et RAMENÉE DANS L'ÉCRAN
+#     (jamais hors champ) ; création PARESSEUSE ; aucune exception ne remonte
+#     (une bulle est un confort, pas une panne) ;
+#   · `astuce(widget, texte)` : liaison SOURIS **et** CLAVIER (survol, FocusIn,
+#     FocusOut, Échap, clic qui bascule) ; le widget est `takefocus=True` ;
+#     détruire le widget détruit sa bulle (aucune fenêtre orpheline) ;
+#   · mixin `Aides` dont `App` HÉRITE : `App._aide(parent, texte, ligne=…,
+#     padx=…, pady=…)` crée LES DEUX widgets (étiquette grise + « ⓘ ») et pose
+#     celui du mode courant. Le « ⓘ » se pose SUR la ligne du réglage quand elle
+#     existe (`ligne=row_lh`, `ligne=row_fq` : coût ZÉRO, aucune ligne en plus,
+#     règle du jalon 72) ; sinon il a une ligne courte à lui.
+#   OPTION : `aides_texte` (bool, DÉFAUT NON = bulles), case « Aides en texte
+#   dans la colonne » dans le panneau « Fichiers de travail et journal » — la
+#   BASCULE EST IMMÉDIATE (`_maj_aides`, sans reconstruire la fenêtre) et le
+#   choix est persisté (case + `_sauver_config_app`, booléen EXPLICITE).
+#   MIGRATION : les 13 aides de `compo` (3), `color` (4), `bgnoise` (2),
+#   `external` (3) et `display` (1) passent par `_aide` — aucun texte gris
+#   orphelin ne subsiste dans la colonne (vérifié par identité de widget). Les
+#   lignes d'ÉTAT (`lbl_*`, grises elles aussi) ne sont PAS touchées : elles
+#   portent une information vivante, pas une explication.
+#   MESURÉ APRÈS : colonne 5 405 → 4 703 px, soit **702 px repris (46,8 lignes,
+#   13 % de la colonne)** avec la composition par défaut ; davantage quand les
+#   cadres « Fusion Ha » / « Affichage » sont dépliés (l'aide du Ha, 304 px,
+#   n'est alors plus visible du tout). Les « ⓘ » coûtent 247 px au total.
+#   JSON conservé : `bancs/_mesure_p4_aides.json` (modes `texte` et `bulles`).
+#   BANC : `bancs/_test_p4_aides.py` — 34 vérifications, dont le délai de
+#   400 ms, l'unicité de la bulle, Échap (une touche va au widget qui a le
+#   FOCUS), la bascule aller-retour (la colonne retrouve EXACTEMENT sa hauteur)
+#   et l'absence de « ⓘ » écrasé (largeur réelle, `winfo_ismapped` étant
+#   trompeur dans une colonne défilante). `ui/bulles.py` entre dans la liste
+#   blanche typée du garde-fou (pyright 0 sur 52 fichiers) ; la surface
+#   publique de `app.py` est INCHANGÉE (l'import est un alias privé `_Aides`).
+
 
 # v2.94.0 : P1 — LA CADENCE DE RE-MESURE (lot 2 des améliorations d'usage,
 #   19/10/2026). VALIDÉ EN RÉEL par Alain le 19/10 ; AUCUNE RELEASE.

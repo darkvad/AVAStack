@@ -15,14 +15,15 @@ pièges actifs, prochaine action. Le détail daté vit dans `avastack/__init__.p
 > sur `LRGBHa`. `master` = branche stable, releases uniquement ; merge vers `master`
 > seulement sur validation explicite (release).
 
-Versions : `LRGBHa` = **v2.94.0** (**136** halo coloré,
+Versions : `LRGBHa` = **v2.95.0** (**136** halo coloré,
 **137** neutralisation après étirement en STF, **141-B** interface, **J2** fusion
 du Ha au rouge + continuum, **J3/J3bis** cinq modes, **J4/J4.1** continuum trois
 méthodes et mesure indépendante de la case — tous **VALIDÉS EN RÉEL le 19/10** ;
 **J5** ancre = couche large bande, **VALIDÉ EN RÉEL** ; **Lot 1 (P2 + P3)** base
 SPCC la plus riche + astrométrie servie sans frame, **VALIDÉ EN RÉEL le 19/10** ;
 **P7** recalcul après un choix de couleur, **CORRIGÉ ET VALIDÉ EN RÉEL le 19/10** ;
-**P1** cadence de re-mesure, **VALIDÉ EN RÉEL le 19/10**)
+**P1** cadence de re-mesure, **VALIDÉ EN RÉEL le 19/10** ; **P4** infobulles
+« ⓘ », **LIVRÉ le 19/10 — à valider en réel**)
 · `master` publié = **v2.80.0** · Store publié = **v2.71.1**.
 
 **Gouvernance** : **aucune release GitHub sans l'accord d'Alain** ; **à CHAQUE jalon validé,
@@ -31,86 +32,89 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 
 ---
 
-## Session du 19/10/2026 (soir) — **LOT 2 = P1 VALIDÉ EN RÉEL** (v2.94.0) → **Lot 3 = P4**
+## Session du 19/10/2026 (nuit) — **LOT 3 = P4 LIVRÉ** (v2.95.0) → **à valider en réel**
 
 ### État actuel
-- **v2.94.0 sur `LRGBHa`** — **aucune release**. Code P1 = commit `cb75201`,
-  **poussé** (`origin/LRGBHa`). Base poussée précédente : `d765abc` (v2.93.1 +
-  documentation P7).
-- **P1 VALIDÉ EN RÉEL par Alain (19/10)** : sur un jeu réel, les mesures se
-  rafraîchissent en s'approfondissant (3 → 6 → 12…) et la passe finale part en
-  fin de source.
-- **Mesure faite AVANT le code** (`bancs/_mesure_p1_cadence.py`) sur 89 brutes
-  réelles (vdB 126, 180 s, OSC), empilement aligné, paliers 3/6/12/24/48 :
-  astro **3,11 s** au premier essai puis **0** (WCS propagé) ; **gains Gaia**
-  0,44 → 0,56 → 0,50 → 0,56 → **0,91 s** ; **SPCC** 0,74 → 0,67 → 0,75 → 0,78
-  → **1,01 s**. Les deux mesures sur les cinq paliers = **6,87 s** pour 65 s
-  d'empilement. JSON : `bancs/_mesure_p1_cadence.json`.
-- **Bancs** : P1 vert (29 vérifications) ; non-régressions 56 / 113 / 115 /
-  SPCC 58 / P7 / 124 / garde-fou 100 **vertes** ; `ruff` propre ; `pyright`
-  **0** sur 51 fichiers typés.
-- **Échec PRÉEXISTANT confirmé** : banc Lot 1 `[7]` « profil corrigé annoncé en
-  AVIS » échoue AUSSI sur le code d'origine (le `config.json` local porte déjà
-  `QHYCCD MiniCam8M Red` → plus rien à corriger).
+- **v2.95.0 sur `LRGBHa`** — **aucune release**, **PAS ENCORE POUSSÉ** (à faire
+  après la validation ou tout de suite, au choix d'Alain). Version précédente
+  poussée : v2.94.0 (code P1 = `cb75201`, doc `e53d7eb`).
+- **P4 est CODÉ, MESURÉ et BANCS VERTS ; reste la VALIDATION EN RÉEL.**
+  Les 13 textes d'aide de la colonne gauche sont devenus des infobulles
+  derrière un « ⓘ » ; l'option « Aides en texte dans la colonne » rétablit
+  l'ancien affichage (défaut NON, bascule immédiate, persistée).
+- **Mesure faite AVANT et APRÈS le code** (`bancs/_mesure_p4_aides.py`,
+  VRAIE interface, sections ouvertes par le banc, JSON
+  `bancs/_mesure_p4_aides.json`) : **avant** 13 aides = **1 267 px = 84,5
+  lignes = 23,5 % de la colonne** ; **après** colonne **5 405 → 4 703 px =
+  702 px repris** (46,8 lignes, **13 % de la colonne**), les 13 « ⓘ » coûtant
+  247 px au total. Gain plus grand encore cadres « Fusion Ha » / « Affichage »
+  dépliés (l'aide du Ha à elle seule : 304 px).
+- **Bancs** : P4 **vert (34 vérifications)** ; non-régressions 72 / 47 / 19 /
+  5 / 41 / 84 / 87 / 48.3 / 79 / 6 **vertes** ; garde-fou VERT (pyright **0**
+  sur **52** fichiers typés, surface de `app.py` inchangée) ; `ruff` propre.
+- **Échec PRÉEXISTANT confirmé sur HEAD** (worktree) : banc 72 « aucun widget
+  écrasé : `('écrasé', 'Menu', 'Menu', 99, 1300)` » — reproduit SANS ce lot.
+  Banc Lot 1 `[7]` (profil SPCC déjà corrigé dans le `config.json` local) :
+  inchangé, préexistant.
+
+### Fichiers modifiés (session P4)
+- `avastack/ui/bulles.py` (**neuf, typé**) : `Bulle` (Toplevel
+  `overrideredirect`, 400 ms, une seule à la fois, ramenée dans l'écran),
+  `astuce(widget, texte)` (souris + clavier, `<Destroy>` nettoie) et mixin
+  `Aides` (`_aide`, `_placer_aide`, `_on_aides_texte`, `_maj_aides`) ;
+- `avastack/ui/app.py` : import `_Aides` (alias PRIVÉ → surface inchangée),
+  héritage, `_aides` / `_aides_mode_texte` posés AVANT `_build_ui()` ;
+- `avastack/ui/panels/files.py` : case « Aides en texte dans la colonne »
+  (ligne dédiée) + `_globals_app` local ;
+- `avastack/ui/config_ui.py` : `aides_texte` persisté à la fermeture ;
+- `avastack/ui/panels/{compo,color,bgnoise,external,display}.py` : 13 aides
+  migrées vers `self._aide(...)` (2 posées SUR une ligne de réglage :
+  `ligne=row_lh`, `ligne=row_fq`) + déclaration `_aide` pour pyright ;
+- `bancs/_test_p4_aides.py` (neuf, 34 vérifications),
+  `bancs/_mesure_p4_aides.py` (neuf) + `bancs/_mesure_p4_aides.json`,
+  `bancs/_test_refactoring_garde_fou.py` (liste typée + `bulles.py`) ;
+  `avastack/__init__.py` (2.95.0 + changelog), `CLAUDE.md`, `AVANCEMENT.md`.
 
 ### Décisions
-- **Une politique unique** dans `processing/cadence.py` (`CadenceMesure`), une
-  instance par mesure (astro / photo / SPCC) : seuil 3 → **passe finale** →
-  **plafond 6** → **doublement** (3→6→12→24…) → **délai 20 s**. La passe finale
-  passe AVANT plafond et délai : la source épuisée ne grossira plus.
-- **`_photo_essais` / `_spcc_essais` ne comptent QUE les échecs** : compter les
-  succès épuisait `MAX_ESSAIS` en 3-4 re-mesures. Délai d'échec (`DELAI_ESSAI_S`)
-  distinct du délai de cadence.
-- **La profondeur de décision est `_profondeur_spcc`** (bandes mesurées) ; le
-  seuil d'entrée reste `_profondeur_astro` (inchangé depuis le jalon 115).
-- **L'astrométrie n'est jamais re-solue** : `peut_essayer` (doublé + backoff +
-  plafond) reste la seule politique ; on consigne seulement la profondeur du WCS
-  pour l'état (« mesure faite sur N frames »).
-- **Le coût ne justifie AUCUN délai plus long** : 1,9 s au pire par palier pour
-  les deux mesures. Ne pas « économiser » en allongeant les 20 s.
+- **Le compte réel est 13, pas 31** : la liste du 19/10 comptait TOUTES les
+  étiquettes grises `wraplength`, y compris les lignes d'ÉTAT (`lbl_*`) qui
+  portent une information VIVANTE et ne doivent pas devenir des bulles.
+  Mesuré à l'AST puis à l'exécution : 13 textes d'aide statiques.
+- **Un point de passage unique** `App._aide(...)` (mixin `Aides`) : c'est lui
+  qui crée l'étiquette ET le « ⓘ », donc l'option bascule TOUT d'un coup.
+- **Défaut = bulles** (l'option « Aides en texte » est DÉCOCHÉE), et la case
+  vit dans « Fichiers de travail et journal » (panneau « application », en
+  haut de la colonne) ; la ligne des boutons était pleine → ligne dédiée.
+- **`ligne=` quand la ligne du réglage existe** : le « ⓘ » s'y pose à droite,
+  coût ZÉRO — jamais sur une ligne contenant `expand=True` (leçon jalon 72).
+- **Pas de bulle sur le panneau histogramme** (hors colonne gauche, à droite) :
+  sa légende reste un texte ; à faire seulement si Alain le demande.
 
-### Fichiers modifiés (session P1)
-- `avastack/processing/cadence.py` (neuf, typé) : `CadenceMesure`,
-  `suffixe_etat`, constantes de politique ;
-- `avastack/core/worker.py` : `_photo_tour` / `_spcc_tour` (cadence, quota
-  d'échecs), `_astro_tour` (profondeur consignée), `_armer_astro_fin_source`
-  (passe finale), `_profondeur_mesures`, resets de session ; `_profondeur_spcc`
-  tolérant (`getattr`) ;
-- `avastack/ui/app.py` : instances de cadence, resets (`_on_photo`, `_on_spcc`,
-  `_on_astro`, session), suffixes d'état des trois lignes ;
-- `bancs/_test_p1_cadence.py` (neuf, 29 vérifications),
-  `bancs/_mesure_p1_cadence.py` (neuf) + son JSON,
-  `bancs/_test_refactoring_garde_fou.py` (liste typée + `cadence.py`) ;
-  `avastack/__init__.py` (2.94.0 + changelog), `CLAUDE.md`, `AVANCEMENT.md`.
+### Problèmes ouverts (liste d'Alain du 19/10) — **P1, P2, P3, P7 VALIDÉS ; P4 à valider**
+- **P1, P2, P3, P7 : VALIDÉS EN RÉEL** le 19/10 (détails durables dans
+  `CLAUDE.md` : cadence de re-mesure, base SPCC la plus riche, astrométrie
+  servie en fin de source, recalcul après un choix de couleur).
+- **P4 — place perdue dans la colonne gauche : LIVRÉ (v2.95.0)**, à VALIDER
+  EN RÉEL : survoler les « ⓘ » (400 ms), vérifier qu'une bulle ne sort jamais
+  de l'écran, cocher « Aides en texte dans la colonne » (retour à l'ancien
+  affichage, sans redémarrer) et rouvrir l'application (choix conservé).
 
-### Problèmes ouverts (liste d'Alain du 19/10) — **P2, P3 et P7 VALIDÉS EN RÉEL**
-- **P1 — mesures trop rares** (LOT 2) : **CORRIGÉ ET VALIDÉ EN RÉEL (19/10,
-  v2.94.0)**. Une mesure faite à 3 frames n'est plus figée : elle se rafraîchit
-  quand la profondeur double (jusqu'à 3→6→12→24…), avec passe finale en fin de
-  source.
-- **P2, P3, P7 : VALIDÉS EN RÉEL** le 19/10 (détails durables dans `CLAUDE.md` :
-  base SPCC la plus riche, astrométrie servie en fin de source, recalcul après
-  un choix de couleur).
-- **P4 — place perdue dans la colonne gauche.** Les textes d'aide (31
-  étiquettes grises `wraplength`) doivent devenir des **infobulles** sur un
-  **ⓘ** posé à côté du champ concerné.
-- **P5 — contrôles moins réactifs** (cases, listes, spinners, curseurs) :
-  audit **mesuré** avant correctifs (cf. chantier).
+### Prochaines étapes
+1. **VALIDER P4 EN RÉEL** (Alain) : bulles ⓘ, option texte, persistance.
+2. **Puis LOT 4 = P5** (audit MESURÉ de la réactivité) — **accord d'Alain
+   avant chaque lot**.
+3. **Puis LOT 5 = P6** (source « stacks » par fichiers).
+4. **Release v2.95.x** sur accord explicite (aucune release depuis v2.80.0).
+
+### Rappel des lots suivants (liste d'Alain du 19/10)
+- **P5 — contrôles moins réactifs** (cases, listes, spinners, curseurs) : audit
+  **mesuré** avant correctifs (cf. chantier).
 - **P6 — nouvelle source = stacks déjà empilés**, par **SÉLECTION DE
   FICHIERS** (un FITS par filtre voulu, où qu'ils soient — pas un dossier
   unique). **Rôle indiqué par l'utilisateur** (jamais déduit : un stack peut
   venir d'un autre logiciel) et **seuil de profondeur forcé à 1** pour cette
   source, sinon `ASTRO_MIN_FRAMES` bloquerait astro/Gaia/SPCC. But : tester
   sans réempiler les brutes.
-
-### Prochaines étapes
-1. **LOT 3 = P4** (infobulles ⓘ) : `ui/bulles.py` (`Bulle` + `astuce`), helper
-   `App._aide()`, migration des **31** étiquettes d'aide, option de config
-   « Aides en texte dans la colonne » (défaut NON). Commencer par Stack/mesure.
-   Mesurer avant : combien de lignes la colonne récupère réellement.
-2. **Puis P5, P6** — un lot par jalon, **accord d'Alain avant chaque lot**.
-3. **Release v2.94.x** sur accord explicite, une fois les lots voulus faits.
-
 
 ---
 ## Points d'attention
@@ -135,10 +139,10 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
   (boîte MODALE, sinon blocage), jamais `grid` + `pack` dans le même conteneur.
 
 ### Contexte de reprise (à coller — 2 phrases)
-Arbre **v2.94.0** sur `LRGBHa` (**poussé**) : Lot 1, P7 et **P1 validés en réel**
-le 19/10, **aucune release**. **Prochaine action** : **LOT 3 = P4** (infobulles
-ⓘ) — mesurer la place récupérée par la colonne, puis remplacer les étiquettes
-d'aide par des bulles (`ui/bulles.py`), avec l'option « Aides en texte ».
+Arbre **v2.95.0** sur `LRGBHa` : **LOT 3 = P4 LIVRÉ** (infobulles « ⓘ », option
+« Aides en texte », 702 px repris — mesuré), Lot 1 / P7 / P1 **validés en réel**
+le 19/10, **aucune release**, pas encore poussé. **Prochaine action** :
+**VALIDER P4 EN RÉEL**, puis **LOT 4 = P5** (audit mesuré de la réactivité).
 
 ---
 
@@ -174,7 +178,7 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 |---|---|---|---|
 | **1** | **P2 + P3** | base SPCC la plus riche, zéro substitution silencieuse, `_astro_demande` | **VALIDÉ EN RÉEL le 19/10** ; **P7 validé en réel** (v2.93.1) |
 | 2 | P1 | cadence de re-mesure Gaia/SPCC | **VALIDÉ EN RÉEL le 19/10** (v2.94.0) |
-| 3 | P4 | infobulles ⓘ | **PROCHAIN (lot en cours de démarrage)** |
+| 3 | P4 | infobulles ⓘ | **LIVRÉ (v2.95.0) — à VALIDER EN RÉEL** |
 | 4 | P5 | audit MESURÉ de la réactivité | en attente |
 | 5 | P6 | source « stacks » : fichiers choisis, **rôles saisis**, seuil de profondeur = 1 | en attente |
 
@@ -207,11 +211,20 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 - **Validé en réel** : les lignes Photométrie/SPCC disent la profondeur mesurée
   et la prochaine échéance, et la mesure se rafraîchit en s'approfondissant.
 
-### P4 — infobulles (lot 3)
-- `avastack/ui/bulles.py` : `Bulle` (Toplevel `overrideredirect`, 400 ms,
-  souris + clavier) et `astuce(widget, texte)` ; helper `App._aide()`.
-- Migrer les **31** étiquettes d'aide par panneau (commencer par Stack/mesure).
-- Option de config « Aides en texte dans la colonne » (défaut NON).
+### P4 — infobulles (lot 3) — **LIVRÉ (v2.95.0), à valider en réel**
+- `avastack/ui/bulles.py` (neuf, typé) : `Bulle` (Toplevel `overrideredirect`,
+  400 ms, **une seule à la fois**, ramenée dans l'écran) et `astuce(widget,
+  texte)` (souris + clavier : survol, FocusIn/Out, Échap, clic) ; mixin
+  `Aides` → `App._aide(parent, texte, ligne=…, padx=…, pady=…)`.
+- **13** aides migrées (compo 3, color 4, bgnoise 2, external 3, display 1) ;
+  celles du panneau Composition et du cadre « Fusion Ha » se posent SUR une
+  ligne de réglage (`ligne=row_lh`, `ligne=row_fq`) → coût zéro.
+- Option **`aides_texte`** (défaut NON = bulles) : case « Aides en texte dans
+  la colonne » dans « Fichiers de travail et journal », bascule **à chaud**,
+  persistée à la bascule ET à la fermeture.
+- **Mesure** : `bancs/_mesure_p4_aides.py` (avant/après, JSON conservé) —
+  **702 px repris** (46,8 lignes, 13 % de la colonne ; 5 405 → 4 703 px).
+- **Banc** : `bancs/_test_p4_aides.py`, 34 vérifications, VERT.
 
 ### P5 — réactivité (lot 4)
 - Mesurer d'abord : `Guet.SEUIL_S` à 0,25 s temporairement, banc
@@ -243,7 +256,7 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 
 ---
 
-## En attente / prochaine session (état au 19/10 — `LRGBHa`, v2.94.0)
+## En attente / prochaine session (état au 19/10 — `LRGBHa`, v2.95.0)
 
 - **J2 à J5 sont CLOS** (validés en réel le 19/10).
 - **Lot 1 (P2 + P3) VALIDÉ EN RÉEL** le 19/10 : SPCC/MiniCam et astrométrie à
@@ -253,13 +266,15 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 - **P1 VALIDÉ EN RÉEL** le 19/10 (v2.94.0) : `processing/cadence.py`, branches
   dans `_photo_tour` / `_spcc_tour` / `_astro_tour`, passe finale dans
   `_armer_astro_fin_source`, états avec échéance.
-- **Prochaine action unique** : **LOT 3 = P4** (infobulles ⓘ). Mesurer d'abord
-  la place récupérée dans la colonne gauche, puis `ui/bulles.py` (`Bulle` +
-  `astuce`), helper `App._aide()`, migration des 31 étiquettes, option
-  « Aides en texte dans la colonne » (défaut NON). Détail en « P4 — infobulles ».
-- **Ensuite** : P5 (audit réactivité), P6 (source stacks par fichiers) —
-  **accord d'Alain avant chaque lot**.
-- **Puis** : **release v2.94.x** sur accord explicite.
+- **P4 LIVRÉ** le 19/10 (v2.95.0), **à VALIDER EN RÉEL** : `ui/bulles.py`
+  (`Bulle` + `astuce` + mixin `Aides`), 13 aides migrées, option
+  `aides_texte` (« Aides en texte dans la colonne »), **702 px repris**.
+  Détail en « P4 — infobulles ».
+- **Prochaine action unique** : **validation réelle de P4** (survol des ⓘ,
+  option texte, persistance après redémarrage).
+- **Ensuite** : **LOT 4 = P5** (audit MESURÉ de la réactivité), puis **P6**
+  (source stacks par fichiers) — **accord d'Alain avant chaque lot**.
+- **Puis** : **release v2.95.x** sur accord explicite (et `git push` du lot).
 - **Optionnel** : cible qui REMPLIT le cadre (repli attendu et DIT) et filtre
   **3 nm** si Alain en a un.
 - **Référence chiffrée** : `C:\Astro\test\M33_Canaux_LRGBHa` (5 `canal_*.fit` +
@@ -296,7 +311,8 @@ main — le correctif de code doit suffire, et le test réel le prouve.
   la chaîne que sur changement de `st["frames"]`. Tout point qui pousse une
   image RECALCULÉE doit appeler `disp.notify_new_stack()` (leçon P7, désormais
   dans `CLAUDE.md`).
-- **Échecs PRÉEXISTANTS** : `_test_espace_jalon72` (géométrie d'écran),
+- **Échecs PRÉEXISTANTS** : `_test_espace_jalon72` (géométrie d'écran — dont
+  `('écrasé', 'Menu', 'Menu', 99, 1300)`, reproduit sur HEAD le 19/10),
   `_test_reset_empilement_jalon76` [4] (course `_stop()`, sensible à la charge
   CPU), dans `_test_sans_siril_jalon77`, « ligne Base SPCC rognée de 1-2 px » +
   « menu écrasé » (prouvés sur HEAD dans un worktree : flaky, la longueur du
@@ -319,8 +335,7 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 
 ## Clôtures précédentes
 
+- **19/10/2026** : **P1 VALIDÉ EN RÉEL** (v2.94.0) — `processing/cadence.py`,
+  re-mesure 3→6→12…, passe finale en fin de source ; poussé, aucune release.
 - **19/10/2026** : **P7 VALIDÉ EN RÉEL** (v2.93.1) — un choix de correction de
-  couleur recalcule l'image (forçage du rendu + corrections dans la clé) ;
-  poussé, aucune release.
-- **19/10/2026** : **LOT 1 VALIDÉ EN RÉEL** (v2.93.0) — SPCC/MiniCam + astro
-  empilement arrêté ; P7 ouvert (corrigé ensuite en v2.93.1).
+  couleur recalcule l'image (forçage du rendu + corrections dans la clé).

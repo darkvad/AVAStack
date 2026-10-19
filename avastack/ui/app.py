@@ -155,6 +155,13 @@ from .panels.state import PanneauEtatCalculs as _PanneauEtatCalculs
 from .panels.external import PanneauTraitementExterne as _PanneauTraitementExterne
 from .panels.output import PanneauSortie as _PanneauSortie
 
+# Lot 3 / P4 (v2.95.0) : les AIDES CONTEXTUELLES de la colonne gauche — le
+# « ⓘ » et son infobulle — vivent dans `avastack/ui/bulles.py` (module TYPÉ),
+# sous forme de mixin `Aides` dont `App` HÉRITE : `App._aide(...)` reste le
+# point d'entrée unique, et les lectures/écritures de `CONFIG` /
+# `sauver_config` passent par `_globals_app()` (motif des jalons 104/105a).
+from .bulles import Aides as _Aides
+
 # Jalon 107 (chantier de refactoring) : le RENDU D'AFFICHAGE et l'ANNOTATION de
 # l'image — tout ce qui DESSINE sur le Canvas `cv_img` (chaîne d'affichage
 # unique, zoom / pan, effacement de l'écran, annotation temps-réel) — vivent
@@ -239,7 +246,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
           _PanneauCalibration, _PanneauEmpilement, _PanneauFondGrain,
           _PanneauNette, _PanneauAffichage, _PanneauCouleur,
           _PanneauEtatCalculs, _PanneauTraitementExterne, _PanneauSortie,
-          _Renderer, _Saver, _ExternalRunner, _AcquisitionWorker):
+          _Renderer, _Saver, _ExternalRunner, _AcquisitionWorker, _Aides):
     # Jalon 108 (chantier de refactoring) : `App` hérite AUSSI des mixins des
     # SAUVEGARDES (`saver.py`) et du TRAITEMENT EXTERNE (`external_runner.py`)
     # extraits de cet objet — `self` reste l'instance `App`, comportement
@@ -691,6 +698,13 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # bien qu'un réglage RESTAURÉ depuis config.json était appliqué (dans
         # `disp.*`) mais NON AFFICHÉ (bouton et étiquette restaient au défaut).
         self._curseurs: dict[str, ttk.Scale] = {}
+        # Lot 3 / P4 (v2.95.0) : AIDES CONTEXTUELLES de la colonne. Le mode est
+        # lu UNE fois depuis la configuration (clé `aides_texte`, DÉFAUT NON =
+        # infobulles) ; `_aide()` crée l'étiquette ET son « ⓘ », `_maj_aides()`
+        # bascule à chaud quand la case de l'option change. Doit être posé
+        # AVANT `_build_ui()` : les panneaux appellent `self._aide(...)`.
+        self._aides = []
+        self._aides_mode_texte: bool = bool(CONFIG.get("aides_texte", False))
         journal.note("démarrage", "construction de l'interface")
         self._build_ui()
         journal.note("démarrage", "restauration de la configuration")

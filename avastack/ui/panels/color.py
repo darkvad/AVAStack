@@ -37,6 +37,7 @@ class PanneauCouleur:
 
     _creer_section_pliable: Callable[..., Any]
     _add_slider: Callable[..., Any]
+    _aide: Callable[..., Any]
     _on_vl_preserve: Callable[..., Any]
     _on_vl_neutre: Callable[..., Any]
     _on_vl_scnr: Callable[..., Any]
@@ -88,13 +89,12 @@ class PanneauCouleur:
                         text="Neutraliser la couleur du fond (après étirement)",
                         variable=self.var_vl_neutre,
                         command=self._on_vl_neutre).pack(anchor="w")
-        ttk.Label(self.frm_couleur,
-                  text="STF et VeraLux : égalise les 3 canaux sur la MÉDIANE DE "
-                       "LA MOITIÉ SOMBRE de l'image ÉTIRÉE, juste avant "
-                       "gamma/saturation (sans effet en mode manuel). Lire les "
-                       "gains RÉELLEMENT appliqués dans « État des calculs "
-                       "(live) », jamais un exemple.",
-                  foreground="#888888", wraplength=310).pack(anchor="w")
+        self._aide(self.frm_couleur,
+                   "STF et VeraLux : égalise les 3 canaux sur la MÉDIANE DE "
+                   "LA MOITIÉ SOMBRE de l'image ÉTIRÉE, juste avant "
+                   "gamma/saturation (sans effet en mode manuel). Lire les "
+                   "gains RÉELLEMENT appliqués dans « État des calculs "
+                   "(live) », jamais un exemple.")
         ttk.Separator(self.frm_couleur).pack(fill="x", pady=4)
         self.var_vl_preserve = tk.BooleanVar(value=True)
         ttk.Checkbutton(self.frm_couleur,
@@ -102,13 +102,12 @@ class PanneauCouleur:
                         variable=self.var_vl_preserve,
                         command=self._on_vl_preserve).pack(anchor="w",
                                                            pady=(2, 0))
-        ttk.Label(self.frm_couleur,
-                  text="Sans elle, retirer du vert RETIRE DE LA LUMIÈRE : "
-                       "mesuré sur ton empilement SHO NGC 2237, la nébuleuse "
-                       "passe de L* 56,5 à 25,8 (elle s'éteint — « manque de "
-                       "doré ») ; avec elle, 56,4. Seuls les pixels corrigés "
-                       "changent.",
-                  foreground="#888888", wraplength=310).pack(anchor="w")
+        self._aide(self.frm_couleur,
+                   "Sans elle, retirer du vert RETIRE DE LA LUMIÈRE : "
+                   "mesuré sur ton empilement SHO NGC 2237, la nébuleuse "
+                   "passe de L* 56,5 à 25,8 (elle s'éteint — « manque de "
+                   "doré ») ; avec elle, 56,4. Seuls les pixels corrigés "
+                   "changent.")
         self.var_vl_scnr = tk.BooleanVar(value=False)
         ttk.Checkbutton(self.frm_couleur, text="SCNR — retrait du vert",
                         variable=self.var_vl_scnr,
@@ -137,11 +136,10 @@ class PanneauCouleur:
         self._add_slider(self.frm_couleur, "Force du démagenta",
                          self.var_vl_demagenta_force, 0.0, 1.0, 0.05,
                          self._on_vl_demagenta_force, "{:.2f}")
-        ttk.Label(self.frm_couleur,
-                  text="Les deux cases sont INDÉPENDANTES (en SHO la teinte "
-                       "magenta coexiste avec l'excès de vert) : l'ordre est "
-                       "SCNR → SCNR doux → démagenta, et chacun garde sa force.",
-                  foreground="#888888", wraplength=310).pack(anchor="w")
+        self._aide(self.frm_couleur,
+                   "Les deux cases sont INDÉPENDANTES (en SHO la teinte "
+                   "magenta coexiste avec l'excès de vert) : l'ordre est "
+                   "SCNR → SCNR doux → démagenta, et chacun garde sa force.")
 
         # --- v2.48.0 (jalon 86) : BOOST DU ROUGE (SII) MASQUÉ À L'OBJET -------
         # Décision d'Alain après la mesure de son empilement SHO NGC 2237 :
@@ -171,10 +169,9 @@ class PanneauCouleur:
                          float(couleurs_mod.BOOST_ROUGE_MIN),
                          float(couleurs_mod.BOOST_ROUGE_MAX), 0.05,
                          self._on_vl_boost_force, "{:.2f}")
-        ttk.Label(self.frm_couleur,
-                  text="À 3,00 la nébuleuse atteint le R:G du Linear Fit "
-                       "(mesuré 1,07 contre 1,05) en gardant sa saturation "
-                       "(0,70 contre 0,31) ; à 4,00 le doré est franc. Appliqué "
-                       "EN DERNIER (après le SCNR) pour que les deux se cumulent "
-                       "au lieu de se combattre. 1,00 = aucun effet.",
-                  foreground="#888888", wraplength=310).pack(anchor="w")
+        self._aide(self.frm_couleur,
+                   "À 3,00 la nébuleuse atteint le R:G du Linear Fit "
+                   "(mesuré 1,07 contre 1,05) en gardant sa saturation "
+                   "(0,70 contre 0,31) ; à 4,00 le doré est franc. Appliqué "
+                   "EN DERNIER (après le SCNR) pour que les deux se cumulent "
+                   "au lieu de se combattre. 1,00 = aucun effet.")

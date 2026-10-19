@@ -90,6 +90,8 @@ class ConfigUI:
     var_annoter_objets: tk.Variable
     var_annoter_sauvegarde: tk.Variable
     var_annoter_visibles: tk.Variable
+    # Lot 3 / P4 : option « Aides en texte dans la colonne » (panneau Fichiers).
+    var_aides_texte: tk.Variable
     var_astro: tk.Variable
     var_astro_champ: tk.Variable
     var_astro_dec: tk.Variable
@@ -854,4 +856,9 @@ class ConfigUI:
         c["annoter_etoiles"] = bool(self.var_annoter_etoiles.get())
         c["annoter_sauvegarde"] = bool(self.var_annoter_sauvegarde.get())
         c["seuil_mag_etoiles"] = self._seuil_mag()
+        # Lot 3 / P4 (v2.95.0) : affichage des aides de la colonne — booléen
+        # EXPLICITE (une case décochée ne doit pas hériter d'un True). La case
+        # persiste déjà à chaque bascule (`_on_aides_texte`) ; on la réécrit ici
+        # pour que la fermeture ne dépende pas de la dernière action.
+        c["aides_texte"] = bool(self.var_aides_texte.get())
         _globals_app().sauver_config(c)

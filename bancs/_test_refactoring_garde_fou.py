@@ -201,6 +201,10 @@ FICHIERS_TYPES = (
     "avastack/ui/__init__.py",
     "avastack/ui/app.py",
     "avastack/ui/reactivite.py",
+    # Lot 3 / P4 (v2.95.0) : les AIDES CONTEXTUELLES de la colonne — infobulles
+    # « ⓘ » (`Bulle`, `astuce`) et mixin `Aides` dont `App` hérite — module NEUF,
+    # typé dès sa création comme tout module nouveau.
+    "avastack/ui/bulles.py",
 )
 
 
