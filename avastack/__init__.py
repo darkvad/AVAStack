@@ -22,7 +22,7 @@ ou python -m avastack.
 AVASTACK_VERSION = "2.93.1"
 
 # v2.93.1 : P7 — UN CHOIX DE CORRECTION DE COULEUR RECALCULE TOUJOURS L'IMAGE
-#   (19/10/2026). Aucune release.
+#   (19/10/2026). VALIDÉ EN RÉEL par Alain le 19/10 ; aucune release.
 #   DÉFAUT MESURÉ (signalé par Alain après la validation du Lot 1) : « au clic sur
 #   un choix de correction de couleur, l'image ne se recalcule pas toujours ou
 #   garde le choix précédent ». Banc `_test_p7_recalcul_corrections` sur l'état
