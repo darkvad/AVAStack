@@ -34,8 +34,8 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 
 ### État actuel
 - **v2.93.1 sur `LRGBHa`** — **aucune release**. Commits locaux `011981c`
-  (Lot 1) + `d69add3` (correctifs du test réel) + `423503e` (handoff),
-  **non poussés** ; P7 corrigé dans l'arbre de travail (à commiter).
+  (Lot 1) + `d69add3` (correctifs du test réel) + `423503e` (handoff) + `8e90a2c`
+  (P7), **non poussés**.
 - **Lot 1 VALIDÉ EN RÉEL par Alain (19/10)** : ① SPCC/MiniCam ; ② astrométrie
   à l'empilement arrêté.
 - **P7 CORRIGÉ** : banc neuf `_test_p7_recalcul_corrections` — **sur l'état
@@ -155,7 +155,7 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 Arbre **v2.93.1** sur `LRGBHa` : **Lot 1 (P2 + P3) VALIDÉ EN RÉEL**, **P7 MESURÉ
 PUIS CORRIGÉ** (banc neuf `_test_p7_recalcul_corrections` vert, non-régressions
 vertes, `pyright` 0), commits `011981c` + `d69add3` + `423503e` **non poussés**,
-correctif P7 **non commité**, **aucune release**. **Prochaine action** : faire
+P7 commité en local (`8e90a2c`), **aucune release**. **Prochaine action** : faire
 valider P7 en réel par Alain (SPCC / gains Gaia, STF **et** VeraLux, empilement
 en cours **et** arrêté), puis **Lot 2 = P1** sur son accord.
 
