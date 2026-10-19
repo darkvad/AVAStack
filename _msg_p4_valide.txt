@@ -1,9 +1,0 @@
-P4 VALIDE EN REEL (19/10) : etat + handoff vers LOT 4 = P5 (v2.95.0)
-
-- `AVANCEMENT.md` : P4 passé en VALIDÉ EN RÉEL, lot 3 clos, prochaine action
-  unique = LOT 4 = P5 (mesurer la réactivité AVANT tout correctif) ; plan P5
-  précisé (`bancs/_mesure_p5_reactivite.py`, guet à 0,25 s, banc 79 étendu aux
-  cases/listes/spinners) ; clôtures nettoyées (P4 + P1).
-- `avastack/__init__.py` : l'entrée v2.95.0 dit VALIDÉ EN RÉEL, AUCUNE RELEASE.
-- `CLAUDE.md` : la section P4 porte VALIDÉ EN RÉEL.
-- AUCUN changement de code : le code P4 reste `2ab5d82`.
