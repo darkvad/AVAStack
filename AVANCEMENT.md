@@ -145,23 +145,11 @@ AVANT tout correctif, puis corriger ce qui est chiffré.
 
 ## Chantier CLOS — LRGB+Ha (jalons 129 → J5) — **J2 à J5 validés en réel**
 
-Le rôle Ha **n'alimente aucun canal** : il est **FUSIONNÉ** au composite après le combine L.
-
-| Jalon | Contenu | État |
-|---|---|---|
-| J1 / 129 (v2.81.0) | compositions + 5 lignes UI + séparation ancre / `_narrowband_ha` | commité |
-| 129b | voie A (référence **PAR RÔLE** + recalage de l'empilement) + `profondeur_min` + refus par rôle | COMMITÉ ; validé en réel le 16/10 (441 frames, 2 refus en R) |
-| **130 (v2.82.0)** | combine LRGB borné [0 ; 5] + repli local + fiche + banc neuf | COMMITÉ + POUSSÉ (`ef0c35c`) |
-| **J2 (v2.88.0)** | fusion « ajout au rouge » + poids 1,0 + recentrage + **continuum (Q, case)** + cadre « Fusion Ha » | **VALIDÉ EN RÉEL le 19/10** |
-| **J3bis (v2.90.2)** | les 4 opérateurs dans l'espace de R ; `ha_luminance` = gain **à porte** (0,05–0,25) ; `ajout_rouge` au bit | **VALIDÉ EN RÉEL (19/10)** |
-| **J4 (v2.91.0)** | continuum **trois méthodes** (`bandes_passantes` 7/3 nm, `mediane`, `etoiles_5sigma`), **repli visible**, case « recentrer » | **VALIDÉ EN RÉEL le 19/10** |
-| **J4.1 (v2.91.1)** | la **mesure** ne dépend plus de la case (fond de ciel), seuil médiane 1,20 | **VALIDÉ EN RÉEL le 19/10 (soir)** |
-| **J5 (v2.92.0)** | ancre = couche **large bande** (une frame Ha ne crée plus l'empilement ; Ha exclu du re-ancrage) + doc README | **VALIDÉ EN RÉEL le 19/10** |
-
-Plan figé (13 arbitrages du 15/10) : poids **1,0** (0–10) · α **0,5** · Q **0,80**
-(0,10–2,00) · cadre « Fusion Ha » visible seulement si la compo contient Ha ·
-continuum = **bandes passantes** (Ha 7 nm / RGB 100 nm), référence **R** ·
-identifiants en français (`synthetise`).
+Le rôle Ha **n'alimente aucun canal** : il est **FUSIONNÉ** au composite après le
+combine L. **Tout est CLOS et VALIDÉ EN RÉEL le 19/10** (J2 v2.88.0, J3bis
+v2.90.2, J4 v2.91.0, J4.1 v2.91.1, J5 v2.92.0) : les règles durables (poids 1,0 ·
+α 0,5 · Q 0,80 · continuum trois méthodes avec repli VISIBLE · ancre = couche
+large bande) vivent dans `CLAUDE.md` (« Fusion du Ha… ») et le changelog.
 
 ---
 
@@ -179,34 +167,18 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 | 4 | P5 | audit MESURÉ de la réactivité | en attente |
 | 5 | P6 | source « stacks » : fichiers choisis, **rôles saisis**, seuil de profondeur = 1 | en attente |
 
-### Lot 1 — P2 + P3 : **VALIDÉ EN RÉEL le 19/10** (v2.93.0) — détails durables dans `CLAUDE.md`
-- **P2** : base **la plus riche** (compteurs au journal), extraction jamais plus
-  pauvre, défauts **par canal**, valeur absente **conservée + alerte**,
-  `Antlia R` → `QHYCCD MiniCam8M Red` (message + journal), `_profil` exact →
-  normalisé → sous-chaîne + noms proches, garde **FILTER** rouge.
-- **P3** : `_astro_demande` (cochage / indices / **fin de source** / reset),
-  service **astro → photo → SPCC**, repose des mesures après une résolution,
-  demande consommée **une fois**.
-- **Banc** : `bancs/_test_lot1_p2_p3.py` (7 volets, 51 vérifications) — vert,
-  dont la liste R réelle (50 filtres mono, valeur affichée présente) et l'avis
-  de correction effacé.
+### Lot 1 — P2 + P3 : **VALIDÉ EN RÉEL le 19/10** (v2.93.0) — détails dans `CLAUDE.md`
+Base SPCC **la plus riche** (compteurs au journal, extraction jamais plus pauvre,
+défauts par canal, valeur absente conservée + alerte, garde FILTER rouge) et
+`_astro_demande` (service astro → photo → SPCC, demande consommée UNE fois).
+Banc `bancs/_test_lot1_p2_p3.py` (7 volets, 51 vérifications).
 
-### P1 — cadence (lot 2) — **VALIDÉ EN RÉEL le 19/10 (v2.94.0)**
-- **Mesuré AVANT de coder** (`bancs/_mesure_p1_cadence.py`, 89 brutes réelles
-  vdB 126 180 s OSC, paliers 3/6/12/24/48) : astro 3,11 s puis 0 (WCS
-  propagé) ; Gaia 0,44→0,91 s ; SPCC 0,74→1,01 s ; **6,87 s** de mesures pour
-  **65 s** d'empilement. Le coût ne justifie aucun délai plus long.
-- **Où c'est décidé maintenant** : `processing/cadence.py` (`CadenceMesure`),
-  appelé par `core/worker.py` `_astro_tour` (profondeur consignée),
-  `_photo_tour` et `_spcc_tour` (décision + quota d'échecs séparé) ;
-  `_armer_astro_fin_source` arme la passe finale photo/SPCC.
-- **Règles** : seuil 3 → passe finale → plafond 6 → doublement (3→6→12→24…)
-  → délai 20 s. La profondeur de décision est `_profondeur_spcc` (« min des
-  rôles R/G/B », donc 1 frame de plus dans CHAQUE bande). WCS jamais re-solu.
-- **Bancs** : `_test_p1_cadence.py` (29 vérifications, chemin de décision,
-  espion) ; `_mesure_p1_cadence.py --autotest`.
-- **Validé en réel** : les lignes Photométrie/SPCC disent la profondeur mesurée
-  et la prochaine échéance, et la mesure se rafraîchit en s'approfondissant.
+### P1 — cadence (lot 2) : **VALIDÉ EN RÉEL le 19/10** (v2.94.0) — détails dans `CLAUDE.md`
+`processing/cadence.py` (`CadenceMesure`) : seuil 3 → passe finale → plafond 6 →
+doublement (3→6→12→24…) → délai 20 s, branche dans `_astro_tour` /
+`_photo_tour` / `_spcc_tour`, passe finale armée par `_armer_astro_fin_source`.
+Mesuré AVANT de coder : 6,87 s de mesures pour 65 s d'empilement (JSON
+`bancs/_mesure_p1_cadence.json`) ; banc `_test_p1_cadence.py` (29 vérifications).
 
 ### P4 — infobulles (lot 3) — **VALIDÉ EN RÉEL le 19/10 (v2.95.0)**
 - `avastack/ui/bulles.py` (neuf, typé) : `Bulle` (Toplevel `overrideredirect`,
