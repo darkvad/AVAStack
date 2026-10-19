@@ -165,9 +165,13 @@ MODES_L: tuple[str, ...] = ("synthetise", "degrade")   # radio « Canal L » (L 
 #                          c'est lui qui BORNE — R̃ peut dépasser 1)
 #   · `eclaircir_rouge`  : R̃' = R̃ + max(0, s̃ − R̃)
 #                          (éclaircir = max(R̃, s̃) : ne fait que MONTER)
-#   · `ha_luminance`     : rgb' = rgb × (1 + s̃)   ⇒ le MÊME facteur sur les
-#                          TROIS canaux : la COULEUR est préservée par
-#                          construction (plus de blanchiment additif)
+#   · `ha_luminance`     : R' = fond_R + (R − fond_R)·(1 + p·s̃)
+#                          (le Ha éclaire le ROUGE DE L'OBJET, à proportion de
+#                          son propre signal : le CIEL n'est jamais multiplié —
+#                          le faire y versait du bruit rouge — et V/B restent
+#                          intacts. L'ancienne « luminance sur les trois
+#                          canaux » BLANCHISSAIT : mesuré le 19/10, la
+#                          saturation des zones Ha tombait de 0,19 à 0,12)
 # `fond_R` et `A_R` dérivent du COMPOSITE, jamais d'un réglage : ils n'entrent
 # donc PAS dans la clé de mémoïsation de `CompositeStacker`.
 # J4 complétera le continuum (méthodes médiane / étoiles 5σ, case « recentrer le
@@ -517,15 +521,19 @@ def fusionner_ha(rgb: np.ndarray, ha: Any, mode: str = FUSION_HA_DEFAUT,
                               c'est LUI qui borne, R̃ pouvant dépasser 1)
         · `eclaircir_rouge` : R̃' = R̃ + max(0, s̃ − R̃)
                               (éclaircir = max(R̃, s̃) : ne fait que MONTER)
-        · `ha_luminance`    : rgb' = rgb × (1 + p × s̃)
-                              (le MÊME facteur sur les TROIS canaux : la
-                              couleur est préservée par construction — plus de
-                              blanchiment additif ; seule exception à « V et B
-                              jamais touchés », c'est son objet même)
-        retour dans l'espace du composite, pour les trois modes « rouge » :
+        · `ha_luminance`    : R̃' = R̃ × (1 + p·s̃)   (soit, dans l'espace du
+                              composite, `R' = fond_R + (R − fond_R)(1 + p·s̃)` :
+                              le Ha ÉCLAIRE LE ROUGE DE L'OBJET, proportionnel
+                              à son propre signal. Le CIEL n'est JAMAIS
+                              multiplié — le faire y versait du bruit rouge — et
+                              V et B restent INTACTS. L'ancienne luminance
+                              additive puis multiplicative sur les trois canaux
+                              BLANCHISSAIT : la saturation des zones Ha tombait
+                              de 0,19 à 0,12, mesuré le 19/10)
+        retour dans l'espace du composite, commun aux QUATRE modes :
             R' = max(0, fond_R + A_R·R̃')    puis `sortie_R = R + p × (R' − R)`
-        `ha_luminance` ne fait AUCUN retour d'échelle : le facteur s'applique
-        au RGB entier.
+        Les CINQ modes ne touchent donc QUE le rouge : V et B sont toujours
+        rendus AU BIT.
 
     POURQUOI LE CONTINUUM (actif par défaut) : un filtre Ha de 7 nm n'isole
     pas la raie seule, il laisse passer le CONTINUUM de l'objet et du ciel.
@@ -603,14 +611,6 @@ def fusionner_ha(rgb: np.ndarray, ha: Any, mode: str = FUSION_HA_DEFAUT,
         # astronomique qui en sortirait toucherait toute l'image).
         return rgb
     st = h / np.float32(amp_s)             # s̃ : 0 au fond, ≈ 1 au p99,7
-    if mode == "ha_luminance":
-        # Luminance MULTIPLICATIVE (option A) : le MÊME facteur (1 + p·s̃) sur
-        # les TROIS canaux ⇒ les rapports R/G/B sont préservés par
-        # construction, le blanchiment additif du J3 disparaît. Borné à 0 : un
-        # facteur négatif inverserait les couleurs (s̃ < −1 n'a pas de sens
-        # physique, mais `s` peut être négatif quand le continuum est coupé).
-        facteur = np.maximum(np.float32(1.0) + p * st, np.float32(0.0))
-        return (a * facteur[..., None]).astype(np.float32, copy=False)
     rt = (r0 - np.float32(fond_r)) / np.float32(amp_r)        # R̃
     if mode == "fondu_rouge":
         # Fondu R̃×(1−α) + s̃×α  ⇒  R̃' = R̃ + α × (s̃ − R̃) : NEUTRE AU FOND
@@ -623,10 +623,20 @@ def fusionner_ha(rgb: np.ndarray, ha: Any, mode: str = FUSION_HA_DEFAUT,
         rt = rt + st * np.maximum(np.float32(0.0),
                                   np.float32(1.0)
                                   - np.minimum(rt, np.float32(1.0)))
-    else:                       # `eclaircir_rouge`
+    elif mode == "eclaircir_rouge":
         # Éclaircir = max(R̃, s̃) ⇒ R̃' = R̃ + max(0, s̃ − R̃) : ne fait que
         # MONTER (le poids ne multiplie plus zéro : le mode n'est plus inerte).
         rt = rt + np.maximum(st - rt, np.float32(0.0))
+    else:                       # `ha_luminance`
+        # « Ha en luminance de l'OBJET » (décision d'Alain, 19/10) : R̃ est
+        # MULTIPLIÉ par (1 + s̃), donc seul le SIGNAL AU-DESSUS DU FOND est
+        # éclairé — le ciel garde EXACTEMENT son niveau. Multiplier tout `R`
+        # (variante « V9 » mesurée) versait du bruit rouge dans le fond ;
+        # multiplier les TROIS canaux (version d'avant) BLANCHISSAIT : la
+        # saturation des zones Ha tombait de 0,19 à 0,12 (cœur 0,09 → 0,04),
+        # mesuré sur les couches M33 avec l'étirement d'affichage réel.
+        # V et B ne sont donc plus touchés du tout.
+        rt = rt * (np.float32(1.0) + st)
     # Retour dans l'espace du COMPOSITE — le rouge ne descend jamais sous 0.
     r_mode = np.maximum(np.float32(fond_r) + np.float32(amp_r) * rt,
                         np.float32(0.0))

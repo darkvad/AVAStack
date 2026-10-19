@@ -19,7 +19,28 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.90.0"
+AVASTACK_VERSION = "2.90.1"
+
+# v2.90.1 : `ha_luminance` NE BLANCHIT PLUS (verdict réel du 19/10 ; décision
+#   d'Alain : « le V9 objet seul »). `fondu`, `ecran` et `eclaircir` sont
+#   validés en réel ; seul `ha_luminance` blanchissait encore.
+#   MESURE : l'ancienne version multipliait `rgb` par `1 + s̃` — donc G et B,
+#   qui ne portent AUCUN Ha, étaient multipliés dans TOUTE la zone, CIEL
+#   compris : la saturation d'affichage des zones Ha tombait de 0,19 à 0,12
+#   (cœur 0,09 → 0,04) pendant que la luminance montait (0,48 → 0,55).
+#   Multiplier le rouge ENTIER (variante « V9 ») versait du bruit rouge dans le
+#   fond du ciel. Aucune des deux n'est la bonne.
+#   NOUVELLE FORMULE : R̃' = R̃ × (1 + s̃), soit, dans l'espace du composite,
+#       R' = fond_R + (R − fond_R) · (1 + poids·s̃)
+#   Le Ha éclaire le ROUGE DE L'OBJET, à proportion de son propre signal ; le
+#   CIEL garde exactement son niveau ; V et B ne sont plus touchés du tout.
+#   Les CINQ modes ne travaillent donc que sur le rouge (V/B AU BIT partout).
+#   Rejeu sur les couches M33 : fond 0 % de pixels modifiés, V/B au bit, cœur
+#   +0,95 (×1,62 sur l'objet), saturation du cœur 0,11 (contre 0,09 sans
+#   fusion) — plus de blanchiment. Banc J3 recalé (référence `mode_espace_r`,
+#   volet [5b] : fond immobile, V/B au bit, gain = 1 + s̃ au cœur) ; banc J2
+#   vert AU BIT ; 129/130/136/137/141 vertes. Aide de l'interface corrigée
+#   (elle annonçait encore « le Ha éclaire les TROIS canaux »).
 
 # v2.90.0 : J3bis — LES QUATRE MODES DE FUSION DU Ha DANS L'ESPACE DE R
 #   (option A choisie par Alain le 19/10/2026). Le J3 livrait quatre modes

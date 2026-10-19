@@ -23,10 +23,17 @@ ciel, ≈ 1 au p99,7 » pour les DEUX grandeurs :
     · fondu      : R̃' = R̃ + α·(s̃ − R̃)
     · écran      : R̃' = R̃ + s̃·max(0, 1 − min(R̃, 1))
     · éclaircir  : R̃' = R̃ + max(0, s̃ − R̃)
-    · luminance  : rgb' = rgb × (1 + poids·s̃)      (MÊME facteur sur R, V et B)
+    · luminance  : R̃' = R̃ × (1 + s̃)   (le Ha éclaire le ROUGE de l'OBJET ;
+                  le CIEL n'est pas multiplié et V/B restent intacts)
 
-puis retour au composite pour les trois modes « rouge » :
+puis retour au composite, commun aux QUATRE modes :
 `R' = max(0, fond_R + A_R·R̃')` et `sortie_R = R + poids × (R' − R)`.
+
+VERDICT RÉEL DU 19/10 : `fondu`, `écran` et `éclaircir` sont OK ; `ha_luminance`
+BLANCHISSAIT — il multipliait les TROIS canaux, donc aussi le CIEL de G et B
+(saturation des zones Ha 0,19 → 0,12, cœur 0,09 → 0,04). Il est devenu le
+« V9 objet seul » demandé par Alain : le MÊME gain multiplicatif, appliqué au
+SIGNAL AU-DESSUS DU FOND seulement.
 
 Le MÊME signal préparé et le MÊME rôle du POIDS qu'au J2/J3 :
 
@@ -37,8 +44,8 @@ Vérifie :
   [1] les CINQ modes (ordre, défaut inchangé), α 0,5 borné [0 ; 1], le dict
       complet de `fusion_ha_effectif` qui porte α, HOO/SHO toujours exclus ;
   [2] CHAQUE FORMULE, dans l'espace de R, à poids 1 et continuum coupé :
-      fondu/écran/éclaircir via R̃ et s̃, luminance multiplicative sur les TROIS
-      canaux ; `ajout_rouge` reste AU BIT (J2) ; V/B au bit hors luminance ;
+      fondu/écran/éclaircir/luminance via R̃ et s̃ ; `ajout_rouge` reste AU BIT
+      (J2) ; V et B au bit pour les CINQ modes ;
   [2b] α : 0 → rouge inchangé, 1 → rouge = s̃ ramené au composite, α n'agit QUE
       sur le fondu, valeur illisible → 0,5 ;
   [3] le POIDS comme force globale pour les CINQ modes : 0 rend le MÊME objet,
@@ -49,7 +56,8 @@ Vérifie :
       composite réel, HOO inchangé, mode inconnu = `ajout_rouge` ;
   [5b] COMPOSITE HORS [0 ; 1] (R ≈ 2,9-5,7, comme la session M33) : aucun mode
       ne baisse le rouge du FOND, écran n'abaisse JAMAIS, éclaircir AGIT,
-      le fondu ne retire plus le Ha, luminance préserve les rapports R/G/B ;
+      le fondu ne retire plus le Ha, luminance éclaire le ROUGE de l'OBJET
+      (ciel intact, V/B au bit) ;
   [6] la CLÉ de mémoïsation suit α et le MODE (sinon réglage « sans effet ») ;
   [7] l'INTERFACE (App réelle) : champ α DÉSACTIVÉ hors fondu, borné, persisté
       et restauré, réglage poussé sur le stacker ;
@@ -144,6 +152,10 @@ def mode_espace_r(base, sig, mode, alpha=0.5, poids=1.0):
     Écrit VOLONTAIREMENT à part de `fusionner_ha` : c'est la référence du banc.
     Calculs en float64 ⇒ comparaison avec une TOLÉRANCE (l'aller-retour par R̃
     coûte quelques ulp en float32). Seul `ajout_rouge` reste comparé AU BIT.
+
+    Depuis le 19/10 (verdict réel), `ha_luminance` est un opérateur de ROUGE
+    comme les autres : `R̃' = R̃ × (1 + p·s̃)` — le Ha éclaire le rouge de
+    l'OBJET, le ciel est préservé et V/B ne sont PAS touchés.
     """
     r0 = np.asarray(base[..., 0], dtype=np.float64)
     fond_r, amp_r, amp_s = reperes(base, sig)
@@ -155,20 +167,14 @@ def mode_espace_r(base, sig, mode, alpha=0.5, poids=1.0):
         rt = rt + st * np.maximum(0.0, 1.0 - np.minimum(rt, 1.0))
     elif mode == "eclaircir_rouge":
         rt = rt + np.maximum(st - rt, 0.0)
+    elif mode == "ha_luminance":
+        rt = rt * (1.0 + st)        # le poids interpole ensuite, comme ailleurs
     else:
-        raise AssertionError(f"{mode} n'est pas un mode « rouge »")
+        raise AssertionError(f"{mode} n'est pas un mode de rouge")
     r_mode = np.maximum(fond_r + amp_r * rt, 0.0)   # retour au composite
     out = np.asarray(base, dtype=np.float64).copy()
     out[..., 0] = r0 + poids * (r_mode - r0)        # force GLOBALE
     return out
-
-
-def luminance_attendue(base, sig, poids=1.0):
-    """`ha_luminance` J3bis : le MÊME facteur (1 + poids·s̃) sur les 3 canaux."""
-    _f, _a, amp_s = reperes(base, sig)
-    facteur = 1.0 + poids * (np.asarray(sig, dtype=np.float64) / amp_s)
-    return np.asarray(base, dtype=np.float64) * np.maximum(
-        facteur, 0.0)[..., None]
 
 
 # ============================================== [1] cinq modes, défauts, bornes
@@ -246,10 +252,11 @@ verifie(np.array_equal(out[..., 1:], rgb[..., 1:]),
         "éclaircir : VERT et BLEU INCHANGÉS au bit")
 
 out = fusionner_ha(rgb, ha, mode="ha_luminance", poids=1.0, continuum=False)
-verifie(np.allclose(out, luminance_attendue(rgb, s), atol=1e-6, rtol=1e-6),
-        "ha_luminance : les TROIS canaux × (1 + s̃) — MÊME facteur partout")
-verifie(not np.array_equal(out[..., 1:], rgb[..., 1:]),
-        "luminance TOUCHE le vert et le bleu — c'est son objet (seule exception)")
+verifie(np.allclose(out, mode_espace_r(rgb, s, "ha_luminance"),
+                    atol=1e-6, rtol=1e-6),
+        "ha_luminance : R̃' = R̃ × (1 + s̃) — le rouge de l'OBJET, pas le ciel")
+verifie(np.array_equal(out[..., 1:], rgb[..., 1:]),
+        "luminance : VERT et BLEU INCHANGÉS au bit (les 5 modes ne touchent que R)")
 
 # ================================================================ [2b] α du fondu
 print("[2b] α : 0 = rouge inchangé, 1 = rouge = s̃, n'agit QUE sur le fondu")
@@ -312,8 +319,9 @@ verifie(np.allclose(out, mode_espace_r(rgb, sig, "eclaircir_rouge"),
                     atol=1e-6, rtol=1e-6),
         "éclaircir + continuum : même opérateur, sur s_écrêté")
 out = fusionner_ha(rgb, ha, mode="ha_luminance", poids=1.0, **CONT)
-verifie(np.allclose(out, luminance_attendue(rgb, sig), atol=1e-6, rtol=1e-6),
-        "luminance + continuum : facteur (1 + s̃_écrêté) sur les trois canaux")
+verifie(np.allclose(out, mode_espace_r(rgb, sig, "ha_luminance"),
+                    atol=1e-6, rtol=1e-6),
+        "luminance + continuum : même opérateur, sur s_écrêté")
 for mode in ("fondu_rouge", "ecran_rouge", "eclaircir_rouge", "ha_luminance"):
     sans_r = fusionner_ha(rgb, ha, mode=mode, continuum=True,
                           r_reference=None)
@@ -336,7 +344,7 @@ ATTENDUS = {
                                          alpha=ALPHA_HA_DEFAUT),
     "ecran_rouge": lambda: mode_espace_r(base, sc, "ecran_rouge"),
     "eclaircir_rouge": lambda: mode_espace_r(base, sc, "eclaircir_rouge"),
-    "ha_luminance": lambda: luminance_attendue(base, sc),
+    "ha_luminance": lambda: mode_espace_r(base, sc, "ha_luminance"),
 }
 for mode in MODES_FUSION_HA:
     c0 = composer(canaux, "LRGB+Ha", bornes=bornes, sigma_l=0.0,
@@ -353,9 +361,9 @@ for mode in MODES_FUSION_HA:
                 f"{mode} : formule EXACTE retrouvée sur le composite réel "
                 "(espace de R)")
 verifie(len({ATTENDUS[m]().tobytes() for m in MODES_FUSION_HA}) == 5,
-        "les cinq modes donnent bien CINQ composites DIFFÉRENTS (comparés sur "
-        "les TROIS canaux : le rouge seul ne sépare pas ajout de luminance, "
-        "qui agit aussi sur V et B)")
+        "les cinq modes donnent bien CINQ composites DIFFÉRENTS (ajout et "
+        "luminance agissent tous deux sur le rouge, mais pas de la même façon : "
+        "ajout = +s constant, luminance = ×(1 + s̃) sur l'objet)")
 inconnu = composer(canaux, "LRGB+Ha", bornes=bornes, sigma_l=0.0,
                    fusion_ha={"mode": "zzz", "poids": 1.0,
                               "continuum": False})
@@ -398,7 +406,7 @@ verifie(_p50 > 2.0 and _p997 > 4.0,
         "le composite est bien HORS [0 ; 1] — le cas qui a condamné le J3")
 fond_h = sig_hors <= np.percentile(sig_hors, 50.0)
 coeur_h = sig_hors >= np.percentile(sig_hors, 99.0)
-_amp_h = reperes(hors, sig_hors)[1]        # amplitude du rouge (l'échelle du test)
+_fond_h_ref, _amp_h, _ = reperes(hors, sig_hors)  # repères de l'échelle du test
 CONT5 = {"continuum": False, "recentrer": False}
 
 o = fusionner_ha(hors, sig_hors, mode="ajout_rouge", poids=1.0, **CONT5)
@@ -441,14 +449,21 @@ verifie(float(np.median(d_s[coeur_h])) > 0.1,
         "— le poids n'est plus multiplié par un (1 − R) négatif")
 
 o_l = fusionner_ha(hors, sig_hors, mode="ha_luminance", poids=1.0, **CONT5)
-_ratio = o_l / hors
-verifie(float(np.max(np.abs(_ratio - _ratio[..., :1]))) < 1e-5,
-        "ha_luminance : les rapports R/G/B sont PRÉSERVÉS — plus de blanchiment")
-verifie(float(np.min(o_l[..., 0] - _R)) >= -1e-6,
-        "ha_luminance n'éteint jamais le rouge")
-verifie(float(np.median(_ratio[..., 0][coeur_h])) > 1.2,
-        f"ha_luminance ÉCLAIRE au cœur Ha "
-        f"(×{float(np.median(_ratio[..., 0][coeur_h])):.2f}) sans toucher aux couleurs")
+d_l = o_l[..., 0] - _R
+verifie(abs(float(np.median(d_l[fond_h]))) < 0.01 * _amp_h,
+        f"ha_luminance : le CIEL garde son niveau "
+        f"({100.0 * float(np.median(d_l[fond_h])) / _amp_h:+.2f} % de A_R) "
+        "— plus de bruit rouge dans le fond")
+verifie(np.array_equal(o_l[..., 1:], hors[..., 1:]),
+        "ha_luminance : VERT et BLEU INCHANGÉS au bit — plus de blanchiment")
+verifie(float(np.median(d_l[coeur_h])) > 0.1,
+        f"ha_luminance ÉCLAIRE le ROUGE de l'objet au cœur "
+        f"({float(np.median(d_l[coeur_h])):+.3f})")
+_gain = ((o_l[..., 0] - np.float32(_fond_h_ref))
+         / np.maximum(_R - np.float32(_fond_h_ref), np.float32(1e-6)))
+verifie(float(np.median(_gain[coeur_h])) > 1.2,
+        f"le gain porte sur l'OBJET (×{float(np.median(_gain[coeur_h])):.2f} = 1 + s̃ "
+        "au cœur), pas sur le ciel")
 
 # ==================================================== [6] clé de mémoïsation
 print("[6] mémoïsation : la CLÉ suit le MODE et α")
@@ -490,8 +505,9 @@ verifie(np.array_equal(b4, a1),
         "retour à poids 0 → composite de RÉFÉRENCE, AU BIT (tous modes)")
 st.fusion_ha = {"mode": "ha_luminance", "poids": 1.0, "continuum": False}
 c1 = st.mean()
-verifie(not np.array_equal(c1[..., 1:], a1[..., 1:]),
-        "mode luminance : le composite mémoïsé TOUCHE aussi V et B")
+verifie(not np.array_equal(c1[..., 0], a1[..., 0])
+        and np.array_equal(c1[..., 1:], a1[..., 1:]),
+        "mode luminance : le composite mémoïsé touche le ROUGE, mais PAS V et B")
 
 # ============================================================ [7] interface
 print("[7] interface : champ α activé SEULEMENT en fondu, borné et persisté")
