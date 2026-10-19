@@ -15,14 +15,14 @@ pièges actifs, prochaine action. Le détail daté vit dans `avastack/__init__.p
 > sur `LRGBHa`. `master` = branche stable, releases uniquement ; merge vers `master`
 > seulement sur validation explicite (release).
 
-Versions : `LRGBHa` = **v2.93.0** (①/②/③ validés en réel ; **136** halo coloré,
+Versions : `LRGBHa` = **v2.93.1** (①/②/③ validés en réel ; **136** halo coloré,
 **137** neutralisation après étirement en STF, **141-B** interface, **J2** fusion
 du Ha au rouge + continuum, **J3/J3bis** cinq modes, **J4/J4.1** continuum trois
 méthodes et mesure indépendante de la case — tous **VALIDÉS EN RÉEL le 19/10** ;
 **J5** ancre = couche large bande, **VALIDÉ EN RÉEL** ; **Lot 1 (P2 + P3)** base
-SPCC la plus riche + astrométrie servie sans frame, **VALIDÉ EN RÉEL le 19/10**
-(SPCC et astro empilement arrêté) — **P7 ouvert**) · `master` publié =
-**v2.80.0** · Store publié = **v2.71.1**.
+SPCC la plus riche + astrométrie servie sans frame, **VALIDÉ EN RÉEL le 19/10** ;
+**P7** recalcul après un choix de couleur, **CORRIGÉ ET MESURÉ AU BANC le 19/10**,
+**à valider en réel**) · `master` publié = **v2.80.0** · Store publié = **v2.71.1**.
 
 **Gouvernance** : **aucune release GitHub sans l'accord d'Alain** ; **à CHAQUE jalon validé,
 lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une case de
@@ -30,26 +30,38 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 
 ---
 
-## Session du 19/10/2026 (soir) — **Lot 1 VALIDÉ EN RÉEL** (SPCC + astro empilement arrêté) → **P7 noté, handoff**
+## Session du 19/10/2026 (soir) — **P7 MESURÉ PUIS CORRIGÉ** (v2.93.1) → **Lot 2 = P1**
 
 ### État actuel
-- **v2.93.0 sur `LRGBHa`** — **aucune release**. Commits locaux `011981c`
-  (Lot 1) + `d69add3` (correctifs du test réel), **non poussés**.
-- **Lot 1 VALIDÉ EN RÉEL par Alain (19/10)** : ① la SPCC trouve et applique les
-  filtres **MiniCam** (base Siril 13 retenue, `Antlia R` → `QHYCCD MiniCam8M
-  Red`) ; ② l'**astrométrie fonctionne à l'empilement arrêté** (P3).
-- **Deux défauts du premier test réel corrigés le 19/10** : le champ
-  « Filtre R » recevait `osc_filtres` (MiniCam introuvables au clic) → listes
-  selon le **TYPE** ; l'avis « profil remplacé » était rouge et permanent →
-  **ambre et temporisé** (12 s), les vrais problèmes seuls restent en rouge.
-- **Bancs** : Lot 1 vert (7 volets, **51 vérifications**, dont l'UI réelle),
-  non-régressions 58 / 58 bis / 56 astro / 56 photo / 6 / 5 / 113 / 133 / 124
-  vertes ; `ruff` propre ; `pyright` 0.
-- **NOUVEAU — P7** (un choix de correction de couleur ne recalcule pas toujours,
-  ou avec le choix précédent) : voir « Problèmes ouverts » — cause probable
-  LOCALISÉE, **aucun code touché** (handoff demandé).
+- **v2.93.1 sur `LRGBHa`** — **aucune release**. Commits locaux `011981c`
+  (Lot 1) + `d69add3` (correctifs du test réel) + `423503e` (handoff),
+  **non poussés** ; P7 corrigé dans l'arbre de travail (à commiter).
+- **Lot 1 VALIDÉ EN RÉEL par Alain (19/10)** : ① SPCC/MiniCam ; ② astrométrie
+  à l'empilement arrêté.
+- **P7 CORRIGÉ** : banc neuf `_test_p7_recalcul_corrections` — **sur l'état
+  d'avant le correctif**, l'écart entre l'image d'avant et d'après le clic était
+  de **0,0000** en STF, en VeraLux **et** sur le chemin par couche (l'image en
+  cache était republiée) ; après correctif : **0,3102** (STF/chroma), **0,1913**
+  (VeraLux), **0,4814** (par couche), et la sortie est bien calculée sur
+  l'image de la NOUVELLE correction.
+- **Bancs** : P7 vert (17 vérifications) ; non-régressions 125 / 124 / 12 / 62 /
+  128 / 123 / veralux 3 / 79 / compo UI 19 **vertes** ; `ruff` propre ;
+  `pyright` 0 (**0 erreur, 0 avertissement**).
+- **À FAIRE PAR ALAIN** : test réel de P7 (cocher/décocher SPCC et gains Gaia,
+  en STF **et** en VeraLux, empilement en cours **et** arrêté) — puis accord
+  pour **Lot 2 = P1**.
 
 ### Décisions
+- **ⓐ ET ⓑ, pas l'un ou l'autre** : ⓐ `App._pousser_rendu()` arme
+  `disp.notify_new_stack()` (couvre TOUT rendu sans nouvelle frame, y compris
+  mono où le display ne voit aucune correction) ; ⓑ `display._vl_params()`
+  porte `params_corrections(self.vl_compo)` (couvre le chemin PAR COUCHE, où
+  `corrections_couleur()` est appliquée DANS le worker). Chaque volet suffit à
+  son cas ; ensemble ils ferment la course du « tour suivant ».
+- **La signature des corrections EXCLUT les couches** (`compo[0]`, tableaux
+  numpy) : trop coûteuse à chaque tick ; une nouvelle frame force déjà la chaîne.
+- **Le forçage est posé APRÈS la mise en file** : un message perdu (file pleine)
+  ne doit pas coûter un calcul.
 - **La richesse se compte en FICHIERS .json** (pas en objets) : compter les
   objets parserait tous les JSON à chaque `dossier_base()`, appelée par chaque
   `lister()`. Le choix est journalisé **une fois par décision**.
@@ -62,21 +74,19 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
   que les sources FICHIERS ; sur une caméra live, `read()` vide entre deux
   poses n'est pas une fin.
 
-### Fichiers modifiés (commit Lot 1)
-- `avastack/catalogues/spcc_db.py` (base la plus riche + compteurs + journal),
-  `avastack/catalogues/telechargeur.py` (gardes de richesse),
-  `avastack/processing/spcc.py` (`_profil`, défauts par canal,
-  `profils_filtres`, `filtre_compatible`, noms proches),
-  `avastack/ui/app.py` (`_astro_demande`, service astro d'abord, alertes,
-  garde FILTER), `avastack/ui/config_ui.py` (valeurs conservées + vérif),
-  `avastack/ui/panels/stack.py` (choix manuel = alerte effacée),
-  `avastack/core/worker.py` (fin de source, garde FILTER, reset),
-  `bancs/_test_lot1_p2_p3.py` (neuf), `bancs/_test_sans_siril_jalon77.py`
-  (contrat P2), `avastack/__init__.py` (2.93.0 + changelog), `CLAUDE.md`,
-  `AVANCEMENT.md`.
+### Fichiers modifiés (session P7)
+- `avastack/processing/display.py` : `params_corrections()` + `_hachable()`,
+  `_vl_params()` porte les corrections (déballage tolérant) ;
+- `avastack/ui/app.py` : `_pousser_rendu()` force la chaîne (après mise en file) ;
+- `bancs/_test_p7_recalcul_corrections.py` (neuf) ; `avastack/__init__.py`
+  (2.93.1 + changelog), `CLAUDE.md`, `AVANCEMENT.md`.
+- **Rappel Lot 1** : `catalogues/spcc_db.py`, `catalogues/telechargeur.py`,
+  `processing/spcc.py`, `ui/app.py` (astro), `ui/config_ui.py`,
+  `ui/panels/stack.py`, `core/worker.py`, `bancs/_test_lot1_p2_p3.py`.
 
 
-### Problèmes ouverts (liste d'Alain du 19/10) — **P2 et P3 VALIDÉS EN RÉEL**
+
+### Problèmes ouverts (liste d'Alain du 19/10) — **P2, P3 et P7 CORRIGÉS**
 - **P1 — mesures trop rares** (LOT 2) : astrométrie, gains Gaia et SPCC ne
   mesurent qu'à la demande / **une seule fois** (`SessionSpcc.valide`,
   `Photometrie.valide`, WCS résolu puis propagé), dès `ASTRO_MIN_FRAMES = 3`
@@ -87,27 +97,17 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
   `Antlia R` reposé en `QHYCCD MiniCam8M Red` (avis ambre temporisé + journal).
 - **P3 — astrométrie en fin de brutes : CORRIGÉ ET VALIDÉ EN RÉEL (19/10)** —
   fonctionne **empilement arrêté**.
-- **P7 — NOUVEAU (Alain, 19/10) : un choix de correction de couleur ne
-  recalcule pas toujours l'image, ou la recalcule avec le choix PRÉCÉDENT.**
-  « Des fois » seulement → suspecter une COURSE, pas une absence de code.
-  **Cause probable LOCALISÉE (aucune mesure faite, aucun code touché)** :
-  · les gains de couleur (SPCC / Gaia) ne sont **pas** écrits par l'UI : le
-    worker d'acquisition les pose dans le stacker **à son tour suivant**
-    (`core/worker.py` ~563-643), puis lève `_rafraichir_rendu` et pousse le
-    rendu. Entre le clic et ce tour, l'UI peut rendre avec les gains
-    PRÉCÉDENTS — et quand on passe à SPCC, `spcc.valide` est faux tant que la
-    mesure n'a pas abouti, donc `nouveaux = {}` : l'image est rendue SANS
-    correction, puis corrigée au tour d'après ;
-  · côté VeraLux, la clé de mémoïsation `display._vl_params()` (749) ne
-    contient **NI les gains, NI l'équilibrage, NI le Linear Fit** : si les
-    corrections sont appliquées DANS la chaîne (`display.py:997`,
-    `corrections_couleur`), un changement de choix ne change pas la clé
-    (1203/1210) → l'image VeraLux en cache est **republiée à l'identique**.
-  **À FAIRE (prochain lot, avec mesure)** : reproduire en STF **et** en
-  VeraLux, journaliser la séquence clic → gains posés → rendu ; décider entre
-  ⓐ attendre/forcer un rendu après la pose des gains (UI informée par un
-  compteur de version) et ⓑ faire entrer l'état des corrections dans
-  `_vl_params`. Banc : espion sur `_pousser_rendu` + gains changés sans frame.
+- **P7 — choix de correction de couleur : CORRIGÉ ET MESURÉ (19/10, v2.93.1),
+  À VALIDER EN RÉEL.** Deux trous de transport, tous deux refermés :
+  · `_pousser_rendu()` poussait une image recalculée SANS nouvelle frame → le
+    `_tick` ne forçait pas la chaîne : elle rendait son cache. Désormais
+    `_pousser_rendu()` arme `notify_new_stack()` ;
+  · `_vl_params()` ne portait pas les corrections → le chemin PAR COUCHE
+    republiait l'image. Désormais `params_corrections(vl_compo)` y entre.
+  **Mesure** (banc `_test_p7_recalcul_corrections`) : avant = écart **0,0000**
+  dans les trois cas ; après = **0,3102** (STF) / **0,1913** (VeraLux) /
+  **0,4814** (par couche). **Reste** : le test réel d'Alain.
+
 - **P4 — place perdue dans la colonne gauche.** Les textes d'aide (31
   étiquettes grises `wraplength`) doivent devenir des **infobulles** sur un
   **ⓘ** posé à côté du champ concerné.
@@ -121,12 +121,11 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
   sans réempiler les brutes.
 
 ### Prochaines étapes
-1. **P7 D'ABORD** (correctif du Lot 1, à trancher avec Alain) : reproduire et
-   mesurer la course « choix de couleur → recalcul », puis corriger (ⓐ et/ou
-   ⓑ ci-dessus) avec un banc.
+1. **Test réel de P7 par Alain** (SPCC / gains Gaia, STF **et** VeraLux,
+   empilement en cours **et** arrêté) — puis accord pour la suite.
 2. **Puis Lot 2 = P1** (cadence de re-mesure) — **accord d'Alain avant**.
 3. **Puis P4, P5, P6** — un jalon par lot.
-4. **Release v2.93.0** sur accord explicite, une fois P7 et les lots voulus
+4. **Release v2.93.x** sur accord explicite, une fois P7 validé en réel et les
    faits.
 
 
@@ -153,13 +152,12 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
   (boîte MODALE, sinon blocage), jamais `grid` + `pack` dans le même conteneur.
 
 ### Contexte de reprise (à coller — 2 phrases)
-Arbre **v2.93.0** sur `LRGBHa` : **Lot 1 (P2 + P3) VALIDÉ EN RÉEL** (SPCC/
-MiniCam + astro empilement arrêté), banc neuf vert, `pyright` 0, commits locaux
-`011981c` + `d69add3` **non poussés**, **aucune release**. **Prochaine action** :
-**P7** — au clic sur un choix de correction de couleur, l'image ne se recalcule
-pas toujours ou garde le choix précédent (course : gains posés par le worker au
-tour suivant ; clé `_vl_params` sans les corrections) — mesurer puis corriger
-avant **Lot 2 = P1**.
+Arbre **v2.93.1** sur `LRGBHa` : **Lot 1 (P2 + P3) VALIDÉ EN RÉEL**, **P7 MESURÉ
+PUIS CORRIGÉ** (banc neuf `_test_p7_recalcul_corrections` vert, non-régressions
+vertes, `pyright` 0), commits `011981c` + `d69add3` + `423503e` **non poussés**,
+correctif P7 **non commité**, **aucune release**. **Prochaine action** : faire
+valider P7 en réel par Alain (SPCC / gains Gaia, STF **et** VeraLux, empilement
+en cours **et** arrêté), puis **Lot 2 = P1** sur son accord.
 
 ---
 
@@ -193,8 +191,8 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 
 | Lot | Points | Contenu | État |
 |---|---|---|---|
-| **1** | **P2 + P3** | base SPCC la plus riche, zéro substitution silencieuse, `_astro_demande` | **VALIDÉ EN RÉEL le 19/10** (SPCC + astro empilement arrêté) — **P7 ouvert** |
-| 2 | P1 | cadence de re-mesure Gaia/SPCC | **PROCHAIN après P7 (accord d'Alain)** |
+| **1** | **P2 + P3** | base SPCC la plus riche, zéro substitution silencieuse, `_astro_demande` | **VALIDÉ EN RÉEL le 19/10** ; **P7 corrigé en v2.93.1** (banc), à valider en réel |
+| 2 | P1 | cadence de re-mesure Gaia/SPCC | **PROCHAIN (accord d'Alain)** |
 | 3 | P4 | infobulles ⓘ | en attente |
 | 4 | P5 | audit MESURÉ de la réactivité | en attente |
 | 5 | P6 | source « stacks » : fichiers choisis, **rôles saisis**, seuil de profondeur = 1 | en attente |
@@ -254,21 +252,20 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 
 ---
 
-## En attente / prochaine session (état au 19/10 — `LRGBHa`, v2.93.0)
+## En attente / prochaine session (état au 19/10 — `LRGBHa`, v2.93.1)
 
 - **J2 à J5 sont CLOS** (validés en réel le 19/10).
 - **Lot 1 (P2 + P3) est VALIDÉ EN RÉEL** le 19/10 : SPCC/MiniCam et astrométrie
   à l'empilement arrêté. Correctifs du test réel inclus (listes selon le TYPE,
-  avis de correction temporisé). **Rien ne part en release avant P7.**
-- **P7 est OUVERT** (choix de correction de couleur : recalcul manquant ou
-  valeur précédente) — cause probable localisée, **à mesurer puis corriger**
-  (cf. « Problèmes ouverts »).
-- **Prochaine action unique** : **diagnostiquer P7** (STF **et** VeraLux,
-  séquence clic → gains posés → rendu), puis le corriger ; **ensuite**
-  **Lot 2 = P1** sur accord d'Alain.
+  avis de correction temporisé).
+- **P7 est CORRIGÉ et MESURÉ AU BANC** (v2.93.1) : `_pousser_rendu()` force la
+  chaîne, `_vl_params()` porte `params_corrections()`. **Reste le test réel**
+  (SPCC / gains Gaia, STF **et** VeraLux, empilement en cours **et** arrêté).
+- **Prochaine action unique** : recueillir le verdict d'Alain sur P7 ; **ensuite**
+  **Lot 2 = P1** sur accord.
 - **Ensuite** : P4 (infobulles), P5 (audit réactivité), P6 (source stacks par
   fichiers) — **accord d'Alain avant chaque lot**.
-- **Puis** : **release v2.93.0** sur accord explicite.
+- **Puis** : **release v2.93.x** sur accord explicite.
 - **Optionnel** : cible qui REMPLIT le cadre (repli attendu et DIT) et filtre
   **3 nm** si Alain en a un.
 - **Référence chiffrée** : `C:\Astro\test\M33_Canaux_LRGBHa` (5 `canal_*.fit` +
@@ -301,16 +298,19 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 
 ## Pièges récents (encore actifs — le reste est passé dans `CLAUDE.md`)
 
-- **P7 — un choix de couleur peut rendre avec l'ANCIEN réglage** : les gains
-  SPCC/Gaia sont écrits dans le stacker par le **worker** (tour suivant), et la
-  clé VeraLux `_vl_params()` ne contient ni gains, ni équilibrage, ni Linear
-  Fit. Ne pas conclure « la case ne fait rien » : mesurer la séquence clic →
-  gains posés → rendu (STF **et** VeraLux) avant de corriger.
+- **Un rendu sans nouvelle frame n'est PAS vu par `_tick`** : `_tick` ne force
+  la chaîne que sur changement de `st["frames"]`. Tout point qui pousse une
+  image RECALCULÉE doit appeler `disp.notify_new_stack()` (leçon P7, désormais
+  dans `CLAUDE.md`).
 - **Échecs PRÉEXISTANTS** : `_test_espace_jalon72` (géométrie d'écran),
   `_test_reset_empilement_jalon76` [4] (course `_stop()`, sensible à la charge
-  CPU) et, dans `_test_sans_siril_jalon77`, « ligne Base SPCC rognée de 1-2 px »
-  + « menu écrasé » (prouvés sur HEAD dans un worktree : flaky, la longueur du
-  dossier temporaire décide).
+  CPU), dans `_test_sans_siril_jalon77`, « ligne Base SPCC rognée de 1-2 px » +
+  « menu écrasé » (prouvés sur HEAD dans un worktree : flaky, la longueur du
+  dossier temporaire décide), et — **constaté le 19/10** — `_test_lot1_p2_p3`
+  volet [3] « le profil corrigé est annoncé en AVIS » : le banc rejoue le cas
+  `Antlia R` sur le `config.json` RÉEL, or le test réel l'a déjà corrigé en
+  `QHYCCD MiniCam8M Red` → plus rien à reposer (échec reproduit sur HEAD, sans
+  les correctifs P7 : **environnemental, pas une régression**).
 - **Un jeu SANS le défaut ne mesure que l'ABSENCE DE COÛT** : 109 frames sans
   retournement donnaient « retirer `phase` ne change rien » ; sur **Sh2-132**
   (204 frames, **31 retournements**), la phase finalisait 22 frames dont 21 Ha
@@ -327,6 +327,7 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 
 - **19/10/2026** : **LOT 1 VALIDÉ EN RÉEL** (v2.93.0, commits locaux `011981c`
   + `d69add3`, non poussés) — SPCC/MiniCam + astro empilement arrêté ; les deux
-  défauts du test réel corrigés ; **P7 ouvert**, aucune release.
+  défauts du test réel corrigés ; **P7 ouvert** (corrigé ensuite en v2.93.1),
+  aucune release.
 - **19/10/2026** : **J5 VALIDÉ EN RÉEL** (v2.92.0, poussé) — ancre d'un `+Ha`
   toujours large bande (démarrage ancre R + Ha rejouée ; re-stack 12/12).

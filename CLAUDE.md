@@ -662,10 +662,27 @@ AFFICHÉE à 1,00 ») est né de cet angle mort.
   STF y vivent — ce thread ne doit JAMAIS y toucher).
 - **Le MOTEUR est dans la clé** `_vl_params()` : en changer relance la chaîne
   (STF publie l'image pré-étirée, VeraLux l'image étirée).
+- **LES CORRECTIONS DE COULEUR SONT DANS LA CLÉ** (défaut P7, v2.93.1) :
+  `_vl_params()` inclut `params_corrections(self.vl_compo)` — gains **effectifs**,
+  mode du canal L, « Linear Fit », équilibrage des canaux, normalisation commune,
+  lissage du combine et fusion du Ha (les **couches** `compo[0]` sont exclues :
+  trop coûteuses, une nouvelle frame force déjà la chaîne). Raison : sur le
+  chemin **par couche** (GraXpert / débruitage live en composition),
+  `corrections_couleur()` est appliquée **DANS** le worker — sans cela, changer
+  SEUL un gain (clic SPCC / Gaia) ne modifiait aucune clé et l'image **en cache**
+  était republiée, donc le **choix précédent** (mesuré : écart 0,0000).
+- **UN NOUVEAU RENDU SANS NOUVELLE FRAME DOIT FORCER LA CHAÎNE** (défaut P7,
+  v2.93.1) : `App._pousser_rendu()` arme `disp.notify_new_stack()` APRÈS la mise
+  en file. `ui/app._tick` ne force que sur changement de `st["frames"]` ; or un
+  clic SPCC/Gaia fait **poser les gains par le worker au tour suivant**, puis
+  pousser un rendu au **même** numéro de frame. Sans ce forçage la chaîne rend
+  son cache (STF **et** VeraLux) : « l'image ne se recalcule pas ». Tout nouveau
+  point qui pousse une image **recalculée sans frame** doit faire de même.
 - **PIÈGE — image d'attente** : en STF/manuel, l'image d'attente rendue par
   `_process_chaine()` est l'image **LINÉAIRE** (l'étirement STF s'applique
   dessus) ; seule la branche VeraLux rend l'aperçu STF déjà étiré. Rendre l'aperçu
   étiré en STF l'étirerait **deux fois**.
+
 - **Le solveur de netteté DÉDIÉ a été SUPPRIMÉ** (`_sh_worker`,
   `_process_nettete`, `_sh_key`, `_sh_*`) : la netteté fait partie de la chaîne
   unique. `sh_en_cours()` existe toujours mais renvoie **False** (compat) ;
@@ -688,7 +705,8 @@ AFFICHÉE à 1,00 ») est né de cet angle mort.
   requise dès que la case est cochée, **quel que soit le moteur**.
 - Bancs : `bancs/_test_chaine_pre_etirement_jalon125.py`,
   `bancs/_test_chroma_stf_jalon127.py`, `bancs/_test_chroma_nr_jalon63.py`,
-  `bancs/_test_chroma_halo_jalon65.py`.
+  `bancs/_test_chroma_halo_jalon65.py`, `bancs/_test_p7_recalcul_corrections.py`
+  (P7 : clé + forçage + STF/VeraLux/par couche).
 
 ## Image VeraLux gardée pendant un recalcul (jalon 128, v2.80.0)
 

@@ -45,6 +45,52 @@ def params_fusion_ha(compo: Any) -> dict | None:
     return dict(fusion) if isinstance(fusion, dict) else None
 
 
+def _hachable(v: Any, nd: int = 6) -> Any:
+    """Valeur HACHABLE et STABLE (pour une clé de mémoïsation) : les dicts
+    deviennent des tuples TRIÉS, les listes/tuples des tuples, les flottants
+    (y compris numpy) sont arrondis à `nd` décimales. Tout le reste (str, bool,
+    None) est rendu tel quel ; un type inconnu tombe sur son `repr`, ce qui
+    reste stable pour un objet immuable et ne lève JAMAIS."""
+    if isinstance(v, bool) or v is None or isinstance(v, str):
+        return v
+    if isinstance(v, (int, float, np.integer, np.floating)):
+        return round(float(v), nd)
+    if isinstance(v, dict):
+        return tuple(sorted((str(k), _hachable(x, nd)) for k, x in v.items()))
+    if isinstance(v, (list, tuple)):
+        return tuple(_hachable(x, nd) for x in v)
+    return repr(v)
+
+
+def params_corrections(compo: Any) -> tuple:
+    """SIGNATURE HACHABLE des CORRECTIONS DE COULEUR d'un job de composition
+    (P7, v2.93.1) : gains EFFECTIFS, mode L, « Linear Fit », équilibrage des
+    canaux, normalisation commune, lissage du combine et fusion du Ha.
+
+    POURQUOI : sur le chemin PAR COUCHE (GraXpert / débruitage live), le worker
+    applique lui-même `composition.corrections_couleur()` — changer SEUL un gain
+    (clic SPCC / gains Gaia) ne modifiait alors aucune clé de mémoïsation : la
+    chaîne republiait son image EN CACHE, donc le choix PRÉCÉDENT (défaut P7
+    mesuré au banc `_test_p7_recalcul_corrections`). Ces réglages entrent donc
+    dans `DisplayProcessor._vl_params()`.
+
+    Les COUCHES (`compo[0]`) sont VOLONTAIREMENT exclues : ce sont de grands
+    tableaux numpy, coûteux à parcourir à chaque tick ; une nouvelle frame force
+    déjà la chaîne par `notify_new_stack()`. Déballage TOLÉRANT : None (mode
+    mono), un dict ou tout autre type rend `()`, un tuple court rend des `None`
+    — la fonction ne lève JAMAIS."""
+    if not isinstance(compo, (tuple, list)):
+        return ()
+    n = len(compo)
+    return (_hachable(compo[2] if n > 2 else None),      # gains effectifs
+            _hachable(compo[3] if n > 3 else None),      # mode du canal L
+            _hachable(compo[4] if n > 4 else None),      # Linear Fit
+            _hachable(compo[5] if n > 5 else None),      # équilibrage
+            _hachable(compo[6] if n > 6 else None),      # normalisation commune
+            _hachable(compo[7] if n > 7 else None),      # lissage halos + seuil
+            _hachable(params_fusion_ha(compo)))          # fusion du Ha
+
+
 # ============================================================== jalon 75
 # ÉTAGE « NIVEAUX » DE L'ÉCRAN (les 3 barres de l'histogramme : Noir /
 # Médian / Blanc) et SATURATION PAR COULEUR.
@@ -752,7 +798,10 @@ class DisplayProcessor:
         débruitage live, netteté live (jalon 12), SCNR et démagenta (jalon
         22), plus les paramètres d'étirement : bouger l'un d'eux relance la
         chaîne. Le MOTEUR en fait partie (STF renvoie l'image pré-étirée,
-        VeraLux l'image étirée) : en changer relance donc la chaîne."""
+        VeraLux l'image étirée) : en changer relance donc la chaîne.
+        P7 (v2.93.1) : les CORRECTIONS DE COULEUR de la composition en font
+        aussi partie (`params_corrections`), sans quoi un clic sur un choix de
+        couleur pouvait republier l'image en cache — le choix PRÉCÉDENT."""
         return (self.vl_mode_res, round(self.vl_target_bg, 4),
                 round(self.vl_log_d, 3), self.vl_profil,
                 self.vl_graxpert, self.vl_graxpert_cmd,
@@ -780,11 +829,23 @@ class DisplayProcessor:
                 bool(self.vl_chroma),                  # v2.37.0 (option)
                 round(float(self.vl_chroma_force), 2),
                 round(float(self.vl_chroma_rayon), 2),  # v2.37.3 (résolution)
+                # P7 (v2.93.1) : LES CORRECTIONS DE COULEUR entrent dans la
+                # clé — gains EFFECTIFS (manuels × SPCC/Gaia), mode du canal L,
+                # équilibrage des canaux, « Linear Fit », normalisation commune,
+                # lissage du combine et fusion du Ha, lus dans `vl_compo` par
+                # `params_corrections()`. POURQUOI : sur le chemin PAR COUCHE le
+                # worker applique lui-même `corrections_couleur()` — un clic sur
+                # un choix de couleur ne changeait alors AUCUNE clé, et l'image
+                # en cache était republiée à l'identique (défaut P7 mesuré :
+                # « l'image garde le choix précédent »). Hors composition
+                # (`vl_compo` None), la signature est vide : rien ne change.
+                params_corrections(getattr(self, "vl_compo", None)),
                 # JALON 125 (VOLET A) : le MOTEUR entre dans la clé (dernier
                 # élément) — la chaîne pré-étirement est COMMUNE, seule la
                 # dernière étape dépend du moteur : en changer doit relancer
                 # la chaîne (STF publie l'image pré-étirée, VeraLux l'étirée).
                 self.stretch)
+
 
     def _vl_worker(self) -> None:
         """Thread CHAÎNE PRÉ-ÉTIREMENT (vol. A, jalon 125) : enchaîne — si

@@ -19,7 +19,36 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.93.0"
+AVASTACK_VERSION = "2.93.1"
+
+# v2.93.1 : P7 — UN CHOIX DE CORRECTION DE COULEUR RECALCULE TOUJOURS L'IMAGE
+#   (19/10/2026). Aucune release.
+#   DÉFAUT MESURÉ (signalé par Alain après la validation du Lot 1) : « au clic sur
+#   un choix de correction de couleur, l'image ne se recalcule pas toujours ou
+#   garde le choix précédent ». Banc `_test_p7_recalcul_corrections` sur l'état
+#   d'avant le correctif : écart 0,0000 entre l'image d'avant et celle d'après le
+#   changement, en STF comme en VeraLux comme sur le chemin PAR COUCHE — l'image
+#   en cache était republiée telle quelle.
+#   DEUX TROUS DE TRANSPORT (aucun n'était une absence de code) :
+#   ① `ui/app._pousser_rendu()` pousse une image RECALCULÉE sans nouvelle frame
+#      (un réglage a changé ; les gains SPCC/Gaia viennent d'être posés dans le
+#      stacker par le worker). `_tick` ne force la chaîne que sur changement de
+#      `st["frames"]` : au même numéro de frame, `_vl_key` ne bougeait pas et la
+#      chaîne rendait son RÉSULTAT EN CACHE. Correctif : `_pousser_rendu()` arme
+#      `disp.notify_new_stack()` après la mise en file (jamais avant : un message
+#      perdu — file pleine — ne doit pas coûter un calcul).
+#   ② `display._vl_params()` ne portait ni les GAINS, ni l'ÉQUILIBRAGE, ni le
+#      « LINEAR FIT ». Sur le chemin par couche (GraXpert / débruitage live en
+#      composition), le worker applique lui-même `corrections_couleur()` : un
+#      simple changement de gain ne changeait aucune clé. Correctif : nouvelle
+#      fonction `display.params_corrections(compo)` (gains effectifs, mode du
+#      canal L, Linear Fit, équilibrage, normalisation commune, lissage du
+#      combine, fusion du Ha) ajoutée à `_vl_params()`. Les COUCHES sont exclues
+#      (tableaux numpy : trop coûteux à chaque tick) et une nouvelle frame force
+#      déjà la chaîne. Déballage TOLÉRANT (`None`, tuple court, types inconnus →
+#      `repr`) : jamais d'exception, mode mono inchangé (signature vide).
+#   NON-RÉGRESSIONS : 125, 124, 12, 62, 128, 123, veralux 3, 79 (réactivité),
+#   compo UI 19 — vertes ; `ruff` propre, `pyright` 0.
 
 # v2.93.0 : LOT 1 DES AMÉLIORATIONS D'USAGE (P2 + P3) — LA BASE SPCC LA PLUS
 #   RICHE GAGNE, PLUS AUCUNE SUBSTITUTION SILENCIEUSE, ASTROMÉTRIE SERVIE EN

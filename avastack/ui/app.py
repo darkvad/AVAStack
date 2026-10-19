@@ -5958,6 +5958,17 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                                     restack=self.restack_info)
         try:
             self.q.put_nowait((show, self._dernier_st))
+            # P7 (v2.93.1) : ce rendu part SANS nouvelle frame (un réglage a
+            # changé) — `_tick` n'appelle `notify_new_stack()` que lorsque
+            # `st["frames"]` change, et la clé de mémoïsation ne porte ni les
+            # gains SPCC/Gaia posés ici par le worker, ni l'équilibrage, ni le
+            # Linear Fit. Sans ce forçage, la chaîne pré-étirement rendait son
+            # résultat EN CACHE : l'écran gardait le choix de couleur PRÉCÉDENT
+            # (défaut P7 mesuré au banc `_test_p7_recalcul_corrections`, en STF
+            # comme en VeraLux). Le forçage est posé APRÈS la mise en file :
+            # si le message est perdu (file pleine), il n'y a rien à rendre.
+            if getattr(self, "disp", None) is not None:
+                self.disp.notify_new_stack()
         except queue.Full:
             pass
 
