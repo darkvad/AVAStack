@@ -132,7 +132,9 @@ class SuiviBouchon:
     def indice(self, *a):
         return False
 
-    def peut_essayer(self, n, maintenant=None):
+    def peut_essayer(self, n, maintenant=None, seuil=None):
+        # P6 (lot 5) : signature alignée sur `SuiviAstrometrie.peut_essayer`
+        # (le worker passe `seuil=` pour une source « Stacks »).
         return True
 
     def raison_attente(self):

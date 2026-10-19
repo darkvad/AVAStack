@@ -13,6 +13,7 @@ from .opencv_cam import OpenCVCamera
 from .zwo import ZWOASICamera
 from .folder import FolderCamera
 from .multifolder import MultiFolderCamera
+from .stacks import StackFilesCamera
 from .qhy import QHYCamera
 from .playerone import PlayerOneCamera
 from .touptek import TouptekCamera
@@ -22,5 +23,9 @@ from .svbony import SVBonyCamera
 SOURCES = ["Simulée (démo)",
            "Dossier surveillé (brutes FITS/PNG/TIFF…)",
            "Composition multi-dossiers (RGB/HOO/SHO/LRGB)",
+           # P6 (lot 5) : empilements DÉJÀ faits, choisis FICHIER par FICHIER
+           # (un par filtre, où qu'ils soient) — test de tout l'aval sans
+           # réempiler les brutes. Les rôles sont SAISIS, jamais devinés.
+           "Stacks (fichiers FITS)",
            "OpenCV 0", "OpenCV 1", "ZWO ASI (SDK)", "QHY (SDK)",
            "Player One (SDK)", "Touptek/Altair (SDK)", "SVBONY (SDK)"]

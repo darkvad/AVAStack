@@ -205,6 +205,11 @@ FICHIERS_TYPES = (
     # « ⓘ » (`Bulle`, `astuce`) et mixin `Aides` dont `App` hérite — module NEUF,
     # typé dès sa création comme tout module nouveau.
     "avastack/ui/bulles.py",
+    # P6 (lot 5, v2.96.0) : la source « Stacks (fichiers FITS) » — le module
+    # CAMÉRA (`cameras/stacks.py`) et son PANNEAU (`ui/panels/stacks.py`), tous
+    # deux NEUFS, typés dès leur création comme tout module nouveau.
+    "avastack/cameras/stacks.py",
+    "avastack/ui/panels/stacks.py",
 )
 
 

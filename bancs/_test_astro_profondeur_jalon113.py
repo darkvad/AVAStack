@@ -154,9 +154,13 @@ class SuiviBouchon:
     def indice(self, *a):
         return False
 
-    def peut_essayer(self, n, maintenant=None):
+    def peut_essayer(self, n, maintenant=None,
+                     seuil=astro.ASTRO_MIN_FRAMES):
+        # P6 (lot 5) : le worker passe désormais explicitement le seuil de la
+        # source (1 pour « Stacks », ASTRO_MIN_FRAMES ailleurs) — le bouchon
+        # doit offrir la même signature que `SuiviAstrometrie`.
         self.appels.append(int(n))
-        return int(n) >= astro.ASTRO_MIN_FRAMES
+        return int(n) >= max(1, int(seuil))
 
     def raison_attente(self):
         return "en attente d'un empilement plus profond"

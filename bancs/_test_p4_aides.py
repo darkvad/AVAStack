@@ -120,7 +120,7 @@ root.destroy()
 print()
 
 # --- [3]/[4]/[5]/[6] L'application RÉELLE ----------------------------------
-print("[3] App._aide : 13 aides, mode BULLES par défaut")
+print("[3] App._aide : 14 aides (13 de P4 + celle du panneau Stacks), mode BULLES par défaut")
 config_mod.CONFIG.clear()
 app_mod.CONFIG = config_mod.CONFIG          # jamais le vrai config.json
 _intercepte = {}
@@ -131,11 +131,14 @@ ui = app_mod.App(root)
 root.update_idletasks()
 
 aides = getattr(ui, "_aides", [])
-verifie(len(aides) == 13, "13 aides déclarées (mesuré : %d)" % len(aides))
+# P6 (lot 5) : le panneau « Stacks (fichiers FITS) » porte une 14e aide. Elle
+# suit la MÊME règle que les 13 autres (un point de passage unique `_aide`) :
+# son texte n'apparaît donc PAS en gris dans la colonne.
+verifie(len(aides) == 14, "14 aides déclarées (mesuré : %d)" % len(aides))
 verifie(all(a.texte.winfo_manager() == "" for a in aides),
         "mode BULLES (défaut) : AUCUNE étiquette de texte posée")
 verifie(all(a.info.winfo_manager() == "pack" for a in aides),
-        "les 13 « ⓘ » sont posés")
+        "les 14 « ⓘ » sont posés")
 verifie(all(a.info.cget("text") == "ⓘ" for a in aides),
         "chaque aide porte bien le caractère ⓘ")
 verifie(all(a.info.cget("takefocus") in ("1", 1, True) for a in aides),
@@ -144,7 +147,7 @@ verifie(config_mod.CONFIG.get("aides_texte") is None,
         "défaut NON : la clé n'est pas fabriquée par la construction")
 
 print()
-print("[4] Les 13 textes ont TOUS migré (aucun texte gris orphelin)")
+print("[4] Les 14 textes ont TOUS migré (aucun texte gris orphelin)")
 
 
 def _parcourir(w, out):
@@ -229,7 +232,7 @@ ui.var_aides_texte.set(True)
 ui._on_aides_texte()
 root.update_idletasks()
 verifie(all(a.texte.winfo_manager() == "pack" for a in aides),
-        "bascule À CHAUD vers le texte : les 13 étiquettes sont posées")
+        "bascule À CHAUD vers le texte : les 14 étiquettes sont posées")
 verifie(all(a.info.winfo_manager() == "" for a in aides),
         "… et les « ⓘ » ont disparu")
 verifie(config_mod.CONFIG.get("aides_texte") is True,

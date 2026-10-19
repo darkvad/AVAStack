@@ -176,6 +176,9 @@ class ConfigUI:
     var_compo_dossiers: list[tk.StringVar]
     var_compo_roles: list[tk.StringVar]
     var_compo_gains: dict[str, tk.StringVar]
+    # P6 (lot 5) : sélection de la source « Stacks (fichiers FITS) ».
+    var_stacks_roles: list[tk.StringVar]
+    var_stacks_fichiers: list[tk.StringVar]
 
     # Méthodes de l'hôte (`App` et ses autres mixins) appelées ici.
     _annoncer_mesures: Callable[..., Any]
@@ -184,6 +187,7 @@ class ConfigUI:
     _lire_gains: Callable[..., Any]
     _lire_seuil_halos: Callable[..., Any]
     _maj_lbl_sharp: Callable[..., Any]
+    _maj_stacks_info: Callable[..., Any]
     _maj_visibilite_cadres: Callable[..., Any]
     _on_astro: Callable[..., Any]
     _on_cadence: Callable[..., Any]
@@ -250,6 +254,19 @@ class ConfigUI:
                     self.var_compo_gains[canal].set(str(float(v)))
         if c.get("compo_mode_l") in MODES_L:
             self.var_compo_mode_l.set(c["compo_mode_l"])
+        # --- P6 (lot 5) : source « Stacks (fichiers FITS) » — rôles et
+        # FICHIERS des NB_LIGNES_COMPO lignes. Restauration TOLÉRANTE : rôle
+        # hors liste → ligne ignorée ; un chemin qui n'existe plus est
+        # restauré quand même (l'utilisateur le VOIT et le corrige / le
+        # rebranche — le refus clair tombe au démarrage, jamais en silence).
+        for i in range(NB_LIGNES_COMPO):
+            v = c.get(f"stacks_role_{i}")
+            if isinstance(v, str) and v in ROLES:
+                self.var_stacks_roles[i].set(v)
+            fic = c.get(f"stacks_fichier_{i}")
+            if isinstance(fic, str) and fic:
+                self.var_stacks_fichiers[i].set(fic)
+        self._maj_stacks_info(verifier_fichiers=False)   # aucun disque ici
         # v2.36.0 : normalisation commune des canaux (option). L'instantané est
         # posé ici aussi : le stacker le recevra à sa création.
         if "norm_commune" in c:
@@ -679,6 +696,12 @@ class ConfigUI:
         c["compo_gains"] = {canal: self._lire_gains()[canal]
                             for canal in ("R", "G", "B")}
         c["compo_mode_l"] = self.var_compo_mode_l.get()
+        # P6 (lot 5) : la SÉLECTION de la source « Stacks » (rôle → fichier),
+        # relue au démarrage suivant. Les chemins sont écrits tels quels :
+        # c'est la seule trace de ce que l'utilisateur avait choisi.
+        for i in range(NB_LIGNES_COMPO):
+            c[f"stacks_role_{i}"] = self.var_stacks_roles[i].get()
+            c[f"stacks_fichier_{i}"] = self.var_stacks_fichiers[i].get().strip()
         # v2.36.0 : normalisation commune des canaux (option, booléen explicite
         # comme les autres cases : une case décochée ne doit pas hériter d'un True).
         c["norm_commune"] = bool(self.var_norm_commune.get())

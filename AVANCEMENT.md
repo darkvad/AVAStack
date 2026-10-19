@@ -15,7 +15,7 @@ pièges actifs, prochaine action. Le détail daté vit dans `avastack/__init__.p
 > sur `LRGBHa`. `master` = branche stable, releases uniquement ; merge vers `master`
 > seulement sur validation explicite (release).
 
-Versions : `LRGBHa` = **v2.95.0** (**136** halo coloré,
+Versions : `LRGBHa` = **v2.96.0** (**136** halo coloré,
 **137** neutralisation après étirement en STF, **141-B** interface, **J2** fusion
 du Ha au rouge + continuum, **J3/J3bis** cinq modes, **J4/J4.1** continuum trois
 méthodes et mesure indépendante de la case — tous **VALIDÉS EN RÉEL le 19/10** ;
@@ -23,7 +23,8 @@ méthodes et mesure indépendante de la case — tous **VALIDÉS EN RÉEL le 19/
 SPCC la plus riche + astrométrie servie sans frame, **VALIDÉ EN RÉEL le 19/10** ;
 **P7** recalcul après un choix de couleur, **CORRIGÉ ET VALIDÉ EN RÉEL le 19/10** ;
 **P1** cadence de re-mesure, **VALIDÉ EN RÉEL le 19/10** ; **P4** infobulles
-« ⓘ », **VALIDÉ EN RÉEL le 19/10**)
+« ⓘ », **VALIDÉ EN RÉEL le 19/10** ; **P6** source « Stacks (fichiers FITS) »,
+**LIVRÉ le 19/10** — **test réel en attente**)
 · `master` publié = **v2.80.0** · Store publié = **v2.71.1**.
 
 **Gouvernance** : **aucune release GitHub sans l'accord d'Alain** ; **à CHAQUE jalon validé,
@@ -32,86 +33,80 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 
 ---
 
-## Session du 19/10/2026 (nuit) — **LOT 3 = P4 VALIDÉ EN RÉEL** (v2.95.0) → **Lot 4 = P5**
+## Session du 19/10/2026 (nuit) — **LOT 5 = P6 LIVRÉ** (v2.96.0, à valider en réel) — lots 4/5 INVERSÉS
 
 ### État actuel
-- **v2.95.0 sur `LRGBHa`** — **aucune release**. Code P4 = commit `2ab5d82`,
-  **poussé** (`origin/LRGBHa`). Base poussée précédente : `e53d7eb` (doc P1,
-  code P1 = `cb75201`).
-- **P4 VALIDÉ EN RÉEL par Alain (19/10)** : les 13 textes d'aide de la colonne
-  sont des infobulles derrière un « ⓘ », et l'option « Aides en texte dans la
-  colonne » rétablit l'ancien affichage (défaut NON, bascule immédiate,
-  persistée).
-- **Mesure faite AVANT et APRÈS le code** (`bancs/_mesure_p4_aides.py`,
-  VRAIE interface, sections ouvertes par le banc, JSON
-  `bancs/_mesure_p4_aides.json`) : **avant** 13 aides = **1 267 px = 84,5
-  lignes = 23,5 % de la colonne** ; **après** colonne **5 405 → 4 703 px =
-  702 px repris** (46,8 lignes, **13 % de la colonne**), les 13 « ⓘ » coûtant
-  247 px au total. Gain plus grand encore cadres « Fusion Ha » / « Affichage »
-  dépliés (l'aide du Ha à elle seule : 304 px).
-- **Bancs** : P4 **vert (34 vérifications)** ; non-régressions 72 / 47 / 19 /
-  5 / 41 / 84 / 87 / 48.3 / 79 / 6 **vertes** ; garde-fou VERT (pyright **0**
-  sur **52** fichiers typés, surface de `app.py` inchangée) ; `ruff` propre.
-- **Échec PRÉEXISTANT confirmé sur HEAD** (worktree) : banc 72 « aucun widget
-  écrasé : `('écrasé', 'Menu', 'Menu', 99, 1300)` » — reproduit SANS ce lot.
-  Banc Lot 1 `[7]` (profil SPCC déjà corrigé dans le `config.json` local) :
-  inchangé, préexistant.
+- **v2.96.0 sur `LRGBHa`** — **aucune release**. Dernier commit poussé avant ce
+  lot : `5601f6` (doc, base `2ab5d82` pour P4).
+- **ORDRE DES LOTS INVERSÉ (demande d'Alain du 19/10)** : le **lot 5 = P6**
+  (source « Stacks ») passe AVANT le **lot 4 = P5** (réactivité), qui devient le
+  prochain lot. P5 n'a reçu AUCUN début de code : son audit mesuré reste à faire.
+- **P6 LIVRÉ, EN ATTENTE DE TEST RÉEL** : nouvelle source « Stacks (fichiers
+  FITS) » — un FITS par filtre choisi, **rôle indiqué** (jamais deviné), lecture
+  **une fois** par fichier, **calibration ignorée**, **seuil de profondeur = 1**,
+  messages « empilement fourni (profondeur non vérifiée) », refus seulement si
+  l'en-tête AVAStack dit « ETIRE » (sinon avertissement MESURÉ).
+  Détail durable dans `CLAUDE.md` (« Source « Stacks (fichiers FITS) » »).
+- **Bancs** : P6 **vert (39 vérifications)** — dont le worker RÉEL avec un dark
+  à 2,0 qui prouve que la calibration est court-circuitée. Non-régressions
+  **vertes** : 19 (multifolder), 42 (cadence), P1, compo worker 19, 113, 115,
+  133, 56, 47 (visibilité), P4 (14 aides), 129, 76 (2e passage), 53, 120, 113b,
+  87, 5, 41, garde-fou (**pyright 0 sur 54 fichiers typés**, surface `app.py`
+  inchangée) ; `ruff` propre sur les fichiers touchés.
+- **Échecs PRÉEXISTANTS** : `_test_lot1_p2_p3` volet [3] (profil SPCC déjà
+  corrigé dans le `config.json` local) — inchangé, cf. « Pièges récents ».
 
-### Fichiers modifiés (session P4)
-- `avastack/ui/bulles.py` (**neuf, typé**) : `Bulle` (Toplevel
-  `overrideredirect`, 400 ms, une seule à la fois, ramenée dans l'écran),
-  `astuce(widget, texte)` (souris + clavier, `<Destroy>` nettoie) et mixin
-  `Aides` (`_aide`, `_placer_aide`, `_on_aides_texte`, `_maj_aides`) ;
-- `avastack/ui/app.py` : import `_Aides` (alias PRIVÉ → surface inchangée),
-  héritage, `_aides` / `_aides_mode_texte` posés AVANT `_build_ui()` ;
-- `avastack/ui/panels/files.py` : case « Aides en texte dans la colonne »
-  (ligne dédiée) + `_globals_app` local ;
-- `avastack/ui/config_ui.py` : `aides_texte` persisté à la fermeture ;
-- `avastack/ui/panels/{compo,color,bgnoise,external,display}.py` : 13 aides
-  migrées vers `self._aide(...)` (2 posées SUR une ligne de réglage :
-  `ligne=row_lh`, `ligne=row_fq`) + déclaration `_aide` pour pyright ;
-- `bancs/_test_p4_aides.py` (neuf, 34 vérifications),
-  `bancs/_mesure_p4_aides.py` (neuf) + `bancs/_mesure_p4_aides.json`,
-  `bancs/_test_refactoring_garde_fou.py` (liste typée + `bulles.py`) ;
-  `avastack/__init__.py` (2.95.0 + changelog), `CLAUDE.md`, `AVANCEMENT.md`.
+### Fichiers modifiés (session P6)
+- `avastack/cameras/stacks.py` (**neuf, typé**) : `StackFilesCamera`
+  (`read()` → `(image, rôle)` à plusieurs, image seule à un ; `relire()` ;
+  `pending` ; aucune pose unitaire), `entete_avastack`, `dit_etire`
+  (motif `\bETIRE\b`), `avertissement_lineaire` (mesure) ;
+- `avastack/cameras/__init__.py` : export + entrée « Stacks (fichiers FITS) » ;
+- `avastack/ui/panels/stacks.py` (**neuf, typé**) : 5 lignes rôle + fichier,
+  ligne d'aide, 14e aide « ⓘ » ;
+- `avastack/ui/constants.py` : section pliable `stacks` ;
+- `avastack/ui/app.py` : panneau + héritage, visibilité par source,
+  `_make_camera`, `_lire_roles_fichiers_stacks`, `_maj_stacks_info`,
+  `_mode_compo_de`, `_source_stacks`, `_source_fichiers`,
+  `_seuil_profondeur`, `_suffixe_cadence`, `_meme_fichier`,
+  fermeture/réouverture sur sélection changée, avertissements au journal ;
+- `avastack/core/worker.py` : calibration court-circuitée, mesures après
+  lecture de TOUS les fichiers, seuil de profondeur, messages, `relire()` +
+  seuil des cadences à chaque démarrage, pause qui ne lit rien ;
+- `avastack/processing/astrometrie.py` : `peut_essayer(..., seuil=…)` ;
+- `avastack/ui/config_ui.py` : `stacks_role_i` / `stacks_fichier_i` (aucune
+  sonde disque à la restauration) ;
+- `bancs/_test_lot5_p6_stacks.py` (neuf, 39 vérifications),
+  `bancs/_test_p1_cadence.py`, `_test_lot1_p2_p3.py`,
+  `_test_astro_profondeur_jalon113.py`, `_test_astro_domaine_jalon115.py`,
+  `_test_p4_aides.py` (13 → 14 aides), `_test_refactoring_garde_fou.py` ;
+  `avastack/__init__.py` (2.96.0 + changelog), `CLAUDE.md`, `AVANCEMENT.md`.
 
 ### Décisions
-- **Le compte réel est 13, pas 31** : la liste du 19/10 comptait TOUTES les
-  étiquettes grises `wraplength`, y compris les lignes d'ÉTAT (`lbl_*`) qui
-  portent une information VIVANTE et ne doivent pas devenir des bulles.
-  Mesuré à l'AST puis à l'exécution : 13 textes d'aide statiques.
-- **Un point de passage unique** `App._aide(...)` (mixin `Aides`) : c'est lui
-  qui crée l'étiquette ET le « ⓘ », donc l'option bascule TOUT d'un coup.
-- **Défaut = bulles** (l'option « Aides en texte » est DÉCOCHÉE), et la case
-  vit dans « Fichiers de travail et journal » (panneau « application », en
-  haut de la colonne) ; la ligne des boutons était pleine → ligne dédiée.
-- **`ligne=` quand la ligne du réglage existe** : le « ⓘ » s'y pose à droite,
-  coût ZÉRO — jamais sur une ligne contenant `expand=True` (leçon jalon 72).
-- **Pas de bulle sur le panneau histogramme** (hors colonne gauche, à droite) :
-  sa légende reste un texte ; à faire seulement si Alain le demande.
+- **Inversion 4/5 demandée par Alain** : P6 d'abord, P5 ensuite — aucun code de
+  P5 n'est laissé en chantier.
+- **Le rôle n'est JAMAIS déduit** : ni du nom (`canal_*.fit`), ni de `FILTER`,
+  ni de `AVAFRAME` (jamais lue). Un FILTER contradictoire = avertissement dans
+  le panneau ; le choix de l'utilisateur fait foi.
+- **Refus sur PREUVE seulement** : `AVAVUE` disant « ETIRE » ; tout le reste est
+  accepté avec une mesure au journal (fond médian, part de pixels à 1,00).
+- **Seuil de profondeur = 1 pour cette source** (`App._seuil_profondeur`), et
+  `seuil` passé explicitement à `peut_essayer` (défaut inchangé pour tous les
+  autres appelants).
+- **`relire()` au démarrage** : sans lui, « Démarrer » après « Arrêter »
+  repartait d'un empilement VIDE (défaut trouvé par le banc, pas en réel).
+- **`_source_fichiers()` distincte de `_cadence_dossier()`** : la fin de source
+  et la pause concernent toute source de FICHIERS ; la cadence reste réservée
+  aux dossiers.
 
-### Problèmes ouverts (liste d'Alain du 19/10) — **P1, P2, P3, P4, P7 TOUS VALIDÉS**
-- **P1, P2, P3, P4, P7 : VALIDÉS EN RÉEL** le 19/10 (détails durables dans
-  `CLAUDE.md` : cadence de re-mesure, base SPCC la plus riche, astrométrie
-  servie en fin de source, recalcul après un choix de couleur, infobulles ⓘ).
-- **Restent P5 (réactivité) et P6 (source « stacks » par fichiers)** — ce sont
-  les deux derniers points de la liste du 19/10.
-
-### Prochaines étapes
-1. **LOT 4 = P5** (audit MESURÉ de la réactivité) : mesurer AVANT de corriger,
-   puis correctifs chiffrés. **Accord d'Alain avant de démarrer le lot 5.**
-2. **LOT 5 = P6** (source « stacks » par fichiers).
-3. **Release v2.95.x** sur accord explicite (aucune release depuis v2.80.0).
-
-### Rappel des lots suivants (liste d'Alain du 19/10)
-- **P5 — contrôles moins réactifs** (cases, listes, spinners, curseurs) : audit
-  **mesuré** avant correctifs (cf. chantier).
-- **P6 — nouvelle source = stacks déjà empilés**, par **SÉLECTION DE
-  FICHIERS** (un FITS par filtre voulu, où qu'ils soient — pas un dossier
-  unique). **Rôle indiqué par l'utilisateur** (jamais déduit : un stack peut
-  venir d'un autre logiciel) et **seuil de profondeur forcé à 1** pour cette
-  source, sinon `ASTRO_MIN_FRAMES` bloquerait astro/Gaia/SPCC. But : tester
-  sans réempiler les brutes.
+### Problèmes ouverts / prochaines étapes
+1. **TEST RÉEL de P6 par Alain** (référence : `C:\Astro\test\M33_Canaux_LRGBHa`,
+   5 `canal_*.fit` → LRGB+Ha déduite des rôles). À surveiller : astrométrie
+   (les couches n'ont ni OBJCTRA/OBJCTDEC ni RA/DEC — saisir AD/Dec ou utiliser
+   ASTAP), SPCC, enregistrements par canal.
+2. **Puis LOT 4 = P5** (audit MESURÉ de la réactivité) — **accord d'Alain avant
+   de démarrer**.
+3. **Release v2.96.x** sur accord explicite (aucune release depuis v2.80.0).
 
 ---
 ## Points d'attention
@@ -136,10 +131,11 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
   (boîte MODALE, sinon blocage), jamais `grid` + `pack` dans le même conteneur.
 
 ### Contexte de reprise (à coller — 2 phrases)
-Arbre **v2.95.0** sur `LRGBHa` (**poussé**) : Lot 1, P7, P1 et **P4 validés en
-réel** le 19/10, **aucune release**. **Prochaine action** : **LOT 4 = P5** —
-mesurer la réactivité (curseurs, cases, listes, spinners, `_tick`, `pack/forget`)
-AVANT tout correctif, puis corriger ce qui est chiffré.
+Arbre **v2.96.0** sur `LRGBHa` : Lot 1, P7, P1 et **P4 validés en réel** le
+19/10, **P6 livré** (source « Stacks ») et **en attente de test réel**, aucune
+release. **Prochaine action** : tester P6 sur `C:\Astro\test\M33_Canaux_LRGBHa`
+(5 rôles L/R/G/B/Ha), puis **LOT 5 = P5** — mesurer la réactivité AVANT tout
+correctif.
 
 ---
 
@@ -164,8 +160,8 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 | **1** | **P2 + P3** | base SPCC la plus riche, zéro substitution silencieuse, `_astro_demande` | **VALIDÉ EN RÉEL le 19/10** ; **P7 validé en réel** (v2.93.1) |
 | 2 | P1 | cadence de re-mesure Gaia/SPCC | **VALIDÉ EN RÉEL le 19/10** (v2.94.0) |
 | 3 | P4 | infobulles ⓘ | **VALIDÉ EN RÉEL le 19/10** (v2.95.0) |
-| 4 | P5 | audit MESURÉ de la réactivité | en attente |
-| 5 | P6 | source « stacks » : fichiers choisis, **rôles saisis**, seuil de profondeur = 1 | en attente |
+| **4** | **P6** | source « stacks » : fichiers choisis, **rôles saisis**, seuil de profondeur = 1 | **LIVRÉ le 19/10** (v2.96.0) — **test réel en attente** ; lots 4/5 INVERSÉS |
+| **5** | **P5** | audit MESURÉ de la réactivité | **PROCHAIN** (aucun code commencé) |
 
 ### Lot 1 — P2 + P3 : **VALIDÉ EN RÉEL le 19/10** (v2.93.0) — détails dans `CLAUDE.md`
 Base SPCC **la plus riche** (compteurs au journal, extraction jamais plus pauvre,
@@ -195,7 +191,7 @@ Mesuré AVANT de coder : 6,87 s de mesures pour 65 s d'empilement (JSON
   **702 px repris** (46,8 lignes, 13 % de la colonne ; 5 405 → 4 703 px).
 - **Banc** : `bancs/_test_p4_aides.py`, 34 vérifications, VERT.
 
-### P5 — réactivité (lot 4) — **PROCHAIN**
+### P5 — réactivité (lot 5, APRÈS P6) — **PROCHAIN**
 - **Mesurer d'abord, corriger ensuite** : outil de mesure nommé
   `bancs/_mesure_p5_reactivite.py` (motif P1/P4 : chiffres AVANT le code,
   JSON conservé), plus `Guet.SEUIL_S` à 0,25 s temporairement et
@@ -207,29 +203,32 @@ Mesuré AVANT de coder : 6,87 s de mesures pour 65 s d'empilement (JSON
   conditionnelles, tick adaptatif). Audit d'architecture éventuel : mode plan,
   AVEC ces mesures. **Un lot = un jalon, avec l'accord d'Alain.**
 
-### P6 — source « Stacks (fichiers FITS) » (lot 5)
+### P6 — source « Stacks (fichiers FITS) » (lot 4, INVERTÉ avec P5) — **LIVRÉ le 19/10 (v2.96.0), test réel en attente**
 - **Sélection de FICHIERS**, pas un dossier : jusqu'à `NB_LIGNES_COMPO` (5)
   lignes **rôle → fichier** ; le **RÔLE est celui INDIQUÉ**, jamais déduit
   (`canal_*.fit`, `FILTER`, `AVAFRAME` ne sont PAS des contrats ; un `FILTER`
   contradictoire n'est qu'un avertissement, le choix de l'utilisateur fait foi).
 - **`AVAFRAME` n'est PAS lue** ; seuil de profondeur **forcé à 1** pour cette
-  source (`_seuil_profondeur()`), sinon astro/Gaia/SPCC seraient bloqués.
-  Messages : « empilement fourni (profondeur non vérifiée) », aucun « N frames »
-  inventé.
+  source (`App._seuil_profondeur`, passé à `peut_essayer`), sinon astro/Gaia/
+  SPCC seraient bloqués. Messages : « empilement fourni (profondeur non
+  vérifiée) », aucun « N frames » inventé.
 - `avastack/cameras/stacks.py` : `StackFilesCamera` lit chaque fichier **une
   fois** et rend `(image, rôle)` → `_mode_compo`, composition déduite des rôles,
   tout l'aval inchangé. **Calibration ignorée**, cadence/rafale inactives, un
-  seul fichier = **Mono**.
-- **Linéarité** : refus seulement si l'en-tête AVAStack dit non linéaire ;
-  sinon **avertissement MESURÉ** (fond médian, plage) pour un fichier venu
-  d'ailleurs — jamais un refus sur une supposition.
-- Ajout à `cameras.SOURCES`, panneau dédié, persistance rôle/fichier. Banc :
-  `M33_Canaux_LRGBHa` → LRGB+Ha déduite des rôles, seuil 1, zéro calibration,
-  lecture unique ; FITS sans en-tête AVAStack accepté.
+  seul fichier = **Mono**. `relire()` au démarrage d'une session.
+- **Linéarité** : refus SEULEMENT si l'en-tête AVAStack dit « ETIRE » ; sinon
+  **avertissement MESURÉ** (fond médian, part de pixels à 1,00) au journal.
+- Mesures : attendues APRÈS la lecture de TOUS les fichiers (la source est
+  finie), armées une fois à la fin de source.
+- Ajout à `cameras.SOURCES`, panneau dédié (`ui/panels/stacks.py`), persistance
+  `stacks_role_i` / `stacks_fichier_i`. Banc `_test_lot5_p6_stacks.py` (39
+  vérifications) : `M33_Canaux_LRGBHa` → LRGB+Ha déduite des rôles, seuil 1,
+  zéro calibration (dark 2,0), lecture unique ; FITS sans en-tête AVAStack
+  accepté.
 
 ---
 
-## En attente / prochaine session (état au 19/10 — `LRGBHa`, v2.95.0)
+## En attente / prochaine session (état au 19/10 — `LRGBHa`, v2.96.0)
 
 - **J2 à J5 sont CLOS** (validés en réel le 19/10).
 - **Lot 1 (P2 + P3) VALIDÉ EN RÉEL** le 19/10 : SPCC/MiniCam et astrométrie à
@@ -240,15 +239,27 @@ Mesuré AVANT de coder : 6,87 s de mesures pour 65 s d'empilement (JSON
   dans `_photo_tour` / `_spcc_tour` / `_astro_tour`, passe finale dans
   `_armer_astro_fin_source`, états avec échéance.
 - **P4 VALIDÉ EN RÉEL** le 19/10 (v2.95.0) : `ui/bulles.py` (`Bulle` +
-  `astuce` + mixin `Aides`), 13 aides migrées, option `aides_texte`
-  (« Aides en texte dans la colonne »), **702 px repris** (mesuré).
-  Détail en « P4 — infobulles ».
-- **Prochaine action unique** : **LOT 4 = P5** — **MESURER d'abord** la
-  réactivité (aucun correctif avant les chiffres), puis corriger ce qui est
-  chiffré. Détail en « P5 — réactivité ».
-- **Puis LOT 5 = P6** (source stacks par fichiers) — **accord d'Alain avant
-  chaque lot**.
-- **Puis** : **release v2.95.x** sur accord explicite.
+  `astuce` + mixin `Aides`), 13 aides migrées (+1 en P6 = **14**), option
+  `aides_texte`, **702 px repris** (mesuré). Détail en « P4 — infobulles ».
+- **P6 LIVRÉ** le 19/10 (v2.96.0) — **TEST RÉEL EN ATTENTE** : source « Stacks
+  (fichiers FITS) », rôles saisis, calibration ignorée, seuil de profondeur 1.
+  Détail en « P6 — source Stacks ».
+- **Prochaine action unique** : **TEST RÉEL de P6** sur
+  `C:\Astro\test\M33_Canaux_LRGBHa` (5 `canal_*.fit`, rôles L/R/G/B/Ha →
+  LRGB+Ha), puis **LOT 5 = P5** (audit MESURÉ de la réactivité, aucun correctif
+  avant les chiffres), **avec l'accord d'Alain**.
+- **Puis** : **release v2.96.x** sur accord explicite.
+- **Optionnel** : cible qui REMPLIT le cadre (repli attendu et DIT) et filtre
+  **3 nm** si Alain en a un.
+- **Référence chiffrée** : `C:\Astro\test\M33_Canaux_LRGBHa` (5 `canal_*.fit` +
+  fiches ; `AVACOMPO` = LRGB+Ha, **normalisation COMMUNE**, lissage 117d).
+  Rejouer : `python bancs/_diag_fusion_ha_echelles.py --canaux <dossier>
+  --norm-commune --lissage-halos --poids 1.5` (`--autotest` contrôle l'outil).
+- **Ne pas retoucher** : `ajout_rouge` (AU BIT), la formule `bandes_passantes`
+  7 nm, α, le poids, le principe « repli = bandes passantes AU BIT ».
+- **141-B validée** (rien à retester) ; **teinte des COINS** notée, sans action.
+- Retour arrière en un geste : `git checkout -- avastack/core/worker.py
+  avastack/ui/app.py`.
 - **Optionnel** : cible qui REMPLIT le cadre (repli attendu et DIT) et filtre
   **3 nm** si Alain en a un.
 - **Référence chiffrée** : `C:\Astro\test\M33_Canaux_LRGBHa` (5 `canal_*.fit` +

@@ -526,17 +526,24 @@ class SuiviAstrometrie:
         return self.wcs is not None
 
     def peut_essayer(self, n_frames: int,
-                     maintenant: float | None = None) -> bool:
+                     maintenant: float | None = None,
+                     seuil: int = ASTRO_MIN_FRAMES) -> bool:
         """Une tentative de résolution a-t-elle un sens MAINTENANT ?
 
         Politique (corrigée le 23/09/2026 après un constat réel d'Alain) :
-        indice posé, pas déjà résolu, empilement au moins ASTRO_MIN_FRAMES,
-        plafond ASTRO_MAX_ESSAIS non atteint — puis, s'il y a déjà eu des
-        essais : délai CROISSANT avec leur nombre (20 s, 40 s, 60 s… plafonné)
-        OU empilement qui a DOUBLÉ depuis le dernier essai (information neuve).
-        Le délai fixe de 20 s d'avant épuisait le quota en deux minutes, pendant
-        que l'empilement était encore trop court — et l'appli n'essayait plus
-        jamais, même à 33 frames."""
+        indice posé, pas déjà résolu, empilement au moins `seuil`
+        (ASTRO_MIN_FRAMES par défaut), plafond ASTRO_MAX_ESSAIS non atteint —
+        puis, s'il y a déjà eu des essais : délai CROISSANT avec leur nombre
+        (20 s, 40 s, 60 s… plafonné) OU empilement qui a DOUBLÉ depuis le
+        dernier essai (information neuve). Le délai fixe de 20 s d'avant
+        épuisait le quota en deux minutes, pendant que l'empilement était
+        encore trop court — et l'appli n'essayait plus jamais, même à 33
+        frames.
+
+        `seuil` (P6, lot 5) : la source « Stacks » fournit un empilement déjà
+        fait, dont la profondeur réelle n'est pas connue — son seuil vaut 1
+        (le worker le passe explicitement). Le défaut reste la constante du
+        module, donc les appels existants ne changent pas de comportement."""
         if self.resolu or not self.pret:
             return False
         if self.donnees_absentes:
@@ -549,7 +556,7 @@ class SuiviAstrometrie:
                 return False
             self.donnees_absentes = ""
         n = int(n_frames)
-        if n < ASTRO_MIN_FRAMES:
+        if n < max(1, int(seuil)):
             return False
         if self.essais >= ASTRO_MAX_ESSAIS:
             return False

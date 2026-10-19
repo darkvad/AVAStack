@@ -43,6 +43,14 @@ from ..images import CFA_MODE                            # noqa: F401 (ré-expor
 from ..cameras import (SimulatedCamera, OpenCVCamera, ZWOASICamera,
                        FolderCamera, MultiFolderCamera, QHYCamera,
                        PlayerOneCamera, TouptekCamera, SVBonyCamera)
+# P6 (lot 5) : la source « Stacks (fichiers FITS) ». Importée sous un nom
+# PRIVÉ : la surface publique de `app.py` est FIGÉE (banc garde-fou) et n'a
+# aucune raison d'exposer cette classe — les bancs l'importent depuis
+# `avastack.cameras`.
+from ..cameras import StackFilesCamera as _StackFilesCamera
+# Le MODULE lui-même (même nom privé) : `dit_etire` / `entete_avastack` sont
+# lus par le panneau pour avertir AVANT le démarrage.
+from ..cameras import stacks as _stacks_mod
 # Jalon 105a : `SOURCES` n'est plus utilisé DANS `app.py` (le panneau
 # « Caméra » vit désormais dans `ui/panels/camera.py`) mais reste RÉ-EXPORTÉ
 # ici (surface publique figée).
@@ -140,6 +148,8 @@ from .panels.folder import PanneauDossierSurveille as _PanneauDossierSurveille
 # pour préserver l'interception des bancs (`ui.CONFIG`), comme le correctif
 # du jalon 105a dans `ui/widgets/collapsible.py`.
 from .panels.compo import PanneauComposition as _PanneauComposition
+# P6 (lot 5) : panneau « Stacks (fichiers FITS) » — même motif (mixin privé).
+from .panels.stacks import PanneauStacks as _PanneauStacks
 from .panels.calib import PanneauCalibration as _PanneauCalibration
 from .panels.stack import PanneauEmpilement as _PanneauEmpilement
 from .panels.bgnoise import PanneauFondGrain as _PanneauFondGrain
@@ -242,7 +252,7 @@ from ..external.detection import (
 
 class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
           _PanneauFichiers, _PanneauCamera, _PanneauCadence,
-          _PanneauDossierSurveille, _PanneauComposition,
+          _PanneauDossierSurveille, _PanneauComposition, _PanneauStacks,
           _PanneauCalibration, _PanneauEmpilement, _PanneauFondGrain,
           _PanneauNette, _PanneauAffichage, _PanneauCouleur,
           _PanneauEtatCalculs, _PanneauTraitementExterne, _PanneauSortie,
@@ -909,6 +919,11 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # --- Composition multi-filtres (panneau extrait au jalon 105b dans
         # `avastack/ui/panels/compo.py` ; jalon 19).
         self._poser_panneau_compo(left)
+
+        # --- Stacks (fichiers FITS) : P6 (lot 5) — panneau extrait dans
+        # `avastack/ui/panels/stacks.py` ; visible uniquement pour cette
+        # source (empilements déjà faits, un fichier par rôle).
+        self._poser_panneau_stacks(left)
 
         # --- Calibration (panneau extrait au jalon 105b dans
         # `avastack/ui/panels/calib.py` ; ancre STABLE des cadres commutables
@@ -2090,8 +2105,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         if self.spcc is None:
             return
         txt = self.spcc.texte_resume()
-        suffixe = _cadence_mod.suffixe_etat(getattr(self, "_cadence_spcc", None),
-                                           self._profondeur_mesures())
+        suffixe = self._suffixe_cadence(getattr(self, "_cadence_spcc", None))
         if txt and suffixe:
             txt = f"{txt} — {suffixe}"
         if txt and txt != self.spcc_info:
@@ -3328,15 +3342,58 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         cam = self.camera
         if cam is None:
             return 0
-        if self._mode_compo:
-            return int(getattr(cam, "pending", 0))
-        return len(getattr(cam, "_pending", []))
+        return int(getattr(cam, "pending", 0) or 0)
 
     def _cadence_dossier(self) -> bool:
         """True si la cadence s'applique à la source courante (jalon 42) :
         dossier surveillé / composition multi-dossiers SEULEMENT — les
         files des caméras SDK ne doivent jamais s'accumuler (mémoire)."""
         return isinstance(self.camera, (FolderCamera, MultiFolderCamera))
+
+    # --- P6 (lot 5) : la source « Stacks (fichiers FITS) » -------------------
+    def _source_stacks(self) -> bool:
+        """True si la source courante est « Stacks (fichiers FITS) »."""
+        return isinstance(self.camera, _StackFilesCamera)
+
+    def _source_fichiers(self) -> bool:
+        """True pour TOUTE source de FICHIERS (dossier, composition, stacks).
+
+        Distincte de `_cadence_dossier` (qui ne parle que de CADENCE) : c'est
+        cette notion-là qui décide qu'une source est FINIE quand `read()` ne
+        rend plus rien (`_armer_astro_fin_source`) et qu'on ne lit pas pendant
+        une pause — une brute lue pendant la pause serait marquée traitée puis
+        jetée."""
+        return isinstance(self.camera, (FolderCamera, MultiFolderCamera,
+                                        _StackFilesCamera))
+
+    @staticmethod
+    def _mode_compo_de(cam: Any) -> bool:
+        """True si `read()` rend un couple (image, rôle) : composition
+        multi-dossiers, ou source « Stacks » à PLUSIEURS fichiers. Un seul
+        fichier fourni = empilement direct (« Mono »), pas une composition."""
+        if isinstance(cam, MultiFolderCamera):
+            return True
+        return isinstance(cam, _StackFilesCamera) and bool(cam.par_roles)
+
+    def _seuil_profondeur(self) -> int:
+        """Seuil de profondeur opposé à TOUTES les mesures (astro, Gaia, SPCC).
+
+        P6 : une source « Stacks » fournit UN empilement par rôle — déjà
+        profond, mais dont la profondeur réelle (`AVAFRAME`) n'est PAS lue.
+        Le seuil tombe donc à 1 : sinon `ASTRO_MIN_FRAMES` (3) bloquerait
+        toutes les mesures sur un empilement fourni. Partout ailleurs, le
+        seuil reste celui du module d'astrométrie (une seule source)."""
+        return 1 if self._source_stacks() else astro_mod.ASTRO_MIN_FRAMES
+
+    def _suffixe_cadence(self, cadence: Any) -> str:
+        """Suffixe d'état d'une cadence de re-mesure (« prochaine mesure à … »).
+
+        P6 : VIDE pour une source « Stacks » — les fichiers fournis ne
+        s'approfondiront jamais, annoncer une échéance en « frames » serait
+        une invention (la mesure unique part à la fin de source)."""
+        if self._source_stacks():
+            return ""
+        return _cadence_mod.suffixe_etat(cadence, self._profondeur_mesures())
 
     def _autoriser_lecture(self) -> bool:
         """Décision de cadence (jalon 42) : True = le worker peut lire une
@@ -3571,6 +3628,8 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
           - source caméra (simulée, OpenCV, SDK) → contrôles caméra seuls ;
           - « Dossier surveillé » → cadre dossier + cadence d'empilement ;
           - « Composition multi-dossiers » → cadre composition + cadence.
+          - « Stacks (fichiers FITS) » → cadre stacks SEUL (P6 : aucun scan,
+            aucune cadence — les fichiers sont fournis, pas surveillés).
         Le réglage de rafale (« Empiler les brutes », jalons 42/45) est un
         cadre UNIQUE (`frm_rafale`) partagé par les deux modes dossier — il
         n'apparaît plus pour une vraie caméra (sans objet). On CACHE
@@ -3608,22 +3667,27 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         source = self.var_source.get()
         est_dossier = source.startswith("Dossier")
         est_compo = source.startswith("Composition")
+        # P6 (lot 5) : la source « Stacks (fichiers FITS) » a SON panneau,
+        # comme le dossier et la composition — aucun contrôle caméra.
+        est_stacks = source.startswith("Stacks")
         # Contrôles caméra : toute source qui n'est NI dossier NI composition
-        # (simulée, webcams OpenCV, SDK constructeur). La combobox de source
-        # et Démarrer/Arrêter restent visibles en toutes circonstances.
-        if est_dossier or est_compo:
+        # NI stacks (simulée, webcams OpenCV, SDK constructeur). La combobox de
+        # source et Démarrer/Arrêter restent visibles en toutes circonstances.
+        if est_dossier or est_compo or est_stacks:
             self.frm_ctrl_cam.pack_forget()
         elif self.frm_ctrl_cam.winfo_manager() == "":
             self.frm_ctrl_cam.pack(fill="x")
         visibles = ([self._lf_cadence, self._lf_dossier_surveille] if est_dossier else
-                    [self._lf_cadence, self._lf_composition] if est_compo else [])
+                    [self._lf_cadence, self._lf_composition] if est_compo else
+                    [self._lf_stacks] if est_stacks else [])
         # Ancre stable (jalon 98) : le bouton d'en-tête de Caméra — TOUJOURS
         # packé (la source et Démarrer/Arrêter restent visibles en toutes
         # circonstances, jalon 47). Les cadres de la source s'insèrent AVANT
         # lui : « Fichiers de travail » reste complet et, replié ou non, la
         # ligne suivante ne lève JAMAIS « TclError: isn't packed ».
         ancre = self._lf_camera._btn_header  # pyright: ignore[reportAttributeAccessIssue]
-        for cadre in (self._lf_cadence, self._lf_dossier_surveille, self._lf_composition):
+        for cadre in (self._lf_cadence, self._lf_dossier_surveille,
+                      self._lf_composition, self._lf_stacks):
             btn = getattr(cadre, "_btn_header", None)
             if cadre in visibles:
                 # Afficher le bouton d'en-tête AVANT le LabelFrame
@@ -3882,6 +3946,12 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             # (les erreurs de remplissage sortent avec un message clair).
             return MultiFolderCamera(self._lire_roles_dossiers(),
                                      process_existing=self.var_process_existing.get())
+        if key.startswith("Stacks"):
+            # P6 (lot 5) : empilements DÉJÀ faits, un FICHIER par rôle (ou un
+            # seul fichier = empilement direct). Les erreurs de remplissage
+            # (rôle sans fichier, rôle en double, fichier absent) sortent avec
+            # un message clair AVANT toute lecture.
+            return _StackFilesCamera(self._lire_roles_fichiers_stacks())
         if key.startswith("OpenCV"):
                         return OpenCVCamera(int(key.split()[-1]))
         if key.startswith("QHY"):
@@ -4044,6 +4114,117 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             raise RuntimeError("Composition : remplissez au moins une ligne "
                                "(rôle + dossier)")
         return pairs
+    # --- P6 (lot 5) : source « Stacks (fichiers FITS) » ---------------------
+    def _lire_roles_fichiers_stacks(self) -> Any:
+        """Couples (rôle, fichier) des lignes remplies du panneau « Stacks ».
+
+        Lève une erreur CLAIRE sur un remplissage incohérent — rôle sans
+        fichier, fichier sans rôle, rôle en double, fichier introuvable, tout
+        vide — AVANT d'ouvrir quoi que ce soit. Le rôle est celui INDIQUÉ :
+        aucun contrôle ne le déduit du nom ni de l'en-tête du fichier.
+        """
+        pairs, vus = [], {}
+        for i in range(composition_mod.NB_LIGNES_COMPO):
+            role = self.var_stacks_roles[i].get().strip()
+            fic = self.var_stacks_fichiers[i].get().strip()
+            if not role:
+                if fic:
+                    raise RuntimeError(
+                        f"Stacks, ligne {i + 1} : fichier choisi mais aucun "
+                        "rôle (menu déroulant de la ligne)")
+                continue
+            if not fic:
+                raise RuntimeError(
+                    f"Stacks, rôle {role} : choisissez le fichier de "
+                    "l'empilement (…)")
+            if role in vus:
+                raise RuntimeError(
+                    f"Stacks : rôle {role} présent sur les lignes "
+                    f"{vus[role] + 1} et {i + 1} — un rôle = un seul fichier")
+            if not os.path.isfile(fic):
+                raise RuntimeError(
+                    f"Stacks, rôle {role} : fichier introuvable — {fic}")
+            vus[role] = i
+            pairs.append((role, fic))
+        if not pairs:
+            raise RuntimeError("Stacks : remplissez au moins une ligne "
+                               "(rôle + fichier)")
+        return pairs
+
+    def _on_stacks_roles(self, *_) -> None:
+        """Changement de rôle (ou de fichier) dans le panneau « Stacks » :
+        la ligne d'aide est refaite (composition déduite, avertissements)."""
+        self._maj_stacks_info()
+
+    def _pick_fichier_stacks(self, i: int) -> None:
+        """Boîte « choisir un fichier » pour la ligne `i` — un FITS par filtre,
+        où qu'il soit. Le rôle N'EST PAS déduit du fichier choisi."""
+        role = self.var_stacks_roles[i].get().strip()
+        chemin = self._demander_fichier(
+            "Empilement déjà fait" + (f" pour le rôle « {role} »" if role
+                                      else " (choisissez d'abord le rôle)"),
+            filetypes=[("FITS", "*.fits *.fit *.fts"),
+                       ("Tous les fichiers", "*.*")])
+        if chemin:
+            self.var_stacks_fichiers[i].set(chemin)
+            self._maj_stacks_info()
+
+    def _maj_stacks_info(self, verifier_fichiers: bool = True) -> None:
+        """Ligne d'aide du panneau « Stacks » : composition DÉDUITE des rôles
+        indiqués, nombre de fichiers et AVERTISSEMENTS.
+
+        `verifier_fichiers=False` : AUCUNE lecture disque (ni `isfile`, ni
+        en-tête FITS). C'est ce qu'exige la restauration de `config.json` —
+        un montage réseau injoignable ne doit jamais retarder l'ouverture de
+        l'application (leçon v2.38.11). Les avertissements reviennent dès le
+        premier geste de l'utilisateur.
+
+        Deux avertissements seulement, jamais un refus à ce stade : le mot-clé
+        FILTER qui contredit le rôle (le rôle indiqué fait foi) et un fichier
+        DÉJÀ ÉTIRÉ d'après notre propre en-tête AVAStack (celui-là sera refusé
+        au démarrage, par `StackFilesCamera.open()`, avec le remède).
+        """
+        paires, roles, avert = [], [], []
+        for i in range(composition_mod.NB_LIGNES_COMPO):
+            role = self.var_stacks_roles[i].get().strip()
+            fic = self.var_stacks_fichiers[i].get().strip()
+            if not role or not fic:
+                continue
+            paires.append((role, fic))
+            roles.append(role)
+            if not verifier_fichiers:
+                continue
+            if not os.path.isfile(fic):
+                avert.append(f"Ligne {i + 1} : fichier introuvable — {fic}")
+                continue
+            filtre = lire_filtre_fits(fic)
+            deduit = role_de_filtre(filtre) if filtre else None
+            if deduit and deduit != role:
+                avert.append(
+                    f"Ligne {i + 1} : FILTER = « {filtre} » dans l'en-tête "
+                    f"(rôle indiqué : {role}) — le rôle indiqué fait foi.")
+            if _stacks_mod.dit_etire(_stacks_mod.entete_avastack(fic)):
+                avert.append(
+                    f"Ligne {i + 1} : « {os.path.basename(fic)} » est un "
+                    "empilement DÉJÀ ÉTIRÉ (en-tête AVAStack) — le démarrage "
+                    "le refusera : choisissez la version LINÉAIRE.")
+        lignes = []
+        if not paires:
+            lignes.append("Choisissez un rôle et un fichier par ligne — le "
+                          "rôle n'est jamais deviné.")
+        elif len(paires) == 1:
+            lignes.append("Un seul fichier : empilement direct (sans "
+                          "composition).")
+        else:
+            nom = composition_pour_roles(tuple(roles))
+            lignes.append(f"Composition déduite des rôles : {nom}"
+                          if nom else
+                          "Rôles sans composition connue : "
+                          + ", ".join(roles))
+        lignes.extend(avert)
+        self.lbl_stacks_info.config(text="\n".join(lignes))
+
+
 
     def _on_norm_commune(self) -> None:
         """v2.36.0 — case « Normalisation commune des canaux » (option, décision
@@ -4326,6 +4507,14 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                     raise RuntimeError(
                         "Rôles de dossiers sans composition connue : "
                         + ", ".join(cam.roles))
+                # P6 (lot 5) : même garde-fou pour les STACKS à plusieurs
+                # fichiers (un seul = empilement direct, aucune composition à
+                # déduire). La composition est celle des RÔLES INDIQUÉS.
+                if (isinstance(cam, _StackFilesCamera) and cam.par_roles
+                        and composition_pour_roles(cam.roles) is None):
+                    raise RuntimeError(
+                        "Rôles des stacks sans composition connue : "
+                        + ", ".join(cam.roles))
                 cam.open()
                 # Jalon 32 (chemin de REPLI — la connexion automatique à la
                 # détection n'a pas eu lieu) : mêmes capacités + UI aux
@@ -4347,10 +4536,16 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             return
         self.camera = cam
         self.cam_pilotee = cam if isinstance(cam, CAMERAS_PILOTEES) else None
+        # P6 : les avertissements de la source « Stacks » repartent de zéro
+        # avec la sélection (ils sont rejoués au journal une fois chacun).
+        self._stacks_avert_vus = 0
         self.btn_deconnect.config(state="normal")
         # Jalon 19 : mode composition si la source est multi-dossiers — la
         # composition est déduite des rôles configurés (choix UI en phase 3).
-        self._mode_compo = isinstance(cam, MultiFolderCamera)
+        # P6 (lot 5) : une source « Stacks » à PLUSIEURS fichiers est une
+        # composition par rôles ; à UN seul fichier, c'est un empilement direct
+        # (« Mono ») — `read()` rend l'image seule dans ce cas.
+        self._mode_compo = self._mode_compo_de(cam)
         self._compo_nom = (composition_pour_roles(cam.roles)  # pyright: ignore[reportAttributeAccessIssue]
                            if self._mode_compo else None)
         # Jalon 19 phase 3 : gains + radio « Canal L » instantanés POUR LE
@@ -4386,7 +4581,9 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self.btn_stop.config(state="normal")
         # Jalon 19 : mode composition si la source est multi-dossiers — la
         # composition est déduite des rôles configurés (choix UI en phase 3).
-        self._mode_compo = isinstance(cam, MultiFolderCamera)
+        # P6 (lot 5) : idem pour les stacks à plusieurs fichiers (cf. le
+        # premier bloc de `_start`, même helper — jamais deux règles).
+        self._mode_compo = self._mode_compo_de(cam)
         self._compo_nom = (composition_pour_roles(cam.roles)  # pyright: ignore[reportAttributeAccessIssue]
                            if self._mode_compo else None)
         # Jalon 19 phase 3 : gains + radio « Canal L » instantanés POUR LE
@@ -4686,6 +4883,21 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         démarrage, au lieu d'être ignorée).
         """
         cam = self.camera
+        if isinstance(cam, _StackFilesCamera):
+            # P6 : la SÉLECTION (rôle → fichier) est comparée TELLE QUELLE. Un
+            # seul changement (fichier remplacé, rôle corrigé) → la source est
+            # refermée et rouverte sur la nouvelle sélection (les fichiers
+            # seront relus une fois : c'est une nouvelle cible de test).
+            try:
+                paires = self._lire_roles_fichiers_stacks()
+            except RuntimeError:
+                return True                    # lignes incomplètes : à refaire
+            if len(paires) != len(cam.apparies):
+                return True
+            for (role, fic), (role_cam, fic_cam) in zip(paires, cam.apparies):
+                if role != role_cam or not self._meme_fichier(fic, fic_cam):
+                    return True
+            return False
         if not isinstance(cam, (FolderCamera, MultiFolderCamera)):
             return False                       # caméra SDK : jamais touchée
         attendu = bool(self.var_process_existing.get())
@@ -4720,16 +4932,25 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         kb = os.path.normcase(os.path.abspath(os.path.expanduser(b)))
         return ka == kb
 
+    @staticmethod
+    def _meme_fichier(a: str, b: str) -> bool:
+        """Deux textes désignent-ils le même FICHIER ? Même comparaison
+        normalisée que `_meme_dossier` (P6 : une retouche de casse ou de
+        séparateurs dans le chemin ne doit pas relancer la lecture)."""
+        return App._meme_dossier(a, b)
+
     def _refermer_source_fichiers(self) -> bool:
-        """Referme la source de FICHIERS connectée (« Dossier surveillé » ou
-        « Composition ») — v2.41.0. Le prochain « ▶ Démarrer » la rouvrira avec
-        la configuration AFFICHÉE (nouveau dossier compris).
+        """Referme la source de FICHIERS connectée (« Dossier surveillé »,
+        « Composition » ou « Stacks (fichiers FITS) ») — v2.41.0 / P6. Le
+        prochain « ▶ Démarrer » la rouvrira avec la configuration AFFICHÉE
+        (nouveau dossier, nouvelle sélection de stacks comprise).
 
         Une caméra SDK n'est JAMAIS touchée : elle reste connectée (sa
         réouverture est impossible dans le même process — limite SDK connue,
         cf. QHY). → True si une source de fichiers a été refermée.
         """
-        if not isinstance(self.camera, (FolderCamera, MultiFolderCamera)):
+        if not isinstance(self.camera, (FolderCamera, MultiFolderCamera,
+                                        _StackFilesCamera)):
             return False
         try:
             self.camera.close()
@@ -5456,8 +5677,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         txt = self.photometrie.texte_resume()
         # P1 (lot 2) : la ligne dit la profondeur MESURÉE et la prochaine
         # échéance (elle change donc quand la mesure se rafraîchit).
-        suffixe = _cadence_mod.suffixe_etat(getattr(self, "_cadence_photo", None),
-                                           self._profondeur_mesures())
+        suffixe = self._suffixe_cadence(getattr(self, "_cadence_photo", None))
         if txt and suffixe:
             txt = f"{txt} — {suffixe}"
         if txt and txt != self.photo_info:
@@ -6726,6 +6946,17 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         else:
             self.lbl_seeing.config(text="Seeing (FWHM) : —",
                                    foreground="#888888")
+        # P6 (lot 5) : avertissements MESURÉS de la source « Stacks » —
+        # recopiés au JOURNAL une fois chacun (linéarité douteuse, fichier
+        # illisible). Le worker ne peut pas les écrire (il ne les produit pas
+        # dans son tour) et l'utilisateur doit les VOIR : le panneau garde la
+        # composition déduite, le journal porte la mesure.
+        cam = self.camera
+        if isinstance(cam, _StackFilesCamera):
+            vus = int(getattr(self, "_stacks_avert_vus", 0) or 0)
+            for txt in list(cam.avertissements[vus:]):
+                journal.note("Stacks", txt)
+            self._stacks_avert_vus = len(cam.avertissements)
         extra = ""
         if st.get("pending"):
             extra += f"   |  en attente : {st['pending']}"

@@ -381,6 +381,11 @@ class FauxAppFin:
         self._astro_actif = True
         self.suivi_astro = FauxSuivi(False)
         self._cadence_dossier = lambda: True
+        # P6 (lot 5) : la fin de source se décide désormais sur `_source_fichiers`
+        # (dossier, composition OU stacks) — `_cadence_dossier` ne parle que de
+        # cadence. L'hôte minimal doit offrir les deux, comme `App`.
+        self._source_fichiers = lambda: True
+        self._source_stacks = lambda: False
 
 
 CAS = FauxAppFin()

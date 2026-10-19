@@ -37,6 +37,7 @@ from avastack.core import worker as worker_mod
 from avastack.processing.cadence import (CadenceMesure, DELAI_MIN_S,
                                          MAX_REMESURES, SEUIL_PROFONDEUR,
                                          suffixe_etat)
+from avastack.processing.astrometrie import ASTRO_MIN_FRAMES
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -131,6 +132,13 @@ class Hote:
         self.spcc_info = ""
         self.photo_couleur = self.spcc_couleur = ""
         self._profondeur = None       # profondeur scriptée (compo)
+        # P6 (lot 5) : aucune source « Stacks » dans ce banc — les tours
+        # lisent ces deux helpers, qui doivent donc exister comme sur `App`.
+        self._source_stacks = lambda: False
+        self._seuil_profondeur = lambda: ASTRO_MIN_FRAMES
+        # Le message de profondeur est celui du mixin (même texte qu'en réel).
+        self._detail_profondeur = lambda n, total: (
+            worker_mod.AcquisitionWorker._detail_profondeur(self, n, total))
         self._source_rgb = lambda st: source_rgb
         self._profondeur_astro = lambda st: int(st.n)
         self._profondeur_spcc = (lambda st: int(self._profondeur)

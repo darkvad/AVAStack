@@ -2193,6 +2193,62 @@ ce qui manquait n'était pas une correction mais une MESURE.
   retrouvée, aucun ⓘ écrasé). `ui/bulles.py` est dans la liste blanche typée
   du garde-fou.
 
+## Source « Stacks (fichiers FITS) » — P6, v2.96.0, 19/10/2026 (en attente de test réel)
+
+- **CE QUE C'EST** : une source d'empilements DÉJÀ FAITS, choisis **FICHIER par
+  FICHIER** (pas un dossier) — un FITS par filtre voulu, où qu'il soit (Siril,
+  PixInsight, ASTAP, AVAStack…). But : tester tout l'aval (astrométrie, Gaia,
+  SPCC, fusion Ha, sauvegardes) **sans réempiler les brutes**.
+- **LE RÔLE EST CELUI INDIQUÉ, JAMAIS DEVINÉ** (contrat, pas une préférence) :
+  `canal_<rôle>.fit` n'est qu'un nom que NOTRE sauvegarde par canal donne ;
+  `FILTER` ne prouve rien (un stack peut être un composite) et `AVAFRAME` n'est
+  **jamais lue**. Un `FILTER` qui contredit le rôle est un AVERTISSEMENT affiché
+  dans le panneau, le choix de l'utilisateur fait foi.
+- **AUCUNE PROFONDEUR INVENTÉE** : les messages des mesures disent
+  « empilement fourni (profondeur non vérifiée) » (`App._detail_profondeur`) et
+  l'échéance en « frames » des lignes d'état est supprimée
+  (`App._suffixe_cadence`). Ne jamais réintroduire `AVAFRAME` dans un message.
+- **SEUIL DE PROFONDEUR = 1** (`App._seuil_profondeur`, SEULE source du seuil
+  pour astro / Gaia / SPCC) : un empilement fourni est déjà profond, mais
+  `stacker.n` ne vaut qu'**1 par rôle** ; avec `ASTRO_MIN_FRAMES` (3) toutes les
+  mesures seraient bloquées. Les trois cadences de re-mesure reçoivent aussi
+  `seuil = 1` à chaque démarrage de session.
+- **LA CALIBRATION EST COURT-CIRCUITÉE** dans la boucle du worker
+  (`if not self._source_stacks(): frame = self.calib.apply(...)`) : un empilement
+  n'a plus de signal brut à corriger. Vérifié par un dark à 2,0 qui, s'il était
+  appliqué, ramènerait tout à zéro (banc).
+- **LECTURE UNE FOIS PAR SESSION**, puis `read()` → `None` : la source est
+  FINIE (`_source_epuisee`), ce qui arme UNE fois les trois mesures à la fin de
+  source. `relire()` remet le curseur au début — sans lui, « ▶ Démarrer » après
+  « ■ Arrêter » repartait d'un empilement **VIDE** (défaut trouvé en écrivant le
+  banc, pas en réel).
+- **MESURER AVANT DE MESURER LES MESURES** : rien n'est tenté tant que TOUS les
+  fichiers ne sont pas lus (`_worker_mesures` rend la main) — au premier fichier
+  le composite n'a qu'un rôle, et le seuil valant 1 aucune « profondeur qui
+  double » ne viendrait rattraper la mesure fausse.
+- **LINÉARITÉ — refus sur PREUVE, avertissement sur MESURE.** Refus au démarrage
+  SEULEMENT si notre en-tête `AVAVUE` dit « ETIRE » (motif `\bETIRE\b` : le
+  « avant ETIREMENT » des sorties linéaires ne doit PAS déclencher le refus).
+  Un fichier tiers est ACCEPTÉ et un avertissement MESURÉ (fond médian, part de
+  pixels à 1,00) part au journal — jamais un refus sur une supposition.
+- **`App._source_fichiers()` ≠ `App._cadence_dossier()`** : la première dit
+  « source FINIE et pas de lecture en pause » (dossier, composition, stacks) ;
+  la seconde ne concerne que la CADENCE d'empilement (dossier, composition).
+  Les trois stacks ne sont pas cadencés (fichiers fournis) et leur `scanner()`
+  est un no-op.
+- **PERSISTANCE SANS SONDE DISQUE** : `stacks_role_i` / `stacks_fichier_i` sont
+  relus au démarrage, mais la ligne d'aide est reconstruite avec
+  `verifier_fichiers=False` — aucune lecture `isfile`/FITS pendant
+  `_restaurer_config` (un montage réseau injoignable ne doit pas retarder
+  l'ouverture, leçon v2.38.11).
+- **Banc** : `bancs/_test_lot5_p6_stacks.py` (39 vérifications : caméra,
+  linéarité, composition, worker RÉEL avec calibration ignorée, panneau,
+  validation, persistance). Modules NEUFS typés : `avastack/cameras/stacks.py`
+  et `avastack/ui/panels/stacks.py` (liste blanche du garde-fou).
+- **P4 : 14 aides désormais** (13 + celle du panneau Stacks) — `_test_p4_aides`
+  a été mis à jour avec ce chiffre ; toute nouvelle aide doit y être ajoutée.
+
+
 ## Halo d'étoile coloré — cause, correctif et résidu (jalon 136, v2.85.0, 18/10/2026)
 
 

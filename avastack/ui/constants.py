@@ -70,6 +70,8 @@ SECTIONS_NOM_MAP: dict[str, str] = {
     "cadence": "Cadence d'empilement",
     "dossier_surveille": "Dossier surveillé",
     "composition": "Composition multi-filtres",
+    # P6 (lot 5) : empilements déjà faits, choisis fichier par fichier.
+    "stacks": "Stacks (fichiers FITS)",
     "calibration": "Calibration",
     "empilement": "Empilement",
     "fond_grain": "Fond et grain (AVANT étirement)",

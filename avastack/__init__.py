@@ -19,7 +19,46 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.95.0"
+AVASTACK_VERSION = "2.96.0"
+
+# v2.96.0 : P6 — SOURCE « STACKS (FICHIERS FITS) » (lot 5 des améliorations
+#   d'usage, 19/10/2026 ; lots 4 et 5 INVERMÉS à la demande d'Alain : le lot 5
+#   passe avant l'audit de réactivité). EN ATTENTE DE VALIDATION EN RÉEL ;
+#   AUCUNE RELEASE.
+#   BESOIN : tester tout l'aval (astrométrie, Gaia, SPCC, fusion Ha,
+#   sauvegardes) SANS réempiler les brutes — donc fournir des empilements DÉJÀ
+#   faits, un par filtre voulu.
+#   CONTRAT (trois règles) :
+#   · ce sont des FICHIERS, pas un dossier : `NB_LIGNES_COMPO` (5) lignes
+#     « rôle → fichier », un FITS où qu'il soit (Siril, PixInsight, ASTAP,
+#     AVAStack…) ;
+#   · le RÔLE est celui que l'utilisateur INDIQUE, jamais deviné :
+#     `canal_<rôle>.fit` n'est pas un contrat, `FILTER` non plus (simple
+#     avertissement s'il contredit le rôle, le choix de l'utilisateur fait
+#     foi) et **`AVAFRAME` n'est JAMAIS lue** — aucun « N frames » inventé,
+#     les messages des mesures disent « empilement fourni (profondeur non
+#     vérifiée) » ;
+#   · un empilement fourni est déjà empilé : **calibration IGNORÉE**, chaque
+#     fichier lu UNE fois par session (`relire()` au démarrage, sinon
+#     « Démarrer » après « Arrêter » repartait d'un empilement vide),
+#     **seuil de profondeur forcé à 1** (`App._seuil_profondeur`), sans quoi
+#     `ASTRO_MIN_FRAMES` (3) bloquait astro/Gaia/SPCC sur un fichier unique.
+#   MODULES NEUFS (typés) : `cameras/stacks.py` (`StackFilesCamera` — `read()`
+#   rend `(image, rôle)` à plusieurs fichiers, l'image seule avec un seul
+#   fichier = « Mono ») et `ui/panels/stacks.py` (5 lignes rôle + fichier,
+#   ligne d'aide : composition DÉDUITE des rôles, avertissements). Composition
+#   déduite des rôles comme en multi-dossiers ; tout l'aval est inchangé.
+#   LINÉARITÉ — refus seulement sur une PREUVE : un fichier dont NOTRE en-tête
+#   (`AVAVUE`) dit « ETIRE » est refusé au démarrage avec le remède (reprendre
+#   la version linéaire) ; un fichier venu d'ailleurs est ACCEPTÉ et, à la
+#   lecture, un avertissement MESURÉ (fond médian, plage, part de pixels à
+#   1,00) part au journal — jamais un refus sur une supposition.
+#   MESURES : elles attendent la lecture de TOUS les fichiers (`_source_epuisee`)
+#   puis partent UNE fois, les trois demandes armées à la fin de source ;
+#   l'échéance en « frames » des lignes d'état est supprimée pour cette source.
+#   PERSISTANCE : `stacks_role_i` / `stacks_fichier_i` (restauration SANS
+#   lecture disque — un montage réseau injoignable ne retarde pas l'ouverture).
+#   BANC : `bancs/_test_lot5_p6_stacks.py`.
 
 # v2.95.0 : P4 — LES AIDES DE LA COLONNE PASSENT EN INFOBULLES « ⓘ » (lot 3 des
 #   améliorations d'usage, 19/10/2026). VALIDÉ EN RÉEL par Alain le 19/10 ;

@@ -274,6 +274,11 @@ class AcquisitionWorker:
     _spcc_essais: Any
     _spcc_garde: Any
     _source_epuisee: Any
+    # P6 (lot 5) : la source « Stacks (fichiers FITS) » — helpers portés par
+    # `App` (mixin hérité), donc résolus sur `self`.
+    _source_fichiers: Any
+    _source_stacks: Any
+    _seuil_profondeur: Any
     _stack_pleine_res: Any
     _tec_dernier: Any
     _tec_dernier_t0: Any
@@ -683,7 +688,12 @@ class AcquisitionWorker:
                 frame, role = lu
             else:
                 frame, role = lu, None
-            frame = self.calib.apply(frame, role=role)
+            # P6 (lot 5) : une source « Stacks » fournit des empilements DÉJÀ
+            # faits — la calibration (dark/flat) est sans objet et reste donc
+            # IGNORÉE (aucune soustraction, aucune division). Partout ailleurs
+            # la chaîne est inchangée, rôle compris (composition).
+            if not self._source_stacks():
+                frame = self.calib.apply(frame, role=role)
             self._a_lu_une_frame = True   # jalon 42 : une brute vient d'être lue
             self._source_epuisee = False  # Lot 1 / P3 : la source redonne une frame
             self._rafale_reste -= 1       # jalon 46 : budget de rafale consommé
@@ -855,7 +865,7 @@ class AcquisitionWorker:
                 err_arch = "; ".join(a.erreur for a in self.archives.values()
                                      if a.erreur)
             else:
-                pend = len(getattr(self.camera, "_pending", []))
+                pend = int(getattr(self.camera, "pending", 0) or 0)
                 n_arch, err_arch = self.archive.n, self.archive.erreur
             st = dict(frames=(self.stacker.n if self.stacker is not None
                               else 0),
@@ -969,7 +979,7 @@ class AcquisitionWorker:
         # je prépare la suivante » (constat d'Alain, 28/09/2026). Le dossier
         # est seulement SCANNÉ, pour que l'état « brutes en attente » reste
         # juste ; les fichiers attendent sur le disque.
-        if not self.empilement_on and self._cadence_dossier():
+        if not self.empilement_on and self._source_fichiers():
             maintenant = time.monotonic()
             if maintenant >= self._prochain_scan:   # au plus toutes les 0,4 s
                 try:
@@ -1088,10 +1098,23 @@ class AcquisitionWorker:
         self._spcc_dernier = 0.0
         # P1 (lot 2) : la cadence de re-mesure repart de zéro avec la session
         # (profondeur mesurée, échéance, plafond et compteurs de passe finale).
+        # P6 (lot 5) : le SEUIL suit la source — 1 pour des empilements fournis
+        # (aucune profondeur connue), `ASTRO_MIN_FRAMES` partout ailleurs. Le
+        # seuil est posé AVANT `reset()` (la cible en dépend).
+        seuil_mesure = self._seuil_profondeur()
         for _nom_cad in ("_cadence_astro", "_cadence_photo", "_cadence_spcc"):
             _cad = getattr(self, _nom_cad, None)
             if _cad is not None:
+                _cad.seuil = max(1, int(seuil_mesure))
                 _cad.reset()
+        # P6 : une source « Stacks » est relue DEPUIS LE DÉBUT pour la nouvelle
+        # session (chaque fichier fourni est lu une fois par session) — sans
+        # cela, « Démarrer » après « Arrêter » repartirait d'un empilement vide.
+        if demarrer and self._source_stacks():
+            try:
+                self.camera.relire()
+            except AttributeError:
+                pass
         self.proc_show = self.proc_full = None
         self.proc_entete = None           # v2.38.3
         self.proc_new = False
@@ -1652,6 +1675,14 @@ class AcquisitionWorker:
         # pourvoir), AVANT la construction de l'état poussé à l'UI (la
         # ligne d'état part alors avec le bon texte).
         if self.stacker is not None and self.stacker.n > 0:
+            # P6 (lot 5) : une source « Stacks » n'est mesurable qu'APRÈS la
+            # lecture de TOUS ses fichiers. Mesurer au premier (le composite
+            # n'a alors qu'un rôle) donnerait une mesure fausse, et le seuil de
+            # profondeur valant 1 pour cette source, aucune « profondeur qui
+            # double » ne viendrait la rattraper. La fin de source arme les
+            # demandes (`_armer_astro_fin_source`).
+            if self._source_stacks() and not bool(self._source_epuisee):
+                return
             self._astro_tour(self.stacker)
             # Jalon 56 (étape 4) : photométrie — APRÈS l'astrométrie (elle
             # a besoin du WCS résolu) ; mesure SANS effet sur l'image.
@@ -1688,6 +1719,20 @@ class AcquisitionWorker:
             except Exception:
                 pass
         return int(stacker.n)
+
+    def _detail_profondeur(self, n_prof: int, total: int) -> str:
+        """Profondeur ANNONCÉE dans les messages des mesures.
+
+        P6 (lot 5) : pour une source « Stacks », la profondeur réelle de
+        l'empilement fourni n'est PAS connue (`AVAFRAME` n'est jamais lue — un
+        stack peut venir de n'importe quel logiciel). On ne fabrique donc
+        AUCUN « N frames » : le message dit « empilement fourni (profondeur
+        non vérifiée) ». Partout ailleurs, texte d'origine — par rôle en
+        composition, total hors composition."""
+        if self._source_stacks():
+            return "empilement fourni (profondeur non vérifiée)"
+        return (f"{n_prof} frames par rôle ({total} au total)"
+                if self._mode_compo else f"{n_prof} frames")
     def _profondeur_spcc(self, stacker) -> int:
         """Profondeur des rôles que la PHOTOMÉTRIE/SPCC MESURENT réellement
         (jalon 129b).
@@ -1740,13 +1785,33 @@ class AcquisitionWorker:
         rejouerait `_astro_tour` en boucle.
 
         Caméras LIVE : jamais d'armement (un `read()` vide y est normal entre
-        deux poses, ce n'est pas une fin de source)."""
-        if not self._cadence_dossier():
+        deux poses, ce n'est pas une fin de source).
+
+        P6 (lot 5) — source « Stacks (fichiers FITS) » : la source est FINIE
+        PAR NATURE (N fichiers, lus une fois chacun). À la transition, les
+        trois mesures sont armées SI ELLES SONT DEMANDÉES, et la profondeur
+        n'augmentant plus ensuite, aucune cadence ne les relancerait : c'est
+        ici, et une seule fois, que tout se joue."""
+        if not self._source_fichiers():
             self._source_epuisee = False
             return
         if self._source_epuisee:
             return                       # transition déjà traitée
         self._source_epuisee = True
+        if self._source_stacks():
+            # Ordre des dépendances : astro → photo → SPCC. Les demandes sont
+            # servies par `_servir_demandes_sans_frame` (aucune frame à venir).
+            st = getattr(self, "stacker", None)
+            if st is not None and getattr(st, "n", 0) > 0:
+                if (getattr(self, "_astro_actif", False)
+                        and self.suivi_astro is not None
+                        and not self.suivi_astro.resolu):
+                    self._astro_demande = True
+                if getattr(self, "_photo_actif", False):
+                    self._photo_demande = True
+                if getattr(self, "_spcc_actif", False):
+                    self._spcc_demande = True
+            return
         if (self._astro_actif and self.suivi_astro is not None
                 and not self.suivi_astro.resolu):
             self._astro_demande = True
@@ -1823,7 +1888,8 @@ class AcquisitionWorker:
         # ≥ ASTRO_MIN_FRAMES et l'essai partait sur une image insoluble, brûlant
         # le quota pendant que le backoff éloignait les essais suivants).
         n_prof = self._profondeur_astro(stacker)
-        if not self.suivi_astro.peut_essayer(n_prof):
+        if not self.suivi_astro.peut_essayer(n_prof,
+                                            seuil=self._seuil_profondeur()):
             raison = self.suivi_astro.raison_attente()
             if raison:
                 self.astro_info = f"Astrométrie : {raison}"
@@ -1841,8 +1907,7 @@ class AcquisitionWorker:
         # Message posé AVANT le calcul : le thread Tk le lit PENDANT la
         # résolution (le worker, lui, est occupé) — l'utilisateur voit ainsi
         # d'où vient la pause d'acquisition d'une frame environ.
-        detail = (f"{n_prof} frames par rôle ({stacker.n} au total)"
-                  if self._mode_compo else f"{n_prof} frames")
+        detail = self._detail_profondeur(n_prof, stacker.n)
         self.astro_info = f"Astrométrie : résolution en cours ({detail})…"
         self.astro_couleur = "#888888"
         okk, msg = self.suivi_astro.resoudre_sur(img, n_frames=n_prof)
@@ -2006,7 +2071,7 @@ class AcquisitionWorker:
         # Jalon 113 : profondeur PAR RÔLE en composition (cf. _profondeur_astro)
         # — le balayage ASTAP est cher, inutile de l'engager sur une image
         # insoluble à 1 frame par rôle.
-        if self._profondeur_astro(stacker) < astro_mod.ASTRO_MIN_FRAMES:
+        if self._profondeur_astro(stacker) < self._seuil_profondeur():
             return
         # Un seul essai PAR VALEUR de champ : rebalayer à l'identique redonne
         # exactement le même échec (« No solution found! », constat réel).
@@ -2081,7 +2146,7 @@ class AcquisitionWorker:
         # (`_profondeur_astro`) pour TOUS les consommateurs : plus aucun seuil
         # ne peut dériver de l'autre (cf. sa docstring).
         n_prof = self._profondeur_astro(stacker)
-        if n_prof < astro_mod.ASTRO_MIN_FRAMES:
+        if n_prof < self._seuil_profondeur():
             return
         if self._photo_essais >= photo_mod.MAX_ESSAIS:
             self.photo_info = (f"Photométrie : {self.photometrie.derniere_erreur}"
@@ -2114,8 +2179,7 @@ class AcquisitionWorker:
         # composition, comme l'astrométrie) ; le total est rappelé entre
         # parenthèses pour ne pas donner à croire que la mesure ne porte que sur
         # trois frames alors que l'empilement en compte davantage.
-        detail = (f"{n_mesure} frames par rôle ({stacker.n} au total)"
-                  if self._mode_compo else f"{n_mesure} frames")
+        detail = self._detail_profondeur(n_mesure, stacker.n)
         self.photo_info = ("Photométrie : mesure du zéro-point en cours "
                            f"({detail}, "
                            f"{len(canaux)} bande(s))…")
@@ -2219,7 +2283,7 @@ class AcquisitionWorker:
         # composition : il autorisait la mesure SPCC à 1 frame par rôle alors
         # que l'astrométrie, elle, exigeait déjà `ASTRO_MIN_FRAMES` par rôle.
         n_prof = self._profondeur_astro(stacker)
-        if n_prof < astro_mod.ASTRO_MIN_FRAMES:
+        if n_prof < self._seuil_profondeur():
             return
         if self._spcc_essais >= spcc_mod.MAX_ESSAIS:
             self.spcc_info = (f"SPCC : {self.spcc.derniere_erreur}"
@@ -2256,8 +2320,7 @@ class AcquisitionWorker:
         # ce minimum était celui du Ha (1-9 frames), une couche que la SPCC NE
         # MESURE PAS (elle lit R/G/B) — le libellé annonçait donc une profondeur
         # qui ne décrivait pas la mesure.
-        detail = (f"{n_mesure} frames par rôle ({stacker.n} au total)"
-                  if self._mode_compo else f"{n_mesure} frames")
+        detail = self._detail_profondeur(n_mesure, stacker.n)
         self.spcc_info = ("SPCC : calibration en cours (spectres Gaia × profils "
                           f"capteur/filtres, {detail})…")
         self.spcc_couleur = "#888888"
