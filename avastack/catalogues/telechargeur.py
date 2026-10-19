@@ -351,14 +351,46 @@ def _relatif_archive(nom_dans_zip):
     return "/".join(rel) if garder else None
 
 
+def _compte_fichiers(dossier):
+    """{catégorie: nombre de .json} d'un dossier de base SPCC (0 si absente)."""
+    out = {}
+    for categorie in CATEGORIES_SPCC:
+        try:
+            out[categorie] = sum(
+                1 for n in os.listdir(os.path.join(dossier, categorie))
+                if n.lower().endswith(".json"))
+        except OSError:
+            out[categorie] = 0
+    return out
+
+
+def _nb_objets(chemin):
+    """Nombre d'objets (profils) d'un fichier JSON de la base, -1 si le
+    fichier est illisible. Un fichier peut porter un objet SEUL ou une LISTE
+    (jeux de filtres) : c'est le nombre d'objets qui dit la richesse."""
+    import json
+    try:
+        with open(chemin, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return -1
+    if isinstance(data, list):
+        return len([o for o in data if isinstance(o, dict)])
+    return 1 if isinstance(data, dict) else 0
+
+
 def extraire_zip_spcc(zip_path, dossier, progression=None):
     """Extrait dans `dossier` une archive de la base SPCC → nombre de fichiers
     posés.
 
     Ordre volontaire (règle « aucune surprise ») : ① intégrité du ZIP (tout
     est lu dans un dossier TEMPORAIRE, rien n'est posé si l'archive est
-    refusée) ; ② mise en place fichier par fichier — une base déjà installée
-    reste utilisable pendant la copie ; ③ le temporaire disparaît toujours."""
+    refusée) ; ② MISE EN GARDE DE RICHESSE (Lot 1 / P2, 19/10/2026) : une
+    extraction ne doit JAMAIS rendre la base installée plus pauvre — par
+    catégorie ni par fichier — sinon elle est REFUSÉE et la base existante
+    reste intacte ; ③ mise en place fichier par fichier — une base déjà
+    installée reste utilisable pendant la copie ; ④ le temporaire disparaît
+    toujours."""
     with zipfile.ZipFile(zip_path) as zf:
         defaut = zf.testzip()
         if defaut is not None:
@@ -372,7 +404,7 @@ def extraire_zip_spcc(zip_path, dossier, progression=None):
         tmp = dossier + ".extraction"
         shutil.rmtree(tmp, ignore_errors=True)
         os.makedirs(tmp, exist_ok=True)
-        poses = 0
+        poses, conserves = 0, []
         try:
             for i, inf in enumerate(entrees):
                 rel = _relatif_archive(inf.filename)
@@ -388,15 +420,39 @@ def extraire_zip_spcc(zip_path, dossier, progression=None):
                 os.makedirs(os.path.dirname(cible), exist_ok=True)
                 with zf.open(inf) as src, open(cible, "wb") as dst:
                     shutil.copyfileobj(src, dst)
+            avant = _compte_fichiers(dossier)
+            apres = _compte_fichiers(tmp)
+            pauvres = [c for c in CATEGORIES_SPCC if apres.get(c, 0) < avant.get(c, 0)]
+            if pauvres:
+                raise RuntimeError(
+                    "archive SPCC PLUS PAUVRE que la base installée ("
+                    + ", ".join(f"{c} {avant[c]}→{apres[c]}" for c in pauvres)
+                    + ") — REFUSÉE : aucun profil existant n'est supprimé")
             for racine, _dirs, noms in os.walk(tmp):
                 for nom in noms:
                     src = os.path.join(racine, nom)
-                    dst = os.path.join(dossier, os.path.relpath(src, tmp))
+                    rel = os.path.relpath(src, tmp)
+                    dst = os.path.join(dossier, rel)
+                    if os.path.isfile(dst) and _nb_objets(src) < _nb_objets(dst):
+                        # Le fichier installé porte PLUS de profils : on le
+                        # GARDE (une archive ne « rétrograde » jamais).
+                        conserves.append(rel)
+                        continue
                     os.makedirs(os.path.dirname(dst), exist_ok=True)
                     os.replace(src, dst)
                     poses += 1
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+    if conserves:
+        try:
+            from .. import journal
+            journal.note("SPCC",
+                         f"{len(conserves)} fichier(s) de la base CONSERVÉ(S) "
+                         f"(l'archive en proposait une version plus pauvre) : "
+                         + ", ".join(conserves[:5])
+                         + ("…" if len(conserves) > 5 else ""))
+        except Exception:
+            pass
     return poses
 
 

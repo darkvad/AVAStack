@@ -86,19 +86,39 @@ def dossier_avastack():
     return os.path.join(dossier_config(), "spcc-database")
 
 
+def compter_base(dossier):
+    """{catégorie: nombre de fichiers .json} d'une base SPCC — 0 partout si
+    `dossier` est absent ou illisible ; ne lève JAMAIS.
+
+    La RICHESSE d'une base se mesure en FICHIERS : chaque fichier porte un
+    profil (capteur, référence de blanc) ou un JEU de profils (filtres LRGB).
+    Compter les OBJETS exigerait de parser tous les JSON à chaque appel de
+    `dossier_base()` — or cette fonction est appelée par chaque `lister()`,
+    donc des dizaines de fois par affichage. Le nombre de fichiers est
+    l'unité que le téléchargement pose ou retire ; c'est lui qui distingue
+    la copie incomplète d'AVAStack (12 filtres) de la base Siril (13)."""
+    out = {categorie: 0 for categorie in SOUS_DOSSIERS}
+    if not dossier or not os.path.isdir(dossier):
+        return out
+    for categorie in SOUS_DOSSIERS:
+        try:
+            out[categorie] = sum(
+                1 for n in os.listdir(os.path.join(dossier, categorie))
+                if n.lower().endswith(".json"))
+        except OSError:
+            out[categorie] = 0
+    return out
+
+
+def total_base(dossier):
+    """Nombre TOTAL de fichiers .json d'une base SPCC (0 si aucune)."""
+    return sum(compter_base(dossier).values())
+
+
 def _a_des_profils(dossier):
     """`dossier` contient-il au moins UN profil lisible (n'importe quelle
     catégorie) ? Ne lève jamais : un dossier absent ou illisible rend False."""
-    if not dossier or not os.path.isdir(dossier):
-        return False
-    for categorie in SOUS_DOSSIERS:
-        d = os.path.join(dossier, categorie)
-        try:
-            if any(n.lower().endswith(".json") for n in os.listdir(d)):
-                return True
-        except OSError:
-            continue
-    return False
+    return total_base(dossier) > 0
 
 
 def base_complete(dossier):
@@ -130,37 +150,86 @@ def dossier_ecriture():
     return ""
 
 
+# Dernière décision de `dossier_base()` JOURNALISÉE : on n'écrit au journal
+# que lorsque le choix (ou ses compteurs) CHANGE — `dossier_base()` est appelée
+# des dizaines de fois par affichage, le journal ne doit pas être noyé.
+_DERNIER_CHOIX: tuple[object, ...] | None = None
+
+
+def _noter_choix(dossier, motif, scores):
+    """Journalise la base retenue et les COMPTEURS des candidates (une fois
+    par décision). Jamais d'exception : le journal est un service."""
+    global _DERNIER_CHOIX
+    cle = (dossier, motif, tuple(sorted(scores.items())))
+    if cle == _DERNIER_CHOIX:
+        return
+    _DERNIER_CHOIX = cle
+    try:
+        from .. import journal
+        ici = compter_base(dossier)
+        detail = ", ".join(f"{c.split('_')[0]} {n}"
+                           for c, n in ici.items() if n)
+        autres = ", ".join(f"{p} ({n})" for p, n in scores.items()
+                           if p != dossier and n)
+        journal.note("SPCC",
+                     f"base retenue : {dossier} — {motif}"
+                     + (f" — {detail}" if detail else "")
+                     + (f" · autres candidates : {autres}" if autres else ""))
+    except Exception:
+        pass
+
+
 def dossier_base():
     """Dossier de la base SPCC retenu, ou None si aucune base n'est installée
     (l'appli doit alors le DIRE, jamais deviner des courbes).
 
-    Ordre : `chemin_spcc` de la config → copie d'AVAStack → emplacements de
-    Siril. Seul un dossier qui contient RÉELLEMENT des profils est retenu."""
+    Ordre (Lot 1 / P2, 19/10/2026) :
+      1. `chemin_spcc` de la config — le choix EXPLICITE de l'utilisateur
+         prime, même si sa base est plus pauvre (c'est SA décision) ;
+      2. sinon **la base la PLUS RICHE** (nombre total de fichiers .json)
+         entre la copie d'AVAStack et les emplacements de Siril. À égalité,
+         l'ordre historique (copie d'AVAStack d'abord) tranche.
+
+    POURQUOI CE CHANGEMENT : la copie d'AVAStack du 19/10/2026 contenait 12
+    `mono_filters` SANS `QHYCCD_MiniCam8M_LRGB.json`, alors que la base Siril
+    en avait 13 : l'ancien « premier dossier valide » retenait la copie
+    incomplète, MASQUAIT la base complète et rendait les filtres MiniCam
+    introuvables. Le choix et ses compteurs partent au journal — comme ça se
+    décide tout seul, ça doit se voir.
+
+    Seul un dossier qui contient RÉELLEMENT des profils est retenu."""
     from ..config import CONFIG
     surcharge = (CONFIG.get(CLE_CONFIG) or "").strip()
-    candidats = ([surcharge] if surcharge else []) + [dossier_avastack()] \
-        + _candidats_siril()
+    if surcharge and _a_des_profils(surcharge):
+        _noter_choix(surcharge, "dossier choisi (chemin_spcc)", {})
+        return surcharge
+    candidats, vus = [], set()
+    for c in [dossier_avastack()] + _candidats_siril():
+        if not c:
+            continue
+        cle = os.path.normcase(os.path.abspath(c))
+        if cle in vus:
+            continue
+        vus.add(cle)
+        candidats.append(c)
+    scores = {c: total_base(c) for c in candidats}
+    meilleur = None
     for c in candidats:
-        if _a_des_profils(c):
-            return c
-    return None
+        if scores[c] > 0 and (meilleur is None or scores[c] > scores[meilleur]):
+            meilleur = c                     # à égalité, l'ordre tranche
+    if meilleur is None:
+        return None
+    _noter_choix(meilleur, "base la plus riche", scores)
+    return meilleur
 
 
 def resume_base(dossier=None):
     """{catégorie: nombre de fichiers .json} de la base retenue (ou de
     `dossier`) — pour l'affichage. Dict vide si aucune base."""
     base = dossier or dossier_base()
-    out = {}
     if not base:
-        return out
-    for categorie in SOUS_DOSSIERS:
-        try:
-            out[categorie] = sum(
-                1 for n in os.listdir(os.path.join(base, categorie))
-                if n.lower().endswith(".json"))
-        except OSError:
-            out[categorie] = 0
-    return out
+        return {}
+    return compter_base(base)
 
 
 def _objets(chemin):
@@ -174,12 +243,17 @@ def _objets(chemin):
     return []
 
 
-def lister(categorie):
+def lister(categorie, base=None):
     """Entrées d'une catégorie (voir SOUS_DOSSIERS) → liste de dict
     {'nom', 'modele', 'canal', 'chemin', 'index', 'qualite', 'source'}.
     L'`index` est la position de l'objet DANS son fichier (les jeux de
-    filtres en contiennent plusieurs : c'est la clé pour en choisir un)."""
-    base = dossier_base()
+    filtres en contiennent plusieurs : c'est la clé pour en choisir un).
+
+    `base` évite de REDÉCIDER la base retenue à chaque catégorie : les
+    appelants qui lisent plusieurs catégories d'affilée (`noms_base`,
+    `base_presente`, `_profil`) passent UNE fois le résultat de
+    `dossier_base()` — sinon chacun repayait la comparaison des candidates."""
+    base = base or dossier_base()
     if base is None:
         return []
     d = os.path.join(base, categorie)

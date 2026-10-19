@@ -2017,6 +2017,61 @@ ce qui manquait n'était pas une correction mais une MESURE.
 
 
 
+## Base SPCC et demandes de mesure sans frame (Lot 1 P2/P3, v2.93.0, 19/10/2026)
+
+- **La base SPCC la PLUS RICHE gagne** (`catalogues/spcc_db.dossier_base`) :
+  `chemin_spcc` explicite s'il contient des profils, sinon comparaison du
+  nombre TOTAL de fichiers `.json` entre la copie AVAStack et les emplacements
+  de Siril (à égalité, la copie AVAStack — ordre historique). **Ne jamais
+  revenir au « premier dossier valide »** : le 19/10, la copie AVAStack avait
+  12 `mono_filters` sans `QHYCCD_MiniCam8M_LRGB.json` et MASQUAIT la base Siril
+  (13) → filtres MiniCam introuvables, sans aucun message. Le choix et ses
+  compteurs sont JOURNALISÉS une fois par décision (`_DERNIER_CHOIX`) : une
+  décision automatique doit se voir.
+- **La richesse se compte en FICHIERS** (un fichier = un profil ou un JEU de
+  profils) : compter les objets exigerait de parser tous les JSON à chaque
+  appel de `dossier_base`, or `lister()` l'appelle. `lister(cat, base=…)`
+  laisse les appelants multi-catégories (`noms_base`, `base_presente`,
+  `_profil`) ne décider qu'UNE fois.
+- **Une extraction ne rend jamais la base plus pauvre** (`telechargeur.
+  extraire_zip_spcc`) : comparaison par catégorie AVANT de poser quoi que ce
+  soit (refus global, base intacte) et fichier existant CONSERVÉ si l'archive
+  n'en porte pas plus d'objets (`_nb_objets`).
+- **JAMAIS de substitution silencieuse d'un profil** : une valeur absente de la
+  base est CONSERVÉE et signalée (journal + ligne rouge sous la case) ; elle
+  n'est remplacée que si un défaut PAR CANAL existe (RED/GREEN/BLUE via
+  `spcc.defaut_profil`) — et le remplacement est DIT. `liste[0]` n'est plus un
+  défaut : la liste est triée par FICHIER, son premier élément est arbitraire
+  (c'est ainsi que « Antlia R » est devenu le filtre R d'un jeu MiniCam).
+- **Cohérence de MODÈLE** (`App._spcc_verifier_profils`) : si les deux autres
+  canaux désignent le même modèle et que le troisième vient d'un autre modèle
+  dont le défaut existe dans ce modèle, il est REPOSÉ avec message
+  (`Antlia R` → `QHYCCD MiniCam8M Red`). Sans majorité ou sans défaut : on
+  avertit seulement. Appelée APRÈS la restauration des profils (jamais au
+  milieu : `_on_spcc_type(verifier=False)` pendant la restauration) et après
+  une lecture de base.
+- **`spcc._profil` en TROIS essais** : exact, puis normalisé (casse, espaces,
+  `_`/`-`/`/`), puis sous-chaîne — l'ancien « sous-chaîne seule » faisait
+  désigner « Full spectrum (no filter) » par « No filter ». Échec = message
+  avec les noms les plus proches (`proches_noms`, difflib).
+- **Garde FILTER** (`App._spcc_garde_filtre`, posée par `_spcc_tour`) : le
+  mot-clé FILTER de la brute courante est confronté aux MODÈLES des filtres
+  choisis (`filtre_compatible`) → avertissement ROUGE, jamais un refus. Un
+  FILTER réduit à un rôle (« R », « Ha », « L ») ne dit rien : aucun bruit.
+- **`_astro_demande`** (`ui/app.py`) : posée par `_on_astro` (cochage,
+  changement d'indices, WCS non résolu), par la FIN DE SOURCE (worker) et par
+  une remise à zéro. `_servir_demandes_sans_frame` sert **ASTRO → PHOTO →
+  SPCC** et repose photo/SPCC après une astro qui VIENT de résoudre. La
+  demande est consommée UNE fois : essais, délais et WCS restent seuls juges.
+- **Fin de source = TRANSITION, pas état** (`worker._armer_astro_fin_source`) :
+  le worker repasse par `lu is None` à chaque tour ; armer à chaque fois
+  rejouerait `_astro_tour` en boucle. Jamais d'armement sur une caméra LIVE
+  (un `read()` vide y est normal entre deux poses).
+- **Échecs PRÉEXISTANTS du banc 77** : « ligne Base SPCC rognée » (1-2 px, la
+  longueur du dossier temporaire décide) et « menu écrasé ». Vérifiés sur HEAD
+  dans un `git worktree` : ils échouent AUSSI sans nos changements — ne pas
+  les imputer à une modification.
+
 ## Halo d'étoile coloré — cause, correctif et résidu (jalon 136, v2.85.0, 18/10/2026)
 
 

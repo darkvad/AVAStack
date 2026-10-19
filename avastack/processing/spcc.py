@@ -37,6 +37,8 @@ par les modules existants). Tout est PUR : ce module ne touche ni au disque
 ni à l'UI, ce qui le rend directement testable au banc.
 """
 
+import difflib
+
 import numpy as np
 from typing import Any
 
@@ -427,10 +429,18 @@ def base_presente() -> bool:
     """La base SPCC de Siril est-elle installée (profils de capteurs, de
     filtres et références de blanc lisibles) ? L'UI s'en sert pour activer ou
     non sa case : sans base, aucune SPCC n'est possible — et le dire est plus
-    honnête qu'échouer silencieusement à chaque tentative."""
+    honnête qu'échouer silencieusement à chaque tentative.
+
+    La base est demandée UNE fois (`dossier_base`) puis passée aux deux
+    lectures : depuis le Lot 1, `dossier_base` compare la RICHESSE des
+    candidates et ne doit pas être repayée par catégorie."""
     try:
         from ..catalogues import spcc_db as DB
-        return bool(DB.lister("mono_sensors")) and bool(DB.lister("wb_refs"))
+        base = DB.dossier_base()
+        if base is None:
+            return False
+        return (bool(DB.lister("mono_sensors", base=base))
+                and bool(DB.lister("wb_refs", base=base)))
     except Exception:
         return False
 
@@ -462,16 +472,19 @@ def noms_base() -> dict[str, list[str]]:
             "osc_capteurs": [], "osc_filtres": []}
     try:
         from ..catalogues import spcc_db as DB
-        return {"capteur": [e["nom"] for e in DB.lister("mono_sensors")],
-                "filtres": [e["nom"] for e in DB.lister("mono_filters")],
-                "blancs": [e["nom"] for e in DB.lister("wb_refs")],
+        base = DB.dossier_base()
+        if base is None:
+            return vide
+        return {"capteur": [e["nom"] for e in DB.lister("mono_sensors", base=base)],
+                "filtres": [e["nom"] for e in DB.lister("mono_filters", base=base)],
+                "blancs": [e["nom"] for e in DB.lister("wb_refs", base=base)],
                 "osc_capteurs": _uniques(
                     [e["modele"] or e["nom"]
-                     for e in DB.lister("osc_sensors")
+                     for e in DB.lister("osc_sensors", base=base)
                      if str(e.get("canal") or "").upper()
                      in ("RED", "GREEN", "BLUE")]),
                 "osc_filtres": _uniques(
-                    [e["nom"] for e in DB.lister("osc_filters")
+                    [e["nom"] for e in DB.lister("osc_filters", base=base)
                      if _type_ok(e, "OSC_FILTER", "OSC_LPF")])}
     except Exception:
         return vide
@@ -554,16 +567,140 @@ def mesures_etoiles(canaux: Any, positions: Any, rayon: float = RAYON_FLUX_PX,
 
 
 
+def _normalise_nom(nom: Any) -> str:
+    """Forme comparable d'un nom de profil : casse, espaces et séparateurs
+    (`_`, `-`, `/`) neutralisés. Sert au 2e essai de `_profil`."""
+    brut = str(nom or "").replace("_", " ").replace("-", " ").replace("/", " ")
+    return " ".join(brut.casefold().split())
+
+
+def proches_noms(categorie: str, nom: Any, limite: int = 3) -> list[str]:
+    """Noms de `categorie` les plus proches de `nom` — pour un message
+    d'échec qui AIDE (« les plus proches : … »), jamais une liste muette."""
+    from ..catalogues import spcc_db as DB
+    try:
+        noms = [str(e["nom"]) for e in DB.lister(categorie)]
+    except Exception:
+        return []
+    cible = _normalise_nom(nom)
+    if not cible:
+        return []
+    par_norm = {_normalise_nom(n): n for n in noms}
+    trouves = difflib.get_close_matches(cible, list(par_norm), n=limite,
+                                        cutoff=0.5)
+    return [par_norm[t] for t in trouves]
+
+
+def profils_filtres() -> dict[str, dict[str, str]]:
+    """{nom: {"modele", "canal"}} des filtres MONO de la base retenue.
+
+    Sert aux DÉFAUTS PAR CANAL (Lot 1 / P2) et à la cohérence de MODÈLE :
+    un jeu de filtres LRGB (QHYCCD MiniCam8M, Antlia…) partage un modèle."""
+    from ..catalogues import spcc_db as DB
+    try:
+        return {str(e["nom"]): {"modele": str(e.get("modele") or ""),
+                                "canal": str(e.get("canal") or "").upper()}
+                for e in DB.lister("mono_filters")}
+    except Exception:
+        return {}
+
+
+CANAL_PAR_CHAMP = {"fr": "RED", "fg": "GREEN", "fb": "BLUE"}
+NOMS_PREFERES = {"capteur": ("Sony IMX585",), "blanc": ("Average Spiral Galaxy",)}
+
+
+def defaut_profil(cle: str, liste: Any, osc: bool = False) -> str:
+    """Valeur par DÉFAUT d'un champ SPCC — jamais `liste[0]` au hasard.
+
+    `cle` : "capteur", "fr", "fg", "fb" ou "blanc". Pour un FILTRE mono, le
+    défaut est le premier profil dont le CANAL correspond au champ (RED,
+    GREEN, BLUE) : la liste est triée par NOM DE FICHIER, donc son premier
+    élément est un filtre arbitraire — c'est ainsi que « Antlia R » a pu
+    devenir le défaut du champ R d'un jeu QHYCCD MiniCam8M.
+
+    En OSC, un SEUL filtre couvre les trois bandes : la référence « sans
+    filtre » est préférée, sinon le premier nom (aucun canal à distinguer).
+    Pour un capteur ou un blanc, le nom d'usage est préféré s'il est présent.
+    Aucun nom convenable → "" : l'appelant CONSERVE la valeur courante.
+    """
+    liste = [str(n) for n in (liste or []) if str(n).strip()]
+    if not liste:
+        return ""
+    if osc and cle in CANAL_PAR_CHAMP:
+        for n in liste:                     # la référence elle-même d'abord
+            if n.strip().lower() in ("no filter", "sans filtre"):
+                return n
+        for n in liste:
+            b = n.lower()
+            if "no filter" in b or "sans filtre" in b or "full spectrum" in b:
+                return n
+        return liste[0]
+    canal = CANAL_PAR_CHAMP.get(cle)
+    if canal:
+        profils = profils_filtres()
+        for n in liste:
+            if canal in (profils.get(n) or {}).get("canal", "").split():
+                return n
+        return ""
+    for prefere in NOMS_PREFERES.get(cle, ()):
+        if prefere in liste:
+            return prefere
+    return ""
+
+
+_TOKENS_GENERIQUES = {"red", "green", "blue", "rouge", "vert", "bleu",
+                      "lum", "luminance", "filtre", "filter", "filters",
+                      "lrgb", "rgb", "ha", "oiii", "sii"}
+
+
+def _tokens(texte: Any) -> set[str]:
+    """Mots SIGNIFICATIFS d'un nom de filtre ou d'un modèle (les mots de
+    canal et de catégorie sont écartés : ils ne distinguent pas un modèle)."""
+    brut = str(texte or "").replace("_", " ").replace("-", " ").replace("/", " ")
+    return {t for t in brut.casefold().split()
+            if len(t) >= 3 and t not in _TOKENS_GENERIQUES}
+
+
+def filtre_compatible(filtre: Any, modeles: Any) -> bool:
+    """Le mot-clé FILTER d'une brute désigne-t-il l'un des MODÈLES choisis ?
+
+    `True` quand on ne peut RIEN conclure : FILTER absent, ou réduit à un
+    rôle générique (« R », « Ha », « L »…). Sinon il faut au moins un mot
+    significatif commun — « QHYCCD MiniCam8M Red » est compatible avec le
+    modèle « QHYCCD MiniCam8M LRGB », mais pas avec « Antlia LRGB-V Pro
+    Astronomy Filters »."""
+    mots = _tokens(filtre)
+    if not mots:
+        return True
+    return any(mots & _tokens(m) for m in (modeles or ()))
+
+
 def _profil(entree: Any, categorie: str, nom: Any) -> tuple[Any, Any]:
     """Profil de la base SPCC depuis un nom OU une entrée déjà résolue.
-    → (nom, couple (wl, val)) ; (None, None) si introuvable."""
+    → (nom, couple (wl, val)) ; (None, None) si introuvable.
+
+    RÉSOLUTION EN TROIS ESSAIS (Lot 1 / P2, 19/10/2026) : EXACT, puis
+    NORMALISÉ (casse / espaces / séparateurs), puis SOUS-CHAÎNE. L'ancien
+    « sous-chaîne seulement » retenait le PREMIER nom qui contenait la
+    saisie — « No filter » pouvait ainsi désigner « Full spectrum (no
+    filter) ». L'exact passe donc d'abord, et l'échec est expliqué par
+    `proches_noms` aux sites d'appel."""
     from ..catalogues import spcc_db as DB
     if entree is None:
         return None, None
     if isinstance(entree, dict):
         return entree.get("nom", nom), DB.courbe(entree)
-    e = next((c for c in DB.lister(categorie)
-              if str(entree).lower() in str(c["nom"]).lower()), None)
+    cible = str(entree)
+    entrees = DB.lister(categorie)
+    e = next((c for c in entrees if str(c["nom"]) == cible), None)
+    if e is None:
+        n_cible = _normalise_nom(cible)
+        if n_cible:
+            e = next((c for c in entrees
+                      if _normalise_nom(c["nom"]) == n_cible), None)
+            if e is None:
+                e = next((c for c in entrees
+                          if n_cible in _normalise_nom(c["nom"])), None)
     return (e["nom"], DB.courbe(e)) if e is not None else (None, None)
 
 
@@ -628,23 +765,33 @@ def coefficients_spcc(canaux: Any, wcs: Any, capteur: Any, filtres: Any,
                 nom_cap, curve_cap = _profil(capteur, "mono_sensors",
                                              str(capteur))
                 if curve_cap is None:
-                    diag["erreur"] = (f"capteur introuvable dans la base SPCC "
-                                      f"(ni capteur couleur, ni capteur mono) : "
-                                      f"{capteur}")
+                    proches = proches_noms("mono_sensors", capteur)
+                    diag["erreur"] = (
+                        f"capteur introuvable dans la base SPCC (ni capteur "
+                        f"couleur, ni capteur mono) : {capteur}"
+                        + (f" — les plus proches : {', '.join(proches)}"
+                           if proches else ""))
                     return None, diag
                 reponses, noms_fil = [], []
                 for b in ("R", "G", "B"):
                     cle = (filtres or {}).get(b)
                     nom, curve = _profil(cle, "mono_filters", f"filtre {b}")
                     if curve is None and cle is not None:
-                        diag["erreur"] = (f"filtre {b} introuvable dans la base "
-                                          f"SPCC : {cle}")
+                        proches = proches_noms("mono_filters", cle)
+                        diag["erreur"] = (
+                            f"filtre {b} introuvable dans la base SPCC : {cle}"
+                            + (f" — les plus proches : {', '.join(proches)}"
+                               if proches else ""))
                         return None, diag
                     reponses.append(reponse_canal(curve_cap, curve))
                     noms_fil.append(nom or f"(sans filtre {b})")
             nom_bl, curve_bl = _profil(blanc, "wb_refs", str(blanc))
             if curve_bl is None:
-                diag["erreur"] = f"référence de blanc introuvable : {blanc}"
+                proches = proches_noms("wb_refs", blanc)
+                diag["erreur"] = (
+                    f"référence de blanc introuvable : {blanc}"
+                    + (f" — les plus proches : {', '.join(proches)}"
+                       if proches else ""))
                 return None, diag
             diag.update({"capteur": nom_cap, "filtres": noms_fil,
                          "blanc": nom_bl})

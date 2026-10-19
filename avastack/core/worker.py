@@ -204,6 +204,7 @@ class AcquisitionWorker:
     _appliquer_filtre_demande: Any
     _armer_cadence: Any
     _astro_actif: Any
+    _astro_demande: Any
     _astro_aveugles: Any
     _astro_balayage: Any
     _astro_bases: Any
@@ -271,6 +272,8 @@ class AcquisitionWorker:
     _spcc_dernier: Any
     _spcc_dispo: Any
     _spcc_essais: Any
+    _spcc_garde: Any
+    _source_epuisee: Any
     _stack_pleine_res: Any
     _tec_dernier: Any
     _tec_dernier_t0: Any
@@ -354,6 +357,7 @@ class AcquisitionWorker:
     _maj_spcc_etat: Any
     _maj_spcc_vue: Any
     _spcc_osc: Any
+    _spcc_garde_filtre: Any
     _spcc_profils: Any
 
     def _worker(self):
@@ -658,7 +662,10 @@ class AcquisitionWorker:
             if lu is None:
                 # v2.37.0 : aucune frame à lire (fin de source, lecture en
                 # pause) — les demandes qui ne dépendent PAS d'une frame sont
-                # servies ICI (SPCC/photométrie redemandées par leur case).
+                # servies ICI (astro/photométrie/SPCC redemandées par leur
+                # case). Lot 1 / P3 : la FIN DE SOURCE arme en plus UNE fois
+                # l'astrométrie si le WCS manque (transition seulement).
+                self._armer_astro_fin_source()
                 self._servir_demandes_sans_frame()
                 time.sleep(0.005)
                 continue
@@ -678,6 +685,7 @@ class AcquisitionWorker:
                 frame, role = lu, None
             frame = self.calib.apply(frame, role=role)
             self._a_lu_une_frame = True   # jalon 42 : une brute vient d'être lue
+            self._source_epuisee = False  # Lot 1 / P3 : la source redonne une frame
             self._rafale_reste -= 1       # jalon 46 : budget de rafale consommé
 
             # Jalon 106b : traitement complet de la brute calibrée (filtre
@@ -1057,6 +1065,13 @@ class AcquisitionWorker:
         # l'en-tête (l'en-tête se lit UNE fois par jeu d'indices, pas à chaque
         # frame).
         self._astro_garde_pour = None
+        # Lot 1 / P3 : session neuve = WCS oublié → la résolution est
+        # REDEMANDÉE si la case est cochée, même si la source est déjà épuisée
+        # (c'est `_servir_demandes_sans_frame` qui la servira).
+        self._source_epuisee = False
+        self._spcc_garde = ""
+        if self._astro_actif:
+            self._astro_demande = True
         # Jalon 56 (étape 4) : photométrie de session neuve.
         self.photometrie.reset()  # pyright: ignore[reportOptionalMemberAccess]
         self.photo_info = ""
@@ -1693,6 +1708,29 @@ class AcquisitionWorker:
         prof = [sks[r].n for r in bandes if r in sks and sks[r].n > 0]
         return min(prof) if prof else self._profondeur_astro(stacker)
 
+    def _armer_astro_fin_source(self) -> None:
+        """Lot 1 / P3 — FIN DE SOURCE d'une source FICHIERS : armer UNE fois la
+        demande d'astrométrie, si le WCS manque encore.
+
+        POURQUOI ICI : `_astro_tour` n'était appelé qu'APRÈS un re-stack. Une
+        astrométrie cochée (ou recochée) après la dernière brute n'était donc
+        JAMAIS tentée, et le WCS manquant ENTRAÎNAIT photométrie et SPCC. La
+        demande est armée sur la TRANSITION « des frames → plus rien » : le
+        worker repasse par `lu is None` à chaque tour, armer à chaque fois
+        rejouerait `_astro_tour` en boucle.
+
+        Caméras LIVE : jamais d'armement (un `read()` vide y est normal entre
+        deux poses, ce n'est pas une fin de source)."""
+        if not self._cadence_dossier():
+            self._source_epuisee = False
+            return
+        if self._source_epuisee:
+            return                       # transition déjà traitée
+        self._source_epuisee = True
+        if (self._astro_actif and self.suivi_astro is not None
+                and not self.suivi_astro.resolu):
+            self._astro_demande = True
+
     def _astro_tour(self, stacker):
         """Appelé par le worker APRÈS le re-stack (la grille est alors celle
         qui sera affichée et sauvegardée) : indices → RÉSOLUTION UNIQUE → état.
@@ -2126,6 +2164,10 @@ class AcquisitionWorker:
         canaux, wcs, forme = self._photo_canaux(stacker)
         if not canaux or wcs is None:
             return
+        # Lot 1 / P2 : le mot-clé FILTER de la brute courante contredit-il le
+        # MODÈLE des filtres choisis ? On le DIT (ligne rouge) sans refuser la
+        # mesure : c'est l'utilisateur qui juge son matériel.
+        self._spcc_garde = self._spcc_garde_filtre()
         capteur, filtres, blanc = self._spcc_profils()
         self._spcc_essais += 1
         self._spcc_dernier = t

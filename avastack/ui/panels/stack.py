@@ -129,6 +129,7 @@ class PanneauEmpilement:
     _on_photo_gains: Callable[..., Any]
     _spcc_base_bornee: Callable[..., Any]
     _on_spcc: Callable[..., Any]
+    _on_spcc_profil: Callable[..., Any]
     _on_spcc_type: Callable[..., Any]
     _on_kappa: Callable[..., Any]
     _on_rejet: Callable[..., Any]
@@ -461,7 +462,7 @@ class PanneauEmpilement:
             cb = ttk.Combobox(ligne, textvariable=v, state="readonly",
                               width=largeur, values=valeurs or [defaut])
             cb.pack(side="left", fill="x", expand=True)
-            cb.bind("<<ComboboxSelected>>", lambda e: self._on_spcc())
+            cb.bind("<<ComboboxSelected>>", lambda e: self._on_spcc_profil())
             if not valeurs:
                 cb.state(["disabled"])
             self._spcc_vars[cle] = v

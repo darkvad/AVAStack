@@ -473,9 +473,17 @@ verifie(spcc_mod.base_presente(),
 verifie(ui._spcc_dispo and "disabled" not in ui.chk_spcc.state(),
         "case SPCC cochable SANS redémarrer (renfort du jalon 77)")
 _vals = ui._spcc_cbs["capteur"].cget("values")
-verifie(bool(_vals) and ui._spcc_vars["capteur"].get() in tuple(_vals),
-        "listes remplies et sélection posée (%d capteur(s) : « %s »)"
-        % (len(_vals), ui._spcc_vars["capteur"].get()))
+# Lot 1 / P2 (19/10/2026) : une valeur ABSENTE de la base est désormais
+# CONSERVÉE avec une alerte, au lieu d'être remplacée en silence par
+# `liste[0]`. Ce banc utilise une base FACTICE qui ne contient pas le capteur
+# d'usage : la sélection peut donc être « Sony IMX585 » hors liste — c'est le
+# comportement voulu, et l'alerte doit le dire.
+verifie(bool(_vals) and (ui._spcc_vars["capteur"].get() in tuple(_vals)
+                         or "absent de la base" in ui._spcc_alerte),
+        "listes remplies ; sélection posée ou CONSERVÉE avec alerte "
+        "(%d capteur(s) : « %s » — %s)"
+        % (len(_vals), ui._spcc_vars["capteur"].get(),
+           ui._spcc_alerte[:40]))
 verifie("osc" in ui.lbl_base_spcc.cget("text")
         and os.path.basename(_vide) in ui.lbl_base_spcc.cget("text"),
         "ligne « Base SPCC » dit le dossier et le contenu : « %s… »"

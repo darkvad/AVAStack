@@ -194,6 +194,7 @@ class ConfigUI:
     _on_sat_canaux: Callable[..., Any]
     _on_spcc: Callable[..., Any]
     _on_spcc_type: Callable[..., Any]
+    _spcc_verifier_profils: Callable[..., Any]
     _on_vl_boost: Callable[..., Any]
     _on_vl_chroma: Callable[..., Any]
     _on_vl_demagenta: Callable[..., Any]
@@ -486,19 +487,20 @@ class ConfigUI:
             self.var_photo_gains.set(bool(c.get("photo_gains_actif")))
         self._on_photo_gains()
         # --- Jalon 58 : SPCC absolue — case OPT-IN (clé absente = décochée) et
-        # profils retenus (capteur, filtres R/G/B, référence de blanc). Un nom
-        # qui ne figure PLUS dans la base est IGNORÉ (on garde le défaut) :
-        # un profil disparu ne doit pas lancer une SPCC impossible.
-        categorie = {"spcc_capteur": "capteur", "spcc_fr": "filtres",
-                     "spcc_fg": "filtres", "spcc_fb": "filtres",
-                     "spcc_blanc": "blancs"}
+        # profils retenus (capteur, filtres R/G/B, référence de blanc).
+        # Lot 1 / P2 (19/10/2026) : un nom ABSENT de la base n'est plus ignoré
+        # en silence — il est CONSERVÉ, puis `_spcc_verifier_profils` explique
+        # (journal + ligne rouge) et repose un défaut PAR CANAL seulement s'il
+        # peut en désigner un de façon cohérente.
         # v2.40.0 : le TYPE de capteur (mono / couleur OSC) se restaure AVANT
         # les profils — c'est lui qui décide de LA LISTE dans laquelle ils
         # doivent exister (un capteur OSC n'est pas dans la liste mono, et
         # réciproquement). Valeur inconnue : type d'usage (mono) conservé.
         if c.get("spcc_type") in (self.SPCC_TYPE_MONO, self.SPCC_TYPE_OSC):
             self.var_spcc_type.set(c.get("spcc_type"))
-            self._on_spcc_type()     # repeuple capteurs/filtres + libellés
+            # `verifier=False` : les profils enregistrés sont posés JUSTE
+            # APRÈS — vérifier maintenant jugerait les valeurs par défaut.
+            self._on_spcc_type(verifier=False)
         for cle, var in (("spcc_capteur", self._spcc_vars.get("capteur")),
                          ("spcc_fr", self._spcc_vars.get("fr")),
                          ("spcc_fg", self._spcc_vars.get("fg")),
@@ -507,12 +509,11 @@ class ConfigUI:
             v = c.get(cle)
             if var is None or not isinstance(v, str) or not v.strip():
                 continue
-            liste = self._spcc_noms.get(categorie[cle], ())
-            if not liste or v.strip() in liste:
-                var.set(v.strip())
+            var.set(v.strip())       # CONSERVÉ même s'il n'est plus dans la base
         if "spcc_actif" in c:
             self.var_spcc.set(bool(c.get("spcc_actif")))
         self._on_spcc()
+        self._spcc_verifier_profils()
         # --- Jalon 6 : réglages VeraLux (moteur tiers opt-in)
         mode_res = c.get("vl_mode_res")
         if mode_res in ("fond cible (auto)", "logD forcé"):

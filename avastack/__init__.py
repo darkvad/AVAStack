@@ -19,7 +19,45 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.92.0"
+AVASTACK_VERSION = "2.93.0"
+
+# v2.93.0 : LOT 1 DES AMÉLIORATIONS D'USAGE (P2 + P3) — LA BASE SPCC LA PLUS
+#   RICHE GAGNE, PLUS AUCUNE SUBSTITUTION SILENCIEUSE, ASTROMÉTRIE SERVIE EN
+#   FIN DE SOURCE (19/10/2026). Aucune release.
+#   P2 — `catalogues/spcc_db.py` : `dossier_base()` retient le dossier choisi
+#   (`chemin_spcc`) s'il contient des profils ; sinon LA BASE LA PLUS RICHE en
+#   fichiers .json entre la copie AVAStack et Siril. Le choix et les COMPTEURS
+#   partent au journal (une fois par décision). Cas réel : la copie AVAStack
+#   (12 `mono_filters`, SANS `QHYCCD_MiniCam8M_LRGB.json`) MASQUAIT la base
+#   Siril (13) — filtres MiniCam introuvables. Rien n'est copié ni réparé à la
+#   main (décision d'Alain : le correctif de code doit suffire). `lister(cat,
+#   base=…)` évite de redécider la base à chaque catégorie. Téléchargeur : une
+#   extraction qui rendrait une catégorie plus PAUVRE est REFUSÉE (base
+#   existante intacte) et un fichier installé portant plus de profils n'est
+#   jamais écrasé par une version plus pauvre (garde + journal).
+#   UI : `spcc.defaut_profil()` choisit PAR CANAL (RED/GREEN/BLUE), jamais
+#   `liste[0]` ; une valeur ABSENTE de la base est CONSERVÉE et signalée
+#   (journal + ligne rouge sous la case). Quand les deux AUTRES canaux
+#   désignent le même MODÈLE et que le troisième vient d'un autre modèle dont
+#   le défaut existe, il est REPOSÉ avec message (cas réel : « Antlia R » →
+#   « QHYCCD MiniCam8M Red », `config.json` d'Alain). `spcc._profil()` résout
+#   EXACT → NORMALISÉ (casse/espaces/séparateurs) → SOUS-CHAÎNE, et un échec
+#   cite les noms les plus proches. Garde FILTER : le mot-clé de la brute
+#   courante est confronté au MODÈLE des filtres choisis → avertissement
+#   rouge, jamais un refus ; « R »/« Ha » ne disent rien (aucun bruit).
+#   P3 — `ui/app.py` : `_astro_demande` est posée par `_on_astro` (cochage,
+#   changement d'indices), par la FIN DE SOURCE (worker) et par une remise à
+#   zéro. `_servir_demandes_sans_frame` sert ASTRO → PHOTO → SPCC et repose
+#   photo/SPCC après une astro qui vient de résoudre (« ça entraîne le
+#   reste ») ; la demande est consommée UNE fois, les essais/délais/WCS
+#   restent seuls juges. La fin de source arme l'astro UNE fois (TRANSITION
+#   seulement ; jamais sur une caméra live, où un `read()` vide est normal).
+#   Banc neuf `bancs/_test_lot1_p2_p3.py` (6 volets, 44 vérifications, dont le
+#   cas réel avec la VRAIE base). Non-régressions 58 / 58 bis / 56 astro /
+#   56 photo / 6 / 5 / 113 / 133 / 124 vertes ; banc 77 : seules ses DEUX
+#   mesures de mise en page échouent — vérifié sur HEAD dans un worktree, donc
+#   PRÉEXISTANTES et flaky (longueur du dossier temporaire). `ruff` propre,
+#   `pyright` 0.
 
 # v2.92.0 : ANCRE D'ALIGNEMENT — LE Ha FUSIONNÉ N'EST JAMAIS LA RÉFÉRENCE
 #   PARTAGÉE (jalon J5, décision d'Alain du 19/10/2026). RÈGLE : dans RGB+Ha /

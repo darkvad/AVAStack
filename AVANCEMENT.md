@@ -15,12 +15,13 @@ pièges actifs, prochaine action. Le détail daté vit dans `avastack/__init__.p
 > sur `LRGBHa`. `master` = branche stable, releases uniquement ; merge vers `master`
 > seulement sur validation explicite (release).
 
-Versions : `LRGBHa` = **v2.92.0** (①/②/③ validés en réel ; **136** halo coloré,
+Versions : `LRGBHa` = **v2.93.0** (①/②/③ validés en réel ; **136** halo coloré,
 **137** neutralisation après étirement en STF, **141-B** interface, **J2** fusion
 du Ha au rouge + continuum, **J3/J3bis** cinq modes, **J4/J4.1** continuum trois
 méthodes et mesure indépendante de la case — tous **VALIDÉS EN RÉEL le 19/10** ;
-**J5** ancre = couche large bande, **LIVRÉ, VALIDÉ EN RÉEL**) ·
-`master` publié = **v2.80.0** · Store publié = **v2.71.1**.
+**J5** ancre = couche large bande, **VALIDÉ EN RÉEL** ; **Lot 1 (P2 + P3)** base
+SPCC la plus riche + astrométrie servie sans frame, **LIVRÉ — test réel à
+faire**) · `master` publié = **v2.80.0** · Store publié = **v2.71.1**.
 
 **Gouvernance** : **aucune release GitHub sans l'accord d'Alain** ; **à CHAQUE jalon validé,
 lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une case de
@@ -28,57 +29,67 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 
 ---
 
-## Session du 19/10/2026 — **J5 LIVRÉ, VALIDÉ EN RÉEL, POUSSÉ** (v2.92.0) → **plan P1→P6 figé**
+## Session du 19/10/2026 (soir) — **LOT 1 LIVRÉ** (P2 + P3, v2.93.0) — **à valider en réel**
 
 ### État actuel
-- **v2.92.0 poussée sur `LRGBHa`** — **aucune release**. **J5** : dans un
-  `+Ha`, l'ancre d'alignement **partagée** vient toujours d'une couche **large
-  bande** ; une frame Ha ne crée plus l'empilement (attente + archive + rejeu
-  dès la 1re large bande) et le Ha fusionné est **exclu** du re-ancrage.
-- **VALIDÉ EN RÉEL (19/10)** : démarrage avec le dossier **Ha en premier** →
-  « rejeu des brutes Ha (démarrage) · R 1/1 · Ha 1/1 » (ancre **R**) ; puis
-  **re-stack manuel → 12/12** frames, aucune perte.
-- **Bancs** : J5 vert (5 volets, 23 vérifications), non-régression
-  19/20/129/129b/J2/J3/J4 verte, `ruff` propre, `pyright` 0.
+- **v2.93.0 sur `LRGBHa`** — **aucune release**. **Lot 1 = P2 + P3** livré,
+  couvert par un banc neuf (6 volets, **44 vérifications**, dont le cas réel
+  `Antlia R` → `QHYCCD MiniCam8M Red` avec la **VRAIE** base).
+- **P2** : `dossier_base()` retient la base **la plus riche** (Siril 13 >
+  copie AVAStack 12) — **sans rien copier ni réparer à la main** ; choix et
+  compteurs au journal. Plus aucune **substitution silencieuse** : défauts
+  **par canal**, valeur absente **conservée + alerte**, `_profil` en trois
+  essais, garde FILTER (rouge, jamais un refus). Téléchargeur : aucune
+  extraction ne peut **appauvrir** la base.
+- **P3** : `_astro_demande` servie **AVANT** photo/SPCC dans
+  `_servir_demandes_sans_frame` ; la fin de source arme l'astro **une fois** ;
+  une astro qui résout **repose** photo/SPCC sans nouvelle frame.
+- **Vérifié** : banc Lot 1 vert ; non-régressions **58 / 58 bis / 56 astro /
+  56 photo / 6 / 5 / 113 / 133 / 124** vertes ; `ruff` propre ; `pyright` 0.
+  (Banc 77 : seules ses deux mesures de mise en page échouent, **aussi sur
+  HEAD** dans un worktree — préexistantes et flaky, cf. CLAUDE.md.)
+- **J2 à J5 restent VALIDÉS en réel** (19/10, cf. chantier ci-dessous).
 
 ### Décisions
-- L'ancre d'un `+Ha` ne peut pas venir du Ha **parce qu'il ne se sert jamais de
-  l'aligneur partagé** (voie A) — **pas** parce qu'il aurait peu d'étoiles
-  (mesuré : 4 391, plus que G/B ; FWHM la plus fine, 2,46 px).
-- Le score « meilleure brute » = **nombre d'étoiles** (plafond 200), pas une
-  qualité : ne jamais s'en servir pour comparer des **filtres**. Un score FWHM
-  serait un **jalon séparé** (il touche toutes les compositions).
-- Quatre chemins posent l'ancre : ① repli et ④ rafraîchissement **verrouillés
-  par le banc** ; ② création et ③ re-ancrage **fermés par le code**. Détail
-  durable : `CLAUDE.md` § « Ancre d'alignement ».
+- **La richesse se compte en FICHIERS .json** (pas en objets) : compter les
+  objets parserait tous les JSON à chaque `dossier_base()`, appelée par chaque
+  `lister()`. Le choix est journalisé **une fois par décision**.
+- **`liste[0]` n'est JAMAIS un défaut** : défaut **par canal** ; sans défaut
+  possible, la valeur est **conservée et signalée** (journal + ligne rouge).
+- **Repose de modèle seulement avec majorité** : les DEUX autres canaux
+  doivent désigner le même modèle ET le défaut du canal doit exister dans ce
+  modèle ; sinon on avertit seulement. Un choix manuel fait toujours foi.
+- **P3 : la fin de source est une TRANSITION** (jamais un état) et ne concerne
+  que les sources FICHIERS ; sur une caméra live, `read()` vide entre deux
+  poses n'est pas une fin.
 
-### Fichiers modifiés (commit J5)
-- `avastack/core/worker.py` (attente + rejeu), `avastack/ui/app.py` (exclusion
-  du Ha des candidats), `bancs/_test_fusion_ha_jalon5.py`, `README.md`
-  (section « Fusion du Ha »), `avastack/__init__.py` (2.92.0 + changelog),
-  `CLAUDE.md`, `AVANCEMENT.md`.
+### Fichiers modifiés (commit Lot 1)
+- `avastack/catalogues/spcc_db.py` (base la plus riche + compteurs + journal),
+  `avastack/catalogues/telechargeur.py` (gardes de richesse),
+  `avastack/processing/spcc.py` (`_profil`, défauts par canal,
+  `profils_filtres`, `filtre_compatible`, noms proches),
+  `avastack/ui/app.py` (`_astro_demande`, service astro d'abord, alertes,
+  garde FILTER), `avastack/ui/config_ui.py` (valeurs conservées + vérif),
+  `avastack/ui/panels/stack.py` (choix manuel = alerte effacée),
+  `avastack/core/worker.py` (fin de source, garde FILTER, reset),
+  `bancs/_test_lot1_p2_p3.py` (neuf), `bancs/_test_sans_siril_jalon77.py`
+  (contrat P2), `avastack/__init__.py` (2.93.0 + changelog), `CLAUDE.md`,
+  `AVANCEMENT.md`.
 
-### Problèmes ouverts (liste d'Alain du 19/10 — À CORRIGER AVANT LA RELEASE)
-- **P1 — mesures trop rares.** Astrométrie, gains Gaia et SPCC ne mesurent
-  qu'à la demande / **une seule fois** (`SessionSpcc.valide`,
+
+### Problèmes ouverts (liste d'Alain du 19/10) — **P2 et P3 TRAITÉS (Lot 1)**
+- **P1 — mesures trop rares** (LOT 2) : astrométrie, gains Gaia et SPCC ne
+  mesurent qu'à la demande / **une seule fois** (`SessionSpcc.valide`,
   `Photometrie.valide`, WCS résolu puis propagé), dès `ASTRO_MIN_FRAMES = 3`
   — donc au pire moment. Voulu : re-mesurer en s'approfondissant, jusqu'à
   **chaque frame** en mono-dossier / **1 frame par rôle** en multi.
-- **P2 — SPCC ne trouve plus les filtres MiniCam8M.** **CAUSE PROUVÉE** :
-  la copie de base d'AVAStack (`%APPDATA%\AVAStack\spcc-database`, écrite
-  **19/10 12:36**) a **12** `mono_filters` et **n'a pas**
-  `QHYCCD_MiniCam8M_LRGB.json` ; la base Siril en a **13** et l'a. Or
-  `spcc_db.dossier_base()` prend le **premier** dossier valide (config →
-  copie AVAStack → Siril) : la copie incomplète **masque** la base complète.
-  Aggravant : `_spcc_defaut` remplace **silencieusement** une valeur absente
-  par `liste[0]` → `config.json` porte `spcc_fr = "Antlia R"` au lieu de
-  `QHYCCD MiniCam8M Red` (aucun message, « Antlia R » existe dans la base).
-- **P3 — astrométrie en fin de brutes.** Toujours vrai, mais **seulement**
-  si l'astrométrie n'était pas cochée ou est décochée/recochée : le WCS
-  manque et **entraîne** Gaia + SPCC. Cause exacte :
-  `_servir_demandes_sans_frame` (app.py:5720) sert `_spcc_demande` et
-  `_photo_demande` mais **pas l'astrométrie** (aucun `_astro_demande`), et
-  `_astro_tour` n'est appelé qu'après un re-stack.
+- **P2 — SPCC ne trouvait plus les filtres MiniCam8M : CORRIGÉ.** Cause
+  prouvée (copie AVAStack à 12 filtres masquant Siril à 13 ; `liste[0]`
+  substitué en silence) et correctif livré — **sans réparer la base à la
+  main**. Reste le **test réel** (prochaine étape).
+- **P3 — astrométrie en fin de brutes : CORRIGÉ.** `_astro_demande` servie
+  **avant** photo/SPCC ; fin de source = transition ; repose des mesures après
+  une résolution. Reste le **test réel**.
 - **P4 — place perdue dans la colonne gauche.** Les textes d'aide (31
   étiquettes grises `wraplength`) doivent devenir des **infobulles** sur un
   **ⓘ** posé à côté du champ concerné.
@@ -92,11 +103,15 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
   sans réempiler les brutes.
 
 ### Prochaines étapes
-1. **Lot 1 (prochain jalon)** : P2 (code seul, **sans réparer la base à la
-   main** — Alain veut vérifier que le correctif suffit) + P3.
-2. Puis P1, P4, P5, P6 — un jalon par lot, **demander l'accord d'Alain
-   avant chaque nouveau lot**.
-3. **Release v2.92.0** sur accord explicite, une fois les correctifs faits.
+1. **TEST RÉEL du Lot 1, SANS réparer la base à la main** : au démarrage, la
+   ligne « Base SPCC » doit dire la base **Siril (13)** et les filtres
+   **QHYCCD MiniCam8M** doivent être proposés ; `config.json` doit passer de
+   `spcc_fr = « Antlia R »` à « QHYCCD MiniCam8M Red » (message + journal).
+   En fin de brutes, recocher l'astro → **1 solve**, puis photo/SPCC **sans
+   nouvelle frame**.
+2. **Puis Lot 2 = P1** (cadence de re-mesure) — **accord d'Alain avant**.
+3. **Puis P4, P5, P6** — un jalon par lot.
+4. **Release v2.93.0** sur accord explicite, une fois les lots voulus faits.
 
 
 ---
@@ -122,10 +137,11 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
   (boîte MODALE, sinon blocage), jamais `grid` + `pack` dans le même conteneur.
 
 ### Contexte de reprise (à coller — 2 phrases)
-Arbre **v2.92.0 poussé** sur `LRGBHa` : **J2 à J5 VALIDÉS en réel**, `pyright` 0,
-**aucune release**. **Prochaine action** : **Lot 1 = P2 + P3** (base SPCC la
-plus riche + zéro substitution silencieuse ; `_astro_demande` en fin de source),
-puis test réel avec les filtres MiniCam **sans réparer la base à la main**.
+Arbre **v2.93.0** sur `LRGBHa` : **Lot 1 (P2 + P3) LIVRÉ** (base SPCC la plus
+riche, zéro substitution silencieuse, `_astro_demande` servie en fin de source),
+banc neuf vert, `pyright` 0, **aucune release**. **Prochaine action** : **test
+réel du Lot 1 sur le poste d'Alain**, filtres MiniCam **sans réparer la base à
+la main**, puis **Lot 2 = P1** sur accord.
 
 ---
 
@@ -159,41 +175,21 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 
 | Lot | Points | Contenu | État |
 |---|---|---|---|
-| **1** | **P2 + P3** | base SPCC la plus riche, zéro substitution silencieuse, `_astro_demande` | **PROCHAIN** |
-| 2 | P1 | cadence de re-mesure Gaia/SPCC | en attente |
+| **1** | **P2 + P3** | base SPCC la plus riche, zéro substitution silencieuse, `_astro_demande` | **LIVRÉ v2.93.0 — test réel à faire** |
+| 2 | P1 | cadence de re-mesure Gaia/SPCC | **PROCHAIN (accord d'Alain)** |
 | 3 | P4 | infobulles ⓘ | en attente |
 | 4 | P5 | audit MESURÉ de la réactivité | en attente |
 | 5 | P6 | source « stacks » : fichiers choisis, **rôles saisis**, seuil de profondeur = 1 | en attente |
 
-### Lot 1 — P2 : spécifications
-- `spcc_db.dossier_base()` : priorité au dossier choisi EXPLICITEMENT
-  (`chemin_spcc`) ; sinon **la base la plus riche** (nb de profils) entre copie
-  AVAStack et Siril, choix + compteurs au journal. Chez Alain, Siril (13
-  filtres) doit gagner sur la copie incomplète (12), **sans rien copier**.
-- `telechargeur` : refuser qu'une extraction rende la base **plus pauvre**, ne
-  jamais supprimer un profil existant (garde + message).
-- UI : **plus aucune substitution silencieuse** ; défauts **par canal**
-  (RED/GREEN/BLUE) et non `liste[0]` ; valeur absente = conservée + alerte.
-- Cas réel : si le profil enregistré vient d'un **autre modèle** que le défaut
-  du champ ET que ce défaut existe dans la base → défaut REPOSÉ avec message
-  (`Antlia R` → `QHYCCD MiniCam8M Red`) ; sinon avertir seulement.
-- `_profil` : exact, puis normalisé (casse/espaces), puis sous-chaîne ; échec
-  = message avec les **noms les plus proches**.
-- Garde-fou : `FILTER` de la brute courante (« QHYCCD MiniCam8M… ») ≠ modèle du
-  profil choisi → **avertissement rouge**.
-- Banc : bases factices 12 vs 13 → Siril gagne ; valeur absente → pas de
-  substitution ; `Antlia R` → défaut MiniCam reposé ; nom plus long que la base
-  → résolution normalisée.
-
-### Lot 1 — P3 : spécifications
-- `_astro_demande` posé par `_on_astro` (re-cochage), par un changement
-  d'indices et par la **fin de source**.
-- `_servir_demandes_sans_frame` : **astro D'ABORD**, puis photo, puis SPCC ;
-  après une astro résolue, reposer `_photo_demande` / `_spcc_demande` si leurs
-  cases sont cochées (c'est le « ça entraîne le reste »).
-- Consommée une fois, pas de boucle : essais/délais/WCS restent seuls juges.
-- Banc : fin de source + astro décochée → re-cochage = 1 solve, puis photo et
-  SPCC sans nouvelle frame ; aucun appel si le WCS est déjà résolu.
+### Lot 1 — P2 + P3 : **LIVRÉ** (v2.93.0) — détails durables dans `CLAUDE.md`
+- **P2** : base **la plus riche** (compteurs au journal), extraction jamais plus
+  pauvre, défauts **par canal**, valeur absente **conservée + alerte**,
+  `Antlia R` → `QHYCCD MiniCam8M Red` (message + journal), `_profil` exact →
+  normalisé → sous-chaîne + noms proches, garde **FILTER** rouge.
+- **P3** : `_astro_demande` (cochage / indices / **fin de source** / reset),
+  service **astro → photo → SPCC**, repose des mesures après une résolution,
+  demande consommée **une fois**.
+- **Banc** : `bancs/_test_lot1_p2_p3.py` (6 volets, 44 vérifications) — vert.
 
 ### P1 — cadence (lot 2)
 - Re-mesure quand la profondeur **double** (3 → 6 → 12 → 24…), délai minimal
@@ -217,49 +213,40 @@ main — le correctif de code doit suffire, et le test réel le prouve.
   tick adaptatif). Audit d'architecture éventuel : mode plan, AVEC ces mesures.
 
 ### P6 — source « Stacks (fichiers FITS) » (lot 5)
-- **Sélection de fichiers**, PAS un dossier : jusqu'à `NB_LIGNES_COMPO` (5)
-  lignes **rôle → fichier** (bouton …), chaque FITS venant d'où l'on veut.
-- **Le RÔLE est celui INDIQUÉ DANS LA LIGNE, jamais déduit** : un stack peut
-  venir de Siril, PixInsight, APP… (`canal_*.fit`, `FILTER`, `AVAFRAME` ne
-  sont PAS des contrats). L'en-tête sert au plus de **pré-remplissage
-  indicatif** ; s'il porte un `FILTER` **différent** du rôle choisi → simple
-  avertissement, **le choix de l'utilisateur fait foi** (même esprit que les
-  dossiers de composition).
-- **Profondeur : `AVAFRAME` N'EST PAS LUE** (non fiable hors AVAStack). Pour
-  cette source, le **seuil effectif de profondeur vaut 1**
-  (`_seuil_profondeur()` : 1 si source stacks, sinon `ASTRO_MIN_FRAMES`) —
-  astro, Gaia et SPCC peuvent donc mesurer dès le premier passage.
-  `SuiviAstrometrie.peut_essayer` reçoit ce seuil (défaut inchangé = 3).
-- **Aucun chiffre inventé** : les messages disent « empilement fourni
-  (profondeur non vérifiée) » au lieu d'un « N frames » déduit.
+- **Sélection de FICHIERS**, pas un dossier : jusqu'à `NB_LIGNES_COMPO` (5)
+  lignes **rôle → fichier** ; le **RÔLE est celui INDIQUÉ**, jamais déduit
+  (`canal_*.fit`, `FILTER`, `AVAFRAME` ne sont PAS des contrats ; un `FILTER`
+  contradictoire n'est qu'un avertissement, le choix de l'utilisateur fait foi).
+- **`AVAFRAME` n'est PAS lue** ; seuil de profondeur **forcé à 1** pour cette
+  source (`_seuil_profondeur()`), sinon astro/Gaia/SPCC seraient bloqués.
+  Messages : « empilement fourni (profondeur non vérifiée) », aucun « N frames »
+  inventé.
 - `avastack/cameras/stacks.py` : `StackFilesCamera` lit chaque fichier **une
-  fois** et rend `(image, rôle)` (contrat `MultiFolderCamera`) →
-  `_mode_compo`, composition déduite **des rôles saisis**, tout l'aval
-  inchangé (fusion Ha, couleurs, SPCC, Gaia, sauvegardes, fiches).
-- **Calibration IGNORÉE** (couche déjà empilée), cadence/rafale inactives,
-  lecture unique puis silence ; un seul fichier = composition **Mono**.
-- **Linéarité** : refus seulement si l'en-tête AVAStack dit explicitement non
-  linéaire ; sinon, pour un fichier venu d'ailleurs, **avertissement MESURÉ**
-  (fond médian et plage de valeurs) quand l'image ne ressemble pas à du
-  linéaire — **jamais un refus sur une supposition**.
-- Ajout à `cameras.SOURCES`, panneau dédié, persistance rôle/fichier.
-- Banc : `M33_Canaux_LRGBHa` → LRGB+Ha déduite **des rôles**, seuil de
-  profondeur = 1, zéro calibration, lecture unique ; un FITS sans en-tête
-  AVAStack (imité Siril/PixInsight) passe quand même ; `FILTER` contradictoire
-  → avertissement sans changer le rôle.
+  fois** et rend `(image, rôle)` → `_mode_compo`, composition déduite des rôles,
+  tout l'aval inchangé. **Calibration ignorée**, cadence/rafale inactives, un
+  seul fichier = **Mono**.
+- **Linéarité** : refus seulement si l'en-tête AVAStack dit non linéaire ;
+  sinon **avertissement MESURÉ** (fond médian, plage) pour un fichier venu
+  d'ailleurs — jamais un refus sur une supposition.
+- Ajout à `cameras.SOURCES`, panneau dédié, persistance rôle/fichier. Banc :
+  `M33_Canaux_LRGBHa` → LRGB+Ha déduite des rôles, seuil 1, zéro calibration,
+  lecture unique ; FITS sans en-tête AVAStack accepté.
 
 ---
 
-## En attente / prochaine session (état au 19/10 — `LRGBHa`, v2.92.0)
+## En attente / prochaine session (état au 19/10 — `LRGBHa`, v2.93.0)
 
 - **J2 à J5 sont CLOS** (validés en réel le 19/10) : cinq modes de fusion,
   continuum à trois méthodes (repli VISIBLE, mesure indépendante de la case) et
   ancre d'un `+Ha` toujours large bande.
-- **Prochaine action unique** : **Lot 1 = P2 + P3** (cf. « Chantier en cours —
-  Améliorations d'usage »). **Rien ne part en release avant.**
-- **Ensuite** : P1 (cadence), P4 (infobulles), P5 (audit réactivité), P6
-  (source stacks par fichiers) — **accord d'Alain avant chaque lot**.
-- **Puis** : **release v2.92.0** sur accord explicite.
+- **Lot 1 (P2 + P3) est LIVRÉ** en code (v2.93.0) : **test réel à faire** sur le
+  poste d'Alain, **sans réparer la base à la main** (MiniCam + astro en fin de
+  brutes). **Rien ne part en release avant.**
+- **Prochaine action unique** : le **test réel du Lot 1** (cf. « Prochaines
+  étapes »), puis **Lot 2 = P1** sur accord d'Alain.
+- **Ensuite** : P4 (infobulles), P5 (audit réactivité), P6 (source stacks par
+  fichiers) — **accord d'Alain avant chaque lot**.
+- **Puis** : **release v2.93.0** sur accord explicite.
 - **Optionnel** : cible qui REMPLIT le cadre (repli attendu et DIT) et filtre
   **3 nm** si Alain en a un.
 - **Référence chiffrée** : `C:\Astro\test\M33_Canaux_LRGBHa` (5 `canal_*.fit` +
@@ -292,14 +279,11 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 
 ## Pièges récents (encore actifs — le reste est passé dans `CLAUDE.md`)
 
-- **Une base SPCC neuve peut être PLUS PAUVRE que celle de Siril et la
-  masquer** : `dossier_base()` prend le premier dossier valide, et
-  `base_complete()` ne vérifie que « les cinq catégories sont non vides ». La
-  copie AVAStack du 19/10 a **12** `mono_filters` sans
-  `QHYCCD_MiniCam8M_LRGB.json` alors que la base Siril en a **13** → filtres
-  MiniCam introuvables, et `liste[0]` a remplacé `spcc_fr` par « Antlia R ».
-  Vérifier les COMPTEURS par catégorie avant de conclure à un bug de mesure.
-
+- **Échecs PRÉEXISTANTS** : `_test_espace_jalon72` (géométrie d'écran),
+  `_test_reset_empilement_jalon76` [4] (course `_stop()`, sensible à la charge
+  CPU) et, dans `_test_sans_siril_jalon77`, « ligne Base SPCC rognée de 1-2 px »
+  + « menu écrasé » (prouvés sur HEAD dans un worktree : flaky, la longueur du
+  dossier temporaire décide).
 - **Un jeu SANS le défaut ne mesure que l'ABSENCE DE COÛT** : 109 frames sans
   retournement donnaient « retirer `phase` ne change rien » ; sur **Sh2-132**
   (204 frames, **31 retournements**), la phase finalisait 22 frames dont 21 Ha
@@ -308,16 +292,14 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 - **Une réussite de repli n'est pas une preuve d'alignement** : `phase` en
   translation seule a posé 11/50 puis 12/49 frames B **à l'envers**. Un banc
   teste le **chemin de décision** (espion) et son coût sur une frame douce.
-- **Échecs PRÉEXISTANTS** : `_test_espace_jalon72` (géométrie d'écran),
-  `_test_reset_empilement_jalon76` [4] (course `_stop()`, sensible à la charge CPU).
 - **Lancement** : `python AVAStack.py` (venv) — jamais `python3`.
 
 ---
 
 ## Clôtures précédentes
 
+- **19/10/2026** : **LOT 1 LIVRÉ** (P2 + P3, v2.93.0) — base SPCC la plus
+  riche, zéro substitution silencieuse, astro servie en fin de source ; banc
+  neuf vert ; **test réel à faire**, aucune release.
 - **19/10/2026** : **J5 VALIDÉ EN RÉEL** (v2.92.0, poussé) — ancre d'un `+Ha`
-  toujours large bande (démarrage ancre R + Ha rejouée ; re-stack 12/12) ;
-  **aucune release**.
-- **19/10/2026** : **J4/J4.1 VALIDÉS en réel** (v2.91.1) — trois méthodes de
-  continuum, mesure indépendante de la case « recentrer ».
+  toujours large bande (démarrage ancre R + Ha rejouée ; re-stack 12/12).

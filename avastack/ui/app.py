@@ -473,6 +473,12 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self.astro_info = ""             # texte de la ligne dédiée ("" = rien)
         self.astro_couleur = "#888888"   # gris / vert (résolu) / ambre (souci)
         self._astro_actif = False        # case « Astrométrie » (instantané Tk)
+        # Lot 1 / P3 : DEMANDE explicite de résolution. Posée par `_on_astro`
+        # (cochage / changement d'indices) et par la FIN DE SOURCE (worker) ;
+        # le worker la sert même sans nouvelle frame (cf.
+        # `_servir_demandes_sans_frame`, astrométrie D'ABORD). Sans elle, une
+        # astrométrie cochée après le dernier re-stack n'était jamais tentée.
+        self._astro_demande: bool = False
         self._astro_indices = None       # (ra, dec, champ) validés (instantané)
         self._astro_name_proposed: bool = False  # popup déjà proposée pour ce nom
         # Jalon 96 (étapes 5-6) : annotation temps-réel de l'image AFFICHÉE
@@ -524,6 +530,13 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._spcc_essais = 0            # tentatives de mesure (session)
         self._spcc_dernier = 0.0         # instant de la dernière tentative
         self._spcc_demande: bool = False       # v2.37.0 : mesure redemandée par la case
+        # Lot 1 / P2 : jamais de substitution SILENCIEUSE d'un profil SPCC.
+        # `_spcc_alerte` porte le message (valeur absente conservée, profil
+        # reposé…) et `_spcc_garde` l'avertissement FILTER de la brute
+        # courante (écrit par le worker) ; `_maj_spcc_vue` les affiche en
+        # rouge sous la case, et le journal en garde une trace.
+        self._spcc_alerte: str = ""
+        self._spcc_garde: str = ""
         # Jalon 56 (étape 5) : CASE À PART, DÉCOCHÉE PAR DÉFAUT (opt-in demandé
         # par Alain, 23/09/2026) — c'est elle, et elle seule, qui fait écrire
         # les gains photométriques dans le stacker (donc qui CHANGE l'image).
@@ -1599,6 +1612,8 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         Une saisie refusée (valeur illisible, champ hors bornes) est signalée
         TELLE QUELLE : rien n'est deviné, et le suivi reste sans indices —
         l'astrométrie ne se lancera pas sur une valeur à moitié comprise."""
+        actif_avant = self._astro_actif
+        indices_avant = self._astro_indices
         self._astro_actif = bool(self.var_astro.get())
         # Réinitialiser la proposition de nom quand l'astrométrie est désactivée
         if not self._astro_actif:
@@ -1629,6 +1644,16 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 self._astro_name_proposed = False
         if not self._astro_actif and self.suivi_astro is not None:
             self.suivi_astro.reset()
+        # Lot 1 / P3 : DEMANDE de résolution — posée au COCHAGE, au CHANGEMENT
+        # D'INDICES, et tant que le WCS n'est pas résolu. Le worker la sert
+        # même sans nouvelle frame (`_servir_demandes_sans_frame`) ; les
+        # garde-fous d'essais, de délai et de profondeur restent seuls juges
+        # (une demande consommée ne boucle jamais).
+        if not self._astro_actif:
+            self._astro_demande = False
+        elif (not actif_avant or self._astro_indices != indices_avant
+              or self.suivi_astro is None or not self.suivi_astro.resolu):
+            self._astro_demande = True
         self._rafraichir_rendu = True     # la ligne d'état suit SANS brute
         self._maj_astro_vue()
         # v2.38.11 : la ligne « Catalogues » demande des `listdir` sur des
@@ -1654,28 +1679,19 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         except Exception:
             return False
 
-    @staticmethod
-    def _spcc_defaut(cle: str, liste: Any, osc: bool) -> str:
-        """Valeur posée quand la liste des profils change.
+    def _spcc_defaut(self, cle: str, liste: Any, osc: bool) -> str:
+        """Valeur posée quand la liste des profils change — PAR CANAL.
 
-        En OSC, JAMAIS un filtre « au hasard » : le premier nom de la liste est
-        un VRAI LPF (« Antlia Quad Band Anti-Light Pollution Filter »…) et
-        l'appliquer en silence à une brute sans filtre fausserait toute la
-        couleur — on préfère donc la référence « sans filtre » de la base
-        (« No filter », « Full spectrum (no filter) »), et seulement à défaut le
-        premier nom. Pour les capteurs, rien à choisir : « Sony IMX585 » est
-        dans les deux listes, la sélection suit le type (v2.40.0)."""
-        if osc and cle == "fr":
-            for n in liste:                     # la référence elle-même d'abord
-                if str(n).strip().lower() in ("no filter", "sans filtre"):
-                    return n
-            for n in liste:
-                b = str(n).lower()
-                if "no filter" in b or "sans filtre" in b or "full spectrum" in b:
-                    return n
-        return liste[0] if liste else ""
+        Lot 1 / P2 (19/10/2026) : l'ancien `liste[0]` était un nom ARBITRAIRE
+        (liste triée par fichier) — c'est ainsi que « Antlia R » est devenu le
+        filtre R d'un jeu QHYCCD MiniCam8M, SANS AUCUN MESSAGE. Le défaut est
+        désormais celui du CANAL du champ (RED/GREEN/BLUE), et vaut "" quand
+        aucun profil ne convient : l'appelant CONSERVE alors la valeur
+        courante au lieu de la remplacer en silence.
+        """
+        return spcc_mod.defaut_profil(cle, liste, osc)
 
-    def _on_spcc_type(self) -> None:
+    def _on_spcc_type(self, verifier: bool = True) -> None:
         """Jalon 58 bis : le type de capteur change (mono ↔ couleur OSC).
 
         Les listes déroulantes suivent (capteurs, filtres) et — en OSC — c'est
@@ -1684,19 +1700,36 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         de ligne, le pack abandonnerait silencieusement ce qui suit), mais elles
         sont grisées et leur libellé le dit. Toute mesure en cours est
         invalidée : des coefficients calculés pour d'autres bandes seraient
-        faux."""
+        faux.
+
+        Lot 1 / P2 : une valeur ABSENTE de la nouvelle liste n'est remplacée
+        par un défaut QUE si l'on peut en désigner un PAR CANAL — et le
+        remplacement est alors DIT (alerte + journal). Sans défaut possible,
+        la valeur est CONSERVÉE telle quelle : plus aucune substitution
+        silencieuse. `verifier=False` sert à la restauration de la
+        configuration, qui pose les profils enregistrés APRÈS cet appel."""
         osc = self._spcc_osc()
         noms = getattr(self, "_spcc_noms", {}) or {}
         vars_, cbs = getattr(self, "_spcc_vars", {}), getattr(self, "_spcc_cbs", {})
         if not vars_ or not cbs:
             return
+        alertes = []
         for cle, categorie, cle_noms in (("capteur", "capteur", "osc_capteurs"),
                                          ("fr", "filtres", "osc_filtres")):
-            liste = ((noms.get(cle_noms) if osc else noms.get(categorie)) or [""])
+            liste = list((noms.get(cle_noms) if osc else noms.get(categorie))
+                         or [])
             cbs[cle].config(values=liste)
-            cbs[cle].state(["!disabled"])
-            if vars_[cle].get() not in liste:
-                vars_[cle].set(self._spcc_defaut(cle, liste, osc))
+            cbs[cle].state(["!disabled"] if liste else ["disabled"])
+            actuel = str(vars_[cle].get() or "")
+            if actuel and actuel in liste:
+                continue
+            defaut = self._spcc_defaut(cle, liste, osc)
+            if not defaut:
+                continue          # valeur CONSERVÉE (l'alerte suit)
+            vars_[cle].set(defaut)
+            if actuel:
+                alertes.append(f"profil « {actuel} » absent de la base — "
+                               f"remplacé par « {defaut} »")
         for cle, b in (("fg", "G"), ("fb", "B")):
             self._spcc_lbls[cle].config(
                 text=("Filtre (OSC) :" if osc else f"Filtre {b} :"))
@@ -1712,6 +1745,18 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._spcc_lbls["capteur"].config(
             text=("Capteur OSC :" if osc else "Capteur :"))
         self._on_spcc()          # invalide la mesure et remet la vue à jour
+        if verifier:
+            self._spcc_verifier_profils(alertes)
+
+    def _on_spcc_profil(self) -> None:
+        """Lot 1 / P2 : l'utilisateur CHOISIT un profil — sa décision fait foi.
+
+        On efface donc les alertes de cohérence (elles décrivaient l'état
+        précédent) puis on invalide la mesure comme avant : des coefficients
+        calculés pour d'autres bandes seraient faux."""
+        self._spcc_alerte = ""
+        self._spcc_garde = ""
+        self._on_spcc()
 
     def _on_spcc(self) -> None:
         """Jalon 58 : case « SPCC (couleurs absolues) » — OPT-IN, décochée par
@@ -1749,13 +1794,135 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         except Exception:
             return "", {}, ""
 
+    def _spcc_alerte_courte(self) -> str:
+        """Résumé AFFICHABLE de `_spcc_alerte` : la première ligne, plus le
+        nombre d'autres. Le détail complet reste au JOURNAL — une colonne de
+        texte de huit lignes casserait la mise en page (mesuré au banc 77)."""
+        alertes = [a for a in str(getattr(self, "_spcc_alerte", "")).split(" ; ")
+                   if a]
+        if len(alertes) <= 1:
+            return alertes[0] if alertes else ""
+        return (f"{alertes[0]} (+{len(alertes) - 1} autre(s) — voir le journal)")
+
+    def _spcc_verifier_profils(self, alertes_sup: Any = ()) -> None:
+        """Cohérence des profils SPCC avec la BASE RETENUE — jamais en silence.
+
+        CAS RÉEL (19/10/2026) : `config.json` portait `spcc_fr = « Antlia R »`
+        alors que G et B étaient des QHYCCD MiniCam8M. La copie de base
+        d'AVAStack (12 filtres) n'avait pas le jeu MiniCam et l'ancien
+        `_spcc_defaut` avait reposé `liste[0]` SANS RIEN DIRE. Maintenant que
+        `dossier_base` retient la base la plus riche, le jeu MiniCam est LÀ :
+
+        · une valeur ABSENTE de la base est CONSERVÉE (jamais remplacée par
+          un premier nom venu) et signalée ;
+        · un profil présent mais d'un AUTRE MODÈLE que les deux autres
+          canaux, alors que le défaut du canal existe dans ce modèle, est
+          REPOSÉ avec un message (`Antlia R` → `QHYCCD MiniCam8M Red`) ;
+        · toute alerte part au JOURNAL et s'affiche en rouge sous la case.
+        """
+        alertes = [str(a) for a in (alertes_sup or ()) if str(a)]
+        alerte_avant = str(getattr(self, "_spcc_alerte", "") or "")
+        vars_ = getattr(self, "_spcc_vars", {}) or {}
+        noms = getattr(self, "_spcc_noms", {}) or {}
+        if vars_ and not self._spcc_osc():
+            profils = spcc_mod.profils_filtres()
+            liste = list(noms.get("filtres") or [])
+            champs = (("fr", "RED"), ("fg", "GREEN"), ("fb", "BLUE"))
+            vals = {cle: str(vars_[cle].get() or "") for cle, _c in champs}
+            modeles = {cle: str((profils.get(vals[cle]) or {}).get("modele") or "")
+                       for cle, _c in champs}
+            pres = {cle: bool(vals[cle]) and vals[cle] in liste
+                    for cle, _c in champs}
+            for cle, canal in champs:
+                if pres[cle]:
+                    canal_profil = str((profils.get(vals[cle]) or {})
+                                       .get("canal") or "")
+                    if canal not in canal_profil.split():
+                        alertes.append(
+                            f"profil « {vals[cle]} » n'est pas un filtre "
+                            f"{canal[0]} (canal {canal_profil or '?'}) — conservé")
+                elif vals[cle]:
+                    alertes.append(f"profil « {vals[cle]} » absent de la base "
+                                   f"— conservé")
+            # Cohérence de MODÈLE : deux canaux d'accord désignent le défaut
+            # du troisième, À CONDITION que la valeur courante soit présente
+            # dans la base (une valeur absente reste conservée, cf. ci-dessus).
+            for cle, canal in champs:
+                autres = [modeles[a] for a, _c in champs
+                          if a != cle and pres[a] and modeles[a]]
+                if len(autres) < 2 or len(set(autres)) != 1:
+                    continue
+                modele = autres[0]
+                if not modeles[cle] or modeles[cle] == modele:
+                    continue
+                defaut = next(
+                    (nom for nom, d in profils.items()
+                     if d.get("modele") == modele
+                     and canal in str(d.get("canal") or "").split()), "")
+                if not defaut:
+                    alertes.append(
+                        f"profil « {vals[cle]} » (modèle {modeles[cle]}) "
+                        f"incohérent avec {modele} — conservé")
+                    continue
+                alertes.append(
+                    f"profil « {vals[cle]} » remplacé par « {defaut} » "
+                    f"(modèle {modele}, celui des autres canaux)")
+                vars_[cle].set(defaut)
+            for cle, categorie in (("capteur", "capteur"), ("blanc", "blancs")):
+                v = str(vars_[cle].get() or "")
+                liste_c = list(noms.get(categorie) or [])
+                if v and liste_c and v not in liste_c:
+                    alertes.append(f"profil « {v} » absent de la base — conservé")
+        self._spcc_alerte = " ; ".join(alertes)
+        if not alertes and "remplacé par" in alerte_avant:
+            # La correction de profil reste DITE : une vérification ultérieure
+            # sans rien à signaler (sonde de base, rafraîchissement) ne doit pas
+            # effacer le message qui explique POURQUOI `config.json` a changé.
+            # Il disparaît dès que l'utilisateur choisit un profil lui-même.
+            self._spcc_alerte = alerte_avant
+        if alertes:
+            journal.note("SPCC", self._spcc_alerte)
+        self._maj_spcc_vue()
+
+    def _spcc_garde_filtre(self) -> str:
+        """Avertissement quand le mot-clé FILTER de la brute courante
+        contredit le MODÈLE des filtres choisis (Lot 1 / P2).
+
+        → "" quand on ne peut rien conclure (pas de brute lisible, FILTER
+        absent ou réduit à un rôle « R »/« Ha »), ou quand le modèle est
+        compatible. Ne REFUSE jamais la mesure : la SPCC se tente, mais
+        l'utilisateur voit que son profil ne correspond probablement pas à la
+        brute (cas d'un jeu de filtres choisi pour un autre matériel)."""
+        if self._spcc_osc():
+            return ""                       # un seul filtre : rien à croiser
+        try:
+            lecture = getattr(self, "_brute_courante", None)
+            chemin = lecture() if callable(lecture) else ""
+            filtre = lire_filtre_fits(chemin) if chemin else None
+        except Exception:
+            return ""
+        if not filtre:
+            return ""
+        _, filtres, _ = self._spcc_profils()
+        profils = spcc_mod.profils_filtres()
+        modeles = sorted({str((profils.get(n) or {}).get("modele") or "")
+                          for n in filtres.values() if n} - {""})
+        if not modeles or spcc_mod.filtre_compatible(filtre, modeles):
+            return ""
+        return (f"FILTER de la brute « {filtre} » ≠ modèle des filtres choisis "
+                f"({', '.join(modeles)}) — profil probablement inadapté")
+
     def _maj_spcc_vue(self) -> None:
         """Libellé sous la case SPCC : dit ce qui est appliqué, ou pourquoi
         rien ne l'est — jamais muet quand la case est cochée."""
         if getattr(self, "lbl_spcc", None) is None:
             return
         if not self._spcc_actif:
-            self.lbl_spcc.config(text="", foreground="#888888")
+            # Même DÉCOCHÉE, une correction de profil doit se voir (elle a
+            # modifié la configuration enregistrée : Lot 1 / P2).
+            alerte = self._spcc_alerte_courte()
+            self.lbl_spcc.config(text=("SPCC : ⚠ " + alerte) if alerte else "",
+                                 foreground="#d04040" if alerte else "#888888")
             return
         if not self._spcc_dispo:
             self.lbl_spcc.config(
@@ -1763,6 +1930,16 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                       "le bouton « ⬇ Base SPCC » la télécharge (quelques Mo), "
                       "ou « 📂 Dossier SPCC » désigne une base existante"),
                 foreground="#c98a00")
+            return
+        # Lot 1 / P2 : les avertissements de PROFIL passent avant le reste —
+        # une couleur fausse se voit AVANT la mesure, pas après.
+        garde = getattr(self, "_spcc_garde", "")
+        alerte = self._spcc_alerte_courte()
+        if garde or alerte:
+            txt = garde or alerte
+            if garde and alerte:
+                txt = f"{garde} ; {alerte}"
+            self.lbl_spcc.config(text="SPCC : ⚠ " + txt, foreground="#d04040")
             return
         if not (self._mode_compo or self._source_rgb(getattr(self, "stacker", None))):
             # v2.37.1 : au LANCEMENT, aucune source n'est encore choisie —
@@ -2079,9 +2256,12 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                     continue
                 cb.config(values=valeurs)
         if nouveau:
-            self._on_spcc_type()
+            self._on_spcc_type()      # …et termine par `_spcc_verifier_profils`
         else:
             self._maj_spcc_vue()
+            # Lot 1 / P2 : la base vient peut-être d'être LUE (téléchargement,
+            # dossier choisi) — on rejuge les profils avec les VRAIES listes.
+            self._spcc_verifier_profils()
 
     # --------------------------------------------- téléchargements (réseau)
     def _boutons_dl(self) -> list[Any]:
@@ -5732,19 +5912,40 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         PROCHAINE frame, qui n'arrive jamais. Les mesures ne dépendent que de
         l'EMPILEMENT COURANT : les servir ici ne coûte rien (elles gardent leurs
         propres délais/plafonds et ne repartent que sur demande explicite d'une
-        case — jamais en boucle)."""
+        case — jamais en boucle).
+
+        Lot 1 / P3 (19/10/2026) : l'ASTROMÉTRIE entre dans ce service, et
+        D'ABORD — sans WCS, la photométrie et la SPCC ne peuvent rien mesurer.
+        Après une astro QUI VIENT DE RÉSOUDRE, leurs demandes sont REPOSÉES si
+        leurs cases sont cochées : c'est le « ça entraîne le reste » qui
+        manquait en fin de brutes. L'ordre est celui des dépendances :
+        astro → photo → SPCC."""
         if self.stacker is None or self.stacker.n <= 0:
-            self._spcc_demande = self._photo_demande = False
+            self._astro_demande = self._spcc_demande = self._photo_demande = False
             return
         servi = False
-        if self._spcc_demande:
-            self._spcc_demande = False
-            self._spcc_tour(self.stacker)      # garde-fous internes (valide,
-            servi = True                       # actif, essais, WCS, frames)
+        if self._astro_demande:
+            self._astro_demande = False        # consommée UNE fois
+            resolu_avant = bool(self.suivi_astro is not None
+                                and self.suivi_astro.resolu)
+            self._astro_tour(self.stacker)     # garde-fous internes
+            servi = True
+            if (not resolu_avant and self.suivi_astro is not None
+                    and self.suivi_astro.resolu):
+                # Le WCS vient d'arriver : les mesures qui en dépendent
+                # repartent SANS attendre une frame qui n'arrivera jamais.
+                if self._photo_actif:
+                    self._photo_demande = True
+                if self._spcc_actif:
+                    self._spcc_demande = True
         if self._photo_demande:
             self._photo_demande = False
             self._photo_tour(self.stacker)
             servi = True
+        if self._spcc_demande:
+            self._spcc_demande = False
+            self._spcc_tour(self.stacker)      # garde-fous internes (valide,
+            servi = True                       # actif, essais, WCS, frames)
         if servi:
             self._pousser_rendu()              # le texte de mesure part à l'UI
 
