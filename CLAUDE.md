@@ -1726,18 +1726,23 @@ ce qui manquait n'était pas une correction mais une MESURE.
     dépasser 1 aux cœurs et aux étoiles) ;
   · `eclaircir_rouge` : `R̃' = R̃ + max(0, s̃ − R̃)` — `max(R̃, s̃)` : ne fait
     que MONTER, et le poids n'est plus multiplié par zéro ;
-  · `ha_luminance` (v2.90.1, décision d'Alain) : `R̃' = R̃ × (1 + s̃)`, soit
-    `R' = fond_R + (R − fond_R)·(1 + p·s̃)` — le Ha **éclaire le ROUGE DE
-    L'OBJET**, proportionnel à son propre signal ; **le CIEL n'est JAMAIS
-    multiplié** et V/B sont intacts. Ancienne version (facteur sur les trois
-    canaux) : elle BLANCHISSAIT (voir plus bas, mesuré).
+  · `ha_luminance` (v2.90.2, décision d'Alain sur aperçus) :
+    `R' = R × (1 + poids·s̃·porte)`, `porte = clip((s̃ − 0,05)/0,20 ; 0 ; 1)` —
+    le gain multiplicatif porte sur le ROUGE, mais **seulement là où le Ha est
+    FRANC** : sous `s̃` = 0,05 le rouge est **inchangé AU BIT** (le bruit du ciel
+    reste du bruit), au-delà de 0,25 le gain est plein. V/B jamais touchés.
+    Historique : facteur sur les TROIS canaux (v2.90.0) → BLANCHISSAIT ; gain
+    sur l'objet au-dessus du fond (v2.90.1) → trop faible à l'écran.
 - **PIÈGE — `ha_luminance` n'est PAS « une luminance sur trois canaux »** : la
   version multiplicative sur R+V+B était juste en théorie (rapports préservés)
   mais blanchissait à l'écran : G et B, qui ne portent aucun Ha, étaient
   multipliés dans TOUTE la zone, ciel compris (saturation 0,19 → 0,12). Et
-  multiplier le rouge ENTIER (fond compris) verse du bruit rouge dans le ciel.
-  La seule forme qui éclaire sans salir : multiplier le **signal au-dessus du
-  fond**, dans le canal où le Ha existe (R).
+  multiplier le rouge ENTIER sans porte verse du bruit rouge dans le ciel.
+  La forme retenue — gain À PORTE sur `s̃` — chiffre le compromis : sous 0,05 le
+  rouge est INCHANGÉ AU BIT, la bande diffuse reste à 0 % de pixels touchés, et
+  la bande Ha gagne 2 à 5 fois plus qu'un gain limité à l'objet. **Ne pas
+  baisser la porte sous 0,05 sans mesurer** : la rampe 0,02-0,12 versait déjà
+  +0,041 dans le halo.
 - **`fusion_ha_effectif` PORTE α** désormais : le dict complet est
   `{mode, poids, alpha, recentrer, continuum, q, methode_continuum}`, α borné et
   TOUJOURS présent même hors fondu (changer de mode ne perd pas le réglage).
@@ -1760,8 +1765,9 @@ ce qui manquait n'était pas une correction mais une MESURE.
   `composer()` (poids 0, formules, HOO intact, mode inconnu), **volet [5b]
   « composite HORS [0 ; 1] » (R ≈ 2,9-5,7)** qui exige : fond immobile (à 1 % de
   `A_R` près), écran et éclaircir qui ne baissent JAMAIS, éclaircir qui AGIT et
-  dont le POIDS agit, fondu qui fait MONTER le Ha, luminance qui éclaire le
-  ROUGE DE L'OBJET (fond immobile, V/B **au bit**, gain = 1 + s̃ au cœur) ;
+  dont le POIDS agit, fondu qui fait MONTER le Ha, luminance : bande diffuse
+  INTACTE, V/B **au bit**, gain = 1 + s̃ au cœur et **rouge AU BIT sous la
+  porte** ;
   mémoïsation (α, mode), App réelle (α activé seulement en
   fondu, borné, persisté, restauré) et fiche. **Le banc J2 a été mis à jour
   VOLONTAIREMENT** sur trois volets (liste des modes, dict des défauts, dict de
@@ -1800,22 +1806,22 @@ ce qui manquait n'était pas une correction mais une MESURE.
   plancher de 0,0171, soit 2,3 % de son amplitude).
   ⇒ **RÈGLE** : un opérateur qui COMPARE `R` et `s` ne doit JAMAIS supposer que
   le composite tient dans [0 ; 1] — ni que `s` et `R` ont le même plancher.
-  **J3bis LIVRÉ (v2.90.1)** et **rejoué sur les couches M33 RÉELLES avec le code
+  **J3bis LIVRÉ (v2.90.2)** et **rejoué sur les couches M33 RÉELLES avec le code
   livré** (`C:\Astro\test\M33_Canaux_LRGBHa`, Δ médian du rouge, poids 1) :
   · fond : **−0,000 pour les CINQ modes** (le J3 retirait 1,43) ;
   · `fondu` α 0,5 : Ha large +0,037, cœur +0,020 — le Ha n'est plus retiré ;
   · `ecran` : Ha large +0,22, cœur +0,66, **0 % de pixels en baisse** (J3 : −1,51) ;
   · `eclaircir` : Ha large +0,075, cœur +0,040, **53 %** des pixels du cœur
     montent (J3 : 0 %, strictement inerte) ;
-  · `ha_luminance` (v2.90.1) : cœur **+0,95** (×1,62 sur l'objet), **0 % du
-    fond modifié**, V/B **au bit** — plus de blanchiment (saturation du cœur
-    0,11 contre 0,09 sans fusion) ;
+  · `ha_luminance` (v2.90.2, à porte) : bande Ha **+0,037 médian / +0,665 au
+    p90** (v2.90.1 : +0,016 / +0,135), cœur +2,77 ; **bande diffuse 0 % touchée**
+    et **89,6 % des pixels sont sous la porte → rouge AU BIT** ; V/B au bit ;
   · `ajout_rouge` : fond +0,000, cœur +0,443 — **le J2 n'a pas bougé d'un bit**.
   Le `fondu` baisse encore 38 % des pixels : ceux où le continuum R DÉPASSE le
   Ha (structures larges) — c'est son objet (remplacer), pas le fond.
   **VERDICT RÉEL D'ALAIN** : `fondu`, `ecran` et `eclaircir` **OK** (« tout est
-  bien mieux voire OK », 19/10) ; seule `ha_luminance` blanchissait → réécrite
-  en v2.90.1, **à re-juger à l'écran**.
+  bien mieux voire OK », 19/10) ; `ha_luminance` réécrite deux fois (v2.90.1
+  objet, puis v2.90.2 à porte sur choix d'aperçus) — **à re-juger à l'écran**.
 - **PIÈGE D'INTERFACE (défaut réel du 19/10, corrigé en v2.89.1)** : le champ α
   restait GRISÉ en passant en mode fondu. La Combobox appelle `_on_fusion_ha`,
   qui ne rafraîchissait pas l'état des widgets ; le banc appelait

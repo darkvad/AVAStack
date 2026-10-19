@@ -19,7 +19,24 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.90.1"
+AVASTACK_VERSION = "2.90.2"
+
+# v2.90.2 : `ha_luminance` — GAIN À PORTE (choix d'Alain sur aperçus, 19/10).
+#   La v2.90.1 ne touchait que le signal AU-DESSUS DU FOND : ciel intact, mais
+#   effet faible (Δ médian +0,016 dans la bande Ha). Multiplier tout `R` SANS
+#   porte versait du bruit rouge dans le ciel (piste « V9 »). La porte règle les
+#   deux :
+#       R' = R × (1 + poids·s̃·porte),  porte = clip((s̃ − 0,05)/0,20 ; 0 ; 1)
+#   Sous s̃ = 0,05 le rouge est INCHANGÉ AU BIT (le bruit du ciel reste du
+#   bruit) ; au-delà de 0,25 le gain est plein. V et B ne sont jamais touchés.
+#   MESURÉ sur les couches M33 (Δ médian / p90 du rouge, pixels touchés) :
+#     · bande DIFFUSE : 0 % touchée (comme la porte fermée) ;
+#     · bande Ha      : +0,037 / +0,665 (v2.90.1 : +0,016 / +0,135) ;
+#     · halo au p99    : +0,000 (la rampe 0,02-0,12, ÉCARTÉE, en versait +0,041) ;
+#     · fond           : 0 % touché, V/B au bit.
+#   Constantes `PORTE_HA_DEBUT/FIN` dans composition.py : AUCUN réglage exposé.
+#   Banc J3 recalé (référence à porte ; volet [5b] + invariant « sous la porte =
+#   le rouge AU BIT ») ; banc J2 vert AU BIT ; 129/130/136/137/141 vertes.
 
 # v2.90.1 : `ha_luminance` NE BLANCHIT PLUS (verdict réel du 19/10 ; décision
 #   d'Alain : « le V9 objet seul »). `fondu`, `ecran` et `eclaircir` sont

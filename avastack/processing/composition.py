@@ -165,13 +165,14 @@ MODES_L: tuple[str, ...] = ("synthetise", "degrade")   # radio « Canal L » (L 
 #                          c'est lui qui BORNE — R̃ peut dépasser 1)
 #   · `eclaircir_rouge`  : R̃' = R̃ + max(0, s̃ − R̃)
 #                          (éclaircir = max(R̃, s̃) : ne fait que MONTER)
-#   · `ha_luminance`     : R' = fond_R + (R − fond_R)·(1 + p·s̃)
-#                          (le Ha éclaire le ROUGE DE L'OBJET, à proportion de
-#                          son propre signal : le CIEL n'est jamais multiplié —
-#                          le faire y versait du bruit rouge — et V/B restent
-#                          intacts. L'ancienne « luminance sur les trois
-#                          canaux » BLANCHISSAIT : mesuré le 19/10, la
-#                          saturation des zones Ha tombait de 0,19 à 0,12)
+#   · `ha_luminance`     : R' = R × (1 + p·s̃·porte)
+#                          (le Ha éclaire le ROUGE, mais SEULEMENT là où il est
+#                          FRANC : `porte` = rampe 0,05 → 0,25 sur s̃. Sans
+#                          porte, le gain multiplie le CIEL et y verse du bruit
+#                          rouge ; limité à l'objet au-dessus du fond, il ne
+#                          montre presque rien à l'écran. V/B jamais touchés.
+#                          L'ancienne « luminance sur les trois canaux »
+#                          BLANCHISSAIT : saturation des zones Ha 0,19 → 0,12)
 # `fond_R` et `A_R` dérivent du COMPOSITE, jamais d'un réglage : ils n'entrent
 # donc PAS dans la clé de mémoïsation de `CompositeStacker`.
 # J4 complétera le continuum (méthodes médiane / étoiles 5σ, case « recentrer le
@@ -224,6 +225,18 @@ CLIP_HA_MAX: float = 1.0
 ALPHA_HA_DEFAUT: float = 0.5          # J3 : mode `fondu_rouge`
 ALPHA_HA_MIN: float = 0.0
 ALPHA_HA_MAX: float = 1.0
+# --- PORTE du mode `ha_luminance` (v2.90.2) -----------------------------------
+# Ce mode multiplie le ROUGE par `1 + s̃·porte` : la porte est une RAMPE sur s̃
+# (0 au fond du ciel, 1 au p99,7) qui n'ouvre le gain que là où le Ha est FRANC.
+# Sans elle, multiplier le rouge partout verse du bruit rouge dans le ciel ;
+# plafonnée à l'objet seul, elle ne donne presque rien à l'écran (mesuré).
+# MESURÉ sur les couches M33 (19/10) : la rampe 0,05-0,25 laisse la bande
+# DIFFUSE **rigoureusement intacte** (0 % de pixels touchés) tout en donnant 2 à
+# 5 fois plus de rouge dans la bande Ha que le gain sur l'objet seul (Δ médian
+# +0,037 / p90 +0,665 contre +0,016 / +0,135). 0,02-0,12 verse déjà +0,041 dans
+# le halo ; 0,20-0,50 est trop fermée (12 % de la bande touchée).
+PORTE_HA_DEBUT: float = 0.05
+PORTE_HA_FIN: float = 0.25
 Q_HA_DEFAUT: float = 0.80             # J4 : continuum (bandes passantes)
 Q_HA_MIN: float = 0.10
 Q_HA_MAX: float = 2.00
@@ -521,19 +534,18 @@ def fusionner_ha(rgb: np.ndarray, ha: Any, mode: str = FUSION_HA_DEFAUT,
                               c'est LUI qui borne, R̃ pouvant dépasser 1)
         · `eclaircir_rouge` : R̃' = R̃ + max(0, s̃ − R̃)
                               (éclaircir = max(R̃, s̃) : ne fait que MONTER)
-        · `ha_luminance`    : R̃' = R̃ × (1 + p·s̃)   (soit, dans l'espace du
-                              composite, `R' = fond_R + (R − fond_R)(1 + p·s̃)` :
-                              le Ha ÉCLAIRE LE ROUGE DE L'OBJET, proportionnel
-                              à son propre signal. Le CIEL n'est JAMAIS
-                              multiplié — le faire y versait du bruit rouge — et
-                              V et B restent INTACTS. L'ancienne luminance
-                              additive puis multiplicative sur les trois canaux
-                              BLANCHISSAIT : la saturation des zones Ha tombait
-                              de 0,19 à 0,12, mesuré le 19/10)
-        retour dans l'espace du composite, commun aux QUATRE modes :
+        · `ha_luminance`    : R' = R × (1 + p·s̃·porte), avec
+                              `porte = rampe(s̃ ; 0,05 → 0,25)` : le Ha éclaire
+                              le ROUGE, mais seulement là où il est FRANC. Sous
+                              0,05 le rouge n'est pas touché du tout (le bruit
+                              du ciel reste du bruit) ; au-delà de 0,25 le gain
+                              est plein. V et B restent intacts — l'ancienne
+                              « luminance sur les trois canaux » BLANCHISSAIT
+                              (saturation des zones Ha 0,19 → 0,12, mesuré).
+        retour dans l'espace du composite, pour les TROIS modes « R̃ » :
             R' = max(0, fond_R + A_R·R̃')    puis `sortie_R = R + p × (R' − R)`
-        Les CINQ modes ne touchent donc QUE le rouge : V et B sont toujours
-        rendus AU BIT.
+        `ha_luminance` multiplie `R` directement (aucun aller-retour par R̃),
+        puis subit la MÊME interpolation par le poids.
 
     POURQUOI LE CONTINUUM (actif par défaut) : un filtre Ha de 7 nm n'isole
     pas la raie seule, il laisse passer le CONTINUUM de l'objet et du ciel.
@@ -627,19 +639,25 @@ def fusionner_ha(rgb: np.ndarray, ha: Any, mode: str = FUSION_HA_DEFAUT,
         # Éclaircir = max(R̃, s̃) ⇒ R̃' = R̃ + max(0, s̃ − R̃) : ne fait que
         # MONTER (le poids ne multiplie plus zéro : le mode n'est plus inerte).
         rt = rt + np.maximum(st - rt, np.float32(0.0))
-    else:                       # `ha_luminance`
-        # « Ha en luminance de l'OBJET » (décision d'Alain, 19/10) : R̃ est
-        # MULTIPLIÉ par (1 + s̃), donc seul le SIGNAL AU-DESSUS DU FOND est
-        # éclairé — le ciel garde EXACTEMENT son niveau. Multiplier tout `R`
-        # (variante « V9 » mesurée) versait du bruit rouge dans le fond ;
-        # multiplier les TROIS canaux (version d'avant) BLANCHISSAIT : la
-        # saturation des zones Ha tombait de 0,19 à 0,12 (cœur 0,09 → 0,04),
-        # mesuré sur les couches M33 avec l'étirement d'affichage réel.
-        # V et B ne sont donc plus touchés du tout.
-        rt = rt * (np.float32(1.0) + st)
-    # Retour dans l'espace du COMPOSITE — le rouge ne descend jamais sous 0.
-    r_mode = np.maximum(np.float32(fond_r) + np.float32(amp_r) * rt,
-                        np.float32(0.0))
+    if mode == "ha_luminance":
+        # « Ha en luminance, À PORTE » (décision d'Alain, 19/10) : tout le ROUGE
+        # est multiplié par `1 + s̃·porte`, la porte n'ouvrant le gain que là où
+        # le Ha est FRANC (rampe PORTE_HA_DEBUT → PORTE_HA_FIN sur s̃).
+        # Deux défauts mesurés sont ainsi évités : sans porte, le gain
+        # multiplie le CIEL et y verse du bruit rouge (piste « V9 ») ; limité à
+        # l'objet au-dessus du fond, il ne montre presque rien à l'écran.
+        # L'ancienne version (facteur sur les TROIS canaux) BLANCHISSAIT : la
+        # saturation des zones Ha tombait de 0,19 à 0,12 (cœur 0,09 → 0,04).
+        # V et B ne sont jamais touchés.
+        porte = np.clip((st - np.float32(PORTE_HA_DEBUT))
+                        / np.float32(PORTE_HA_FIN - PORTE_HA_DEBUT),
+                        np.float32(0.0), np.float32(1.0))
+        r_mode = np.maximum(r0 * (np.float32(1.0) + st * porte),
+                            np.float32(0.0))
+    else:
+        # Retour dans l'espace du COMPOSITE — le rouge ne descend jamais sous 0.
+        r_mode = np.maximum(np.float32(fond_r) + np.float32(amp_r) * rt,
+                            np.float32(0.0))
     out = a.copy()
     out[..., 0] = r0 + p * (r_mode - r0)
     return out.astype(np.float32, copy=False)
