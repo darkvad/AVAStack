@@ -36,8 +36,9 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 ## Session du 19/10/2026 (nuit) — **LOT 5 = P6 LIVRÉ** (v2.96.0, à valider en réel) — lots 4/5 INVERSÉS
 
 ### État actuel
-- **v2.96.0 sur `LRGBHa`** — **aucune release**. Dernier commit poussé avant ce
-  lot : `5601f6` (doc, base `2ab5d82` pour P4).
+- **v2.96.0 sur `LRGBHa`** — **aucune release**. Code + doc P6 = commit
+  `fb81b1d` (poussé avec le pointeur de ce fichier). Base précédente :
+  `5601f6` (doc P4 ; code P4 = `2ab5d82`).
 - **ORDRE DES LOTS INVERSÉ (demande d'Alain du 19/10)** : le **lot 5 = P6**
   (source « Stacks ») passe AVANT le **lot 4 = P5** (réactivité), qui devient le
   prochain lot. P5 n'a reçu AUCUN début de code : son audit mesuré reste à faire.
