@@ -1756,16 +1756,32 @@ ce qui manquait n'était pas une correction mais une MESURE.
   · `ha_luminance` : effet visible, zones Ha plus lumineuses mais plus blanches.
   Avec les gains Gaia au lieu de SPCC, le rouge ressort (éclaircir) et le rose
   apparaît (luminance) : **le niveau de R commande tout**.
-  **CAUSE (à MESURER avant de corriger)** : ces opérateurs COMPARENT `R` et le
-  Ha, alors que `composer()` normalise **chaque rôle séparément** — les échelles
-  ne sont pas appariées. Un remplacement (fondu ×(1−α)), un écran
-  `s·(1−R)` ou un `max(R, s)` sur des niveaux incomparables : divise le rouge du
-  FOND de moitié (fondu α 0,5 ⇒ dominante cyan/bleue), produit un delta négatif
-  là où `R > 1` (écran ⇒ cyan), ou un delta NUL partout quand `s < R` (éclaircir
-  ⇒ poids sans effet, puisqu'il ne multiplie que zéro). `ajout_rouge` échappe au
-  piège : il est purement ADDITIF. **Piste J3bis** : APPARIER le Ha à l'échelle
-  de R (facteur d'amplitude p0,25–p99,7, ou médiane/MAD) avant tout opérateur
-  qui compare, puis re-juger les formules ; ne pas toucher au J2.
+  **CAUSE MESURÉE (19/10, couches réelles M33 ; outil
+  `bancs/_diag_fusion_ha_echelles.py`)** : ce n'est pas « l'absence
+  d'appariement en général », c'est un **espace de travail non défini**. Avec la
+  **normalisation COMMUNE** (celle de la session de test, lue dans `AVACOMPO`),
+  `R` vit entre **2,86 et 5,71** (p50 / p99,7 ; **`R > 1` sur 100 % des pixels**
+  — le combine L y multiplie encore par ≈ 2,4) alors que `s` est écrêté dans
+  **[0 ; 1]**. Les quatre formules avaient été écrites pour `R ∈ [0 ; 1]` :
+  · `ecran` : `1 − R < 0` PARTOUT ⇒ il SOUSTRAIT du rouge (mesuré **−1,51** au
+    cœur Ha, sur une base de 4,40) ⇒ zones CYAN ;
+  · `eclaircir` : `max(0, s − R) = 0` sur **100 %** des pixels ⇒ strictement
+    INERTE, le poids ne multiplie que zéro ⇒ « force sans effet » ;
+  · `fondu` : retire `α·R ≈ 1,43` = **la moitié du rouge du FOND** (⇒ bleu) et
+    −45 % au cœur Ha (⇒ Ha invisible dans les zones rouges) ;
+  · `ha_luminance` : `+0,44` sur R **ET** G **ET** B, or G/B sont ~5× plus
+    faibles que R ⇒ les zones blanchissent (mesuré, pas une impression).
+  **SANS normalisation commune**, les amplitudes sont en fait APPARIÉES
+  (`R/s = 1,06`), `R > 1` sur 0,23 %, `écran` AJOUTE (+0,19) et `eclaircir` agit
+  (41 % des pixels Ha) : il ne reste que le NIVEAU (`s` recentré à 0, `R` avec un
+  plancher de 0,0171, soit 2,3 % de son amplitude).
+  ⇒ **RÈGLE** : un opérateur qui COMPARE `R` et `s` ne doit JAMAIS supposer que
+  le composite tient dans [0 ; 1] — ni que `s` et `R` ont le même plancher.
+  **Piste J3bis MESURÉE** : exprimer les opérateurs dans l'espace de R
+  (`R̃ = (R − fond_R)/A_R`, `s̃ = s/amplitude(s)`) puis revenir — fondu neutre au
+  fond, écran qui n'AJOUTE plus que, éclaircir actif (66 %) — et rendre
+  `ha_luminance` MULTIPLICATIVE (`rgb × (1 + s̃)` : la couleur est préservée par
+  construction, aucun blanchiment). Ne pas toucher au J2.
 - **PIÈGE D'INTERFACE (défaut réel du 19/10, corrigé en v2.89.1)** : le champ α
   restait GRISÉ en passant en mode fondu. La Combobox appelle `_on_fusion_ha`,
   qui ne rafraîchissait pas l'état des widgets ; le banc appelait
