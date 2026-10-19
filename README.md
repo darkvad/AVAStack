@@ -56,10 +56,41 @@ l'utilisateur**, sans droits administrateur.
 | Source | À quoi ça sert |
 |---|---|
 | **Dossier surveillé** | le cas courant : le logiciel de capture écrit, AVAStack empile |
-| **Composition multi-dossiers** | un dossier par filtre → composite temps réel (mono, RGB, LRGB, HOO, SHO) |
+| **Composition multi-dossiers** | un dossier par filtre → composite temps réel (mono, RGB, LRGB, HOO, SHO, **RGB+Ha**, **LRGB+Ha**) |
 | **Caméra (SDK constructeur)** | ZWO ASI, QHY, Player One, Touptek/Altair, SVBONY — flux direct, roue à filtres et refroidissement (TEC) |
 | **Webcam / carte d'acquisition** | tests, suivi en direct (OpenCV) |
 | **Ciel simulé** | démonstration et essais **sans aucun matériel** |
+
+## Fusion du Ha (`RGB+Ha`, `LRGB+Ha`)
+
+Ces deux compositions ajoutent un rôle **`Ha` secondaire** aux compositions
+classiques : le Ha n'alimente **aucun canal** du composite, il est **fusionné au
+rouge** APRÈS le combine L. Le cadre « Fusion Ha » du panneau Composition
+n'apparaît que dans ces deux compositions.
+
+| Réglage | Ce qu'il fait | Défaut |
+|---|---|---|
+| **Mode** | `ajout_rouge` (ajout pur), `fondu_rouge` (α), `ecran_rouge`, `eclaircir_rouge`, `ha_luminance` (éclaire le rouge **là où le Ha est franc**, sans toucher le ciel) | `ajout_rouge` |
+| **Poids du Ha** | force **globale** de la fusion (0 = Ha ignoré) | `1,0` |
+| **Fondu α** | n'agit qu'en mode `fondu_rouge` (désactivé ailleurs, mais la valeur est conservée) | `0,5` |
+| **Soustraire le continuum** | retire du Ha le continuum mesuré dans le rouge (référence R) : sans lui, le Ha ajoute aussi le ciel et la lumière blanche de l'objet | coché |
+| **Méthode** | `bandes_passantes` (7 nm par défaut, 3 nm si votre filtre est serré), `mediane`, `etoiles_5sigma`. Q n'agit que sur `bandes_passantes` | `bandes_passantes`, Q `0,80` |
+| **Recentrer le Ha sur son fond** | retranche le fond du Ha avant l'ajout. Décoché, un voile rouge peut couvrir le ciel — visible surtout sur les **données linéaires** (l'étirement automatique l'efface souvent à l'écran) | coché |
+
+Si une mesure de continuum échoue (champ sans continuum franc, moins de
+5 étoiles, rapports dispersés), AVAStack **replie** sur `bandes_passantes` avec
+le Q courant et l'**écrit sur les cases** (« ← appliquée » + ligne d'état) : le
+repli n'est jamais silencieux.
+
+**Alignement** : le Ha a son **propre repère** — ses brutes s'alignent sur
+elles-mêmes, puis son empilement rejoint **une seule fois** la grille du
+composite. L'ancre d'alignement **partagée** reste toujours une couche **large
+bande** (L/R/G/B) : une frame Ha ne crée pas l'empilement, elle est archivée et
+**rejouée** dès la première brute large bande (message « en attente d'une brute
+large bande »). Le re-ancrage automatique ne choisit jamais le Ha.
+
+La **fiche de rendu** (`.ava.json`) consigne le mode, le poids, α, le
+recentrage, la méthode, la bande et le Q réellement appliqués.
 
 ## Installation
 

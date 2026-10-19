@@ -19,7 +19,57 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.91.1"
+AVASTACK_VERSION = "2.92.0"
+
+# v2.92.0 : ANCRE D'ALIGNEMENT — LE Ha FUSIONNÉ N'EST JAMAIS LA RÉFÉRENCE
+#   PARTAGÉE (jalon J5, décision d'Alain du 19/10/2026). RÈGLE : dans RGB+Ha /
+#   LRGB+Ha, l'ancre d'alignement partagée vient TOUJOURS d'une couche LARGE
+#   BANDE (L/R/G/B).
+#   POURQUOI — et ce n'est PAS « le Ha a peu d'étoiles » (FAUX, MESURÉ sur les
+#   canaux M33 réels : L 5 395 étoiles / FWHM 3,45 px, R 5 061 / 2,65,
+#   Ha 4 391 / 2,46 — la couche la PLUS FINE —, G 3 932 / 2,65, B 3 594 /
+#   3,03) : en +Ha le Ha s'aligne sur LUI-MÊME (voie A, jalon 129b) et ne se
+#   sert JAMAIS de l'aligneur partagé — le choisir comme ancre ne lui apporte
+#   donc RIEN, et impose aux couches large bande un repère venu d'une bande de
+#   7 nm (ré-échantillonnage de L, qui porte le détail). Et le score qui
+#   trancherait est un NOMBRE D'ÉTOILES plafonné à 200 (des FLUX), pas une
+#   qualité : la FWHM est mesurée mais ne sert qu'au REJET (`_filtre_floue`,
+#   2× la médiane du RÔLE — une nuit entièrement floue passe). Un vrai score
+#   qualité (FWHM) est un sujet SÉPARÉ (il toucherait toutes les compositions).
+#   QUATRE chemins posaient l'ancre partagée ; DEUX étaient ouverts :
+#     · CRÉATION DE L'EMPILEMENT (`core/worker.py`) : une frame Ha ne crée plus
+#       l'empilement d'un +Ha — MIROIR du jalon 21 (HOO/SHO attendent leur 1re
+#       Ha, un +Ha attend sa 1re brute LARGE BANDE : « en attente d'une brute
+#       large bande (référence d'alignement)… »). Les frames Ha arrivées avant
+#       sont ARCHIVÉES (rien n'est perdu) puis REJOUÉES dans leur PROPRE repère
+#       dès la 1re large bande (`_do_restack_compo` avec ancre forcée, comme le
+#       jalon 21) ; un empilement d'une AUTRE géométrie est jeté au passage.
+#     · RE-ANCRAGE « meilleure brute » (`ui/app.py`,
+#       `_meilleure_archive_compo`) : le rôle Ha fusionné est EXCLU des
+#       candidats, donc de `_veut_restack`. En HOO/SHO le Ha EST un canal (et
+#       l'ancre historique) : il reste candidat.
+#   Les deux autres chemins étaient DÉJÀ fermés et sont désormais VERROUILLÉS
+#   par le banc : ① le repli après refus repose le repère PROPRE au Ha
+#   (`if voie_a` explicite — `set_reference` ne connaît PAS le rôle, la
+#   protection vit aux SITES D'APPEL) ; ④ le rafraîchissement auto/manuel prend
+#   la couche qui alimente le VERT, puis G → L → R → B → Ha, et `moyennes()`
+#   omet les rôles vides : fermé PAR CONSTRUCTION dès que la création l'est.
+#   Banc neuf `bancs/_test_fusion_ha_jalon5.py` (5 volets, 23 vérifications :
+#   exclusion +Ha / Ha conservé HOO/SHO/RGB, session avec 1re frame Ha puis 1re
+#   large bande, assertions ① et ④, non-régression HOO). Non-régressions
+#   19/20/129/129b/J2/J3/J4 vertes, `ruff` propre, `pyright` 0. README : section
+#   « Fusion du Ha » (modes, continuum, recentrer, alignement). AUCUNE release.
+#   VOLET DÉMARRAGE VALIDÉ EN RÉEL le 19/10 (dossier Ha en premier, L en
+#   dernier) : « re-stack #1 (rejeu des brutes Ha (démarrage) · R 1/1 · Ha 1/1) :
+#   2/2 frames » — la frame Ha n'a PAS créé l'empilement, la 1re large bande (R)
+#   est devenue l'ancre, la Ha a été rejouée. Le libellé « re-stack » est celui
+#   du rejeu (même mécanique que le jalon 21 en HOO/SHO) ; le score ×1.00 vient
+#   du plafond 200 (les deux côtés saturés ⇒ la marge 1,5× est inatteignable).
+#   RE-STACK MANUEL VALIDÉ EN RÉEL le 19/10 : « L 2/2 · R 3/3 · G 2/2 · B 2/2 ·
+#   Ha 3/3 = 12/12 frames (0 vs avant) » — aucune perte, et le Ha ne peut pas
+#   être l'ancre (exclu des candidats). La ligne persistante du re-stack ne
+#   nomme pas le rôle d'ancre : il est sur la ligne d'alignement (« réf. = brute
+#   X#i ») et dans `_ancre_role`.
 
 # v2.91.1 : CONTINUUM DU Ha — la MESURE ne dépend plus de la case « recentrer »
 #   (correctif du test réel de J4, 19/10/2026). Constaté À L'ÉCRAN : `mediane`

@@ -1218,9 +1218,32 @@ class AcquisitionWorker:
         # frames archivées entre-temps sont rejouées (via
         # _do_restack_compo, exactement comme un re-stack).
         deja_rejoue = False
+        # Jalon J5 (v2.92.0) : dans une composition BROADBAND+Ha, l'ancre
+        # PARTAGÉE ne peut pas venir du rôle Ha FUSIONNÉ. Il ne se sert jamais
+        # de l'aligneur partagé (voie A : repère propre), donc le choisir comme
+        # référence ne lui apporte RIEN, alors que les couches large bande
+        # paieraient un repère venu d'une bande de 7 nm ; et le score qui
+        # trancherait est un NOMBRE D'ÉTOILES (des flux), pas une qualité.
+        # On fait donc le MIROIR du jalon 21 : HOO/SHO attendent leur première
+        # Ha, un +Ha attend sa première brute LARGE BANDE. Les frames Ha
+        # arrivées avant sont ARCHIVÉES (rien n'est perdu) et rejouées plus bas.
+        ha_fusionne = (role_ha_fusionne(self._compo_nom)
+                       if (self._mode_compo and self._compo_nom) else None)
+        attente_ha_broadband = (
+            ha_fusionne is not None and role == ha_fusionne
+            and (self.stacker is None
+                 or self.stacker.shape != img_travail.shape))
         if (self._mode_compo and self._narrowband_ha()
                 and self.stacker is None and role != "Ha"):
             self.align_info = ("en attente d'une brute Ha "
+                               "(référence d'alignement)…")
+        elif attente_ha_broadband:
+            # Aucun empilement créé sur une frame Ha. Si un empilement d'une
+            # AUTRE géométrie existait, il est invalide (l'archive vient
+            # d'être vidée sur ce même critère) : on le jette plutôt que de
+            # laisser afficher une image d'ancienne grille.
+            self.stacker = None
+            self.align_info = ("en attente d'une brute large bande "
                                "(référence d'alignement)…")
         # v2.41.0 : `reset_request` n'est PLUS lu ici — la remise à zéro
         # complète est servie en TÊTE de boucle (donc même en pause) ; la
@@ -1291,6 +1314,25 @@ class AcquisitionWorker:
                 if info:
                     self.align_info = info
                 deja_rejoue = True
+            # Jalon J5 (v2.92.0) : les brutes Ha arrivées AVANT la première
+            # brute LARGE BANDE n'ont pas créé l'empilement (une frame Ha ne
+            # peut pas être l'ancre partagée, cf. plus haut). Elles sont
+            # archivées ; on les REJOUE ici dans leur PROPRE repère, exactement
+            # comme le jalon 21 rejoue les frames arrivées avant la 1re Ha en
+            # HOO/SHO. L'ancre forcée est la brute large bande courante.
+            if (etait_vide and self._mode_compo and ha_fusionne is not None
+                    and role is not None and self.archives.get(role) is not None
+                    and self.archives[role].n > 0):
+                arch_ha = self.archives.get(ha_fusionne)
+                if arch_ha is not None and arch_ha.n > 0:
+                    idx_ancre = len(self.archives[role].chemins) - 1
+                    self._ancre_role, self._ancre_idx = role, idx_ancre
+                    info = self._do_restack_compo(
+                        f"rejeu des brutes {ha_fusionne} (démarrage)",
+                        ancre_role=role, ancre_idx=idx_ancre)
+                    if info:
+                        self.align_info = info
+                    deja_rejoue = True
 
         stack = None
         # Jalon 129b (voie A) : en composition BROADBAND+Ha, la brute Ha

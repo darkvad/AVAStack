@@ -1948,7 +1948,77 @@ ce qui manquait n'était pas une correction mais une MESURE.
   AU BIT.
 
 
+## Ancre d'alignement : le Ha fusionné ne peut PAS être la référence partagée (J5, v2.92.0, 19/10/2026)
+
+- **RÈGLE** : dans une composition `RGB+Ha` / `LRGB+Ha`, le rôle Ha FUSIONNÉ
+  n'est **jamais** la référence d'alignement **partagée**. Il garde son propre
+  repère (voie A, jalon 129b) ; l'ancre partagée vient TOUJOURS d'une couche
+  LARGE BANDE (L/R/G/B).
+- **POURQUOI — PAS « le Ha a peu d'étoiles » (c'est FAUX)** : MESURÉ sur les
+  canaux M33 réels (`C:\Astro\test\M33_Canaux_LRGBHa`, `stars.detecter_positions`
+  puis `stars.mesurer_seeing`, sans plafond) : **L 5 395 étoiles / FWHM 3,45 px**,
+  R 5 061 / 2,65, **Ha 4 391 / 2,46 (la plus FINE)**, G 3 932 / 2,65,
+  B 3 594 / 3,03. Le Ha détecte donc PLUS d'étoiles que G et B, et il est la
+  couche la plus fine : l'argument « bande étroite = peu d'étoiles » ne tient
+  pas. La raison est **ARCHITECTURALE** : en `+Ha` le Ha ne se sert JAMAIS de
+  l'aligneur partagé — le choisir comme ancre ne lui apporte **rien**, et impose
+  aux couches large bande un repère venu d'une bande de 7 nm (et un
+  ré-échantillonnage de L, qui porte le détail).
+- **LE SCORE QUI TRANCHAIT N'EST PAS UNE QUALITÉ** : `_score_frame` =
+  **nombre d'étoiles**, **plafonné à `SCORE_MAX_ETOILES = 200`**, marge de
+  re-ancrage `RESTACK_MARGE = 1,5×`. Il compare des **FLUX**. La FWHM est
+  mesurée par frame mais SERT AU REJET seulement (`_filtre_floue`, 2× la médiane
+  du RÔLE — une nuit entièrement floue passe donc le filtre). Un vrai score
+  qualité (FWHM) est un sujet **SÉPARÉ** : il toucherait mono/RGB/LRGB/HOO/SHO,
+  pas seulement le Ha. Ne pas le glisser dans J5.
+- **QUATRE chemins posent l'ancre partagée — DEUX étaient ouverts** :
+  ① **repli après refus répétés** : déjà fermé par un `if voie_a` EXPLICITE
+  (`worker._worker_empiler_frame` : le Ha incrémente `_ha_ref_bad` et repose SON
+  repère par `_definir_reference_ha`, jamais `_definir_reference`) ;
+  ② **création de l'empilement** : FERMÉE par J5 — une frame Ha ne crée plus
+  l'empilement d'un `+Ha`. MIROIR du jalon 21 : HOO/SHO attendent leur 1re Ha,
+  un `+Ha` attend sa 1re brute **LARGE BANDE** (« en attente d'une brute large
+  bande (référence d'alignement)… »). Les frames Ha arrivées avant sont
+  **ARCHIVÉES** (rien n'est perdu) et **REJOUÉES** dans leur propre repère dès la
+  1re large bande (`_do_restack_compo` avec ancre forcée) ; un empilement d'une
+  AUTRE géométrie est jeté au passage (`self.stacker = None`) ;
+  ③ **re-ancrage « meilleure brute »** : FERMÉE par J5 —
+  `_meilleure_archive_compo` EXCLUT le rôle Ha fusionné (donc `_veut_restack`
+  aussi). En HOO/SHO le Ha EST un canal et reste candidat ;
+  ④ **rafraîchissement auto (toutes les N frames) / bouton manuel** : fermé
+  **PAR CONSTRUCTION** dès que ② l'est — `_image_reference_et_role_de` prend la
+  couche qui alimente le **VERT**, puis l'ordre `G → L → R → B → Ha`, et
+  `moyennes()` OMET les rôles vides : le Ha n'est atteint que si TOUTES les
+  couches large bande sont vides, impossible si l'empilement ne peut plus naître
+  sur une frame Ha.
+- **LA PROTECTION EST AUX SITES D'APPEL, PAS DANS L'OBJET** : `StarAligner.
+  set_reference(img)` **ne connaît pas le rôle** de l'image qu'on lui donne.
+  « Le Ha n'est pas dans l'aligneur partagé » veut dire que ses frames ne
+  PASSENT pas par lui (`compute`), pas qu'on ne peut pas lui DONNER une image
+  Ha en référence. C'est pourquoi ① et ④ sont verrouillés par des ASSERTIONS du
+  banc, pas supposés.
+- **BANC** : `bancs/_test_fusion_ha_jalon5.py` (5 volets, 23 vérifications) —
+  exclusion (+Ha) / Ha conservé (HOO/SHO/RGB), session `+Ha` avec 1re frame Ha
+  (rien n'est créé, message, archive) puis 1re large bande (création, ancre,
+  rejeu), assertion ① (refus Ha ×3 → 0 appel à `_definir_reference`, repli Ha
+  = 1), assertion ④ (vert vide → L, jamais Ha), non-régression HOO (message
+  inchangé, ancre Ha). Non-régressions 19/20/129/129b/J2/J3/J4 vertes, `ruff`
+  propre, `pyright` 0.
+- **VALIDÉ EN RÉEL le 19/10** : (1) démarrage avec le dossier **Ha en premier**
+  → « rejeu des brutes Ha (démarrage) · R 1/1 · Ha 1/1 », ancre **R** ;
+  (2) **re-stack manuel** → « L 2/2 · R 3/3 · G 2/2 · B 2/2 · Ha 3/3 :
+  12/12 frames (0 vs avant) », **aucune perte**. La ligne persistante du
+  re-stack ne nomme pas le rôle d'ancre ; il est sur la ligne d'alignement
+  (« réf. = brute X#i ») et dans `_ancre_role`.
+- **NON LIVRÉ (assumé)** : le score qualité FWHM (cf. ci-dessus) et la doc
+  utilisateur (README § « Fusion du Ha ») — le README documente les modes, le
+  continuum et l'ancre ; la fiche de rendu dit déjà méthode/bande/recentrage.
+
+
+
+
 ## Halo d'étoile coloré — cause, correctif et résidu (jalon 136, v2.85.0, 18/10/2026)
+
 
 - **CE QUE LA PREMIÈRE FICHE DISAIT ÉTAIT INCOMPLET.** La note du 18/10 parlait
   d'un « clip PAR CANAL après étirement » avec R +41 % / G +19 % / B +23 %. La

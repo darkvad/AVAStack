@@ -5197,9 +5197,31 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         brute archivée, TOUS RÔLES confondus — les scores sont mesurés sur le
         CANAL EXTRAIT de chaque rôle (la même mesure que l'alignement), donc
         comparables d'une couche à l'autre. → (None,)*4 si vide ou incohérent
-        (une liste de scores ne collant plus à son archive est ignorée)."""
+        (une liste de scores ne collant plus à son archive est ignorée).
+
+        Jalon J5 (v2.92.0) — le rôle Ha FUSIONNÉ d'une composition +Ha est
+        EXCLU des candidats. POURQUOI, en deux temps :
+          · il ne se sert JAMAIS de l'aligneur partagé (voie A, repère propre) :
+            le choisir comme référence ne lui apporte donc RIEN, alors que les
+            couches large bande, elles, paieraient un repère venu d'une bande
+            de 7 nm ;
+          · le score est un NOMBRE D'ÉTOILES (plafonné à 200) : il compare des
+            FLUX, pas des qualités. MESURÉ sur les canaux M33 réels
+            (`C:\\Astro\\test\\M33_Canaux_LRGBHa`) : L compte le plus d'étoiles
+            (5 395) avec la FWHM la PLUS LARGE (3,45 px), le Ha la plus fine
+            (2,46 px) avec moins d'étoiles (4 391) — laisser ce classement
+            décider de l'ancre partagée serait un contresens. Un vrai score
+            qualité (FWHM) est un sujet SÉPARÉ : il toucherait toutes les
+            compositions, pas seulement le Ha.
+        En HOO/SHO le Ha EST un canal (et l'ancre historique) : il reste
+        candidat, comme avant."""
+        exclu = None
+        if self._mode_compo and self._compo_nom:
+            exclu = composition_mod.role_ha_fusionne(self._compo_nom)
         meilleur = (None, None, None, None)
         for role, scores in self._scores_par_role.items():
+            if role is not None and role == exclu:
+                continue
             arch = self.archives.get(role)
             if arch is None or len(scores) != len(arch.chemins):
                 continue
