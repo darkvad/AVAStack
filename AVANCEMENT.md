@@ -40,14 +40,18 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 
 ---
 
-## Session du 20/10/2026 — **P6 : défauts d'interface corrigés (piste A) et VALIDÉS EN RÉEL** (v2.96.1)
+## Session du 20/10/2026 — **P6 : défauts d'interface corrigés (piste A) et VALIDÉS EN RÉEL** (v2.96.1) ; **branche `OptimisationUI` ouverte pour P5**
 
 ### État actuel
 - **v2.96.1 sur `master`** (fusion de `LRGBHa`, branche fermée),
   **VALIDÉE EN RÉEL par Alain le 20/10** (« testé en
   réel, validé ») : le cadre « Fusion Ha », les réglages du composite et le
   continuum sont accessibles avec la source « Stacks ». **Aucune release.**
-  Base : P6 livré = `fb81b1d` (v2.96.0), correctif = `efb2911`.
+  Base : P6 livré = `fb81b1d` (v2.96.0), correctif = `efb2911` (fusionné dans
+  `master`).
+- **Branche de travail : `OptimisationUI`** (créée depuis `master`, commit de
+  gouvernance `f39193e`, poussée et suivie). **`LRGBHa` fermée** (local +
+  `origin`). **Aucun code de P5 n'est commencé**.
 - **Les deux défauts du test réel du 19/10 sont corrigés** (piste A validée par
   Alain) : avec la source « Stacks », le panneau « Composition » est de nouveau
   AFFICHÉ (donc les gains R/G/B, la normalisation commune, le lissage LRGB et le
@@ -65,7 +69,7 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 - **Échecs PRÉEXISTANTS** : `_test_lot1_p2_p3` volet [3] (profil SPCC déjà
   corrigé dans le `config.json` local) — inchangé, cf. « Pièges récents ».
 
-### LE CORRECTIF (piste A) — ce qu'il faut vérifier en réel
+### LE CORRECTIF (piste A) — ce qui a été vérifié en réel
 1. **Visibilité** (`_maj_visibilite_cadres`) : pour `est_stacks`, cadres visibles
    = `[self._lf_stacks, self._lf_composition]`, empilés dans cet ordre (les
    FICHIERS d'abord, les réglages du composite ensuite).
@@ -112,7 +116,10 @@ sans redémarrer la session. **Verdict d'Alain : testé en réel, validé.**
   `_on_compo_roles`, mention de la ligne d'aide, continuum par `_role_fourni` ;
 - `bancs/_test_lot5_p6_stacks.py` : section [6] (16 vérifications) sur les
   VRAIS `canal_*.fit` quand ils sont là ;
-- `avastack/__init__.py` (2.96.1 + changelog), `CLAUDE.md`, `AVANCEMENT.md`.
+- `avastack/__init__.py` (2.96.1 + changelog), `CLAUDE.md`, `AVANCEMENT.md` ;
+- **clôture de session** : `AVANCEMENT.md` (gouvernance : `OptimisationUI`
+  active, `LRGBHa` fermée), `bancs/_diag_fusion_ha_echelles.py` (docstring : la
+  branche citée est notée fermée).
 
 ### Décisions
 - **Piste A TRANCHÉE (Alain, 20/10)** : réutiliser le panneau « Composition »
@@ -240,9 +247,12 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 - **P6 est CLOS ET VALIDÉ EN RÉEL** (v2.96.1, fusionné dans `master` ; `LRGBHa`
   fermée) : le banc P6 est vert (59 vérifications, joué avec les 5 vrais
   `canal_*.fit`) et le test réel d'Alain a confirmé l'interface.
-- **Prochaine action unique** : **LOT 5 = P5** (audit MESURÉ de la réactivité),
-  **avec l'accord d'Alain avant de démarrer** — mesurer d'abord
-  (`bancs/_mesure_p5_reactivite.py`), corriger ensuite.
+- **Prochaine action unique** : **LOT 5 = P5** sur `OptimisationUI` — **accord
+  d'Alain avant de démarrer**. Premier geste : **MESURER**, avec un outil nommé
+  `bancs/_mesure_p5_reactivite.py` (motif P1/P4 : chiffres AVANT le code, JSON
+  conservé), `Guet.SEUIL_S` à 0,25 s temporairement et
+  `_test_perf_reactivite_jalon79` étendu aux **cases / listes / spinners**.
+  **Aucun correctif de réactivité avant les chiffres.**
 - **Puis** : **release v2.96.x** sur accord explicite (`master` porte désormais
   tout le chantier depuis v2.80.0).
 - **Référence chiffrée** : `C:\Astro\test\M33_Canaux_LRGBHa` (5 `canal_*.fit` +
