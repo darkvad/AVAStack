@@ -2193,7 +2193,7 @@ ce qui manquait n'était pas une correction mais une MESURE.
   retrouvée, aucun ⓘ écrasé). `ui/bulles.py` est dans la liste blanche typée
   du garde-fou.
 
-## Source « Stacks (fichiers FITS) » — P6, v2.96.0, 19/10/2026 (en attente de test réel)
+## Source « Stacks (fichiers FITS) » — P6, v2.96.1, 20/10/2026 (corrigé et VALIDÉ EN RÉEL)
 
 - **CE QUE C'EST** : une source d'empilements DÉJÀ FAITS, choisis **FICHIER par
   FICHIER** (pas un dossier) — un FITS par filtre voulu, où qu'il soit (Siril,
@@ -2243,22 +2243,46 @@ ce qui manquait n'était pas une correction mais une MESURE.
   `_lf_composition` dans `_maj_visibilite_cadres` — masquer la composition les
   masque TOUS. Constat réel du 19/10 : avec la source Stacks, la fusion Ha
   tournait avec ses DÉFAUTS (`ajout_rouge`, poids 1,0) sans aucun réglage
-  accessible.
+  accessible. **CORRIGÉ (v2.96.1)** : `visibles = [_lf_stacks, _lf_composition]`
+  pour `est_stacks`, empilés dans cet ordre (FICHIERS puis réglages).
+- **CE QUI N'A AUCUN SENS SANS DOSSIER EST VERROUILLÉ, PAS MASQUÉ**
+  (`App._maj_compo_verrouillage`, appelée en fin de `_maj_visibilite_cadres`) :
+  menu de composition, lignes rôle→**DOSSIER**, `…` et « Détecter les filtres »
+  passent en `disabled` ; les réglages du COMPOSITE restent ACTIFS. Rien n'est
+  détruit : tout reprend son état (`readonly`/`normal`) au retour d'une source à
+  dossiers. `ui/panels/compo.py` stocke pour cela `cb_compo`, `cb_compo_roles`,
+  `ent_compo_dossiers`, `btn_compo_dossiers` et `btn_detecter_filtres` en
+  attributs.
+- **LA COMPOSITION AFFICHÉE SUIT LA SOURCE** (`App._maj_compo_depuis_stacks`) :
+  avec des FICHIERS elle se DÉDUIT des rôles fournis (rôle **et** fichier),
+  ≥ 2 fichiers (un seul = empilement direct « Mono », le cadre « Fusion Ha » est
+  alors masqué) ; appelée au changement de rôle, de fichier (y compris un chemin
+  TAPÉ via `<Return>` / `<FocusOut>`), au choix de source, et par
+  `_on_compo_roles` — qui, sous cette source, ne réécrit plus la composition
+  depuis les lignes dossier (sinon bandeau 141-B menteur : `var_compo` ≠
+  `_compo_session`).
 - **PRÉSENCE D'UN RÔLE ≠ PRÉSENCE D'UN DOSSIER** : `_dossier_role_compo(role)`
   ne lit QUE les lignes dossier de la composition et rend `""` quand les rôles
   viennent de FICHIERS. Le test « la couche R existe-t-elle ? » (continuum du
-  Ha, case et méthodes) doit passer par un helper qui connaît la SOURCE
-  (`_role_fourni(role)` : fichiers pour Stacks, dossiers sinon). Sinon le
-  continuum est **forcé à l'arrêt** alors que la couche R est fournie.
+  Ha, case et méthodes) doit passer par `App._role_fourni(role)` : fichiers pour
+  Stacks, dossiers sinon. Utilisé par `_maj_fusion_ha` (état des widgets) **et**
+  `_lire_fusion_ha` (`continuum = case and _role_fourni("R")`). Sinon le
+  continuum est **forcé à l'arrêt** alors que la couche R est fournie (défaut
+  du test réel du 19/10, corrigé en v2.96.1).
 - **PERSISTANCE SANS SONDE DISQUE** : `stacks_role_i` / `stacks_fichier_i` sont
   relus au démarrage, mais la ligne d'aide est reconstruite avec
   `verifier_fichiers=False` — aucune lecture `isfile`/FITS pendant
   `_restaurer_config` (un montage réseau injoignable ne doit pas retarder
   l'ouverture, leçon v2.38.11).
-- **Banc** : `bancs/_test_lot5_p6_stacks.py` (39 vérifications : caméra,
+- **Banc** : `bancs/_test_lot5_p6_stacks.py` (**59** vérifications : caméra,
   linéarité, composition, worker RÉEL avec calibration ignorée, panneau,
-  validation, persistance). Modules NEUFS typés : `avastack/cameras/stacks.py`
-  et `avastack/ui/panels/stacks.py` (liste blanche du garde-fou).
+  validation, persistance, **et section [6] « piste A »** — composition visible
+  et déduite des fichiers, cadre « Fusion Ha » packé, continuum ACTIF avec la
+  couche R, verrouillage des lignes DOSSIER, tout rendu au retour d'une source à
+  dossiers ; les 5 vrais `canal_*.fit` de `C:\Astro\test\M33_Canaux_LRGBHa` sont
+  utilisés quand ils existent, sinon des FITS synthétiques). Modules NEUFS typés :
+  `avastack/cameras/stacks.py` et `avastack/ui/panels/stacks.py` (liste blanche
+  du garde-fou).
 - **P4 : 14 aides désormais** (13 + celle du panneau Stacks) — `_test_p4_aides`
   a été mis à jour avec ce chiffre ; toute nouvelle aide doit y être ajoutée.
 

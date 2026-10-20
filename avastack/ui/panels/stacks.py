@@ -63,8 +63,13 @@ class PanneauStacks:
                                    values=list(ROLES))
             cb_role.pack(side="left")
             cb_role.bind("<<ComboboxSelected>>", self._on_stacks_roles)
-            ttk.Entry(row, textvariable=self.var_stacks_fichiers[i]).pack(
-                side="left", fill="x", expand=True, padx=(4, 0))
+            ent = ttk.Entry(row, textvariable=self.var_stacks_fichiers[i])
+            ent.pack(side="left", fill="x", expand=True, padx=(4, 0))
+            # Piste A : un chemin TAPÉ (collé) vaut un fichier CHOISI — la
+            # composition déduite et la présence de la couche R (continuum du
+            # Ha) doivent suivre sans attendre un autre geste.
+            ent.bind("<Return>", lambda e: self._on_stacks_roles())
+            ent.bind("<FocusOut>", lambda e: self._on_stacks_roles())
             ttk.Button(row, text="…", width=3,
                        command=lambda i=i: self._pick_fichier_stacks(i)
                        ).pack(side="left", padx=(4, 0))

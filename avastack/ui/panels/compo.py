@@ -8,6 +8,12 @@ méthode `_poser_panneau_compo` est reprise VERBATIM : `App` hérite de
 filtres FITS, normalisation commune des canaux, pré-remplissage par
 `_on_compo`) est inchangé AU BIT.
 
+Piste A de P6 (v2.96.1) : les widgets à VERROUILLER quand la source fournit des
+FICHIERS (`cb_compo`, `cb_compo_roles`, `ent_compo_dossiers`,
+`btn_compo_dossiers`, `btn_detecter_filtres`) sont désormais gardés en attributs
+— `App._maj_compo_verrouillage` les grise, les réglages du COMPOSITE restant
+actifs. Aucune autre logique n'est ajoutée ici.
+
 Les attributs d'interface (variables Tk, widgets, méthodes de l'hôte) sont
 DÉCLARÉS ici pour le typage statique (`pyright`) — aucune valeur, aucune
 logique.
@@ -70,6 +76,16 @@ class PanneauComposition:
     var_compo_dossiers: list[tk.StringVar]
     var_compo_roles: list[tk.StringVar]
     var_compo_gains: dict[str, tk.StringVar]
+    # Piste A (P6, v2.96.1) : widgets VERROUILLABLES par
+    # `App._maj_compo_verrouillage` — avec des FICHIERS (source « Stacks ») il
+    # n'y a aucun dossier à choisir : le menu de composition et les lignes
+    # rôle→DOSSIER sont grisés, les réglages du COMPOSITE (gains, normalisation
+    # commune, lissage LRGB, cadre « Fusion Ha ») restent ACTIFS.
+    cb_compo: ttk.Combobox
+    cb_compo_roles: list[ttk.Combobox]
+    ent_compo_dossiers: list[ttk.Entry]
+    btn_compo_dossiers: list[ttk.Button]
+    btn_detecter_filtres: ttk.Button
 
     _creer_section_pliable: Callable[..., Any]
     _aide: Callable[..., Any]
@@ -99,11 +115,11 @@ class PanneauComposition:
         row_c.pack(fill="x")
         ttk.Label(row_c, text="Composition :").pack(side="left")
         self.var_compo = tk.StringVar(value="HOO")
-        cb_compo = ttk.Combobox(row_c, textvariable=self.var_compo,
-                                state="readonly", width=8,
-                                values=list(COMPOSITIONS))
-        cb_compo.pack(side="left", padx=4)
-        cb_compo.bind("<<ComboboxSelected>>", lambda e: self._on_compo())
+        self.cb_compo = ttk.Combobox(row_c, textvariable=self.var_compo,
+                                     state="readonly", width=8,
+                                     values=list(COMPOSITIONS))
+        self.cb_compo.pack(side="left", padx=4)
+        self.cb_compo.bind("<<ComboboxSelected>>", lambda e: self._on_compo())
         self.lbl_compo_info = ttk.Label(box, text="", foreground="#666666")
         self.lbl_compo_info.pack(anchor="w")
         # Jalon 141-B (décision d'Alain du 18/10/2026 — option B : PRÉVENIR).
@@ -126,6 +142,11 @@ class PanneauComposition:
                                 for _ in range(NB_LIGNES_COMPO)]
         self.var_compo_dossiers = [tk.StringVar(value="")
                                    for _ in range(NB_LIGNES_COMPO)]
+        # Piste A (P6) : ces widgets sont GRISÉS quand la source fournit des
+        # FICHIERS (aucun dossier à surveiller) — cf. `_maj_compo_verrouillage`.
+        self.cb_compo_roles = []
+        self.ent_compo_dossiers = []
+        self.btn_compo_dossiers = []
         for i in range(NB_LIGNES_COMPO):
             row = ttk.Frame(box)
             row.pack(fill="x", pady=1)
@@ -134,11 +155,14 @@ class PanneauComposition:
                                    values=list(ROLES))
             cb_role.pack(side="left")
             cb_role.bind("<<ComboboxSelected>>", self._on_compo_roles)
-            ttk.Entry(row, textvariable=self.var_compo_dossiers[i]).pack(
-                side="left", fill="x", expand=True, padx=(4, 0))
-            ttk.Button(row, text="…", width=3,
-                       command=lambda i=i: self._pick_dossier_compo(i)
-                       ).pack(side="left", padx=(4, 0))
+            self.cb_compo_roles.append(cb_role)
+            ent = ttk.Entry(row, textvariable=self.var_compo_dossiers[i])
+            ent.pack(side="left", fill="x", expand=True, padx=(4, 0))
+            self.ent_compo_dossiers.append(ent)
+            btn = ttk.Button(row, text="…", width=3,
+                             command=lambda i=i: self._pick_dossier_compo(i))
+            btn.pack(side="left", padx=(4, 0))
+            self.btn_compo_dossiers.append(btn)
         # Radio « Canal L » (utile en LRGB quand le dossier L est vide) :
         # L synthétisé = luminance du composite (combine identité) ;
         # dégradé = composite RGB pur (décisions d'Alain, 18/09/2026).
@@ -165,8 +189,10 @@ class PanneauComposition:
         for canal in ("R", "G", "B"):
             ttk.Entry(row_g, textvariable=self.var_compo_gains[canal],
                       width=5).pack(side="left", padx=(4, 0))
-        ttk.Button(box, text="🔎 Détecter les filtres (FITS FILTER)",
-                   command=self._detecter_filtres).pack(fill="x", pady=(6, 0))
+        self.btn_detecter_filtres = ttk.Button(
+            box, text="🔎 Détecter les filtres (FITS FILTER)",
+            command=self._detecter_filtres)
+        self.btn_detecter_filtres.pack(fill="x", pady=(6, 0))
         # --- v2.36.0 : NORMALISATION COMMUNE DES CANAUX (option, décision
         # d'Alain du 25/09/2026). Décrivée en clair : c'est un changement de
         # comportement visible (fond et grain), pas un réglage cosmétique.

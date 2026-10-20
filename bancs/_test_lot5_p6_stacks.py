@@ -19,7 +19,12 @@ M33 quand elles sont présentes) et sur des FITS synthétiques temporaires :
       source armée, `relire()` + seuil de cadence au démarrage suivant ;
   [5] interface : panneau à 5 lignes, visibilité par source, ligne d'aide
       (composition déduite + FILTER contradictoire), validation des lignes,
-      persistance `stacks_role_i` / `stacks_fichier_i`.
+      persistance `stacks_role_i` / `stacks_fichier_i` ;
+  [6] PISTE A (v2.96.1) : avec 5 FICHIERS, la composition AFFICHÉE est déduite
+      des fichiers, la composition est VISIBLE (donc les réglages du composite
+      et le cadre « Fusion Ha »), le continuum est ACTIF (couche R fournie),
+      les lignes DOSSIER sont verrouillées, et tout est rendu au retour d'une
+      source à dossiers.
 
 Exécution : .\\venv\\Scripts\\python.exe bancs\\_test_lot5_p6_stacks.py
 """
@@ -406,6 +411,116 @@ verifie(not app._source_fichiers_obsolete(),
 app.var_stacks_fichiers[1].set(f_ha)
 verifie(app._source_fichiers_obsolete(),
         "fichier remplacé → source jugée obsolète (relue au démarrage)")
+
+# ============ [6] PISTE A : réglages du COMPOSITE et « Fusion Ha » (UI)
+# Constat réel d'Alain (19/10) : avec la source « Stacks », la composition
+# LRGB+Ha était bien déduite, mais le cadre « Fusion Ha » ET les réglages du
+# composite (gains, normalisation commune, lisser le combine LRGB) étaient
+# INVISIBLES, et le continuum était forcé à l'arrêt. Le cadre « Fusion Ha » est
+# un ENFANT de `frm_compo` (panels/compo.py) : masquer la composition les
+# masquait TOUS ; et le test « la couche R existe-t-elle ? » ne lisait que les
+# lignes DOSSIER de la composition (`_dossier_role_compo`), d'où `""` avec des
+# FICHIERS. Correctif = piste A (v2.96.1).
+print("[6] Piste A : composition + « Fusion Ha » ACCESSIBLES avec des FICHIERS")
+
+# Les 5 couches du test réel quand la référence M33 est là (mêmes fichiers que
+# le volet [3]) ; sinon les FITS synthétiques du banc. Le NOM des fichiers
+# n'entre dans aucune décision : seule compte la ligne « rôle → fichier ».
+if os.path.isdir(M33):
+    _cinq = [(r, os.path.join(M33, f"canal_{r}.fit"))
+             for r in ("L", "R", "G", "B", "Ha")]
+    _cinq = [(r, f) if os.path.isfile(f) else (r, f_ha) for r, f in _cinq]
+    _origine = "référence M33 (5 canal_*.fit)"
+else:
+    _cinq = [("L", f_ha), ("R", f_ha), ("G", f_o3), ("B", f_o3), ("Ha", f_ha)]
+    _origine = "FITS synthétiques (référence M33 absente)"
+print(f"  (fichiers : {_origine})")
+
+for i, (r, f) in enumerate(_cinq):
+    app.var_stacks_roles[i].set(r)
+    app.var_stacks_fichiers[i].set(f)
+app.var_source.set("Stacks (fichiers FITS)")
+app._maj_visibilite_cadres()          # la source seule doit tout régler
+root.update_idletasks()
+
+verifie(app.var_compo.get() == "LRGB+Ha",
+        f"composition AFFICHÉE déduite des fichiers : {app.var_compo.get()}")
+verifie(bool(app._lf_stacks.winfo_manager())
+        and bool(app._lf_composition.winfo_manager()),
+        "cadres visibles : panneau des FICHIERS **et** composition "
+        "(les réglages du composite en sont des enfants)")
+verifie(bool(app.frm_fusion_ha.winfo_manager()),
+        "cadre « Fusion Ha » PACKÉ (invisible avant le correctif)")
+verifie(app._role_fourni("R") and app._role_fourni("Ha")
+        and not app._role_fourni("O3"),
+        "_role_fourni connaît la SOURCE : R et Ha fournis par des FICHIERS, "
+        "O3 absent")
+verifie(str(app.chk_fusion_ha_continuum.cget("state")) == "normal"
+        and str(app.sp_fusion_ha_q.cget("state")) == "normal"
+        and all(str(rb.cget("state")) == "normal"
+                for rb in app.rb_fusion_ha_methode.values()),
+        "continuum ACTIF (couche R fournie) : case, force Q et les trois "
+        "méthodes accessibles")
+app.var_fusion_ha_continuum.set(True)
+verifie(app._lire_fusion_ha()["continuum"] is True,
+        "`_lire_fusion_ha` GARDE le continuum demandé (R fourni)")
+verifie("déduite des fichiers" in app.lbl_compo_info.cget("text"),
+        "ligne d'aide : dit que la composition est déduite des fichiers")
+verifie(str(app.cb_compo.cget("state")) == "disabled"
+        and all(str(w.cget("state")) == "disabled"
+                for w in (app.cb_compo_roles + app.ent_compo_dossiers
+                          + app.btn_compo_dossiers))
+        and str(app.btn_detecter_filtres.cget("state")) == "disabled",
+        "menu de composition et lignes DOSSIER VERROUILLÉS (aucun dossier ici)")
+
+# Jalon 141-B : la composition affichée est celle de la SESSION → aucun bandeau.
+app._compo_session = "LRGB+Ha"
+app._maj_compo_info()
+verifie(app.lbl_compo_session.cget("text") == "",
+        "141-B : composition affichée = composition de session → aucun "
+        "bandeau de divergence")
+
+# Sans fichier R : le continuum se désactive ET se force à False.
+app.var_stacks_roles[1].set("")        # plus de couche R
+app._on_stacks_roles()
+root.update_idletasks()
+verifie(not app._role_fourni("R")
+        and str(app.chk_fusion_ha_continuum.cget("state")) == "disabled"
+        and str(app.sp_fusion_ha_q.cget("state")) == "disabled",
+        "sans fichier R : continuum DÉSACTIVÉ (case + force Q)")
+verifie(app._lire_fusion_ha()["continuum"] is False,
+        "sans fichier R : continuum FORCÉ à False (rien à soustraire)")
+
+# La couche R revient → le réglage redevient accessible.
+app.var_stacks_roles[1].set("R")
+app._on_stacks_roles()
+root.update_idletasks()
+verifie(str(app.chk_fusion_ha_continuum.cget("state")) == "normal"
+        and app._lire_fusion_ha()["continuum"] is True,
+        "fichier R de nouveau fourni : continuum réactivé et relu")
+
+# Un SEUL fichier = empilement direct : aucune composition, donc pas de fusion.
+for i in range(1, len(app.var_stacks_roles)):
+    app.var_stacks_roles[i].set("")
+    app.var_stacks_fichiers[i].set("")
+app._on_stacks_roles()
+root.update_idletasks()
+verifie(not app.frm_fusion_ha.winfo_manager(),
+        "un SEUL fichier (empilement direct) : cadre « Fusion Ha » masqué")
+
+# Retour à une source à DOSSIERS : rien n'a été détruit, tout est rendu.
+app.var_source.set("Composition multi-dossiers (RGB/HOO/SHO/LRGB)")
+app._maj_visibilite_cadres()
+root.update_idletasks()
+verifie(str(app.cb_compo.cget("state")) == "readonly"
+        and all(str(w.cget("state")) == "readonly" for w in app.cb_compo_roles)
+        and all(str(w.cget("state")) == "normal"
+                for w in (app.ent_compo_dossiers + app.btn_compo_dossiers))
+        and str(app.btn_detecter_filtres.cget("state")) == "normal",
+        "source à dossiers : menu et lignes DOSSIER RENDUS (readonly/normal)")
+verifie(not app._lf_stacks.winfo_manager()
+        and bool(app._lf_composition.winfo_manager()),
+        "source à dossiers : le panneau stacks est masqué, la composition reste")
 
 try:
     root.destroy()

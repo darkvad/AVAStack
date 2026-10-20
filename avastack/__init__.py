@@ -19,7 +19,37 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.96.0"
+AVASTACK_VERSION = "2.96.1"
+
+# v2.96.1 : P6 — PISTE A : les DEUX DÉFAUTS D'INTERFACE du test réel du 19/10
+#   sont corrigés (accord d'Alain, 20/10/2026) ET **VALIDÉS EN RÉEL le 20/10**
+#   avec les 5 `canal_*.fit` de M33. AUCUNE RELEASE.
+#   DÉFAUT 1 — COMPOSITION INVISIBLE : `_maj_visibilite_cadres` ne rendait
+#   visible que `_lf_stacks` pour cette source. Or le cadre « Fusion Ha », les
+#   GAINS R/G/B, la NORMALISATION COMMUNE et le LISSAGE du combine LRGB sont des
+#   ENFANTS de `frm_compo` (`ui/panels/compo.py`) : masquer la composition les
+#   masquait TOUS. La source « Stacks » affiche désormais `_lf_stacks` ET
+#   `_lf_composition` (les FICHIERS d'abord, les réglages du composite ensuite).
+#   DÉFAUT 2 — CONTINUUM FORCÉ À L'ARRÊT : `_maj_fusion_ha` et `_lire_fusion_ha`
+#   testaient la couche R avec `_dossier_role_compo("R")`, qui ne lit QUE les
+#   lignes DOSSIER (→ "" avec des FICHIERS) : case, Q, les trois méthodes et le
+#   recentrage étaient désactivés et `continuum` valait False — le test réel a
+#   donc tourné avec la fusion par DÉFAUT et le continuum COUPÉ. Nouvelle
+#   `App._role_fourni(role)` : fichiers pour « Stacks », dossiers sinon.
+#   PISTE A (le reste) : `_maj_compo_depuis_stacks` déduit `var_compo` des rôles
+#   FOURNIS (`composition_pour_roles`, ≥ 2 fichiers — un seul = empilement
+#   direct) et `_maj_compo_verrouillage` grise ce qui n'a aucun sens sans
+#   dossier : menu de composition, lignes rôle→DOSSIER, `…` et « Détecter les
+#   filtres ». Rien n'est détruit : tout reprend son état (`readonly`/`normal`)
+#   dès qu'une source à dossiers revient. `_on_compo_roles` ne réécrit plus la
+#   composition depuis les lignes dossier sous cette source (bandeau 141-B
+#   menteur évité). Un chemin TAPÉ vaut un fichier choisi (`<Return>` /
+#   `<FocusOut>` sur les lignes du panneau Stacks → composition + continuum).
+#   `ui/panels/compo.py` stocke donc `cb_compo`, `cb_compo_roles`,
+#   `ent_compo_dossiers`, `btn_compo_dossiers` et `btn_detecter_filtres` en
+#   attributs (typage pyright inclus). Banc `_test_lot5_p6_stacks.py` : section
+#   [6], 16 vérifications (59 au total), jouée sur les VRAIS `canal_*.fit`
+#   quand ils sont là.
 
 # v2.96.0 : P6 — SOURCE « STACKS (FICHIERS FITS) » (lot 5 des améliorations
 #   d'usage, 19/10/2026 ; lots 4 et 5 INVERMÉS à la demande d'Alain : le lot 5

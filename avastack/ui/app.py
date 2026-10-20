@@ -1088,6 +1088,15 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         le ciblage dark/flat par rôle n'a de sens que là."""
         return self.var_source.get().startswith("Composition")
 
+    def _source_est_stacks(self) -> bool:
+        """True si la source CHOISIE est « Stacks (fichiers FITS) » (P6).
+
+        Distincte de `_source_stacks()` (qui interroge la CAMÉRA connectée) :
+        l'interface doit se régler sur ce que l'utilisateur a choisi, avant
+        même tout « ▶ Démarrer » — c'est cette notion que lisent le
+        verrouillage du panneau composition et la présence des rôles."""
+        return self.var_source.get().startswith("Stacks")
+
     def _roles_actifs(self) -> list[str]:
         """Rôles remplis du cadre Composition (ordre des lignes, dédoublés)."""
         roles, vus = [], set()
@@ -3628,8 +3637,10 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
           - source caméra (simulée, OpenCV, SDK) → contrôles caméra seuls ;
           - « Dossier surveillé » → cadre dossier + cadence d'empilement ;
           - « Composition multi-dossiers » → cadre composition + cadence.
-          - « Stacks (fichiers FITS) » → cadre stacks SEUL (P6 : aucun scan,
-            aucune cadence — les fichiers sont fournis, pas surveillés).
+          - « Stacks (fichiers FITS) » → cadre stacks + COMPOSITION (P6 :
+            aucun scan, aucune cadence — les fichiers sont fournis, pas
+            surveillés — mais les réglages du composite et le cadre « Fusion
+            Ha » sont des enfants de la composition : piste A du 20/10).
         Le réglage de rafale (« Empiler les brutes », jalons 42/45) est un
         cadre UNIQUE (`frm_rafale`) partagé par les deux modes dossier — il
         n'apparaît plus pour une vraie caméra (sans objet). On CACHE
@@ -3679,15 +3690,28 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self.frm_ctrl_cam.pack(fill="x")
         visibles = ([self._lf_cadence, self._lf_dossier_surveille] if est_dossier else
                     [self._lf_cadence, self._lf_composition] if est_compo else
-                    [self._lf_stacks] if est_stacks else [])
+                    # Piste A (P6) : la source « Stacks » affiche SON panneau de
+                    # fichiers ET la composition — c'est d'elle que dépendent
+                    # les réglages du COMPOSITE (gains, normalisation commune,
+                    # lissage LRGB) et le cadre « Fusion Ha », qui en sont des
+                    # ENFANTS (`panels/compo.py`). Masquer la composition les
+                    # masquerait TOUS (défaut constaté en réel le 19/10).
+                    [self._lf_stacks, self._lf_composition] if est_stacks else [])
         # Ancre stable (jalon 98) : le bouton d'en-tête de Caméra — TOUJOURS
         # packé (la source et Démarrer/Arrêter restent visibles en toutes
         # circonstances, jalon 47). Les cadres de la source s'insèrent AVANT
         # lui : « Fichiers de travail » reste complet et, replié ou non, la
         # ligne suivante ne lève JAMAIS « TclError: isn't packed ».
         ancre = self._lf_camera._btn_header  # pyright: ignore[reportAttributeAccessIssue]
-        for cadre in (self._lf_cadence, self._lf_dossier_surveille,
-                      self._lf_composition, self._lf_stacks):
+        # Ordre canonique de la colonne : cadence → dossier → composition →
+        # stacks. Piste A (P6) : pour la source « Stacks », le panneau des
+        # FICHIERS passe AVANT la composition (on choisit les fichiers, puis on
+        # règle le composite), donc l'ordre d'itération est inversé pour ces
+        # deux-là seulement. Les autres sources gardent l'ordre historique.
+        cadres = ((self._lf_stacks, self._lf_composition) if est_stacks else
+                  (self._lf_cadence, self._lf_dossier_surveille,
+                   self._lf_composition, self._lf_stacks))
+        for cadre in cadres:
             btn = getattr(cadre, "_btn_header", None)
             if cadre in visibles:
                 # Afficher le bouton d'en-tête AVANT le LabelFrame
@@ -3723,6 +3747,51 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # couche en composition, libellé simple hors composition).
         if hasattr(self, "lbl_dark"):
             self._maj_libelles_calib()
+        # Piste A (P6) : avec des FICHIERS, la composition AFFICHÉE se déduit
+        # des rôles fournis (le menu ne sert plus à la choisir) ; dans tous les
+        # cas les lignes DOSSIER sont verrouillées ou rendues, et l'état du
+        # continuum du Ha est réévalué pour CETTE source (la couche R existe
+        # ou non selon les fichiers).
+        if est_stacks:
+            self._maj_compo_depuis_stacks()      # ⇒ `_maj_compo_info`
+        self._maj_compo_verrouillage()
+
+    def _maj_compo_verrouillage(self) -> None:
+        """Piste A (P6, v2.96.1) — ce qui n'a AUCUN sens avec des FICHIERS est
+        VERROUILLÉ dans le panneau « Composition ».
+
+        La source « Stacks (fichiers FITS) » ne surveille aucun dossier : le
+        menu de composition ne doit pas réécrire des rôles de DOSSIERS
+        (`_on_compo`), `…` n'ouvrirait qu'un sélecteur jamais lu, et
+        « Détecter les filtres » lirait des dossiers vides. Tout cela est donc
+        grisé — la composition se déduit des fichiers fournis
+        (`_maj_compo_depuis_stacks`).
+
+        Restent ACTIFS les réglages du COMPOSITE — gains R/G/B, normalisation
+        commune, lissage du combine LRGB et le cadre « Fusion Ha » : c'est
+        précisément ce que le test réel du 19/10 ne pouvait pas atteindre
+        (tout le panneau était masqué avec la composition).
+
+        Rien n'est détruit ni effacé : dès qu'une source à dossiers revient,
+        chaque widget retrouve son état d'origine (`readonly` / `normal`).
+        Le continuum du Ha est réévalué en dernier : la présence de la couche R
+        dépend de la source (`_role_fourni`)."""
+        stacks = self._source_est_stacks()
+        etat_liste = "disabled" if stacks else "readonly"
+        etat = "disabled" if stacks else "normal"
+        cb = getattr(self, "cb_compo", None)
+        if cb is not None:
+            cb.config(state=etat_liste)
+        for w in getattr(self, "cb_compo_roles", []):
+            w.config(state=etat_liste)
+        for w in getattr(self, "ent_compo_dossiers", []):
+            w.config(state=etat)
+        for w in getattr(self, "btn_compo_dossiers", []):
+            w.config(state=etat)
+        btn_f = getattr(self, "btn_detecter_filtres", None)
+        if btn_f is not None:
+            btn_f.config(state=etat)
+        self._maj_fusion_ha()
 
     def _on_source_choisie(self, *_) -> None:
         """Sélection d'une source : auto-détection si source « SDK ».
@@ -3979,7 +4048,14 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         composition se DÉDUIT des rôles remplis (sens inverse : les
         dossiers contraignent la composition). Pas de correspondance
         connue → la composition affichée reste en place, l'erreur exacte
-        sera levée au démarrage (garde-fou déjà en place)."""
+        sera levée au démarrage (garde-fou déjà en place).
+
+        Piste A (P6) : avec la source « Stacks », les rôles viennent des
+        FICHIERS — les lignes dossier (verrouillées) ne doivent JAMAIS
+        réécrire la composition ; elle se redéduit des fichiers fournis."""
+        if self._source_est_stacks():
+            self._maj_compo_depuis_stacks()
+            return
         remplis = tuple(v.get() for v in self.var_compo_roles if v.get())
         comp = composition_pour_roles(remplis)
         if comp and comp != self.var_compo.get():
@@ -4056,10 +4132,8 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._maj_fusion_ha()
         spec = COMPOSITIONS.get(nom)
         if spec is None:
-            self.lbl_compo_info.config(text="—")
-            self._maj_compo_session()
-            return
-        if "canaux_rgb" not in spec:
+            txt = "—"
+        elif "canaux_rgb" not in spec:
             txt = "Mono : un seul dossier, composite monochrome."
         else:
             txt = " · ".join(f"{canal}={'+'.join(roles)}"
@@ -4071,7 +4145,14 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 # sans cette mention, la ligne d'aide laisserait croire qu'il
                 # est ignoré.
                 txt += " + Ha fusionné au rouge"
+        if self._source_est_stacks():
+            # Piste A (P6) : le menu est VERROUILLÉ pour cette source — la
+            # ligne d'aide doit dire d'où vient la composition affichée.
+            txt = f"Composition déduite des fichiers fournis · {txt}"
         self.lbl_compo_info.config(text=txt)
+        if spec is None:
+            self._maj_compo_session()
+            return
         # La radio « Canal L » n'a de sens que là où une luminance L existe :
         # LRGB, et LRGB+Ha depuis le jalon 129.
         etat = "normal" if nom in ("LRGB", "LRGB+Ha") else "disabled"
@@ -4151,10 +4232,47 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                                "(rôle + fichier)")
         return pairs
 
+    def _roles_stacks_fournis(self) -> list[str]:
+        """Rôles RÉELLEMENT fournis dans le panneau « Stacks » (rôle ET fichier),
+        dans l'ordre des lignes.
+
+        Un rôle sans fichier ne compte pas : il ne sera pas empilé. Lecture de
+        variables Tk — THREAD PRINCIPAL uniquement, aucune sonde disque."""
+        roles = []
+        for i in range(composition_mod.NB_LIGNES_COMPO):
+            role = self.var_stacks_roles[i].get().strip()
+            if role and self.var_stacks_fichiers[i].get().strip():
+                roles.append(role)
+        return roles
+
+    def _maj_compo_depuis_stacks(self) -> None:
+        """Piste A (P6, v2.96.1) : avec des FICHIERS, la composition AFFICHÉE
+        est celle que les fichiers COMPOSENT — elle ne se choisit pas au menu
+        (verrouillé par `_maj_compo_verrouillage`).
+
+        Deux fichiers ou plus → `composition_pour_roles` la donne (L, R, G, B,
+        Ha → LRGB+Ha, exactement la même règle qu'au démarrage). Un seul
+        fichier n'est PAS une composition (empilement direct « Mono ») : la
+        valeur du menu reste en place, et `_maj_fusion_ha` masque le cadre.
+        Rôles sans composition connue → la valeur reste en place : l'erreur
+        exacte tombe au démarrage, garde-fou déjà en place.
+
+        Aucune écriture disque : ce chemin est pris à chaque changement de
+        rôle, de fichier et de source (source : via `_maj_visibilite_cadres`)."""
+        if not self._source_est_stacks():
+            return
+        roles = self._roles_stacks_fournis()
+        nom = composition_pour_roles(tuple(roles)) if len(roles) > 1 else None
+        if nom and nom != self.var_compo.get():
+            self.var_compo.set(nom)
+        self._maj_compo_info()      # ligne d'aide + cadre « Fusion Ha »
+
     def _on_stacks_roles(self, *_) -> None:
         """Changement de rôle (ou de fichier) dans le panneau « Stacks » :
-        la ligne d'aide est refaite (composition déduite, avertissements)."""
+        la ligne d'aide est refaite (composition déduite, avertissements) et la
+        composition du panneau suit les fichiers (piste A)."""
         self._maj_stacks_info()
+        self._maj_compo_depuis_stacks()
 
     def _pick_fichier_stacks(self, i: int) -> None:
         """Boîte « choisir un fichier » pour la ligne `i` — un FITS par filtre,
@@ -4167,7 +4285,9 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                        ("Tous les fichiers", "*.*")])
         if chemin:
             self.var_stacks_fichiers[i].set(chemin)
-            self._maj_stacks_info()
+            # Piste A : un fichier de plus peut ajouter un rôle (ou la couche
+            # R du continuum) → même chemin qu'un changement de rôle.
+            self._on_stacks_roles()
 
     def _maj_stacks_info(self, verifier_fichiers: bool = True) -> None:
         """Ligne d'aide du panneau « Stacks » : composition DÉDUITE des rôles
@@ -4279,6 +4399,28 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 return self.var_compo_dossiers[i].get().strip()
         return ""
 
+    def _role_fourni(self, role: str) -> bool:
+        """Ce rôle est-il RÉELLEMENT fourni par la source choisie ? (piste A, P6)
+
+        Source « Stacks (fichiers FITS) » : le rôle compte s'il est indiqué sur
+        une ligne du panneau ET qu'un fichier y est choisi — c'est ce couple-là
+        qui sera empilé. Partout ailleurs : dossier rempli dans les lignes de la
+        composition (comportement historique, inchangé).
+
+        POURQUOI ce helper : `_dossier_role_compo("R")` ne lit QUE les lignes
+        dossier et rend `""` quand les rôles viennent de FICHIERS — le continuum
+        du Ha était alors FORCÉ à l'arrêt (case, Q, méthodes et recentrage
+        désactivés) alors que la couche R était fournie (constat réel du
+        19/10). Le test de présence doit connaître la SOURCE.
+
+        Lecture de variables Tk : THREAD PRINCIPAL uniquement."""
+        if self._source_est_stacks():
+            for i in range(composition_mod.NB_LIGNES_COMPO):
+                if self.var_stacks_roles[i].get().strip() == role:
+                    return bool(self.var_stacks_fichiers[i].get().strip())
+            return False
+        return bool(self._dossier_role_compo(role))
+
     def _maj_fusion_ha(self) -> None:
         """Cadre « Fusion Ha » visible SEULEMENT si la composition contient un
         Ha FUSIONNÉ (RGB+Ha, LRGB+Ha).
@@ -4288,23 +4430,32 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         régler. `winfo_manager()` évite de re-packer à chaque appel (la
         méthode suit le menu, appelée à chaque frappe qui le change).
 
-        Le CONTINUUM (J2) dépend de la couche R : sans dossier R, la case, Q,
-        les trois MÉTHODES (J4) et le recentrage sont DÉSACTIVÉS — aucune des
-        trois méthodes ne peut estimer le continuum sans la couche R.
+        Le CONTINUUM (J2) dépend de la couche R : sans couche R FOURNIE, la
+        case, Q, les trois MÉTHODES (J4) et le recentrage sont DÉSACTIVÉS —
+        aucune des trois méthodes ne peut estimer le continuum sans elle. La
+        couche R se lit par `_role_fourni("R")` : un DOSSIER en composition,
+        un FICHIER avec la source « Stacks » (piste A, v2.96.1).
+
+        Piste A : avec des FICHIERS, la composition affichée se déduit des
+        rôles fournis ; un SEUL fichier n'est pas une composition (empilement
+        direct « Mono ») et le cadre est masqué — rien à fusionner.
 
         J4 (v2.91.0) : la BANDE PASSANTE du filtre ne sert qu'à la méthode
         « bandes passantes » — grisée ailleurs, comme α l'est hors du fondu."""
         cadre = getattr(self, "frm_fusion_ha", None)
         if cadre is None:
             return
-        if composition_mod.composition_avec_ha(self.var_compo.get()):
+        porte_ha = composition_mod.composition_avec_ha(self.var_compo.get())
+        if self._source_est_stacks() and len(self._roles_stacks_fournis()) < 2:
+            porte_ha = False       # un seul fichier = empilement direct
+        if porte_ha:
             if not cadre.winfo_manager():
                 cadre.pack(fill="x", pady=(6, 0))
         else:
             cadre.pack_forget()
         methode = str(self.var_fusion_ha_methode.get()
                       or composition_mod.METHODE_CONTINUUM_DEFAUT)
-        a_r = bool(self._dossier_role_compo("R"))
+        a_r = self._role_fourni("R")
         etat = "normal" if a_r else "disabled"
         for w in (getattr(self, "chk_fusion_ha_continuum", None),
                   getattr(self, "sp_fusion_ha_q", None),
@@ -4399,9 +4550,10 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         retombe sur le défaut figé (jamais sur 0, un réglage muet passerait
         pour « sans effet »). La méthode inconnue retombe sur
         `METHODE_CONTINUUM_DEFAUT`, la bande sur une option connue
-        (`borne_bw_ha`). Le continuum est FORCÉ à False quand aucun dossier
-        R n'est renseigné : sans R il n'y a rien à soustraire, et la fiche ne
-        doit pas prétendre le contraire."""
+        (`borne_bw_ha`). Le continuum est FORCÉ à False quand aucune couche R
+        n'est FOURNIE (`_role_fourni("R")` : un fichier pour la source
+        « Stacks », un dossier partout ailleurs — piste A) : sans R il n'y a
+        rien à soustraire, et la fiche ne doit pas prétendre le contraire."""
         mode = str(self.var_fusion_ha_mode.get()
                    or composition_mod.FUSION_HA_DEFAUT)
         try:
@@ -4439,7 +4591,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             bw = composition_mod.BW_HA_NM
         bw = composition_mod.borne_bw_ha(bw)
         continuum = (bool(self.var_fusion_ha_continuum.get())
-                     and bool(self._dossier_role_compo("R")))
+                     and bool(self._role_fourni("R")))
         return {"mode": mode, "poids": poids, "alpha": alpha,
                 "recentrer": bool(self.var_fusion_ha_recentrer.get()),
                 "continuum": continuum, "q": q,
