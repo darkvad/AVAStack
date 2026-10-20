@@ -8,14 +8,20 @@ pièges actifs, prochaine action. Le détail daté vit dans `avastack/__init__.p
 
 ## ⚠️ BRANCHE DE DÉVELOPPEMENT ACTIVE — NE PAS SUPPRIMER JUSQU'À DEMANDE EXPLICITE
 
-**Branche : `LRGBHa`** (créée le 15/10/2026 à partir de `master`)
+**Branche : `OptimisationUI`** (créée le 20/10/2026 à partir de `master`, pour le
+**lot 5 = P5**, audit MESURÉ de la réactivité de l'interface)
 
 > **RÈGLE FERME — GRAVÉE DANS LE MARBRE** : jusqu'à nouvel ordre explicite,
 > **TOUT** développement et **TOUTE** modification de code se font **EXCLUSIVEMENT**
-> sur `LRGBHa`. `master` = branche stable, releases uniquement ; merge vers `master`
-> seulement sur validation explicite (release).
+> sur `OptimisationUI`. `master` = branche stable, releases uniquement ; merge vers
+> `master` seulement sur validation explicite (demande d'Alain).
+>
+> **`LRGBHa` est FERMÉE le 20/10/2026** : fusionnée en **fast-forward** dans
+> `master` (commit `efb2911`, après validation réelle de P6), puis **supprimée**
+> en local et sur `origin`. Sa trace vit dans `git log` et dans le changelog de
+> `avastack/__init__.py`. Ne pas la recréer sans demande d'Alain.
 
-Versions : `LRGBHa` = **v2.96.1** (**136** halo coloré,
+Versions : `master` et `OptimisationUI` = **v2.96.1** (**136** halo coloré,
 **137** neutralisation après étirement en STF, **141-B** interface, **J2** fusion
 du Ha au rouge + continuum, **J3/J3bis** cinq modes, **J4/J4.1** continuum trois
 méthodes et mesure indépendante de la case — tous **VALIDÉS EN RÉEL le 19/10** ;
@@ -37,10 +43,11 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 ## Session du 20/10/2026 — **P6 : défauts d'interface corrigés (piste A) et VALIDÉS EN RÉEL** (v2.96.1)
 
 ### État actuel
-- **v2.96.1 sur `LRGBHa`**, **VALIDÉE EN RÉEL par Alain le 20/10** (« testé en
+- **v2.96.1 sur `master`** (fusion de `LRGBHa`, branche fermée),
+  **VALIDÉE EN RÉEL par Alain le 20/10** (« testé en
   réel, validé ») : le cadre « Fusion Ha », les réglages du composite et le
   continuum sont accessibles avec la source « Stacks ». **Aucune release.**
-  Base : P6 livré = `fb81b1d` (v2.96.0), handoff = `e797ce1`.
+  Base : P6 livré = `fb81b1d` (v2.96.0), correctif = `efb2911`.
 - **Les deux défauts du test réel du 19/10 sont corrigés** (piste A validée par
   Alain) : avec la source « Stacks », le panneau « Composition » est de nouveau
   AFFICHÉ (donc les gains R/G/B, la normalisation commune, le lissage LRGB et le
@@ -82,19 +89,15 @@ apparaît, le continuum est ACTIF et réglable, les gains / la normalisation
 commune / le lissage LRGB sont accessibles, et le composite réagit aux réglages
 sans redémarrer la session. **Verdict d'Alain : testé en réel, validé.**
 
-### Diagnostic (rappel, pour la prochaine session)
-- **Cause 1 — visibilité** : `est_stacks` ne rendait visible que `_lf_stacks` ;
-  or le cadre « Fusion Ha », les gains R/G/B, la normalisation commune et le
-  lissage LRGB sont des ENFANTS de `frm_compo` (`panels/compo.py`) → masquer la
-  composition les masquait TOUS.
-- **Cause 2 — test de présence du R** : `_dossier_role_compo("R")` ne lit que
-  les lignes DOSSIER (→ `""` avec des FICHIERS) : la case continuum, Q, les
-  trois méthodes et le recentrage étaient désactivés, et `continuum` forcé à
-  `False` — le test réel du 19/10 a donc tourné avec la fusion par DÉFAUT
-  (`ajout_rouge`, poids 1,0) et le continuum COUPÉ.
-- **Piste B** (si la A s'était révélée insuffisante en réel) : extraire « Fusion
-  Ha » + gains + normalisation + lissage dans un panneau propre — refactor plus
-  large (`compo.py` + tous ses bancs). **Non retenue** : la piste A a suffi.
+### Diagnostic (rappel, condensé — le détail durable est dans `CLAUDE.md`)
+- **Cause 1** : `est_stacks` ne rendait visible que `_lf_stacks`, alors que
+  « Fusion Ha », les gains R/G/B, la normalisation commune et le lissage LRGB
+  sont des ENFANTS de `frm_compo` → tout était masqué.
+- **Cause 2** : `_dossier_role_compo("R")` ne lit que les lignes DOSSIER (→ `""`
+  avec des FICHIERS) : continuum, Q, méthodes et recentrage désactivés, et
+  `continuum` forcé à `False`.
+- **Piste B** (panneau « composite » séparé) **non retenue** : la piste A a suffi,
+  et un refactor plus large aurait touché `compo.py` + tous ses bancs.
 
 
 ### Fichiers modifiés dans cette phase (correctif piste A)
@@ -127,10 +130,11 @@ sans redémarrer la session. **Verdict d'Alain : testé en réel, validé.**
   **`_source_fichiers()` distincte de `_cadence_dossier()`**.
 
 ### Problèmes ouverts / prochaines étapes
-1. **LOT 5 = P5** (audit MESURÉ de la réactivité) — **accord d'Alain avant de
-   démarrer** (aucun code commencé).
+1. **LOT 5 = P5** (audit MESURÉ de la réactivité de l'interface) sur la branche
+   **`OptimisationUI`** — **accord d'Alain avant de démarrer** (aucun code
+   commencé).
 2. **Release v2.96.x** sur accord explicite (aucune release depuis v2.80.0 ;
-   `master` vient de recevoir la fusion de `LRGBHa`).
+   `master` porte la fusion de `LRGBHa`, branche fermée le 20/10).
 
 ---
 ## Points d'attention
@@ -161,10 +165,11 @@ sans redémarrer la session. **Verdict d'Alain : testé en réel, validé.**
   (boîte MODALE, sinon blocage), jamais `grid` + `pack` dans le même conteneur.
 
 ### Contexte de reprise (à coller — 2 phrases)
-Arbre **v2.96.1**, **P6 VALIDÉ EN RÉEL le 20/10** (piste A : composition affichée
-et verrouillée, composition déduite des fichiers, continuum piloté par
-`_role_fourni("R")`) et **`LRGBHa` fusionnée dans `master`**. **Prochaine
-action** : LOT 5 = P5 (audit MESURÉ de la réactivité), sur accord d'Alain.
+Arbre **v2.96.1** sur la branche **`OptimisationUI`** : **P6 VALIDÉ EN RÉEL le
+20/10** (piste A : composition affichée et verrouillée, composition déduite des
+fichiers, continuum piloté par `_role_fourni("R")`) et **`LRGBHa` fermée** (fusion
+dans `master`). **Prochaine action** : LOT 5 = P5 (audit MESURÉ de la réactivité),
+sur accord d'Alain.
 
 ---
 
@@ -230,11 +235,11 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 
 ---
 
-## En attente / prochaine session (état au 20/10 — `LRGBHa` fusionnée dans `master`, v2.96.1)
+## En attente / prochaine session (état au 20/10 — branche `OptimisationUI`, v2.96.1)
 
-- **P6 est CLOS ET VALIDÉ EN RÉEL** (v2.96.1) : le banc P6 est vert (59
-  vérifications, joué avec les 5 vrais `canal_*.fit`) et le test réel d'Alain a
-  confirmé l'interface.
+- **P6 est CLOS ET VALIDÉ EN RÉEL** (v2.96.1, fusionné dans `master` ; `LRGBHa`
+  fermée) : le banc P6 est vert (59 vérifications, joué avec les 5 vrais
+  `canal_*.fit`) et le test réel d'Alain a confirmé l'interface.
 - **Prochaine action unique** : **LOT 5 = P5** (audit MESURÉ de la réactivité),
   **avec l'accord d'Alain avant de démarrer** — mesurer d'abord
   (`bancs/_mesure_p5_reactivite.py`), corriger ensuite.
