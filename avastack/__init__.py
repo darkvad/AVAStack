@@ -19,7 +19,52 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.96.1"
+AVASTACK_VERSION = "2.97.0"
+
+# v2.97.0 : P5 (lot 5) — RENDU AU RELÂCHEMENT des curseurs (`OptimisationUI`).
+#   MESURER D'ABORD, CORRIGER ENSUITE : les chiffres du 20/10 (outil
+#   `bancs/_mesure_p5_reactivite.py`, aperçu RÉEL 1600×1200 en plein écran) ont
+#   montré qu'un aperçu coûte ~300 ms et qu'un GLISSEMENT en déclenchait UN PAR
+#   PIXEL de souris — 50 à 76 s pour 200 px, 2 284 % d'un cœur à 60 Hz. ARBITRAGE
+#   D'ALAIN : pendant un glissement on ne calcule RIEN, UN SEUL aperçu au
+#   relâchement ; l'aperçu RÉDUIT pendant le geste n'est PAS retenu (il ne sera
+#   ajouté que si le test réel le réclame). EN ATTENTE DE VALIDATION EN RÉEL ;
+#   AUCUNE RELEASE.
+#   - `ui/app.py` (`_add_slider`) : `cmd` ne fait plus que la VARIABLE et
+#     l'ÉTIQUETTE quand un glissement est en cours (`<ButtonPress-1>` arme,
+#     `<ButtonRelease-1>` clôt et rend UNE fois, par `after_idle` pour laisser
+#     passer les liaisons de CLASSE du ttk.Scale). Hors glissement, un MINUTEUR
+#     DE SECOURS (`DELAI_SECOURS_CURSEUR_MS` = 150 ms, `after`/`after_cancel`,
+#     remis à zéro à chaque pose) ramasse flèches clavier et `s.set()`
+#     programmatique : une RAFALE de poses = UN aperçu. FILET
+#     (`DELAI_SECOURS_GLISSE_MS` = 600 ms) pour un geste ARRÊTÉ sans relâchement
+#     (grab perdu) : jamais d'image périmée. Les gestes DISCRETS (« - »/« + »,
+#     zone de saisie, `_poser_curseur`) appellent `_forcer_rendu_curseur` : ils
+#     restent IMMÉDIATS (la restauration de config doit être complète en sortant,
+#     le banc du jalon 120 lit `disp.*` juste après la construction).
+#   - `App._forcer_rendu_curseur` / `App._rendre_curseurs` : « applique tout de
+#     suite » (un seul chemin de rendu différé, donc jamais deux aperçus pour un
+#     même changement). `_on_auto` et le 🔒 logD les appellent AVANT leur rendu
+#     explicite, sinon celui-ci partirait avec les `disp.*` de l'état précédent.
+#   - CRITÈRES DE SORTIE, MESURÉS PAR LE MÊME OUTIL (20/10) : un pas de
+#     glissement **0,036 ms** (au lieu de ~300 ms), glissement de 200 px
+#     **230–324 ms** (au lieu de 50 à 76 s), **1 aperçu** par glissement complet,
+#     rafale de 60 pas **1,35 s** avec **1 aperçu** (au lieu de 20,15 s et 60
+#     aperçus), charge pour suivre 60 Hz **0,22 %** d'un cœur (au lieu de
+#     2 284 %). Case et spinner INCHANGÉS (~250–300 ms).
+#   - Bancs : `bancs/_test_p5_rendu_relachement.py` (NEUF, 20 vérifications :
+#     câblage des évènements, zéro calcul pendant le geste, image du relâchement
+#     IDENTIQUE AU BIT à un rendu direct, filet, gestes discrets, coalescence du
+#     minuteur) ; `_test_perf_reactivite_jalon79` adapté (il force le rendu après
+#     son `s.set`) ; `_mesure_p5_reactivite` éprouve désormais le VRAI geste
+#     (sections [1] et [8] passent par les gestionnaires de glissement et
+#     comptent les aperçus). Non-régressions vertes : jalon 6 (boutons ±),
+#     jalon 120 (restauration), jalon 79 (29 vérifications), garde-fou
+#     (pyright 0 sur 54 fichiers typés).
+#   - PIÈGE MESURÉ PENDANT LES BANCS : `event_generate("<Return>")` sur une
+#     `ttk.Entry` ne déclenche RIEN si le widget n'a pas le FOCUS — un banc qui
+#     « teste » une zone de saisie sans `focus_force()` ne teste que le silence.
+
 
 # v2.96.1 : P6 — PISTE A : les DEUX DÉFAUTS D'INTERFACE du test réel du 19/10
 #   sont corrigés (accord d'Alain, 20/10/2026) ET **VALIDÉS EN RÉEL le 20/10**

@@ -162,12 +162,20 @@ def curseur(app, texte):
 def geste(app, texte, valeur):
     """Déclenche le curseur COMME UN GESTE DE SOURIS : Tk appelle la commande
     du curseur quand sa valeur change → c'est bien le câblage de l'interface
-    qui est éprouvé, pas un appel écrit par le banc. True si le curseur existe."""
+    qui est éprouvé, pas un appel écrit par le banc. True si le curseur existe.
+
+    P5 (lot 5, 20/10/2026) : depuis le RENDU AU RELÂCHEMENT, un `s.set()` seul
+    ne fait que la variable et l'étiquette — le calcul part au minuteur (150 ms)
+    ou au `<ButtonRelease-1>`. Le banc FORCE donc le rendu en attente : il
+    éprouve le même `onchange` qu'un geste, sans attendre un relâchement qu'il
+    ne simule pas.
+    """
     s = curseur(app, texte)
     if s is None:
         verifie(False, f"curseur « {texte} » INTROUVABLE")
         return False
     s.set(float(valeur))
+    app._forcer_rendu_curseur(s)          # P5 : le rendu attendu MAINTENANT
     app.root.update()
     return True
 

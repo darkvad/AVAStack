@@ -21,17 +21,16 @@ pièges actifs, prochaine action. Le détail daté vit dans `avastack/__init__.p
 > en local et sur `origin`. Sa trace vit dans `git log` et dans le changelog de
 > `avastack/__init__.py`. Ne pas la recréer sans demande d'Alain.
 
-Versions : `master` et `OptimisationUI` = **v2.96.1** (**136** halo coloré,
-**137** neutralisation après étirement en STF, **141-B** interface, **J2** fusion
-du Ha au rouge + continuum, **J3/J3bis** cinq modes, **J4/J4.1** continuum trois
-méthodes et mesure indépendante de la case — tous **VALIDÉS EN RÉEL le 19/10** ;
-**J5** ancre = couche large bande, **VALIDÉ EN RÉEL** ; **Lot 1 (P2 + P3)** base
-SPCC la plus riche + astrométrie servie sans frame, **VALIDÉ EN RÉEL le 19/10** ;
-**P7** recalcul après un choix de couleur, **CORRIGÉ ET VALIDÉ EN RÉEL le 19/10** ;
-**P1** cadence de re-mesure, **VALIDÉ EN RÉEL le 19/10** ; **P4** infobulles
-« ⓘ », **VALIDÉ EN RÉEL le 19/10** ; **P6** source « Stacks (fichiers FITS) »,
-**testée en RÉEL le 19/10** (empilement OK) — **ses 2 défauts d'INTERFACE ont été
-CORRIGÉS (piste A) ET VALIDÉS EN RÉEL le 20/10** (**v2.96.1**))
+Versions : **`OptimisationUI` = v2.97.0** — **P5 « rendu AU RELÂCHEMENT »
+IMPLÉMENTÉ le 20/10** (banc vert, chiffres après correctif mesurés), **à VALIDER
+EN RÉEL** ; aucune release. **`master` = v2.96.1** : **136** halo coloré, **137**
+neutralisation après étirement en STF, **141-B** interface, **J2** fusion du Ha
+au rouge + continuum, **J3/J3bis** cinq modes, **J4/J4.1** continuum trois
+méthodes et mesure indépendante de la case, **J5** ancre = couche large bande,
+**Lot 1 (P2 + P3)** base SPCC la plus riche + astrométrie servie sans frame,
+**P7** recalcul après un choix de couleur, **P1** cadence de re-mesure, **P4**
+infobulles « ⓘ », **P6** source « Stacks (fichiers FITS) » + ses 2 défauts
+d'interface (piste A) — tous **VALIDÉS EN RÉEL** (19 et 20/10).
 · `master` publié = **v2.80.0** · Store publié = **v2.71.1**.
 
 **Gouvernance** : **aucune release GitHub sans l'accord d'Alain** ; **à CHAQUE jalon validé,
@@ -40,7 +39,7 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 
 ---
 
-## Session du 20/10/2026 — **P6 VALIDÉ EN RÉEL** (v2.96.1), **P5 MESURÉ à la taille réelle**, **arbitrage : rendu AU RELÂCHEMENT** (aucun correctif encore)
+## Session du 20/10/2026 — **P6 VALIDÉ EN RÉEL** (v2.96.1), puis **P5 IMPLÉMENTÉ** (v2.97.0, **à tester en réel**)
 
 ### État actuel
 - **v2.96.1 sur `master`** — P6 **VALIDÉ EN RÉEL par Alain le 20/10** (« testé en
@@ -49,22 +48,23 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
   `efb2911` = correctif piste A, fusionné dans `master`).
 - **Branche de travail : `OptimisationUI`** (depuis `master`, poussée et suivie).
   **`LRGBHa` fermée** (local + `origin`).
-- **P5 = MESURÉ le 20/10** avec l'outil neuf `bancs/_mesure_p5_reactivite.py`
-  (JSON conservé) : **aucun correctif appliqué**, conformément à la règle
-  « mesurer d'abord, corriger ensuite ». Le banc `_test_perf_reactivite_jalon79`
-  est étendu aux cases / listes / spinners (**29 vérifications, tout passe**).
-- **ARBITRAGE D'ALAIN (fin de session)** : pendant un **glissement**, on ne
-  calcule **RIEN** ; **un seul aperçu AU RELÂCHEMENT**. L'**aperçu réduit**
-  pendant le geste n'est PAS retenu à ce stade (il ne sera ajouté que si le test
-  réel le réclame). **Aucune ligne de ce correctif n'est écrite**
-  (handoff demandé AVANT l'implémentation).
-- **Bancs** : P6 **vert, 59 vérifications** (joué avec les vrais `canal_*.fit` de
-  `C:\Astro\test\M33_Canaux_LRGBHa`, repli synthétique sinon). Non-régressions
-  vertes : 47, 52, 53, 19, 129, 141-B, J2, J3, J4, J5, P4, P1, garde-fou
-  (**pyright 0 sur 54 fichiers typés**). **Échec PRÉEXISTANT** :
-  `_test_lot1_p2_p3` volet [3] (profil SPCC déjà corrigé dans `config.json`).
+- **P5 « RENDU AU RELÂCHEMENT » IMPLÉMENTÉ le 20/10 (v2.97.0)** sur
+  `OptimisationUI` — mesuré d'abord, corrigé ensuite, **commité EN LOCAL, pas
+  poussé**. `_add_slider` : rien pendant le glissement, **UN aperçu au
+  relâchement**, minuteur de secours (150 ms, rafale = 1 aperçu), filet (600 ms)
+  si le relâchement se perd ; gestes discrets et `_poser_curseur` **immédiats**
+  (`_forcer_rendu_curseur` / `_rendre_curseurs`). Banc NEUF
+  `bancs/_test_p5_rendu_relachement.py` (**20 vérifications, vert**).
+- **PROCHAINE ACTION : test réel d'Alain** — c'est LUI qui dira si l'absence de
+  retour PENDANT le geste gêne (et si l'« aperçu réduit » devient utile ;
+  il n'est PAS codé).
+- **Bancs rejoués verts après le correctif** : P5 (20), jalon 79 (**29**),
+  jalon 6 (boutons ±), jalon 120 (restauration), garde-fou (**pyright 0 sur 54
+  fichiers typés**, surface publique d'`app.py` inchangée). **Échec
+  PRÉEXISTANT** inchangé : `_test_lot1_p2_p3` volet [3] (profil SPCC déjà
+  corrigé dans `config.json`).
 
-### P5 — LES CHIFFRES (mesurés le 20/10, `--n 5`, **fenêtre PLEIN ÉCRAN**, aperçu **1600×1200**)
+### P5 — LES CHIFFRES AVANT (20/10, `--n 5`, **fenêtre PLEIN ÉCRAN**, aperçu **1600×1200**)
 > JSON : `bancs/_mesure_p5_reactivite.json`. Rejouer :
 > `python bancs/_mesure_p5_reactivite.py` (écran requis ; `--autotest` sans écran).
 > **Correction du 20/10 (remarque d'Alain)** : le premier passage avait été fait
@@ -82,9 +82,6 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 | clic de case (`invoke`) | **284–299 ms** (1 aperçu) ; **auto-STF 326 ms** (2,33 aperçus) |
 | cran de spinner / `sp.set` nu | **311–332 ms** / 0,01 ms (0 rappel) |
 | `var.set` nu (case / liste / spinner) | **0 rappel** (piège Tk, prouvé) |
-| `_tick_corps` (budget 30 ms) | **0,08 ms = 0,3 %** |
-| liste SPCC **147** valeurs : repeuplement / sélection | **0,2 ms / 0,1 ms** |
-| `_maj_visibilite_cadres` | 0,2–0,5 ms, 12 pack + 3–9 forget |
 | rafale (60 pas, boucle ACTIVE) | **20,15 s** (336 ms/pas), **60 battements au lieu de 671**, écart max **395 ms** |
 | opérations > **0,25 s** (Guet abaissé) | **21** (pire : **409 ms**) |
 | glissement de **200 px** (théorique, la file) | **50 s → 76 s** |
@@ -98,25 +95,50 @@ les cases mettent un temps certain »). `_tick`, les listes (147 valeurs) et
 on ne calcule **RIEN**, **un seul aperçu AU RELÂCHEMENT** (le coalescing n'était
 qu'un pis-aller) ; l'**aperçu réduit n'est PAS retenu** à ce stade.
 
+### P5 — LES CHIFFRES APRÈS le correctif (même outil, même taille, 20/10 — v2.97.0)
 
-### Le correctif P6 (piste A) — détail durable dans `CLAUDE.md`
-- **Visibilité** : `est_stacks` → fichiers puis composition ; « Fusion Ha »,
-  gains, normalisation commune et lissage LRGB sont des enfants de `frm_compo`.
-- **Composition déduite** (`_maj_compo_depuis_stacks`), **verrouillage**
-  (`_maj_compo_verrouillage` : menu, lignes DOSSIER, `…`, détection grisés ;
-  réglages du composite ACTIFS), **présence d'un rôle** (`_role_fourni`, qui
-  pilote aussi le continuum). **Piste B écartée** (refactor plus large).
+| ce qui est mesuré | avant | après |
+|---|---|---|
+| un PAS de glissement de souris | **~300 ms** (un aperçu PAR pixel) | **0,036 ms** |
+| aperçus pour un glissement complet | 1 par pixel | **1** (au relâchement) |
+| glissement de **200 px** | **50 à 76 s** | **230–324 ms** |
+| rafale 60 pas, boucle ACTIVE | **20,15 s**, 60 aperçus, 60 battements / 671 attendus | **1,35 s**, **1 aperçu**, 31 battements / 44 attendus, écart max 254 ms |
+| charge pour suivre 60 Hz de souris | **2 284 %** d'un cœur | **0,22 %** |
+| aperçu complet / sans histogrammes | 306 / 261 ms | **252 / 204 ms** (inchangé, c'est le prix d'UN aperçu) |
+| clic de case / cran de spinner | 284–326 / 311–332 ms | **inchangés** (~250–300 ms, 1 aperçu) |
+
+**Lecture** : le coût d'un geste n'est plus proportionnel au NOMBRE de pixels
+parcourus mais à **un seul aperçu** — c'est exactement l'arbitrage d'Alain. Le
+prix assumé : pendant le geste, l'image ne correspond plus à la valeur affichée
+(elle rattrape au relâchement). **Ce qui reste à ~300 ms** (case, spinner, un
+relâchement) est le pipeline numpy d'un aperçu : hors du champ de P5.
+
+
+
+### Le correctif P6 (piste A) — **CLOS, détail durable dans `CLAUDE.md`**
+- Visibilité (`_lf_stacks` + `_lf_composition`), composition **déduite**
+  (`_maj_compo_depuis_stacks`) et **verrouillage** (`_maj_compo_verrouillage`),
+  présence d'un rôle (`_role_fourni`, pilote aussi le continuum). **Piste B
+  écartée** (refactor plus large).
 
 ### Fichiers modifiés dans cette phase
-- `bancs/_mesure_p5_reactivite.py` (**neuf**) : outil de mesure P5 (9 sections) ;
-- `bancs/_mesure_p5_reactivite.json` (**neuf**) : chiffres du passage, rejouable ;
-- `bancs/_test_perf_reactivite_jalon79.py` : sections **[8] cases**, **[9] listes**,
-  **[10] spinners** (chemin RÉEL : `invoke`, `<<ComboboxSelected>>`, `command`) ;
-- `CLAUDE.md` : deux leçons durables (chemin propre de chaque commande Tk ;
-  une mesure de réactivité se prend sur **1600×1200 plein écran**, jamais sur
-  une vignette) ;
-- (P6, déjà livré) `avastack/ui/app.py`, `panels/compo.py`, `panels/stacks.py`,
-  `bancs/_test_lot5_p6_stacks.py`, `avastack/__init__.py`.
+- `avastack/ui/app.py` : **P5** — `_add_slider` (rendu au relâchement, minuteur,
+  filet, gestionnaires de geste), `_forcer_rendu_curseur`, `_rendre_curseurs`,
+  `_poser_curseur` (+ rendu forcé), `_on_auto` et 🔒 logD (forcent avant leur
+  rendu explicite), constantes `DELAI_SECOURS_CURSEUR_MS` (150) et
+  `DELAI_SECOURS_GLISSE_MS` (600) ;
+- `bancs/_test_p5_rendu_relachement.py` (**neuf**) : contrat P5, **20
+  vérifications** (câblage, zéro calcul pendant le geste, image du relâchement
+  identique au bit, filet, gestes discrets, coalescence du minuteur) ;
+- `bancs/_mesure_p5_reactivite.py` : sections **[1]** et **[8]** réécrites sur le
+  VRAI geste (`_debut_glissement`/`_fin_glissement`) + comptage des aperçus ;
+- `bancs/_test_perf_reactivite_jalon79.py` : le helper `geste()` **force** le
+  rendu (un `s.set()` seul ne rend plus) ;
+- `bancs/_mesure_p5_reactivite.json` : passage APRÈS correctif (rejouable) ;
+- `avastack/__init__.py` : **v2.97.0** + changelog ; `CLAUDE.md` : leçon durable
+  « rendu au relâchement » + piège `event_generate`/focus ;
+- (P6, déjà livré) `panels/compo.py`, `panels/stacks.py`,
+  `bancs/_test_lot5_p6_stacks.py`.
 
 
 ### Décisions
@@ -141,33 +163,33 @@ qu'un pis-aller) ; l'**aperçu réduit n'est PAS retenu** à ce stade.
   correspond plus à la valeur affichée.
 - **NON retenu à ce stade** : l'aperçu RÉDUIT pendant le geste (~80–100 ms à
   800×600). À n'ajouter qu'APRÈS un test réel, et sur demande d'Alain.
+- **P5 — IMPLÉMENTATION (20/10, v2.97.0)** : un seul chemin de rendu différé
+  (`_rendre`) pour le minuteur ET le relâchement ⇒ jamais deux aperçus pour un
+  même changement ; le relâchement rend par **`after_idle`** (les liaisons de
+  CLASSE du `ttk.Scale` posent la valeur finale du clic APRÈS notre liaison
+  d'évènement) ; **filet de 600 ms** ajouté pour un geste stoppé sans
+  relâchement (aucun aperçu pendant un geste qui bouge, mais jamais d'image
+  figée) ; **`_poser_curseur` FORCE le rendu** — déviation assumée par rapport au
+  « bonus ~1 aperçu à la restauration » : une restauration doit être complète en
+  sortant (`_test_restauration_curseurs_jalon120` lit `disp.*` juste après
+  `App()`), et le bonus était de toute façon théorique (aucune image au
+  démarrage ⇒ 40 aperçus qui ne dessinaient rien).
 
 ### Problèmes ouverts / prochaines étapes
-1. **P5 — IMPLÉMENTER le rendu au relâchement** (PROCHAINE ACTION UNIQUE, branche
-   `OptimisationUI`, rien n'est commencé) :
-   - `avastack/ui/app.py` (`_add_slider`) : pendant un glissement, `cmd` ne fait
-     que **var + étiquette** ; `<ButtonPress-1>` arme le mode glissement,
-     `<ButtonRelease-1>` le clôt et rend **une fois** ; **minuteur de secours
-     ~150 ms** (`after`/`after_cancel`, remis à zéro à chaque changement) pour
-     tout changement hors glissement (clavier, `s.set` programmatique, focus
-     perdu).
-   - Les commandes **discrètes** (cases, listes, spinners, boutons `-`/`+`) et
-     `_poser_curseur` restent **immédiates**.
-   - ⚠ **Bancs à adapter AVANT de conclure** : `_test_perf_reactivite_jalon79`
-     déclenche ses gestes par `s.set()` (programmatique) — il devra **attendre le
-     minuteur** (ou un « forcer le rendu » exposé par l'appli), sinon [1]–[7]
-     échoueraient à tort. Idem pour tout banc qui pose un curseur puis vérifie
-     l'image.
-   - **Bonus attendu** : la restauration de config (~40 `_poser_curseur` au
-     démarrage) ne fera plus ~40 aperçus mais **~1**.
-   - **Critères de sortie mesurés par le MÊME outil** (`--n 5`, plein écran,
-     1600×1200) : rafale [8] **≈ 671 battements pour 60 pas** (au lieu de 60) et
-     durée **~1,3 s** (au lieu de 20,15 s) ; **1 aperçu** pour un glissement
-     complet ; case/spinner inchangés (~300 ms) ; non-régressions vertes.
-   - **Puis** test réel d'Alain : c'est LUI qui dira si l'absence de retour
-     pendant le geste est gênante (et si l'aperçu réduit devient utile).
-2. **Release v2.96.x** sur accord explicite (aucune release depuis v2.80.0 ;
-   `master` porte la fusion de `LRGBHa`, branche fermée le 20/10).
+1. **TEST RÉEL D'ALAIN — P5** (branche `OptimisationUI`, v2.97.0, **rien n'est
+   poussé**) : lancer `python AVAStack.py`, puis, sur une vraie image :
+   - glisser **Gamma**, **Saturation**, **Luminosité du fond du ciel**,
+     **Coupure du bruit**, **Black point** : l'image ne doit **pas** bouger
+     pendant le geste et se mettre à jour **UNE fois** au relâchement ;
+   - vérifier que l'étiquette suit le doigt pendant le geste ;
+   - éprouver les **gestes discrets** : boutons `-`/`+`, flèches clavier,
+     saisie du gain (caméra), et la restauration de config au démarrage ;
+   - **c'est LUI qui juge** si l'absence de retour pendant le geste gêne. Si
+     oui → l'« **aperçu réduit** » (800×600 pendant le geste) sera ajouté, et
+     seulement sur sa demande.
+2. **Release v2.97.x** sur accord explicite (aucune release depuis v2.80.0 ;
+   `master` porte la fusion de `LRGBHa`). Ne pas oublier : le lot 5 sera alors
+   **clos** (P5 validé) — c'était le DERNIER lot du plan figé du 19/10.
 
 
 
@@ -200,12 +222,12 @@ qu'un pis-aller) ; l'**aperçu réduit n'est PAS retenu** à ce stade.
   (boîte MODALE, sinon blocage), jamais `grid` + `pack` dans le même conteneur.
 
 ### Contexte de reprise (à coller — 2 phrases)
-Arbre **v2.96.1** sur **`OptimisationUI`** : P6 validé en réel, **P5 MESURÉ à la
-taille réelle** (aperçu 1600×1200, un aperçu = **306 ms**, un clic de case =
-284–326 ms ; JSON `bancs/_mesure_p5_reactivite.json`), **aucun correctif écrit**.
-**Prochaine action unique** : implémenter le **rendu AU RELÂCHEMENT** dans
-`avastack/ui/app.py` (`_add_slider`) — rien pendant le glissement, un aperçu au
-relâchement, minuteur de secours ~150 ms.
+Arbre **v2.97.0** sur **`OptimisationUI`** : **P5 « rendu au relâchement » est
+IMPLÉMENTÉ et vert au banc** (20 vérifications ; jalon 79, jalon 6, jalon 120 et
+garde-fou/pyright 0 rejoués OK), chiffres après correctif mesurés (1 aperçu par
+geste, 0,036 ms par pas, rafale 1,35 s). **Prochaine action unique** : **test
+réel d'Alain** de P5 (glissements + gestes discrets) — rien n'est poussé, aucune
+release.
 
 
 ---
@@ -231,62 +253,47 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 | 2 | P1 | cadence de re-mesure Gaia/SPCC | **VALIDÉ EN RÉEL le 19/10** (v2.94.0) |
 | 3 | P4 | infobulles ⓘ | **VALIDÉ EN RÉEL le 19/10** (v2.95.0) |
 | **4** | **P6** | source « stacks » : fichiers choisis, **rôles saisis**, seuil de profondeur = 1 | **VALIDÉ EN RÉEL le 20/10** (v2.96.1) — empilement le 19/10, défauts d'interface corrigés (piste A) puis validés |
-| **5** | **P5** | audit MESURÉ de la réactivité | **MESURÉ le 20/10** (chiffres en tête de session) — **correctif ARBITRÉ : rendu au RELÂCHEMENT**, à implémenter |
+| **5** | **P5** | audit MESURÉ de la réactivité | **IMPLÉMENTÉ le 20/10 (v2.97.0)** — mesuré, puis « rendu au RELÂCHEMENT » codé et vert au banc ; **TEST RÉEL À FAIRE** |
 
-### Lot 1 — P2 + P3 (v2.93.0) · P1 (v2.94.0) · P4 (v2.95.0) — **VALIDÉS EN RÉEL le 19/10**
-- **P2 + P3** : base SPCC **la plus riche** (compteurs au journal, extraction jamais
-  plus pauvre, défauts par canal, garde FILTER) + `_astro_demande`. Banc
-  `_test_lot1_p2_p3.py` (7 volets, 51 vérifications). Détails dans `CLAUDE.md`.
-- **P1** : `processing/cadence.py` (`CadenceMesure`) — 3 → passe finale → plafond
-  6 → doublement → délai 20 s, branches dans `_astro_tour` / `_photo_tour` /
-  `_spcc_tour`. Mesuré AVANT de coder : 6,87 s pour 65 s d'empilement (JSON
-  `bancs/_mesure_p1_cadence.json`) ; banc `_test_p1_cadence.py` (29).
-- **P4** : `ui/bulles.py` (`Bulle`, `astuce`, mixin `Aides`), 13 aides migrées
-  (**14** avec le panneau Stacks), option `aides_texte` (défaut NON), **702 px
-  repris** (mesuré). Détail dans `CLAUDE.md` (« Aides contextuelles »).
+### Lots 1 → 3 et 4 — **VALIDÉS EN RÉEL** (détails dans `CLAUDE.md` + changelog)
+- **Lot 1** : P2 + P3 (v2.93.0, base SPCC la plus riche + astrométrie servie sans
+  frame) puis **P7** (v2.93.1) ; **Lot 2** : P1 (v2.94.0, `processing/cadence.py`) ;
+  **Lot 3** : P4 (v2.95.0, infobulles ⓘ, **702 px repris**) ; **Lot 4** : P6
+  (v2.96.0/2.96.1, source « Stacks » + piste A — banc **59** vérifications,
+  `_test_lot5_p6_stacks.py`).
 
-### P5 — réactivité (lot 5) — **MESURÉ le 20/10 à la taille RÉELLE, aucun correctif**
+### P5 — réactivité (lot 5) — **CORRIGÉ le 20/10 (v2.97.0), à valider en réel**
 - Outil `bancs/_mesure_p5_reactivite.py` (10 sections, `--autotest` sans écran,
-  JSON `bancs/_mesure_p5_reactivite.json`), **sans modifier le produit** : seuil
-  du Guet inchangé (1,5 s), le banc compte lui-même les opérations > 0,25 s.
-- **À la taille de l'usage** (plein écran, aperçu 1600×1200 = 1,92 Mpx) : un
-  aperçu = **306 ms** (dont 14 ms de dessin) ; geste de curseur **250–383 ms** ;
-  clic de case **284–326 ms** ; cran de spinner **311–332 ms** ; un glissement de
-  200 px empilerait **50 à 76 s** ; rafale 60 pas = **20,15 s**.
+  JSON rejouable), **sans modification du produit** pour la mesure : seuil du
+  Guet inchangé (1,5 s), le banc compte lui-même les opérations > 0,25 s.
 - **Suspicions LEVÉES** : `_tick` (0,3 % du budget), listes SPCC 147 valeurs
-  (0,2 ms), `pack/forget` (0,5 ms). **Confirmée** : un aperçu complet par pixel +
-  réécritures non conditionnelles (2,33 aperçus par clic).
-- Banc `_test_perf_reactivite_jalon79` : [8] cases, [9] listes, [10] spinners →
-  **29 vérifications vertes** (image petite À DESSEIN : câblage, pas coût).
+  (0,2 ms), `pack/forget` (0,5 ms). **Confirmée** : un aperçu complet par pixel
+  de souris. Chiffres avant/après en tête de session.
+- Banc `_test_perf_reactivite_jalon79` : 29 vérifications vertes (+ sections
+  cases / listes / spinners), et **banc NEUF** `_test_p5_rendu_relachement.py`
+  (20 vérifications).
 
 
 
-### P6 — source « Stacks (fichiers FITS) » (lot 4) — **VALIDÉ EN RÉEL le 20/10 (v2.96.1)**
-- **Verdict d'Alain** : empilement OK le 19/10, puis **« testé en réel, validé »
-  le 20/10** après le correctif des deux défauts d'interface (piste A).
-- Contrat durable (rôle JAMAIS déduit, `AVAFRAME` jamais lue, profondeur non
-  inventée, calibration court-circuitée, lecture unique par session, linéarité
-  sur PREUVE) : `CLAUDE.md` (« Source « Stacks (fichiers FITS) » »).
-- Banc `_test_lot5_p6_stacks.py` (**59** vérifications, dont 16 piste A).
+### P6 — source « Stacks (fichiers FITS) » (lot 4) — **CLOS : VALIDÉ EN RÉEL (v2.96.1)**
+- Empilement OK le 19/10, puis **« testé en réel, validé »** le 20/10 après le
+  correctif des deux défauts d'interface (piste A). Contrat durable et banc
+  (**59** vérifications) : `CLAUDE.md` + changelog.
 
 
 ---
 
-## En attente / prochaine session (état au 20/10 — branche `OptimisationUI`, v2.96.1)
+## En attente / prochaine session (état au 20/10 — branche `OptimisationUI`, v2.97.0)
 
-- **P6 est CLOS ET VALIDÉ EN RÉEL** (v2.96.1, fusionné dans `master` ; `LRGBHa`
-  fermée) : banc P6 vert (59 vérifications) et test réel d'Alain concluant.
-- **P5 est MESURÉ** (20/10) : outil `bancs/_mesure_p5_reactivite.py` + JSON,
-  banc jalon 79 étendu (29 vérifications vertes), **aucun correctif appliqué**.
-- **Prochaine action UNIQUE** : **implémenter le RENDU AU RELÂCHEMENT** sur
-  `OptimisationUI` (`_add_slider` : rien pendant le glissement, un aperçu au
-  `<ButtonRelease-1>`, minuteur de secours ~150 ms ; gestes discrets immédiats).
-  **Rien n'est commencé.** Détail, pièges de bancs et critères de sortie : voir
-  « Problèmes ouverts / prochaines étapes » (1).
-- **Puis** : **test réel d'Alain** (c'est lui qui jugera si l'absence de retour
-  pendant le geste gêne), et seulement ensuite l'option « aperçu réduit ».
-- **Puis** : **release v2.96.x** sur accord explicite (`master` porte désormais
-  tout le chantier depuis v2.80.0).
+- **P5 est IMPLÉMENTÉ** (v2.97.0) : banc NEUF
+  `bancs/_test_p5_rendu_relachement.py` **vert (20 vérifications)**, chiffres
+  après correctif au JSON `bancs/_mesure_p5_reactivite.json`. **Rien n'est
+  poussé, aucune release.**
+- **Prochaine action UNIQUE** : **test réel d'Alain** (glissements de curseurs +
+  gestes discrets). C'est LUI qui jugera si l'absence de retour PENDANT le geste
+  gêne ; l'« aperçu réduit » n'est PAS codé et ne le sera que sur sa demande.
+- **Puis** : **release v2.97.x** sur accord explicite (`master` porte tout le
+  chantier depuis v2.80.0 ; `master` est à v2.96.1).
 
 - **Référence chiffrée** : `C:\Astro\test\M33_Canaux_LRGBHa` (5 `canal_*.fit` +
   fiches ; `AVACOMPO` = LRGB+Ha, **normalisation COMMUNE**, lissage 117d).
@@ -297,8 +304,9 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 - **Optionnel** : cible qui REMPLIT le cadre (repli attendu et DIT) et filtre
   **3 nm** si Alain en a un.
 - **141-B validée** (rien à retester) ; **teinte des COINS** notée, sans action.
-- Retour arrière en un geste (correctif seul) : `git checkout HEAD~1 --
-  avastack/ui/app.py avastack/ui/panels/compo.py avastack/ui/panels/stacks.py`.
+- Retour arrière en un geste (correctif P5 seul) : `git checkout HEAD~1 --
+  avastack/ui/app.py avastack/__init__.py` (+ remettre `AVASTACK_VERSION` à
+  2.96.1 en cas de doute).
 
 ---
 
@@ -320,6 +328,12 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 
 ## Pièges récents (encore actifs — le reste est passé dans `CLAUDE.md`)
 
+- **P5 — un curseur ne rend plus par `set()`** : depuis le rendu au relâchement,
+  `s.set()` ne fait que la variable et l'étiquette (minuteur 150 ms). Un banc ou
+  un code qui veut l'effet TOUT DE SUITE appelle
+  `app._forcer_rendu_curseur(s)` (un curseur) ou `app._rendre_curseurs()` (tous)
+  AVANT un rendu explicite — sinon le rendu part avec les `disp.*` précédents.
+  Un geste se simule par `s._debut_glissement()` / `s._fin_glissement()`.
 - **Un rendu sans nouvelle frame n'est PAS vu par `_tick`** : `_tick` ne force
   la chaîne que sur changement de `st["frames"]`. Tout point qui pousse une
   image RECALCULÉE doit appeler `disp.notify_new_stack()` (leçon P7, désormais

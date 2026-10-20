@@ -7,8 +7,10 @@ RIEN au produit, il chronomètre ce qui existe et écrit ses chiffres (motif
 P1/P4 : JSON conservé pour comparer avant/après).
 
 CE QUI EST CHRONOMMÉTRÉ (les cinq suspicions du lot, plus la décomposition)
-  [1] curseurs   — `_add_slider.onchange` à CHAQUE pixel de souris : coût d'un
-                   geste, puis coût d'un GLISSEMENT complet (200 px) ;
+  [1] curseurs   — `_add_slider` : coût d'un PAS de glissement et coût du
+                   GLISSEMENT COMPLET (le pas + l'aperçu du relâchement), puis
+                   le coût d'un glissement de 200 px (P5 : plus rien pendant le
+                   geste, UN aperçu au relâchement — voir plus bas) ;
   [2] aperçu     — `_refresh_preview` avec et sans histogrammes, et la part
                    exacte des histogrammes dedans (34 ms au jalon 79) ;
   [3] boucle     — `_tick` : coût de `_tick_corps` en état stable, en % du
@@ -23,7 +25,17 @@ CE QUI EST CHRONOMMÉTRÉ (les cinq suspicions du lot, plus la décomposition)
                    par changement de source ;
   [8] rafale     — boucle `_tick` ACTIVE : un glissement d'une seconde
                    prive-t-il le fil d'interface ? (battements obtenus contre
-                   attendus, écart maximal entre deux battements).
+                   attendus, écart maximal entre deux battements, NOMBRE
+                   D'APERÇUS — attendu : UN seul, au relâchement).
+
+P5 — LE CORRECTIF EST DANS LE CHEMIN MESURÉ (v2.97.0, 20/10/2026) : depuis le
+RENDU AU RELÂCHEMENT, les sections [1] et [8] passent par le VRAI geste
+(`_debut_glissement` / `_fin_glissement`, les gestionnaires de
+`<ButtonPress-1>` / `<ButtonRelease-1>`). Un `s.set()` seul ne fait plus que la
+variable et l'étiquette : le chiffre « pas de glissement » est donc celui de la
+souris, et l'aperçu n'est compté qu'une fois le doigt levé. Les chiffres d'AVANT
+le correctif (un aperçu PAR PIXEL, 50 à 76 s pour 200 px) restent au JSON du
+20/10 et dans `AVANCEMENT.md` : c'est la référence de comparaison.
 
 SEUIL DU GUET (0,25 s) : le lot prévoit de baisser `Guet.SEUIL_S` à 0,25 s
 « temporairement ». Ici la MÊME question est posée sans toucher au produit :
@@ -130,13 +142,16 @@ def au_dela(durees_ms, seuil_s):
     return sum(1 for d in durees_ms if float(d) > float(seuil_s) * 1000.0)
 
 
-def glissement_ms(geste_ms, n_pas=200):
-    """Coût d'un GLISSEMENT de `n_pas` pixels de souris (un rappel par pixel).
+def glissement_ms(pas_ms, n_pas=200):
+    """Coût d'un GLISSEMENT de `n_pas` pixels de souris (P5 : un pas ≈ 0 ms).
 
-    Un `ttk.Scale` rappelle sa `command` à CHAQUE changement de valeur : glisser
-    la souris sur 200 px, c'est 200 rappels complets, pas un seul.
+    AVANT P5, un `ttk.Scale` rappelait sa `command` à CHAQUE changement de
+    valeur : glisser sur 200 px coûtait 200 rappels complets (50 à 76 s sur
+    l'aperçu réel). Depuis le rendu au relâchement, `pas_ms` est le coût d'un
+    pas — on y ajoute l'aperçu UNIQUE du relâchement pour obtenir le prix du
+    geste complet.
     """
-    return round(float(geste_ms) * int(n_pas), 1)
+    return round(float(pas_ms) * int(n_pas), 1)
 
 
 def autotest():
@@ -370,28 +385,36 @@ def mesurer(n=5, seuil=SEUIL_DEFAUT, taille="auto", fenetre="zoomed",
         origine = float(s.get())
         etat = {"i": 0}
 
-        def geste(lo=origine, hi=cible, etat=etat, s=s):
+        def pas_glissement(lo=origine, hi=cible, etat=etat, s=s):
+            """UN pas de souris PENDANT un glissement (P5 : ne calcule RIEN)."""
             etat["i"] ^= 1
+            s._debut_glissement()
             s.set(hi if etat["i"] else lo)
+            s._fin_glissement()
 
-        def geste_redessine(lo=origine, hi=cible, etat=etat, s=s):
+        def glissement_complet(lo=origine, hi=cible, etat=etat, s=s):
+            """Le MÊME pas + l'aperçu du RELÂCHEMENT (ce que vit l'utilisateur)."""
             etat["i"] ^= 1
+            s._debut_glissement()
             s.set(hi if etat["i"] else lo)
-            root.update()
+            s._fin_glissement()
+            root.update()                 # traite l'`after_idle` du relâchement
 
-        brut = mesure(texte, geste)
+        brut = mesure(texte + " (pas de glissement)", pas_glissement)
         etat["i"] = 0
-        total = mesure(texte + " (+ redessin)", geste_redessine)
+        total = mesure(texte + " (glissement + relâchement)", glissement_complet)
         s.set(origine)                        # état RENDU (hors mesure)
+        app._forcer_rendu_curseur(s)
         root.update()
         ligne = {"curseur": texte,
-                 "callback_ms": brut["med_ms"],
-                 "avec_redessin_ms": total["med_ms"],
-                 "glissement_200px_ms": glissement_ms(total["med_ms"])}
+                 "pas_glissement_ms": brut["med_ms"],
+                 "apercu_relachement_ms": total["med_ms"],
+                 "glissement_200px_ms": round(
+                     glissement_ms(brut["med_ms"]) + total["med_ms"], 1)}
         doc["curseurs"].append(ligne)
-        print(f"  {texte:40s} rappel {brut['med_ms']:6.1f} ms · "
-              f"+ redessin {total['med_ms']:6.1f} ms · "
-              f"glissement 200 px ≈ {ligne['glissement_200px_ms']:7.0f} ms")
+        print(f"  {texte:40s} pas {brut['med_ms']:6.3f} ms · "
+              f"glissement + relâchement {total['med_ms']:6.1f} ms · "
+              f"glissement 200 px ≈ {ligne['glissement_200px_ms']:6.0f} ms")
 
     # ------------------------------------------------------------------- [2] aperçu
     print()
@@ -651,23 +674,30 @@ def mesurer(n=5, seuil=SEUIL_DEFAUT, taille="auto", fenetre="zoomed",
             print("  (curseur gamma introuvable : rafale non concluante)")
         else:
             n_pas = 60
+            COMPTES["preview"] = 0
             t0 = time.perf_counter()
+            s._debut_glissement()        # P5 : le glissement NE CALCULE RIEN
             for i in range(n_pas):
                 s.set(1.0 + 0.02 * (i % 20))
                 root.update()
                 time.sleep(0.016)         # ~60 Hz de souris
+            s._fin_glissement()          # UN aperçu, au relâchement
+            root.update()
             dt = time.perf_counter() - t0
+            apercus = COMPTES["preview"]
             attendus = dt / (BUDGET_TICK_MS / 1000.0)
             ecarts = [(ticks["t"][i + 1] - ticks["t"][i]) * 1000.0
                       for i in range(len(ticks["t"]) - 1)]
             ecart_max = round(max(ecarts), 1) if ecarts else None
             doc["rafale"] = {"duree_s": round(dt, 2), "pas": n_pas,
                              "pas_ms": round(dt / n_pas * 1000.0, 1),
+                             "apercus": apercus,
                              "ticks_obtenus": ticks["n"],
                              "ticks_attendus": int(attendus),
                              "ecart_max_ms": ecart_max}
             print(f"  {n_pas} pas de souris en {dt:.2f} s "
                   f"({dt / n_pas * 1000.0:.0f} ms par pas) · "
+                  f"{apercus} aperçu(s) au total · "
                   f"{ticks['n']} battements obtenus pour {int(attendus)} "
                   f"attendus · écart max {ecart_max} ms")
     finally:
@@ -698,17 +728,16 @@ def mesurer(n=5, seuil=SEUIL_DEFAUT, taille="auto", fenetre="zoomed",
     if not depassements:
         print("  → aucun gel UNIQUE au-delà du seuil : la gêne éventuelle vient "
               "de l'EMPILEMENT des gestes, pas d'un blocage isolé")
-    charge = max((l["avec_redessin_ms"] for l in doc["curseurs"]), default=0.0)
-    # 60 gestes/s × coût d'un geste (ms) ÷ 10 = % d'un cœur nécessaire.
-    doc["charge_souris_60hz_pct"] = round(charge * 60.0 / 10.0, 0)
+    charge = max((l["pas_glissement_ms"] for l in doc["curseurs"]), default=0.0)
+    # 60 pas/s × coût d'un pas (ms) ÷ 10 = % d'un cœur nécessaire.
+    doc["charge_souris_60hz_pct"] = round(charge * 60.0 / 10.0, 2)
     print(f"  à 60 Hz de souris, le curseur le plus lourd demanderait "
-          f"{doc['charge_souris_60hz_pct']:.0f} % d'un cœur pour suivre "
-          f"({charge:.1f} ms par geste)")
-    for ligne in doc["curseurs"]:
-        if ligne["glissement_200px_ms"] > 1000.0:
-            print(f"  ⚠ un glissement de 200 px sur « {ligne['curseur']} » "
-                  f"coûte {ligne['glissement_200px_ms']:.0f} ms "
-                  f"(le geste dure ~1 s)")
+          f"{doc['charge_souris_60hz_pct']:.2f} % d'un cœur pour suivre "
+          f"({charge:.3f} ms par pas — P5 : plus AUCUN calcul pendant le geste)")
+    pire = max((l["glissement_200px_ms"] for l in doc["curseurs"]), default=0.0)
+    doc["glissement_200px_pire_ms"] = pire
+    print(f"  un glissement de 200 px coûte au pire {pire:.0f} ms "
+          f"(200 pas + UN aperçu au relâchement)")
 
     root.destroy()
     return doc

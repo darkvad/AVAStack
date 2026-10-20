@@ -317,6 +317,20 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
     DN_EXT_LABELS = _const.DN_EXT_LABELS
     DN_EXT_CODES = _const.DN_EXT_CODES
 
+    # --- P5 (lot 5, 20/10/2026) : RENDU AU RELÂCHEMENT des curseurs --------
+    # Pendant un GLISSEMENT, `_add_slider` ne calcule plus rien (la variable et
+    # l'étiquette suivent) : l'aperçu part UNE fois au `<ButtonRelease-1>`.
+    # Un changement SANS relâchement (flèches clavier, `s.set()` programmatique)
+    # passe par un minuteur remis à zéro à chaque pose : une RAFALE de poses
+    # (restauration de config, correction de borne…) donne UN aperçu.
+    DELAI_SECOURS_CURSEUR_MS = 150
+    # FILET du glissement : un geste ARRÊTÉ depuis ce délai rend quand même, au
+    # cas où l'évènement de relâchement se perdrait (grab, changement de focus).
+    # Il ne se déclenche jamais pendant un geste qui bouge (chaque pas de
+    # souris le remet à zéro) : « rien pendant le glissement », mais JAMAIS
+    # d'image périmée à l'écran.
+    DELAI_SECOURS_GLISSE_MS = 600
+
     def __init__(self, root: tk.Tk) -> None:
         self.root: tk.Tk = root
         root.title(f"AVAStack v{AVASTACK_VERSION} — "
@@ -1456,7 +1470,17 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         une grande plage sans cliquer 200 fois. Clamps aux bornes frm/to.
         saisie=True (jalon 27, demande d'Alain) : le label de valeur devient
         une ZONE DE SAISIE (nombre acceptant la virgule ; Return ou sortie
-        de champ applique et borne ; le curseur suit)."""
+        de champ applique et borne ; le curseur suit).
+
+        P5 (lot 5, 20/10/2026) — RENDU AU RELÂCHEMENT : `cmd` ne fait plus que
+        la VARIABLE et l'ÉTIQUETTE pendant un glissement (`<ButtonPress-1>` →
+        `<ButtonRelease-1>`) ; l'aperçu part UNE fois au relâchement. Hors
+        glissement, un minuteur de secours (`DELAI_SECOURS_CURSEUR_MS`, remis à
+        zéro à chaque pose) ramasse les changements sans relâchement (flèches
+        clavier, `s.set()` programmatique). Les gestes DISCRETS (« - »/« + »,
+        zone de saisie, `_poser_curseur`) forcent le rendu : ils restent
+        immédiats.
+        """
         row = ttk.Frame(parent)
         row.pack(fill="x", pady=1)
         head = ttk.Frame(row)
@@ -1476,7 +1500,9 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                     return
                 v = min(max(v, frm), to)
                 v = frm + round((v - frm) / res) * res
-                s.set(round(v, 6))   # rappelle cmd() → var + texte + onchange
+                s.set(round(v, 6))   # rappelle cmd() → var + texte
+                # P5 : une saisie validée est un geste DISCRET → immédiat.
+                self._forcer_rendu_curseur(s)
                 var_txt.set(fmt.format(var.get()))
 
             lab_val.bind("<Return>", valider)
@@ -1485,24 +1511,88 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             lab_val = ttk.Label(head, text=fmt.format(var.get()))
             lab_val.pack(side="right")
 
+        # --- P5 (lot 5, 20/10/2026) : RENDU AU RELÂCHEMENT -------------------
+        # ARBITRAGE D'ALAIN (mesuré : un aperçu coûte ~300 ms sur l'aperçu RÉEL
+        # 1600×1200, et un glissement en déclenchait un PAR PIXEL de souris) :
+        # pendant un glissement on ne calcule RIEN — la variable et l'étiquette
+        # suivent (≈ 0 ms) et l'aperçu part UNE fois au `<ButtonRelease-1>`.
+        # PRIX ASSUMÉ : pendant le geste, l'image ne correspond plus à la
+        # valeur affichée.
+        etat: dict[str, Any] = {"glisse": False, "job": None, "sale": False}
+
         def cmd(v: str) -> None:
             var.set(float(v))
             if saisie:
                 var_txt.set(fmt.format(float(v)))   # Entry (StringVar)
             else:
                 lab_val.config(text=fmt.format(float(v)))  # pyright: ignore[reportCallIssue]
-            if onchange:
-                onchange()
+            # Le CALCUL dépend du GESTE en cours (voir `_armer` / `_rendre`).
+            etat["sale"] = True
+            if etat["glisse"]:
+                _armer(self.DELAI_SECOURS_GLISSE_MS)   # rien pendant le geste
+            else:
+                _armer(self.DELAI_SECOURS_CURSEUR_MS)  # minuteur (rafale = 1)
 
         ligne = ttk.Frame(row)
         ligne.pack(fill="x")
         job: list[Any] = [None]                     # after() de la répétition en cours
 
+        def _rendre(*_a: Any) -> bool:
+            """Rend UNE fois le réglage en attente (ne fait rien s'il n'y en a
+            pas). Seul chemin de rendu différé : minuteur de secours,
+            `<ButtonRelease-1>` ET « forcer maintenant » passent par ici — deux
+            déclencheurs pour un même changement ne peuvent donc pas produire
+            deux aperçus."""
+            attente = etat["job"]
+            etat["job"] = None
+            if attente is not None:
+                try:
+                    ligne.after_cancel(attente)
+                except tk.TclError:          # fenêtre détruite
+                    pass
+            if not etat["sale"]:
+                return False
+            etat["sale"] = False
+            if onchange:
+                onchange()
+            return True
+
+        def _armer(delai: int) -> None:
+            """(Re)programme le minuteur de secours — REMIS À ZÉRO à chaque
+            changement : une rafale de poses ne rend qu'UNE fois."""
+            if etat["job"] is not None:
+                try:
+                    ligne.after_cancel(etat["job"])
+                except tk.TclError:          # fenêtre détruite
+                    pass
+            try:
+                etat["job"] = ligne.after(delai, _rendre)
+            except tk.TclError:              # fenêtre détruite
+                etat["job"] = None
+
+        def _debut_glissement(_e: Any=None) -> None:
+            """`<ButtonPress-1>` sur le curseur : le geste commence (P5)."""
+            etat["glisse"] = True
+
+        def _fin_glissement(_e: Any=None) -> None:
+            """`<ButtonRelease-1>` : le geste est fini, l'aperçu part UNE fois.
+            `after_idle` (et non l'appel direct) : les liaisons de CLASSE du
+            `ttk.Scale`, qui posent la valeur finale du clic, passent AVANT —
+            le rendu voit donc toujours la valeur définitive."""
+            etat["glisse"] = False
+            try:
+                ligne.after_idle(_rendre)
+            except tk.TclError:              # fenêtre détruite
+                pass
+
         def pas(delta: float) -> None:
             v = var.get() + delta * res
             v = min(max(v, frm), to)                 # bornes
             v = frm + round((v - frm) / res) * res   # grille du curseur
-            s.set(round(v, 6))   # s.set rappelle cmd() → var + label + onchange
+            s.set(round(v, 6))   # s.set rappelle cmd() → var + label
+            # P5 : un clic « - »/« + » est un geste DISCRET (une intention, un
+            # pas) → effet IMMÉDIAT, jamais au minuteur.
+            self._forcer_rendu_curseur(s)
 
         def repeter(delta: float) -> None:
             try:
@@ -1537,6 +1627,14 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         s._boutons = (b_moins, b_plus)  # pyright: ignore[reportAttributeAccessIssue]
         s._row = row                 # reconstruction dynamique (jalon 31)  # pyright: ignore[reportAttributeAccessIssue]
         s._lbl_txt = label           # texte d'origine (idem)  # pyright: ignore[reportAttributeAccessIssue]
+        # P5 (lot 5) : le geste de souris borne le CALCUL, et un « forcer
+        # maintenant » est offert aux gestes discrets (`_forcer_rendu_curseur`)
+        # comme aux bancs qui posent un curseur par `set()`.
+        s._debut_glissement = _debut_glissement   # pyright: ignore[reportAttributeAccessIssue]
+        s._fin_glissement = _fin_glissement       # pyright: ignore[reportAttributeAccessIssue]
+        s._rendre_en_attente = _rendre            # pyright: ignore[reportAttributeAccessIssue]
+        s.bind("<ButtonPress-1>", _debut_glissement, add="+")
+        s.bind("<ButtonRelease-1>", _fin_glissement, add="+")
         # v2.72.1 (jalon 120) : enregistre le curseur sous sa variable — la
         # DERNIÈRE ligne créée pour une variable donnée est la vivante (les
         # lignes reconstruites dynamiquement, ex. gain/offset caméra, réécrivent
@@ -1544,10 +1642,40 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._curseurs[str(var)] = s
         return s
 
+    def _forcer_rendu_curseur(self, s: tk.Misc) -> bool:
+        """Applique TOUT DE SUITE ce qu'un curseur a posé et qui attend encore
+        (P5, lot 5) : annule son minuteur et exécute son `onchange` une fois.
+
+        `ttk.Scale` ne porte pas ce nom dans son TYPE : l'attribut est posé par
+        `_add_slider` (même style que `_pas` / `_boutons`, lus par les bancs).
+        Rend True si un rendu a effectivement eu lieu — False si rien n'était en
+        attente (appel inoffensif, jamais deux aperçus pour un même changement).
+        """
+        f = getattr(s, "_rendre_en_attente", None)
+        if f is None:
+            return False
+        try:
+            return bool(f())
+        except tk.TclError:              # curseur détruit (ligne reconstruite)
+            return False
+
+    def _rendre_curseurs(self) -> None:
+        """Force le rendu de TOUS les curseurs qui attendent leur minuteur (P5).
+
+        Sert aux endroits qui enchaînent une pose de curseur et un rendu
+        EXPLICITE (`_on_auto`, 🔒 logD) : sans cela, le rendu explicite partirait
+        avec les `disp.*` de l'état PRÉCÉDENT (150 ms de mensonge à l'écran).
+        """
+        for s in list(self._curseurs.values()):
+            self._forcer_rendu_curseur(s)
+
     def _poser_curseur(self, var: Any, valeur: float) -> None:
         """Pose `valeur` sur le curseur lié à `var` par le CHEMIN D'UN GESTE
         (`s.set(v)` → `cmd` : variable + étiquette + callback), et NON par un
-        `var.set()` nu.
+        `var.set()` nu. Depuis P5, le callback est en plus FORCÉ : `s.set` seul
+        ne fait que la variable et l'étiquette (le calcul part au minuteur, ou
+        au relâchement), or une restauration doit être COMPLÈTE en sortant d'ici
+        (le banc du jalon 120 lit `disp.*` juste après la construction).
 
         POURQUOI (v2.72.1, jalon 120) : Tk n'appelle JAMAIS le `command` d'un
         `ttk.Scale` sur un `var.set()` programmatique — MESURÉ, ni la position
@@ -1567,7 +1695,8 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         s = self._curseurs.get(str(var))
         if s is not None:
             try:
-                s.set(round(float(valeur), 6))   # var + étiquette + callback
+                s.set(round(float(valeur), 6))   # var + étiquette
+                self._forcer_rendu_curseur(s)    # + callback, TOUT DE SUITE (P5)
                 return
             except (tk.TclError, ValueError, TypeError):
                 pass                    # curseur détruit / valeur non numérique
@@ -2759,6 +2888,10 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self.var_white.set(round(self.disp.last_hi, 4))
             self.scl_black.set(self.var_black.get())
             self.scl_white.set(self.var_white.get())
+            # P5 : les deux poses ci-dessus attendent leur minuteur ; le rendu
+            # qui suit est EXPLICITE → on applique d'abord, sinon il partirait
+            # avec les anciens `disp.black`/`white`.
+            self._rendre_curseurs()
         self._refresh_preview()
 
     def _on_target_auto(self) -> None:
@@ -2845,6 +2978,9 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # Le curseur met à jour la variable, le label de valeur ET
         # disp.vl_log_d via son callback (_add_slider) :
         self.scl_vl_logd.set(round(self.disp.vl_log_d_resolu, 3))
+        # P5 : la pose attend son minuteur → on l'applique AVANT le rendu
+        # explicite qui suit (sinon il partirait avec l'ancien logD).
+        self._rendre_curseurs()
         self.var_vl_mode_res.set("logD forcé")
         self._sync_vl_mode()
         self._refresh_preview()

@@ -3548,6 +3548,37 @@ ce qui manquait n'était pas une correction mais une MESURE.
   puis affirme quelque chose sur son EFFET mesure zéro — il doit passer par le
   chemin du geste (bancs `_test_perf_reactivite_jalon79.py` [8]–[10] et
   `bancs/_mesure_p5_reactivite.py`, section [6]).
+- **RENDU AU RELÂCHEMENT des curseurs (P5, v2.97.0 — 20/10/2026)** : un aperçu
+  coûte ~300 ms à l'échelle réelle (1600×1200) et un `ttk.Scale` rappelait sa
+  commande à CHAQUE pixel de souris (mesuré : 50 à 76 s pour un glissement de
+  200 px). Contrat désormais dans `_add_slider` : ① pendant un glissement
+  (`<ButtonPress-1>` → `<ButtonRelease-1>`), `cmd` ne fait que la VARIABLE et
+  l'ÉTIQUETTE ; ② le relâchement rend UNE fois, par `after_idle` — les liaisons
+  de CLASSE du `ttk.Scale` (qui posent la valeur finale du clic) doivent passer
+  AVANT ; ③ hors glissement, un minuteur de secours (150 ms, remis à zéro à
+  chaque pose) ramasse clavier et `s.set()` programmatique — une RAFALE de poses
+  = UN aperçu ; ④ un geste ARRÊTÉ sans relâchement est rattrapé par un filet
+  (600 ms) : jamais d'image périmée. **Les gestes discrets (« - »/« + », saisie,
+  `_poser_curseur`) forcent le rendu** (`App._forcer_rendu_curseur`) : une
+  restauration de config doit être COMPLÈTE en sortant (le banc du jalon 120 lit
+  `disp.*` juste après la construction), et tout code qui enchaîne une pose de
+  curseur et un rendu EXPLICITE doit appeler `App._rendre_curseurs()` avant,
+  sinon le rendu part avec les `disp.*` de l'état précédent. **Conséquence pour
+  les bancs et l'outil de mesure** : `s.set()` ne rend plus rien — il faut
+  FORCER (`app._forcer_rendu_curseur(s)`) ou attendre le minuteur, et un geste
+  se simule par les gestionnaires `_debut_glissement` / `_fin_glissement`
+  (jamais par un `set()` nu). Chiffres APRÈS (même outil) : pas de glissement
+  **0,036 ms**, glissement de 200 px **230–324 ms**, **1 aperçu** par geste,
+  rafale de 60 pas **1,35 s / 1 aperçu** (avant : 20,15 s / 60 aperçus),
+  **0,22 %** d'un cœur pour suivre 60 Hz (avant : 2 284 %). Banc
+  `_test_p5_rendu_relachement.py` (20 vérifications, dont l'image du relâchement
+  IDENTIQUE AU BIT à un rendu direct).
+- **PIÈGE MESURÉ (P5, 20/10/2026) — `event_generate` d'une TOUCHE exige le
+  FOCUS** : `ent.event_generate("<Return>")` sur une `ttk.Entry` ne déclenche
+  RIEN si le widget n'a pas le focus (`focus_force()` puis
+  `event_generate("<KeyPress-Return>")` : là, le `<Return>` part). Un banc qui
+  « éprouve » une zone de saisie sans focus ne mesure que le silence — et un
+  volet qui échoue peut cacher le suivant (vérifier `var` ET `disp` après coup).
 - **Persistance de configuration au démarrage : restaurer de façon
   TOLÉRANTE** — chaque valeur lue est validée (bornes, énumération) et
   retombe sur le défaut si invalide. Une config.json corrompue, incomplète
