@@ -2236,6 +2236,20 @@ ce qui manquait n'était pas une correction mais une MESURE.
   la seconde ne concerne que la CADENCE d'empilement (dossier, composition).
   Les trois stacks ne sont pas cadencés (fichiers fournis) et leur `scanner()`
   est un no-op.
+- **LES RÉGLAGES DU COMPOSITE HABITENT LE PANNEAU « COMPOSITION »** : gains
+  R/G/B, normalisation commune, lissage du combine LRGB **et le cadre « Fusion
+  Ha »** sont des ENFANTS de `frm_compo` (`panels/compo.py`). Toute source qui
+  doit les offrir (aujourd'hui « Stacks (fichiers FITS) ») doit donc afficher
+  `_lf_composition` dans `_maj_visibilite_cadres` — masquer la composition les
+  masque TOUS. Constat réel du 19/10 : avec la source Stacks, la fusion Ha
+  tournait avec ses DÉFAUTS (`ajout_rouge`, poids 1,0) sans aucun réglage
+  accessible.
+- **PRÉSENCE D'UN RÔLE ≠ PRÉSENCE D'UN DOSSIER** : `_dossier_role_compo(role)`
+  ne lit QUE les lignes dossier de la composition et rend `""` quand les rôles
+  viennent de FICHIERS. Le test « la couche R existe-t-elle ? » (continuum du
+  Ha, case et méthodes) doit passer par un helper qui connaît la SOURCE
+  (`_role_fourni(role)` : fichiers pour Stacks, dossiers sinon). Sinon le
+  continuum est **forcé à l'arrêt** alors que la couche R est fournie.
 - **PERSISTANCE SANS SONDE DISQUE** : `stacks_role_i` / `stacks_fichier_i` sont
   relus au démarrage, mais la ligne d'aide est reconstruite avec
   `verifier_fichiers=False` — aucune lecture `isfile`/FITS pendant

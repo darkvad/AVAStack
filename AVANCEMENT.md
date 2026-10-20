@@ -24,7 +24,7 @@ SPCC la plus riche + astrométrie servie sans frame, **VALIDÉ EN RÉEL le 19/10
 **P7** recalcul après un choix de couleur, **CORRIGÉ ET VALIDÉ EN RÉEL le 19/10** ;
 **P1** cadence de re-mesure, **VALIDÉ EN RÉEL le 19/10** ; **P4** infobulles
 « ⓘ », **VALIDÉ EN RÉEL le 19/10** ; **P6** source « Stacks (fichiers FITS) »,
-**LIVRÉ le 19/10** — **test réel en attente**)
+**testée en RÉEL le 19/10** — empilement OK, **2 défauts d'interface à corriger**)
 · `master` publié = **v2.80.0** · Store publié = **v2.71.1**.
 
 **Gouvernance** : **aucune release GitHub sans l'accord d'Alain** ; **à CHAQUE jalon validé,
@@ -33,29 +33,76 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 
 ---
 
-## Session du 19/10/2026 (nuit) — **LOT 5 = P6 LIVRÉ** (v2.96.0, à valider en réel) — lots 4/5 INVERSÉS
+## Session du 19/10/2026 (nuit) — **P6 testé en RÉEL : empilement OK, DEUX DÉFAUTS D'INTERFACE à corriger** (v2.96.0)
 
 ### État actuel
 - **v2.96.0 sur `LRGBHa`** — **aucune release**. Code + doc P6 = commit
-  `fb81b1d` (poussé avec le pointeur de ce fichier). Base précédente :
-  `5601f6` (doc P4 ; code P4 = `2ab5d82`).
-- **ORDRE DES LOTS INVERSÉ (demande d'Alain du 19/10)** : le **lot 5 = P6**
-  (source « Stacks ») passe AVANT le **lot 4 = P5** (réactivité), qui devient le
-  prochain lot. P5 n'a reçu AUCUN début de code : son audit mesuré reste à faire.
-- **P6 LIVRÉ, EN ATTENTE DE TEST RÉEL** : nouvelle source « Stacks (fichiers
-  FITS) » — un FITS par filtre choisi, **rôle indiqué** (jamais deviné), lecture
-  **une fois** par fichier, **calibration ignorée**, **seuil de profondeur = 1**,
-  messages « empilement fourni (profondeur non vérifiée) », refus seulement si
-  l'en-tête AVAStack dit « ETIRE » (sinon avertissement MESURÉ).
-  Détail durable dans `CLAUDE.md` (« Source « Stacks (fichiers FITS) » »).
+  `fb81b1d` (poussé). Base précédente : `5601f6` (doc P4 ; code P4 = `2ab5d82`).
+- **ORDRE DES LOTS INVERSÉ (demande d'Alain du 19/10)** : le **lot 4 = P6**
+  (source « Stacks ») est passé AVANT le **lot 5 = P5** (réactivité), qui reste
+  le prochain lot et n'a reçu AUCUN début de code.
+- **TEST RÉEL de P6 (19/10, Alain)** : **verdict global OK sur des fichiers
+  sauvegardés par AVAStack** — la composition **LRGB+Ha** est bien détectée des
+  rôles, les 5 fichiers sont lus une fois, l'empilement et l'affichage
+  fonctionnent. **MAIS deux défauts d'INTERFACE** (même racine) : voir la
+  section suivante — **à corriger en priorité à la prochaine session**.
 - **Bancs** : P6 **vert (39 vérifications)** — dont le worker RÉEL avec un dark
   à 2,0 qui prouve que la calibration est court-circuitée. Non-régressions
-  **vertes** : 19 (multifolder), 42 (cadence), P1, compo worker 19, 113, 115,
-  133, 56, 47 (visibilité), P4 (14 aides), 129, 76 (2e passage), 53, 120, 113b,
-  87, 5, 41, garde-fou (**pyright 0 sur 54 fichiers typés**, surface `app.py`
-  inchangée) ; `ruff` propre sur les fichiers touchés.
+  **vertes** : 19 (multifolder + compo UI/worker), 42, P1, 20 (restack compo),
+  113 (b, profondeur), 115, 133, 56, 47, P4 (14 aides), 129, 76, 53, 120, 87,
+  5, 41, garde-fou (**pyright 0 sur 54 fichiers typés**, surface `app.py`
+  inchangée). **Les bancs ne couvrent PAS ces deux défauts** (ils ne testent pas
+  la visibilité du cadre « Fusion Ha » sous la source Stacks) → à AJOUTER au
+  banc P6 avec le correctif.
 - **Échecs PRÉEXISTANTS** : `_test_lot1_p2_p3` volet [3] (profil SPCC déjà
   corrigé dans le `config.json` local) — inchangé, cf. « Pièges récents ».
+
+### DÉFAUTS P6 À CORRIGER (constat réel d'Alain, 19/10) — priorité n°1
+**Symptôme** : avec la source « Stacks (fichiers FITS) » et 5 rôles L/R/G/B/Ha,
+la composition **LRGB+Ha** est bien déduite, mais **le cadre « Fusion Ha »
+n'apparaît pas** et **rien du panneau « Composition multi-filtres » n'est
+accessible** (gains R/G/B, normalisation commune, lisser le combine LRGB).
+
+**Cause 1 — visibilité** : `_maj_visibilite_cadres` (app.py, `est_stacks`) ne
+rend visible que `_lf_stacks` ; `_lf_composition` est masqué. Or le cadre
+« Fusion Ha » est un ENFANT de `frm_compo` (`panels/compo.py` : `box =
+self.frm_compo`, `frm_fusion_ha = ttk.LabelFrame(box, …)`) → masquer la
+composition masque **aussi** la fusion Ha, les gains, la normalisation commune
+et le lissage.
+
+**Cause 2 — test de présence du R** : `_maj_fusion_ha` et `_lire_fusion_ha`
+testent la couche R avec `_dossier_role_compo("R")`, qui ne lit QUE les lignes
+**dossier** de la composition. Avec des FICHIERS, elle rend `""` → la case
+« continuum », Q, les trois méthodes et le recentrage sont **désactivés**, et
+`continuum` est forcé à `False`. Le test réel a donc tourné avec la fusion par
+DÉFAUT (`ajout_rouge`, poids 1,0) et le **continuum COUPÉ** (voile rouge
+possible) — sans moyen de le régler.
+
+**Correctif prévu (piste A, recommandée — à valider par Alain avant de coder)** :
+1. `_maj_visibilite_cadres` : pour `est_stacks`, visibles =
+   `[self._lf_stacks, self._lf_composition]` (la composition porte les réglages
+   du composite, y compris la fusion Ha).
+2. `_on_stacks_roles()` : déduire `var_compo` des rôles
+   (`composition_pour_roles`) puis appeler `_maj_compo_info()` (donc
+   `_maj_fusion_ha`) — aujourd'hui elle n'appelle que `_maj_stacks_info`.
+3. Nouvelle méthode `App._role_fourni(role)` : pour une source Stacks, lit
+   `var_stacks_roles` / `var_stacks_fichiers` ; sinon `_dossier_role_compo`.
+   À utiliser dans `_maj_fusion_ha` (état des cases) ET dans `_lire_fusion_ha`
+   (`continuum = case and self._role_fourni("R")`).
+4. Verrouiller ce qui n'a PAS de sens pour des fichiers : menu de composition
+   (`cb_compo`, à stocker en attribut) en `disabled`, lignes rôle→**dossier**
+   grisées ou masquées ; `lbl_compo_info` dit « composition déduite des fichiers
+   fournis ». Sinon `_on_compo` réécrirait des rôles de DOSSIERS et le bandeau
+   141-B signalerait un écart menteur (`var_compo` ≠ `_compo_session`).
+5. Banc : étendre `_test_lot5_p6_stacks.py` — avec une sélection L/R/G/B/Ha,
+   `_lf_composition` visible, `frm_fusion_ha` packé, case continuum ACTIVE
+   (`_role_fourni("R")` vrai), `continuum` vrai dans `_lire_fusion_ha`, et
+   `var_compo == "LRGB+Ha"` (aucun bandeau de divergence).
+
+**Piste B (si A résiste)** : extraire « Fusion Ha » + gains + normalisation +
+lissage dans un panneau propre, affiché aussi pour Stacks — plus propre à terme,
+mais refactor plus large (compo.py + tous ses bancs).
+
 
 ### Fichiers modifiés (session P6)
 - `avastack/cameras/stacks.py` (**neuf, typé**) : `StackFilesCamera`
@@ -99,15 +146,23 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 - **`_source_fichiers()` distincte de `_cadence_dossier()`** : la fin de source
   et la pause concernent toute source de FICHIERS ; la cadence reste réservée
   aux dossiers.
+- **À TRANCHER (nouvelle session)** : les réglages du COMPOSITE (gains,
+  normalisation commune, lissage LRGB) et la FUSION Ha sont aujourd'hui rangés
+  dans le seul panneau « Composition multi-filtres », dont les lignes
+  rôle→DOSSIER n'ont aucun sens pour des fichiers. Piste A = réutiliser ce
+  panneau en verrouillant les lignes dossier ; piste B = en extraire un panneau
+  « composite ». Décision d'Alain attendue.
 
 ### Problèmes ouverts / prochaines étapes
-1. **TEST RÉEL de P6 par Alain** (référence : `C:\Astro\test\M33_Canaux_LRGBHa`,
-   5 `canal_*.fit` → LRGB+Ha déduite des rôles). À surveiller : astrométrie
-   (les couches n'ont ni OBJCTRA/OBJCTDEC ni RA/DEC — saisir AD/Dec ou utiliser
-   ASTAP), SPCC, enregistrements par canal.
-2. **Puis LOT 4 = P5** (audit MESURÉ de la réactivité) — **accord d'Alain avant
-   de démarrer**.
-3. **Release v2.96.x** sur accord explicite (aucune release depuis v2.80.0).
+1. **CORRIGER LES DEUX DÉFAUTS D'INTERFACE DE P6** (section ci-dessus, piste A) :
+   panneau composition + cadre « Fusion Ha » inaccessibles et continuum coupé
+   avec la source Stacks. **Accord d'Alain sur la piste A avant de coder.**
+2. **NOUVEAU TEST RÉEL de P6** après correctif (mêmes 5 fichiers) : les réglages
+   du Ha doivent apparaître, le continuum doit être ACTIF (la couche R est
+   fournie) et réglable.
+3. **Puis LOT 5 = P5** (audit MESURÉ de la réactivité) — accord d'Alain avant
+   de démarrer.
+4. **Release v2.96.x** sur accord explicite (aucune release depuis v2.80.0).
 
 ---
 ## Points d'attention
@@ -132,21 +187,20 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
   (boîte MODALE, sinon blocage), jamais `grid` + `pack` dans le même conteneur.
 
 ### Contexte de reprise (à coller — 2 phrases)
-Arbre **v2.96.0** sur `LRGBHa` : Lot 1, P7, P1 et **P4 validés en réel** le
-19/10, **P6 livré** (source « Stacks ») et **en attente de test réel**, aucune
-release. **Prochaine action** : tester P6 sur `C:\Astro\test\M33_Canaux_LRGBHa`
-(5 rôles L/R/G/B/Ha), puis **LOT 5 = P5** — mesurer la réactivité AVANT tout
-correctif.
+Arbre **v2.96.0** sur `LRGBHa` : test réel de **P6** (source « Stacks ») concluant
+sur l'empilement, mais le **cadre « Fusion Ha » et les réglages du composite sont
+invisibles** avec cette source et le **continuum est forcé à l'arrêt** (diagnostic
+et correctif prévu en tête d'AVANCEMENT). **Prochaine action** : appliquer la
+piste A, étendre `_test_lot5_p6_stacks.py`, puis re-tester en réel.
 
 ---
 
 ## Chantier CLOS — LRGB+Ha (jalons 129 → J5) — **J2 à J5 validés en réel**
 
-Le rôle Ha **n'alimente aucun canal** : il est **FUSIONNÉ** au composite après le
-combine L. **Tout est CLOS et VALIDÉ EN RÉEL le 19/10** (J2 v2.88.0, J3bis
-v2.90.2, J4 v2.91.0, J4.1 v2.91.1, J5 v2.92.0) : les règles durables (poids 1,0 ·
-α 0,5 · Q 0,80 · continuum trois méthodes avec repli VISIBLE · ancre = couche
-large bande) vivent dans `CLAUDE.md` (« Fusion du Ha… ») et le changelog.
+Le Ha **n'alimente aucun canal** : il est **FUSIONNÉ** au composite après le
+combine L. Règles durables (poids 1,0 · α 0,5 · Q 0,80 · continuum trois
+méthodes avec repli VISIBLE · ancre = couche large bande) : `CLAUDE.md`
+(« Fusion du Ha… ») et changelog.
 
 ---
 
@@ -161,7 +215,7 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 | **1** | **P2 + P3** | base SPCC la plus riche, zéro substitution silencieuse, `_astro_demande` | **VALIDÉ EN RÉEL le 19/10** ; **P7 validé en réel** (v2.93.1) |
 | 2 | P1 | cadence de re-mesure Gaia/SPCC | **VALIDÉ EN RÉEL le 19/10** (v2.94.0) |
 | 3 | P4 | infobulles ⓘ | **VALIDÉ EN RÉEL le 19/10** (v2.95.0) |
-| **4** | **P6** | source « stacks » : fichiers choisis, **rôles saisis**, seuil de profondeur = 1 | **LIVRÉ le 19/10** (v2.96.0) — **test réel en attente** ; lots 4/5 INVERSÉS |
+| **4** | **P6** | source « stacks » : fichiers choisis, **rôles saisis**, seuil de profondeur = 1 | **testé en RÉEL le 19/10** : empilement OK, **2 défauts d'INTERFACE à corriger** (fusion Ha / réglages composite invisibles) |
 | **5** | **P5** | audit MESURÉ de la réactivité | **PROCHAIN** (aucun code commencé) |
 
 ### Lot 1 — P2 + P3 : **VALIDÉ EN RÉEL le 19/10** (v2.93.0) — détails dans `CLAUDE.md`
@@ -178,19 +232,10 @@ Mesuré AVANT de coder : 6,87 s de mesures pour 65 s d'empilement (JSON
 `bancs/_mesure_p1_cadence.json`) ; banc `_test_p1_cadence.py` (29 vérifications).
 
 ### P4 — infobulles (lot 3) — **VALIDÉ EN RÉEL le 19/10 (v2.95.0)**
-- `avastack/ui/bulles.py` (neuf, typé) : `Bulle` (Toplevel `overrideredirect`,
-  400 ms, **une seule à la fois**, ramenée dans l'écran) et `astuce(widget,
-  texte)` (souris + clavier : survol, FocusIn/Out, Échap, clic) ; mixin
-  `Aides` → `App._aide(parent, texte, ligne=…, padx=…, pady=…)`.
-- **13** aides migrées (compo 3, color 4, bgnoise 2, external 3, display 1) ;
-  celles du panneau Composition et du cadre « Fusion Ha » se posent SUR une
-  ligne de réglage (`ligne=row_lh`, `ligne=row_fq`) → coût zéro.
-- Option **`aides_texte`** (défaut NON = bulles) : case « Aides en texte dans
-  la colonne » dans « Fichiers de travail et journal », bascule **à chaud**,
-  persistée à la bascule ET à la fermeture.
-- **Mesure** : `bancs/_mesure_p4_aides.py` (avant/après, JSON conservé) —
-  **702 px repris** (46,8 lignes, 13 % de la colonne ; 5 405 → 4 703 px).
-- **Banc** : `bancs/_test_p4_aides.py`, 34 vérifications, VERT.
+`ui/bulles.py` (`Bulle`, `astuce`, mixin `Aides` → `App._aide(...)`), 13 aides
+migrées (**14** depuis le panneau Stacks), option `aides_texte` (défaut NON),
+**702 px repris** (mesuré). Détail durable dans `CLAUDE.md` (« Aides
+contextuelles de la colonne »).
 
 ### P5 — réactivité (lot 5, APRÈS P6) — **PROCHAIN**
 - **Mesurer d'abord, corriger ensuite** : outil de mesure nommé
@@ -204,7 +249,14 @@ Mesuré AVANT de coder : 6,87 s de mesures pour 65 s d'empilement (JSON
   conditionnelles, tick adaptatif). Audit d'architecture éventuel : mode plan,
   AVEC ces mesures. **Un lot = un jalon, avec l'accord d'Alain.**
 
-### P6 — source « Stacks (fichiers FITS) » (lot 4, INVERTÉ avec P5) — **LIVRÉ le 19/10 (v2.96.0), test réel en attente**
+### P6 — source « Stacks (fichiers FITS) » (lot 4, INVERTÉ avec P5) — **testé en RÉEL le 19/10**
+- **Verdict d'Alain** : « test réel dans l'ensemble OK sur fichier sauvé par
+  AVAStack » — LRGB+Ha détectée des rôles, 5 fichiers lus une fois, empilement
+  et affichage corrects.
+- **DÉFAUTS CONSTATÉS** : le cadre « Fusion Ha » et les réglages du composite
+  (gains R/G/B, normalisation commune, lissage LRGB) sont **invisibles** avec
+  cette source, et le **continuum est forcé à l'arrêt** (voir « DÉFAUTS P6 À
+  CORRIGER » en tête de session : cause, correctif prévu, banc à étendre).
 - **Sélection de FICHIERS**, pas un dossier : jusqu'à `NB_LIGNES_COMPO` (5)
   lignes **rôle → fichier** ; le **RÔLE est celui INDIQUÉ**, jamais déduit
   (`canal_*.fit`, `FILTER`, `AVAFRAME` ne sont PAS des contrats ; un `FILTER`
@@ -242,13 +294,16 @@ Mesuré AVANT de coder : 6,87 s de mesures pour 65 s d'empilement (JSON
 - **P4 VALIDÉ EN RÉEL** le 19/10 (v2.95.0) : `ui/bulles.py` (`Bulle` +
   `astuce` + mixin `Aides`), 13 aides migrées (+1 en P6 = **14**), option
   `aides_texte`, **702 px repris** (mesuré). Détail en « P4 — infobulles ».
-- **P6 LIVRÉ** le 19/10 (v2.96.0) — **TEST RÉEL EN ATTENTE** : source « Stacks
-  (fichiers FITS) », rôles saisis, calibration ignorée, seuil de profondeur 1.
-  Détail en « P6 — source Stacks ».
-- **Prochaine action unique** : **TEST RÉEL de P6** sur
-  `C:\Astro\test\M33_Canaux_LRGBHa` (5 `canal_*.fit`, rôles L/R/G/B/Ha →
-  LRGB+Ha), puis **LOT 5 = P5** (audit MESURÉ de la réactivité, aucun correctif
-  avant les chiffres), **avec l'accord d'Alain**.
+- **P6 testé en RÉEL** le 19/10 (v2.96.0) : empilement OK sur fichiers
+  sauvegardés par AVAStack (LRGB+Ha déduite des rôles) ; **2 défauts
+  d'INTERFACE à corriger** — cadre « Fusion Ha » et réglages du composite
+  invisibles, continuum forcé à l'arrêt. Détail + correctif prévu en tête de
+  session (« DÉFAUTS P6 À CORRIGER »).
+- **Prochaine action unique** : **corriger ces deux défauts** (piste A : rendre
+  `_lf_composition` visible pour la source Stacks, déduire/verrouiller
+  `var_compo`, nouvelle `_role_fourni(role)` pour le test du R, étendre le banc
+  P6), **puis re-tester en réel**. Ensuite **LOT 5 = P5** (audit MESURÉ de la
+  réactivité), avec l'accord d'Alain.
 - **Puis** : **release v2.96.x** sur accord explicite.
 - **Optionnel** : cible qui REMPLIT le cadre (repli attendu et DIT) et filtre
   **3 nm** si Alain en a un.
