@@ -1,0 +1,284 @@
+{
+ "horodatage": "2026-10-20 13:01:41",
+ "seuil_s": 0.25,
+ "rep": 5,
+ "budget_tick_ms": 30.0,
+ "construction_ms": 1927.6,
+ "curseurs": [
+  {
+   "curseur": "Gamma (les 2 moteurs)",
+   "callback_ms": 30.567,
+   "avec_redessin_ms": 32.615,
+   "glissement_200px_ms": 6523.0
+  },
+  {
+   "curseur": "Saturation (globale)",
+   "callback_ms": 28.686,
+   "avec_redessin_ms": 30.723,
+   "glissement_200px_ms": 6144.6
+  },
+  {
+   "curseur": "Saturation rouge",
+   "callback_ms": 29.645,
+   "avec_redessin_ms": 33.009,
+   "glissement_200px_ms": 6601.8
+  },
+  {
+   "curseur": "Luminosité du fond du ciel",
+   "callback_ms": 58.971,
+   "avec_redessin_ms": 58.899,
+   "glissement_200px_ms": 11779.8
+  },
+  {
+   "curseur": "Coupure du bruit (k·σ sous le fond)",
+   "callback_ms": 59.383,
+   "avec_redessin_ms": 56.816,
+   "glissement_200px_ms": 11363.2
+  },
+  {
+   "curseur": "Black point",
+   "callback_ms": 57.174,
+   "avec_redessin_ms": 60.231,
+   "glissement_200px_ms": 12046.2
+  }
+ ],
+ "apercu": {
+  "avec_hist_ms": 46.192,
+  "sans_hist_ms": 27.113,
+  "histogrammes_ms": 19.9,
+  "dessin_ms": 6.9
+ },
+ "tick": {
+  "med_ms": 0.062,
+  "max_ms": 0.389,
+  "budget_pct": 0.2
+ },
+ "cases": [
+  {
+   "case": "Neutraliser la couleur du fond (après étirement)",
+   "set_nu_ms": 0.001,
+   "invoke_ms": 30.799,
+   "previews_set_nu": 0.0,
+   "previews_invoke": 1.0
+  },
+  {
+   "case": "Auto-stretch STF (fond calé sur la cible)",
+   "set_nu_ms": 0.001,
+   "invoke_ms": 84.034,
+   "previews_set_nu": 0.0,
+   "previews_invoke": 2.33
+  },
+  {
+   "case": "PNG annoté à côté du FITS",
+   "set_nu_ms": 0.001,
+   "invoke_ms": 47.513,
+   "previews_set_nu": 0.0,
+   "previews_invoke": 1.0
+  }
+ ],
+ "listes": [
+  {
+   "liste": "spcc:capteur",
+   "n_valeurs": 15,
+   "repeuplement_ms": 0.026,
+   "selection_ms": 0.024,
+   "spcc_active": false
+  },
+  {
+   "liste": "spcc:fr",
+   "n_valeurs": 50,
+   "repeuplement_ms": 0.062,
+   "selection_ms": 0.019,
+   "spcc_active": false
+  },
+  {
+   "liste": "spcc:fg",
+   "n_valeurs": 50,
+   "repeuplement_ms": 0.148,
+   "selection_ms": 0.019,
+   "spcc_active": false
+  },
+  {
+   "liste": "spcc:fb",
+   "n_valeurs": 50,
+   "repeuplement_ms": 0.048,
+   "selection_ms": 0.017,
+   "spcc_active": false
+  },
+  {
+   "liste": "spcc:blanc",
+   "n_valeurs": 147,
+   "repeuplement_ms": 0.117,
+   "selection_ms": 0.018,
+   "spcc_active": false
+  },
+  {
+   "liste": "Fréquence de référence",
+   "n_valeurs": 5,
+   "selection_ms": 0.016
+  },
+  {
+   "liste": "Fenêtre de rejet",
+   "n_valeurs": 5,
+   "selection_ms": 0.023
+  }
+ ],
+ "spinners": [
+  {
+   "spinner": "sp_fusion_ha_poids",
+   "set_nu_ms": 0.01,
+   "avec_commande_ms": 46.453,
+   "previews": 1.0
+  },
+  {
+   "spinner": "sp_fusion_ha_alpha",
+   "set_nu_ms": 0.01,
+   "avec_commande_ms": 45.081,
+   "previews": 1.0
+  },
+  {
+   "spinner": "sp_fusion_ha_q",
+   "set_nu_ms": 0.01,
+   "avec_commande_ms": 46.848,
+   "previews": 1.0
+  },
+  {
+   "spinner": "sp_lissage_halos",
+   "set_nu_ms": 0.01,
+   "avec_commande_ms": 47.383,
+   "previews": 1.0
+  }
+ ],
+ "visibilite": [
+  {
+   "source": "Simulée (démo)",
+   "med_ms": 0.175,
+   "max_ms": 0.326,
+   "pack": 0,
+   "forget": 3
+  },
+  {
+   "source": "Dossier surveillé (brutes FITS/PNG/TIFF…)",
+   "med_ms": 0.193,
+   "max_ms": 0.999,
+   "pack": 12,
+   "forget": 6
+  },
+  {
+   "source": "Composition multi-dossiers (RGB/HOO/SHO/LRGB)",
+   "med_ms": 0.231,
+   "max_ms": 0.251,
+   "pack": 12,
+   "forget": 8
+  },
+  {
+   "source": "Stacks (fichiers FITS)",
+   "med_ms": 0.323,
+   "max_ms": 0.367,
+   "pack": 12,
+   "forget": 9
+  },
+  {
+   "source": "OpenCV 0",
+   "med_ms": 0.157,
+   "max_ms": 0.172,
+   "pack": 1,
+   "forget": 9
+  },
+  {
+   "source": "OpenCV 1",
+   "med_ms": 0.155,
+   "max_ms": 0.159,
+   "pack": 0,
+   "forget": 3
+  },
+  {
+   "source": "ZWO ASI (SDK)",
+   "med_ms": 0.157,
+   "max_ms": 0.167,
+   "pack": 0,
+   "forget": 3
+  },
+  {
+   "source": "QHY (SDK)",
+   "med_ms": 0.158,
+   "max_ms": 0.165,
+   "pack": 0,
+   "forget": 3
+  },
+  {
+   "source": "Player One (SDK)",
+   "med_ms": 0.162,
+   "max_ms": 0.335,
+   "pack": 0,
+   "forget": 3
+  },
+  {
+   "source": "Touptek/Altair (SDK)",
+   "med_ms": 0.157,
+   "max_ms": 0.221,
+   "pack": 0,
+   "forget": 3
+  },
+  {
+   "source": "SVBONY (SDK)",
+   "med_ms": 0.186,
+   "max_ms": 0.323,
+   "pack": 0,
+   "forget": 3
+  }
+ ],
+ "rafale": {
+  "duree_s": 3.02,
+  "pas": 60,
+  "pas_ms": 50.3,
+  "ticks_obtenus": 60,
+  "ticks_attendus": 100,
+  "ecart_max_ms": 58.1
+ },
+ "blocages": [
+  {
+   "operation": "Auto-stretch STF (fond calé sur la cible)",
+   "max_ms": 86.177
+  },
+  {
+   "operation": "Black point (+ redessin)",
+   "max_ms": 65.246
+  },
+  {
+   "operation": "Coupure du bruit (k·σ sous le fond) (+ redessin)",
+   "max_ms": 62.977
+  },
+  {
+   "operation": "Coupure du bruit (k·σ sous le fond)",
+   "max_ms": 62.609
+  },
+  {
+   "operation": "Luminosité du fond du ciel (+ redessin)",
+   "max_ms": 62.47
+  },
+  {
+   "operation": "Luminosité du fond du ciel",
+   "max_ms": 60.453
+  },
+  {
+   "operation": "Black point",
+   "max_ms": 58.644
+  },
+  {
+   "operation": "_refresh_preview(hist=True)",
+   "max_ms": 51.799
+  },
+  {
+   "operation": "PNG annoté à côté du FITS",
+   "max_ms": 50.542
+  },
+  {
+   "operation": "sp_fusion_ha_q (set + commande)",
+   "max_ms": 48.411
+  }
+ ],
+ "au_dela_seuil": 0,
+ "operations_au_dela": [],
+ "charge_souris_60hz_pct": 361.0
+}

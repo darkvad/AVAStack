@@ -40,94 +40,90 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 
 ---
 
-## Session du 20/10/2026 — **P6 : défauts d'interface corrigés (piste A) et VALIDÉS EN RÉEL** (v2.96.1) ; **branche `OptimisationUI` ouverte pour P5**
+## Session du 20/10/2026 — **P6 VALIDÉ EN RÉEL** (v2.96.1) puis **P5 : réactivité MESURÉE** (chiffres seuls, AUCUN correctif)
 
 ### État actuel
-- **v2.96.1 sur `master`** (fusion de `LRGBHa`, branche fermée),
-  **VALIDÉE EN RÉEL par Alain le 20/10** (« testé en
-  réel, validé ») : le cadre « Fusion Ha », les réglages du composite et le
-  continuum sont accessibles avec la source « Stacks ». **Aucune release.**
-  Base : P6 livré = `fb81b1d` (v2.96.0), correctif = `efb2911` (fusionné dans
-  `master`).
-- **Branche de travail : `OptimisationUI`** (créée depuis `master`, commit de
-  gouvernance `f39193e`, poussée et suivie). **`LRGBHa` fermée** (local +
-  `origin`). **Aucun code de P5 n'est commencé**.
-- **Les deux défauts du test réel du 19/10 sont corrigés** (piste A validée par
-  Alain) : avec la source « Stacks », le panneau « Composition » est de nouveau
-  AFFICHÉ (donc les gains R/G/B, la normalisation commune, le lissage LRGB et le
-  cadre « Fusion Ha »), la composition affichée se DÉDUIT des fichiers, les
-  lignes rôle→DOSSIER sont verrouillées, et le continuum lit la présence de la
-  couche R dans les FICHIERS (`_role_fourni("R")`) — il n'est plus forcé à
-  l'arrêt.
-- **Bancs** : P6 **vert, 59 vérifications** (les 43 d'avant + 16 de la section [6]
-  « piste A »), joué **avec les vrais `canal_*.fit` de `C:\Astro\test\M33_Canaux_LRGBHa`**
-  (repli sur FITS synthétiques si absents). Non-régressions **vertes** : 47
-  (visibilité), 52 (ergonomie), 53 (calib compo), 19 (compo UI / worker /
-  composition / restack), 129 (5 rôles), 141-B (compo session), J2, J3, J4, J5
-  (fusion Ha), P4 (14 aides), P1, garde-fou (**pyright 0 sur 54 fichiers typés**,
-  surface `app.py` inchangée).
-- **Échecs PRÉEXISTANTS** : `_test_lot1_p2_p3` volet [3] (profil SPCC déjà
-  corrigé dans le `config.json` local) — inchangé, cf. « Pièges récents ».
+- **v2.96.1 sur `master`** — P6 **VALIDÉ EN RÉEL par Alain le 20/10** (« testé en
+  réel, validé ») : cadre « Fusion Ha », réglages du composite et continuum
+  accessibles avec la source « Stacks ». **Aucune release** (`fb81b1d` = P6,
+  `efb2911` = correctif piste A, fusionné dans `master`).
+- **Branche de travail : `OptimisationUI`** (depuis `master`, poussée et suivie).
+  **`LRGBHa` fermée** (local + `origin`).
+- **P5 = MESURÉ le 20/10** avec l'outil neuf `bancs/_mesure_p5_reactivite.py`
+  (JSON conservé) : **aucun correctif appliqué**, conformément à la règle
+  « mesurer d'abord, corriger ensuite ». Le banc `_test_perf_reactivite_jalon79`
+  est étendu aux cases / listes / spinners (**29 vérifications, tout passe**).
+- **Bancs** : P6 **vert, 59 vérifications** (joué avec les vrais `canal_*.fit` de
+  `C:\Astro\test\M33_Canaux_LRGBHa`, repli synthétique sinon). Non-régressions
+  vertes : 47, 52, 53, 19, 129, 141-B, J2, J3, J4, J5, P4, P1, garde-fou
+  (**pyright 0 sur 54 fichiers typés**). **Échec PRÉEXISTANT** :
+  `_test_lot1_p2_p3` volet [3] (profil SPCC déjà corrigé dans `config.json`).
 
-### LE CORRECTIF (piste A) — validé en réel, détail durable dans `CLAUDE.md`
-- **Visibilité** : `est_stacks` → `[self._lf_stacks, self._lf_composition]`
-  (FICHIERS d'abord) ; le cadre « Fusion Ha », les gains, la normalisation
-  commune et le lissage LRGB sont des enfants de `frm_compo` → ils suivent.
-- **Composition déduite** (`_maj_compo_depuis_stacks`) : rôles FOURNIS (rôle **et**
-  fichier), ≥ 2 fichiers ; `_on_compo_roles` est gardé sous cette source.
-- **Verrouillage** (`_maj_compo_verrouillage`) : menu, lignes rôle→DOSSIER, `…` et
-  « Détecter les filtres » grisés ; réglages du COMPOSITE ACTIFS ; tout est rendu
-  au retour d'une source à dossiers.
-- **Présence d'un rôle** (`_role_fourni`) : sert à `_maj_fusion_ha` ET à
-  `_lire_fusion_ha` ; un seul fichier = empilement direct, cadre masqué.
-- **Diagnostic (rappel)** : cause 1 = composition masquée ; cause 2 =
-  `_dossier_role_compo("R")` aveugle aux FICHIERS. **Piste B non retenue**
-  (panneau « composite » séparé : refactor plus large, sans bénéfice ici).
+### P5 — LES CHIFFRES (mesurés le 20/10, machine de dev, `--n 5`)
+> JSON : `bancs/_mesure_p5_reactivite.json`. Rejouer :
+> `python bancs/_mesure_p5_reactivite.py` (écran requis ; `--autotest` sans écran).
 
+| ce qui est mesuré | chiffre |
+|---|---|
+| geste gamma / saturation (après étirement) | **31 ms** |
+| geste « fond du ciel » / « coupure du bruit » / black | **57–59 ms** |
+| glissement de **200 px** sur un curseur | **6,5 s** (gamma) → **12 s** (black) |
+| charge pour suivre 60 Hz de souris | **361 % d'un cœur** |
+| aperçu complet / sans histogrammes | 46 ms / 27 ms (histogrammes **20 ms**) |
+| `_tick_corps` (budget 30 ms) | **0,06 ms = 0,2 %** |
+| clic de case (`invoke`) | 1 aperçu (31 ms) ; **auto-STF = 2,33 aperçus** (84 ms) |
+| `var.set` nu (case / liste / spinner) | **0 rappel** (piège Tk, prouvé) |
+| liste SPCC **147** valeurs : repeuplement / sélection | **0,12 ms / 0,02 ms** |
+| `_maj_visibilite_cadres` | 0,2–0,3 ms, 12 pack + 3–9 forget |
+| rafale (60 pas, boucle ACTIVE) | 60 battements / 100 attendus, écart max **58 ms** |
+| opérations > **0,25 s** (Guet abaissé) | **0** |
 
-**VÉRIFIÉ EN RÉEL le 20/10 (mêmes 5 `canal_*.fit`)** : le cadre « Fusion Ha »
-apparaît, le continuum est ACTIF et réglable, les gains / la normalisation
-commune / le lissage LRGB sont accessibles, et le composite réagit aux réglages
-sans redémarrer la session. **Verdict d'Alain : testé en réel, validé.**
+**Lecture** : la boucle `_tick`, les listes (même 147 valeurs) et `pack/forget`
+ne sont **PAS** en cause. Tout le coût est dans **`_refresh_preview` rappelé à
+chaque pixel** (30–60 ms) et dans les **écritures non conditionnelles**
+(`_on_auto` repose deux curseurs puis redessine = 2,33 aperçus par clic). Aucun
+gel UNIQUE > 0,25 s : la gêne est l'**EMPILEMENT** des gestes (361 % d'un cœur).
 
-### Fichiers modifiés dans cette phase (correctif piste A)
-- `avastack/ui/panels/compo.py` : `cb_compo`, `cb_compo_roles`,
-  `ent_compo_dossiers`, `btn_compo_dossiers`, `btn_detecter_filtres` stockés en
-  attributs (+ déclarations typées) — sans eux, rien n'était verrouillable ;
-- `avastack/ui/panels/stacks.py` : un chemin TAPÉ vaut un fichier choisi
-  (`<Return>` / `<FocusOut>` → `_on_stacks_roles`) ;
-- `avastack/ui/app.py` : `_source_est_stacks`, `_role_fourni`,
-  `_roles_stacks_fournis`, `_maj_compo_depuis_stacks`, `_maj_compo_verrouillage`,
-  visibilité (stacks + composition, FICHIERS d'abord), garde dans
-  `_on_compo_roles`, mention de la ligne d'aide, continuum par `_role_fourni` ;
-- `bancs/_test_lot5_p6_stacks.py` : section [6] (16 vérifications) sur les
-  VRAIS `canal_*.fit` quand ils sont là ;
-- `avastack/__init__.py` (2.96.1 + changelog), `CLAUDE.md`, `AVANCEMENT.md` ;
-- **clôture de session** : `AVANCEMENT.md` (gouvernance : `OptimisationUI`
-  active, `LRGBHa` fermée), `bancs/_diag_fusion_ha_echelles.py` (docstring : la
-  branche citée est notée fermée).
+### Le correctif P6 (piste A) — détail durable dans `CLAUDE.md`
+- **Visibilité** : `est_stacks` → fichiers puis composition ; « Fusion Ha »,
+  gains, normalisation commune et lissage LRGB sont des enfants de `frm_compo`.
+- **Composition déduite** (`_maj_compo_depuis_stacks`), **verrouillage**
+  (`_maj_compo_verrouillage` : menu, lignes DOSSIER, `…`, détection grisés ;
+  réglages du composite ACTIFS), **présence d'un rôle** (`_role_fourni`, qui
+  pilote aussi le continuum). **Piste B écartée** (refactor plus large).
+
+### Fichiers modifiés dans cette phase
+- `bancs/_mesure_p5_reactivite.py` (**neuf**) : outil de mesure P5 (9 sections) ;
+- `bancs/_mesure_p5_reactivite.json` (**neuf**) : chiffres du passage, rejouable ;
+- `bancs/_test_perf_reactivite_jalon79.py` : sections **[8] cases**, **[9] listes**,
+  **[10] spinners** (chemin RÉEL : `invoke`, `<<ComboboxSelected>>`, `command`) ;
+- (P6, déjà livré) `avastack/ui/app.py`, `panels/compo.py`, `panels/stacks.py`,
+  `bancs/_test_lot5_p6_stacks.py`, `avastack/__init__.py`, `CLAUDE.md`.
+
 
 ### Décisions
 - **Piste A TRANCHÉE (Alain, 20/10)** : réutiliser le panneau « Composition »
   pour les FICHIERS en verrouillant les lignes DOSSIER — piste B (panneau
-  « composite » séparé) écartée comme refactor plus large sans bénéfice immédiat.
+  « composite » séparé) écartée comme refactor plus large sans bénéfice.
 - **La composition AFFICHÉE suit la source** : fichiers → déduite (menu
-  verrouillé) ; dossiers → choisie au menu. `_on_compo_roles` ne réécrit donc
-  jamais la composition depuis les lignes dossier quand la source est Stacks.
-- **Un seul fichier n'est pas une composition** : le cadre « Fusion Ha » est
-  masqué (`_maj_fusion_ha`), même si le menu garde une composition +Ha en
-  mémoire (c'est un état d'affichage, pas une session).
-- Rappels P6 inchangés : **le rôle n'est JAMAIS déduit** (ni du nom, ni de
-  `FILTER`, ni d'`AVAFRAME`) ; **refus sur PREUVE seulement** (`AVAVUE`
-  « ETIRE ») ; **seuil de profondeur = 1** ; **`relire()` au démarrage** ;
-  **`_source_fichiers()` distincte de `_cadence_dossier()`**.
+  verrouillé) ; dossiers → choisie au menu. **Un seul fichier n'est pas une
+  composition** (cadre « Fusion Ha » masqué).
+- **Rappels P6** : le rôle n'est JAMAIS déduit ; refus sur PREUVE seulement ;
+  seuil de profondeur = 1 ; `_source_fichiers()` ≠ `_cadence_dossier()`.
+- **P5 : mesurer SANS toucher au produit** (20/10) — `Guet.SEUIL_S` reste à
+  1,5 s : le banc compte lui-même les opérations au-delà de 0,25 s (`--seuil`),
+  même information, rien à remettre en état après coup. **Aucun correctif**
+  avant l'accord d'Alain.
 
 ### Problèmes ouverts / prochaines étapes
-1. **LOT 5 = P5** (audit MESURÉ de la réactivité de l'interface) sur la branche
-   **`OptimisationUI`** — **accord d'Alain avant de démarrer** (aucun code
-   commencé).
+1. **P5 — CORRECTIFS, sur accord d'Alain** (un lot = un jalon), dans l'ordre des
+   chiffres : ① **coalescing ~20 Hz** des rappels de curseur (un aperçu pour
+   plusieurs pixels) ; ② **écritures conditionnelles** (`_on_auto` : 2,33
+   aperçus par clic) ; ③ histogrammes différés pendant un glissement.
+   Cibles : 31 ms → ~5 ms par aperçu utile, glissement 200 px sous 1 s.
 2. **Release v2.96.x** sur accord explicite (aucune release depuis v2.80.0 ;
    `master` porte la fusion de `LRGBHa`, branche fermée le 20/10).
+
 
 ---
 ## Points d'attention
@@ -158,11 +154,12 @@ sans redémarrer la session. **Verdict d'Alain : testé en réel, validé.**
   (boîte MODALE, sinon blocage), jamais `grid` + `pack` dans le même conteneur.
 
 ### Contexte de reprise (à coller — 2 phrases)
-Arbre **v2.96.1** sur la branche **`OptimisationUI`** : **P6 VALIDÉ EN RÉEL le
-20/10** (piste A : composition affichée et verrouillée, composition déduite des
-fichiers, continuum piloté par `_role_fourni("R")`) et **`LRGBHa` fermée** (fusion
-dans `master`). **Prochaine action** : LOT 5 = P5 (audit MESURÉ de la réactivité),
-sur accord d'Alain.
+Arbre **v2.96.1** sur la branche **`OptimisationUI`** : **P6 VALIDÉ EN RÉEL**
+(20/10, `LRGBHa` fermée) et **P5 MESURÉ** (chiffres dans `AVANCEMENT.md` +
+`bancs/_mesure_p5_reactivite.json`, **aucun correctif appliqué**).
+**Prochaine action** : correctifs P5 (coalescing des curseurs, écritures
+conditionnelles), sur accord d'Alain.
+
 
 ---
 
@@ -187,7 +184,7 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 | 2 | P1 | cadence de re-mesure Gaia/SPCC | **VALIDÉ EN RÉEL le 19/10** (v2.94.0) |
 | 3 | P4 | infobulles ⓘ | **VALIDÉ EN RÉEL le 19/10** (v2.95.0) |
 | **4** | **P6** | source « stacks » : fichiers choisis, **rôles saisis**, seuil de profondeur = 1 | **VALIDÉ EN RÉEL le 20/10** (v2.96.1) — empilement le 19/10, défauts d'interface corrigés (piste A) puis validés |
-| **5** | **P5** | audit MESURÉ de la réactivité | **PROCHAIN** (aucun code commencé) |
+| **5** | **P5** | audit MESURÉ de la réactivité | **MESURÉ le 20/10** (chiffres en tête de session) — **correctifs à venir sur accord d'Alain** |
 
 ### Lot 1 — P2 + P3 (v2.93.0) · P1 (v2.94.0) · P4 (v2.95.0) — **VALIDÉS EN RÉEL le 19/10**
 - **P2 + P3** : base SPCC **la plus riche** (compteurs au journal, extraction jamais
@@ -201,46 +198,42 @@ main — le correctif de code doit suffire, et le test réel le prouve.
   (**14** avec le panneau Stacks), option `aides_texte` (défaut NON), **702 px
   repris** (mesuré). Détail dans `CLAUDE.md` (« Aides contextuelles »).
 
-### P5 — réactivité (lot 5, APRÈS P6) — **PROCHAIN**
-- **Mesurer d'abord, corriger ensuite** : outil de mesure nommé
-  `bancs/_mesure_p5_reactivite.py` (motif P1/P4 : chiffres AVANT le code,
-  JSON conservé), plus `Guet.SEUIL_S` à 0,25 s temporairement et
-  `_test_perf_reactivite_jalon79` étendu aux **cases / listes / spinners**.
-- **Chiffrer** : `_add_slider.onchange` à chaque pixel, `_tick` à 30 ms,
-  combobox de 147/200 valeurs, `pack/forget` de `_maj_visibilite_cadres`,
-  réactivité des cases (`var.set` + `command`).
-- **Correctifs APRÈS les chiffres** (coalescing ~20 Hz, écritures
-  conditionnelles, tick adaptatif). Audit d'architecture éventuel : mode plan,
-  AVEC ces mesures. **Un lot = un jalon, avec l'accord d'Alain.**
+### P5 — réactivité (lot 5) — **MESURÉ le 20/10, aucun correctif**
+- Outil `bancs/_mesure_p5_reactivite.py` (9 sections, `--autotest` sans écran,
+  JSON `bancs/_mesure_p5_reactivite.json`), **sans modifier le produit** : le
+  seuil du Guet reste 1,5 s, le banc compte lui-même les opérations > 0,25 s.
+- **Suspicions LEVÉES par la mesure** : `_tick` (0,2 % du budget), listes SPCC
+  jusqu'à 147 valeurs (0,1 ms), `pack/forget` de `_maj_visibilite_cadres`
+  (0,3 ms). **Suspicion CONFIRMÉE** : un aperçu complet par pixel de curseur
+  (31–59 ms) et des réécritures non conditionnelles (2,33 aperçus par clic).
+- Banc `_test_perf_reactivite_jalon79` étendu : [8] cases, [9] listes,
+  [10] spinners → **29 vérifications vertes**.
 
-### P6 — source « Stacks (fichiers FITS) » (lot 4, INVERTÉ avec P5) — **VALIDÉ EN RÉEL le 20/10 (v2.96.1)**
-- **Verdict d'Alain** : empilement OK le 19/10 (« test réel dans l'ensemble OK
-  sur fichier sauvé par AVAStack »), puis **« testé en réel, validé » le 20/10**
-  après le correctif des deux défauts d'interface.
-- **DÉFAUTS CONSTATÉS puis CORRIGÉS (piste A)** : cadre « Fusion Ha » et réglages
-  du composite invisibles, continuum forcé à l'arrêt → composition désormais
-  AFFICHÉE et VERROUILLÉE, composition déduite des fichiers, continuum piloté
-  par `_role_fourni("R")` (détail en tête de session).
+### P6 — source « Stacks (fichiers FITS) » (lot 4) — **VALIDÉ EN RÉEL le 20/10 (v2.96.1)**
+- **Verdict d'Alain** : empilement OK le 19/10, puis **« testé en réel, validé »
+  le 20/10** après le correctif des deux défauts d'interface (piste A).
 - Contrat durable (rôle JAMAIS déduit, `AVAFRAME` jamais lue, profondeur non
   inventée, calibration court-circuitée, lecture unique par session, linéarité
   sur PREUVE) : `CLAUDE.md` (« Source « Stacks (fichiers FITS) » »).
-- Banc `_test_lot5_p6_stacks.py` (**59** vérifications, dont 16 pour la piste A).
+- Banc `_test_lot5_p6_stacks.py` (**59** vérifications, dont 16 piste A).
+
 
 ---
 
 ## En attente / prochaine session (état au 20/10 — branche `OptimisationUI`, v2.96.1)
 
 - **P6 est CLOS ET VALIDÉ EN RÉEL** (v2.96.1, fusionné dans `master` ; `LRGBHa`
-  fermée) : le banc P6 est vert (59 vérifications, joué avec les 5 vrais
-  `canal_*.fit`) et le test réel d'Alain a confirmé l'interface.
-- **Prochaine action unique** : **LOT 5 = P5** sur `OptimisationUI` — **accord
-  d'Alain avant de démarrer**. Premier geste : **MESURER**, avec un outil nommé
-  `bancs/_mesure_p5_reactivite.py` (motif P1/P4 : chiffres AVANT le code, JSON
-  conservé), `Guet.SEUIL_S` à 0,25 s temporairement et
-  `_test_perf_reactivite_jalon79` étendu aux **cases / listes / spinners**.
-  **Aucun correctif de réactivité avant les chiffres.**
+  fermée) : banc P6 vert (59 vérifications) et test réel d'Alain concluant.
+- **P5 est MESURÉ** (20/10) : outil `bancs/_mesure_p5_reactivite.py` + JSON,
+  banc jalon 79 étendu (29 vérifications vertes), **aucun correctif appliqué**.
+- **Prochaine action unique** : **CORRECTIFS P5 sur `OptimisationUI`** — **accord
+  d'Alain requis** (un lot = un jalon). Ordre proposé, dicté par les chiffres :
+  ① coalescing ~20 Hz des rappels de curseur ; ② écritures conditionnelles
+  (`_on_auto` = 2,33 aperçus par clic) ; ③ histogrammes différés en glissement.
+  Re-mesurer avec le MÊME outil après correctif (diff des deux JSON).
 - **Puis** : **release v2.96.x** sur accord explicite (`master` porte désormais
   tout le chantier depuis v2.80.0).
+
 - **Référence chiffrée** : `C:\Astro\test\M33_Canaux_LRGBHa` (5 `canal_*.fit` +
   fiches ; `AVACOMPO` = LRGB+Ha, **normalisation COMMUNE**, lissage 117d).
   Rejouer : `python bancs/_diag_fusion_ha_echelles.py --canaux <dossier>

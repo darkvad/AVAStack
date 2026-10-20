@@ -3539,6 +3539,15 @@ ce qui manquait n'était pas une correction mais une MESURE.
   `variable=var` NE SUFFIT PAS — le bouton suit alors la variable, mais `cmd()` (donc
   l'étiquette ET les callbacks) n'est TOUJOURS PAS appelé par un `var.set` (vérifié
   le 11/10/2026 sur Tk 8.6) ; seul `s.set(v)` déclenche `cmd`.
+- **PIÈGE Tk MESURÉ (P5, 20/10/2026) — CHAQUE COMMANDE A SON PROPRE CHEMIN** :
+  sur Tk 8.6, `ttk.Scale.set()` rappelle sa `command` ; `ttk.Spinbox.set()` et
+  `ttk.Combobox.set()` **NON** (vérifié : valeur et `textvariable` changent,
+  le `command`/la liaison restent muets). Un `<<ComboboxSelected>>` généré
+  (`cb.event_generate`) rappelle bien la liaison, et `chk.invoke()` fait le
+  clic d'une case. Conséquence : un banc qui « pose » un réglage par `set()`
+  puis affirme quelque chose sur son EFFET mesure zéro — il doit passer par le
+  chemin du geste (bancs `_test_perf_reactivite_jalon79.py` [8]–[10] et
+  `bancs/_mesure_p5_reactivite.py`, section [6]).
 - **Persistance de configuration au démarrage : restaurer de façon
   TOLÉRANTE** — chaque valeur lue est validée (bornes, énumération) et
   retombe sur le défaut si invalide. Une config.json corrompue, incomplète
