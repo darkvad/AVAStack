@@ -73,6 +73,9 @@ def main():
     import tkinter as tk
     root = tk.Tk()
     app = ui.App(root)
+    # 1b (20/10/2026) : mesure de MÉMOIRE après un rendu → rendu IMMÉDIAT (le
+    # fil de rendu ne sert qu'en production).
+    app.rendu.immediat = True
     root.update()
     montre("après construction de l'App")
     app.var_view.set("pile")

@@ -4119,3 +4119,175 @@ du code, piège rencontré sur un outil externe. Cible : section « Pièges »
 > [texte]. Puis-je procéder ? »
 > **Alain** : « Oui, ajoute-le. »
 > **Agent** : « ✅ Entrée ajoutée. »
+
+## Instrumentation performance/mémoire (`avastack/perf.py`, v2.98.0)
+
+- **Ce que c'est** : chronos par étage, compteurs, jauges, RSS et **CPU du
+  processus** (`GetProcessTimes` / `getrusage` — aucune dépendance, pas de
+  `psutil`), écriture JSON **atomique**. **OPT-IN** :
+  `python AVAStack.py --perf` (ou `AVASTACK_PERF=1`) → `perf.json` **À CÔTÉ du
+  programme**, réécrit **toutes les 5 s** (donc lisible PENDANT une session) ;
+  `--perf-json CHEMIN` pour un relevé nommé ; `perf*.json` est dans
+  `.gitignore`.
+- **COÛT NUL quand c'est inactif** : `perf.chrono()` rend un objet PARTAGÉ dont
+  `__enter__`/`__exit__` ne font rien. Ne jamais remplacer ce contrat par un
+  `if perf.actif():` autour d'un chrono, ni par un objet neuf à chaque appel.
+- **MESURER L'ATTENTE, PAS SEULEMENT LE MUR (v2.98.3)** : `perf.t0_cpu()` +
+  `perf.duree_attente(base, depart_mur, depart_cpu)` posent `<base>_cpu` (CPU du
+  **fil appelant**, `time.thread_time()`) et `<base>_attente` = mur − CPU ;
+  `instantane()["attente"][base]["part_attente"]` — publié aussi en clair par
+  `resume()` — est le chiffre qui tranche entre « le fil TRAVAILLE » et « le fil
+  est AFFAMÉ ». `duree_attente()` se pose **À CÔTÉ** du chrono du mur (le mur
+  n'est jamais recompté). Branché sur `tick_avant` et `ui_tick`. **Repli
+  multiplateforme** : sans `thread_time()` (macOS **antérieur à Python 3.13**),
+  `t0_cpu()` rend `None`, `duree_attente()` ne pose **RIEN** et
+  `contexte.cpu_fil` vaut `false` — une attente **INCONNUE** ne doit jamais
+  devenir un zéro (c'est `cpu_fil_disponible()` qui le dit). Coût nul hors
+  `--perf`, même contrat que `chrono()`.
+- **Pièges (constatés les 20 et 21/10/2026)** : ① `vl_actif` ne doit se lire NI
+  sur les `disp.vl_*` (`vl_neutre_gains` est un **résultat** persistant), NI
+  comme un OR
+  des neuf cases `var_vl_*` (`var_vl_neutre` est cochée **par défaut** et ne
+  soumet aucun calcul en STF/manuel) : la seule lecture juste est
+  `disp.chaine_sollicitee()` — GraXpert / débruitage / netteté / chroma, ou
+  VeraLux. `vl_couleurs` (cases d'après étirement) et `vl_gains` (gains mesurés)
+  sont des jauges SÉPARÉES ; ② `lecture_frame` d'une source dossier inclut
+  l'**ATTENTE** de `read(timeout=1,0)` : ce n'est PAS un coût CPU (75 % du temps
+  mural d'une session de 3 h 26 était de l'attente) ; ③ le drapeau
+  `perf.occupe()` ne couvre QUE `_worker_empiler_frame`, pas la chaîne
+  pré-étirement ; ④ **`cpu_s` ≫ somme des chronos** : OpenCV ouvre des fils
+  **NATIFS** (`cv2.getNumThreads()` = **14** sur le poste d'Alain, jamais borné
+  par l'application) qui n'apparaissent NI dans `threading.active_count()`
+  (jauge `threads`) NI dans les chronos, mais consomment des cœurs — mesuré
+  `cpu_s` **1 270 s** pour ~550 s de travail mesuré (`perf-5`). Conséquence :
+  le fil Tk est affamé (`tick_avant` 64 ms/tour sans travail dedans) ; le
+  levier est `cv2.setNumThreads(N)` borné au démarrage, PAS une optimisation Tk.
+- **Banc** : `bancs/_test_phase0_perf.py` (**110 vérifications**, SANS écran :
+  coût nul inactif, exactitude sous 4 fils, RSS/CPU, comptage des tableaux,
+  écriture atomique ET périodique, lancement `--perf`, câblage vérifié par AST,
+  et depuis v2.98.3 la section **[2 bis]** sur l'attente : `sleep` ⇒ part ≈ 1,
+  CPU publié comparé à une mesure **directe** de `time.thread_time()`, calcul
+  pur ⇒ attente nettement moindre que le sommeil). `perf.py` est dans la liste
+  typée du garde-fou (pyright 0).
+- **PIÈGE DE BANC — un seuil ABSOLU de temps mesure la CHARGE MACHINE, pas le
+  code** (constaté le 21/10 sur ce banc) : « calcul pur ⇒ part d'attente < 20 % »
+  a échoué à **0,48** (CPU 15,6 ms pour 30 ms de mur) sur un poste occupé, où le
+  fil est réellement désordonnancé. Ancrer les assertions sur une comparaison
+  **interne** (cas A vs cas B du MÊME run) ou sur une mesure directe — jamais
+  sur une durée murale absolue.
+- **Chiffres de référence** (5 canaux M33, « Rendu pleine résolution » coché,
+  relevé de 13 min) : `ui_tick` = **61 % du temps mural**, **2 rendus complets
+  par frame** (`rendus` 132 = 71 frames + 61 `vl_new`), étirement =
+  **2 093 ms** sur `source_px` = 7,41 Mpx (mesuré en `ui_etirement` avant 1b,
+  aujourd'hui `fil_etirement`), `cpu.cores_moyens` = **1,59**, accumulateurs =
+  **2 935 Mo** sur un RSS de 4 503 Mo.
+
+## Étape 1a — un seul rendu par frame (v2.98.1, branche `OptimisationUI`)
+
+- **Le défaut** : à chaque frame, `_tick_corps` rendait la pile brute
+  (`_rendre_et_afficher`), puis `_maj_lbl_vl` rendait une SECONDE fois sur
+  `vl_new` (`_refresh_preview`) — 132 rendus pour 71 frames. En **STF sans étape
+  de chaîne**, les deux images étaient identiques : gaspillage pur. Sous
+  **VeraLux** (ou chroma cochée), le second rendu est légitime (image étirée par
+  le worker) : c'est le PREMIER qui était transitoire (repli STF) — 1a le
+  supprime aussi. Les deux régimes sont donc améliorés, pas seulement le premier.
+- **La règle** : en vue « pile », une frame dont la pile vient d'être annoncée à
+  la chaîne (`notify_new_stack`) N'EST PAS rendue : elle est confiée à
+  `demander_chaine()` et l'image FINALE est rendue UNE fois, sur `vl_new`. Sans
+  chaîne sollicitée (ou en rafale de dossier, où le notify est déjà différé), la
+  frame est rendue immédiatement comme avant.
+- **PIÈGE MAJEUR — la chaîne ne tourne QUE si on la sollicite** : `process()`
+  était le SEUL point de soumission du worker. Supprimer le rendu sans appeler
+  `demander_chaine()` ne supprime pas un rendu : cela GÈLE la chaîne (aucun
+  `vl_new` n'arriverait plus). `demander_chaine()` partage exactement le code de
+  soumission (`_soumettre_chaine`) : mêmes clés, mêmes paramètres, même ordre.
+- **Ne pas confondre « case cochée » et « chaîne sollicitée »** : les cases
+  d'APRÈS étirement (SCNR, SCNR doux, démagenta, boost, **neutralisation —
+  cochée par défaut**) ne soumettent rien en STF/manuel. Seul
+  `chaine_sollicitee()` dit si un `vl_new` est attendu.
+- **FILET obligatoire** : `RENDU_FINAL_DELAI_S = 15 s` (≈3× le pire `vl_new`
+  mesuré). Si `vl_new` n'arrive pas, la frame en attente est rendue quand même
+  (`rendus_filet`) ; l'attente est vidée AVANT le rendu (jamais de boucle). Une
+  vue « traitée » ou un reset de session abandonne l'attente.
+- **Aucune image d'attente à l'écran** (constat d'Alain en réel : « une image
+  blanche entre deux images ») : `DisplayProcessor.dernier_etait_attente` (posé
+  à chaque `process()`) permet à `_rendre_et_afficher` de GARDER l'image
+  précédente au lieu d'afficher le repli transitoire (`rendus_gardes`). Seul le
+  TOUT PREMIER rendu affiche l'attente (sinon l'écran resterait vide). Ne pas
+  retirer ce garde : c'est lui qui supprime le clignotement.
+- **Banc** : `bancs/_test_1a_rendu_final.py` (40 vérifications, Tk) : jauge
+  `vl_actif`, 1 rendu/frame sans case, aucun rendu de pile brute avec chaîne,
+  filet, rattrapage de 3 frames en un rendu final, rafale de dossier inchangée,
+  image finale **identique au bit**. Compteurs : `rendus_differe`,
+  `rendus_evites`, `rendus_filet`, `rendus_gardes` (lisibles dans `perf.json`).
+- **Résultats RÉELS (`perf-4.json`, 637 s, VeraLux + chroma, 48 frames)** :
+  `rendus` **51 (1,06/frame)** contre 132 (2,75) — **−61 %** ;
+  `rendus_differe` **48/48** ; `rendus_filet` **0** ; `rendus_gardes` **17**
+  (image d'attente blanche bloquée) ; `tick_conso` 151,6 s → **0,67 s** ;
+  `ui_rendu` 276 s → **102 s** ; `ui_tick` 61 % → **48 %** du mur. Restent
+  **`ui_rendu` 102 s** (1b) puis **`tick_avant` 200 s (24,5 ms/tour)** —
+  `ui_tick_occupe` 108 ms/tour contre 25 ms libre : c'est du travail Tk ET de
+  l'attente du GIL, à instruire avant de viser <20 %.
+
+
+## Étape 1b — rendu hors fil Tk (v2.98.2, branche `OptimisationUI`)
+
+- **Ce qui tourne où** : `avastack/ui/rendu.py` (`FilRendu`) est un fil DÉMON
+  unique. Le fil Tk ne garde que ce qui EXIGE Tk : le CHOIX DE LA SOURCE
+  (`_src_rendu`, seule lecture de `var_view`) puis l'AFFICHAGE d'un résultat
+  déjà calculé (`_show_image` + `_draw_hist`). Étirement, niveaux,
+  neutralisation, gamma, saturation et les DEUX histogrammes se font dans le
+  fil de rendu (`_histogrammes_purs()`, fonction PURE sans Tk).
+- **PIÈGE MAJEUR — UN SEUL ÉCRIVAIN de `DisplayProcessor`** : `process()` écrit
+  les stats EMA du STF (`_stats`), le cache de la chaîne et
+  `dernier_brut_niveaux`. En marche normale il n'est appelé QUE par le fil de
+  rendu. Ne JAMAIS ajouter un `self.disp.process(...)` dans un gestionnaire Tk
+  (la tentation est grande pour « juste un aperçu ») : c'est
+  `_refresh_preview()` / `_rendre_et_afficher()`, c'est-à-dire une DEMANDE.
+  Seule exception historique : `display.rendu_pleine_resolution()` (thread de
+  sauvegarde), qui ne touche à aucun état partagé.
+- **Aucune backpressure, « le dernier gagne »** : un seul job en attente ; une
+  nouvelle demande ÉCRASE la précédente (`rendus_ecrases`). Conséquence
+  ASSUMÉE : si les frames arrivent plus vite que les rendus, certaines ne sont
+  pas rendues et l'EMA avance une fois par IMAGE rendue, pas par frame. En
+  condition réelle (frames ~2 s, rendu ~2 s) `rendus` ≈ frames.
+- **NE JAMAIS attendre dans `_tick`** : `_tick_corps` APPLIQUE
+  (`_appliquer_rendus_disponibles()`) ; `attendre_rendu()` (borné) est réservé
+  aux bancs et aux scripts sans boucle d'interface.
+- **Génération / purge** : `FilRendu.purger()` (appelé par `_vider_ecran` et
+  `_reinit_etat_session`) incrémente la génération : un résultat calculé AVANT
+  le reset est JETÉ (`rendus_perimes`). Sans cela, une image de la cible
+  précédente repeindrait l'écran au tour suivant.
+- **Mode IMMÉDIAT** : `app.rendu.immediat = True` fait le rendu sur place
+  (comme avant 1b). Indispensable aux bancs et mesures qui lisent l'image ou
+  les bacs JUSTE après l'avoir demandée (1a, P5, histogramme, reset, jalons
+  39/79/96) ; si le fil est arrêté, le repli est automatique.
+- **Mesure** : `fil_rendu` / `fil_etirement` / `fil_histogrammes` = le CALCUL ;
+  `ui_rendu` / `ui_histogrammes` / `ui_dessin` = l'APPLICATION (c'est ce qui
+  chute). Compteurs `rendus_demandes`, `rendus_ecrases`, `rendus_perimes`,
+  `rendus_erreur` ; jauge `rendu_q` (0/1).
+- **Banc** : `bancs/_test_render_worker_bit_exact.py` (41 vérifications) —
+  image et bacs AU BIT, espion sur `_auto_params` (tous les appels viennent du
+  fil de rendu, stats EMA identiques à la référence synchrone), fil Tk qui
+  continue de tourner pendant un `process()` BLOQUÉ (rendez-vous, aucune
+  mesure de temps), « le dernier gagne », purge, fil arrêté, `_on_close`.
+- **Résultats RÉELS (`perf-5.json`, 637,7 s, VeraLux + chroma, 75 frames)** : le
+  calcul a bien quitté le fil Tk — `ui_rendu` **102 s → 2,2 s** (−98 %),
+  `fil_rendu` **169,4 s (84 × 2 017 ms)** à côté, `fil_etirement` 1 951 ms/rendu
+  sur `source_px` 7,41 Mpx ; `rendus` **84 (1,12/frame)**, `rendus_demandes` 84
+  ⇒ **0 écrasement**, **0 périmé**, `rendus_gardes` 22, `file_q` 0 ; plus de gel
+  de 2 s (pire tour **1 239 ms**). **MAIS `ui_tick` ne baisse PAS : 388,7 s =
+  61 %** (contre 48 % après 1a) — **`tick_avant` a DOUBLÉ** (200,2 s /
+  24,5 ms → **380,5 s / 64,0 ms**) alors que le travail mesuré dans cette
+  fenêtre reste négligeable (FITS 38 ms, mesures 3,1 s, réglages 2,8 s).
+  **Le fil Tk ne travaille plus : il ATTEND** (cf. le piège OpenCV ci-dessus).
+  Le ressenti d'Alain est le bon critère et il est atteint : l'interface répond
+  nettement mieux.
+- **Attente du fil Tk — MESURÉE depuis v2.98.3** : `perf.t0_cpu()` +
+  `perf.duree_attente()` (cf. « Instrumentation performance/mémoire »)
+  publient `attente.tick_avant.part_attente` et `attente.ui_tick.part_attente`
+  (plus une phrase dans `resume()`). Reste à **relever `perf-6.json` en réel** :
+  part ≈ 1 ⇒ famine **PROUVÉE** et l'on borne `cv2.setNumThreads` (étape ②) ;
+  part faible ⇒ le temps se passe VRAIMENT dans `_tick` (chercher les
+  sous-chronos avant tout correctif).
+

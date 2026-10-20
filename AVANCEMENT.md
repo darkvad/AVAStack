@@ -1,404 +1,306 @@
-﻿# AVANCEMENT.md — mémoire de travail à court terme
+# AVANCEMENT.md — mémoire de travail à court terme
 
-(Complète `CLAUDE.md`, qui porte les leçons durables. Ici : état courant, décisions,
-pièges actifs, prochaine action. Le détail daté vit dans `avastack/__init__.py`
-(changelog) et `git log` — pas ici.)
+(Complète `CLAUDE.md`, mémoire LONG terme. Ici : état courant, décisions, pièges
+actifs, prochaine action. Le détail daté vit dans `avastack/__init__.py`
+(changelog) et `git log`.)
 
 ---
 
 ## ⚠️ BRANCHE DE DÉVELOPPEMENT ACTIVE — NE PAS SUPPRIMER JUSQU'À DEMANDE EXPLICITE
 
-**Branche : `OptimisationUI`** (créée le 20/10/2026 à partir de `master`, pour le
-**lot 5 = P5**, audit MESURÉ de la réactivité de l'interface)
+**Branche : `OptimisationUI`** (depuis `master`, 20/10/2026) — audit MESURÉ
+performance/mémoire, puis refonte du rendu.
 
-> **RÈGLE FERME — GRAVÉE DANS LE MARBRE** : jusqu'à nouvel ordre explicite,
-> **TOUT** développement et **TOUTE** modification de code se font **EXCLUSIVEMENT**
-> sur `OptimisationUI`. `master` = branche stable, releases uniquement ; merge vers
-> `master` seulement sur validation explicite (demande d'Alain).
->
-> **`LRGBHa` est FERMÉE le 20/10/2026** : fusionnée en **fast-forward** dans
-> `master` (commit `efb2911`, après validation réelle de P6), puis **supprimée**
-> en local et sur `origin`. Sa trace vit dans `git log` et dans le changelog de
-> `avastack/__init__.py`. Ne pas la recréer sans demande d'Alain.
+> **RÈGLE FERME** : tout développement se fait **exclusivement** sur
+> `OptimisationUI` ; `master` = branche stable, releases uniquement ; merge
+> seulement sur demande explicite d'Alain. **`LRGBHa` est FERMÉE** — ne pas la
+> recréer.
 
-Versions : **`OptimisationUI` = v2.97.0** — **P5 « rendu AU RELÂCHEMENT »
-IMPLÉMENTÉ le 20/10** (banc vert, chiffres après correctif mesurés), **à VALIDER
-EN RÉEL** ; aucune release. **`master` = v2.96.1** : **136** halo coloré, **137**
-neutralisation après étirement en STF, **141-B** interface, **J2** fusion du Ha
-au rouge + continuum, **J3/J3bis** cinq modes, **J4/J4.1** continuum trois
-méthodes et mesure indépendante de la case, **J5** ancre = couche large bande,
-**Lot 1 (P2 + P3)** base SPCC la plus riche + astrométrie servie sans frame,
-**P7** recalcul après un choix de couleur, **P1** cadence de re-mesure, **P4**
-infobulles « ⓘ », **P6** source « Stacks (fichiers FITS) » + ses 2 défauts
-d'interface (piste A) — tous **VALIDÉS EN RÉEL** (19 et 20/10).
-· `master` publié = **v2.80.0** · Store publié = **v2.71.1**.
+Versions : **`OptimisationUI` = v2.98.3** (Phase 0 + **1a** + **1b** LIVRÉES et
+**validées en réel**, **aucune release** ; **`tick_avant` étape ① (MESURER)
+livrée**, relevé réel à faire) · `master` = v2.96.1 · **Store publié = v2.71.1**.
 
-**Gouvernance** : **aucune release GitHub sans l'accord d'Alain** ; **à CHAQUE jalon validé,
-lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une case de
-`config.json` — on MESURE le fichier produit.
+**Gouvernance** : aucune release GitHub sans accord ; **demander AVANT de
+démarrer le lot suivant** ; ne jamais déduire l'état d'une case de `config.json`
+— on MESURE le fichier produit.
 
 ---
 
-## Session du 20/10/2026 — **P6 VALIDÉ**, **P5 livré et TESTÉ EN RÉEL** (verdict : pas gênant, **pas plus vite**), **nouvelle piste = performance/mémoire**
+## Session des 20-21/10/2026 — Phase 0, **1a** et **1b** LIVRÉES ET VALIDÉES EN RÉEL · `tick_avant` ① MESURÉ
 
 ### État actuel
-- **v2.96.1 sur `master`** — P6 **VALIDÉ EN RÉEL par Alain le 20/10** (« testé en
-  réel, validé ») : cadre « Fusion Ha », réglages du composite et continuum
-  accessibles avec la source « Stacks ». **Aucune release** (`fb81b1d` = P6,
-  `efb2911` = correctif piste A, fusionné dans `master`).
-- **Branche de travail : `OptimisationUI`** (depuis `master`, poussée et suivie).
-  **`LRGBHa` fermée** (local + `origin`).
-- **P5 « RENDU AU RELÂCHEMENT » (v2.97.0) TESTÉ EN RÉEL par Alain le 20/10** :
-  « ce n'est pas gênant de ne pas avoir l'aperçu **mais ça ne va guère plus
-  vite** » ; « quand il n'y a pas le spinner *traitement en cours*, l'interface
-  répond ». **Le correctif est donc CONSERVÉ** (gain prouvé au banc) et **P5 est
-  CLOS** ; la gêne restante est **pendant le CALCUL**, pas pendant les gestes.
-- **Nouvelle direction (décision d'Alain)** : « si il faut chercher des
-  optimisations, elles sont ailleurs ». **AUDIT PERFORMANCE/MÉMOIRE** à mener
-  avec un modèle spécialisé en architecture : prompt prêt dans
-  **`AUDIT_PERF_PROMPT.md`** (racine), factuel et chiffré.
-- **Bancs rejoués verts après le correctif** : P5 (20), jalon 79 (**29**),
-  jalon 6 (boutons ±), jalon 120 (restauration), P6 (59), garde-fou (**pyright 0
-  sur 54 fichiers typés**, surface publique d'`app.py` inchangée). **Échec
-  PRÉEXISTANT** inchangé : `_test_lot1_p2_p3` volet [3] (profil SPCC déjà
-  corrigé dans `config.json`).
-
-### Test réel P5 + constats MÉMOIRE (20/10, après le correctif)
-
-**Verdict d'Alain** : « ce n'est pas gênant de ne pas avoir l'aperçu mais ça ne
-va guère plus vite » ; « quand il n'y a pas le spinner *traitement en cours*,
-l'interface répond » ; mémoire à **80 % de 32 Go**, à peine mieux éditeur fermé.
-→ **La gêne n'est pas le geste : c'est le CALCUL.** P5 est clos, conservé.
-
-**Empreinte MESURÉE de l'application** (diag temporaire, Windows, hors
-empilement) : interpréteur + NumPy **71 Mo** RSS (470 Mo de mémoire privée) ;
-App construite **93 Mo** ; +24 Mo pour une image 1600×1200 float32 ; après trois
-aperçus **RSS 148 Mo, pic 259 Mo** ; **3 threads** vivants (Tk, `_vl_worker`,
-guet). → AVAStack au repos ne prend **pas** 25 Go : les 80 % viennent d'ailleurs,
-très probablement des **accumulateurs d'empilement à PLEINE RÉSOLUTION**.
-
-**Calcul des buffers (`processing/stacking.py`, `LiveStacker`)** : `sum`, `sumsq`
-et `wsum` sont en **float64** (8 octets/pixel) ; le mode Winsorized ajoute une
-fenêtre de **8 frames float32** (`_buf`), plus `_moy`/`_sig`/`_dif` (float64)
-et `_pix`/`_masq`. Ordres de grandeur, **mono** :
-- 8,3 Mpx (3840×2160) → ~200 Mo (3 float64) + ~265 Mo (fenêtre 8) ≈ **0,7 Go** ;
-- 26 Mpx (6248×4176) → ~625 Mo + ~833 Mo ≈ **1,8 Go** ;
-- **× nombre de canaux** en composition (jusqu'à 5) → **plusieurs Go, jusqu'à
-  >10 Go** à 26 Mpx. C'est le premier suspect des 80 %, et il se MESURE.
-
-**Autre suspect (réactivité)** : chaque frame reçue déclenche **un aperçu complet
-(~300 ms) sur le fil Tk** ; pendant ce temps l'interface ne répond pas, et la
-file `q` (maxsize=2) retient la suivante. Découpler la **fréquence d'affichage**
-de celle des frames, et/ou sortir le calcul d'image du fil Tk, sont les pistes à
-instruire — **par la mesure, pas par intuition**.
-
-**Prompt d'audit prêt** : `AUDIT_PERF_PROMPT.md` (racine) — contexte,
-architecture des threads, calculs mémoire, chiffres mesurés, ce qui est DÉJÀ
-écarté, et les cinq questions posées (goulot, expériences, architecture cible,
-mémoire, ordre de mise en œuvre).
-
-### P5 — LES CHIFFRES AVANT (20/10, `--n 5`, **fenêtre PLEIN ÉCRAN**, aperçu **1600×1200**)
-> JSON : `bancs/_mesure_p5_reactivite.json`. Rejouer :
-> `python bancs/_mesure_p5_reactivite.py` (écran requis ; `--autotest` sans écran).
-> **Correction du 20/10 (remarque d'Alain)** : le premier passage avait été fait
-> sur un aperçu de banc 360×560 — **ce n'est pas l'usage réel**. L'application
-> plafonne l'aperçu à **1600 px de côté** (`min(1, 1600/max(h,w))`) et dessine à
-> la taille du CANVAS : les chiffres ci-dessous sont les VRAIS (canvas mesuré
-> **1548×744**, aperçu **1,92 Mpx**).
-
-| ce qui est mesuré | chiffre |
-|---|---|
-| geste gamma / saturation (après étirement) | **250–326 ms** |
-| geste « fond du ciel » / « coupure du bruit » / black | **364–383 ms** |
-| aperçu complet / sans histogrammes | **306 ms** / 261 ms (histogrammes **53 ms**, dessin **14 ms**) |
-| courbe de taille : 560×360 → 1280×720 → 1600×1200 | **59 → 143 → 302 ms** |
-| clic de case (`invoke`) | **284–299 ms** (1 aperçu) ; **auto-STF 326 ms** (2,33 aperçus) |
-| cran de spinner / `sp.set` nu | **311–332 ms** / 0,01 ms (0 rappel) |
-| `var.set` nu (case / liste / spinner) | **0 rappel** (piège Tk, prouvé) |
-| rafale (60 pas, boucle ACTIVE) | **20,15 s** (336 ms/pas), **60 battements au lieu de 671**, écart max **395 ms** |
-| opérations > **0,25 s** (Guet abaissé) | **21** (pire : **409 ms**) |
-| glissement de **200 px** (théorique, la file) | **50 s → 76 s** |
-| charge pour suivre 60 Hz de souris | **2 284 % d'un cœur** |
-
-**Lecture** : un seul aperçu coûte **~300 ms**, dont **14 ms de dessin** → le coût
-est le **pipeline numpy** (étirement/saturation/histogrammes), pas Tk. Cliquer une
-case, c'est donc déjà ~300 ms d'attente (constat d'Alain : « même les clics sur
-les cases mettent un temps certain »). `_tick`, les listes (147 valeurs) et
-`pack/forget` restent HORS DE CAUSE. **Décision d'Alain** : pendant un glissement
-on ne calcule **RIEN**, **un seul aperçu AU RELÂCHEMENT** (le coalescing n'était
-qu'un pis-aller) ; l'**aperçu réduit n'est PAS retenu** à ce stade.
-
-### P5 — LES CHIFFRES APRÈS le correctif (même outil, même taille, 20/10 — v2.97.0)
-
-| ce qui est mesuré | avant | après |
-|---|---|---|
-| un PAS de glissement de souris | **~300 ms** (un aperçu PAR pixel) | **0,036 ms** |
-| aperçus pour un glissement complet | 1 par pixel | **1** (au relâchement) |
-| glissement de **200 px** | **50 à 76 s** | **230–324 ms** |
-| rafale 60 pas, boucle ACTIVE | **20,15 s**, 60 aperçus, 60 battements / 671 attendus | **1,35 s**, **1 aperçu**, 31 battements / 44 attendus, écart max 254 ms |
-| charge pour suivre 60 Hz de souris | **2 284 %** d'un cœur | **0,22 %** |
-| aperçu complet / sans histogrammes | 306 / 261 ms | **252 / 204 ms** (inchangé, c'est le prix d'UN aperçu) |
-| clic de case / cran de spinner | 284–326 / 311–332 ms | **inchangés** (~250–300 ms, 1 aperçu) |
-
-**Lecture** : le coût d'un geste n'est plus proportionnel au NOMBRE de pixels
-parcourus mais à **un seul aperçu** — c'est exactement l'arbitrage d'Alain. Le
-prix assumé : pendant le geste, l'image ne correspond plus à la valeur affichée
-(elle rattrape au relâchement). **Ce qui reste à ~300 ms** (case, spinner, un
-relâchement) est le pipeline numpy d'un aperçu : hors du champ de P5.
+- **Phase 0** (instrumentation `avastack/perf.py`, **opt-in**, coût nul) :
+  livrée ; banc `_test_phase0_perf.py` (58 + câblage AST).
+- **1a** (un seul rendu par frame) : livrée et **validée en réel**
+  (`perf-4.json`), banc `_test_1a_rendu_final.py` (40).
+- **1b** (rendu hors fil Tk) : livrée et **validée en réel** (`perf-5.json`),
+  banc `_test_render_worker_bit_exact.py` (**41**), garde-fou vert (pyright 0
+  sur **56** fichiers typés, hashes d'empilement au bit).
+- **Ressenti d'Alain (le vrai critère)** : **l'interface répond nettement
+  mieux** — plus de gel de 2 s pendant l'étirement.
+- **Reste ouvert** : `tick_avant` = **380,5 s (64,0 ms/tour)** — le fil Tk
+  **ATTEND** (hypothèse dominante : OpenCV tourne à **14 fils**, jamais
+  bornés) ; `ui_tick` reste à **61 %** du mur. **À PROUVER** par `perf-6.json`.
+- **`tick_avant` étape ① (MESURER) LIVRÉE — v2.98.3** : `perf.t0_cpu()` +
+  `perf.duree_attente(base, mur, cpu)` posent, **à côté du mur**, le CPU du
+  **fil appelant** (`time.thread_time()`) et l'**ATTENTE** = mur − CPU, avec un
+  bilan `attente` (`part_attente`) dans le JSON et une ligne dans `resume()`.
+  Branché sur **`tick_avant`** (`_tick_corps`) et **`ui_tick`** (`_tick`) —
+  deux points, **aucun pixel, aucun calcul déplacé**. Banc Phase 0 :
+  **110 vérifications** exécutées (section **[2 bis]** : sommeil ⇒ part ≈ 1,
+  CPU publié comparé à une mesure DIRECTE, calcul pur ⇒ attente nettement
+  moindre — **pas de seuil absolu**, il mesurait la charge machine).
+- **Rien n'est encore PROUVÉ** : la famine du fil Tk ne sera établie que par un
+  relevé réel **`perf-6.json`**. L'étape ② (borner `cv2.setNumThreads`) ne
+  s'engage pas avant.
 
 
+### Les trois relevés qui commandent la suite (M33, 5 canaux, pleine résolution)
 
-### Le correctif P6 (piste A) — **CLOS** (détail durable dans `CLAUDE.md`)
+| mesure | `perf-3` (avant 1a) | `perf-4` (1a) | `perf-5` (1b) |
+|---|---|---|---|
+| `rendus` | 132 (2,75/frame) | 51 (1,06) | **84 pour 75 frames (1,12)** |
+| `ui_rendu` (fil Tk) | 276 s | 102 s | **2,2 s** |
+| `fil_rendu` (hors Tk) | — | — | **169,4 s (84 × 2 017 ms)** |
+| `fil_etirement` | — | — | 163,9 s (1 951 ms, 7,41 Mpx) |
+| `tick_conso` | 151,6 s | 0,67 s | 3,2 s |
+| `tick_avant` | 202,5 s (26,7 ms) | 200,2 s (24,5 ms) | **380,5 s (64,0 ms)** |
+| `ui_tick` | 482,8 s = **61 %** | 307 s = **48 %** | **388,7 s = 61 %** |
+| `ui_tick_libre` / `occupe` | — | 25 / 108 ms | **61,6 / 70,9 ms** |
+| `cores_moyens` / `cpu_s` | 1,59 | 1,28 | **1,99 / 1 270 s** |
+| `empilement` | 4 356 ms | — | 4 503 ms |
+| `stackers_mo` / RSS (pic) | 2 935 / 4 503 | 2 936 / 3 161 | 2 935 / 4 804 (5 057) |
 
-### Fichiers modifiés dans cette phase
-- `avastack/ui/app.py` : **P5** — `_add_slider` (rendu au relâchement, minuteur,
-  filet, gestionnaires de geste), `_forcer_rendu_curseur`, `_rendre_curseurs`,
-  `_poser_curseur` (+ rendu forcé), `_on_auto` et 🔒 logD (forcent avant leur
-  rendu explicite), constantes `DELAI_SECOURS_CURSEUR_MS` (150) et
-  `DELAI_SECOURS_GLISSE_MS` (600) ;
-- `bancs/_test_p5_rendu_relachement.py` (**neuf**) : contrat P5, **20
-  vérifications** (câblage, zéro calcul pendant le geste, image du relâchement
-  identique au bit, filet, gestes discrets, coalescence du minuteur) ;
-- `bancs/_mesure_p5_reactivite.py` : sections **[1]** et **[8]** réécrites sur le
-  VRAI geste (`_debut_glissement`/`_fin_glissement`) + comptage des aperçus ;
-- `bancs/_test_perf_reactivite_jalon79.py` : le helper `geste()` **force** le
-  rendu (un `s.set()` seul ne rend plus) ;
-- `bancs/_mesure_p5_reactivite.json` : passage APRÈS correctif (rejouable) ;
-- `avastack/__init__.py` : **v2.97.0** + changelog ; `CLAUDE.md` : leçon durable
-  « rendu au relâchement » + piège `event_generate`/focus ;
-- (P6, déjà livré) `panels/compo.py`, `panels/stacks.py`,
-  `bancs/_test_lot5_p6_stacks.py`.
+Compteurs `perf-5` : `rendus_demandes` 84, **`rendus_ecrases` 0**,
+**`rendus_perimes` 0**, `rendus_gardes` 22, `rendus_differe` 75/75, `vl_new` 82,
+`file_q` 0. Jauges : `vl_actif` true, moteur **VeraLux**, `vl_etapes` « CH »,
+`source_px` 7,41 Mpx. Pire tour `ui_tick` : **1 239 ms**.
 
+**Lecture** : 1b a fait ce qu'il devait (`ui_rendu` 102 s → 2,2 s, calcul
+déplacé dans `fil_rendu`), mais le temps mural du fil Tk n'a pas baissé :
+`tick_avant` a DOUBLÉ sans travail mesuré dedans (FITS 38 ms, mesures 3,1 s,
+réglages 2,8 s) — **c'est de l'attente**, pas du travail Tk.
 
 ### Décisions
-- **Piste A TRANCHÉE (Alain, 20/10)** : réutiliser le panneau « Composition »
-  pour les FICHIERS en verrouillant les lignes DOSSIER — piste B (panneau
-  « composite » séparé) écartée comme refactor plus large sans bénéfice.
-- **La composition AFFICHÉE suit la source** : fichiers → déduite (menu
-  verrouillé) ; dossiers → choisie au menu. **Un seul fichier n'est pas une
-  composition** (cadre « Fusion Ha » masqué).
-- **Rappels P6** : le rôle n'est JAMAIS déduit ; refus sur PREUVE seulement ;
-  seuil de profondeur = 1 ; `_source_fichiers()` ≠ `_cadence_dossier()`.
-- **P5 : mesurer SANS toucher au produit** (20/10) — `Guet.SEUIL_S` reste à
-  1,5 s : le banc compte lui-même les opérations au-delà de 0,25 s (`--seuil`),
-  même information, rien à remettre en état après coup.
-- **P5 — RENDU AU RELÂCHEMENT (décision d'Alain, 20/10)** : un glissement de
-  curseur ne déclenche **AUCUN** calcul ; la variable et l'étiquette suivent
-  (≈ 0 ms) et l'aperçu part au `<ButtonRelease-1>`. Les gestes **DISCRETS**
-  (boutons `-`/`+`, flèches clavier, zone de saisie, `_poser_curseur`) rendent
-  **immédiatement** (un seul aperçu). **Garde-fou** : sans relâchement (focus
-  perdu, `s.set` programmatique), un minuteur (~150 ms) déclenche le rendu —
-  jamais d'image périmée. **Prix assumé** : pendant le glissement, l'image ne
-  correspond plus à la valeur affichée.
-- **NON retenu à ce stade** : l'aperçu RÉDUIT pendant le geste (~80–100 ms à
-  800×600). À n'ajouter qu'APRÈS un test réel, et sur demande d'Alain.
-- **P5 — IMPLÉMENTATION (20/10, v2.97.0)** : un seul chemin de rendu différé
-  (`_rendre`) pour le minuteur ET le relâchement ⇒ jamais deux aperçus pour un
-  même changement ; le relâchement rend par **`after_idle`** (les liaisons de
-  CLASSE du `ttk.Scale` posent la valeur finale du clic APRÈS notre liaison
-  d'évènement) ; **filet de 600 ms** ajouté pour un geste stoppé sans
-  relâchement (aucun aperçu pendant un geste qui bouge, mais jamais d'image
-  figée) ; **`_poser_curseur` FORCE le rendu** — déviation assumée par rapport au
-  « bonus ~1 aperçu à la restauration » : une restauration doit être complète en
-  sortant (`_test_restauration_curseurs_jalon120` lit `disp.*` juste après
-  `App()`), et le bonus était de toute façon théorique (aucune image au
-  démarrage ⇒ 40 aperçus qui ne dessinaient rien).
+- Instrumentation **opt-in** et **coût nul** hors `--perf` (protège la course du
+  banc 76 et les hashes d'empilement au bit).
+- **Pleine résolution = choix assumé** ⇒ réponse **architecturale** (rendu hors
+  fil Tk), **pas** une réduction d'aperçu.
+- **1a** : un seul rendu par frame ; c'est l'IMAGE FINALE qui s'affiche quand la
+  chaîne est active. **Aucune image d'attente** à l'écran si une image est déjà
+  affichée (`rendus_gardes`).
+- **1b** : ① **un seul job** en attente (« le dernier gagne », aucune
+  backpressure) ; ② **un seul écrivain** de `disp` (tout le rendu passe par le
+  fil, `tick_traitee` compris) ; ③ **génération de session** : un résultat
+  d'avant un reset est JETÉ (aucun gel au reset) ; ④ mode **`immediat`** pour
+  les bancs ; ⑤ histogrammes **calculés dans le fil** (fonction PURE) et
+  seulement TRACÉS dans le fil Tk.
+- Ordre arrêté : 1a → 1b → **`tick_avant`** → mémoire → empilement.
+- **`tick_avant` ① : MESURER AVANT de corriger.** Un mur de 64 ms ne dit pas si
+  le fil travaille ou attend ; les deux hypothèses mènent à des correctifs
+  opposés (dégraisser `_tick` contre borner OpenCV). `part_attente` tranche.
+- **Attente INCONNUE ≠ attente nulle** : sur une plateforme sans
+  `time.thread_time()` (macOS < 3.13) `duree_attente()` ne pose RIEN et
+  `contexte.cpu_fil` vaut `false` — jamais un zéro trompeur.
+- Coût **nul** hors `--perf` conservé : `t0_cpu()` rend None sans appeler
+  d'horloge, `duree_attente()` sort au premier test.
 
-### Problèmes ouverts / prochaines étapes
-1. **AUDIT PERFORMANCE/MÉMOIRE — PROCHAINE ACTION UNIQUE** (branche
-   `OptimisationUI`, v2.97.0 poussée). Alain fait analyser
-   **`AUDIT_PERF_PROMPT.md`** par un modèle spécialisé en architecture, puis on
-   **trie ses pistes par ce qui se MESURE** (règle du projet : mesurer d'abord).
-   Les deux hypothèses déjà chiffrées à instruire :
-   - **mémoire** : `LiveStacker.sum/sumsq/wsum` en **float64** + fenêtre
-     Winsorized de 8 frames, **× nombre de canaux** (jusqu'à 5) → plusieurs Go à
-     pleine résolution. Banc à écrire : RSS pendant un empilement réel (chemin
-     `_worker_empiler_frame`), avant/après toute réduction.
-   - **réactivité pendant le calcul** : **un aperçu complet (~300 ms) sur le fil
-     Tk à chaque frame** ; file `q` (maxsize=2). Piste : découpler la fréquence
-     d'affichage de celle des frames (budget de rendu), et/ou sortir le calcul
-     d'image du fil Tk — à mesurer au Guet + durée de gel par frame.
-   - **Ne pas rouvrir** : les gestes de curseurs (P5, clos, gain prouvé), les
-     listes, `pack/forget`, `_tick` (tous mesurés < 1 ms), l'aperçu réduit
-     pendant un geste (refusé par Alain).
-2. **Release v2.97.x** sur accord explicite (aucune release depuis v2.80.0 ;
-   `master` est à v2.96.1 et porte la fusion de `LRGBHa`). Le lot 5 est **clos**
-   (P5 testé en réel le 20/10) : le plan figé du 19/10 est **terminé**, la suite
-   s'écrit dans l'audit.
+### Problèmes ouverts
+- **`tick_avant` = 380,5 s (64,0 ms/tour)** : 98 % de `ui_tick`. Le travail
+  mesuré y est négligeable ⇒ **ATTENTE** (à PROUVER par `perf-6.json` :
+  `attente.tick_avant.part_attente`). `ui_tick_libre` = 61,6 ms/tour alors
+  qu'aucun empilement ne tourne (mais le fil de rendu, si). **OpenCV est
+  configuré à 14 fils** (`cv2.getNumThreads()` = 14 ; 14 cœurs logiques) et
+  l'application ne le borne **jamais** : ces fils sont NATIFS, invisibles pour
+  `threading.active_count()` (jauge `threads` = 5) et pour les chronos — mais
+  `cpu_s` = **1 270 s** pour ~550 s de travail mesuré (**~700 s de CPU
+  fantômes**). ⇒ Le fil Tk n'obtient plus de cœur pendant le rendu.
+- **Critère de sortie de la Phase 1 NON atteint** : `ui_tick` < 20 % du mur
+  (aujourd'hui 61 %).
+- **Réactivité sous chaîne lente** (1a) : l'écran suit les `vl_new` ; à
+  surveiller en réel. 1b ajoute : une rafale de réglages ne produit qu'UN rendu
+  (le dernier) — voulu.
+- **Mémoire** (`stackers_mo` 2 935 Mo = 61 % du RSS) et **`empilement`**
+  (4 503 ms/frame) : APRÈS `tick_avant`.
+- Pire tour `ui_tick` = 1 239 ms (sous le seuil du Guet de 1,5 s, mais c'est un
+  à-coup encore visible).
 
+### Fichiers de l'étape ① `tick_avant` (v2.98.3)
+- `avastack/perf.py` : `t0_cpu()` (CPU du fil, `time.thread_time()`),
+  `duree_attente(base, mur, cpu)` → `<base>_cpu` + `<base>_attente`,
+  `cpu_fil_disponible()` ; bilan `attente` dans `instantane()`, ligne dans
+  `resume()`, `contexte.cpu_fil` dans le JSON.
+- `avastack/ui/app.py` : `_tick` (`ui_tick`) et `_tick_corps` (`tick_avant`) —
+  deux points de mesure, rien d'autre.
+- `bancs/_test_phase0_perf.py` : section **[2 bis]** (8 vérifications neuves,
+  témoin calcul pur) + `t0_cpu` inactif + 2 contrôles JSON — **110** au total.
+- `avastack/__init__.py` : v2.98.3 + changelog.
+
+### Fichiers de l'étape 1b (v2.98.2)
+- `avastack/ui/rendu.py` : **NEUF** (typé) — `FilRendu`, `Job`/`Resultat`,
+  génération, mode `immediat`, compteurs, chronos `fil_*`.
+- `avastack/ui/renderer.py` : `_rendre_et_afficher()` = DEMANDE ;
+  `_appliquer_rendu()`, `_appliquer_rendus_disponibles()`, `attendre_rendu()` ;
+  `_vider_ecran()` purge.
+- `avastack/ui/app.py` : `self.rendu = FilRendu(self)` ; application dans
+  `_tick_corps` ; `tick_traitee` par le fil ; purge au reset ; arrêt du fil à
+  la fermeture.
+- `avastack/ui/widgets/histogram.py` : `_histogrammes_purs()` (PURE).
+- `bancs/_test_render_worker_bit_exact.py` : **NEUF** (41).
+- Bancs passés en **rendu immédiat** : `_test_1a_rendu_final`,
+  `_test_couleurs_immediat_jalon39`, `_test_histo_jalon75`,
+  `_test_reset_empilement_jalon76`, `_test_p5_rendu_relachement`,
+  `_test_perf_reactivite_jalon79`, `_mesure_p5_reactivite`, `_mesure_memoire`.
+- `_test_phase0_perf` : vérifie le câblage du CALCUL dans `ui/rendu.py` ;
+  garde-fou : `ui/rendu.py` typé.
+- `avastack/__init__.py` : v2.98.2 + changelog ; `CLAUDE.md` : section 1b.
+- Détail complet (Phase 0, 1a, 1b) : changelog `avastack/__init__.py`.
+
+---
+
+## Chantier en cours — PHASE 1 : **rendu hors fil Tk** (1a + 1b LIVRÉES, `tick_avant` ① mesuré)
+
+**Objectif** : fil Tk de **61 % → ~10-15 %** du temps mural, **sans changer un
+pixel** (même `DisplayProcessor.process`, même ordre).
+**Contraintes** : mono-processus, Tkinter, multiplateforme, **pixels identiques
+au bit** (bancs), pas d'aperçu réduit, pas de calcul pendant un geste (P5 livré).
+
+| jalon | état | preuve |
+|---|---|---|
+| 1a — un seul rendu par frame | **LIVRÉE** (v2.98.1) | `perf-4`, banc 40 |
+| 1b — rendu hors fil Tk | **LIVRÉE** (v2.98.2) | `perf-5`, banc 41 |
+| **`tick_avant` ① — MESURER** | **LIVRÉE** (v2.98.3) | `t0_cpu`/`duree_attente`, banc 75 |
+| **`tick_avant` ② — AGIR** | en attente du relevé | `perf-6.json` (`part_attente`) |
+| mémoire | après | `stackers_mo` 2 935 Mo |
+| `empilement` | après | 4 503 ms/frame |
+
+**Critères de sortie** : ① `rendus` ≈ frames (**atteint : 1,12×**) ;
+② `ui_tick` < 20 % du mur (**61 %**) ; ③ image finale au bit (**atteint**) ;
+④ 0 gel du Guet (**atteint** — pire tour 1,24 s) ; ⑤ garde-fou vert (**atteint**).
 
 
 ---
-## Points d'attention
-- **TROIS noms de composition** (141-B) : `stacker.composition`/`_compo_nom`,
-  `_compo_session`, `var_compo` ; **`"RGB+Ha"` est une sous-chaîne de
-  `"LRGB+Ha"`** ⇒ jamais `startswith`/`in` pour identifier une composition.
-- **J2 — fusion ACTIVE PAR DÉFAUT** : `fusion_ha = None` = défauts figés ;
-  désactiver = `{"poids": 0.0}`. Le réglage entre dans la clé de mémoïsation et
-  dans `disp.vl_compo`.
-- **J2 — continuum** : actif par défaut, **case ET Q désactivés sans couche R
-  FOURNIE** — un **dossier** en composition, un **fichier** pour la source
-  « Stacks » (`_role_fourni`, piste A) ; l'échelle R est le DÉNOMINATEUR de
-  normalisation du Ha (ne pas le remplacer par 1 sans regarder le mode de
-  normalisation).
-- **P6 piste A — la composition est VERROUILLÉE sous la source « Stacks »** :
-  `_maj_compo_verrouillage` grise le menu, les lignes rôle→DOSSIER, `…` et
-  « Détecter les filtres » ; les réglages du COMPOSITE (gains, normalisation
-  commune, lissage LRGB, « Fusion Ha ») restent ACTIFS. Ne jamais réintroduire
-  un chemin qui réécrit `var_compo` depuis les lignes dossier sous cette source
-  (`_on_compo` / `_on_compo_roles` sont gardés).
-- **J3bis — les cinq modes ne touchent que le ROUGE** (V/B au bit) ;
-  `ha_luminance` = gain **à porte** (0,05–0,25) : ne pas baisser la porte sous
-  0,05 sans refaire la mesure.
-- **Une brute est DITHÉRÉE** : seul un empilement ALIGNÉ prouve quelque chose ;
-  `--dossier` sans `--dark` = run invalide dès que l'exposition change.
-- **Lancement** : `python AVAStack.py` (venv) — jamais `python3`. Bancs UI :
-  `cv2.ocl.setUseOpenCL(False)`, `ui.CONFIG = {}`, `ui.App._dire` patché
-  (boîte MODALE, sinon blocage), jamais `grid` + `pack` dans le même conteneur.
+
+## En attente / prochaine session
+
+- **`tick_avant` — étape ① LIVRÉE (v2.98.3)** : la mesure du CPU du fil Tk est
+  branchée (`t0_cpu` + `duree_attente` sur `tick_avant` et `ui_tick`).
+  **Il ne reste qu'à RELEVER** : session réelle VeraLux + chroma, même jeu M33,
+  puis
+
+  `python AVAStack.py --perf`
+
+  (le fichier s'écrit **à côté du programme** — le chemin est imprimé au
+  démarrage — et se lit PENDANT la session, réécrit toutes les 5 s ; pour garder
+  un relevé, copier/renommer `perf.json` en `perf-6.json` APRÈS la fermeture :
+  `perf*.json` est dans `.gitignore`).
+
+  et lire **`attente.tick_avant.part_attente`** (et `attente.ui_tick`).
+- **Si `part_attente` ≈ 1** ⇒ famine **PROUVÉE** : passer à l'étape ②, dans cet
+  ordre — (a) **`cv2.setNumThreads(N)`** borné au démarrage (N = 2 ou la moitié
+  des cœurs, repli multiplateforme : ne jamais supposer Windows) ; (b)
+  `sys.setswitchinterval(0.001)` ; si les deux ne suffisent pas : borne de
+  concurrence (ne pas relancer un rendu pendant un empilement) ou priorité OS du
+  fil Tk (à discuter, multiplateforme).
+- **Si `part_attente` est FAIBLE** ⇒ le temps est réellement passé dans `_tick` :
+  chercher les sous-chronos (`tick_fits`, `tick_mesures`, `tick_reglages`,
+  `tick_vues`) AVANT tout correctif — et NE PAS borner OpenCV « au cas où ».
+- **Ensuite** : **mémoire** (float32 + somme compensée + stackers paresseux,
+  2 935 Mo → ~1,4 Go) puis **décomposition d'`empilement`** (alignement vs rejet).
+- **`CLAUDE.md`** : mise à jour de 1b faite (accord d'Alain, 21/10) ; reste à y
+  porter la leçon de v2.98.3 (mesurer le CPU du fil, pas seulement le mur) —
+  **proposée, pas encore écrite**.
+- Aucune release ; `master` reste à v2.96.1 ; le Store à v2.71.1.
 
 ### Contexte de reprise (à coller — 2 phrases)
-Arbre **v2.97.0** sur **`OptimisationUI`** : **P5 est LIVRÉ, TESTÉ EN RÉEL et
-CLOS** (verdict : pas gênant, mais **pas plus vite** — la gêne suit le spinner
-« traitement en cours » : c'est le CALCUL, pas le geste ; mémoire à 80 % de
-32 Go). **Prochaine action unique** : faire analyser **`AUDIT_PERF_PROMPT.md`**
-par un modèle d'architecture, puis n'implémenter que ce qui sera **mesurable** —
-premier suspect chiffré : les accumulateurs `float64` du `LiveStacker` à pleine
-résolution (×5 canaux).
-
-
----
-
-## Chantier CLOS — LRGB+Ha (jalons 129 → J5) — **J2 à J5 validés en réel**
-
-Le Ha **n'alimente aucun canal** : il est **FUSIONNÉ** au composite après le
-combine L. Règles durables (poids 1,0 · α 0,5 · Q 0,80 · continuum trois
-méthodes avec repli VISIBLE · ancre = couche large bande) : `CLAUDE.md`
-(« Fusion du Ha… ») et changelog.
-
----
-
-## Chantier en cours — Améliorations d'usage (P1 → P6) — **PLAN FIGÉ le 19/10**
-
-**Un lot = un jalon** ; demander l'accord d'Alain avant chaque nouveau lot.
-**LOT 0 SUPPRIMÉ** (décision d'Alain) : la base SPCC n'est PAS réparée à la
-main — le correctif de code doit suffire, et le test réel le prouve.
-
-| Lot | Points | Contenu | État |
-|---|---|---|---|
-| **1** | **P2 + P3** | base SPCC la plus riche, zéro substitution silencieuse, `_astro_demande` | **VALIDÉ EN RÉEL le 19/10** ; **P7 validé en réel** (v2.93.1) |
-| 2 | P1 | cadence de re-mesure Gaia/SPCC | **VALIDÉ EN RÉEL le 19/10** (v2.94.0) |
-| 3 | P4 | infobulles ⓘ | **VALIDÉ EN RÉEL le 19/10** (v2.95.0) |
-| **4** | **P6** | source « stacks » : fichiers choisis, **rôles saisis**, seuil de profondeur = 1 | **VALIDÉ EN RÉEL le 20/10** (v2.96.1) — empilement le 19/10, défauts d'interface corrigés (piste A) puis validés |
-| **5** | **P5** | audit MESURÉ de la réactivité | **CLOS le 20/10** — correctif « rendu AU RELÂCHEMENT » livré (v2.97.0) et **testé en réel** : pas gênant, **pas plus vite** ⇒ la gêne est ailleurs (voir « Test réel P5 + constats MÉMOIRE ») |
-
-### Lots 1 → 4 — **VALIDÉS EN RÉEL et CLOS** (détails dans `CLAUDE.md` + changelog)
-- Lot 1 (P2+P3, v2.93.0) puis P7 (v2.93.1) · Lot 2 (P1, v2.94.0) · Lot 3 (P4,
-  v2.95.0, infobulles ⓘ, 702 px repris) · Lot 4 (P6, v2.96.0/2.96.1, source
-  « Stacks » + piste A, banc 59 vérifications).
-
-### P5 — réactivité (lot 5) — **CORRIGÉ le 20/10 (v2.97.0), à valider en réel**
-- Outil `bancs/_mesure_p5_reactivite.py` (10 sections, `--autotest` sans écran,
-  JSON rejouable), **sans modification du produit** pour la mesure : seuil du
-  Guet inchangé (1,5 s), le banc compte lui-même les opérations > 0,25 s.
-- **Suspicions LEVÉES** : `_tick` (0,3 % du budget), listes SPCC 147 valeurs
-  (0,2 ms), `pack/forget` (0,5 ms). **Confirmée** : un aperçu complet par pixel
-  de souris. Chiffres avant/après en tête de session.
-- Banc `_test_perf_reactivite_jalon79` : 29 vérifications vertes (+ sections
-  cases / listes / spinners), et **banc NEUF** `_test_p5_rendu_relachement.py`
-  (20 vérifications).
-
-
-
-### P6 — source « Stacks (fichiers FITS) » (lot 4) — **CLOS : VALIDÉ EN RÉEL (v2.96.1)**
-- Empilement OK le 19/10, puis **« testé en réel, validé »** le 20/10 après le
-  correctif des deux défauts d'interface (piste A). Contrat durable et banc
-  (**59** vérifications) : `CLAUDE.md` + changelog.
-
-
----
-
-## En attente / prochaine session (état au 20/10 — branche `OptimisationUI`, v2.97.0)
-
-- **P5 est CLOS** (livré v2.97.0, poussé, testé en réel le 20/10) : le correctif
-  est **conservé** (gain prouvé : 1 aperçu par geste, 0,036 ms par pas), même si
-  l'impression générale n'a pas changé.
-- **Prochaine action UNIQUE** : **audit performance/mémoire** — Alain fait
-  analyser **`AUDIT_PERF_PROMPT.md`** par un modèle d'architecture et rapporte
-  les pistes ; on ne retient que celles qui se **mesurent** (banc avant/après).
-- **Premiers chiffres à produire** (avant toute refonte) : ① RSS pendant un
-  empilement réel, pleine résolution, 1 canal puis 5 ; ② durée de gel du fil Tk
-  par frame pendant ce même empilement (Guet) ; ③ temps passé dans
-  `_rendre_et_afficher` par frame.
-- **Puis** : **release v2.97.x** sur accord explicite (`master` est à v2.96.1).
-
-- **Référence chiffrée** : `C:\Astro\test\M33_Canaux_LRGBHa` (5 `canal_*.fit` +
-  fiches ; `AVACOMPO` = LRGB+Ha, **normalisation COMMUNE**, lissage 117d).
-  Rejouer : `python bancs/_diag_fusion_ha_echelles.py --canaux <dossier>
-  --norm-commune --lissage-halos --poids 1.5` (`--autotest` contrôle l'outil).
-- **Ne pas retoucher** : `ajout_rouge` (AU BIT), la formule `bandes_passantes`
-  7 nm, α, le poids, le principe « repli = bandes passantes AU BIT ».
-- **Optionnel** : cible qui REMPLIT le cadre (repli attendu et DIT) et filtre
-  **3 nm** si Alain en a un.
-- **141-B validée** (rien à retester) ; **teinte des COINS** notée, sans action.
-- Retour arrière en un geste (correctif P5 seul) : `git checkout HEAD~1 --
-  avastack/ui/app.py avastack/__init__.py` (+ remettre `AVASTACK_VERSION` à
-  2.96.1 en cas de doute).
+Branche **`OptimisationUI`, v2.98.3** : Phase 0 + **1a** + **1b** livrées et
+**validées en réel**, et l'étape **① de `tick_avant` (mesurer l'attente du fil
+Tk)** est livrée — `perf.t0_cpu` / `duree_attente` publient `part_attente` pour
+`tick_avant` et `ui_tick`, banc Phase 0 à **75 vérifications**. Prochaine action
+**unique** : **relever `perf-6.json` en réel** (`--perf --perf-json …`) et lire
+`attente.tick_avant.part_attente` — proche de 1 ⇒ famine prouvée, on borne
+**OpenCV (14 fils !)** ; faible ⇒ le temps se passe vraiment dans `_tick`
+(banc Phase 0 à **110** vérifications).
 
 ---
 
 ## Setup d'Alain
 
 - **Setup 1 (miniPC)** : QHY MiniCam8M (mono refroidie, roue intégrée) ; N.I.N.A. →
-  `TargetSchedulerSequence/<cible>/<expo>/LIGHT` — un dossier peut MÉLANGER plusieurs nuits.
-- **Setup 2** : C8 défourché + réducteur 0,63 (1280 mm) ; Player One Uranus-C Pro (couleur,
-  IMX585, RGGB) sur monture DIY **Open Astro Mount** ; guidage SV305C sur 60/240.
-- **Jeux de test (QHY + SV555)** : **M31** (L du 13/09 + R/G/B des 22-23/09, 60 s,
-  −15 °C ; un dossier peut mêler les deux côtés du Pier) ; **M33** (nuit du
-  10-11/10 : L 60×60 s, R/G/B 60-120 s) + un dossier **Ha de 40 frames**.
-  Darks maîtres : 60 s (L/R/G), 120 s (B), 180 s (Ha).
-- **Outils locaux** : Siril 1.4.4 (Gaia XP, base SPCC), ASTAP (D80 Gaia DR3) ; pas
-  d'astrometry.net. **Ubuntu 26.04 LTS** : installateur éprouvé ; restent la
+  `TargetSchedulerSequence/<cible>/<expo>/LIGHT` — un dossier peut MÉLANGER
+  plusieurs nuits.
+- **Setup 2** : C8 défourché + réducteur 0,63 (1280 mm) ; Player One Uranus-C Pro
+  (couleur, IMX585, RGGB) sur monture DIY **Open Astro Mount** ; guidage SV305C
+  sur 60/240.
+- **Jeux de test (QHY + SV555)** : **M31** (L du 13/09 + R/G/B des 22-23/09,
+  60 s, −15 °C) ; **M33** (nuit du 10-11/10 : L 60×60 s, R/G/B 60-120 s) + un
+  dossier **Ha de 40 frames**. Darks maîtres : 60 s (L/R/G), 120 s (B), 180 s
+  (Ha).
+- **Outils locaux** : Siril 1.4.4 (Gaia XP, base SPCC), ASTAP (D80 Gaia DR3) ;
+  pas d'astrometry.net. **Ubuntu 26.04 LTS** : installateur éprouvé ; restent la
   machine VIERGE et le test matériel caméras (`--cameras`).
+
 
 ---
 
 ## Pièges récents (encore actifs — le reste est passé dans `CLAUDE.md`)
 
-- **P5 — un curseur ne rend plus par `set()`** : depuis le rendu au relâchement,
-  `s.set()` ne fait que la variable et l'étiquette (minuteur 150 ms). Un banc ou
-  un code qui veut l'effet TOUT DE SUITE appelle
-  `app._forcer_rendu_curseur(s)` (un curseur) ou `app._rendre_curseurs()` (tous)
-  AVANT un rendu explicite — sinon le rendu part avec les `disp.*` précédents.
-  Un geste se simule par `s._debut_glissement()` / `s._fin_glissement()`.
+- **Le fil Tk ATTEND, il ne travaille pas** (`perf-5`) : `tick_avant` =
+  64 ms/tour pour 3,2 ms de travail mesuré. Ne PAS conclure à un coût de Tk.
+  **Depuis v2.98.3 c'est MESURÉ et non plus supposé** : `perf.t0_cpu()` +
+  `perf.duree_attente()` posent `<base>_cpu` et `<base>_attente`, et le JSON
+  publie `attente[base].part_attente` (proche de 1 = famine). **OpenCV ouvre
+  14 fils NATIFS** (`cv2.getNumThreads()`), jamais bornés : invisibles pour
+  `threading.active_count()` ET pour les chronos, mais visibles dans `cpu_s`
+  (1 270 s pour ~550 s mesurées).
+- **1b — `disp.process()` NE SE LANCE QUE DANS LE FIL DE RENDU** : c'est lui qui
+  met à jour les stats EMA du STF (`_stats`), le cache de chaîne et
+  `dernier_brut_niveaux`. Un `self.disp.process(...)` ajouté dans un
+  gestionnaire Tk (« juste un aperçu ») crée un SECOND écrivain ⇒ images
+  différentes d'un run à l'autre. Passer par `_refresh_preview()` /
+  `_rendre_et_afficher()` (une DEMANDE). Seule exception :
+  `display.rendu_pleine_resolution()` (thread de sauvegarde, sans état partagé).
+- **1b — ne JAMAIS attendre dans `_tick`** : `_tick_corps` APPLIQUE
+  (`_appliquer_rendus_disponibles`) ; `app.attendre_rendu()` est réservé aux
+  bancs et aux scripts sans boucle d'interface (il dort, borné).
+- **1b — un banc qui lit l'image juste après l'avoir demandée doit passer en
+  `app.rendu.immediat = True`** (sinon il compare l'image précédente) ;
+  `_test_phase0_perf` vérifie le câblage du CALCUL dans `ui/rendu.py`.
+- **1b — « le dernier gagne » est VOULU** : un seul job ; une rafale de réglages
+  ne produit qu'un rendu. Si `rendus_ecrases` explose sur un relevé réel, c'est
+  que le rendu est plus lent que les événements, pas un défaut.
+- **`vl_actif`** : ne JAMAIS le déduire de `disp.vl_*` (`vl_neutre_gains` est un
+  RÉSULTAT) ni d'un OR des neuf cases (`var_vl_neutre` est cochée par défaut) :
+  la seule lecture juste est `disp.chaine_sollicitee()`.
+- **`perf.json`** : écrit **à côté du programme** par `--perf` (toutes les 5 s) ;
+  `--perf-json CHEMIN` pour garder un relevé (`perf*.json` hors dépôt).
+- **NE PAS réécrire un fichier entier via PowerShell** (`Get-Content -Raw` +
+  `Set-Content`) : double encodage constaté (mojibake sur `__init__.py`). Utiliser
+  l'éditeur, ou un fichier neuf + `Move-Item -Force`.
+- **P5 — un curseur ne rend plus par `set()`** : pour l'effet immédiat,
+  `app._forcer_rendu_curseur(s)` ou `app._rendre_curseurs()` AVANT un rendu
+  explicite ; un geste se simule par `s._debut_glissement()`/`_fin_glissement()`.
 - **Un rendu sans nouvelle frame n'est PAS vu par `_tick`** : `_tick` ne force
   la chaîne que sur changement de `st["frames"]`. Tout point qui pousse une
-  image RECALCULÉE doit appeler `disp.notify_new_stack()` (leçon P7, désormais
-  dans `CLAUDE.md`).
-- **Échecs PRÉEXISTANTS** : `_test_espace_jalon72` (géométrie d'écran — dont
-  `('écrasé', 'Menu', 'Menu', 99, 1300)`, reproduit sur HEAD le 19/10),
-  `_test_reset_empilement_jalon76` [4] (course `_stop()`, sensible à la charge
-  CPU), dans `_test_sans_siril_jalon77`, « ligne Base SPCC rognée de 1-2 px » +
-  « menu écrasé » (prouvés sur HEAD dans un worktree : flaky, la longueur du
-  dossier temporaire décide), et — **constaté le 19/10** — `_test_lot1_p2_p3`
-  volet [3] « le profil corrigé est annoncé en AVIS » : le banc rejoue le cas
-  `Antlia R` sur le `config.json` RÉEL, or le test réel l'a déjà corrigé en
-  `QHYCCD MiniCam8M Red` → plus rien à reposer (échec reproduit sur HEAD, sans
-  les correctifs P7 : **environnemental, pas une régression**).
-- **Un jeu SANS le défaut ne mesure que l'ABSENCE DE COÛT** : 109 frames sans
-  retournement donnaient « retirer `phase` ne change rien » ; sur **Sh2-132**
-  (204 frames, **31 retournements**), la phase finalisait 22 frames dont 21 Ha
-  fausses de 1,1 à 2,3 px. Vérifier que le défaut est REPRÉSENTÉ (compter les
-  |angle| > 170°, pas seulement les refus) avant de conclure.
-- **Une réussite de repli n'est pas une preuve d'alignement** : `phase` en
-  translation seule a posé 11/50 puis 12/49 frames B **à l'envers**. Un banc
-  teste le **chemin de décision** (espion) et son coût sur une frame douce.
+  image RECALCULÉE doit appeler `disp.notify_new_stack()` (leçon P7).
+- **Échecs PRÉEXISTANTS** (environnementaux, pas des régressions) :
+  `_test_espace_jalon72` (géométrie d'écran), `_test_reset_empilement_jalon76`
+  [4] (course `_stop()`), « ligne Base SPCC rognée » + « menu écrasé » (flaky),
+  `_test_lot1_p2_p3` [3] (rejoue `Antlia R` sur le `config.json` RÉEL).
+- **Un jeu SANS le défaut ne mesure que l'ABSENCE DE COÛT** : vérifier que le
+  défaut est REPRÉSENTÉ avant de conclure.
+- **Un seuil ABSOLU de temps est FLAKY** (constaté 21/10 sur le banc Phase 0) :
+  « calcul pur ⇒ part d'attente < 0,2 » a échoué à 0,48 sur un poste chargé —
+  il mesurait la CHARGE MACHINE, pas le code. Ancrer les assertions sur une
+  comparaison INTERNE (cas A vs cas B du même run) ou sur une mesure directe.
 - **Lancement** : `python AVAStack.py` (venv) — jamais `python3`.
 
 ---
 
 ## Clôtures précédentes
 
-- **19/10/2026** : **P4 VALIDÉ EN RÉEL** (v2.95.0) — 13 aides de la colonne en
-  infobulles « ⓘ » + option « Aides en texte » ; 702 px repris (mesuré).
-- **19/10/2026** : **P1 VALIDÉ EN RÉEL** (v2.94.0) — `processing/cadence.py`,
-  re-mesure 3→6→12…, passe finale en fin de source ; aucune release.
+- **21/10/2026** : **1b VALIDÉE EN RÉEL** (v2.98.2) — `ui_rendu` 102 s → 2,2 s,
+  calcul dans `fil_rendu` (169 s), UI qui répond ; `tick_avant` reste à instruire.
+- **20/10/2026** : **1a VALIDÉE EN RÉEL** (v2.98.1) — `rendus` 132 → 51,
+  `ui_tick` 61 % → 48 %.
+

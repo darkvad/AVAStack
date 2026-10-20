@@ -188,6 +188,9 @@ ui.CONFIG = {}                       # état initial DÉTERMINÉ (moteur STF)
 ui.sauver_config = lambda d: None
 root = tk.Tk()
 app = ui.App(root)
+# 1b (20/10/2026) : ce banc chronomètre le rendu lui-même → rendu IMMÉDIAT
+# (sinon il mesurerait une mise en file ; c'est le banc 1b qui teste le fil).
+app.rendu.immediat = True
 root.update()
 instrumenter()
 rgb = image_factice()

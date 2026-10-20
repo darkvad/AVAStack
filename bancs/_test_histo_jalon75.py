@@ -288,6 +288,9 @@ ui.CONFIG = {}                      # état initial DÉTERMINÉ (moteur STF)
 ui.sauver_config = lambda d: None
 root = tk.Tk()
 app = ui.App(root)
+# 1b (20/10/2026) : les bacs sont relus JUSTE après l'aperçu demandé → rendu
+# IMMÉDIAT (le fil de rendu ne sert qu'en production).
+app.rendu.immediat = True
 root.update()
 app.cv_hist.config(width=840)
 root.update()

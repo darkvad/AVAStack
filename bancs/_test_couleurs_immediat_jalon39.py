@@ -77,6 +77,9 @@ ui.sauver_config = lambda d: None
 root = tk.Tk()
 root.withdraw()
 app = ui.App(root)
+# 1b (20/10/2026) : l'image est relue JUSTE après l'aperçu demandé → rendu
+# IMMÉDIAT (le fil de rendu ne sert qu'en production).
+app.rendu.immediat = True
 d = app.disp
 d.stretch = "veralux"                # moteur VeraLux (cases du panneau)
 app.var_view.set("pile")             # vue « empilement » (cases actives)

@@ -335,25 +335,41 @@ class PanneauHistogramme:
         return ([np.histogram(c, bins=bins, range=(lo, hi))[0].astype(np.float64)
                  for c in chans], hi)
 
+    @classmethod
+    def _histogrammes_purs(cls, src_lin, brut=None):
+        """Les DEUX jeux de bacs, SANS AUCUN accès Tk — (brut, sortie, erreur).
+
+        Étape 1b (20/10/2026) : ce calcul a quitté le fil d'interface avec le
+        reste du rendu (`avastack/ui/rendu.py` l'appelle depuis son fil). Il
+        est donc SÉPARÉ du tracé (`_draw_hist`, lui, reste dans le fil Tk) et
+        ne touche à AUCUN attribut : il rend des valeurs.
+
+        Un échec ici ne doit JAMAIS emporter la boucle d'interface (un
+        historique de panne muette dans ce projet) : il est journalisé, rendu
+        dans le troisième élément, et se voit à l'écran via `_hist_erreur`.
+        """
+        try:
+            hist_brut = (None if src_lin is None
+                         else cls._hist_canaux(src_lin))
+            hist_sortie = (None if brut is None
+                           else cls._hist_canaux(brut, plage=(0.0, 1.0)))
+            return hist_brut, hist_sortie, ""
+        except Exception as exc:                    # noqa: BLE001 (journalisé)
+            journal.erreur("histogramme", exc)
+            return None, None, str(exc)
+
     def _maj_histogrammes(self, src_lin, brut=None):
         """Recalcule les DEUX bandes et redessine : « Brut (linéaire) » (la
         source donnée à la chaîne d'affichage) et « Sortie du moteur » (l'image
         AVANT les barres — c'est elle que les barres découpent).
 
-        Un échec ici ne doit JAMAIS emporter la boucle d'interface (un
-        historique de panne muette dans ce projet) : il est journalisé et se
-        voit à l'écran.
+        Conservé pour les appelants SYNCHRONES (bancs, `_hist_*` posés à la
+        main) : le calcul est délégué à `_histogrammes_purs`, le tracé reste
+        ici. En marche normale les bacs arrivent déjà calculés du fil de rendu
+        (1b) et c'est `Renderer._appliquer_rendu` qui les pose et trace.
         """
-        try:
-            self._hist_brut = (None if src_lin is None
-                               else self._hist_canaux(src_lin))
-            self._hist_sortie = (None if brut is None
-                                 else self._hist_canaux(brut, plage=(0.0, 1.0)))
-            self._hist_erreur = ""
-        except Exception as exc:                    # noqa: BLE001 (journalisé)
-            self._hist_brut = self._hist_sortie = None
-            self._hist_erreur = str(exc)
-            journal.erreur("histogramme", exc)
+        self._hist_brut, self._hist_sortie, self._hist_erreur = \
+            self._histogrammes_purs(src_lin, brut)
         self._draw_hist()
 
     # --- barres : glisser / double-clic --------------------------------------

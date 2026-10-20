@@ -50,6 +50,7 @@ import numpy as np
 import cv2
 
 from .. import journal
+from .. import perf
 from ..cameras import QHYCamera
 from ..images import borner_lineaire, save_image
 from ..processing import StarAligner, LiveStacker
@@ -656,6 +657,10 @@ class AcquisitionWorker:
                 continue
             lu = None
             if self._autoriser_lecture():
+                # Phase 0 (audit 20/10) : coût de la LECTURE seule (disque ou
+                # SDK), séparé du coût d'empilement — inactif, `t0()` rend None
+                # et `duree()` ne fait rien.
+                _t_lecture = perf.t0()
                 try:
                     lu = self.camera.read()
                 except AttributeError:
@@ -663,7 +668,9 @@ class AcquisitionWorker:
                     # l'interface (réinitialisation d'une source de fichiers) —
                     # le tour suivant la verra absente et attendra proprement,
                     # au lieu de tuer ce thread en silence.
+                    perf.duree("lecture_frame", _t_lecture)
                     continue
+                perf.duree("lecture_frame", _t_lecture)
             if lu is None:
                 # v2.37.0 : aucune frame à lire (fin de source, lecture en
                 # pause) — les demandes qui ne dépendent PAS d'une frame sont
@@ -705,8 +712,18 @@ class AcquisitionWorker:
             # défocalisée) : le tour suivant reprend sans empiler ni pousser
             # d'image.
             canaux = None
-            sauter, last_good, stack = self._worker_empiler_frame(
-                frame, role, last_good, t0)
+            # Phase 0 (audit 20/10) : durée de l'EMPILEMENT seul (alignement
+            # compris, tel que `_worker_empiler_frame` le fait). Inactif, le
+            # chrono est un objet partagé sans effet. Phase 0 bis : le drapeau
+            # d'occupation est posé ICI pour que le fil d'interface puisse
+            # classer ses propres durées (« travail Tk » ou « attente du GIL »).
+            perf.occupe(True)
+            try:
+                with perf.chrono("empilement"):
+                    sauter, last_good, stack = self._worker_empiler_frame(
+                        frame, role, last_good, t0)
+            finally:
+                perf.occupe(False)
             if sauter:
                 continue
 
@@ -896,10 +913,16 @@ class AcquisitionWorker:
                 y0, x0, y1, x1 = self.stacker.cadre
                 st["crop_w"], st["crop_h"] = x1 - x0, y1 - y0
             self._dernier_st = st           # jalon 55 : réutilisé par
+            # Phase 0 de l'audit performance (20/10/2026) : l'état sort à la
+            # fréquence des frames — un échantillon par frame décrit donc le
+            # régime RÉEL (RSS + octets des accumulateurs du stacker).
+            perf.echantillon_memoire()
+            perf.jauger_empileur(self.stacker)
             try:                            # _pousser_rendu (sans brute)
                 self.q.put_nowait((show, st))
             except queue.Full:
-                pass
+                # Phase 0 : perte SILENCIEUSE comptée (cf. `_pousser_rendu`).
+                perf.compter("file_pleine_worker")
             # Jalon 42 : quand TOUTES les brutes détectées ont été lues, la
             # fenêtre de cadence est (ré)armée — la prochaine rafale n'aura
             # lieu qu'à l'échéance (les brutes qui arrivent entre-temps

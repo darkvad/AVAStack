@@ -149,6 +149,9 @@ ui.sauver_config = lambda *a, **k: None
 ui.App._dire = lambda self, *a, **k: None        # jamais de boîte MODALE
 root = tk.Tk()
 app = ui.App(root)
+# 1b (20/10/2026) : le banc compte les aperçus RENDUS (P5) → rendu IMMÉDIAT
+# (le fil de rendu ne sert qu'en production).
+app.rendu.immediat = True
 root.update()
 instrumenter()
 app.var_view.set("pile")

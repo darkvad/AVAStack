@@ -139,6 +139,11 @@ FICHIERS_TYPES = (
     # compagnon `<image>.ava.json`, écriture atomique et tolérante), typé dès sa
     # création comme tout module nouveau.
     "avastack/fiche.py",
+    # Phase 0 de l'audit performance/mémoire (20/10/2026, v2.98.0) :
+    # l'INSTRUMENTATION (`avastack/perf.py`) — module NEUF (chronos par étage,
+    # compteurs de files pleines, RSS sans dépendance, octets des accumulateurs),
+    # typé dès sa création comme tout module nouveau.
+    "avastack/perf.py",
     "avastack/ui/constants.py",
     "avastack/ui/widgets/collapsible.py",
     "avastack/ui/widgets/histogram.py",
@@ -165,6 +170,10 @@ FICHIERS_TYPES = (
     # Jalon 107 (chantier de refactoring) : le RENDU D'AFFICHAGE et l'ANNOTATION
     # extraits de `app.py` — `ui/renderer.py` (mixin `Renderer` dont `App` hérite).
     "avastack/ui/renderer.py",
+    # 1b (20/10/2026, branche `OptimisationUI`) : le FIL DE RENDU
+    # (`ui/rendu.py`) — module NEUF, typé dès sa création comme tout module
+    # nouveau (une file à UN seul job, un seul écrivain de `disp`).
+    "avastack/ui/rendu.py",
     # Jalon 108 (chantier de refactoring) : les SAUVEGARDES et les EN-TÊTES FITS
     # de sortie (`ui/saver.py`) et le TRAITEMENT EXTERNE (`ui/external_runner.py`)
     # extraits de `app.py` — mixins `Saver` / `ExternalRunner` dont `App` hérite.

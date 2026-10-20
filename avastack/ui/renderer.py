@@ -30,6 +30,7 @@ logique.
 """
 
 import os
+import time
 from typing import Any, Callable
 
 import numpy as np
@@ -38,10 +39,12 @@ import tkinter as tk
 from PIL import Image, ImageTk
 
 from .. import catalogues as cat_mod
+from .. import perf
 from ..images import save_image
 from ..processing import DisplayProcessor
 from ..processing import annotations as annoter_mod
 from ..processing import photometrie as photo_mod
+from .rendu import FilRendu, Job, Resultat
 
 
 def _globals_app():
@@ -88,6 +91,17 @@ class Renderer:
 
     # Sources et options de rendu.
     last_show: Any
+    # 1a (20/10/2026) : état du rendu différé tenu par `App` — déclaré ici pour
+    # que `_refresh_preview` (mixin) puisse le lire/écrire sous pyright.
+    _rendu_attente: Any
+    _rendu_fait_frames: Any
+    _vl_frames: Any
+    # 1b (20/10/2026) : le FIL DE RENDU (un seul écrivain de l'état de `disp`)
+    # et les bacs d'histogramme déjà calculés, posés puis tracés par le fil Tk.
+    rendu: FilRendu
+    _hist_brut: Any
+    _hist_sortie: Any
+    _hist_erreur: str
     proc_full: Any
     _stack_pleine_res: Any
     _echelle_apercu: float
@@ -109,6 +123,7 @@ class Renderer:
 
     # Méthodes de l'hôte (`App`, portées par d'autres mixins) appelées ici.
     _maj_histogrammes: Callable[..., None]
+    _draw_hist: Callable[..., None]
 
     # ============================= sélection de source =====================
     def _pleine_res_activee(self):
@@ -201,34 +216,122 @@ class Renderer:
         return lineaire
 
     # ============================= chaîne d'affichage ======================
-    def _rendre_et_afficher(self, lineaire, live=True, hist=True):
-        """Chaîne d'affichage COMPLÈTE et UNIQUE (jalon 75) : source linéaire →
-        étirement (STF / manuel / VeraLux) → étage de niveaux → gamma et
-        saturations → écran, ET mise à jour des deux histogrammes.
+    def _rendre_et_afficher(self, lineaire, live=True, hist=True,
+                            motif="rendu"):
+        """DEMANDE un rendu : la source se choisit ICI, le calcul part au FIL.
 
-        Un seul point de passage pour les endroits qui affichaient une image :
-        c'est ce qui garantit que l'histogramme décrit toujours ce qui est à
-        l'écran (avant le jalon 75 le calcul vivait dans le thread
-        d'acquisition, sur l'aperçu de l'empilement — donc jamais sur l'image
-        d'une vue « traitée », et à ~55 ms par frame de CPU).
+        Chaîne d'affichage COMPLÈTE et UNIQUE (jalon 75) : source linéaire →
+        étirement (STF / manuel / VeraLux) → étage de niveaux → gamma et
+        saturations → écran, ET mise à jour des deux histogrammes. Un seul
+        point de passage pour tous les endroits qui affichent une image : c'est
+        ce qui garantit que l'histogramme décrit toujours ce qui est à l'écran.
+
+        ÉTAPE 1b (20/10/2026) — CE QUI A CHANGÉ. Ce corps faisait TOUT sur le
+        fil Tk : `process()` (~2 000 ms à pleine résolution), les deux
+        histogrammes, puis le dessin. Mesuré : 102 s de fil d'interface pour
+        48 frames (`perf-4.json`), l'interface immobile pendant deux secondes à
+        chaque image. Désormais il PRÉPARE la demande (ce qui exige Tk : la
+        lecture de `var_view` par `_src_rendu`) et la confie au fil de rendu
+        (`avastack/ui/rendu.py`), SEUL écrivain de l'état de `disp` — les stats
+        EMA du STF vivent là — puis c'est `_appliquer_rendu()` qui affiche le
+        résultat au tour suivant de `_tick`. AUCUN pixel ne change : c'est le
+        même `process()`, avec les mêmes réglages, dans un autre fil (banc
+        `_test_render_worker_bit_exact.py`).
+
+        Mode IMMÉDIAT (`self.rendu.immediat`) : rendu sur place et appliqué
+        tout de suite, exactement comme avant 1b (bancs et mesures).
+
+        PHASE 0 DE L'AUDIT : `ui_rendu` ne mesure plus l'étirement (il vit dans
+        `fil_rendu`) mais l'APPLICATION du résultat.
         """
         src = self._src_rendu(lineaire)
-        img8 = self.disp.process(src, live=live)
-        if hist:
-            self._maj_histogrammes(src,
-                                   getattr(self.disp, "dernier_brut_niveaux",
-                                           None))
-        self._show_image(img8)
+        job = Job(src=src, live=bool(live), hist=bool(hist),
+                  # « Aucune image à l'écran » : seule raison d'afficher l'image
+                  # d'ATTENTE (sinon on garde la précédente, cf. 1a).
+                  attente_ok=self._last_disp is None,
+                  generation=self.rendu.generation(),
+                  motif=str(motif))
+        res = self.rendu.demander(job)
+        if res is not None:                 # mode IMMÉDIAT seulement
+            self._appliquer_rendu(res)
+
+    def _appliquer_rendu(self, res):
+        """Applique un résultat du fil de rendu (fil Tk) — AUCUN calcul.
+
+        C'est tout ce que 1b laisse dans `_tick` : poser les bacs DÉJÀ calculés,
+        tracer l'histogramme, dessiner l'image. `ui_histogrammes` et `ui_dessin`
+        mesurent ce travail-là ; `fil_rendu` mesure le calcul, hors fil Tk.
+        """
+        with perf.chrono("ui_rendu"):
+            # 1a (20/10/2026, constat d'Alain : « une image blanche entre deux
+            # images ») : une image d'ATTENTE (repli transitoire, pas le
+            # résultat de la chaîne) ne remplace JAMAIS l'image affichée — on
+            # garde la précédente jusqu'à l'image finale. Au tout premier
+            # rendu, il n'y a rien à garder : l'attente s'affiche (sinon
+            # écran vide).
+            if res.etait_attente and self._last_disp is not None:
+                perf.compter("rendus_gardes")
+                return
+            if res.hist:
+                self._hist_brut = res.hist_brut
+                self._hist_sortie = res.hist_sortie
+                self._hist_erreur = res.hist_erreur
+                with perf.chrono("ui_histogrammes"):
+                    self._draw_hist()
+            with perf.chrono("ui_dessin"):
+                self._show_image(res.img8)
+
+    def _appliquer_rendus_disponibles(self):
+        """Prend et applique les résultats prêts — un seul est conservé, le
+        plus récent (« le dernier gagne », cf. `ui/rendu.py`)."""
+        while True:
+            res = self.rendu.prendre()
+            if res is None:
+                return
+            self._appliquer_rendu(res)
+
+    def attendre_rendu(self, delai=20.0):
+        """Attend, FIL Tk, que le fil de rendu se soit vidé — BORNÉ.
+
+        Deux usages seulement : ① les bancs qui tournent en mode asynchrone et
+        veulent l'image affichée avant de la comparer ; ② aucune boucle
+        d'interface ne tourne (`root.update()` non appelé) et une image doit
+        quand même être à l'écran. En marche normale, c'est `_tick` qui prend
+        les résultats : ne JAMAIS appeler ceci depuis `_tick` (attente
+        inutile). Rend True si le fil est vide, False si le délai a expiré.
+        """
+        limite = time.perf_counter() + max(0.0, float(delai))
+        while True:
+            self._appliquer_rendus_disponibles()
+            if not self.rendu.en_attente():
+                return True
+            if time.perf_counter() >= limite:
+                return False
+            time.sleep(0.005)
 
     def _refresh_preview(self, hist=True):
-        """Re-rend l'aperçu immédiatement après un réglage (indispensable en mode
-        dossier : pas de frame régulière pour rafraîchir l'écran).
-        live=False : ne fait pas avancer le lissage temporel des stats.
-        hist=False : le glissement d'une BARRE DE NIVEAUX ne recalcule pas
+        """Re-rend l'aperçu après un réglage (indispensable en mode dossier :
+        pas de frame régulière pour rafraîchir l'écran).
+
+        `live=False` : ne fait pas avancer le lissage temporel des stats.
+        `hist=False` : le glissement d'une BARRE DE NIVEAUX ne recalcule pas
         l'histogramme (la donnée du moteur ne change pas — seules les barres
-        bougent) : sans cela, chaque pixel de souris coûterait un histogramme."""
+        bougent) : sans cela, chaque pixel de souris coûterait un histogramme.
+
+        1b (20/10/2026) : ce n'est plus un CALCUL mais une DEMANDE au fil de
+        rendu — même choix de source, même `process()`, même image au bit ; le
+        geste ne bloque plus la fenêtre pendant les ~2 s du rendu à pleine
+        résolution. Le fil étant à « un seul job, le dernier gagne », une rafale
+        de gestes ne produit qu'un rendu : celui du dernier réglage.
+        """
         if self.last_show is not None:
-            self._rendre_et_afficher(self.last_show, live=False, hist=hist)
+            self._rendre_et_afficher(self.last_show, live=False, hist=hist,
+                                     motif="reglage")
+            # 1a (20/10/2026) : ce rendu couvre la pile COURANTE. L'attente d'une
+            # image finale est donc satisfaite (un réglage vient de la rendre), et
+            # un `vl_new` de la même pile ne doit pas la rendre une seconde fois.
+            self._rendu_attente = None
+            self._rendu_fait_frames = getattr(self, "_vl_frames", None)
 
     # ============================= dessin du Canvas ========================
     def _show_image(self, disp):
@@ -403,7 +506,13 @@ class Renderer:
     def _vider_ecran(self, texte=""):
         """Efface l'image affichée (v2.41.0) : après une remise à zéro, l'écran
         ne doit plus montrer l'empilement de la cible précédente. `texte` est
-        posé au centre (jamais un écran muet — leçon des jalons 72/74)."""
+        posé au centre (jamais un écran muet — leçon des jalons 72/74).
+
+        1b (20/10/2026) : le fil de rendu est PURGÉ d'abord — un résultat
+        calculé pour la cible précédente ne doit pas repeindre l'écran après
+        l'effacement (il arriverait au `_tick` suivant).
+        """
+        self.rendu.purger()
         self._last_disp = None
         try:
             self.cv_img.delete("all")

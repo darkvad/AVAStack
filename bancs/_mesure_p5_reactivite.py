@@ -283,6 +283,9 @@ def mesurer(n=5, seuil=SEUIL_DEFAUT, taille="auto", fenetre="zoomed",
     root = tk.Tk()
     t0 = time.perf_counter()
     app = ui.App(root)
+    # 1b (20/10/2026) : cette MESURE chronomètre l'aperçu lui-même (P5) → rendu
+    # IMMÉDIAT, sinon elle mesurerait une simple mise en file.
+    app.rendu.immediat = True
     mode_fenetre = agrandir(fenetre)
     root.update()
     doc["construction_ms"] = round((time.perf_counter() - t0) * 1000.0, 1)

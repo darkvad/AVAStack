@@ -61,6 +61,9 @@ def _demarrer():
        nftables) ne peut plus empêcher l'ouverture — et le journal DIT que la
        mesure n'a pas abouti, au lieu de mourir en silence."""
     import avastack
+    # Phase 0 de l'audit performance (v2.98.0) : `--perf` / `--perf-json` arment
+    # les mesures AVANT l'interface — le chemin du fichier est imprimé ici même.
+    _perf_depuis_argv(sys.argv[1:])
     if journal:
         journal.note("démarrage", "AVAStack %s — %s — python %s — argv=%s"
                      % (avastack.AVASTACK_VERSION, sys.executable,
@@ -101,6 +104,41 @@ def _echec(exc):
         import traceback
         traceback.print_exception(type(exc), exc, exc.__traceback__)
     return 1
+
+
+# --- Instrumentation PERFORMANCE/MÉMOIRE (Phase 0, v2.98.0) ------------------
+# `python AVAStack.py --perf` (ou `--perf-json CHEMIN`) : active les mesures SANS
+# dépendre d'une variable d'environnement — le constat du 20/10/2026 est qu'un
+# `$env:AVASTACK_PERF='1'` posé dans un terminal ne suit pas forcément le
+# processus lancé autrement (raccourci, .bat, menu), et l'utilisateur cherche
+# alors un `perf.json` qui n'existe pas. Le chemin est IMPRIMÉ ici : c'est la
+# réponse à « où est le fichier ? ». Aucun effet sur les pixels : l'option ne
+# fait qu'armer des chronomètres.
+_MODE_PERF = "--perf"
+_OPTION_PERF_JSON = "--perf-json"
+
+
+def _perf_depuis_argv(argv: list) -> None:
+    """[Interne] Active l'instrumentation si `--perf` / `--perf-json` est présent.
+
+    N'échoue JAMAIS : une instrumentation indisponible ne doit pas empêcher
+    l'application de démarrer (règle du filet de démarrage, v2.38.7).
+    """
+    if _MODE_PERF not in argv and _OPTION_PERF_JSON not in argv:
+        return
+    chemin = ""
+    if _OPTION_PERF_JSON in argv:
+        i = argv.index(_OPTION_PERF_JSON)
+        if i + 1 < len(argv):
+            chemin = str(argv[i + 1])
+    try:
+        from avastack import perf
+        perf.activer(chemin or perf.chemin_defaut() or None)
+        cible = perf.chemin_json() or "(aucun fichier : mesures en mémoire)"
+        print("AVAStack : instrumentation performance ACTIVE — %s" % cible)
+    except Exception as exc:              # noqa: BLE001 (jamais bloquant)
+        print("AVAStack : instrumentation performance indisponible (%s: %s)"
+              % (type(exc).__name__, exc), file=sys.stderr)
 
 
 # --- Mode INTERNE « --scan-qhy » (v2.49.0) ----------------------------------
