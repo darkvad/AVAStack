@@ -32,6 +32,16 @@ rapport dit combien d'opérations le Guet aurait signalées. Rien n'est donc à
 annuler après le passage — un seuil « temporaire » qu'on oublie de remonter
 fausserait le journal des sessions suivantes.
 
+TAILLE MESURÉE (correction du 20/10/2026, remarque d'Alain « qui travaille en
+360×560 ? ») : l'aperçu n'est PAS une vignette. L'application le plafonne à
+**1600 px de côté** (`worker.py` / `app.py` : `min(1.0, 1600/max(h, w))`), soit
+**1600×1200** en 4/3 et **1600×900** en 16:9, et le dessin se fait à la taille
+du CANVAS (`_render` : cv2.resize + PIL/PhotoImage). Le banc mesure donc par
+défaut sur un **aperçu 1600×1200** dans une **fenêtre PLEIN ÉCRAN** (24 pouces,
+1920×1080) ; `--taille` et `--fenetre` changent cela, et la section [2 bis]
+donne la COURBE coût/taille — un chiffre pris en 360×560 ne décrit pas l'usage
+réel (il donne une borne BASSE).
+
 USAGE
   python bancs/_mesure_p5_reactivite.py             # mesure complète (écran requis)
   python bancs/_mesure_p5_reactivite.py --n 7       # plus de répétitions (médianes)
@@ -62,6 +72,36 @@ SORTIE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                       "_mesure_p5_reactivite.json")
 SEUIL_DEFAUT = 0.25          # s — seuil de signalement voulu par le lot 5
 BUDGET_TICK_MS = 30.0        # la boucle d'interface se replanifie toutes les 30 ms
+APERCU_MAX_PX = 1600         # plafond de l'aperçu : `min(1, 1600/max(h, w))`
+APERCU_DEFAUT = (1600, 1200)  # 4:3 AU PLAFOND = le cas le plus coûteux
+ECHELLES = "560x360,1280x720,1600x1200"   # courbe de coût selon la taille
+
+
+def lire_taille(txt, defaut=APERCU_DEFAUT):
+    """« 1600x1200 » → (1600, 1200) ; « auto » → le plafond de l'aperçu réel.
+
+    POURQUOI CE PLAFOND (correction du 20/10, remarque d'Alain « qui travaille
+    en 360×560 ? ») : l'application ne rend JAMAIS l'aperçu en pleine résolution
+    — `worker.py` et `app.py` le réduisent par `min(1.0, 1600/max(h, w))`. Un
+    capteur 4/3 (QHY MiniCam8M) donne donc **1600×1200** et un 16:9
+    (IMX585) **1600×900** : c'est CETTE image que l'étirement, la saturation et
+    les histogrammes parcourent à chaque geste.
+    """
+    t = str(txt or "auto").strip().lower().replace("×", "x").replace(" ", "")
+    if t in ("", "auto", "apercu", "aperçu", "defaut", "défaut"):
+        return tuple(defaut)                       # pyright: ignore
+    for sep in ("x", "*", ","):
+        if sep in t:
+            a, _, b = t.partition(sep)
+            try:
+                w, h = int(float(a)), int(float(b))
+            except ValueError:
+                raise SystemExit(f"taille illisible : {txt!r} (attendu LxH)")
+            if w < 8 or h < 8:
+                raise SystemExit(f"taille trop petite : {txt!r}")
+            return (w, h)
+    raise SystemExit(f"taille illisible : {txt!r} (attendu LxH)")
+
 
 
 # --------------------------------------------------------------------------- #
@@ -119,6 +159,18 @@ def autotest():
             "au_dela : aucune opération sous le seuil")
     verifie(glissement_ms(4.0, 200) == 800.0,
             "glissement_ms : 200 pixels × 4 ms = 800 ms")
+    verifie(lire_taille("auto") == APERCU_DEFAUT,
+            f"lire_taille : « auto » = le plafond de l'aperçu {APERCU_DEFAUT}")
+    verifie(lire_taille("1920x1080") == (1920, 1080),
+            "lire_taille : « 1920x1080 »")
+    verifie(lire_taille("800 × 600") == (800, 600),
+            "lire_taille : ×, espaces et casse tolérés")
+    try:
+        lire_taille("beaucoup")
+        refus = False
+    except SystemExit:
+        refus = True
+    verifie(refus, "lire_taille : une taille illisible est REFUSÉE")
     return ok
 
 
@@ -156,7 +208,8 @@ def image_factice(h=360, w=560, seed=7):
 # --------------------------------------------------------------------------- #
 # Interface réelle
 # --------------------------------------------------------------------------- #
-def mesurer(n=5, seuil=SEUIL_DEFAUT):
+def mesurer(n=5, seuil=SEUIL_DEFAUT, taille="auto", fenetre="zoomed",
+            echelles=ECHELLES):
     """Chronomètre l'interface RÉELLE et rend le document du JSON."""
     import tkinter as tk
     from tkinter import ttk
@@ -180,17 +233,45 @@ def mesurer(n=5, seuil=SEUIL_DEFAUT):
             blocages.append((d["max_ms"], nom))
         return d
 
+    def agrandir(fenetre_txt: str) -> str:
+        """Met la fenêtre à l'usage RÉEL (24 pouces, 1920×1080) : plein écran.
+
+        POURQUOI (remarque d'Alain, 20/10) : le dessin coûte selon la taille du
+        CANVAS (`_render` : cv2.resize + PIL/PhotoImage) — mesurer dans la
+        fenêtre de construction (canvas 840×560) sous-estime ce poste. « zoomed »
+        reproduit un usage plein écran ; une géométrie explicite (« 1280x800 »)
+        est aussi acceptée.
+        """
+        txt = str(fenetre_txt or "").strip().lower()
+        if txt in ("", "normal", "normale", "defaut", "défaut"):
+            return "normale"
+        if txt in ("zoomed", "plein", "plein-ecran", "plein-écran", "max"):
+            try:
+                root.state("zoomed")                 # Windows / macOS
+                return "plein écran"
+            except tk.TclError:                      # Linux (X11)
+                try:
+                    root.attributes("-zoomed", True)
+                    return "plein écran (attribut X11)"
+                except tk.TclError:
+                    return "normale (zoom indisponible)"
+        w, h = lire_taille(txt)
+        root.geometry(f"{w}x{h}+0+0")
+        return f"{w}×{h}"
+
     # ------------------------------------------------------- [0] mise en place
     print("=" * 78)
-    print("[0] INTERFACE RÉELLE (hermétique) — APERÇU POSÉ")
+    print("[0] INTERFACE RÉELLE (hermétique) — APERÇU POSÉ À LA TAILLE RÉELLE")
     print("=" * 78)
     ui.CONFIG = {}                       # état initial DÉTERMINÉ (moteur STF)
     ui.sauver_config = lambda d: None
     root = tk.Tk()
     t0 = time.perf_counter()
     app = ui.App(root)
+    mode_fenetre = agrandir(fenetre)
     root.update()
     doc["construction_ms"] = round((time.perf_counter() - t0) * 1000.0, 1)
+
 
     # La boucle d'interface est FIGÉE pour les sections 1 à 7 : sinon un tick
     # tomberait au milieu d'une mesure et le chiffre publié mélangerait deux
@@ -204,10 +285,19 @@ def mesurer(n=5, seuil=SEUIL_DEFAUT):
     app._planifier_tick = lambda delai=30: None      # pyright: ignore
 
     app.var_view.set("pile")
-    app.last_show = image_factice()
+    lw, lh = lire_taille(taille)
+    app.last_show = image_factice(lh, lw)
     app._refresh_preview()
     root.update()
-    print(f"    construction de l'interface : {doc['construction_ms']:.0f} ms")
+    cw, ch = app.cv_img.winfo_width(), app.cv_img.winfo_height()
+    doc["fenetre"] = mode_fenetre
+    doc["apercu_taille"] = f"{lw}x{lh}"
+    doc["apercu_mpx"] = round(lw * lh / 1e6, 2)
+    doc["canvas"] = f"{cw}x{ch}"
+    print(f"    construction : {doc['construction_ms']:.0f} ms · fenêtre "
+          f"{mode_fenetre} · canvas {cw}×{ch}")
+    print(f"    APERÇU MESURÉ : {lw}×{lh} ({lw * lh / 1e6:.2f} Mpx) — plafond "
+          f"réel de l'application ({APERCU_MAX_PX} px de côté)")
 
     # --- instrumentation : on ENVELOPPE le code testé, on ne le remplace pas
     DECOMP = {"hist_ms": [], "show_ms": []}
@@ -330,6 +420,28 @@ def mesurer(n=5, seuil=SEUIL_DEFAUT):
           f"(histogrammes {hist_ms} ms, dessin {show_avec} ms)")
     print(f"  image seule          : {sans_hist['med_ms']:6.1f} ms  "
           f"(dessin {show_sans} ms)")
+
+    # ---------------------------------------------------------- [2 bis] échelle
+    print()
+    print("=" * 78)
+    print("[2 bis] ÉCHELLE — même aperçu, plusieurs tailles (le coût suit les PIXELS)")
+    print("=" * 78)
+    doc["echelle"] = []
+    for txt in [t for t in str(echelles or "").replace(";", ",").split(",")
+                if t.strip()]:
+        tw, th = lire_taille(txt)
+        app.last_show = image_factice(th, tw)
+        root.update()
+        d = mesure(f"aperçu {tw}×{th}",
+                   lambda: app._refresh_preview(hist=True),
+                   rep=max(3, n // 2), suivi=False)
+        doc["echelle"].append({"taille": f"{tw}x{th}",
+                               "mpx": round(tw * th / 1e6, 2),
+                               "med_ms": d["med_ms"]})
+        print(f"  {tw}×{th} ({tw * th / 1e6:5.2f} Mpx) : aperçu complet "
+              f"{d['med_ms']:7.1f} ms")
+    app.last_show = image_factice(lh, lw)      # retour à la taille de référence
+    root.update()
 
     # -------------------------------------------------------------------- [3] boucle
     print()
@@ -609,6 +721,16 @@ def main(argv=None):
     p.add_argument("--seuil", type=float, default=SEUIL_DEFAUT,
                    help=f"seuil de signalement en secondes (défaut "
                         f"{SEUIL_DEFAUT} = le Guet abaissé du lot 5)")
+    p.add_argument("--taille", default="auto",
+                   help="taille de l'APERÇU à mesurer (défaut « auto » = "
+                        "1600x1200, le plafond réel de l'application ; "
+                        "ex. 1600x900, 1920x1080)")
+    p.add_argument("--fenetre", default="zoomed",
+                   help="taille de la FENÊTRE (défaut « zoomed » = plein écran, "
+                        "24 pouces en 1920×1080 ; « normal » ou « 1280x800 »)")
+    p.add_argument("--tailles", default=ECHELLES,
+                   help=f"tailles de la courbe [2 bis] (défaut {ECHELLES} ; "
+                        "« aucune » pour la sauter)")
     p.add_argument("--json", default=SORTIE, help="fichier de sortie JSON")
     p.add_argument("--sans-json", action="store_true",
                    help="ne rien écrire sur disque")
@@ -618,8 +740,10 @@ def main(argv=None):
     if a.autotest:
         print("[autotest] mécanique du banc de mesure P5")
         return 0 if autotest() else 1
+    echelles = "" if str(a.tailles).strip().lower() in ("aucune", "non", "off") \
+        else a.tailles
     try:
-        doc = mesurer(a.n, a.seuil)
+        doc = mesurer(a.n, a.seuil, a.taille, a.fenetre, echelles)
     except Exception as exc:                  # noqa: BLE001
         print(f"\n[banc] mesure IMPOSSIBLE : {exc}")
         print("[banc] (un affichage est nécessaire : Tk doit ouvrir une fenêtre)")

@@ -59,30 +59,42 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
   (**pyright 0 sur 54 fichiers typés**). **Échec PRÉEXISTANT** :
   `_test_lot1_p2_p3` volet [3] (profil SPCC déjà corrigé dans `config.json`).
 
-### P5 — LES CHIFFRES (mesurés le 20/10, machine de dev, `--n 5`)
+### P5 — LES CHIFFRES (mesurés le 20/10, `--n 5`, **fenêtre PLEIN ÉCRAN**, aperçu **1600×1200**)
 > JSON : `bancs/_mesure_p5_reactivite.json`. Rejouer :
 > `python bancs/_mesure_p5_reactivite.py` (écran requis ; `--autotest` sans écran).
+> **Correction du 20/10 (remarque d'Alain)** : le premier passage avait été fait
+> sur un aperçu de banc 360×560 — **ce n'est pas l'usage réel**. L'application
+> plafonne l'aperçu à **1600 px de côté** (`min(1, 1600/max(h,w))`) et dessine à
+> la taille du CANVAS : les chiffres ci-dessous sont les VRAIS (canvas mesuré
+> **1548×744**, aperçu **1,92 Mpx**).
 
 | ce qui est mesuré | chiffre |
 |---|---|
-| geste gamma / saturation (après étirement) | **31 ms** |
-| geste « fond du ciel » / « coupure du bruit » / black | **57–59 ms** |
-| glissement de **200 px** sur un curseur | **6,5 s** (gamma) → **12 s** (black) |
-| charge pour suivre 60 Hz de souris | **361 % d'un cœur** |
-| aperçu complet / sans histogrammes | 46 ms / 27 ms (histogrammes **20 ms**) |
-| `_tick_corps` (budget 30 ms) | **0,06 ms = 0,2 %** |
-| clic de case (`invoke`) | 1 aperçu (31 ms) ; **auto-STF = 2,33 aperçus** (84 ms) |
+| geste gamma / saturation (après étirement) | **250–326 ms** |
+| geste « fond du ciel » / « coupure du bruit » / black | **364–383 ms** |
+| aperçu complet / sans histogrammes | **306 ms** / 261 ms (histogrammes **53 ms**, dessin **14 ms**) |
+| courbe de taille : 560×360 → 1280×720 → 1600×1200 | **59 → 143 → 302 ms** |
+| clic de case (`invoke`) | **284–299 ms** (1 aperçu) ; **auto-STF 326 ms** (2,33 aperçus) |
+| cran de spinner / `sp.set` nu | **311–332 ms** / 0,01 ms (0 rappel) |
 | `var.set` nu (case / liste / spinner) | **0 rappel** (piège Tk, prouvé) |
-| liste SPCC **147** valeurs : repeuplement / sélection | **0,12 ms / 0,02 ms** |
-| `_maj_visibilite_cadres` | 0,2–0,3 ms, 12 pack + 3–9 forget |
-| rafale (60 pas, boucle ACTIVE) | 60 battements / 100 attendus, écart max **58 ms** |
-| opérations > **0,25 s** (Guet abaissé) | **0** |
+| `_tick_corps` (budget 30 ms) | **0,08 ms = 0,3 %** |
+| liste SPCC **147** valeurs : repeuplement / sélection | **0,2 ms / 0,1 ms** |
+| `_maj_visibilite_cadres` | 0,2–0,5 ms, 12 pack + 3–9 forget |
+| rafale (60 pas, boucle ACTIVE) | **20,15 s** (336 ms/pas), **60 battements au lieu de 671**, écart max **395 ms** |
+| opérations > **0,25 s** (Guet abaissé) | **21** (pire : **409 ms**) |
+| glissement de **200 px** (théorique, la file) | **50 s → 76 s** |
+| charge pour suivre 60 Hz de souris | **2 284 % d'un cœur** |
 
-**Lecture** : la boucle `_tick`, les listes (même 147 valeurs) et `pack/forget`
-ne sont **PAS** en cause. Tout le coût est dans **`_refresh_preview` rappelé à
-chaque pixel** (30–60 ms) et dans les **écritures non conditionnelles**
-(`_on_auto` repose deux curseurs puis redessine = 2,33 aperçus par clic). Aucun
-gel UNIQUE > 0,25 s : la gêne est l'**EMPILEMENT** des gestes (361 % d'un cœur).
+**Lecture** : un seul aperçu coûte **~300 ms**, dont **14 ms de dessin** → le coût
+est le **pipeline numpy** (étirement/saturation/histogrammes), pas Tk. Cliquer une
+case, c'est donc déjà ~300 ms d'attente (constat d'Alain : « même les clics sur
+les cases mettent un temps certain »). `_tick`, les listes (147 valeurs) et
+`pack/forget` restent HORS DE CAUSE. Conséquence pour les correctifs : le
+**coalescing** supprime l'EMPILEMENT (60 gestes/s → quelques aperçus/s au lieu de
+2 284 % d'un cœur), mais **pas** les 300 ms d'un aperçu — pour descendre en
+dessous, il faudra un **aperçu RÉDUIT pendant le geste** (ex. 800×600 = 4× moins
+cher, cf. courbe) puis un rendu complet au relâchement.
+
 
 ### Le correctif P6 (piste A) — détail durable dans `CLAUDE.md`
 - **Visibilité** : `est_stacks` → fichiers puis composition ; « Fusion Ha »,
@@ -117,12 +129,17 @@ gel UNIQUE > 0,25 s : la gêne est l'**EMPILEMENT** des gestes (361 % d'un cœur
 
 ### Problèmes ouverts / prochaines étapes
 1. **P5 — CORRECTIFS, sur accord d'Alain** (un lot = un jalon), dans l'ordre des
-   chiffres : ① **coalescing ~20 Hz** des rappels de curseur (un aperçu pour
-   plusieurs pixels) ; ② **écritures conditionnelles** (`_on_auto` : 2,33
-   aperçus par clic) ; ③ histogrammes différés pendant un glissement.
-   Cibles : 31 ms → ~5 ms par aperçu utile, glissement 200 px sous 1 s.
+   chiffres : ① **coalescing ~20 Hz** des rappels de curseur (l'aperçu ne part
+   plus 60 fois/s : la file cesse de s'empiler) ; ② **aperçu RÉDUIT pendant le
+   geste** (800×600 ≈ 4× moins cher, courbe [2 bis]) puis rendu complet au
+   relâchement — c'est ce qui fait baisser les ~300 ms ressentis ;
+   ③ **écritures conditionnelles** (`_on_auto` = 2,33 aperçus par clic : reposer
+   les curseurs sans redessiner) ; ④ histogrammes différés en glissement.
+   Mesure de sortie : le MÊME outil (JSON), et la rafale [8] doit rendre
+   ~671 battements pour 60 pas au lieu de 60.
 2. **Release v2.96.x** sur accord explicite (aucune release depuis v2.80.0 ;
    `master` porte la fusion de `LRGBHa`, branche fermée le 20/10).
+
 
 
 ---
@@ -198,16 +215,21 @@ main — le correctif de code doit suffire, et le test réel le prouve.
   (**14** avec le panneau Stacks), option `aides_texte` (défaut NON), **702 px
   repris** (mesuré). Détail dans `CLAUDE.md` (« Aides contextuelles »).
 
-### P5 — réactivité (lot 5) — **MESURÉ le 20/10, aucun correctif**
-- Outil `bancs/_mesure_p5_reactivite.py` (9 sections, `--autotest` sans écran,
-  JSON `bancs/_mesure_p5_reactivite.json`), **sans modifier le produit** : le
-  seuil du Guet reste 1,5 s, le banc compte lui-même les opérations > 0,25 s.
-- **Suspicions LEVÉES par la mesure** : `_tick` (0,2 % du budget), listes SPCC
-  jusqu'à 147 valeurs (0,1 ms), `pack/forget` de `_maj_visibilite_cadres`
-  (0,3 ms). **Suspicion CONFIRMÉE** : un aperçu complet par pixel de curseur
-  (31–59 ms) et des réécritures non conditionnelles (2,33 aperçus par clic).
-- Banc `_test_perf_reactivite_jalon79` étendu : [8] cases, [9] listes,
-  [10] spinners → **29 vérifications vertes**.
+### P5 — réactivité (lot 5) — **MESURÉ le 20/10 à la taille RÉELLE, aucun correctif**
+- Outil `bancs/_mesure_p5_reactivite.py` (10 sections, `--autotest` sans écran,
+  JSON `bancs/_mesure_p5_reactivite.json`), **sans modifier le produit** : seuil
+  du Guet inchangé (1,5 s), le banc compte lui-même les opérations > 0,25 s.
+- **À la taille de l'usage** (plein écran, aperçu 1600×1200 = 1,92 Mpx) : un
+  aperçu = **306 ms** (dont 14 ms de dessin) ; geste de curseur **250–383 ms** ;
+  clic de case **284–326 ms** ; cran de spinner **311–332 ms** ; un glissement de
+  200 px empilerait **50 à 76 s** ; rafale 60 pas = **20,15 s**.
+- **Suspicions LEVÉES** : `_tick` (0,3 % du budget), listes SPCC 147 valeurs
+  (0,2 ms), `pack/forget` (0,5 ms). **Confirmée** : un aperçu complet par pixel +
+  réécritures non conditionnelles (2,33 aperçus par clic).
+- Banc `_test_perf_reactivite_jalon79` : [8] cases, [9] listes, [10] spinners →
+  **29 vérifications vertes** (image petite À DESSEIN : câblage, pas coût).
+
+
 
 ### P6 — source « Stacks (fichiers FITS) » (lot 4) — **VALIDÉ EN RÉEL le 20/10 (v2.96.1)**
 - **Verdict d'Alain** : empilement OK le 19/10, puis **« testé en réel, validé »

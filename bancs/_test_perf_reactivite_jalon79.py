@@ -77,7 +77,14 @@ def verifie(cond, msg):
 
 
 def image_factice(h=360, w=560, seed=7):
-    """Aperçu linéaire RVB factice [0..1] : fond + nébulosité + étoiles."""
+    """Aperçu linéaire RVB factice [0..1] : fond + nébulosité + étoiles.
+
+    TAILLE VOLONTAIREMENT PETITE (360×560) : ce banc verrouille le CÂBLAGE des
+    commandes (quel étage recalcule quoi), pas le coût absolu. L'aperçu RÉEL de
+    l'application est plafonné à 1600 px de côté (1600×1200 en 4/3) : les
+    chiffres de réactivité se mesurent avec `bancs/_mesure_p5_reactivite.py`
+    (section [2 bis] pour la courbe coût/taille), pas ici.
+    """
     rng = np.random.default_rng(seed)
     img = rng.normal(0.02, 0.006, (h, w, 3))
     yy, xx = np.mgrid[0:h, 0:w]
