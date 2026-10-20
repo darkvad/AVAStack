@@ -3896,6 +3896,19 @@ ce qui manquait n'était pas une correction mais une MESURE.
   Bancs : `_bench_performance.py` (mesures + contrôles) et
   `_test_rejet_satellites_jalon6.py` [1]/[6] (exactitude et invariance au
   découpage).
+- **UN CHIFFRE DE RÉACTIVITÉ PRIS SUR UNE VIGNETTE EST FAUX** (mesure du
+  20/10/2026, lot 5 = P5) : l'aperçu de l'application n'est PAS une vignette —
+  il est plafonné à **1600 px de côté** (`worker.py` / `app.py` :
+  `min(1.0, 1600/max(h, w))`), soit **1600×1200** en 4/3 et **1600×900** en
+  16:9, et le dessin se fait à la taille du **canvas** (`_render` : `cv2.resize`
+  + PIL/`PhotoImage`). Un premier passage sur un aperçu de banc **360×560**
+  annonçait **31 ms** par geste : à la taille réelle c'est **306 ms** (×10), et
+  un clic de case coûte le MÊME prix puisqu'il déclenche un aperçu complet.
+  Règle : toute mesure de réactivité se prend sur **1600×1200, fenêtre PLEIN
+  ÉCRAN** (`bancs/_mesure_p5_reactivite.py` : `--taille`, `--fenetre`, courbe
+  [2 bis]) ; une vignette ne donne qu'une **borne basse**. Corollaire mesuré :
+  sur 306 ms, **14 ms** seulement sont le dessin — le coût est le pipeline
+  numpy (étirement/saturation/histogrammes), pas Tk.
 
 ## Leçons générales transposables (projet pipeline siril)
 - **Toute fonction opérant sur des données image : vérifier si elle suppose
