@@ -39,7 +39,7 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 
 ---
 
-## Session du 20/10/2026 — **P6 VALIDÉ EN RÉEL** (v2.96.1), puis **P5 IMPLÉMENTÉ** (v2.97.0, **à tester en réel**)
+## Session du 20/10/2026 — **P6 VALIDÉ**, **P5 livré et TESTÉ EN RÉEL** (verdict : pas gênant, **pas plus vite**), **nouvelle piste = performance/mémoire**
 
 ### État actuel
 - **v2.96.1 sur `master`** — P6 **VALIDÉ EN RÉEL par Alain le 20/10** (« testé en
@@ -48,21 +48,54 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
   `efb2911` = correctif piste A, fusionné dans `master`).
 - **Branche de travail : `OptimisationUI`** (depuis `master`, poussée et suivie).
   **`LRGBHa` fermée** (local + `origin`).
-- **P5 « RENDU AU RELÂCHEMENT » IMPLÉMENTÉ le 20/10 (v2.97.0)** sur
-  `OptimisationUI` — mesuré d'abord, corrigé ensuite, **commité EN LOCAL, pas
-  poussé**. `_add_slider` : rien pendant le glissement, **UN aperçu au
-  relâchement**, minuteur de secours (150 ms, rafale = 1 aperçu), filet (600 ms)
-  si le relâchement se perd ; gestes discrets et `_poser_curseur` **immédiats**
-  (`_forcer_rendu_curseur` / `_rendre_curseurs`). Banc NEUF
-  `bancs/_test_p5_rendu_relachement.py` (**20 vérifications, vert**).
-- **PROCHAINE ACTION : test réel d'Alain** — c'est LUI qui dira si l'absence de
-  retour PENDANT le geste gêne (et si l'« aperçu réduit » devient utile ;
-  il n'est PAS codé).
+- **P5 « RENDU AU RELÂCHEMENT » (v2.97.0) TESTÉ EN RÉEL par Alain le 20/10** :
+  « ce n'est pas gênant de ne pas avoir l'aperçu **mais ça ne va guère plus
+  vite** » ; « quand il n'y a pas le spinner *traitement en cours*, l'interface
+  répond ». **Le correctif est donc CONSERVÉ** (gain prouvé au banc) et **P5 est
+  CLOS** ; la gêne restante est **pendant le CALCUL**, pas pendant les gestes.
+- **Nouvelle direction (décision d'Alain)** : « si il faut chercher des
+  optimisations, elles sont ailleurs ». **AUDIT PERFORMANCE/MÉMOIRE** à mener
+  avec un modèle spécialisé en architecture : prompt prêt dans
+  **`AUDIT_PERF_PROMPT.md`** (racine), factuel et chiffré.
 - **Bancs rejoués verts après le correctif** : P5 (20), jalon 79 (**29**),
-  jalon 6 (boutons ±), jalon 120 (restauration), garde-fou (**pyright 0 sur 54
-  fichiers typés**, surface publique d'`app.py` inchangée). **Échec
+  jalon 6 (boutons ±), jalon 120 (restauration), P6 (59), garde-fou (**pyright 0
+  sur 54 fichiers typés**, surface publique d'`app.py` inchangée). **Échec
   PRÉEXISTANT** inchangé : `_test_lot1_p2_p3` volet [3] (profil SPCC déjà
   corrigé dans `config.json`).
+
+### Test réel P5 + constats MÉMOIRE (20/10, après le correctif)
+
+**Verdict d'Alain** : « ce n'est pas gênant de ne pas avoir l'aperçu mais ça ne
+va guère plus vite » ; « quand il n'y a pas le spinner *traitement en cours*,
+l'interface répond » ; mémoire à **80 % de 32 Go**, à peine mieux éditeur fermé.
+→ **La gêne n'est pas le geste : c'est le CALCUL.** P5 est clos, conservé.
+
+**Empreinte MESURÉE de l'application** (diag temporaire, Windows, hors
+empilement) : interpréteur + NumPy **71 Mo** RSS (470 Mo de mémoire privée) ;
+App construite **93 Mo** ; +24 Mo pour une image 1600×1200 float32 ; après trois
+aperçus **RSS 148 Mo, pic 259 Mo** ; **3 threads** vivants (Tk, `_vl_worker`,
+guet). → AVAStack au repos ne prend **pas** 25 Go : les 80 % viennent d'ailleurs,
+très probablement des **accumulateurs d'empilement à PLEINE RÉSOLUTION**.
+
+**Calcul des buffers (`processing/stacking.py`, `LiveStacker`)** : `sum`, `sumsq`
+et `wsum` sont en **float64** (8 octets/pixel) ; le mode Winsorized ajoute une
+fenêtre de **8 frames float32** (`_buf`), plus `_moy`/`_sig`/`_dif` (float64)
+et `_pix`/`_masq`. Ordres de grandeur, **mono** :
+- 8,3 Mpx (3840×2160) → ~200 Mo (3 float64) + ~265 Mo (fenêtre 8) ≈ **0,7 Go** ;
+- 26 Mpx (6248×4176) → ~625 Mo + ~833 Mo ≈ **1,8 Go** ;
+- **× nombre de canaux** en composition (jusqu'à 5) → **plusieurs Go, jusqu'à
+  >10 Go** à 26 Mpx. C'est le premier suspect des 80 %, et il se MESURE.
+
+**Autre suspect (réactivité)** : chaque frame reçue déclenche **un aperçu complet
+(~300 ms) sur le fil Tk** ; pendant ce temps l'interface ne répond pas, et la
+file `q` (maxsize=2) retient la suivante. Découpler la **fréquence d'affichage**
+de celle des frames, et/ou sortir le calcul d'image du fil Tk, sont les pistes à
+instruire — **par la mesure, pas par intuition**.
+
+**Prompt d'audit prêt** : `AUDIT_PERF_PROMPT.md` (racine) — contexte,
+architecture des threads, calculs mémoire, chiffres mesurés, ce qui est DÉJÀ
+écarté, et les cinq questions posées (goulot, expériences, architecture cible,
+mémoire, ordre de mise en œuvre).
 
 ### P5 — LES CHIFFRES AVANT (20/10, `--n 5`, **fenêtre PLEIN ÉCRAN**, aperçu **1600×1200**)
 > JSON : `bancs/_mesure_p5_reactivite.json`. Rejouer :
@@ -115,11 +148,7 @@ relâchement) est le pipeline numpy d'un aperçu : hors du champ de P5.
 
 
 
-### Le correctif P6 (piste A) — **CLOS, détail durable dans `CLAUDE.md`**
-- Visibilité (`_lf_stacks` + `_lf_composition`), composition **déduite**
-  (`_maj_compo_depuis_stacks`) et **verrouillage** (`_maj_compo_verrouillage`),
-  présence d'un rôle (`_role_fourni`, pilote aussi le continuum). **Piste B
-  écartée** (refactor plus large).
+### Le correctif P6 (piste A) — **CLOS** (détail durable dans `CLAUDE.md`)
 
 ### Fichiers modifiés dans cette phase
 - `avastack/ui/app.py` : **P5** — `_add_slider` (rendu au relâchement, minuteur,
@@ -176,20 +205,26 @@ relâchement) est le pipeline numpy d'un aperçu : hors du champ de P5.
   démarrage ⇒ 40 aperçus qui ne dessinaient rien).
 
 ### Problèmes ouverts / prochaines étapes
-1. **TEST RÉEL D'ALAIN — P5** (branche `OptimisationUI`, v2.97.0, **rien n'est
-   poussé**) : lancer `python AVAStack.py`, puis, sur une vraie image :
-   - glisser **Gamma**, **Saturation**, **Luminosité du fond du ciel**,
-     **Coupure du bruit**, **Black point** : l'image ne doit **pas** bouger
-     pendant le geste et se mettre à jour **UNE fois** au relâchement ;
-   - vérifier que l'étiquette suit le doigt pendant le geste ;
-   - éprouver les **gestes discrets** : boutons `-`/`+`, flèches clavier,
-     saisie du gain (caméra), et la restauration de config au démarrage ;
-   - **c'est LUI qui juge** si l'absence de retour pendant le geste gêne. Si
-     oui → l'« **aperçu réduit** » (800×600 pendant le geste) sera ajouté, et
-     seulement sur sa demande.
+1. **AUDIT PERFORMANCE/MÉMOIRE — PROCHAINE ACTION UNIQUE** (branche
+   `OptimisationUI`, v2.97.0 poussée). Alain fait analyser
+   **`AUDIT_PERF_PROMPT.md`** par un modèle spécialisé en architecture, puis on
+   **trie ses pistes par ce qui se MESURE** (règle du projet : mesurer d'abord).
+   Les deux hypothèses déjà chiffrées à instruire :
+   - **mémoire** : `LiveStacker.sum/sumsq/wsum` en **float64** + fenêtre
+     Winsorized de 8 frames, **× nombre de canaux** (jusqu'à 5) → plusieurs Go à
+     pleine résolution. Banc à écrire : RSS pendant un empilement réel (chemin
+     `_worker_empiler_frame`), avant/après toute réduction.
+   - **réactivité pendant le calcul** : **un aperçu complet (~300 ms) sur le fil
+     Tk à chaque frame** ; file `q` (maxsize=2). Piste : découpler la fréquence
+     d'affichage de celle des frames (budget de rendu), et/ou sortir le calcul
+     d'image du fil Tk — à mesurer au Guet + durée de gel par frame.
+   - **Ne pas rouvrir** : les gestes de curseurs (P5, clos, gain prouvé), les
+     listes, `pack/forget`, `_tick` (tous mesurés < 1 ms), l'aperçu réduit
+     pendant un geste (refusé par Alain).
 2. **Release v2.97.x** sur accord explicite (aucune release depuis v2.80.0 ;
-   `master` porte la fusion de `LRGBHa`). Ne pas oublier : le lot 5 sera alors
-   **clos** (P5 validé) — c'était le DERNIER lot du plan figé du 19/10.
+   `master` est à v2.96.1 et porte la fusion de `LRGBHa`). Le lot 5 est **clos**
+   (P5 testé en réel le 20/10) : le plan figé du 19/10 est **terminé**, la suite
+   s'écrit dans l'audit.
 
 
 
@@ -222,12 +257,13 @@ relâchement) est le pipeline numpy d'un aperçu : hors du champ de P5.
   (boîte MODALE, sinon blocage), jamais `grid` + `pack` dans le même conteneur.
 
 ### Contexte de reprise (à coller — 2 phrases)
-Arbre **v2.97.0** sur **`OptimisationUI`** : **P5 « rendu au relâchement » est
-IMPLÉMENTÉ et vert au banc** (20 vérifications ; jalon 79, jalon 6, jalon 120 et
-garde-fou/pyright 0 rejoués OK), chiffres après correctif mesurés (1 aperçu par
-geste, 0,036 ms par pas, rafale 1,35 s). **Prochaine action unique** : **test
-réel d'Alain** de P5 (glissements + gestes discrets) — rien n'est poussé, aucune
-release.
+Arbre **v2.97.0** sur **`OptimisationUI`** : **P5 est LIVRÉ, TESTÉ EN RÉEL et
+CLOS** (verdict : pas gênant, mais **pas plus vite** — la gêne suit le spinner
+« traitement en cours » : c'est le CALCUL, pas le geste ; mémoire à 80 % de
+32 Go). **Prochaine action unique** : faire analyser **`AUDIT_PERF_PROMPT.md`**
+par un modèle d'architecture, puis n'implémenter que ce qui sera **mesurable** —
+premier suspect chiffré : les accumulateurs `float64` du `LiveStacker` à pleine
+résolution (×5 canaux).
 
 
 ---
@@ -253,14 +289,12 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 | 2 | P1 | cadence de re-mesure Gaia/SPCC | **VALIDÉ EN RÉEL le 19/10** (v2.94.0) |
 | 3 | P4 | infobulles ⓘ | **VALIDÉ EN RÉEL le 19/10** (v2.95.0) |
 | **4** | **P6** | source « stacks » : fichiers choisis, **rôles saisis**, seuil de profondeur = 1 | **VALIDÉ EN RÉEL le 20/10** (v2.96.1) — empilement le 19/10, défauts d'interface corrigés (piste A) puis validés |
-| **5** | **P5** | audit MESURÉ de la réactivité | **IMPLÉMENTÉ le 20/10 (v2.97.0)** — mesuré, puis « rendu au RELÂCHEMENT » codé et vert au banc ; **TEST RÉEL À FAIRE** |
+| **5** | **P5** | audit MESURÉ de la réactivité | **CLOS le 20/10** — correctif « rendu AU RELÂCHEMENT » livré (v2.97.0) et **testé en réel** : pas gênant, **pas plus vite** ⇒ la gêne est ailleurs (voir « Test réel P5 + constats MÉMOIRE ») |
 
-### Lots 1 → 3 et 4 — **VALIDÉS EN RÉEL** (détails dans `CLAUDE.md` + changelog)
-- **Lot 1** : P2 + P3 (v2.93.0, base SPCC la plus riche + astrométrie servie sans
-  frame) puis **P7** (v2.93.1) ; **Lot 2** : P1 (v2.94.0, `processing/cadence.py`) ;
-  **Lot 3** : P4 (v2.95.0, infobulles ⓘ, **702 px repris**) ; **Lot 4** : P6
-  (v2.96.0/2.96.1, source « Stacks » + piste A — banc **59** vérifications,
-  `_test_lot5_p6_stacks.py`).
+### Lots 1 → 4 — **VALIDÉS EN RÉEL et CLOS** (détails dans `CLAUDE.md` + changelog)
+- Lot 1 (P2+P3, v2.93.0) puis P7 (v2.93.1) · Lot 2 (P1, v2.94.0) · Lot 3 (P4,
+  v2.95.0, infobulles ⓘ, 702 px repris) · Lot 4 (P6, v2.96.0/2.96.1, source
+  « Stacks » + piste A, banc 59 vérifications).
 
 ### P5 — réactivité (lot 5) — **CORRIGÉ le 20/10 (v2.97.0), à valider en réel**
 - Outil `bancs/_mesure_p5_reactivite.py` (10 sections, `--autotest` sans écran,
@@ -285,15 +319,17 @@ main — le correctif de code doit suffire, et le test réel le prouve.
 
 ## En attente / prochaine session (état au 20/10 — branche `OptimisationUI`, v2.97.0)
 
-- **P5 est IMPLÉMENTÉ** (v2.97.0) : banc NEUF
-  `bancs/_test_p5_rendu_relachement.py` **vert (20 vérifications)**, chiffres
-  après correctif au JSON `bancs/_mesure_p5_reactivite.json`. **Rien n'est
-  poussé, aucune release.**
-- **Prochaine action UNIQUE** : **test réel d'Alain** (glissements de curseurs +
-  gestes discrets). C'est LUI qui jugera si l'absence de retour PENDANT le geste
-  gêne ; l'« aperçu réduit » n'est PAS codé et ne le sera que sur sa demande.
-- **Puis** : **release v2.97.x** sur accord explicite (`master` porte tout le
-  chantier depuis v2.80.0 ; `master` est à v2.96.1).
+- **P5 est CLOS** (livré v2.97.0, poussé, testé en réel le 20/10) : le correctif
+  est **conservé** (gain prouvé : 1 aperçu par geste, 0,036 ms par pas), même si
+  l'impression générale n'a pas changé.
+- **Prochaine action UNIQUE** : **audit performance/mémoire** — Alain fait
+  analyser **`AUDIT_PERF_PROMPT.md`** par un modèle d'architecture et rapporte
+  les pistes ; on ne retient que celles qui se **mesurent** (banc avant/après).
+- **Premiers chiffres à produire** (avant toute refonte) : ① RSS pendant un
+  empilement réel, pleine résolution, 1 canal puis 5 ; ② durée de gel du fil Tk
+  par frame pendant ce même empilement (Guet) ; ③ temps passé dans
+  `_rendre_et_afficher` par frame.
+- **Puis** : **release v2.97.x** sur accord explicite (`master` est à v2.96.1).
 
 - **Référence chiffrée** : `C:\Astro\test\M33_Canaux_LRGBHa` (5 `canal_*.fit` +
   fiches ; `AVACOMPO` = LRGB+Ha, **normalisation COMMUNE**, lissage 117d).

@@ -3573,6 +3573,22 @@ ce qui manquait n'était pas une correction mais une MESURE.
   **0,22 %** d'un cœur pour suivre 60 Hz (avant : 2 284 %). Banc
   `_test_p5_rendu_relachement.py` (20 vérifications, dont l'image du relâchement
   IDENTIQUE AU BIT à un rendu direct).
+- **UNE OPTIMISATION LOCALE PEUT NE RIEN CHANGER À L'IMPRESSION (leçon du
+  20/10/2026, P5)** : après le rendu au relâchement, la mesure était sans appel
+  (0,036 ms par pas, 0,22 % d'un cœur à 60 Hz) et le test réel a répondu « ça ne
+  va guère plus vite ». Verdict d'Alain : « **quand il n'y a pas le spinner
+  *traitement en cours*, l'interface répond** » ⇒ la gêne suit le **CALCUL**, pas
+  le geste. Conséquence durable : avant de micro-optimiser une interaction,
+  DEMANDER **quand** ça gêne ; un correctif prouvé au banc n'est pas la preuve
+  d'un gain PERÇU. Les suspects restants sont architecturaux : ① **un aperçu
+  complet (~300 ms : étirement + niveaux + gamma/sat + 2 histogrammes) sur le fil
+  Tk à CHAQUE frame** (la file `q` est bornée à 2) ; ② **empreinte mémoire des
+  accumulateurs** — `LiveStacker.sum/sumsq/wsum` en **float64** + fenêtre
+  Winsorized de 8 frames float32, **× nombre de canaux** (jusqu'à 5) : ~0,7 Go à
+  8,3 Mpx mono, ~1,8 Go à 26 Mpx, plusieurs Go en composition. Empreinte MESURÉE
+  de l'application au repos (Windows, outil `bancs/_mesure_memoire.py`) : **RSS
+  148 Mo, pic 259 Mo** après trois aperçus 1600×1200, 3 threads — donc les 80 %
+  de 32 Go ne viennent PAS du repos : les mesurer PENDANT un empilement réel.
 - **PIÈGE MESURÉ (P5, 20/10/2026) — `event_generate` d'une TOUCHE exige le
   FOCUS** : `ent.event_generate("<Return>")` sur une `ttk.Entry` ne déclenche
   RIEN si le widget n'a pas le focus (`focus_force()` puis
