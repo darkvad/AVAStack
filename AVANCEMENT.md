@@ -69,40 +69,26 @@ lui demander AVANT de démarrer le suivant** ; ne jamais déduire l'état d'une 
 - **Échecs PRÉEXISTANTS** : `_test_lot1_p2_p3` volet [3] (profil SPCC déjà
   corrigé dans le `config.json` local) — inchangé, cf. « Pièges récents ».
 
-### LE CORRECTIF (piste A) — ce qui a été vérifié en réel
-1. **Visibilité** (`_maj_visibilite_cadres`) : pour `est_stacks`, cadres visibles
-   = `[self._lf_stacks, self._lf_composition]`, empilés dans cet ordre (les
-   FICHIERS d'abord, les réglages du composite ensuite).
-2. **Composition déduite** (`_maj_compo_depuis_stacks`) : `var_compo` vient de
-   `composition_pour_roles` sur les rôles FOURNIS (rôle + fichier) ; ≥ 2 fichiers
-   seulement (1 fichier = empilement direct, aucune composition). Appelée au
-   changement de rôle, de fichier (y compris un chemin TAPÉ, via `<Return>` /
-   `<FocusOut>`), au choix de source, et par `_on_compo_roles` (qui ne réécrit
-   plus la composition depuis les lignes dossier sous cette source).
-3. **Verrouillage** (`_maj_compo_verrouillage`) : menu de composition, lignes
-   rôle→DOSSIER, `…` et « Détecter les filtres » en `disabled` — les réglages du
-   COMPOSITE restent ACTIFS. Rien n'est détruit : tout reprend son état
-   (`readonly`/`normal`) dès qu'une source à dossiers revient.
-4. **Présence d'un rôle** (`_role_fourni(role)`) : fichiers pour Stacks,
-   dossiers sinon — sert à `_maj_fusion_ha` (état des cases) ET à
-   `_lire_fusion_ha` (`continuum = case and _role_fourni("R")`).
-5. **Ligne d'aide** : « Composition déduite des fichiers fournis · … ».
+### LE CORRECTIF (piste A) — validé en réel, détail durable dans `CLAUDE.md`
+- **Visibilité** : `est_stacks` → `[self._lf_stacks, self._lf_composition]`
+  (FICHIERS d'abord) ; le cadre « Fusion Ha », les gains, la normalisation
+  commune et le lissage LRGB sont des enfants de `frm_compo` → ils suivent.
+- **Composition déduite** (`_maj_compo_depuis_stacks`) : rôles FOURNIS (rôle **et**
+  fichier), ≥ 2 fichiers ; `_on_compo_roles` est gardé sous cette source.
+- **Verrouillage** (`_maj_compo_verrouillage`) : menu, lignes rôle→DOSSIER, `…` et
+  « Détecter les filtres » grisés ; réglages du COMPOSITE ACTIFS ; tout est rendu
+  au retour d'une source à dossiers.
+- **Présence d'un rôle** (`_role_fourni`) : sert à `_maj_fusion_ha` ET à
+  `_lire_fusion_ha` ; un seul fichier = empilement direct, cadre masqué.
+- **Diagnostic (rappel)** : cause 1 = composition masquée ; cause 2 =
+  `_dossier_role_compo("R")` aveugle aux FICHIERS. **Piste B non retenue**
+  (panneau « composite » séparé : refactor plus large, sans bénéfice ici).
+
 
 **VÉRIFIÉ EN RÉEL le 20/10 (mêmes 5 `canal_*.fit`)** : le cadre « Fusion Ha »
 apparaît, le continuum est ACTIF et réglable, les gains / la normalisation
 commune / le lissage LRGB sont accessibles, et le composite réagit aux réglages
 sans redémarrer la session. **Verdict d'Alain : testé en réel, validé.**
-
-### Diagnostic (rappel, condensé — le détail durable est dans `CLAUDE.md`)
-- **Cause 1** : `est_stacks` ne rendait visible que `_lf_stacks`, alors que
-  « Fusion Ha », les gains R/G/B, la normalisation commune et le lissage LRGB
-  sont des ENFANTS de `frm_compo` → tout était masqué.
-- **Cause 2** : `_dossier_role_compo("R")` ne lit que les lignes DOSSIER (→ `""`
-  avec des FICHIERS) : continuum, Q, méthodes et recentrage désactivés, et
-  `continuum` forcé à `False`.
-- **Piste B** (panneau « composite » séparé) **non retenue** : la piste A a suffi,
-  et un refactor plus large aurait touché `compo.py` + tous ses bancs.
-
 
 ### Fichiers modifiés dans cette phase (correctif piste A)
 - `avastack/ui/panels/compo.py` : `cb_compo`, `cb_compo_roles`,
