@@ -4280,6 +4280,23 @@ du code, piège rencontré sur un outil externe. Cible : section « Pièges »
   `perf.jauger_postes` la publie dans les `jauges` du JSON `--perf` ;
   `_tick_corps` l'échantillonne toutes les 20 s (coût nul hors `--perf`).
   Banc `_test_p1_postes_memoire.py` (17 vérifications).
+- **AUDIT DU POSTE `rendu` — C'ÉTAIT UN ARTEFACT, MESURÉ (21/10/2026,
+  `bancs/_diag_rendu_memoire.py`)** : la jauge `postes` attribuait **206,2 Mio**
+  à `rendu`, presque autant qu'à `disp` — alors que le fil de rendu ne garde
+  qu'un job et un résultat (« le dernier gagne »). LA CAUSE : `FilRendu` garde
+  `_hote` (**l'App elle-même**) ; en parcourant `vars(app)`, `postes_memoire`
+  entre dans `vars(rendu)`, trouve `_hote`, RE-ENTRE dans l'App (la racine
+  n'entre jamais dans `vus`) et range sous « rendu » les tableaux des attributs
+  déclarés APRÈS `self.rendu` (`_stack_pleine_res`, `_last_disp`, `_hist_*`…).
+  MESURE (8,4 Mpx) : vue jauge `rendu` 120,2 Mio · boucle cassée ⇒
+  `_stack_pleine_res` 96,2 + `_last_disp` 24,0, **total identique** (216,5) ·
+  **`FilRendu` seul : 0,0 Mio, 0 tableau**. **Leçon : un attribut qui pointe
+  vers l'objet RACINE fabrique un faux poste — toute jauge de ce genre doit
+  refuser de traverser `_hote` (ou l'objet racine), et un « poste » énorme qui
+  ne correspond à aucune allocation de son objet est un artefact à MESURER
+  avant d'être optimisé.** COROLLAIRE : `_stack_pleine_res` étant une RÉFÉRENCE
+  sur le cache du stacker (v2.98.5), le compter dans `postes` le compte DEUX
+  fois (stackers + hors stackers) — ~85 Mio au déploiement du run.
 - **MESURES `perf-8` (945,5 s, 72 frames, v2.98.5 — post-lot)** : RSS max
   **4 247,1 Mo** (4 458,9 en `perf-7`), résiduel **555,6 Mio** = hors stackers
   1 151,4 − postes 200,4 − chaîne **247,3** (280,6 ramenés à la géométrie du run

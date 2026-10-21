@@ -128,6 +128,20 @@ flats. Leviers si besoin : fenêtre 4 → 2 (−320 Mio pour 5 rôles), méthode
 ### Problèmes ouverts
 - **Phase 1 : critère ATTEINT** (`ui_tick` 3,3 % < 20 %) — **test complet d'Alain
   AVANT toute fusion vers `master` et toute release** (sa décision, pas la nôtre).
+- **AUDIT DU POSTE `rendu` (21/10, outil `bancs/_diag_rendu_memoire.py`) — le
+  poste est un ARTEFACT de parcours, MESURÉ** : `FilRendu` garde `_hote` (= l'App
+  elle-même) ; `perf.postes_memoire(app)` re-entre donc dans l'App sous le nom
+  « rendu » et y range les tableaux déclarés APRÈS `self.rendu` dans `__init__`.
+  Mesure : vue jauge `rendu` **120,2 Mio** ; boucle cassée ⇒ **`_stack_pleine_res`
+  96,2 + `_last_disp` 24,0** (même total 216,5 — **aucun octet perdu ni compté
+  deux fois**) ; **le `FilRendu` SEUL retient 0,0 Mio (0 tableau)**.
+  ⇒ **il n'y a rien à récupérer dans le fil de rendu** (l'hypothèse « 206 Mio à
+  instruire » tombe). Deux conséquences à trancher par Alain :
+  ① **corriger la jauge** (ne pas traverser `_hote` : ~3 lignes dans
+  `perf.postes_memoire`) pour que le relevé NOMME au lieu d'entasser sous
+  `rendu` ; ② `_stack_pleine_res` est une **RÉFÉRENCE** sur le cache du stacker
+  (v2.98.5) ⇒ il est compté DEUX fois (une fois dans les stackers, une fois dans
+  `postes`) — ~85 Mio au déploiement du run.
 - **MÉMOIRE — le résiduel est NOMMÉ** (voir aussi l'« Enveloppe » ci-dessus) :
   - Géométrie RÉELLE des brutes = **3856×2180 = 8 406 080 px** (en-tête FITS) ;
     `source_px` (7,4 Mpx) est l'image **RECADRÉE** — ne pas confondre.
@@ -205,12 +219,14 @@ vert (**atteint**).
   à la référence (−96,2 Mio, rendu SHA-256 égal) ; v2.98.6 a livré la jauge
   `postes` ; v2.98.7 a corrigé la persistance des maîtres. `perf-9` a servi aux
   deux dernières preuves.
-- **PROCHAINE ACTION (après son test, et accord AVANT de coder)** : instruire le
-  poste **`rendu` 206,2 Mio** (ce que le `FilRendu` RETIENT : image étirée
-  publiée, pré-étirée, job) — avec `disp` 226,1, la chaîne de rendu pèse
-  **432,3 Mio**, soit **47,8 % du hors-stackers**. Règle : **une copie ne se
-  supprime qu'après avoir lu QUI la lit** (auditer les lecteurs AVANT d'agir,
-  preuve au bit).
+- **PROPOSITION EN ATTENTE D'ACCORD (aucun code écrit)** — ① **corriger la jauge
+  `postes`** pour qu'elle ne traverse pas `_hote` (≈3 lignes dans
+  `perf.postes_memoire`) : le prochain relevé nommerait `_stack_pleine_res` /
+  `_last_disp` au lieu de les entasser sous `rendu`, et le résiduel cesserait
+  d'être gonflé par ce faux poste ; ② **dédupliquer le composite** dans la
+  réconciliation de l'outil (`_stack_pleine_res` = référence sur le cache du
+  stacker ⇒ compté deux fois, ~85 Mio). **Le fil de rendu, lui, n'a RIEN à
+  récupérer** (0 Mio retenu — audit du 21/10).
   Ensuite : **`empilement`** 2 938 ms/frame (décomposer alignement vs rejet
   kappa-sigma AVANT de toucher) ; puis **`lecture_frame`** 4 765 ms/frame.
 - **ÉCARTÉ, à ne pas réintroduire sans mesure** : `cv2.setNumThreads`,
@@ -225,13 +241,13 @@ vert (**atteint**).
 - Aucune release ; `master` reste à v2.96.1 ; le Store à v2.71.1.
 
 ### Contexte de reprise (à coller — 2 phrases)
-Branche **`OptimisationUI`, v2.98.7**, commit **`e307ad4` poussé** : Phase 1
-(`ui_tick` 3,3 % du mur), mémoire NOMMÉE (`calib` 96,2 Mio, `disp`+`rendu` 432,3
-= 47,8 % du hors-stackers, résiduel 455,3 Mio dont 193 de fragmentation) et
-**persistance dark/flat VALIDÉE EN RÉEL** ; l'enveloppe mémoire est mesurée
-(MONO ~1,2 Go · OSC ~2,6 Go · 5 rôles + 5 darks + 5 flats ~4,5 Go). Il ne reste
-qu'à **attendre ton test complet** avant la fusion vers `master` et la release ;
-ensuite, instruire le poste `rendu` (audit des lecteurs, preuve au bit).
+Branche **`OptimisationUI`, v2.98.7** : Phase 1 (`ui_tick` 3,3 %), mémoire nommée
+(`calib` 96,2, `disp` 226,1, résiduel 455,3 dont 193 de fragmentation), persistance
+dark/flat validée en réel, enveloppe mesurée (MONO 1,2 / OSC 2,6 / 5 rôles + 10
+maîtres 4,5 Go). L'audit du poste `rendu` est CLOS : c'était un **artefact de
+parcours** (le `FilRendu` retient 0 Mio ; la jauge re-entre dans l'App via
+`_hote`) — reste à décider ① la correction de la jauge et ② la déduplication du
+composite, puis `empilement` ; **ton test complet** avant toute fusion/release.
 
 ---
 
