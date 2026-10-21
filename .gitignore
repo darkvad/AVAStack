@@ -17,6 +17,13 @@ perf.json.part
 perf-*.json
 perf-*.json.part
 
+# Relevés de la DÉCOMPOSITION de `empilement` (v2.98.9) : sortie de
+# `bancs/_mesure_empilement.py` (`--sortie`, défaut
+# `bancs/_mesure_empilement.json`) — un relevé local, jamais suivi, comme les
+# `perf-*.json`.
+bancs/_mesure_empilement*.json
+bancs/_mesure_empilement*.json.part
+
 # Compteur d executions du test jalon 4 (genere par le test, jamais suivi)
 _gx_jalon4_compteur.txt
 

@@ -1219,7 +1219,19 @@ class AcquisitionWorker:
         l'instantané `cfg` à la création des empileurs — résultat identique AU
         BIT. Renvoie `(sauter, last_good, stack)` : `sauter` = brute REJETÉE
         (très défocalisée), le tour suivant reprend sans empiler ; sinon `stack`
-        est la moyenne courante (None si l'alignement a refusé la frame)."""
+        est la moyenne courante (None si l'alignement a refusé la frame).
+
+        AUDIT PERFORMANCE (v2.98.9) : la méthode est DÉCOMPOSÉE en sous-chronos
+        `perf` OPT-IN (`empilement_flou`, `empilement_canal`,
+        `empilement_archive`, `empilement_score`, `empilement_creation`,
+        `empilement_rejeu`, `empilement_align`, `empilement_warp`,
+        `empilement_rejet`, `empilement_moyenne`). Hors `--perf`, `perf.t0()`
+        rend None et `perf.duree()` ne fait rien : AUCUN pixel ne change et le
+        coût ajouté est nul (contrat de la Phase 0). Le RÉSIDUEL
+        (`empilement` − somme des sous-chronos : `note_alignement`, ligne
+        d'état, trace des rôles INACTIVE, `_recaler_ha`) est calculé et publié
+        par l'outil de mesure `bancs/_mesure_empilement.py`.
+        """
         # Jalon 106b : instantané typé des paramètres de travail (seam
         # `WorkerConfig`) — construit ici seulement, pour laisser le chemin de
         # la boucle strictement inchangé.
@@ -1234,7 +1246,17 @@ class AcquisitionWorker:
         # rien devant une pose de 120 s. La frame rejetée est comptée,
         # signalée sur la ligne d'alignement, et le worker respire (au
         # plus 20 analyses/s) sans empiler ni déclencher de re-calage.
+        # AUDIT PERFORMANCE (v2.98.9, branche `OptimisationUI`) : SOUS-CHRONOS
+        # opt-in de l'étage `empilement` (2 938 ms/frame au `perf-9`), qui
+        # n'était pas décomposé. `perf.t0()` rend None et `perf.duree()` ne
+        # fait RIEN quand l'instrumentation est inactive (contrat de la
+        # Phase 0) : ces lignes sont des no-ops hors `--perf` et ne changent
+        # AUCUN pixel (le calcul est identique, seule une horloge est lue).
+        # Le RÉSIDUEL (`empilement` − somme des sous-chronos) est publié par
+        # l'outil de mesure `bancs/_mesure_empilement.py`.
+        _t_flou = perf.t0()
         verdict = self._filtre_floue(frame, role=role)
+        perf.duree("empilement_flou", _t_flou)
         if verdict:
             self.floues_rejetees += 1
             self.align_info = verdict
@@ -1256,8 +1278,10 @@ class AcquisitionWorker:
         # du flux (référence, alignement, empilement) travaille sur ce
         # canal 2D — le repère reste COMMUN (aligneur unique, décision
         # tranchée du 18/09/2026).
+        _t_canal = perf.t0()
         img_travail = (extraire_canal(frame, role)
                        if self._mode_compo else frame)
+        perf.duree("empilement_canal", _t_canal)
         if self.stacker is not None \
                 and self.stacker.shape != img_travail.shape:
             # changement de géométrie : les frames archivées (autre
@@ -1267,26 +1291,37 @@ class AcquisitionWorker:
         # sources fichiers, consigne appliquée pour les caméras SDK) — lu UNE
         # fois, utilisé pour l'archive ET pour l'empilement.
         expo = self._expo_camera()
+        # AUDIT PERFORMANCE (v2.98.9) : l'ARCHIVAGE écrit une FITS float32 par
+        # frame (I/O disque) — c'est la piste n°1 de l'audit (le poste
+        # `lecture_frame` a déjà montré ce que coûte une E/S sur un partage
+        # réseau). Le SCORE, lui, fait une détection d'étoiles complète.
+        _t_arch = perf.t0()
         if self._mode_compo:          # archive PAR RÔLE (re-stack jalon 20)
             chemin_archive = self.archives.setdefault(
                 role, _globals_app().ArchiveFrames()).ajouter(
                     frame, exposition=expo)
         else:
             chemin_archive = self.archive.ajouter(frame, exposition=expo)
+        perf.duree("empilement_archive", _t_arch)
         if chemin_archive is not None:
             if self._mode_compo:
                 # Jalon 20 : score qualité PAR RÔLE — mesuré sur le CANAL
                 # EXTRAIT (img_travail, la même image que l'alignement),
                 # donc comparable d'une couche à l'autre pour choisir la
                 # meilleure brute TOUS RÔLES confondus.
-                self._scores_par_role.setdefault(role, []).append(
-                    self._score_frame(img_travail))
+                _t_score = perf.t0()
+                _score = self._score_frame(img_travail)
+                perf.duree("empilement_score", _t_score)
+                self._scores_par_role.setdefault(role, []).append(_score)
                 self._restack_depuis += 1
             else:
                 # Jalon 16 : score qualité (nb d'étoiles détectées, canal
                 # vert) de chaque brute archivée — matière du choix de
                 # référence à la Siril (meilleure référence + re-stack).
-                self._scores.append(self._score_frame(frame))
+                _t_score = perf.t0()
+                _score = self._score_frame(frame)
+                perf.duree("empilement_score", _t_score)
+                self._scores.append(_score)
                 self._restack_depuis += 1
 
         # (re)création de l'empilement / nouvelle référence — SEULEMENT
@@ -1335,6 +1370,11 @@ class AcquisitionWorker:
         elif (self.stacker is None
                 or self.stacker.shape != img_travail.shape):
             etait_vide = self.stacker is None
+            # AUDIT PERFORMANCE (v2.98.9) : la CRÉATION de l'empileur (et, avec
+            # elle, la pose de la PREMIÈRE référence d'alignement) est un coût
+            # de DÉMARRAGE ; le REJEU d'ancre (`empilement_rejeu`) est un
+            # re-stack COMPLET, mesuré à part.
+            _t_creation = perf.t0()
             # Jalon 106b : `kappa` peut valoir None (« Off ») — les empileurs
             # l'acceptent À L'EXÉCUTION (bancs et `app.py` l'emploient) mais
             # pyright lit leurs `k` typés `float` : ignores CIBLÉS sur les 2
@@ -1383,6 +1423,8 @@ class AcquisitionWorker:
             self._definir_reference(img_travail, motif="initiale",
                                     role_source=role)
             self.disp.reset()          # stats d'affichage repartent de zéro
+            perf.duree("empilement_creation", _t_creation)
+            _t_rejeu = perf.t0()
             # Jalon 21 : 1re brute Ha → ancre + rejeu des frames
             # archivées entre-temps (les autres rôles arrivés avant).
             if (etait_vide and self._mode_compo and self._narrowband_ha()
@@ -1415,6 +1457,7 @@ class AcquisitionWorker:
                     if info:
                         self.align_info = info
                     deja_rejoue = True
+            perf.duree("empilement_rejeu", _t_rejeu)
 
         stack = None
         # Jalon 129b (voie A) : en composition BROADBAND+Ha, la brute Ha
@@ -1426,16 +1469,26 @@ class AcquisitionWorker:
             if voie_a:
                 self._assurer_reference_ha(img_travail)
                 aligneur = self.aligner_ha
+            # AUDIT PERFORMANCE (v2.98.9) : les TROIS étages du chemin chaud —
+            # ORB+RANSAC (ou corrélation de phase) dans `compute`, la
+            # reprojection `warpAffine`, et l'accumulation avec rejet
+            # kappa-sigma / Winsorized dans `add`.
+            _t_align = perf.t0()
             M, ok = aligneur.compute(img_travail)
+            perf.duree("empilement_align", _t_align)
             if ok:
+                _t_warp = perf.t0()
                 aligned = cv2.warpAffine(img_travail, M,
                                          (img_travail.shape[1],
                                           img_travail.shape[0]),
                                          flags=cv2.INTER_LINEAR)
+                perf.duree("empilement_warp", _t_warp)
                 if self._mode_compo:       # routage vers le stacker du rôle
                     self.stacker.role_courant = role
                 # Jalon 119 : le temps de pose suit la frame (intégration).
+                _t_rejet = perf.t0()
                 self.stacker.add(aligned, exposure=expo)
+                perf.duree("empilement_rejet", _t_rejet)
                 # intersection des zones. Jalon 129b : en COMPOSITION le rôle
                 # est transmis (le Ha fusionné doit être EXCLU : son repère est
                 # propre — cf. CompositeStacker.note_alignement) ; en mono le
@@ -1500,7 +1553,12 @@ class AcquisitionWorker:
             elif not ok:
                 self.align_info = "refus (frame non empilée)"
 
+            # AUDIT PERFORMANCE (v2.98.9) : la MOYENNE (sum/wsum) est rendue une
+            # fois par frame (mémoïsée sur `n`, donc recalculée ici) — coût
+            # croissant avec le nombre de rôles (une moyenne par couche).
+            _t_moy = perf.t0()
             stack = self.stacker.mean()
+            perf.duree("empilement_moyenne", _t_moy)
         if deja_rejoue:
             # Étape ⑦ : le rejeu d'ancre n'aligne PAS la frame courante (elle
             # vient d'être empilée par `_do_restack_compo`) — on le note tel

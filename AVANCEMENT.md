@@ -16,14 +16,14 @@ performance/mémoire, puis refonte du rendu.
 > seulement sur demande explicite d'Alain. **`LRGBHa` est FERMÉE** — ne pas la
 > recréer.
 
-Versions : **`OptimisationUI` = v2.98.8** (Phase 0 + **1a** + **1b** + **`tick_avant`**
+Versions : **`OptimisationUI` = v2.98.9** (Phase 0 + **1a** + **1b** + **`tick_avant`**
 LIVRÉS ET **VALIDÉS EN RÉEL** — `perf-7` : `ui_tick` **3,3 %** du mur ; **mémoire
 MESURÉE** par un outil neuf ; **« copie → référence » LIVRÉ ET VALIDÉ EN RÉEL**
-(v2.98.5 : `perf-8` RSS max 4 458,9 → **4 247,1 Mo**) ; **jauge `postes` LIVRÉE**
-(v2.98.6) ; **persistance dark/flat CORRIGÉE** (v2.98.7, validée en réel) ;
-**DÉFAUT « STF = IMAGE BLANCHE » CORRIGÉ ET VALIDÉ EN RÉEL** (v2.98.8, reproduit
-et mesuré AVANT correction) ; **aucune release**) ·
-`master` = v2.96.1 · **Store publié = v2.71.1**.
+(v2.98.5) ; **jauge `postes` LIVRÉE** (v2.98.6) ; **persistance dark/flat
+CORRIGÉE** (v2.98.7) ; **DÉFAUT « STF = IMAGE BLANCHE » CORRIGÉ ET VALIDÉ EN
+RÉEL** (v2.98.8) ; **`empilement` DÉCOMPOSÉ ET MESURÉ** (v2.98.9, **aucun pixel
+changé** — le poste dominant n'est PAS celui qu'on croyait) ; **aucune
+release**) · `master` = v2.96.1 · **Store publié = v2.71.1**.
 
 **Gouvernance** : aucune release GitHub sans accord ; **demander AVANT de
 démarrer le lot suivant** ; ne jamais déduire l'état d'une case de `config.json`
@@ -31,14 +31,30 @@ démarrer le lot suivant** ; ne jamais déduire l'état d'une case de `config.js
 
 ---
 
-## Session des 20-21/10/2026 — Phase 0, **1a**, **1b** et `tick_avant` VALIDÉS EN RÉEL · mémoire MESURÉE · **copie → référence LIVRÉE (perf-8)** · **jauge `postes` LIVRÉE** · **persistance dark/flat CORRIGÉE (v2.98.7)** · **DÉFAUT « STF = IMAGE BLANCHE » CORRIGÉ (v2.98.8)**
+## Session des 20-21/10/2026 — Phase 1, mémoire, persistance dark/flat et défaut STF VALIDÉS EN RÉEL · **`empilement` DÉCOMPOSÉ ET MESURÉ (v2.98.9)**
 
 ### État actuel
 - **Tout est LIVRÉ, VALIDÉ EN RÉEL, COMMITTÉ ET POUSSÉ** (`OptimisationUI`,
-  v2.98.8). Phase 0, **1a**, **1b**, `tick_avant` ① + ②, la mesure mémoire,
+  v2.98.9). Phase 0, **1a**, **1b**, `tick_avant` ① + ②, la mesure mémoire,
   **copie → référence**, la **jauge `postes`**, la **persistance dark/flat**
-  (v2.98.7) et le **défaut « basculer sur STF après VeraLux = image blanche »**
-  (v2.98.8, **« Testé OK » d'Alain**) : **rien n'est en attente de code**.
+  (v2.98.7), le **défaut « basculer sur STF après VeraLux = image blanche »**
+  (v2.98.8, **« Testé OK » d'Alain**) et la **DÉCOMPOSITION de `empilement`**
+  (v2.98.9, **mesure seule, aucun pixel changé**) : **rien n'est en attente de
+  code**. Ce qui reste n'est plus une mesure mais une DÉCISION : **quel levier
+  optimiser, et dans quel ordre** — elle appartient à Alain.
+- **`empilement` EST DÉCOMPOSÉ ET MESURÉ (v2.98.9)** : outil NEUF
+  `bancs/_mesure_empilement.py` (rejoue de VRAIES brutes dans la VRAIE
+  `_worker_empiler_frame`, config HERMÉTIQUE, `perf` armé, MÊME bloc que le
+  worker) + DIX sous-chronos `perf` opt-in dans `core/worker.py` (coût nul hors
+  `--perf`, **résultat identique AU BIT**). **Le levier attendu par l'audit
+  n'est PAS le poste dominant** : sur 8 brutes OSC réelles de 8,4 Mpx,
+  `empilement` = **2 704,6 ms/frame** (même ordre que les 2 938 de `perf-9`) et
+  **l'ALIGNEMENT (ORB+RANSAC) pèse 40,9 %** — le REJET kappa-sigma ne pèse que
+  **4,7 %**.
+- **LEVIER n°5 CHIFFRÉ sur le MÊME jeu de brutes** : `winsorized` fenêtre 4
+  porte `empilement` à **5 369,9 ms/frame (×1,99)** — le REJET passe de 127,6 à
+  **2 167,9 ms/frame (×17)** et DEVIENT dominant (40,4 %). `winsorized` coûte
+  donc **~2,67 s/frame de plus** que `kappa` à cette géométrie.
 - **DÉFAUT STF/BLANC — MESURÉ PUIS CORRIGÉ (v2.98.8)** : la MÉMOIRE d'étirement
   du STF (`_stats`) était **posée pendant la phase VeraLux** (une image d'attente
   suffit : un geste, `_pousser_rendu`, le filet) et **jamais rafraîchie** (depuis
@@ -77,47 +93,76 @@ démarrer le lot suivant** ; ne jamais déduire l'état d'une case de `config.js
 | **`perf-7` (correctif I/O)** | **1,2 s** | **11,1 s (0,74 ms)** | **18,6 s = 3,3 %** |
 | **`perf-9` (v2.98.7, darks chargés)** | **1,8 s** | **13,0 s (0,70 ms)** | **22,7 s = 3,3 %** |
 
-Repères `perf-9` (683,2 s, 67 frames, **3 darks maîtres chargés**) : `fil_rendu`
-148,0 s (1 276 ms/rendu), `empilement` **2 938 ms**, `lecture_frame` **4 765 ms**,
-stackers 2 935,4 Mo, **RSS max 4 252,2 Mo** (pic 4 687,5), `cores_moyens` **1,24**,
-`rendus` 116 pour 67 frames (1,73×), `tick_postes` **4,9 ms** (la jauge coûte
-~0,02 % du mur).
-
-Repères `perf-7` (556 s, 47 frames) : `fil_rendu` 103,4 s (1 360 ms/rendu),
-`empilement` **2 751 ms**, `lecture_frame` **6 697 ms**, stackers **2 935,7 Mo**,
-RSS 3 163 Mo (pic 4 563), `cores_moyens` **1,12**, `rendus` 76, `vl_new` 76.
+Repères `perf-9` (683,2 s, 67 frames, **3 darks maîtres**) : `fil_rendu` 148,0 s
+(1 276 ms/rendu), `empilement` **2 938 ms**, `lecture_frame` **4 765 ms**,
+stackers 2 935,4 Mo, **RSS max 4 252,2 Mo** (pic 4 687,5), `cores_moyens` 1,24,
+`rendus` 116 pour 67 frames, `tick_postes` 4,9 ms (~0,02 % du mur). Repères
+`perf-7` (556 s, 47 frames) : `fil_rendu` 103,4 s, `empilement` 2 751 ms,
+`lecture_frame` 6 697 ms, RSS 3 163 Mo, `cores_moyens` 1,12, `rendus` 76.
 Détail complet : `perf-*.json` (hors dépôt) et changelog `avastack/__init__.py`.
 
-**Lecture** : 1a et 1b ont tenu leurs promesses (`ui_rendu` 276 → 1,2 s), mais
-`tick_avant` restait à 77 % du mur **sans travail mesuré dedans** — c'était de
-l'**attente**, et la mesure ① puis la pile du Guet l'ont attribuée à une I/O
-réseau (`getmtime`) faite à chaque tour. Corrigé en v2.98.4 : **3,3 %**.
+**Lecture** : 1a et 1b ont tenu leurs promesses (`ui_rendu` 276 → 1,2 s) ; le
+`tick_avant` à 77 % du mur **sans travail mesuré dedans** était de l'**attente**
+(une I/O réseau — `getmtime` — à chaque tour), corrigé en v2.98.4 : **3,3 %**.
+
+### DÉCOMPOSITION de `empilement` — MESURÉE (v2.98.9)
+
+Outil : `bancs/_mesure_empilement.py` (8 brutes **OSC réelles** de 8,4 Mpx,
+dossier surveillé réel, vraie `_worker_empiler_frame`, `perf` armé). Relevés :
+`bancs/_mesure_empilement.json` et `_mesure_empilement_wins.json` (hors dépôt).
+
+| poste | `kappa` f.8 | `winsorized` f.4 |
+|---|---|---|
+| **`empilement` (TOTAL)** | **2 704,6** | **5 369,9** (×1,99) |
+| `empilement_align` — ORB+RANSAC | **1 105,3 (40,9 %)** | 1 363,3 (25,4 %) |
+| `empilement_archive` — FITS (I/O) | 483,8 (17,9 %) | 478,8 (8,9 %) |
+| `empilement_moyenne` — sum/wsum | 415,2 (15,4 %) | 549,2 (10,2 %) |
+| `empilement_flou` — filtre anti-floues | 291,5 (10,8 %) | 429,7 (8,0 %) |
+| `empilement_creation` — 1× (démarrage) | 133,7 (4,9 %) | 196,8 (3,7 %) |
+| `empilement_rejet` | **127,6 (4,7 %)** | **2 167,9 (40,4 %)** |
+| `empilement_score` — détection d'étoiles | 91,1 (3,4 %) | 113,2 (2,1 %) |
+| `empilement_warp` — `warpAffine` | 20,5 (0,8 %) | 17,1 (0,3 %) |
+| `empilement_canal` · `empilement_rejeu` | 0,0 | 0,0 |
+| **RÉSIDUEL non nommé** | 35,8 (1,3 %) | 53,8 (1,0 %) |
+
+**Le poste dominant n'est PAS celui que l'audit attendait** : c'est
+**l'ALIGNEMENT** (40,9 %), pas le rejet (4,7 %). Le résiduel à 1,3 % prouve que
+la décomposition est quasi complète. **Levier n°5 CHIFFRÉ** (2e colonne, même
+jeu de brutes) : `winsorized` f.4 **double** le total et fait du REJET le poste
+dominant (×17) — **−2,67 s/frame** sur 8 brutes réelles.
+
+**ANCRE COMPOSITION** (le plus proche de `perf-9` : brutes **MONO** réelles M33,
+4 rôles L/R/G/B, `winsorized` f.4, 12 frames = 3 par rôle → relevé
+`bancs/_mesure_empilement_lrgb.json`) : `empilement` **4 506,9 ms/frame** —
+`empilement_align` **2 212,8 (49,1 %)** · `empilement_moyenne` **1 438,1
+(31,9 %)** · flou 292,4 (6,5 %) · score 160,2 (3,6 %) · archive 157,1 (3,5 %) ·
+création 133,0 (3,0 %) · rejet 47,3 (1,0 %) · warp 13,2 (0,3 %) · résiduel 52,8
+(1,2 %). ⇒ **la MOYENNE devient le poste n°2** et grandit avec le nombre de rôles
+(415,2 ms à 1 rôle → 1 438,1 à 4). ⚠️ Le rejet y paraît faible parce que
+**3 frames par rôle ne remplissent pas la fenêtre** (warmup) : ce n'est PAS un
+coût stabilisé de `winsorized`.
+
+**ATTENTION — ce qu'un relevé de banc ne dit pas** : les durées ABSOLUES
+dépendent de la machine et du chemin mesuré (ici OSC 3 canaux mono rôle ; l'ancre
+composition est MONO 4 rôles). Ce qui se transporte, c'est la **répartition** et
+le **rapport kappa/winsorized** (×1,99 sur la MÊME machine et les MÊMES brutes).
+Pour la mesure qui engage la production : `python AVAStack.py --perf` sur une
+session réelle — les mêmes sous-chronos y sont posés, coût nul hors `--perf`.
 
 ### Enveloppe mémoire MESURÉE (21/10/2026 — outil, aucune session requise)
 
-Géométrie native 8,4 Mpx, fenêtre 4, winsorized, k=3, Linear Fit. Commandes :
-`--roles L` (mono 2D) · `--roles R --canaux 3` (OSC) · `--roles L,R,G,B,Ha --maitres 10`.
-
-| poste (Mio) | **MONO** 1 dossier | **OSC** 3 canaux | **MAX** 5 rôles |
+| poste | **MONO** 1 dossier | **OSC** 3 canaux | **MAX** 5 rôles |
 |---|---|---|---|
-| empileur(s) | **585,2** | **1 755,6** | **3 118,5** |
-| chaîne de rendu retenue | 40,1 | 120,2 | 280,6 |
-| postes de session (brute/calibrée/canal/uint8/brut niveaux) | 200,4 | 200,4 | 200,4 |
-| maîtres dark/flat (**32,07 CHACUN**) | 2 → **64,1** | 2 → 64,1 | 10 → **320,7** |
-| base applicative (Tk+OpenCV+astropy) | 148,0 | 148,0 | 148,0 |
-| **TOTAL modèle au repos** | **1 038** | **2 288** | **4 068** |
-| non-tableau mesuré (fragmentation + tas) | ~+150 | ~+300 | **+440** (dont 193 de fragmentation) |
 | **RSS réel attendu** | **~1,2 Go** | **~2,6 Go** | **~4,5 Go** |
-| pic pendant un rendu VeraLux (mesuré) | +513 | +1 487 | +1 449 |
-| **PIC réel attendu** | **~1,7 Go** | **~4,0 Go** | **~5,0 Go** |
+| **PIC réel attendu** (rendu VeraLux) | **~1,7 Go** | **~4,0 Go** | **~5,0 Go** |
 
-**Ancre réelle** : `perf-9` (5 rôles, **3** darks) → RSS max **4 252,2 Mo**, pic
-**4 687,5 Mo** (modèle 3 811 + 440 de non-tableau ✓). Avec 5 darks + 5 flats :
-**+224 Mo** (7 maîtres de plus) ⇒ **~4,5 Go au repos, ~4,9 Go de pic**.
-**Recommandation** : **4 Go** suffisent pour un dossier MONO ; **8 Go** pour une
-source OSC ; **8 Go = plancher, 16 Go conseillé** pour 5 rôles avec darks ET
-flats. Leviers si besoin : fenêtre 4 → 2 (−320 Mio pour 5 rôles), méthode
-`kappa` au lieu de `winsorized` (supprime `_buf`), moins de rôles.
+Ancre réelle : `perf-9` (5 rôles, 3 darks) → RSS max **4 252,2 Mo**, pic
+**4 687,5 Mo**. **Recommandation : 4 Go** pour un dossier MONO, **8 Go** pour une
+source OSC, **8 Go = plancher / 16 Go conseillé** pour 5 rôles avec darks ET
+flats. Leviers : fenêtre 4 → 2 (−320 Mio à 5 rôles), méthode `kappa` au lieu de
+`winsorized` (supprime `_buf`), moins de rôles. Détail du modèle, par poste et
+par rôle : **`CLAUDE.md` (« ENVELOPPE MÉMOIRE »)** + outil
+`bancs/_mesure_memoire_stackers.py` (`--roles`, `--canaux`, `--maitres`).
 
 ### Décisions (détail dans `CLAUDE.md` et le changelog)
 - Instrumentation **opt-in**, **coût nul** hors `--perf` (protège les hashes
@@ -138,84 +183,41 @@ flats. Leviers si besoin : fenêtre 4 → 2 (−320 Mio pour 5 rôles), méthode
   Un maître illisible n'est **pas** retiré de la config (perte évitée) : il est DIT.
 
 ### Problèmes ouverts
-- ✅ **CORRIGÉ (v2.98.8) — « STF = IMAGE BLANCHE » (retour d'Alain, 21/10/2026)**.
-  Reproduit dans un banc déterministe AVANT de corriger (`_test_bascule_stf_blanc.py`,
-  vraie `DisplayProcessor` : VeraLux rendu → bascule STF **sans nouvelle frame**),
-  MESURÉ (`_diag_bascule_stf_blanc.py`), puis corrigé — cause et preuves dans
-  « État actuel » ci-dessus et dans le changelog (v2.98.8).
-  **L'hypothèse n°1 du handoff était FAUSSE** : la chaîne n'est PAS en cause (la
-  clé contient bien le moteur, `_vl_params()` dernier élément) — la vraie cause
-  est la **MÉMOIRE du STF** (`_stats`) posée pendant la phase VeraLux et
-  réutilisée à la bascule. À retenir : **un état « d'après étirement » du STF ne
-  se périme pas tout seul** — il faut le JETER quand le STF n'a plus rendu
-  l'empilement depuis longtemps (moteur changé), et le FAIRE AVANCER à chaque
-  nouvelle pile même quand la chaîne est attendue.
+- ✅ **CORRIGÉ (v2.98.8) — « STF = IMAGE BLANCHE »** : reproduit AVANT de corriger,
+  mesuré, corrigé ; l'hypothèse n°1 du handoff était FAUSSE (la chaîne n'était pas
+  en cause — c'était la **MÉMOIRE du STF**, `_stats`, posée en VeraLux et
+  réutilisée à la bascule). Leçon : **un état « d'après étirement » du STF ne se
+  périme pas tout seul** (détail : `CLAUDE.md` + changelog v2.98.8).
+- ✅ **CORRIGÉ (v2.98.7)** : les chemins dark/flat n'étaient PAS persistés
+  (`_load_dark`/`_load_flat` chargeaient sans écrire dans `CONFIG`) → re-sélection
+  à chaque session. PIÈGE : l'absence de clé dans `config.json` ne prouve PAS
+  qu'aucun maître n'est chargé.
 - **Phase 1 : critère ATTEINT** (`ui_tick` 3,3 % < 20 %) — **test complet d'Alain
   AVANT toute fusion vers `master` et toute release** (sa décision, pas la nôtre).
-- **AUDIT DU POSTE `rendu` (21/10, outil `bancs/_diag_rendu_memoire.py`) — le
-  poste est un ARTEFACT de parcours, MESURÉ** : `FilRendu` garde `_hote` (= l'App
-  elle-même) ; `perf.postes_memoire(app)` re-entre donc dans l'App sous le nom
-  « rendu » et y range les tableaux déclarés APRÈS `self.rendu` dans `__init__`.
-  Mesure : vue jauge `rendu` **120,2 Mio** ; boucle cassée ⇒ **`_stack_pleine_res`
-  96,2 + `_last_disp` 24,0** (même total 216,5 — **aucun octet perdu ni compté
-  deux fois**) ; **le `FilRendu` SEUL retient 0,0 Mio (0 tableau)**.
-  ⇒ **il n'y a rien à récupérer dans le fil de rendu** (l'hypothèse « 206 Mio à
-  instruire » tombe). Deux conséquences à trancher par Alain :
-  ① **corriger la jauge** (ne pas traverser `_hote` : ~3 lignes dans
-  `perf.postes_memoire`) pour que le relevé NOMME au lieu d'entasser sous
-  `rendu` ; ② **ne pas compter les alias des stackers dans `postes`** :
-  `_stack_pleine_res` est une **RÉFÉRENCE** sur le cache du stacker (v2.98.5),
-  donc compté DEUX fois (stackers **et** hors stackers). ⚠️ **SENS DU DÉFAUT** :
-  la formule du [6] (`hors stackers − postes − base`) SOUS-ESTIME alors le
-  résiduel de ~85 Mio au déploiement du run ⇒ **455,3 Mio est un PLANCHER ;
-  le résiduel réel est ~540 Mio** (dont 193 de fragmentation). La formule du [4]
-  (postes du [3] + chaîne du [3 bis], qui excluent DÉJÀ le composite) donnait
-  **560,7** — elle était la bonne. **À corriger dans l'outil AVANT de conclure
-  sur un prochain relevé.**
-- **MÉMOIRE — le résiduel est NOMMÉ** (voir aussi l'« Enveloppe » ci-dessus) :
-  - Géométrie RÉELLE des brutes = **3856×2180 = 8 406 080 px** (en-tête FITS) ;
-    `source_px` (7,4 Mpx) est l'image **RECADRÉE** — ne pas confondre.
-  - `perf-9` : hors stackers **1 156,5 Mio**, dont la jauge `postes` nomme
-    **553,2 Mio** (`disp` 226,1 · `rendu` 206,2 · **`calib` 96,2** · 3 aligneurs
-    24,6) ⇒ **455,3 Mio sans tableau nommé** (dont **193 Mio de fragmentation
-    MESURÉE**) = tas Tk/PIL/OpenCV, objets Python, arènes. **Aucune fuite.**
-    ⚠️ **PLANCHER** : `rendu` est un artefact et l'alias du composite est compté
-    deux fois ⇒ le résiduel réel est **~540 Mio** (cf. l'audit `rendu` ci-dessus).
-  - **La chaîne de rendu (`disp` + `rendu` = 432,3 Mio) est 47,8 % du
-    hors-stackers** : c'est le prochain poste à instruire (le `rendu` 206,2 =
-    ce que le `FilRendu` RETIENT) — **auditer les lecteurs AVANT d'agir**, preuve
-    au bit.
-  - PIÈGE MESURÉ : la jauge **sous-compte 160,3 Mio** (`_memo_moy` est un tuple,
-    invisible à `profondeur=3`) — **une jauge se RECOUPE**.
-- **DÉFAUT CORRIGÉ (v2.98.7)** : les chemins dark/flat n'étaient PAS persistés
-  (`_load_dark`/`_load_flat` chargeaient l'image sans rien écrire dans `CONFIG`)
-  → re-sélection à chaque session. Ils étaient bien APPLIQUÉS (`worker.py:703`,
-  `calib.apply`, une fois par frame). PIÈGE : l'absence de clé dans
-  `config.json` ne prouve PAS qu'aucun maître n'est chargé.
-- **`empilement`** 2 938 ms/frame (`perf-9`) et **`lecture_frame`**
-  4 765 ms/frame (scan réseau) : APRÈS la mémoire, et à décomposer avant de
-  toucher. Pire tour `ui_tick` : 92 ms (sous le seuil du Guet).
+- **MÉMOIRE — l'audit est CLOS, le résiduel est NOMMÉ** : le poste `rendu` est un
+  **artefact de parcours MESURÉ** (`FilRendu` garde `_hote` = l'App, que la jauge
+  re-traverse : **il n'y a rien à récupérer dans le fil**, il ne retient 0 tableau).
+  `perf-9` : hors stackers 1 156,5 Mio, dont la jauge `postes` nomme 553,2 Mio
+  (`disp` 226,1 · `rendu` 206,2 · **`calib` 96,2** · 3 aligneurs 24,6) ⇒ ~540 Mio
+  sans tableau nommé (dont **193 Mio de fragmentation MESURÉE**). **Aucune fuite.**
+  Les 3 corrections de mesure proposées sont **ABANDONNÉES** (Alain, 21/10).
+- **`lecture_frame`** 4 765 ms/frame (`perf-9`, scan réseau, dont de l'ATTENTE) :
+  dernier poste non instruit, **APRÈS `empilement`**. Pire tour `ui_tick` : 92 ms
+  (sous le seuil du Guet). Géométrie RÉELLE des brutes = **3856×2180 = 8 406 080
+  px** ; `source_px` (7,4 Mpx) est l'image **RECADRÉE** — ne pas confondre.
 
-### Fichiers touchés par l'audit (détail : commit `e307ad4` + changelog)
-- **v2.98.0 → v2.98.4** : `avastack/perf.py` (NEUF, opt-in, coût nul) ; câblage
-  `ui/app.py`, `ui/renderer.py`, `core/worker.py` ; `avastack/ui/rendu.py`
-  (NEUF, fil de rendu) ; `ui/widgets/histogram.py` (`_histogrammes_purs`) ;
-  `cameras/multifolder.py` (`last_file` sans I/O).
-- **v2.98.5 → v2.98.7** : `processing/display.py` (`_vl_src` retiré),
-  `core/worker.py` + `ui/app.py` (copie → référence), `perf.py` (jauge `postes`),
-  `processing/calibration.py` + `ui/app.py` + `ui/config_ui.py` (persistance des
-  maîtres), `bancs/_mesure_memoire_stackers.py` (NEUF, options `--roles`,
-  `--canaux`, `--maitres` pour l'enveloppe).
-- **v2.98.8** : `processing/display.py` (`_dernier_moteur_rendu`,
-  `oublier_memoire_stf()`, garde-fou dans `process()`), `ui/renderer.py`
-  (`_refresh_preview(live=…)`), `ui/app.py` (`_maj_lbl_vl` → `live=True` au rendu
-  du `vl_new` d'une nouvelle pile), `bancs/_test_bascule_stf_blanc.py` (NEUF,
-  5 volets), `bancs/_diag_bascule_stf_blanc.py` (NEUF, outil de MESURE).
-- **Bancs** : `_test_phase0_perf` (110), `_test_1a_rendu_final` (40),
-  `_test_render_worker_bit_exact` (41, hashes au bit),
+### Fichiers touchés par l'audit (détail : changelog `avastack/__init__.py` + `git log`)
+- **v2.98.9 (ce lot)** : `core/worker.py` (DIX sous-chronos `empilement_*`
+  opt-in dans `_worker_empiler_frame`) ; `bancs/_mesure_empilement.py` (NEUF,
+  outil de MESURE + `--autotest`) ; `avastack/__init__.py` (version + changelog).
+- **v2.98.0 → v2.98.8** (détail : commits `e307ad4`, `f902040` et le changelog) :
+  `perf.py` (NEUF), `ui/rendu.py` (NEUF), `ui/app.py`, `ui/renderer.py`,
+  `ui/config_ui.py`, `processing/display.py`, `processing/calibration.py`,
+  `cameras/multifolder.py`, et les bancs `_test_phase0_perf` (110),
+  `_test_1a_rendu_final` (40), `_test_render_worker_bit_exact` (41),
   `_test_multifolder_last_file` (24), `_test_p1_memoire_reference` (30),
   `_test_p1_postes_memoire` (17), `_test_calib_persistance` (32),
-  `_test_bascule_stf_blanc` (12, v2.98.8).
+  `_test_bascule_stf_blanc` (12), `_mesure_memoire_stackers.py`, `_diag_*`.
 
 ---
 
@@ -235,7 +237,7 @@ pixel**. **ATTEINT : 3,3 %** (`perf-7`). Le chantier suivant est la **MÉMOIRE**
 | **jauge `postes`** | **LIVRÉE** (v2.98.6) | `perf-9` : nomme 553,2 Mio (dont `calib` 96,2), `tick_postes` 4,9 ms |
 | **persistance dark/flat** | **VALIDÉE EN RÉEL** (v2.98.7) | banc 26 ; « on retrouve bien les dark quand on réouvre » |
 | **défaut STF/blanc** | **VALIDÉ EN RÉEL** (v2.98.8) | banc neuf : témoin inversé (médiane 255) + image identique AU BIT au STF sain ; « Testé OK » |
-| **`empilement` — DERNIER POINT** | **À FAIRE : DÉCOMPOSER** (mesurer d'abord) | `perf-9` : **2 938 ms/frame** (le 1er poste de CPU restant) |
+| **`empilement` — DÉCOMPOSÉ (v2.98.9)** | **LIVRÉE : MESURÉE** (0 pixel changé) | **2 704,6 ms/frame** (OSC) · **align 40,9 %** · archive 17,9 % · moyenne 15,4 % · rejet 4,7 % · résiduel 1,3 % |
 
 **Critères de sortie** : ① `rendus` ≈ frames (**atteint en `perf-7` : 1,12×** ;
 `perf-9` 1,73× — gestes de réglages) ;
@@ -248,65 +250,55 @@ vert (**atteint**).
 
 ## En attente / prochaine session
 
-- **DÉFAUT STF/BLANC — CLOS (v2.98.8, VALIDÉ EN RÉEL : « Testé OK »)** :
-  reproduit dans un banc déterministe, mesuré, corrigé, banc neuf vert +
-  non-régression rejouée. Voir « État actuel » et « Problèmes ouverts ».
-- **LE CHANTIER N'A PLUS QU'UN POINT : `empilement`** (dernier jalon du tableau
-  ci-dessus ; `lecture_frame` reste APRÈS). `perf-9` : **2 938 ms/frame** — c'est
-  de loin le premier poste de CPU restant, et il n'est PAS décomposé.
-  **PROCHAINE ACTION — UNIQUE, et MESURER AVANT DE TOUCHER** : **décomposer**
-  `empilement`, sans changer un pixel. Points d'entrée :
-  `core/worker.py:722` (`with perf.chrono("empilement")`) → la méthode
-  `_worker_empiler_frame` (`core/worker.py:1212`), qui contient, DANS ce même
-  chrono : ① le filtre anti-floues (~15 ms, annoncé), ② l'extraction de canal,
-  ③ **l'ARCHIVAGE + le score qualité** (I/O disque — piste n°1 : sur un NAS ou
-  un dossier réseau, cf. la leçon v2.98.4 « aucune I/O sur le fil d'interface »,
-  ici c'est le fil worker mais le coût peut être le même), ④ **l'ALIGNEMENT**
-  (`aligner`, ORB+RANSAC / corrélation de phase), ⑤ **le REJET kappa-sigma**
-  (`stacker.ajouter`, accumulateurs float64). Le levier attendu est le n°5
-  (fenêtre `winsorized` → `kappa` supprime `_buf`) et/ou le n°4 (coût ORB), mais
-  **on ne touche rien avant de savoir qui pèse quoi** : sous-chronos `perf`
-  (opt-in, coût nul hors `--perf`, comme la Phase 0) ou un outil de banc, puis
-  UN relevé de référence.
-- **CE QUI ATTEND ALAIN** : rien pour coder — le chantier est prêt à reprendre
-  sur `empilement`. Sa décision reste la **fusion vers `master` + la release**
-  (aucune n'a été faite : `master` = v2.96.1, Store = v2.71.1).
-- **Résultats du 21/10 en une ligne chacun** : `perf-6` a désigné le RÉSEAU
-  (0,969 d'attente, `cores_moyens` 0,98) ; v2.98.4 a supprimé l'I/O du fil
-  (`ui_tick` 456,5 → 18,6 s) ; v2.98.5 a rendu la copie de `_stack_pleine_res`
-  à la référence (−96,2 Mio, rendu SHA-256 égal) ; v2.98.6 a livré la jauge
-  `postes` ; v2.98.7 a corrigé la persistance des maîtres ; v2.98.8 a corrigé la
-  mémoire du STF (bascule VeraLux → STF). `perf-9` a servi aux dernières preuves.
+- **`empilement` EST MESURÉ (v2.98.9) — CE QUI ATTEND MAINTENANT, C'EST UNE
+  DÉCISION, PAS UNE MESURE.** Trois leviers, chiffrés, par ordre de poids sur le
+  jeu réel mesuré :
+  ① **l'ALIGNEMENT** (`empilement_align`, ORB+RANSAC) : **40,9 %** à 1 rôle,
+     **49,1 %** à 4 rôles — le vrai premier poste. Piste à INSTRUIRE (pas à
+     coder) : ce que `StarAligner.compute` fait par frame (nombre de features
+     ORB, cascade triangles → étoiles → phase, réessai +180°, résolution des
+     détections), et si la référence d'alignement est recalculée trop souvent.
+  ② **la MOYENNE** (`empilement_moyenne`, `sum/wsum`) : 15,4 % à 1 rôle mais
+     **31,9 % à 4 rôles** — elle grandit avec le nombre de rôles. Piste : `mean()`
+     est appelée UNE fois par frame (mémoïsée sur `n`) ; vérifier ce qui, en
+     composition, la rend si lourde (recadrage d'intersection, combine L,
+     normalisation commune).
+  ③ **le REJET** : **4,7 % en `kappa`**, mais **40,4 % en `winsorized`** — le
+     levier le PLUS direct (un réglage, pas du code), chiffré à **−2,67 s/frame**
+     sur 8 brutes réelles. Attention : ce n'est PAS un défaut à corriger, c'est
+     un ARBITRAGE (la qualité du rejet) — décision d'Alain.
+- **CE QUI ATTEND ALAIN** : ① choisir le levier (et l'ordre) ; ② sa **fusion vers
+  `master` + la release** (aucune n'a été faite : `master` = v2.96.1, Store =
+  v2.71.1) ; ③ le **test complet en réel** de la branche (la décomposition ne
+  change aucun pixel, mais elle a ajouté des lignes sur le chemin du worker).
 - **ABANDONNÉ (Alain, 21/10/2026)** : les 3 corrections de mesure proposées
   (ne pas traverser `_hote` dans la jauge, ne pas compter les alias des
   stackers, formule [6] de l'outil) — **ne pas les reprendre** sans demande.
-  L'audit du poste `rendu` reste VALIDE (artefact mesuré, rien à récupérer dans
-  le fil) ; le résiduel « 455,3 Mio » reste un PLANCHER (~540 Mio en réalité).
 - **ÉCARTÉ, à ne pas réintroduire sans mesure** : `cv2.setNumThreads`,
   `sys.setswitchinterval`, priorité OS du fil Tk — le CPU n'était pas le
   problème (0,98 cœur utilisé sur 14). Et **float32 : ÉCARTÉ DÉFINITIVEMENT**
   (Alain, 21/10 — peut changer l'image ; le chiffrage reste une TRACE, pas un
   plan).
 - **Banc 79 (`_test_perf_reactivite_jalon79.py`)** : 4 échecs **PRÉEXISTANTS**
-  (vérifié : identiques sans le lot v2.98.8) — l'étape 1b a déplacé
-  l'instrumentation du banc (`_maj_histogrammes` → `_draw_hist`). À reprendre
-  un jour, **ce n'est pas une régression**.
-- **`CLAUDE.md`** : à jour — leçon v2.98.3 (mesurer le CPU du fil), la règle
-  « AUCUNE I/O SUR LE FIL D'INTERFACE » (et son application au démarrage),
-  section « Calibration dark/flat — persistance des maîtres (v2.98.7) »,
-  section NEUVE « la mémoire du STF se périme » (v2.98.8) et l'**ENVELOPPE
-  MÉMOIRE** (dimensionnement 4 / 8 / 16 Go).
+  (identiques sans le lot v2.98.8) — l'étape 1b a déplacé l'instrumentation du
+  banc (`_maj_histogrammes` → `_draw_hist`). **Ce n'est pas une régression.**
+- **`CLAUDE.md`** : une entrée est **PROPOSÉE** (le fichier ne s'écrit jamais
+  sans accord — c'est sa règle de maintenance) : les **sous-chronos `empilement`
+  (v2.98.9)** et le piège « un relevé `perf` se lit en TOTAUX, pas en moyennes
+  par poste ». Le reste est à jour : leçon v2.98.3, « AUCUNE I/O SUR LE FIL
+  D'INTERFACE », persistance des maîtres (v2.98.7), « la mémoire du STF se
+  périme » (v2.98.8), ENVELOPPE MÉMOIRE.
 - Aucune release ; `master` reste à v2.96.1 ; le Store à v2.71.1.
 
 ### Contexte de reprise (à coller — 2 phrases)
-Branche **`OptimisationUI`, v2.98.8** (commit `f902040`, poussé) : Phase 1,
-mémoire, persistance dark/flat ET le défaut « basculer sur STF après du VeraLux =
-image blanche » sont **livrés et validés en réel** (« Testé OK ») — le chantier
-n'a plus qu'**UN point** : **`empilement`, 2 938 ms/frame** (`perf-9`). Action
-unique de la prochaine session : **DÉCOMPOSER `empilement`** (fil d'interface non
-concerné : `worker.py:722` → `_worker_empiler_frame`, soit archivage/score I/O,
-alignement ORB, rejet kappa-sigma) **en MESURANT d'abord** — sous-chronos `perf`
-opt-in ou outil de banc, un relevé de référence, **aucun pixel changé**.
+Branche **`OptimisationUI`, v2.98.9** : Phase 1, mémoire, persistance dark/flat,
+défaut « basculer sur STF après du VeraLux = image blanche » et **décomposition
+MESURÉE de `empilement`** sont livrés (**aucun pixel changé**). `empilement`
+2 704,6 ms/frame (OSC réel) : **ALIGNEMENT 40,9 %** (et **49,1 %** à 4 rôles),
+moyenne 15,4 % (31,9 % à 4 rôles), archive 17,9 %, rejet 4,7 % — et `winsorized`
+f.4 **double** le total (rejet ×17). Prochaine action : **instruire l'ALIGNEMENT**
+(ce que `StarAligner.compute` fait par frame) — ou la décision d'Alain de prendre
+le levier `kappa`.
 
 ---
 
@@ -371,10 +363,18 @@ opt-in ou outil de banc, un relevé de référence, **aucun pixel changé**.
 - **Pic ≠ retenu** : VeraLux crée ~1,5 Go de temporaires à 8,4 Mpx pour
   ~281 Mio retenus — ne jamais confondre les deux, ni appeler « fuite » ce
   qu'aucune jauge ne nomme (fragmentation comprise).
-- **`source_px` n'est PAS la géométrie des stackers** : c'est l'image
-  **recadrée** (7,4 Mpx) ; les brutes M33 font **3856×2180 = 8 406 080 px**.
 - **Un seuil ABSOLU de temps est FLAKY** : ancrer les assertions sur une
   comparaison INTERNE (cas A vs cas B du même run) ou sur une mesure directe.
+- **Un relevé de `perf` se lit en TOTAUX, jamais en moyennes par poste**
+  (v2.98.9) : `moy_ms` divise chaque poste par SON propre `n` — un poste qui
+  n'arrive qu'une fois (création, rejeu) pèse alors `total/1` et la « somme des
+  postes » dépasse le total (constaté : 121 % d'un total). `bancs/_mesure_empilement.py`
+  ramène donc TOUS les postes au nombre d'appels de `empilement` : la somme égale
+  le total et le résiduel devient interprétable (1,0-1,3 %).
+- **Un coût mesuré en banc n'est pas un coût de production** : le rejet
+  `winsorized` mesuré à **3 frames par rôle** est en WARMUP (la fenêtre n'est pas
+  pleine, rien n'est rejeté) — il paraît 46× moins cher qu'à 8 frames par rôle.
+  Toujours publier `n` À CÔTÉ de la durée.
 - **Échecs PRÉEXISTANTS** (environnementaux, pas des régressions) :
   `_test_espace_jalon72` (géométrie d'écran), `_test_reset_empilement_jalon76`
   [4] (course `_stop()`), « ligne Base SPCC rognée » + « menu écrasé » (flaky),

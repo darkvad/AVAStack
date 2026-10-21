@@ -20,7 +20,48 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.98.8"
+AVASTACK_VERSION = "2.98.9"
+
+# v2.98.9 : DÉCOMPOSER `empilement` EN MESURANT D'ABORD (branche `OptimisationUI`,
+#   AUCUNE release, AUCUN pixel changé). Dernier point du chantier : `perf-9`
+#   mesure `empilement` à 2 938 ms/frame — le premier poste de CPU restant — mais
+#   c'est un TOTAL, et rien ne disait qui pèse quoi.
+#   - `core/worker.py` (`_worker_empiler_frame`) : DIX sous-chronos `perf`
+#     OPT-IN, sous le contrat de la Phase 0 (`perf.t0()` rend None et
+#     `perf.duree()` ne fait rien quand l'instrumentation est inactive : coût
+#     nul hors `--perf`, résultat identique AU BIT) — `empilement_flou`,
+#     `_canal`, `_archive`, `_score`, `_creation`, `_rejeu`, `_align`, `_warp`,
+#     `_rejet`, `_moyenne`. Seule une horloge est lue en plus : aucun tableau
+#     alloué, aucun calcul déplacé, aucun pixel ne change.
+#   - Banc NEUF `bancs/_mesure_empilement.py` (MESURE seule, aucun pixel) :
+#     arme l'instrumentation, construit la VRAIE `App` (config HERMÉTIQUE),
+#     rejoue de VRAIES brutes — dossier surveillé RÉEL, composition `--racine`
+#     (sous-dossiers nommés par rôle) ou `--role ROLE=DOSSIER` (arborescences
+#     IMBRIQUÉES, cas réel de N.I.N.A.) — à travers la VRAIE
+#     `_worker_empiler_frame`, dans le MÊME bloc que le worker
+#     (`perf.occupe` + `perf.chrono("empilement")`). Il publie le tableau de
+#     décomposition, le RÉSIDUEL non nommé et le POSTE DOMINANT, et écrit un
+#     relevé JSON rejouable. `--autotest` vérifie la MÉCANIQUE sans aucune
+#     donnée (étages présents, somme ≤ total, au moins une frame empilée).
+#     Tous les postes sont ramenés à la MÊME base (le nombre d'appels de
+#     `empilement`) : un poste qui n'arrive qu'une fois (création, rejeu) est
+#     réparti sur toutes les frames — la somme des postes égale donc le total,
+#     et le résiduel devient interprétable (1,0 à 1,3 % mesuré).
+#   - MESURE DE RÉFÉRENCE (8 brutes RÉELLES OSC, 8,4 Mpx, rejet `kappa` fenêtre
+#     8) : `empilement` 2 704,6 ms/frame — du même ordre que les 2 938 ms/frame
+#     du `perf-9`. Répartition : ALIGNEMENT (ORB+RANSAC) 1 105,3 ms (40,9 %) ·
+#     ARCHIVAGE FITS 483,8 (17,9 %) · MOYENNE 415,2 (15,4 %) · FILTRE
+#     ANTI-FLOUES 291,5 (10,8 %) · création 133,7 (4,9 %) · REJET 127,6 (4,7 %)
+#     · SCORE 91,1 (3,4 %) · warp 20,5 (0,8 %) · canal et rejeu 0,0 · résiduel
+#     35,8 (1,3 %). ⇒ le levier attendu par l'audit (le REJET) n'est PAS le
+#     poste dominant : c'est l'ALIGNEMENT.
+#   - LEVIER n°5 CHIFFRÉ sur le MÊME jeu de brutes : `winsorized` fenêtre 4
+#     porte `empilement` à 5 369,9 ms/frame (×1,99) — le REJET passe de 127,6 à
+#     2 167,9 ms/frame (×17) et DEVIENT le poste dominant (40,4 %). Choisir
+#     `kappa` n'est donc pas un confort : c'est la moitié du mur.
+#   - Aucun fichier de l'application touché hors de cette instrumentation :
+#     non-régression rejouée (garde-fou, banc J5 qui pilote la VRAIE
+#     `_worker_empiler_frame`, bancs du worker).
 
 # v2.98.8 : DÉFAUT CORRIGÉ — BASCULER SUR L'ÉTIREMENT STF APRÈS DU VERALUX
 #   DONNAIT UNE IMAGE BLANCHE (branche `OptimisationUI`, AUCUNE release,
