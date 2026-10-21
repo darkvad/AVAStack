@@ -38,9 +38,20 @@ démarrer le lot suivant** ; ne jamais déduire l'état d'une case de `config.js
   sur **56** fichiers typés, hashes d'empilement au bit).
 - **Ressenti d'Alain (le vrai critère)** : **l'interface répond nettement
   mieux** — plus de gel de 2 s pendant l'étirement.
-- **Reste ouvert** : `tick_avant` = **380,5 s (64,0 ms/tour)** — le fil Tk
-  **ATTEND** (hypothèse dominante : OpenCV tourne à **14 fils**, jamais
-  bornés) ; `ui_tick` reste à **61 %** du mur. **À PROUVER** par `perf-6.json`.
+- **VERDICT `perf-6` (21/10, 590 s, 47 frames, VeraLux + chroma) — LA CAUSE EST
+  LE RÉSEAU, PAS OpenCV** : `attente.tick_avant.part_attente` = **0,969**
+  (mur 453,6 s, **CPU du fil 14,3 s**) ; `ui_tick` 0,965. `cores_moyens` =
+  **0,98** ⇒ le fil n'a pas soif de cœurs. Le **Guet de gel** a nommé le
+  coupable (2 rapports, pile complète) : `app.py:6933` →
+  `multifolder.py:131` → `genericpath.getmtime`. Les 5 dossiers surveillés sont
+  sur un **partage SMB** (`//192.168.155.45/…`) : mesuré sur le poste,
+  `exists` seul = **0,8 ms/tour**, `exists`+`getmtime` = **178 ms/tour** ⇒
+  **439,6 s d'attente** = 10 requêtes réseau par tour d'interface.
+- **Conséquence** : `cv2.setNumThreads` est **ÉCARTÉ** (hypothèse fausse, elle
+  explique aussi les 26,7 ms/tour de `perf-3` et 64 ms de `perf-5` : même appel,
+  partage plus ou moins rapide). Le correctif est de **3 lignes** dans
+  `multifolder.py` (mémoriser le dernier fichier LU dans `read()`) — **sur
+  accord d'Alain avant de coder**.
 - **`tick_avant` étape ① (MESURER) LIVRÉE — v2.98.3** : `perf.t0_cpu()` +
   `perf.duree_attente(base, mur, cpu)` posent, **à côté du mur**, le CPU du
   **fil appelant** (`time.thread_time()`) et l'**ATTENTE** = mur − CPU, avec un
@@ -50,9 +61,14 @@ démarrer le lot suivant** ; ne jamais déduire l'état d'une case de `config.js
   **110 vérifications** exécutées (section **[2 bis]** : sommeil ⇒ part ≈ 1,
   CPU publié comparé à une mesure DIRECTE, calcul pur ⇒ attente nettement
   moindre — **pas de seuil absolu**, il mesurait la charge machine).
-- **Rien n'est encore PROUVÉ** : la famine du fil Tk ne sera établie que par un
-  relevé réel **`perf-6.json`**. L'étape ② (borner `cv2.setNumThreads`) ne
-  s'engage pas avant.
+- **CORRIGÉ (v2.98.4, accord d'Alain « zéro changement »)** : `last_file` ne fait
+  plus AUCUNE I/O — le calcul identique (corps recopié verbatim) est fait par
+  `read()`, une fois par image, dans le fil d'ACQUISITION. Banc neuf
+  `bancs/_test_multifolder_last_file.py` (**24 vérifications**) : détection live
+  intacte (fichiers déposés un par un dans 2 dossiers), fichier en cours
+  d'écriture toujours ignoré puis pris, aucun fichier relu, **0 appel système**
+  espionné sur 200 lectures, valeur identique à l'ancienne formule.
+  **Reste à MESURER le gain** (`perf-7`).
 
 
 ### Les trois relevés qui commandent la suite (M33, 5 canaux, pleine résolution)
@@ -106,15 +122,17 @@ réglages 2,8 s) — **c'est de l'attente**, pas du travail Tk.
   d'horloge, `duree_attente()` sort au premier test.
 
 ### Problèmes ouverts
-- **`tick_avant` = 380,5 s (64,0 ms/tour)** : 98 % de `ui_tick`. Le travail
-  mesuré y est négligeable ⇒ **ATTENTE** (à PROUVER par `perf-6.json` :
-  `attente.tick_avant.part_attente`). `ui_tick_libre` = 61,6 ms/tour alors
-  qu'aucun empilement ne tourne (mais le fil de rendu, si). **OpenCV est
-  configuré à 14 fils** (`cv2.getNumThreads()` = 14 ; 14 cœurs logiques) et
-  l'application ne le borne **jamais** : ces fils sont NATIFS, invisibles pour
-  `threading.active_count()` (jauge `threads` = 5) et pour les chronos — mais
-  `cpu_s` = **1 270 s** pour ~550 s de travail mesuré (**~700 s de CPU
-  fantômes**). ⇒ Le fil Tk n'obtient plus de cœur pendant le rendu.
+- **`tick_avant` = 453,6 s dont 439,6 s d'ATTENTE (96,9 %)** : **cause TROUVÉE
+  et chiffrée** — `MultiFolderCamera.last_file` (propriété) fait
+  `os.path.exists()` + `os.path.getmtime()` sur le dernier fichier des **5
+  dossiers**, et `_tick_corps` la lit **à chaque tour** (3 388 fois) : 10
+  requêtes réseau par tour sur un partage **SMB**, 178 ms/tour mesurés.
+  Le travail Tk réel est de **4,2 ms/tour** (14,3 s au total). Pile écrite par
+  le Guet de gel : `app.py:6933` → `multifolder.py:131` → `genericpath.getmtime`.
+  ⇒ Correctif proposé (3 lignes) : mémoriser le fichier LU dans `read()`.
+  La docstring de la propriété dit DÉJÀ « Dernier fichier lu » — le cache la
+  remet en accord avec son propre contrat (le `getmtime` renvoyait le fichier
+  au mtime le plus récent, pas le dernier lu).
 - **Critère de sortie de la Phase 1 NON atteint** : `ui_tick` < 20 % du mur
   (aujourd'hui 61 %).
 - **Réactivité sous chaîne lente** (1a) : l'écran suit les `vl_new` ; à
@@ -170,7 +188,7 @@ au bit** (bancs), pas d'aperçu réduit, pas de calcul pendant un geste (P5 livr
 | 1a — un seul rendu par frame | **LIVRÉE** (v2.98.1) | `perf-4`, banc 40 |
 | 1b — rendu hors fil Tk | **LIVRÉE** (v2.98.2) | `perf-5`, banc 41 |
 | **`tick_avant` ① — MESURER** | **LIVRÉE** (v2.98.3) | `t0_cpu`/`duree_attente`, banc 75 |
-| **`tick_avant` ② — AGIR** | en attente du relevé | `perf-6.json` (`part_attente`) |
+| **`tick_avant` ② — AGIR** | **LIVRÉE** (v2.98.4) | `last_file` sans I/O, banc 24 |
 | mémoire | après | `stackers_mo` 2 935 Mo |
 | `empilement` | après | 4 503 ms/frame |
 
@@ -183,44 +201,41 @@ au bit** (bancs), pas d'aperçu réduit, pas de calcul pendant un geste (P5 livr
 
 ## En attente / prochaine session
 
-- **`tick_avant` — étape ① LIVRÉE (v2.98.3)** : la mesure du CPU du fil Tk est
-  branchée (`t0_cpu` + `duree_attente` sur `tick_avant` et `ui_tick`).
-  **Il ne reste qu'à RELEVER** : session réelle VeraLux + chroma, même jeu M33,
-  puis
-
-  `python AVAStack.py --perf`
-
-  (le fichier s'écrit **à côté du programme** — le chemin est imprimé au
-  démarrage — et se lit PENDANT la session, réécrit toutes les 5 s ; pour garder
-  un relevé, copier/renommer `perf.json` en `perf-6.json` APRÈS la fermeture :
-  `perf*.json` est dans `.gitignore`).
-
-  et lire **`attente.tick_avant.part_attente`** (et `attente.ui_tick`).
-- **Si `part_attente` ≈ 1** ⇒ famine **PROUVÉE** : passer à l'étape ②, dans cet
-  ordre — (a) **`cv2.setNumThreads(N)`** borné au démarrage (N = 2 ou la moitié
-  des cœurs, repli multiplateforme : ne jamais supposer Windows) ; (b)
-  `sys.setswitchinterval(0.001)` ; si les deux ne suffisent pas : borne de
-  concurrence (ne pas relancer un rendu pendant un empilement) ou priorité OS du
-  fil Tk (à discuter, multiplateforme).
-- **Si `part_attente` est FAIBLE** ⇒ le temps est réellement passé dans `_tick` :
-  chercher les sous-chronos (`tick_fits`, `tick_mesures`, `tick_reglages`,
-  `tick_vues`) AVANT tout correctif — et NE PAS borner OpenCV « au cas où ».
+- **`perf-6` RELEVÉ le 21/10** (590 s, 47 frames, VeraLux + chroma) :
+  `attente.tick_avant.part_attente` = **0,969** (439,6 s d'attente pour 14,3 s
+  de CPU), `cores_moyens` = **0,98** ⇒ ce n'est PAS un manque de cœurs.
+  Cause nommée par la pile du Guet de gel : `MultiFolderCamera.last_file` fait
+  `exists` + `getmtime` sur **5 dossiers SMB** à CHAQUE tour d'interface.
+- **LIVRÉ le 21/10 (v2.98.4, « zéro changement »)** : `last_file` ne fait plus
+  aucune I/O ; le calcul identique est fait par `read()`, une fois par image,
+  dans le fil d'acquisition. Banc `_test_multifolder_last_file.py` (22
+  vérifications) : détection live intacte, **0 appel système** espionné.
+- **ACTION UNIQUE : relever `perf-7.json`** (même protocole que `perf-6` :
+  `python AVAStack.py --perf`, 3-5 min d'empilement actif VeraLux + chroma,
+  fermeture, puis renommer `perf.json` en `perf-7.json`). À vérifier :
+  `ui_tick` **< 10 %** du mur et `attente.tick_avant.part_attente` ≈ **0,03**.
+  Si `ui_tick` reste haut, la cause est AILLEURS : lire `attente` ET la pile du
+  Guet de gel avant de toucher quoi que ce soit.
 - **Ensuite** : **mémoire** (float32 + somme compensée + stackers paresseux,
-  2 935 Mo → ~1,4 Go) puis **décomposition d'`empilement`** (alignement vs rejet).
-- **`CLAUDE.md`** : mise à jour de 1b faite (accord d'Alain, 21/10) ; reste à y
-  porter la leçon de v2.98.3 (mesurer le CPU du fil, pas seulement le mur) —
-  **proposée, pas encore écrite**.
+  2 935 Mo → ~1,4 Go) puis **décomposition d'`empilement`** (2 865 ms/frame :
+  alignement vs rejet) ; et le **coût du scan réseau** (326 ms par dossier et par
+  passe, `lecture_frame` = 7 s/frame) — sujet SÉPARÉ, latence d'acquisition.
+- **ÉCARTÉ, à ne pas réintroduire sans mesure** : `cv2.setNumThreads`,
+  `sys.setswitchinterval`, priorité OS du fil Tk — le CPU n'était pas le
+  problème (0,98 cœur utilisé sur 14).
+- **`CLAUDE.md`** : à jour — leçon v2.98.3 (mesurer le CPU du fil), correction de
+  l'affirmation fausse « le levier est `cv2.setNumThreads` », et la règle
+  « AUCUNE I/O SUR LE FIL D'INTERFACE » avec son correctif et son banc.
 - Aucune release ; `master` reste à v2.96.1 ; le Store à v2.71.1.
 
 ### Contexte de reprise (à coller — 2 phrases)
-Branche **`OptimisationUI`, v2.98.3** : Phase 0 + **1a** + **1b** livrées et
-**validées en réel**, et l'étape **① de `tick_avant` (mesurer l'attente du fil
-Tk)** est livrée — `perf.t0_cpu` / `duree_attente` publient `part_attente` pour
-`tick_avant` et `ui_tick`, banc Phase 0 à **75 vérifications**. Prochaine action
-**unique** : **relever `perf-6.json` en réel** (`--perf --perf-json …`) et lire
-`attente.tick_avant.part_attente` — proche de 1 ⇒ famine prouvée, on borne
-**OpenCV (14 fils !)** ; faible ⇒ le temps se passe vraiment dans `_tick`
-(banc Phase 0 à **110** vérifications).
+Branche **`OptimisationUI`, v2.98.4** : Phase 0 + 1a + 1b validées en réel, et
+`tick_avant` **instruit** — la mesure a prouvé **96,9 % d'attente** avec
+**0,98 cœur**, la pile du Guet de gel a désigné `MultiFolderCamera.last_file`
+(`getmtime` réseau : 178 ms/tour, 439,6 s sur la session), et le correctif
+« zéro changement » est **livré** (calcul déplacé dans `read()`, banc 24 vert).
+Prochaine action **unique** : relever `perf-7.json` (`python AVAStack.py
+--perf`, 3-5 min d'empilement actif) et vérifier `ui_tick` **< 10 %** du mur.
 
 ---
 
@@ -245,14 +260,14 @@ Tk)** est livrée — `perf.t0_cpu` / `duree_attente` publient `part_attente` po
 
 ## Pièges récents (encore actifs — le reste est passé dans `CLAUDE.md`)
 
-- **Le fil Tk ATTEND, il ne travaille pas** (`perf-5`) : `tick_avant` =
-  64 ms/tour pour 3,2 ms de travail mesuré. Ne PAS conclure à un coût de Tk.
-  **Depuis v2.98.3 c'est MESURÉ et non plus supposé** : `perf.t0_cpu()` +
-  `perf.duree_attente()` posent `<base>_cpu` et `<base>_attente`, et le JSON
-  publie `attente[base].part_attente` (proche de 1 = famine). **OpenCV ouvre
-  14 fils NATIFS** (`cv2.getNumThreads()`), jamais bornés : invisibles pour
-  `threading.active_count()` ET pour les chronos, mais visibles dans `cpu_s`
-  (1 270 s pour ~550 s mesurées).
+- **Le fil Tk ATTEND, il ne travaille pas — et on sait POURQUOI (21/10)** :
+  `perf-6` donne `tick_avant` = **439,6 s d'attente pour 14,3 s de CPU**
+  (`part_attente` 0,969) avec `cores_moyens` **0,98**. La cause, nommée par la
+  pile du Guet de gel, est un **`os.path.getmtime()` sur partage SMB** appelé à
+  chaque tour (`multifolder.last_file`) : **178 ms/tour** mesurés.
+  **Règle** : aucune I/O sur le fil d'interface ; `part_attente` ≈ 1 avec
+  `cores_moyens` < 1 = **I/O ou verrou**, jamais un manque de cœurs (OpenCV a
+  bien 14 fils natifs, mais ce n'était pas la cause).
 - **1b — `disp.process()` NE SE LANCE QUE DANS LE FIL DE RENDU** : c'est lui qui
   met à jour les stats EMA du STF (`_stats`), le cache de chaîne et
   `dernier_brut_niveaux`. Un `self.disp.process(...)` ajouté dans un

@@ -20,7 +20,43 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.98.3"
+AVASTACK_VERSION = "2.98.4"
+
+# v2.98.4 : `tick_avant` — LA CAUSE ÉTAIT LE RÉSEAU, PAS LE CPU (branche
+#   `OptimisationUI`, AUCUNE release). Correctif de TROIS LIGNES, comportement
+#   IDENTIQUE (choix d'Alain : « zéro changement »).
+#   MESURE (`perf-6.json`, 590 s, 47 frames, VeraLux + chroma) : `tick_avant` =
+#   453,6 s dont **439,6 s d'ATTENTE** (`part_attente` **0,969**) pour **14,3 s**
+#   de CPU, `cores_moyens` **0,98** ⇒ ce n'était PAS un manque de cœurs :
+#   l'hypothèse « famine par les 14 fils natifs d'OpenCV » est **ÉCARTÉE** (et
+#   corrigée dans CLAUDE.md, qui l'affirmait).
+#   LA PILE DU GUET DE GEL a nommé le coupable (rapports identiques du 21/10) :
+#   `app.py:6933` (`_tick_corps` lit `camera.last_file`) → `multifolder.py:131`
+#   → `genericpath.getmtime`. `MultiFolderCamera.last_file` était une PROPRIÉTÉ
+#   qui faisait `os.path.exists` + `os.path.getmtime` sur le dernier fichier des
+#   5 dossiers de canaux, à CHAQUE tour d'interface. Mesuré sur le partage SMB
+#   des canaux : `exists` seul **0,8 ms/tour**, `exists` + `getmtime`
+#   **178 ms/tour** (10 requêtes réseau par tour, ~5,7 tours/s, 3 388 tours).
+#   - `cameras/multifolder.py` : le calcul est EXTRAIT **tel quel** dans
+#     `_calculer_dernier_fichier()` (corps reproduit VERBATIM — c'est ce qui
+#     garantit le zéro-changement) et appelé par `read()`, **une fois par image
+#     lue**, dans le fil d'ACQUISITION ; `last_file` devient une simple lecture
+#     d'attribut (`_dernier_fichier`). ÉQUIVALENCE : les entrées du calcul (les
+#     `cam.last_file` des dossiers) ne changent QUE lors d'une lecture réussie et
+#     `read()` recalcule juste après ⇒ la valeur publiée est, à chaque instant,
+#     celle que l'ancienne propriété aurait rendue.
+#   - RIEN d'autre n'est touché : la DÉTECTION des nouvelles images (« taille
+#     stable + mtime ancien ⇒ fichier complet », file `_pending`, marquage par
+#     nom) vit dans `FolderCamera._scan` / `read` et n'appelle JAMAIS `last_file`.
+#   - BANC NEUF `bancs/_test_multifolder_last_file.py` (24 vérifications) :
+#     fichiers déposés UN PAR UN dans 2 dossiers (comme NINA en direct) ⇒ lus une
+#     fois chacun, dans le bon rôle et dans l'ordre ; fichier encore en cours
+#     d'écriture IGNORÉ puis pris dès qu'il est stable ; aucun fichier relu ;
+#     `last_file` comparé à l'ANCIENNE formule (témoin recopié verbatim) ;
+#     **0 appel** à `os.path.exists`/`getmtime` espionnés sur 200 lectures ; la
+#     valeur SUIT les lectures ; `stats()` inchangé.
+#   - ATTENDU au prochain relevé (`perf-7.json`) : `ui_tick` 456 s → **~17-20 s**
+#     (3 % du mur au lieu de 77 %), `part_attente` ≈ 0,03.
 
 # v2.98.3 : PHASE 1 — INSTRUIRE `tick_avant` : MESURER L'ATTENTE (branche
 #   `OptimisationUI`, AUCUNE release). Étape ① du lot : MESURE SEULE — aucun

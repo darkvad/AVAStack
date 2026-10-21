@@ -40,6 +40,10 @@ class MultiFolderCamera(CameraBase):
         self.poll = poll
         self._idx = 0                 # départ de la prochaine rotation
         self._expo_courante = None    # jalon 119 : temps de pose du dernier lu
+        # v2.98.4 : valeur de `last_file`, RECALCULÉE une seule fois par image
+        # lue (cf. `_calculer_dernier_fichier`) — plus AUCUNE I/O sur le fil
+        # d'interface, qui lit cette propriété à chaque tour.
+        self._dernier_fichier = ""
         self._running = False
 
     # -- cycle de vie -----------------------------------------------------
@@ -82,6 +86,14 @@ class MultiFolderCamera(CameraBase):
                     # Jalon 119 : mémorise le temps de pose du fichier lu
                     # (en-tête FITS de CE dossier) pour l'intégration par rôle.
                     self._expo_courante = self.cams[j].exposure_time_sec
+                    # v2.98.4 (21/10/2026) : le « dernier fichier » est calculé
+                    # ICI, dans le fil d'ACQUISITION, une seule fois par image.
+                    # C'est EXACTEMENT le calcul de l'ancienne propriété
+                    # `last_file` (exists + getmtime sur les derniers fichiers
+                    # lus), déplacé hors du fil Tk : mesuré **178 ms par tour**
+                    # d'interface sur un partage SMB, soit 439,6 s d'attente sur
+                    # une session de 590 s (`perf-6`, pile du Guet de gel).
+                    self._dernier_fichier = self._calculer_dernier_fichier()
                     return img, self.roles[j]
             time.sleep(self.poll)
         return None
@@ -122,9 +134,28 @@ class MultiFolderCamera(CameraBase):
         """Total de fichiers illisibles, tous rôles confondus."""
         return sum(cam.failed for cam in self.cams)
 
-    @property
-    def last_file(self):
-        """Dernier fichier lu, tous rôles confondus (ligne d'état)."""
+    def _calculer_dernier_fichier(self) -> str:
+        """Fichier le plus RÉCENT parmi les dernières images lues (tous rôles).
+
+        Corps repris **VERBATIM** de l'ancienne propriété `last_file` : c'est ce
+        qui garantit un comportement IDENTIQUE (zéro changement pour les
+        appelants — nom de cible, en-tête FITS, indices astrométriques, fiche).
+
+        POURQUOI CE DÉPLACEMENT (v2.98.4, 21/10/2026) : `_tick_corps` lit cette
+        valeur à CHAQUE tour d'interface. Tant qu'elle était calculée dans la
+        propriété, chaque tour payait 5 × (`os.path.exists` + `getmtime`) —
+        mesuré **178 ms par tour** sur un partage SMB (5 dossiers de canaux),
+        soit **439,6 s d'attente** sur une session de 590 s (`perf-6` :
+        `tick_avant` à 96,9 % d'attente pour 14,3 s de CPU, `cores_moyens`
+        0,98) ; la pile du Guet de gel désignait exactement cet appel
+        (`app.py:6933` → `getmtime`). Ici le calcul se fait dans le fil
+        d'ACQUISITION, une fois par image.
+
+        ÉQUIVALENCE (à ne pas casser) : les entrées de ce calcul sont les
+        `cam.last_file` des dossiers, qui ne changent QUE lors d'une lecture
+        réussie — et `read()` recalcule juste après. La valeur publiée est donc,
+        à chaque instant, celle que l'ancienne propriété aurait rendue.
+        """
         dernier, t_max = "", -1.0
         for cam in self.cams:
             if cam.last_file and os.path.exists(cam.last_file):
@@ -132,3 +163,13 @@ class MultiFolderCamera(CameraBase):
                 if t > t_max:
                     dernier, t_max = cam.last_file, t
         return dernier
+
+    @property
+    def last_file(self):
+        """Dernier fichier lu, tous rôles confondus (ligne d'état).
+
+        v2.98.4 : simple lecture d'attribut — **aucune I/O**, donc sans danger
+        depuis le fil d'interface (qui l'interroge à chaque tour). Recalculée
+        par `read()` à chaque image lue.
+        """
+        return self._dernier_fichier

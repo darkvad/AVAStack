@@ -4159,9 +4159,28 @@ du code, piège rencontré sur un outil externe. Cible : section « Pièges »
   **NATIFS** (`cv2.getNumThreads()` = **14** sur le poste d'Alain, jamais borné
   par l'application) qui n'apparaissent NI dans `threading.active_count()`
   (jauge `threads`) NI dans les chronos, mais consomment des cœurs — mesuré
-  `cpu_s` **1 270 s** pour ~550 s de travail mesuré (`perf-5`). Conséquence :
-  le fil Tk est affamé (`tick_avant` 64 ms/tour sans travail dedans) ; le
-  levier est `cv2.setNumThreads(N)` borné au démarrage, PAS une optimisation Tk.
+  `cpu_s` **1 270 s** pour ~550 s de travail mesuré (`perf-5`).
+  **CORRECTION du 21/10 (`perf-6` + Guet de gel) : ces fils natifs NE faminent
+  PAS le fil Tk.** `cores_moyens` est resté à **0,98** (CPU largement libre) et
+  les **96,9 % d'attente** de `tick_avant` venaient d'un `os.path.getmtime()`
+  **sur un partage réseau**, appelé à CHAQUE tour d'interface (cf. règle
+  suivante). Ne PAS borner `cv2.setNumThreads` « au cas où » : lire
+  `attente[base].part_attente` et `cpu.cores_moyens` AVANT de choisir.
+- **AUCUNE I/O SUR LE FIL D'INTERFACE (leçon majeure du 21/10, CORRIGÉE en
+  v2.98.4)** : une propriété d'état lue dans `_tick` ne doit **jamais** toucher
+  disque ni réseau. Mesuré sur le poste d'Alain (5 dossiers sur un partage SMB) :
+  `os.path.exists` seul = **0,8 ms/tour**, mais `exists` + `getmtime` =
+  **178 ms/tour** — soit **439,6 s d'attente** sur une session de 590 s
+  (`perf-6` : `tick_avant` = 96,9 % d'attente pour 14,3 s de CPU). Signature
+  qui ne trompe pas : **`part_attente` ≈ 1 avec `cores_moyens` < 1** ⇒ I/O ou
+  attente de verrou, jamais un manque de cœurs. Le Guet de gel a nommé le
+  coupable en une pile (`app.py:6933` → `multifolder.py:131` →
+  `genericpath.getmtime`) : c'est le motif à exiger avant tout correctif.
+  **CORRECTIF** : `MultiFolderCamera.last_file` ne calcule plus rien — le calcul
+  (identique, recopié verbatim) est fait par `read()` **une fois par image**, dans
+  le fil d'acquisition, et la propriété ne lit qu'un attribut. Garde-fou :
+  `bancs/_test_multifolder_last_file.py` (détection live intacte + **0 appel**
+  système espionné + comparaison à l'ancienne formule).
 - **Banc** : `bancs/_test_phase0_perf.py` (**110 vérifications**, SANS écran :
   coût nul inactif, exactitude sous 4 fils, RSS/CPU, comptage des tableaux,
   écriture atomique ET périodique, lancement `--perf`, câblage vérifié par AST,
@@ -4283,11 +4302,11 @@ du code, piège rencontré sur un outil externe. Cible : section « Pièges »
   **Le fil Tk ne travaille plus : il ATTEND** (cf. le piège OpenCV ci-dessus).
   Le ressenti d'Alain est le bon critère et il est atteint : l'interface répond
   nettement mieux.
-- **Attente du fil Tk — MESURÉE depuis v2.98.3** : `perf.t0_cpu()` +
-  `perf.duree_attente()` (cf. « Instrumentation performance/mémoire »)
-  publient `attente.tick_avant.part_attente` et `attente.ui_tick.part_attente`
-  (plus une phrase dans `resume()`). Reste à **relever `perf-6.json` en réel** :
-  part ≈ 1 ⇒ famine **PROUVÉE** et l'on borne `cv2.setNumThreads` (étape ②) ;
-  part faible ⇒ le temps se passe VRAIMENT dans `_tick` (chercher les
-  sous-chronos avant tout correctif).
+- **Attente du fil Tk — MESURÉE ET EXPLIQUÉE (21/10, v2.98.3 + `perf-6`)** :
+  `perf.t0_cpu()` + `perf.duree_attente()` publient
+  `attente.tick_avant.part_attente` (**0,969** mesuré, 439,6 s d'attente pour
+  14,3 s de CPU) — et la cause est un **`os.path.getmtime()` réseau** appelé à
+  chaque tour par `MultiFolderCamera.last_file` (cf. « Instrumentation
+  performance/mémoire » → « AUCUNE I/O SUR LE FIL D'INTERFACE »).
+  `cv2.setNumThreads` est **écarté** (`cores_moyens` = 0,98).
 
