@@ -21,8 +21,8 @@ LIVRÉS ET **VALIDÉS EN RÉEL** — `perf-7` : `ui_tick` **3,3 %** du mur ; **m
 MESURÉE** par un outil neuf ; **« copie → référence » LIVRÉ ET VALIDÉ EN RÉEL**
 (v2.98.5 : `perf-8` RSS max 4 458,9 → **4 247,1 Mo**) ; **jauge `postes` LIVRÉE**
 (v2.98.6) ; **persistance dark/flat CORRIGÉE** (v2.98.7, validée en réel) ;
-**DÉFAUT « STF = IMAGE BLANCHE » CORRIGÉ** (v2.98.8, reproduit et mesuré AVANT
-correction) ; **aucune release**) ·
+**DÉFAUT « STF = IMAGE BLANCHE » CORRIGÉ ET VALIDÉ EN RÉEL** (v2.98.8, reproduit
+et mesuré AVANT correction) ; **aucune release**) ·
 `master` = v2.96.1 · **Store publié = v2.71.1**.
 
 **Gouvernance** : aucune release GitHub sans accord ; **demander AVANT de
@@ -34,25 +34,21 @@ démarrer le lot suivant** ; ne jamais déduire l'état d'une case de `config.js
 ## Session des 20-21/10/2026 — Phase 0, **1a**, **1b** et `tick_avant` VALIDÉS EN RÉEL · mémoire MESURÉE · **copie → référence LIVRÉE (perf-8)** · **jauge `postes` LIVRÉE** · **persistance dark/flat CORRIGÉE (v2.98.7)** · **DÉFAUT « STF = IMAGE BLANCHE » CORRIGÉ (v2.98.8)**
 
 ### État actuel
-- **Tout est LIVRÉ** (`OptimisationUI`, v2.98.8, **à committer/pousser**). Phase 0,
-  **1a**, **1b**, `tick_avant` ① + ②, la mesure mémoire, **copie → référence**,
-  la **jauge `postes`**, la **persistance dark/flat** (v2.98.7) et le **défaut
-  « basculer sur STF après VeraLux = image blanche »** (v2.98.8) : **rien n'est
-  en attente de code**. Reste à Alain : le **test complet en réel** (le défaut du
-  21/10 était le SEUL point qui bloquait la fusion vers `master`).
+- **Tout est LIVRÉ, VALIDÉ EN RÉEL, COMMITTÉ ET POUSSÉ** (`OptimisationUI`,
+  v2.98.8). Phase 0, **1a**, **1b**, `tick_avant` ① + ②, la mesure mémoire,
+  **copie → référence**, la **jauge `postes`**, la **persistance dark/flat**
+  (v2.98.7) et le **défaut « basculer sur STF après VeraLux = image blanche »**
+  (v2.98.8, **« Testé OK » d'Alain**) : **rien n'est en attente de code**.
 - **DÉFAUT STF/BLANC — MESURÉ PUIS CORRIGÉ (v2.98.8)** : la MÉMOIRE d'étirement
-  du STF (`_stats`) était **posée pendant la phase VeraLux** (une simple image
-  d'attente suffit : un geste, `_pousser_rendu`, le filet) et **jamais
-  rafraîchie** (depuis 1a, le rendu de frame n'existe plus quand la chaîne est
-  attendue) ; à la bascule, `_moteur_stf(live=False)` la RÉUTILISAIT. Mesure :
-  mémoire `(0,000882, 0,000345, 0,001972)` contre un empilement à 0,048 ⇒ `hi`
-  11 fois SOUS le fond ⇒ **médiane 255, 100 % ≥ 250** (écart 180,3 avec le STF
-  sain). Correctif : ① la mémoire **ne traverse pas** une période VeraLux
-  (`process()` jette `_stats`/`_memo_moteur` si le dernier rendu n'était pas STF)
-  ; ② elle **avance** au rendu du `vl_new` d'une nouvelle pile
-  (`_refresh_preview(live=True)`), sinon le STF auto restait GELÉ dans les modes
-  à chaîne. Banc neuf `_test_bascule_stf_blanc.py` (témoin inversé + bit-exact) ;
-  outil de mesure `_diag_bascule_stf_blanc.py`.
+  du STF (`_stats`) était **posée pendant la phase VeraLux** (une image d'attente
+  suffit : un geste, `_pousser_rendu`, le filet) et **jamais rafraîchie** (depuis
+  1a, le rendu de frame n'existe plus quand la chaîne est attendue) ; à la
+  bascule, `_moteur_stf(live=False)` la RÉUTILISAIT. Mesure : `hi` 11 fois SOUS
+  le fond ⇒ **médiane 255, 100 % ≥ 250** (écart 180,3 avec le STF sain).
+  Correctif : ① la mémoire **ne traverse pas** une période VeraLux ; ② elle
+  **avance** au rendu du `vl_new` d'une nouvelle pile. Détail : changelog
+  v2.98.8 + `CLAUDE.md` (« la mémoire du STF se périme ») ; banc
+  `_test_bascule_stf_blanc.py`, mesure `_diag_bascule_stf_blanc.py`.
 - **Le fil d'interface ne fait plus le calcul** : `ui_tick` **3,3 %** du mur
   (`perf-7` 456,5 → 18,6 s ; `perf-9` 22,7 s / 683 s), `tick_avant` 0,70 ms/tour,
   pire tour 92 ms (plus de gel de 2 s). Ressenti d'Alain (le vrai critère) :
@@ -238,7 +234,8 @@ pixel**. **ATTEINT : 3,3 %** (`perf-7`). Le chantier suivant est la **MÉMOIRE**
 | **copie → référence** | **LIVRÉE** (v2.98.5) | banc 30 : rendu SHA-256 égal, −96,2 Mio de rétention, RSS −96 Mo |
 | **jauge `postes`** | **LIVRÉE** (v2.98.6) | `perf-9` : nomme 553,2 Mio (dont `calib` 96,2), `tick_postes` 4,9 ms |
 | **persistance dark/flat** | **VALIDÉE EN RÉEL** (v2.98.7) | banc 26 ; « on retrouve bien les dark quand on réouvre » |
-| `empilement` | après | 2 938 ms/frame (`perf-9`) |
+| **défaut STF/blanc** | **VALIDÉ EN RÉEL** (v2.98.8) | banc neuf : témoin inversé (médiane 255) + image identique AU BIT au STF sain ; « Testé OK » |
+| **`empilement` — DERNIER POINT** | **À FAIRE : DÉCOMPOSER** (mesurer d'abord) | `perf-9` : **2 938 ms/frame** (le 1er poste de CPU restant) |
 
 **Critères de sortie** : ① `rendus` ≈ frames (**atteint en `perf-7` : 1,12×** ;
 `perf-9` 1,73× — gestes de réglages) ;
@@ -251,16 +248,29 @@ vert (**atteint**).
 
 ## En attente / prochaine session
 
-- **DÉFAUT STF/BLANC — FAIT (v2.98.8)** : reproduit dans un banc déterministe,
-  mesuré, corrigé, banc neuf vert + non-régression rejouée. Voir « État actuel »
-  et « Problèmes ouverts ».
-- **CE QUI ATTEND ALAIN** : **committer/pousser** la v2.98.8 (branche
-  `OptimisationUI`) puis refaire le **test complet en réel** — c'est LUI qui
-  décide de la fusion vers `master` et de la release. Le défaut du 21/10 était le
-  SEUL point bloquant.
-- **PROCHAINE ACTION (accord à demander AVANT de démarrer)** : **`empilement`**
-  2 938 ms/frame (`perf-9`) — **décomposer** alignement vs rejet kappa-sigma
-  AVANT de toucher ; puis **`lecture_frame`** 4 765 ms/frame.
+- **DÉFAUT STF/BLANC — CLOS (v2.98.8, VALIDÉ EN RÉEL : « Testé OK »)** :
+  reproduit dans un banc déterministe, mesuré, corrigé, banc neuf vert +
+  non-régression rejouée. Voir « État actuel » et « Problèmes ouverts ».
+- **LE CHANTIER N'A PLUS QU'UN POINT : `empilement`** (dernier jalon du tableau
+  ci-dessus ; `lecture_frame` reste APRÈS). `perf-9` : **2 938 ms/frame** — c'est
+  de loin le premier poste de CPU restant, et il n'est PAS décomposé.
+  **PROCHAINE ACTION — UNIQUE, et MESURER AVANT DE TOUCHER** : **décomposer**
+  `empilement`, sans changer un pixel. Points d'entrée :
+  `core/worker.py:722` (`with perf.chrono("empilement")`) → la méthode
+  `_worker_empiler_frame` (`core/worker.py:1212`), qui contient, DANS ce même
+  chrono : ① le filtre anti-floues (~15 ms, annoncé), ② l'extraction de canal,
+  ③ **l'ARCHIVAGE + le score qualité** (I/O disque — piste n°1 : sur un NAS ou
+  un dossier réseau, cf. la leçon v2.98.4 « aucune I/O sur le fil d'interface »,
+  ici c'est le fil worker mais le coût peut être le même), ④ **l'ALIGNEMENT**
+  (`aligner`, ORB+RANSAC / corrélation de phase), ⑤ **le REJET kappa-sigma**
+  (`stacker.ajouter`, accumulateurs float64). Le levier attendu est le n°5
+  (fenêtre `winsorized` → `kappa` supprime `_buf`) et/ou le n°4 (coût ORB), mais
+  **on ne touche rien avant de savoir qui pèse quoi** : sous-chronos `perf`
+  (opt-in, coût nul hors `--perf`, comme la Phase 0) ou un outil de banc, puis
+  UN relevé de référence.
+- **CE QUI ATTEND ALAIN** : rien pour coder — le chantier est prêt à reprendre
+  sur `empilement`. Sa décision reste la **fusion vers `master` + la release**
+  (aucune n'a été faite : `master` = v2.96.1, Store = v2.71.1).
 - **Résultats du 21/10 en une ligne chacun** : `perf-6` a désigné le RÉSEAU
   (0,969 d'attente, `cores_moyens` 0,98) ; v2.98.4 a supprimé l'I/O du fil
   (`ui_tick` 456,5 → 18,6 s) ; v2.98.5 a rendu la copie de `_stack_pleine_res`
@@ -283,20 +293,20 @@ vert (**atteint**).
   un jour, **ce n'est pas une régression**.
 - **`CLAUDE.md`** : à jour — leçon v2.98.3 (mesurer le CPU du fil), la règle
   « AUCUNE I/O SUR LE FIL D'INTERFACE » (et son application au démarrage),
-  section NEUVE « Calibration dark/flat — persistance des maîtres (v2.98.7) »,
-  et l'**ENVELOPPE MÉMOIRE** (dimensionnement 4 / 8 / 16 Go).
+  section « Calibration dark/flat — persistance des maîtres (v2.98.7) »,
+  section NEUVE « la mémoire du STF se périme » (v2.98.8) et l'**ENVELOPPE
+  MÉMOIRE** (dimensionnement 4 / 8 / 16 Go).
 - Aucune release ; `master` reste à v2.96.1 ; le Store à v2.71.1.
 
 ### Contexte de reprise (à coller — 2 phrases)
-Branche **`OptimisationUI`, v2.98.8** (à committer/pousser) : Phase 1 validée
-(`ui_tick` 3,3 %), mémoire nommée, persistance dark/flat validée en réel,
-enveloppe mesurée, audit du poste `rendu` clos, et le **défaut « basculer sur STF
-après du VeraLux = image blanche » REPRODUIT, MESURÉ PUIS CORRIGÉ** (la MÉMOIRE
-d'étirement du STF, posée pendant la phase VeraLux, était réutilisée à la
-bascule : `hi` 11 fois sous le fond ⇒ médiane 255 ; correctif : la mémoire ne
-traverse pas une période VeraLux et avance au rendu d'une nouvelle pile). Action
-suivante : **test complet d'Alain en réel**, puis son accord pour la fusion vers
-`master` — sinon, prochain chantier mesuré : **`empilement`** (2 938 ms/frame).
+Branche **`OptimisationUI`, v2.98.8** (commit `f902040`, poussé) : Phase 1,
+mémoire, persistance dark/flat ET le défaut « basculer sur STF après du VeraLux =
+image blanche » sont **livrés et validés en réel** (« Testé OK ») — le chantier
+n'a plus qu'**UN point** : **`empilement`, 2 938 ms/frame** (`perf-9`). Action
+unique de la prochaine session : **DÉCOMPOSER `empilement`** (fil d'interface non
+concerné : `worker.py:722` → `_worker_empiler_frame`, soit archivage/score I/O,
+alignement ORB, rejet kappa-sigma) **en MESURANT d'abord** — sous-chronos `perf`
+opt-in ou outil de banc, un relevé de référence, **aucun pixel changé**.
 
 ---
 
@@ -378,12 +388,9 @@ suivante : **test complet d'Alain en réel**, puis son accord pour la fusion ver
 ## Clôtures précédentes
 
 - **21/10/2026 (soir)** : **v2.98.5 → v2.98.7 LIVRÉES, VALIDÉES EN RÉEL et
-  POUSSÉES** (`e307ad4`) — copie → référence (−96,2 Mio), jauge `postes`, et
-  **persistance dark/flat corrigée** (« on retrouve bien les dark quand on
-  réouvre ») ; `perf-9` nomme le résiduel et l'enveloppe mémoire est mesurée.
-  Détail : changelog `avastack/__init__.py` (v2.98.5/6/7) et `git log`.
+  POUSSÉES** (`e307ad4`) — copie → référence (−96,2 Mio), jauge `postes`,
+  persistance dark/flat ; `perf-9` nomme le résiduel. Détail : changelog
+  (v2.98.5/6/7) et `git log`.
 - **21/10/2026** : **1b VALIDÉE EN RÉEL** (v2.98.2) — `ui_rendu` 102 s → 2,2 s,
-  calcul dans `fil_rendu` (169 s), UI qui répond ; `tick_avant` reste à instruire.
-- **20/10/2026** : **1a VALIDÉE EN RÉEL** (v2.98.1) — `rendus` 132 → 51,
-  `ui_tick` 61 % → 48 %.
+  calcul dans `fil_rendu` ; `tick_avant` restait à instruire (v2.98.3/4 depuis).
 

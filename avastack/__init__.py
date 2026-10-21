@@ -23,7 +23,8 @@ ou python -m avastack.
 AVASTACK_VERSION = "2.98.8"
 
 # v2.98.8 : DÉFAUT CORRIGÉ — BASCULER SUR L'ÉTIREMENT STF APRÈS DU VERALUX
-#   DONNAIT UNE IMAGE BLANCHE (branche `OptimisationUI`, AUCUNE release).
+#   DONNAIT UNE IMAGE BLANCHE (branche `OptimisationUI`, AUCUNE release,
+#   **VALIDÉ EN RÉEL par Alain le 21/10/2026 : « Testé OK »**).
 #   Le défaut, SEUL point qui bloquait la fusion vers `master` (test complet
 #   d'Alain du 21/10/2026) : « après avoir joué en fin d'empilement avec un peu
 #   tous les paramètres EN ÉTIREMENT VERALUX, basculer sur l'étirement STF
