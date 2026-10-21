@@ -43,11 +43,18 @@ déduire l'état d'une case de `config.json` — on MESURE le fichier produit.
   soumettre** ; **volontairement absent de la release GitHub**.
 
 ### Fichiers modifiés dans cette phase
-- `CLAUDE.md` : allégé + les 2 entrées v2.98.9 (décomposition mesurée
-  d'`empilement`, piège des moyennes par poste) + la **règle d'allègement**.
+- `CLAUDE.md` : allégé (4545 → 3449 lignes) + les 2 entrées v2.98.9 (décomposition
+  mesurée d'`empilement`, piège des moyennes par poste) + la **règle d'allègement**
+  + le bloc « **CHAÎNE GELÉ / MSIX** » (prérequis `matplotlib` et relecture de
+  l'identité Store dans le MSIX précédent).
 - `CLAUDE-ARCHIVES.md` : **NEUF** — 18 sections historiques, recopie au mot près.
 - `INSTALLATION.md` : réédité pour v2.98.9 (tailles et SHA-256 **MESURÉS** des
   quatre installateurs).
+- `requirements-dev.txt` : **`matplotlib`** = prérequis de BUILD de la chaîne
+  gelé/MSIX (cause racine en commentaire).
+- `installer/README.md` et `installer/windows/build_avastack_frozen.ps1` :
+  le prérequis de build documenté (l'erreur de PyInstaller ne dit pas quel
+  paquet manque).
 - `AVANCEMENT.md` : ce bloc.
 
 ### Décisions prises
@@ -86,6 +93,15 @@ déduire l'état d'une case de `config.json` — on MESURE le fichier produit.
 - **`INSTALLATION.md` porte la version ET les SHA-256 des artéfacts** : il se
   réédite à CHAQUE release, APRÈS la construction des paquets — ces valeurs se
   MESURENT, elles ne se recopient pas.
+
+### Contexte de reprise (à coller — 2 phrases)
+**`master` = v2.98.9, PUBLIÉE** (release GitHub du 21/10/2026, quatre
+installateurs ; tag `v2.98.9` sur `789df2f`), `CLAUDE.md` allégé (18 sections
+historiques dans `CLAUDE-ARCHIVES.md`), garde-fou vert, **aucun lot de code
+ouvert**. Le **MSIX v2.98.9 est construit et signé avec l'identité Partner
+Center** (prêt à soumettre, hors GitHub) : la seule action qui attend une
+décision est la **soumission au Store** — sinon, **demander avant d'ouvrir quoi
+que ce soit**.
 
 ---
 
