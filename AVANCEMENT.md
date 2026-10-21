@@ -38,8 +38,9 @@ déduire l'état d'une case de `config.json` — on MESURE le fichier produit.
   (4545 lignes recomposées à l'identique, **0 perte**). L'index des sections
   archivées est dans `CLAUDE.md`.
 - **MSIX v2.98.9 construit ET signé** localement
-  (`installer/windows/output/avastack-2.98.9-windows.msix`, identité d'ESSAI) —
-  **volontairement absent de la release GitHub**.
+  (`installer/windows/output/avastack-2.98.9-windows.msix`) avec l'**identité
+  Partner Center relue dans le MSIX précédent** (v2.71.1) — donc **prêt à
+  soumettre** ; **volontairement absent de la release GitHub**.
 
 ### Fichiers modifiés dans cette phase
 - `CLAUDE.md` : allégé + les 2 entrées v2.98.9 (décomposition mesurée
@@ -55,17 +56,17 @@ déduire l'état d'une case de `config.json` — on MESURE le fichier produit.
   outils, comportement COURANT) ; l'archive se lit **sur demande**. C'est
   désormais une **règle de maintenance** écrite dans `CLAUDE.md`.
 - **Le MSIX ne va PAS sur GitHub** (Alain, 21/10 : « il n'a rien à y faire »).
+- **`matplotlib` = prérequis de BUILD, DOCUMENTÉ** (Alain, 21/10) : ajouté à
+  `requirements-dev.txt` et documenté dans `installer/README.md`, l'en-tête de
+  `build_avastack_frozen.ps1` et `CLAUDE.md` — la chaîne gelé/MSIX en dépend et
+  l'erreur de PyInstaller **ne dit pas** quel paquet manque.
+- **L'identité Store du MSIX se RELIT dans le MSIX précédent** (Alain, 21/10,
+  « c'est ce qui avait été fait pour la version précédente ») : méthode
+  consignée dans `CLAUDE.md` ; ces valeurs restent **hors du dépôt** (public).
 - **Option A** de l'audit performance/mémoire (déjà actée) : on n'optimise rien
   de plus.
 
 ### Problèmes ouverts
-- **Chaîne gelé/MSIX — dépendance de BUILD non déclarée** : `matplotlib` absent
-  du venv faisait ÉCHOUER PyInstaller (le hook `astropy` collecte TOUS les
-  sous-modules ; `astropy.visualization.wcsaxes` fait
-  `pytest.importorskip("matplotlib")` et, avec **pytest 9**, `Skipped` n'est pas
-  une `Exception` → l'enfant isolé meurt). Contourné en installant matplotlib
-  dans le venv (**aucun fichier du dépôt touché**) ; à trancher : documenter le
-  prérequis de build, ou filtrer `astropy.visualization` par un hook local.
 - **Banc 79** (`bancs/_test_perf_reactivite_jalon79.py`) : 4 échecs
   **PRÉEXISTANTS** (l'étape 1b a déplacé l'instrumentation
   `_maj_histogrammes` → `_draw_hist`). **Ce n'est pas une régression.**
@@ -100,10 +101,10 @@ chiffrés puis ÉCARTÉS (alignement, moyenne en composition, `kappa`/
 
 ## En attente / prochaine session
 
-- **Le MSIX v2.98.9** (construit + signé) : décision d'Alain sur une éventuelle
-  **soumission au Store** — hors périmètre de la release GitHub.
-- **Dépendance de build `matplotlib`** : décision à prendre (documenter le
-  prérequis, ou corriger le hook `astropy`) — la chaîne MSIX en dépend.
+- **Le MSIX v2.98.9 est PRÊT À SOUMETTRE** : identité Partner Center (relue dans
+  le MSIX v2.71.1) + signé localement. Seule manque la **décision d'Alain** sur
+  une soumission au Store — hors périmètre de la release GitHub. Marche à suivre
+  (fiche Store, images, notes de certification) : `installer/windows/msix/SOUMISSION.md`.
 
 ---
 

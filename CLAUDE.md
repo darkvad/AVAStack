@@ -201,6 +201,30 @@ python installer\linux\build_avastack.py
 python installer\macos\build_avastack.py
 ```
 
+**CHAÎNE GELÉ / MSIX — prérequis de build (constat du 21/10/2026, v2.98.9)** : le
+paquet **gelé** (`installer/windows/build_avastack_frozen.ps1`, PyInstaller) puis
+le **MSIX** (`installer/windows/msix/build_msix.py`, `signer_msix.ps1`) exigent
+**PyInstaller ≥ 6.16 ET `matplotlib`** dans le venv de build — jamais dans
+`requirements.txt` (outils de BUILD/DEV : `requirements-dev.txt`).
+**`matplotlib` n'est PAS utilisé par l'application** (aucun `import matplotlib`
+dans `avastack/`) : il est exigé par le hook `astropy` de PyInstaller, qui
+importe `astropy.visualization.wcsaxes` — ce module fait
+`pytest.importorskip("matplotlib")` et, avec **pytest 9**, l'exception `Skipped`
+n'hérite pas de `Exception` : le sous-processus isolé meurt et le gel **échoue**
+(« Child process call to `_collect_submodules()` failed »). **L'erreur ne dit
+PAS** quel paquet manque : sans matplotlib, **aucun MSIX ne se construit**.
+
+**IDENTITÉ STORE du MSIX** : `Name`, `Publisher` (`CN=<GUID>`) et
+`PublisherDisplayName` doivent être **exactement** ceux de Partner Center
+(`--nom` / `--publisher` / `--publisher-display` ; cf.
+`installer/windows/msix/SOUMISSION.md`). Pour ne pas les saisir à la main, ils se
+**relisent dans le MSIX PRÉCÉDENT** : `AppxManifest.xml` est un membre ZIP du
+`.msix` (élément `Identity` = **attributs**, `Properties` = **éléments**). Ces
+valeurs sont des **données de compte** : elles n'entrent **jamais** dans le dépôt
+(public) — ni fichier, ni message de commit. La **signature** locale (certificat
+auto-signé, sujet = le `Publisher`) sert à l'ESSAI ; celle du Store n'existe
+qu'**après soumission**.
+
 **NOM DES INSTALLATEURS : toujours le numéro de version (consigne d'Alain,
 27/09/2026)** — c'est le nom de l'artefact qui dit ce que teste Alain, et deux
 versions ne doivent JAMAIS s'écraser. Registre :

@@ -11,3 +11,14 @@
 # absents (skip gracieux, jamais un echec).
 pyright
 ruff
+
+# --- Chaine GELÉ (PyInstaller) + MSIX (voie Microsoft Store) -----------------
+# matplotlib est un prérequis de BUILD du paquet gelé, PAS une dépendance de
+# l'application (aucun `import matplotlib` dans `avastack/`) : le hook `astropy`
+# de PyInstaller collecte TOUS les sous-modules d'astropy, dont
+# `astropy.visualization.wcsaxes`, qui exécute `pytest.importorskip("matplotlib")`
+# au moment de son IMPORT. Avec pytest 9, l'exception `Skipped` n'hérite pas de
+# `Exception` : le sous-processus isolé de PyInstaller meurt et le gel ÉCHOUE
+# (« Child process call to _collect_submodules() failed »). Constaté le
+# 21/10/2026 (release v2.98.9) : sans matplotlib, AUCUN MSIX ne se construit.
+matplotlib

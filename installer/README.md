@@ -225,8 +225,16 @@ installateurs.
   (la politique Store 10.2.4 ne vise que les PILOTES noyau / services NT, pas les
   DLL en mode utilisateur ; et la lecture seule d'un MSIX rendrait leur dépôt
   manuel impossible). Une DLL absente au build est ANNONCÉE, jamais inventée.
-- Prérequis de build : **PyInstaller ≥ 6.16** dans le venv (Python 3.14) ;
-  **outil de DEV**, jamais dans `requirements.txt`.
+- Prérequis de build : **PyInstaller ≥ 6.16** ET **matplotlib** dans le venv
+  (Python 3.14) — outils de **BUILD/DEV**, jamais dans `requirements.txt`
+  (ils vivent dans `requirements-dev.txt`). **matplotlib n'est pas utilisé par
+  l'application** (aucun `import matplotlib` dans `avastack/`) : il est exigé par
+  le hook `astropy` de PyInstaller, qui importe
+  `astropy.visualization.wcsaxes` — ce module fait
+  `pytest.importorskip("matplotlib")` et, avec **pytest 9**, l'exception
+  `Skipped` n'hérite pas de `Exception` : le sous-processus isolé meurt et le gel
+  **échoue** (« Child process call to `_collect_submodules()` failed »). Sans
+  matplotlib, **aucun MSIX ne se construit** (constat du 21/10/2026).
 - Le **scan QHY** fonctionne en gelé (correctif v2.49.0 : l'exe se relance avec
   `--scan-qhy`, car un exe PyInstaller ignore `-c`).
 

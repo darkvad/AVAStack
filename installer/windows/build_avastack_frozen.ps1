@@ -17,7 +17,13 @@
 #
 # Usage (depuis n'importe ou) :
 #   powershell -NoProfile -ExecutionPolicy Bypass -File build_avastack_frozen.ps1
-# Prerequis : PyInstaller >= 6.16 dans le venv de build (Python 3.14).
+# Prerequis : PyInstaller >= 6.16 ET matplotlib dans le venv de build (Python
+# 3.14) -- outils de BUILD/DEV (requirements-dev.txt), jamais des dependances de
+# l'application. matplotlib n'est PAS utilise par avastack/ : il est exige par le
+# hook `astropy` de PyInstaller, qui importe astropy.visualization.wcsaxes ; ce
+# module fait `pytest.importorskip("matplotlib")` et, avec pytest 9, `Skipped`
+# n'herite pas de `Exception` -> le sous-processus isole meurt et le gel ECHOUE
+# (constat du 21/10/2026, release v2.98.9 : sans lui, AUCUN MSIX ne se construit).
 # NB : script volontairement sans caracteres accentues (encodage PS 5.1).
 
 $ErrorActionPreference = 'Stop'
