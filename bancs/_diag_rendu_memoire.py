@@ -118,18 +118,30 @@ def main(argv):
         app.rendu)
     app.rendu._hote = hote
 
-    # ---- [4] attributs de PREMIER niveau de l'App > 1 Mio
+    # ---- [4] attributs de PREMIER niveau de l'App > 1 Mio, AVEC leur ORDRE :
+    # l'artefact ne peut toucher QUE les attributs déclarés APRÈS `self.rendu`
+    # (la jauge range sous le nom du premier attribut rencontré).
+    noms = list(vars(app))
+    i_rendu = noms.index("rendu") if "rendu" in noms else -1
     print("\n[4] ATTRIBUTS DE PREMIER NIVEAU de l'App > 1 Mio (vrai propriétaire)")
+    print(f"    `rendu` est le {i_rendu + 1}e attribut de `vars(app)` :"
+          f" tout attribut d'image DÉCLARÉ APRÈS lui est candidat à l'artefact.")
     lignes = []
-    for nom, valeur in vars(app).items():
+    for rang, nom in enumerate(noms):
         try:
-            octets, nb = perf.taille_tableaux(valeur, profondeur=4)
+            octets, nb = perf.taille_tableaux(vars(app)[nom], profondeur=4)
         except Exception:                               # noqa: BLE001
             continue
         if octets > MO:
-            lignes.append((nom, octets, nb))
-    for nom, octets, nb in sorted(lignes, key=lambda t: -t[1]):
-        print(f"    {nom:34s} {octets / MO:8.1f} Mio  ({nb} tableaux)")
+            lignes.append((rang, nom, octets, nb))
+    for rang, nom, octets, nb in sorted(lignes, key=lambda t: -t[2]):
+        if rang == i_rendu:
+            marque = "← c'est `rendu` (le porteur de l'artefact)"
+        elif rang > i_rendu:
+            marque = "APRÈS `rendu` ← candidat à l'artefact"
+        else:
+            marque = "avant `rendu` (nommé correctement)"
+        print(f"    {nom:24s} {octets / MO:8.1f} Mio  ({nb} tableaux)  {marque}")
     if not lignes:
         print("    (aucun)")
     print("\n  → LECTURE : un tableau compté sous `rendu` en [1] et sous son vrai"

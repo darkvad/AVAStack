@@ -139,9 +139,15 @@ flats. Leviers si besoin : fenêtre 4 → 2 (−320 Mio pour 5 rôles), méthode
   instruire » tombe). Deux conséquences à trancher par Alain :
   ① **corriger la jauge** (ne pas traverser `_hote` : ~3 lignes dans
   `perf.postes_memoire`) pour que le relevé NOMME au lieu d'entasser sous
-  `rendu` ; ② `_stack_pleine_res` est une **RÉFÉRENCE** sur le cache du stacker
-  (v2.98.5) ⇒ il est compté DEUX fois (une fois dans les stackers, une fois dans
-  `postes`) — ~85 Mio au déploiement du run.
+  `rendu` ; ② **ne pas compter les alias des stackers dans `postes`** :
+  `_stack_pleine_res` est une **RÉFÉRENCE** sur le cache du stacker (v2.98.5),
+  donc compté DEUX fois (stackers **et** hors stackers). ⚠️ **SENS DU DÉFAUT** :
+  la formule du [6] (`hors stackers − postes − base`) SOUS-ESTIME alors le
+  résiduel de ~85 Mio au déploiement du run ⇒ **455,3 Mio est un PLANCHER ;
+  le résiduel réel est ~540 Mio** (dont 193 de fragmentation). La formule du [4]
+  (postes du [3] + chaîne du [3 bis], qui excluent DÉJÀ le composite) donnait
+  **560,7** — elle était la bonne. **À corriger dans l'outil AVANT de conclure
+  sur un prochain relevé.**
 - **MÉMOIRE — le résiduel est NOMMÉ** (voir aussi l'« Enveloppe » ci-dessus) :
   - Géométrie RÉELLE des brutes = **3856×2180 = 8 406 080 px** (en-tête FITS) ;
     `source_px` (7,4 Mpx) est l'image **RECADRÉE** — ne pas confondre.
@@ -149,6 +155,8 @@ flats. Leviers si besoin : fenêtre 4 → 2 (−320 Mio pour 5 rôles), méthode
     **553,2 Mio** (`disp` 226,1 · `rendu` 206,2 · **`calib` 96,2** · 3 aligneurs
     24,6) ⇒ **455,3 Mio sans tableau nommé** (dont **193 Mio de fragmentation
     MESURÉE**) = tas Tk/PIL/OpenCV, objets Python, arènes. **Aucune fuite.**
+    ⚠️ **PLANCHER** : `rendu` est un artefact et l'alias du composite est compté
+    deux fois ⇒ le résiduel réel est **~540 Mio** (cf. l'audit `rendu` ci-dessus).
   - **La chaîne de rendu (`disp` + `rendu` = 432,3 Mio) est 47,8 % du
     hors-stackers** : c'est le prochain poste à instruire (le `rendu` 206,2 =
     ce que le `FilRendu` RETIENT) — **auditer les lecteurs AVANT d'agir**, preuve
@@ -222,11 +230,11 @@ vert (**atteint**).
 - **PROPOSITION EN ATTENTE D'ACCORD (aucun code écrit)** — ① **corriger la jauge
   `postes`** pour qu'elle ne traverse pas `_hote` (≈3 lignes dans
   `perf.postes_memoire`) : le prochain relevé nommerait `_stack_pleine_res` /
-  `_last_disp` au lieu de les entasser sous `rendu`, et le résiduel cesserait
-  d'être gonflé par ce faux poste ; ② **dédupliquer le composite** dans la
-  réconciliation de l'outil (`_stack_pleine_res` = référence sur le cache du
-  stacker ⇒ compté deux fois, ~85 Mio). **Le fil de rendu, lui, n'a RIEN à
-  récupérer** (0 Mio retenu — audit du 21/10).
+  `_last_disp` au lieu de les entasser sous `rendu` ; ② **ne pas compter les
+  alias des stackers dans `postes`** (le composite est compté deux fois) et
+  **corriger la formule [6]** de l'outil, qui SOUS-ESTIME le résiduel de ~85 Mio
+  (455,3 → ~540 Mio). **Le fil de rendu, lui, n'a RIEN à récupérer** (0 Mio
+  retenu — audit du 21/10).
   Ensuite : **`empilement`** 2 938 ms/frame (décomposer alignement vs rejet
   kappa-sigma AVANT de toucher) ; puis **`lecture_frame`** 4 765 ms/frame.
 - **ÉCARTÉ, à ne pas réintroduire sans mesure** : `cv2.setNumThreads`,

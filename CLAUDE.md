@@ -4294,9 +4294,13 @@ du code, piège rencontré sur un outil externe. Cible : section « Pièges »
   vers l'objet RACINE fabrique un faux poste — toute jauge de ce genre doit
   refuser de traverser `_hote` (ou l'objet racine), et un « poste » énorme qui
   ne correspond à aucune allocation de son objet est un artefact à MESURER
-  avant d'être optimisé.** COROLLAIRE : `_stack_pleine_res` étant une RÉFÉRENCE
-  sur le cache du stacker (v2.98.5), le compter dans `postes` le compte DEUX
-  fois (stackers + hors stackers) — ~85 Mio au déploiement du run.
+  avant d'être optimisé.** COROLLAIRE — et son SENS compte : `_stack_pleine_res`
+  étant une RÉFÉRENCE sur le cache du stacker (v2.98.5), le compter dans
+  `postes` le compte DEUX fois (stackers **et** hors stackers) ⇒ la formule
+  `hors stackers − postes − base` **SOUS-ESTIME** le résiduel (~85 Mio au
+  déploiement du run) : **455,3 Mio est un plancher, le résiduel réel ~540 Mio**
+  (dont 193 de fragmentation). La formule qui utilise les postes du [3] et la
+  chaîne du [3 bis] (qui EXCLUENT déjà le composite) est la bonne : 560,7.
 - **MESURES `perf-8` (945,5 s, 72 frames, v2.98.5 — post-lot)** : RSS max
   **4 247,1 Mo** (4 458,9 en `perf-7`), résiduel **555,6 Mio** = hors stackers
   1 151,4 − postes 200,4 − chaîne **247,3** (280,6 ramenés à la géométrie du run
