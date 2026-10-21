@@ -27,9 +27,11 @@ déduire l'état d'une case de `config.json` — on MESURE le fichier produit.
 ## Session du 21/10/2026 — RELEASE v2.98.9 + `CLAUDE.md` allégé
 
 ### État actuel
-- **v2.98.9 est PUBLIÉE** : tag `v2.98.9` sur `master`, release GitHub avec les
-  **quatre installateurs** (Windows `.exe`, Windows ZIP, Linux, macOS) et
-  `INSTALLATION.md`. `master` poussé, arbre propre, **garde-fou vert**.
+- **v2.98.9 est PUBLIÉE** : tag `v2.98.9` sur `master`, release GitHub
+  (**Latest**) avec les **quatre installateurs** (Windows `.exe`, Windows ZIP,
+  Linux, macOS) et `INSTALLATION.md` —
+  <https://github.com/darkvad/AVAStack/releases/tag/v2.98.9>. `master` poussé,
+  arbre propre, **garde-fou vert** (aucun `.py` touché : que de la documentation).
 - **`CLAUDE.md` est ALLÉGÉ : 4545 → 3449 lignes.** 18 sections de chantiers
   TERMINÉS ont été **recopiées au mot près** dans le nouveau
   **`CLAUDE-ARCHIVES.md`** — intégrité vérifiée ligne à ligne contre `HEAD`
