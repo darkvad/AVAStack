@@ -16,9 +16,9 @@ performance/mémoire, puis refonte du rendu.
 > seulement sur demande explicite d'Alain. **`LRGBHa` est FERMÉE** — ne pas la
 > recréer.
 
-Versions : **`OptimisationUI` = v2.98.3** (Phase 0 + **1a** + **1b** LIVRÉES et
-**validées en réel**, **aucune release** ; **`tick_avant` étape ① (MESURER)
-livrée**, relevé réel à faire) · `master` = v2.96.1 · **Store publié = v2.71.1**.
+Versions : **`OptimisationUI` = v2.98.4** (Phase 0 + **1a** + **1b** + **`tick_avant`**
+LIVRÉS ET **VALIDÉS EN RÉEL** — `perf-7` : `ui_tick` **3,3 %** du mur ; **aucune
+release**) · `master` = v2.96.1 · **Store publié = v2.71.1**.
 
 **Gouvernance** : aucune release GitHub sans accord ; **demander AVANT de
 démarrer le lot suivant** ; ne jamais déduire l'état d'une case de `config.json`
@@ -76,31 +76,25 @@ démarrer le lot suivant** ; ne jamais déduire l'état d'une case de `config.js
   (326 ms/dossier/passe) et l'attente des fichiers, sujet SÉPARÉ de l'interface.
 
 
-### Les trois relevés qui commandent la suite (M33, 5 canaux, pleine résolution)
+### Relevés de référence (M33, 5 canaux, pleine résolution, VeraLux + chroma)
 
-| mesure | `perf-3` (avant 1a) | `perf-4` (1a) | `perf-5` (1b) |
+| relevé | `ui_rendu` (fil Tk) | `tick_avant` | `ui_tick` |
 |---|---|---|---|
-| `rendus` | 132 (2,75/frame) | 51 (1,06) | **84 pour 75 frames (1,12)** |
-| `ui_rendu` (fil Tk) | 276 s | 102 s | **2,2 s** |
-| `fil_rendu` (hors Tk) | — | — | **169,4 s (84 × 2 017 ms)** |
-| `fil_etirement` | — | — | 163,9 s (1 951 ms, 7,41 Mpx) |
-| `tick_conso` | 151,6 s | 0,67 s | 3,2 s |
-| `tick_avant` | 202,5 s (26,7 ms) | 200,2 s (24,5 ms) | **380,5 s (64,0 ms)** |
-| `ui_tick` | 482,8 s = **61 %** | 307 s = **48 %** | **388,7 s = 61 %** |
-| `ui_tick_libre` / `occupe` | — | 25 / 108 ms | **61,6 / 70,9 ms** |
-| `cores_moyens` / `cpu_s` | 1,59 | 1,28 | **1,99 / 1 270 s** |
-| `empilement` | 4 356 ms | — | 4 503 ms |
-| `stackers_mo` / RSS (pic) | 2 935 / 4 503 | 2 936 / 3 161 | 2 935 / 4 804 (5 057) |
+| `perf-3` (avant 1a) | 276 s | 202,5 s (26,7 ms) | 482,8 s = 61 % |
+| `perf-4` (après 1a) | 102 s | 200,2 s (24,5 ms) | 307 s = 48 % |
+| `perf-5` (après 1b) | 2,2 s | 380,5 s (64,0 ms) | 388,7 s = 61 % |
+| `perf-6` (mesure de l'attente) | 1,1 s | 453,6 s (133,9 ms) | 456,5 s = **77 %** |
+| **`perf-7` (correctif I/O)** | **1,2 s** | **11,1 s (0,74 ms)** | **18,6 s = 3,3 %** |
 
-Compteurs `perf-5` : `rendus_demandes` 84, **`rendus_ecrases` 0**,
-**`rendus_perimes` 0**, `rendus_gardes` 22, `rendus_differe` 75/75, `vl_new` 82,
-`file_q` 0. Jauges : `vl_actif` true, moteur **VeraLux**, `vl_etapes` « CH »,
-`source_px` 7,41 Mpx. Pire tour `ui_tick` : **1 239 ms**.
+Repères `perf-7` (556 s, 47 frames) : `fil_rendu` 103,4 s (1 360 ms/rendu),
+`empilement` **2 751 ms**, `lecture_frame` **6 697 ms**, stackers **2 935,7 Mo**,
+RSS 3 163 Mo (pic 4 563), `cores_moyens` **1,12**, `rendus` 76, `vl_new` 76.
+Détail complet : `perf-*.json` (hors dépôt) et changelog `avastack/__init__.py`.
 
-**Lecture** : 1b a fait ce qu'il devait (`ui_rendu` 102 s → 2,2 s, calcul
-déplacé dans `fil_rendu`), mais le temps mural du fil Tk n'a pas baissé :
-`tick_avant` a DOUBLÉ sans travail mesuré dedans (FITS 38 ms, mesures 3,1 s,
-réglages 2,8 s) — **c'est de l'attente**, pas du travail Tk.
+**Lecture** : 1a et 1b ont tenu leurs promesses (`ui_rendu` 276 → 1,2 s), mais
+`tick_avant` restait à 77 % du mur **sans travail mesuré dedans** — c'était de
+l'**attente**, et la mesure ① puis la pile du Guet l'ont attribuée à une I/O
+réseau (`getmtime`) faite à chaque tour. Corrigé en v2.98.4 : **3,3 %**.
 
 ### Décisions
 - Instrumentation **opt-in** et **coût nul** hors `--perf` (protège la course du
@@ -127,77 +121,47 @@ réglages 2,8 s) — **c'est de l'attente**, pas du travail Tk.
   d'horloge, `duree_attente()` sort au premier test.
 
 ### Problèmes ouverts
-- **`tick_avant` = 453,6 s dont 439,6 s d'ATTENTE (96,9 %)** : **cause TROUVÉE
-  et chiffrée** — `MultiFolderCamera.last_file` (propriété) fait
-  `os.path.exists()` + `os.path.getmtime()` sur le dernier fichier des **5
-  dossiers**, et `_tick_corps` la lit **à chaque tour** (3 388 fois) : 10
-  requêtes réseau par tour sur un partage **SMB**, 178 ms/tour mesurés.
-  Le travail Tk réel est de **4,2 ms/tour** (14,3 s au total). Pile écrite par
-  le Guet de gel : `app.py:6933` → `multifolder.py:131` → `genericpath.getmtime`.
-  ⇒ Correctif proposé (3 lignes) : mémoriser le fichier LU dans `read()`.
-  La docstring de la propriété dit DÉJÀ « Dernier fichier lu » — le cache la
-  remet en accord avec son propre contrat (le `getmtime` renvoyait le fichier
-  au mtime le plus récent, pas le dernier lu).
-- **Critère de sortie de la Phase 1 NON atteint** : `ui_tick` < 20 % du mur
-  (aujourd'hui 61 %).
-- **Réactivité sous chaîne lente** (1a) : l'écran suit les `vl_new` ; à
-  surveiller en réel. 1b ajoute : une rafale de réglages ne produit qu'UN rendu
-  (le dernier) — voulu.
-- **Mémoire** (`stackers_mo` 2 935 Mo = 61 % du RSS) et **`empilement`**
-  (4 503 ms/frame) : APRÈS `tick_avant`.
-- Pire tour `ui_tick` = 1 239 ms (sous le seuil du Guet de 1,5 s, mais c'est un
-  à-coup encore visible).
+- **Phase 1 : critère ATTEINT** (`ui_tick` **3,3 %** < 20 %) — reste la décision
+  d'Alain : clore la phase (merge/release ?) ou enchaîner sur la mémoire.
+- **RÉSOLU (v2.98.4)** : l'attente de `tick_avant` (439,6 s) était une **I/O
+  réseau** — `MultiFolderCamera.last_file` faisait `exists` + `getmtime` sur les
+  5 dossiers à CHAQUE tour ; calcul déplacé dans `read()`, `ui_tick`
+  456,5 → **18,6 s**.
+- **MÉMOIRE (prochain sujet)** : stackers **2 935,7 Mo** = 61 % du RSS (pic
+  4 563 Mo), `stackers_nb_tableaux` **49** ; 5 canaux en **float64** + fenêtre de
+  8 frames. À **MESURER** avant toute conversion (cf. « Handoff »).
+- **`empilement`** 2 751 ms/frame et **`lecture_frame`** 6 697 ms/frame (scan
+  réseau 326 ms/dossier/passe) : après la mémoire.
+- **Pire tour `ui_tick`** : 74,1 ms (contre 5 952 ms) — sous le seuil du Guet.
 
-### Fichiers de l'étape ① `tick_avant` (v2.98.3)
-- `avastack/perf.py` : `t0_cpu()` (CPU du fil, `time.thread_time()`),
-  `duree_attente(base, mur, cpu)` → `<base>_cpu` + `<base>_attente`,
-  `cpu_fil_disponible()` ; bilan `attente` dans `instantane()`, ligne dans
-  `resume()`, `contexte.cpu_fil` dans le JSON.
-- `avastack/ui/app.py` : `_tick` (`ui_tick`) et `_tick_corps` (`tick_avant`) —
-  deux points de mesure, rien d'autre.
-- `bancs/_test_phase0_perf.py` : section **[2 bis]** (8 vérifications neuves,
-  témoin calcul pur) + `t0_cpu` inactif + 2 contrôles JSON — **110** au total.
-- `avastack/__init__.py` : v2.98.3 + changelog.
-
-### Fichiers de l'étape 1b (v2.98.2)
-- `avastack/ui/rendu.py` : **NEUF** (typé) — `FilRendu`, `Job`/`Resultat`,
-  génération, mode `immediat`, compteurs, chronos `fil_*`.
-- `avastack/ui/renderer.py` : `_rendre_et_afficher()` = DEMANDE ;
-  `_appliquer_rendu()`, `_appliquer_rendus_disponibles()`, `attendre_rendu()` ;
-  `_vider_ecran()` purge.
-- `avastack/ui/app.py` : `self.rendu = FilRendu(self)` ; application dans
-  `_tick_corps` ; `tick_traitee` par le fil ; purge au reset ; arrêt du fil à
-  la fermeture.
-- `avastack/ui/widgets/histogram.py` : `_histogrammes_purs()` (PURE).
-- `bancs/_test_render_worker_bit_exact.py` : **NEUF** (41).
-- Bancs passés en **rendu immédiat** : `_test_1a_rendu_final`,
-  `_test_couleurs_immediat_jalon39`, `_test_histo_jalon75`,
-  `_test_reset_empilement_jalon76`, `_test_p5_rendu_relachement`,
-  `_test_perf_reactivite_jalon79`, `_mesure_p5_reactivite`, `_mesure_memoire`.
-- `_test_phase0_perf` : vérifie le câblage du CALCUL dans `ui/rendu.py` ;
-  garde-fou : `ui/rendu.py` typé.
-- `avastack/__init__.py` : v2.98.2 + changelog ; `CLAUDE.md` : section 1b.
-- Détail complet (Phase 0, 1a, 1b) : changelog `avastack/__init__.py`.
+### Fichiers touchés par l'audit (détail dans `CLAUDE.md` et le changelog)
+- **Phase 0** : `avastack/perf.py` (NEUF, opt-in, coût nul) + câblage dans
+  `ui/app.py`, `ui/renderer.py`, `core/worker.py` ; banc `_test_phase0_perf` (110).
+- **1a** : `ui/renderer.py` + `ui/app.py` ; banc `_test_1a_rendu_final` (40).
+- **1b** : `avastack/ui/rendu.py` (NEUF, typé), `ui/renderer.py`,
+  `ui/widgets/histogram.py` (`_histogrammes_purs`, PURE) ; banc
+  `_test_render_worker_bit_exact` (41, hashes d'empilement au bit) ; bancs passés
+  en rendu **immédiat**.
+- **`tick_avant` ① (v2.98.3)** : `perf.t0_cpu` / `perf.duree_attente`, branchés
+  sur `ui_tick` et `tick_avant` ; banc Phase 0 section [2 bis].
+- **`tick_avant` ② (v2.98.4)** : `cameras/multifolder.py` SEUL (calcul déplacé
+  dans `read()`) ; banc NEUF `_test_multifolder_last_file` (24).
 
 ---
 
-## Chantier en cours — PHASE 1 : **rendu hors fil Tk** (1a + 1b LIVRÉES, `tick_avant` ① mesuré)
+## Chantier en cours — PHASE 1 : **rendu hors fil Tk** (1a + 1b + `tick_avant` LIVRÉS ET VALIDÉS)
 
-**Objectif** : fil Tk de **61 % → ~10-15 %** du temps mural, **sans changer un
-pixel** (même `DisplayProcessor.process`, même ordre).
-**Contraintes** : mono-processus, Tkinter, multiplateforme, **pixels identiques
-au bit** (bancs), pas d'aperçu réduit, pas de calcul pendant un geste (P5 livré).
+**Objectif** : fil Tk de **61 % → < 20 %** du temps mural, **sans changer un
+pixel**. **ATTEINT : 3,3 %** (`perf-7`). Le chantier suivant est la **MÉMOIRE**.
 
 | jalon | état | preuve |
 |---|---|---|
 | 1a — un seul rendu par frame | **LIVRÉE** (v2.98.1) | `perf-4`, banc 40 |
 | 1b — rendu hors fil Tk | **LIVRÉE** (v2.98.2) | `perf-5`, banc 41 |
-| **`tick_avant` ① — MESURER** | **LIVRÉE** (v2.98.3) | `t0_cpu`/`duree_attente`, banc 75 |
-| **`tick_avant` ② — AGIR** | **VALIDÉE EN RÉEL** (perf-7 : 77 % → 3,3 %) | `last_file` sans I/O, banc 24 |
-| **mémoire** | à instruire (accord d'abord) | stackers 2 935 Mo = 61 % du RSS |
-| **`empilement`** | après | 2 751 ms/frame |
-| mémoire | après | `stackers_mo` 2 935 Mo |
-| `empilement` | après | 4 503 ms/frame |
+| `tick_avant` ① — MESURER | **LIVRÉE** (v2.98.3) | `perf-6` (96,9 % d'attente), banc 110 |
+| `tick_avant` ② — AGIR | **VALIDÉE EN RÉEL** (v2.98.4) | `perf-7` : 77 % → **3,3 %**, banc 24 |
+| **mémoire — MESURER** | **PROCHAINE ACTION** | stackers 2 935,7 Mo = 61 % du RSS |
+| `empilement` | après | 2 751 ms/frame |
 
 **Critères de sortie** : ① `rendus` ≈ frames (**atteint : 1,12×**) ;
 ② `ui_tick` < 20 % du mur (**61 %**) ; ③ image finale au bit (**atteint**) ;
@@ -222,13 +186,23 @@ au bit** (bancs), pas d'aperçu réduit, pas de calcul pendant un geste (P5 livr
   La mesure du fil (`t0_cpu` + `duree_attente`) et le correctif `last_file`
   sont **validés en réel** ; plus aucune I/O sur le fil d'interface.
 - **ACTION UNIQUE SUIVANTE (accord d'Alain AVANT de coder) : MESURER la
-  mémoire.** Les stackers pèsent **2 935,7 Mo** pour un RSS de 3 163 Mo (pic
-  4 563 Mo) : 5 canaux × accumulateurs **float64** + fenêtre de 8 frames.
-  Ordre : (a) **mesurer** la répartition exacte (`perf.taille_tableaux` existe
-  déjà : `stackers_nb_tableaux` = 49, `stackers_octets` = 3,08 Go) et confirmer
-  le format des accumulateurs AVANT toute conversion ; (b) seulement ensuite
-  envisager **float32 + somme compensée** (Kahan/Neumaier) avec **preuve au bit
-  près sur les bancs d'empilement** — une conversion non prouvée est un
+  mémoire.** Point de départ mesuré : `stackers_mo` **2 935,7 Mo** (61 % du RSS),
+  `stackers_nb_tableaux` **49**, `stackers_octets` **3,08 Go**, RSS 3 163 Mo
+  (pic 4 563). Piste : 5 canaux × accumulateurs **float64** + **fenêtre de
+  8 frames** (leçon du handoff du 20/10).
+  **Protocole (mesure seule, aucun changement d'image)** :
+  ① partir de `bancs/_mesure_memoire.py` (existe depuis le 20/10) et des jauges
+  `stackers_*` / de `perf.taille_tableaux()` ;
+  ② inventorier **où** sont les octets : `processing/stacking.py` (accumulateurs
+  du `LiveStacker`), `core/worker.py` (un stacker par canal), fenêtre de frames,
+  buffers de rendu (`ui/rendu.py` : image uint8 + brut + bacs) et copies du
+  composite ;
+  ③ produire un tableau **dtype + forme + octets** par poste, et le total
+  réconcilié avec le RSS (écart expliqué, sinon c'est une **fuite** — autre
+  sujet) ;
+  ④ **seulement ensuite** décider : float32 (−50 % sur les accumulateurs) avec
+  **somme compensée** (Kahan/Neumaier) et **preuve sur les bancs d'empilement**
+  (hashes au bit ou écart borné et expliqué). Une conversion non prouvée est un
   changement d'image, pas une optimisation.
 - **Ensuite** : **`empilement`** (2 751 ms/frame) — décomposer alignement vs
   rejet kappa-sigma AVANT de toucher ; et **`lecture_frame`** (6 697 ms/frame,
@@ -321,6 +295,12 @@ seulement ensuite.
   « calcul pur ⇒ part d'attente < 0,2 » a échoué à 0,48 sur un poste chargé —
   il mesurait la CHARGE MACHINE, pas le code. Ancrer les assertions sur une
   comparaison INTERNE (cas A vs cas B du même run) ou sur une mesure directe.
+- **La mémoire n'est PAS une fuite** : RSS 150 Mo au repos, puis **2 935 Mo de
+  stackers** dès qu'on empile 5 canaux — ce sont les accumulateurs LÉGITIMES
+  (`float64`) + la fenêtre de frames. Mesurer la répartition AVANT de conclure.
+- **Une conversion de dtype CHANGE l'image** : float32 + somme compensée doit
+  être **prouvée** sur les bancs d'empilement (hashes au bit, ou écart borné et
+  expliqué) — jamais « à peu près », jamais sans l'accord d'Alain.
 - **Lancement** : `python AVAStack.py` (venv) — jamais `python3`.
 
 ---
