@@ -20,8 +20,61 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.98.7"
+AVASTACK_VERSION = "2.98.8"
 
+# v2.98.8 : DÉFAUT CORRIGÉ — BASCULER SUR L'ÉTIREMENT STF APRÈS DU VERALUX
+#   DONNAIT UNE IMAGE BLANCHE (branche `OptimisationUI`, AUCUNE release).
+#   Le défaut, SEUL point qui bloquait la fusion vers `master` (test complet
+#   d'Alain du 21/10/2026) : « après avoir joué en fin d'empilement avec un peu
+#   tous les paramètres EN ÉTIREMENT VERALUX, basculer sur l'étirement STF
+#   donne une image blanche ».
+#   - CAUSE, MESURÉE AVANT TOUTE CORRECTION (outil NEUF
+#     `bancs/_diag_bascule_stf_blanc.py`, vraie `App` + vraie `DisplayProcessor`,
+#     séquence réelle, 7 scénarios) : la MÉMOIRE d'étirement du STF
+#     (`DisplayProcessor._stats`, un lissage TEMPOREL de l'empilement) était
+#     POSÉE pendant la phase VeraLux — une simple IMAGE D'ATTENTE suffit : le
+#     STF y calcule ses stats sur la pile du moment (c'est le chemin qu'emprunte
+#     un geste de l'utilisateur, `_pousser_rendu`, ou le filet anti-écran figé)
+#     — puis JAMAIS rafraîchie, parce que depuis l'étape 1a le rendu de frame
+#     n'existe plus quand la chaîne est attendue. À la bascule,
+#     `_moteur_stf(live=False)` RÉUTILISAIT cette mémoire (`_auto_params` la
+#     garde dès qu'elle existe) : l'image d'aujourd'hui était étirée avec le
+#     point noir d'hier. MESURÉ sur la séquence : mémoire
+#     `(0,000882, 0,000345, 0,001972)` (la 1re pile de la session) contre un
+#     empilement à 0,048 ⇒ `lo` −0,000084, `hi` 0,004335 — **`hi` 11 fois SOUS
+#     le fond** ⇒ tout écrête à 1 : **médiane 255, 100 % des pixels ≥ 250,
+#     écart 180,3 niveaux** avec le STF sain. Le niveau de l'empilement change
+#     dans une vraie session (maître dark/flat chargé ou retiré — test v2.98.7
+#     —, dossier qui mélange plusieurs nuits ou filtres, Lune qui se couche…) :
+#     l'écrêtage est alors TOTAL.
+#   - CORRECTIF (deux volets, `processing/display.py`, `ui/renderer.py`,
+#     `ui/app.py`) :
+#     ① **la mémoire du STF ne traverse pas une période VeraLux** — dans
+#       `process()`, si le dernier rendu n'était PAS un rendu STF
+#       (`_dernier_moteur_rendu`, écrit en fin d'appel, seul écrivain = le fil
+#       de rendu), elle est JETÉE (`oublier_memoire_stf()`) : le STF repart de
+#       la MESURE de l'image courante. C'est le correctif du défaut signalé.
+#       Le MOTEUR est désormais lu UNE SEULE FOIS par appel (branche d'affichage
+#       ET mémoire publiée décrivent le même rendu : une bascule en vol ne peut
+#       plus mélanger les deux moteurs dans un rendu).
+#     ② **la mémoire AVANCE au rendu d'une NOUVELLE pile même quand la chaîne
+#       est attendue** : `_maj_lbl_vl` passe `live=True` au rendu du `vl_new`
+#       d'une pile confiée à la chaîne (`_refresh_preview(live=...)`, nouveau
+#       paramètre — `False` par défaut, donc les gestes ne changent pas).
+#       Sans ce volet, le STF auto restait GELÉ sur la première pile de la
+#       session dans les modes à chaîne (STF + chroma/GraXpert/débruitage/
+#       netteté) : même famille de défaut, même risque de blanc.
+#   - PREUVES : banc NEUF `bancs/_test_bascule_stf_blanc.py` (5 volets) —
+#     TÉMOIN INVERSÉ (même séquence, garde-fou neutralisé : médiane 255,
+#     100 % ≥ 250 — la reproduction est la bonne), CORRECTIF (l'image de la
+#     bascule est IDENTIQUE AU BIT au STF de référence), NON-RÉGRESSION (bascule
+#     à niveau stable : écart 0,00), la mémoire AVANCE (`live=True`) sans être
+#     touchée par un geste (`live=False`, jalon 79 intact), et l'INTERFACE passe
+#     bien `live=True` à ce rendu-là. Non-régression rejouée : 1a (banc 1a),
+#     fil de rendu au bit (banc 41), chaîne pré-étirement (banc 125), P7 (banc
+#     P7), conservation VeraLux (banc 128), VeraLux 2/3, histogramme 75, fond
+#     bleu 62, couleurs immédiates 39, moteur 41 — TOUS VERTS. (Le banc 79 garde
+#     ses 4 échecs PRÉEXISTANTS de l'étape 1b, identiques sans ce lot.)
 # v2.98.7 : DÉFAUT CORRIGÉ — LES CHEMINS DES MAÎTRES DARK/FLAT SONT PERSISTÉS
 #   (branche `OptimisationUI`, AUCUNE release, AUCUN pixel changé).
 #   Le défaut, trouvé pendant l'audit mémoire du 21/10/2026 : `_load_dark` /

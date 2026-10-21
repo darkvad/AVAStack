@@ -309,11 +309,14 @@ class Renderer:
                 return False
             time.sleep(0.005)
 
-    def _refresh_preview(self, hist=True):
+    def _refresh_preview(self, hist=True, live=False):
         """Re-rend l'aperçu après un réglage (indispensable en mode dossier :
         pas de frame régulière pour rafraîchir l'écran).
 
-        `live=False` : ne fait pas avancer le lissage temporel des stats.
+        `live` : fait AVANCER le lissage temporel des stats du STF — réservé au
+        rendu qui suit une NOUVELLE PILE quand la chaîne est attendue (le rendu
+        de frame n'existe plus depuis l'étape 1a : c'est le seul endroit où la
+        mémoire d'étirement du STF peut encore se recaler, cf. `_maj_lbl_vl`).
         `hist=False` : le glissement d'une BARRE DE NIVEAUX ne recalcule pas
         l'histogramme (la donnée du moteur ne change pas — seules les barres
         bougent) : sans cela, chaque pixel de souris coûterait un histogramme.
@@ -325,8 +328,8 @@ class Renderer:
         de gestes ne produit qu'un rendu : celui du dernier réglage.
         """
         if self.last_show is not None:
-            self._rendre_et_afficher(self.last_show, live=False, hist=hist,
-                                     motif="reglage")
+            self._rendre_et_afficher(self.last_show, live=bool(live),
+                                     hist=hist, motif="reglage")
             # 1a (20/10/2026) : ce rendu couvre la pile COURANTE. L'attente d'une
             # image finale est donc satisfaite (un réglage vient de la rendre), et
             # un `vl_new` de la même pile ne doit pas la rendre une seconde fois.

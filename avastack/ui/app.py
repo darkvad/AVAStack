@@ -3492,7 +3492,15 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             # `vl_new` publié sans case cochée redonnait la MÊME image que le
             # rendu de frame déjà fait — 61 rendus complets pour rien (perf-3).
             if self._vl_rendu_necessaire():
-                self._refresh_preview()
+                # v2.98.8 : ce rendu est celui de l'image FINALE d'une NOUVELLE
+                # pile (la frame a été confiée à la chaîne au lieu d'être
+                # rendue) : c'est donc LE moment où le STF doit faire AVANCER sa
+                # mémoire d'étirement (`live=True`), comme le faisait le rendu
+                # de frame avant l'étape 1a. Sans cela la mémoire restait figée
+                # sur la première pile de la session (auto gelé, puis étirement
+                # faux — voire blanc — dès que le niveau de l'empilement
+                # changeait : calibration, autre nuit, Lune…).
+                self._refresh_preview(live=self._rendu_attente is not None)
             else:
                 _perf.compter("rendus_evites")
             if veralux:

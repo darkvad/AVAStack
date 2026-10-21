@@ -682,6 +682,29 @@ AFFICHÉE à 1,00 ») est né de cet angle mort.
   `_process_chaine()` est l'image **LINÉAIRE** (l'étirement STF s'applique
   dessus) ; seule la branche VeraLux rend l'aperçu STF déjà étiré. Rendre l'aperçu
   étiré en STF l'étirerait **deux fois**.
+- **LA MÉMOIRE DU STF SE PÉRIME — elle ne doit pas traverser une période VeraLux**
+  (défaut « basculer sur STF après du VeraLux = IMAGE BLANCHE », v2.98.8 ;
+  banc `_test_bascule_stf_blanc.py`, mesure `_diag_bascule_stf_blanc.py`).
+  `DisplayProcessor._stats` (médiane, σ, p99,9 **lissées**) n'est réutilisé en
+  `live=False` que parce qu'il décrit l'image **COURANTE**. Depuis l'étape 1a le
+  rendu de frame n'existe plus quand la chaîne est attendue : en VeraLux, une
+  **image d'attente** (un geste → `_refresh_preview`, le filet anti-écran figé,
+  `_pousser_rendu`) suffit à POSER cette mémoire, et **plus rien ne la
+  rafraîchit** ensuite. Deux règles à ne pas relâcher :
+  ① **elle ne traverse pas une période VeraLux** : `process()` jette `_stats` et
+  `_memo_moteur` (`oublier_memoire_stf()`) dès que le dernier rendu
+  (`_dernier_moteur_rendu`, écrit en fin de `process()`, seul écrivain = le fil
+  de rendu) n'était pas un rendu STF — sinon l'image d'aujourd'hui est étirée
+  avec le point noir d'hier : MESURÉ, mémoire `hi` 11 fois sous le fond ⇒
+  **médiane 255, 100 % des pixels ≥ 250** (écart 180,3 niveaux avec le STF sain) ;
+  ② **elle AVANCE au rendu d'une nouvelle pile même quand la chaîne est
+  attendue** : `_maj_lbl_vl` passe `live=True` au rendu du `vl_new` d'une pile
+  confiée à la chaîne (`_refresh_preview(live=…)`, `False` par défaut pour les
+  gestes). Sans cela le STF auto reste **gelé** sur la première pile de la
+  session dans les modes à chaîne, et le blanc revient dès que le NIVEAU de
+  l'empilement change (maître dark/flat chargé ou retiré, autre nuit ou filtre
+  d'un dossier mixte, Lune qui se couche). L'hypothèse « le STF étire une image
+  déjà étirée » a été ÉCARTÉE par la mesure : la clé contient bien le moteur.
 
 - **Le solveur de netteté DÉDIÉ a été SUPPRIMÉ** (`_sh_worker`,
   `_process_nettete`, `_sh_key`, `_sh_*`) : la netteté fait partie de la chaîne

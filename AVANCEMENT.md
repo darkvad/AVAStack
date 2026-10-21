@@ -16,12 +16,13 @@ performance/mémoire, puis refonte du rendu.
 > seulement sur demande explicite d'Alain. **`LRGBHa` est FERMÉE** — ne pas la
 > recréer.
 
-Versions : **`OptimisationUI` = v2.98.7** (Phase 0 + **1a** + **1b** + **`tick_avant`**
+Versions : **`OptimisationUI` = v2.98.8** (Phase 0 + **1a** + **1b** + **`tick_avant`**
 LIVRÉS ET **VALIDÉS EN RÉEL** — `perf-7` : `ui_tick` **3,3 %** du mur ; **mémoire
 MESURÉE** par un outil neuf ; **« copie → référence » LIVRÉ ET VALIDÉ EN RÉEL**
 (v2.98.5 : `perf-8` RSS max 4 458,9 → **4 247,1 Mo**) ; **jauge `postes` LIVRÉE**
-(v2.98.6) ; **persistance dark/flat CORRIGÉE** (v2.98.7, en attente du test
-réel) ; **aucune release**) ·
+(v2.98.6) ; **persistance dark/flat CORRIGÉE** (v2.98.7, validée en réel) ;
+**DÉFAUT « STF = IMAGE BLANCHE » CORRIGÉ** (v2.98.8, reproduit et mesuré AVANT
+correction) ; **aucune release**) ·
 `master` = v2.96.1 · **Store publié = v2.71.1**.
 
 **Gouvernance** : aucune release GitHub sans accord ; **demander AVANT de
@@ -30,13 +31,28 @@ démarrer le lot suivant** ; ne jamais déduire l'état d'une case de `config.js
 
 ---
 
-## Session des 20-21/10/2026 — Phase 0, **1a**, **1b** et `tick_avant` VALIDÉS EN RÉEL · mémoire MESURÉE · **copie → référence LIVRÉE (perf-8)** · **jauge `postes` LIVRÉE** · **persistance dark/flat CORRIGÉE (v2.98.7)**
+## Session des 20-21/10/2026 — Phase 0, **1a**, **1b** et `tick_avant` VALIDÉS EN RÉEL · mémoire MESURÉE · **copie → référence LIVRÉE (perf-8)** · **jauge `postes` LIVRÉE** · **persistance dark/flat CORRIGÉE (v2.98.7)** · **DÉFAUT « STF = IMAGE BLANCHE » CORRIGÉ (v2.98.8)**
 
 ### État actuel
-- **Tout est LIVRÉ, VALIDÉ EN RÉEL et COMMITTÉ/PUSHÉ** (`OptimisationUI`,
-  commit `e307ad4`). Phase 0, **1a**, **1b**, `tick_avant` ① + ②, la mesure
-  mémoire, **copie → référence**, la **jauge `postes`** et la **persistance
-  dark/flat** (v2.98.7) : rien n'est en attente de code.
+- **Tout est LIVRÉ** (`OptimisationUI`, v2.98.8, **à committer/pousser**). Phase 0,
+  **1a**, **1b**, `tick_avant` ① + ②, la mesure mémoire, **copie → référence**,
+  la **jauge `postes`**, la **persistance dark/flat** (v2.98.7) et le **défaut
+  « basculer sur STF après VeraLux = image blanche »** (v2.98.8) : **rien n'est
+  en attente de code**. Reste à Alain : le **test complet en réel** (le défaut du
+  21/10 était le SEUL point qui bloquait la fusion vers `master`).
+- **DÉFAUT STF/BLANC — MESURÉ PUIS CORRIGÉ (v2.98.8)** : la MÉMOIRE d'étirement
+  du STF (`_stats`) était **posée pendant la phase VeraLux** (une simple image
+  d'attente suffit : un geste, `_pousser_rendu`, le filet) et **jamais
+  rafraîchie** (depuis 1a, le rendu de frame n'existe plus quand la chaîne est
+  attendue) ; à la bascule, `_moteur_stf(live=False)` la RÉUTILISAIT. Mesure :
+  mémoire `(0,000882, 0,000345, 0,001972)` contre un empilement à 0,048 ⇒ `hi`
+  11 fois SOUS le fond ⇒ **médiane 255, 100 % ≥ 250** (écart 180,3 avec le STF
+  sain). Correctif : ① la mémoire **ne traverse pas** une période VeraLux
+  (`process()` jette `_stats`/`_memo_moteur` si le dernier rendu n'était pas STF)
+  ; ② elle **avance** au rendu du `vl_new` d'une nouvelle pile
+  (`_refresh_preview(live=True)`), sinon le STF auto restait GELÉ dans les modes
+  à chaîne. Banc neuf `_test_bascule_stf_blanc.py` (témoin inversé + bit-exact) ;
+  outil de mesure `_diag_bascule_stf_blanc.py`.
 - **Le fil d'interface ne fait plus le calcul** : `ui_tick` **3,3 %** du mur
   (`perf-7` 456,5 → 18,6 s ; `perf-9` 22,7 s / 683 s), `tick_avant` 0,70 ms/tour,
   pire tour 92 ms (plus de gel de 2 s). Ressenti d'Alain (le vrai critère) :
@@ -126,30 +142,18 @@ flats. Leviers si besoin : fenêtre 4 → 2 (−320 Mio pour 5 rôles), méthode
   Un maître illisible n'est **pas** retiré de la config (perte évitée) : il est DIT.
 
 ### Problèmes ouverts
-- 🔴 **DÉFAUT À INSTRUIRE — STF = IMAGE BLANCHE (retour d'Alain, 21/10/2026)**.
-  Le **test complet est BON**, SAUF ceci : après avoir joué en fin d'empilement
-  avec « un peu tous les paramètres » **en étirement VeraLux**, il a basculé sur
-  l'**étirement STF** pour vérifier → **image blanche**. C'est le SEUL point qui
-  bloque la fusion vers `master` et la release.
-  **À FAIRE (action unique, MESURER AVANT de corriger)** : reproduire dans un
-  banc DÉTERMINISTE, sans écran ni session — vraie `DisplayProcessor` : rendre en
-  VeraLux, puis **basculer le moteur en STF SANS nouvelle frame** et regarder
-  l'image (`_on_moteur`, `app.py:2960` → `disp.stretch`). Le défaut est
-  PROBABLEMENT le même que celui du jalon P7 : **un rendu sans nouvelle frame
-  doit FORCER la chaîne** (`disp.notify_new_stack()`) — sinon le cache republie
-  l'image **déjà étirée par VeraLux** et le STF l'étire **une seconde fois**
-  (d'où le blanc). Seconde piste : l'image d'**ATTENTE** (leçon 1a : « image
-  blanche entre deux images »).
-  **Points d'entrée** : `app.py:2960` (`_on_moteur`), `app.py:_pousser_rendu`
-  (`notify_new_stack`), `display.py:449` (défaut `stretch="stf"`),
-  `display.py:1477` (`stretch == "veralux" and not vl_error`),
-  `display.py:1580` (`_vl_params()` : le MOTEUR est dans la clé),
-  `display.py:1668`. **Bancs à rejouer/étendre** :
-  `_test_p7_recalcul_corrections.py` (le précédent exact),
-  `_test_chaine_pre_etirement_jalon125.py`, `_test_ui_moteur_jalon41.py`,
-  `_test_1a_rendu_final.py`, `_test_chroma_stf_jalon127.py`,
-  `_test_neutralisation_stf_jalon137.py`, `_test_render_worker_bit_exact.py`.
-  **Aucun pixel ne doit changer** : preuve au bit exigée.
+- ✅ **CORRIGÉ (v2.98.8) — « STF = IMAGE BLANCHE » (retour d'Alain, 21/10/2026)**.
+  Reproduit dans un banc déterministe AVANT de corriger (`_test_bascule_stf_blanc.py`,
+  vraie `DisplayProcessor` : VeraLux rendu → bascule STF **sans nouvelle frame**),
+  MESURÉ (`_diag_bascule_stf_blanc.py`), puis corrigé — cause et preuves dans
+  « État actuel » ci-dessus et dans le changelog (v2.98.8).
+  **L'hypothèse n°1 du handoff était FAUSSE** : la chaîne n'est PAS en cause (la
+  clé contient bien le moteur, `_vl_params()` dernier élément) — la vraie cause
+  est la **MÉMOIRE du STF** (`_stats`) posée pendant la phase VeraLux et
+  réutilisée à la bascule. À retenir : **un état « d'après étirement » du STF ne
+  se périme pas tout seul** — il faut le JETER quand le STF n'a plus rendu
+  l'empilement depuis longtemps (moteur changé), et le FAIRE AVANCER à chaque
+  nouvelle pile même quand la chaîne est attendue.
 - **Phase 1 : critère ATTEINT** (`ui_tick` 3,3 % < 20 %) — **test complet d'Alain
   AVANT toute fusion vers `master` et toute release** (sa décision, pas la nôtre).
 - **AUDIT DU POSTE `rendu` (21/10, outil `bancs/_diag_rendu_memoire.py`) — le
@@ -206,10 +210,16 @@ flats. Leviers si besoin : fenêtre 4 → 2 (−320 Mio pour 5 rôles), méthode
   `processing/calibration.py` + `ui/app.py` + `ui/config_ui.py` (persistance des
   maîtres), `bancs/_mesure_memoire_stackers.py` (NEUF, options `--roles`,
   `--canaux`, `--maitres` pour l'enveloppe).
+- **v2.98.8** : `processing/display.py` (`_dernier_moteur_rendu`,
+  `oublier_memoire_stf()`, garde-fou dans `process()`), `ui/renderer.py`
+  (`_refresh_preview(live=…)`), `ui/app.py` (`_maj_lbl_vl` → `live=True` au rendu
+  du `vl_new` d'une nouvelle pile), `bancs/_test_bascule_stf_blanc.py` (NEUF,
+  5 volets), `bancs/_diag_bascule_stf_blanc.py` (NEUF, outil de MESURE).
 - **Bancs** : `_test_phase0_perf` (110), `_test_1a_rendu_final` (40),
   `_test_render_worker_bit_exact` (41, hashes au bit),
   `_test_multifolder_last_file` (24), `_test_p1_memoire_reference` (30),
-  `_test_p1_postes_memoire` (17), `_test_calib_persistance` (32).
+  `_test_p1_postes_memoire` (17), `_test_calib_persistance` (32),
+  `_test_bascule_stf_blanc` (12, v2.98.8).
 
 ---
 
@@ -241,32 +251,36 @@ vert (**atteint**).
 
 ## En attente / prochaine session
 
-- **TOUT EST FAIT ET POUSSÉ** (commit `e307ad4` sur `origin/OptimisationUI`) :
-  Phase 1 validée en réel, mémoire nommée, persistance dark/flat corrigée et
-  validée. **RIEN n'attend d'accord de code** : Alain fait son **test complet**
-  avant de décider la fusion vers `master` et la release.
+- **DÉFAUT STF/BLANC — FAIT (v2.98.8)** : reproduit dans un banc déterministe,
+  mesuré, corrigé, banc neuf vert + non-régression rejouée. Voir « État actuel »
+  et « Problèmes ouverts ».
+- **CE QUI ATTEND ALAIN** : **committer/pousser** la v2.98.8 (branche
+  `OptimisationUI`) puis refaire le **test complet en réel** — c'est LUI qui
+  décide de la fusion vers `master` et de la release. Le défaut du 21/10 était le
+  SEUL point bloquant.
+- **PROCHAINE ACTION (accord à demander AVANT de démarrer)** : **`empilement`**
+  2 938 ms/frame (`perf-9`) — **décomposer** alignement vs rejet kappa-sigma
+  AVANT de toucher ; puis **`lecture_frame`** 4 765 ms/frame.
 - **Résultats du 21/10 en une ligne chacun** : `perf-6` a désigné le RÉSEAU
   (0,969 d'attente, `cores_moyens` 0,98) ; v2.98.4 a supprimé l'I/O du fil
   (`ui_tick` 456,5 → 18,6 s) ; v2.98.5 a rendu la copie de `_stack_pleine_res`
   à la référence (−96,2 Mio, rendu SHA-256 égal) ; v2.98.6 a livré la jauge
-  `postes` ; v2.98.7 a corrigé la persistance des maîtres. `perf-9` a servi aux
-  deux dernières preuves.
-- **PROCHAINE ACTION — LE DÉFAUT STF/BLANC (accord donné, priorité absolue)** :
-  voir le premier point de « Problèmes ouverts ». **Action unique** : écrire le
-  banc qui reproduit le blanc (VeraLux rendu → bascule STF **sans nouvelle
-  frame**), MESURER, puis corriger. **Rien d'autre ne passe avant.**
+  `postes` ; v2.98.7 a corrigé la persistance des maîtres ; v2.98.8 a corrigé la
+  mémoire du STF (bascule VeraLux → STF). `perf-9` a servi aux dernières preuves.
 - **ABANDONNÉ (Alain, 21/10/2026)** : les 3 corrections de mesure proposées
   (ne pas traverser `_hote` dans la jauge, ne pas compter les alias des
   stackers, formule [6] de l'outil) — **ne pas les reprendre** sans demande.
   L'audit du poste `rendu` reste VALIDE (artefact mesuré, rien à récupérer dans
   le fil) ; le résiduel « 455,3 Mio » reste un PLANCHER (~540 Mio en réalité).
-- **Ensuite** : **`empilement`** 2 938 ms/frame (décomposer alignement vs rejet
-  kappa-sigma AVANT de toucher) ; puis **`lecture_frame`** 4 765 ms/frame.
 - **ÉCARTÉ, à ne pas réintroduire sans mesure** : `cv2.setNumThreads`,
   `sys.setswitchinterval`, priorité OS du fil Tk — le CPU n'était pas le
   problème (0,98 cœur utilisé sur 14). Et **float32 : ÉCARTÉ DÉFINITIVEMENT**
   (Alain, 21/10 — peut changer l'image ; le chiffrage reste une TRACE, pas un
   plan).
+- **Banc 79 (`_test_perf_reactivite_jalon79.py`)** : 4 échecs **PRÉEXISTANTS**
+  (vérifié : identiques sans le lot v2.98.8) — l'étape 1b a déplacé
+  l'instrumentation du banc (`_maj_histogrammes` → `_draw_hist`). À reprendre
+  un jour, **ce n'est pas une régression**.
 - **`CLAUDE.md`** : à jour — leçon v2.98.3 (mesurer le CPU du fil), la règle
   « AUCUNE I/O SUR LE FIL D'INTERFACE » (et son application au démarrage),
   section NEUVE « Calibration dark/flat — persistance des maîtres (v2.98.7) »,
@@ -274,15 +288,15 @@ vert (**atteint**).
 - Aucune release ; `master` reste à v2.96.1 ; le Store à v2.71.1.
 
 ### Contexte de reprise (à coller — 2 phrases)
-Branche **`OptimisationUI`, v2.98.7** (commit `84d5eb5` poussé) : Phase 1 validée
+Branche **`OptimisationUI`, v2.98.8** (à committer/pousser) : Phase 1 validée
 (`ui_tick` 3,3 %), mémoire nommée, persistance dark/flat validée en réel,
-enveloppe mesurée, audit du poste `rendu` clos (artefact de parcours) — **le test
-complet d'Alain est BON sauf UN défaut** : après avoir joué en VeraLux en fin
-d'empilement, **basculer sur l'étirement STF donne une IMAGE BLANCHE**. Action
-unique de la prochaine session : reproduire le blanc dans un banc déterministe
-(VeraLux rendu → bascule STF **sans nouvelle frame**, vraie `DisplayProcessor`),
-MESURER, puis corriger — hypothèse n°1 : la chaîne n'est pas forcée et le STF
-étire une image DÉJÀ étirée (même famille que le défaut P7, `notify_new_stack`).
+enveloppe mesurée, audit du poste `rendu` clos, et le **défaut « basculer sur STF
+après du VeraLux = image blanche » REPRODUIT, MESURÉ PUIS CORRIGÉ** (la MÉMOIRE
+d'étirement du STF, posée pendant la phase VeraLux, était réutilisée à la
+bascule : `hi` 11 fois sous le fond ⇒ médiane 255 ; correctif : la mémoire ne
+traverse pas une période VeraLux et avance au rendu d'une nouvelle pile). Action
+suivante : **test complet d'Alain en réel**, puis son accord pour la fusion vers
+`master` — sinon, prochain chantier mesuré : **`empilement`** (2 938 ms/frame).
 
 ---
 
@@ -329,6 +343,17 @@ MESURER, puis corriger — hypothèse n°1 : la chaîne n'est pas forcée et le 
   des cases, jamais `vl_neutre_gains` qui est un RÉSULTAT).
 - **Un rendu sans nouvelle frame n'est pas vu par `_tick`** : tout point qui
   pousse une image RECALCULÉE doit appeler `disp.notify_new_stack()` (leçon P7).
+- **La mémoire du STF se PÉRIME** (leçon v2.98.8) : `_stats` est un lissage
+  TEMPOREL de l'empilement — il n'est réutilisé (`live=False`) que parce qu'il
+  décrit l'image COURANTE. Depuis 1a, le rendu de frame n'existe plus quand la
+  chaîne est attendue : en VeraLux, une **image d'attente** (un geste, le filet,
+  `_pousser_rendu`) peut le POSER et rien ne le rafraîchit ensuite. Deux règles :
+  ① la mémoire **ne traverse pas** une période VeraLux (elle est jetée dans
+  `process()` au changement de moteur) ; ② elle **avance** au rendu du `vl_new`
+  d'une nouvelle pile (`_refresh_preview(live=True)`) — sinon le STF auto reste
+  GELÉ, et dès que le NIVEAU de l'empilement change (calibration, autre nuit,
+  Lune), le point noir mémorisé est sous le fond : **image blanche** (mesuré :
+  médiane 255, 100 % ≥ 250).
 - **`perf.json`** : écrit à côté du programme (`--perf`, toutes les 5 s) ;
   `--perf-json CHEMIN` sert à **garder ET à relire** un relevé (`perf*.json` hors
   dépôt). Le relevé doit être POSTÉRIEUR au lot mesuré (l'outil compare la

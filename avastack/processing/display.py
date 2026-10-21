@@ -619,6 +619,12 @@ class DisplayProcessor:
         # sert pour NE PAS remplacer l'image affichée : Alain ne veut jamais voir
         # d'image « bâchée » entre deux images finales.
         self.dernier_etait_attente = False
+        # v2.98.8 : MOTEUR du dernier rendu de `process()` (« veralux » / « stf »,
+        # "" avant le premier). Sert au GARDE-FOU de MÉMOIRE du STF : la mémoire
+        # d'étirement (stats lissées) ne doit pas traverser une période VeraLux —
+        # elle ne décrit alors plus l'image courante (défaut « STF = image
+        # blanche » du 21/10/2026, cf. `process()`).
+        self._dernier_moteur_rendu = ""
         self.vl_stage = ""            # étape COURANTE du calcul (jalon 40 :
                                       # "préparation"/"composition"/"GraXpert"…/
                                       # "étirement"), écrite par le thread
@@ -651,6 +657,7 @@ class DisplayProcessor:
         self.dernier_brut_niveaux = None
         self.gains_etirement = None   # jalon 136 : rien à garder d'une autre vue
         self._memo_moteur = None      # jalon 79 : rien à réutiliser d'une autre vue
+        self._dernier_moteur_rendu = ""   # v2.98.8 : mémoire STF neuve elle aussi
         self.niveaux_new = True
         with self._vl_lock:
             self._vl_result = None
@@ -664,6 +671,27 @@ class DisplayProcessor:
         self.fige = False
         self._stats = None
         self._memo_moteur = None      # jalon 79 : la clé contient les stats
+
+    def oublier_memoire_stf(self) -> None:
+        """Jette la MÉMOIRE d'étirement du STF/manuel : stats lissées ET mémoire
+        de la sortie du moteur (jalon 79).
+
+        POURQUOI (défaut du 21/10/2026, « basculer sur STF après VeraLux donne une
+        IMAGE BLANCHE ») : `_stats` est un lissage TEMPOREL de l'empilement — il
+        n'est réutilisé en `live=False` que parce qu'il décrit l'image COURANTE.
+        Pendant une période VERA LUX, le STF ne rend plus l'empilement (la chaîne
+        est attendue : le rendu de frame n'existe plus depuis l'étape 1a) : la
+        mémoire peut donc dater de N'IMPORTE QUEL moment de la session, et une
+        image d'attente suffit à la poser. La réutiliser ensuite à la bascule
+        revient à étirer l'image d'aujourd'hui avec le point noir d'hier :
+        mesuré — mémoire `(0,000882, 0,000345, 0,001972)` contre un empilement à
+        0,048 ⇒ `hi` 11 fois sous le fond ⇒ **tout écrête à 1, médiane 255**.
+
+        Appelée par le GARDE-FOU de `process()` (changement de moteur) ; c'est
+        l'équivalent « mémoire » de `reprendre_auto()` (qui, lui, repart aussi de
+        l'auto et rend la main à l'utilisateur)."""
+        self._stats = None
+        self._memo_moteur = None
 
     @staticmethod
     def _mtf(x: Any, m: float) -> np.ndarray:
@@ -1471,7 +1499,13 @@ class DisplayProcessor:
         # n'est plus appliquée AVANT l'étirement — elle suit le moteur, juste
         # après. En mode VeraLux, comme la chaîne pré-étirement, elle est
         # appliquée par le worker : ne pas la refaire ici.
-        if self._veralux_actif():
+        # v2.98.8 : le MOTEUR est lu UNE SEULE FOIS pour tout l'appel — la
+        # branche d'affichage et la mémoire publiée en fin d'appel décrivent
+        # ainsi le MÊME rendu, même si l'utilisateur bascule le moteur pendant
+        # le calcul (une bascule en vol ne peut plus mélanger les deux moteurs
+        # dans un seul rendu).
+        veralux = self._veralux_actif()
+        if veralux:
             x = self._process_chaine(img, live=live)
         else:
             if self.stretch == "veralux" and not self.vl_error:
@@ -1486,6 +1520,24 @@ class DisplayProcessor:
                 img_chaine = self._process_chaine(img, live=live)
             else:
                 img_chaine = img
+            # v2.98.8 : GARDE-FOU DE MÉMOIRE — la mémoire d'étirement du STF
+            # (`_stats`, `_memo_moteur`) ne TRAVERSE PAS une période VeraLux.
+            # POURQUOI : elle n'est réutilisée en `live=False` que parce qu'elle
+            # décrit l'image COURANTE ; pendant une période VeraLux le STF ne
+            # rend plus l'empilement (le rendu de frame n'existe plus depuis
+            # l'étape 1a, la chaîne étant attendue), donc elle peut dater de
+            # n'importe quel moment de la session — une simple image d'attente
+            # suffit à la poser. La reprendre à la bascule étirait l'image
+            # d'aujourd'hui avec le point noir d'hier : MESURÉ le 21/10/2026 sur
+            # la séquence réelle (VeraLux rendu → bascule STF sans nouvelle
+            # frame) — mémoire `(0,000882, 0,000345, 0,001972)` contre un
+            # empilement à 0,048 ⇒ `hi` 11 fois SOUS le fond ⇒ tout écrête à 1 :
+            # **image blanche, médiane 255, 100 % des pixels ≥ 250** (défaut
+            # signalé par Alain, écart 180,3 niveaux avec le STF de référence).
+            # Jeter la mémoire coûte UNE mesure de stats (sous-échantillonnée,
+            # ~ms) et rend exactement l'image du STF sain.
+            if self._dernier_moteur_rendu not in ("", "stf"):
+                self.oublier_memoire_stf()
             # Jalon 79 : l'étirement passe par une MÉMOIRE (`_moteur_stf`) —
             # un réglage d'APRÈS étirement (gamma, saturations, barres de
             # niveaux) retrouve l'image déjà étirée au lieu de la recalculer.
@@ -1518,6 +1570,11 @@ class DisplayProcessor:
         x = self._neutraliser_fond(x)
         x = self._finition(x, img.ndim == 3, self.gamma, self.saturation,
                            self.sat_canaux)
+        # v2.98.8 : MÉMOIRE DU MOTEUR DU RENDU — lue au prochain appel pour
+        # savoir si la mémoire d'étirement du STF est encore d'actualité
+        # (cf. le GARDE-FOU ci-dessus). Écrite ici, en fin d'appel : `process()`
+        # est le seul écrivain de cet attribut (fil de rendu).
+        self._dernier_moteur_rendu = "veralux" if veralux else "stf"
         return (x * 255).astype(np.uint8)
 
     def _neutraliser_fond(self, x: Any) -> Any:
