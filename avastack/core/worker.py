@@ -780,11 +780,26 @@ class AcquisitionWorker:
                 show = cv2.resize(show, None, fx=scale, fy=scale,
                                   interpolation=cv2.INTER_AREA)
             # v2.38.0 : garde l'empilement COMPLET sous la main pour l'option
-            # « Rendu pleine résolution » (copie défensive : le stacker réécrit
-            # son tampon à la frame suivante).
+            # « Rendu pleine résolution ».
+            # AUDIT MÉMOIRE (21/10/2026, branche `OptimisationUI`) : PLUS DE
+            # COPIE — on garde une RÉFÉRENCE sur l'image que le stacker vient de
+            # rendre. Pourquoi c'est sûr : `mean()` / `mean_avec_canaux()`
+            # rendent des tableaux JAMAIS modifiés en place (contrat de
+            # `LiveStacker._moyenne_brute` ; recadrages = VUES ; corrections via
+            # `appliquer_gains*`, qui rendent une copie ou l'image elle-même) et
+            # le stacker les garde DÉJÀ dans ses caches (`_memo_moy`,
+            # `_memo_compo`, `_fit_cache`). La copie était donc un doublon de
+            # 96,2 Mio à la géométrie native (85,0 Mio à la géométrie RECADRÉE
+            # du run). Preuve au bit : `_test_p1_memoire_reference.py`.
+            # Le repli `show` (aucun empilement encore : la frame seule) garde,
+            # LUI, une copie : `show` peut être le tampon de la brute, réutilisé
+            # à la frame suivante.
             if self._pleine_res_activee():
-                self._stack_pleine_res = np.asarray(
-                    stack if stack is not None else show, np.float32).copy()
+                if stack is not None:
+                    self._stack_pleine_res = np.asarray(stack, np.float32)
+                else:
+                    self._stack_pleine_res = np.array(show, np.float32,
+                                                      copy=True)
             # v2.37.3/v2.37.4 : le rayon du flou de chroma suit la RÉSOLUTION —
             # l'aperçu est réduit d'un facteur `scale`, les ÉTOILES aussi : à
             # rayon constant en pixels, leur couleur s'étalerait 1/scale fois plus

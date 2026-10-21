@@ -3589,6 +3589,9 @@ ce qui manquait n'était pas une correction mais une MESURE.
   de l'application au repos (Windows, outil `bancs/_mesure_memoire.py`) : **RSS
   148 Mo, pic 259 Mo** après trois aperçus 1600×1200, 3 threads — donc les 80 %
   de 32 Go ne viennent PAS du repos : les mesurer PENDANT un empilement réel.
+  → **FAIT le 21/10/2026** : `bancs/_mesure_memoire_stackers.py` chiffre la
+  répartition pendant l'empilement (3 096,0 Mio constatés, 69,4 % du RSS du
+  run) — section « **Mémoire — où sont les octets** » plus bas.
 - **PIÈGE MESURÉ (P5, 20/10/2026) — `event_generate` d'une TOUCHE exige le
   FOCUS** : `ent.event_generate("<Return>")` sur une `ttk.Entry` ne déclenche
   RIEN si le widget n'a pas le focus (`focus_force()` puis
@@ -4208,7 +4211,184 @@ du code, piège rencontré sur un outil externe. Cible : section « Pièges »
   par frame** (`rendus` 132 = 71 frames + 61 `vl_new`), étirement =
   **2 093 ms** sur `source_px` = 7,41 Mpx (mesuré en `ui_etirement` avant 1b,
   aujourd'hui `fil_etirement`), `cpu.cores_moyens` = **1,59**, accumulateurs =
-  **2 935 Mo** sur un RSS de 4 503 Mo.
+  **2 935 Mo** sur un RSS de 4 503 Mo — mesure détaillée et **corrigée** dans la
+  section « Mémoire » ci-dessous.
+
+## Mémoire — où sont les octets (MESURÉE le 21/10/2026, v2.98.4 ; lot « copie → référence » en v2.98.5)
+
+- **Outil** : `python bancs/_mesure_memoire_stackers.py` (mesure SEULE ; aucun
+  fichier de l'application modifié, aucun pixel changé). Options :
+  `--sans-allocation` (n'alloue rien, tout théorique), `--sans-rendu` (saute la
+  **[3 bis]** chaîne de rendu, ~1,5 Go de pointe), `--geometrie HxW`.
+  Il lit l'**en-tête** du 1er FITS de la config (2880 octets, jamais l'image),
+  reconstruit le graphe RÉEL (`CompositeStacker`, 5 rôles, réglages de
+  `config.json`), l'inventorie **par chemin**, projette et réconcilie.
+- **LA GÉOMÉTRIE SE LIT DANS LE FITS, PAS DANS `source_px`** : les brutes M33
+  QHY font **3856×2180 = 8 406 080 px** ; `source_px` (7 425 000) est l'image
+  **RECADRÉE** qui part au rendu. Projeter sur `source_px` sous-estime de 13 %.
+- **Répartition réelle** (5 rôles, winsorized, **fenêtre 4**) : tampons de
+  travail (`_moy/_sig/_dif/_pix/_masq`) **1 162,4 Mio** · accumulateurs
+  `sum/sumsq/wsum` float64 **962,0** · fenêtre glissante (`_buf`, 4 frames × 5)
+  **641,3** · composite mémoïsé + `_fit_cache` **192,4** · moyennes de rôle
+  **160,3** ⇒ modèle pleine frame **3 118,5 Mio** ; **CONSTATÉ 3 096,0 Mio**
+  (jauge + aveuglement mesuré : dans un run les caches sont RECADRÉS), soit
+  **69,4 % du RSS pendant le run** (4 458,9 Mio ; pic 4 563,5).
+- **UNE JAUGE SE RECOUPE** : `perf.jauger_empileur` parcourt à `profondeur=3`,
+  qui s'arrête AVANT le contenu des **tuples** d'un `LiveStacker` ⇒
+  `_memo_moy` (`(n, image)`, 32,1 Mio × 5) est **invisible** : la jauge
+  **sous-compte de 160,3 Mio**. Le parcours indépendant du banc (p4) reproduit
+  la jauge à **+0,76 %** en p3 — c'est cette concordance qui prouve le modèle.
+  Ne jamais décider sur une jauge non recoupée.
+- **LE RSS DE FIN DE RUN N'EST PAS UNE RÉFÉRENCE** : la jauge n'est pas
+  réémise après la fermeture ; comparer 2 935,7 Mo à 3 163,5 Mo (« 61 % ») est
+  une erreur de lecture. Toujours rapporter au **RSS max pendant le run**.
+- **LE « Go INEXPLIQUÉ » EST RETROUVÉ — la CHAÎNE DE RENDU retient 376,8 Mio**
+  **AVANT le lot `copie → référence`, 280,6 APRÈS** (v2.98.5 ; section
+  **[3 bis]** du banc, qui instancie la VRAIE `DisplayProcessor` aux réglages du
+  run et fait un rendu VeraLux pleine résolution) : `dernier_brut_niveaux`
+  (= `_vl_result`, 96,2) + les **5 couches** de `vl_compo` (160,5) + l'image
+  uint8 (24,0) ; la **copie** de `_stack_pleine_res` (96,2) a disparu — c'était
+  la **référence** sur le composite du stacker qui la remplace.
+  **Déduplication OBLIGATOIRE par `id()`** : `_stack_pleine_res` **aliase**
+  désormais le composite du stacker (`_fit_cache`/`_memo_compo`) et
+  `_vl_result` EST `dernier_brut_niveaux` — compter deux fois gonfle le total.
+  **Pic ≠ retenu** : le calcul VeraLux crée **~1,49 Go** de temporaires à
+  8,4 Mpx (borne haute, image de synthèse) pour ~281 Mio retenus.
+- **AUDIT DES COPIES — APPLIQUÉ (v2.98.5, 21/10/2026).** `_stack_pleine_res`
+  **SERT** — la supprimer casserait le rendu pleine résolution et la géométrie
+  des annotations ; c'est sa **COPIE** qui était inutile : `stack` sort de
+  `mean()`/`mean_avec_canaux()`, qui ne rendent que des tableaux **jamais
+  modifiés en place** (recadrages = VUES ; corrections = copie ou image
+  elle-même via `appliquer_gains*`) et que le **stacker garde déjà**
+  (`_memo_moy`, `_memo_compo`, `_fit_cache`) ⇒ **−96,2 Mio** de rétention
+  (**85,0** à la géométrie recadrée du run), rendu **identique au bit**
+  (`bancs/_test_p1_memoire_reference.py`).
+  **Le repli « aucune frame empilée » GARDE une copie** (`stack is None` :
+  `show` peut être le tampon de la brute, réutilisé à la frame suivante) — ne
+  jamais l'étendre à la référence « par symétrie ».
+  **`_vl_src` RETIRÉ** : écrit et jamais lu (vérifié sur tout le dépôt), mais il
+  **retenait** l'image soumise ⇒ décocher « Rendu pleine résolution » ne
+  libérait rien. Gain nul en régime établi, libération enfin réelle.
+  Leçon : **ne jamais chiffrer une économie avant d'avoir lu qui lit** — puis
+  **prouver l'absence d'écriture en place** (hash avant/après) avant de troquer
+  une copie contre une référence.
+- **LE RÉSIDUEL SE NOMME PAR UNE JAUGE DE L'APPLICATION (v2.98.6)** :
+  `perf.postes_memoire(app)` (PURE) range les tableaux de l'App sous l'attribut
+  de PREMIER niveau qui les tient, dédupliqué par `id()` (le premier attribut
+  rencontré l'emporte), seuil 64 Kio, et ne traverse QUE les conteneurs et les
+  objets du projet — jamais Tk/PIL/astropy (coût ~0,1 ms sur 43 tableaux).
+  `perf.jauger_postes` la publie dans les `jauges` du JSON `--perf` ;
+  `_tick_corps` l'échantillonne toutes les 20 s (coût nul hors `--perf`).
+  Banc `_test_p1_postes_memoire.py` (17 vérifications).
+- **MESURES `perf-8` (945,5 s, 72 frames, v2.98.5 — post-lot)** : RSS max
+  **4 247,1 Mo** (4 458,9 en `perf-7`), résiduel **555,6 Mio** = hors stackers
+  1 151,4 − postes 200,4 − chaîne **247,3** (280,6 ramenés à la géométrie du run
+  par `source_px`, ×0,882) − base 148,0. Nommé : **fragmentation +193 Mio**
+  (RSS gardé après libération de TOUS les tableaux d'UN rendu VeraLux),
+  calibration **0** (aucun dark/flat configuré — vérifié), archive FITS **0**
+  (chemins seuls), 3 × `ref_gray` uint8 = **21,2 Mio**.
+- **LE RÉSIDUEL EST NOMMÉ — `perf-9` (683,2 s, 67 frames, v2.98.7, 3 darks
+  chargés)** : hors stackers **1 156,5 Mio**, dont la jauge `postes` nomme
+  **553,2 Mio** — `disp` **226,1** (brut niveaux + couches `vl_compo`) ·
+  `rendu` **206,2** (ce que le `FilRendu` retient) · **`calib` 96,2** (3 maîtres
+  PLEINE FRAME 3856×2180 float32 = 32,07 chacun — les maîtres sont à la
+  géométrie NATIVE, pas recadrée) · 3 aligneurs **24,6** · petits 0,1.
+  Reste **455,3 Mio sans tableau nommé** (1 156,5 − 553,2 − base 148,0), dont
+  **193 Mio de fragmentation mesurée** ⇒ ~262 Mio de non-tableau (tas
+  Tk/PIL/OpenCV, objets Python, arènes). **`ui_tick` tient à 3,3 %** (22,7 s),
+  `tick_postes` 4,9 ms (~0,02 % du mur : la jauge ne coûte rien).
+  **La chaîne de rendu (`disp` + `rendu` = 432,3 Mio) est 47,8 % du
+  hors-stackers** : c'est le poste à instruire ensuite (auditer les lecteurs
+  AVANT d'agir).
+- **ENVELOPPE MÉMOIRE MESURÉE (21/10/2026, outil — aucune session requise)** :
+  `bancs/_mesure_memoire_stackers.py --roles L` (MONO 2D) · `--roles R --canaux 3`
+  (OSC) · `--roles L,R,G,B,Ha --maitres N` (composition + N maîtres). Chiffres
+  (8,4 Mpx, fenêtre 4, winsorized) : empileur **585,2 Mio par rôle MONO-canal**,
+  **1 755,6 pour une brute OSC 3 canaux**, 5 rôles = 3 118,5 ; chaîne retenue
+  40,1 / 120,2 / 280,6 ; postes de session 200,4 ; **un maître dark ou flat =
+  32,07 Mio** (float32 PLEINE FRAME, géométrie native) ; base 148,0.
+  ⇒ **MONO ~1,2 Go (pic 1,7)** · **OSC ~2,6 Go (pic 4,0)** · **5 rôles + 5 darks
+  + 5 flats ~4,5 Go (pic ~4,9)** — ancre réelle `perf-9` : 4 252,2 / 4 687,5 avec
+  3 darks. **Dimensionnement : 4 Go pour un dossier MONO, 8 Go pour une OSC,
+  8 Go = plancher et 16 Go conseillé pour 5 rôles avec darks ET flats.**
+  Leviers : fenêtre 4 → 2 (−320 Mio à 5 rôles), `kappa` au lieu de `winsorized`
+  (supprime `_buf`), moins de rôles. **La fenêtre et le nombre de rôles pèsent
+  plus que tout dtype.**
+- **La FRAGMENTATION n'est pas une fuite** : ~1,5 Go de temporaires VeraLux
+  laissent des trous que l'allocateur ne rend pas au système. Elle se MESURE
+  (libérer puis relire le RSS), ne se suppose pas — et ne se « corrige » pas en
+  changeant un dtype.
+- **Un banc in-process ne mesure PAS le régime établi** : `App._start()` hors
+  boucle Tk complète laisse l'App « Prêt » (0 frame, vérifié le 21/10). Pour la
+  mémoire en régime, c'est l'APPLICATION qui tourne (`--perf`), pas le banc.
+- **float32 : ÉCARTÉ DÉFINITIVEMENT (Alain, 21/10/2026)** — gain **−481 Mio**
+  (ou −962 avec `_moy/_sig/_dif`) mais peut changer l'image (fond, rejet) :
+  **trop risqué, abandonné**. **Ne pas le reproposer** sans demande explicite ;
+  le chiffrage reste dans le banc ([5]) comme trace, pas comme plan.
+- **Réconciliation `perf-8` (21/10, AVANT la jauge `postes`)** : hors stackers
+  **1 362,9 Mio** = postes d'image **200,4** (brute uint16 16,0 · calibrée 32,1
+  · canal 32,1 · uint8 24,0 · brut niveaux 96,2) + chaîne de rendu **280,6**
+  (376,8 avant le lot v2.98.5) + base applicative **148,0** ⇒ **résiduel
+  637,7 Mio (14,3 % du RSS du run)**. **Aucune fuite démontrée** — ne jamais
+  appeler « fuite » ce qu'aucune jauge ne nomme. C'est cette réconciliation que
+  `perf-9` a REMPLACÉE : la jauge `postes` nomme les tableaux, et le résiduel
+  sans tableau tombe à **455,3 Mio** (dont 193 de fragmentation).
+  **MILLÉSIME** : l'outil compare la version du relevé au lot mesuré (un relevé
+  antérieur au lot copie → référence gonfle le résiduel de 96,2) ; `perf-9` est
+  en v2.98.7, donc postérieur — le chiffre est cohérent.
+- **Levier float32 (chiffré, NON appliqué)** : `sum/sumsq/wsum` en float32 =
+  **−481 Mio** (10,8 % du RSS du run) ; y ajouter `_moy/_sig/_dif` = **−962 Mio**
+  (21,6 %). **Contrainte** : somme compensée (Kahan/Neumaier) + **preuve au bit**
+  (ou écart borné et expliqué) sur les bancs d'empilement, accord d'Alain avant.
+  Réduire la fenêtre de rejet est une piste SÉPARÉE qui change la qualité du
+  rejet : à mesurer, pas à décider par économie de mémoire.
+
+## Calibration dark/flat — PERSISTANCE des maîtres (v2.98.7, 21/10/2026)
+
+- **Le défaut corrigé** : `_load_dark` / `_load_flat` chargeaient l'image en
+  mémoire (`calib.darks` / `flats`) et n'écrivaient RIEN dans `config.json` —
+  d'où une **re-sélection à chaque session**. Les maîtres étaient pourtant bien
+  APPLIQUÉS (`core/worker.py` → `calib.apply`, une fois par frame, sur les
+  tableaux en mémoire). Trouvé pendant l'audit mémoire : le poste `calib` de la
+  jauge `postes` valait 0 alors que des maîtres pouvaient être chargés.
+- **Clés** (une par CIBLE, `avastack/processing/calibration.py`) :
+  `calib_dark_unique` / `calib_flat_unique` pour le maître « toutes couches »,
+  `calib_dark_<rôle>` / `calib_flat_<rôle>` pour un maître de couche (jalon 53).
+  Ce qui est persisté est le **CHEMIN**, jamais l'image.
+  `cles_persistees()` (état vivant → clés) et `lire_cles_persistees()`
+  (config → couples) sont **PURES** et testables sans écran ; la lecture est
+  **tolérante** (toute entrée qui n'est pas une chaîne non vide est ignorée).
+- **Écriture IMMÉDIATE au geste** (`_persister_calib`, appelée par `_load_dark`,
+  `_load_flat` ET `_clear_calib`) : les clés des maîtres ABSENTS sont d'abord
+  retirées — sinon un maître effacé reviendrait à la session suivante. Les clés
+  traversent la fermeture (`_sauver_config_app` réécrit `dict(CONFIG)`).
+- **Restauration DIFFÉRÉE — et c'est la règle, pas un détail**
+  (`_restaurer_calib_differe` + `_charger_maitre` + `_appliquer_calib`, file
+  `_calib_q` drainée par `_tick_corps`) : les chemins se lisent sans I/O, la
+  LECTURE des fichiers part dans un **fil démon borné** (5 s par maître,
+  `delais.borne`). Un maître peut vivre sur un NAS injoignable : une lecture
+  faite pendant la construction de la fenêtre **empêcherait l'application de
+  s'ouvrir** (leçon du 27/09/2026 et règle « aucune I/O sur le fil
+  d'interface », v2.98.4). `Calibrator.poser_dark/poser_flat` posent un maître
+  DÉJÀ lu — aucune I/O dans le fil d'interface.
+- **Un maître ILLISIBLE n'est PAS retiré de la config** : un partage réseau
+  momentanément absent ne doit pas faire perdre le réglage. L'échec est DIT
+  (ligne d'état + `journal.note`), les autres maîtres se chargent quand même.
+  « Effacer la calibration » reste le geste qui retire vraiment les clés.
+- **PIÈGE POUR LES BANCS** : un banc qui appelle `_load_dark`/`_load_flat`/
+  `_clear_calib` **écrit désormais la config** — il DOIT intercepter
+  `ui.CONFIG` et `ui.sauver_config` (motif de `_test_calib_compo_jalon53`).
+- Banc : `bancs/_test_calib_persistance.py` (26 vérifications) — aller-retour des
+  clés, tolérance, `apply()` au bit, persistance par les gestes, restauration
+  réelle sur une SECONDE session (images identiques **au bit**), maître manquant
+  sans échec, et **0 lecture de fichier par le fil d'interface**.
+- **VALIDÉ EN RÉEL (21/10/2026, `perf-9`)** : « la sauvegarde fonctionne, on
+  retrouve bien les dark quand on réouvre ». La jauge `postes` NOMME alors le
+  poste **`calib` : 96,2 Mio** = les **3 darks** d'Alain (MasterDark 60 s en
+  unique, 120 s pour B, 180 s pour Ha — **aucun flat**) à **32,07 Mio chacun**
+  (pleine frame 3856×2180 float32). Attendu pour 5 darks + 5 flats : ~321 Mio.
+  C'est la PREUVE que le résiduel n'était pas une fuite mais, entre autres, des
+  maîtres qu'aucune clé de config ne trahissait.
 
 ## Étape 1a — un seul rendu par frame (v2.98.1, branche `OptimisationUI`)
 

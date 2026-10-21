@@ -734,6 +734,110 @@ def _bilan_attente(bruts: dict[str, dict[str, float]]) -> dict[str, dict[str, fl
     return bilan
 
 
+def postes_memoire(obj: Any, profondeur: int = 4, max_postes: int = 12,
+                   exclure: tuple[str, ...] = ("stacker",),
+                   seuil_octets: int = 65536) -> dict[str, Any]:
+    """{attribut de PREMIER niveau → octets de tableaux}, sans double compte.
+
+    POURQUOI (21/10/2026, lot « nommer le résiduel ») : la réconciliation de
+    `_mesure_memoire_stackers.py` laissait **637,7 Mio** que la jauge des
+    empileurs ne voyait pas. Pour les NOMMER, il faut un inventaire de
+    l'APPLICATION elle-même : on range chaque tableau sous l'attribut de premier
+    niveau qui le tient (`aligner`, `calib`, `_hist_brut`, `disp`, …) et on
+    déduplique **par `id()`** — une image aliasée par deux attributs (leçon du
+    « Go inexpliqué ») n'est comptée qu'une fois, sous le PREMIER attribut
+    rencontré (ordre d'affectation de l'objet : c'est le plus souvent celui qui
+    la possède réellement, les alias venant après).
+
+    CE QUI N'EST PAS TRAVERSÉ (et pourquoi) : on ne descend que dans les
+    conteneurs (dict/list/tuple/set) et dans les objets du PROJET
+    (`type(o).__module__` commence par « avastack »). Tk, PIL, astropy et
+    numpy-scalaires sont ignorés : les parcourir coûterait des secondes et ne
+    contient aucun tableau de l'application (le tas Tk se mesure au RSS, pas
+    ici).
+
+    `profondeur` compte les SAUTS (4 couvre `App.__dict__` → objet → dict →
+    tableau). `seuil_octets` évite le bruit : en dessous, les tableaux sont
+    agrégés sous « petits tableaux ».
+
+    → {"postes": {nom: octets} (top `max_postes` + « (autres) »),
+       "total_octets": int, "nb_tableaux": int}
+    """
+    try:
+        import numpy as _np
+    except Exception:                         # noqa: BLE001 (numpy requis)
+        return {"postes": {}, "total_octets": 0, "nb_tableaux": 0}
+    vus: set[int] = set()
+    par_nom: dict[str, int] = {}
+    nb = [0]
+
+    def visite(o: Any, p: int, nom: str) -> None:
+        if o is None:
+            return
+        if isinstance(o, _np.ndarray):
+            if id(o) in vus:
+                return
+            vus.add(id(o))
+            nb[0] += 1
+            n = int(o.nbytes)
+            cle = nom if n >= seuil_octets else "petits tableaux"
+            par_nom[cle] = par_nom.get(cle, 0) + n
+            return
+        if isinstance(o, (dict, list, tuple, set, frozenset)):
+            if id(o) in vus or p <= 0:
+                return
+            vus.add(id(o))
+            valeurs = list(o.values()) if isinstance(o, dict) else list(o)
+            for v in valeurs:
+                visite(v, p - 1, nom)
+            return
+        module = type(o).__module__ or ""
+        if not module.startswith("avastack"):
+            return                            # Tk, PIL, astropy… : au RSS
+        if id(o) in vus or p <= 0:
+            return
+        vus.add(id(o))
+        try:
+            membres = list(vars(o).items())
+        except Exception:                     # noqa: BLE001 (objet exotique)
+            return
+        for k, v in membres:
+            visite(v, p - 1, nom)
+
+    try:
+        attributs = list(vars(obj).items())    # ordre d'affectation : l'OWNER
+    except Exception:                         # noqa: BLE001      d'abord
+        return {"postes": {}, "total_octets": 0, "nb_tableaux": 0}
+    for nom, valeur in attributs:
+        if nom in exclure:
+            continue                          # compté par `jauger_empileur`
+        visite(valeur, profondeur, nom)
+    total = sum(par_nom.values())
+    top = dict(sorted(par_nom.items(), key=lambda kv: -kv[1])[:max_postes])
+    autres = total - sum(top.values())
+    if autres > 0:
+        top["(autres)"] = autres
+    return {"postes": top, "total_octets": total, "nb_tableaux": nb[0]}
+
+
+def jauger_postes(obj: Any, profondeur: int = 4, max_postes: int = 12,
+                  exclure: tuple[str, ...] = ("stacker",)) -> None:
+    """Pose `postes` (Mio par attribut), `postes_mo` et `postes_nb_tableaux`.
+
+    À appeler sur une cadence LENTE (20 s) : le parcours coûte quelques
+    millisecondes et n'a de sens qu'en régime établi. Coût nul hors `--perf`.
+    """
+    if not _ACTIF:
+        return
+    r = postes_memoire(obj, profondeur=profondeur, max_postes=max_postes,
+                       exclure=exclure)
+    with _VERROU:
+        _JAUGES["postes"] = {k: round(v / (1024.0 * 1024.0), 1)
+                             for k, v in r["postes"].items()}
+        _JAUGES["postes_mo"] = round(r["total_octets"] / (1024.0 * 1024.0), 1)
+        _JAUGES["postes_nb_tableaux"] = r["nb_tableaux"]
+
+
 def instantane() -> dict[str, Any]:
     """Photographie JSON-compatible des mesures accumulées."""
     if _ACTIF:

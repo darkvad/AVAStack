@@ -62,6 +62,11 @@ from ..cameras import SOURCES                            # noqa: F401 (ré-expor
 from ..cameras.base import FILTRES_ROUE
 from ..cameras.qhy import lister_via_sous_processus, tracer_evt  # noqa: F401 (ré-export)
 from ..processing import Calibrator, StarAligner, LiveStacker, DisplayProcessor
+# v2.98.7 : la persistance des maîtres de calibration (clés `calib_dark_*` /
+# `calib_flat_*` et leur lecture tolérante) vit dans le module de calibration.
+# Import PRIVÉ : la surface publique d'`app.py` est FIGÉE (banc garde-fou du
+# jalon 100) et n'a aucune raison d'exposer ces helpers.
+from ..processing import calibration as _calibration_mod
 # P1 (lot 2) : la politique de cadence est importée SOUS UN NOM PRIVÉ — la
 # surface publique de `app.py` est FIGÉE (banc garde-fou du jalon 100) et
 # n'a aucune raison d'exposer `CadenceMesure` / `suffixe_etat`.
@@ -735,6 +740,11 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # l'interface : `_restaurer_config` (appelée juste après la construction)
         # peut déjà en demander une, et elle doit rester BORNÉE.
         self._mesures: queue.Queue[Any] = queue.Queue()
+        # v2.98.7 : file des maîtres de calibration RESTAURÉS au démarrage. Le
+        # fil démon qui lit les fichiers (I/O) ne touche à AUCUN widget : il
+        # pose ici [(famille, cible, chemin, image|None, erreur)] et `_tick`
+        # applique, dans le fil d'interface (motif de `_mesures`).
+        self._calib_q: queue.Queue[Any] = queue.Queue()
         self._mesure_en_cours: bool = False
         # v2.48.1 (retour macOS du 30/09/2026) : identifiant de la
         # replanification de `_tick` (ANNULABLE à la fermeture — un `after` en
@@ -5494,6 +5504,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             try:
                 role = None if cible == "unique" else cible
                 self.calib.load_dark(p, role=role)
+                self._persister_calib()
                 self._maj_libelles_calib()
                 msg = (f"Dark{' pour « ' + role + ' »' if role else ''} "
                        f"chargé : {p}")
@@ -5515,6 +5526,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             try:
                 role = None if cible == "unique" else cible
                 self.calib.load_flat(p, role=role)
+                self._persister_calib()
                 self._maj_libelles_calib()
                 msg = (f"Flat{' pour « ' + role + ' »' if role else ''} "
                        f"chargé : {p}")
@@ -5526,7 +5538,112 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
 
     def _clear_calib(self) -> None:
         self.calib.clear()
+        self._persister_calib()
         self._maj_libelles_calib()
+
+    # ------------------------------------------- persistance des maîtres (v2.98.7)
+    def _persister_calib(self) -> None:
+        """Écrit les CHEMINS des maîtres dans `config.json` — tolérant, IMMÉDIAT.
+
+        DÉFAUT CORRIGÉ (21/10/2026) : `_load_dark`/`_load_flat` chargeaient
+        l'image en mémoire et n'écrivaient RIEN — les maîtres étaient donc à
+        re-sélectionner à CHAQUE session. Ce qui est persisté est le CHEMIN
+        (jamais l'image, qui reste une allocation de session).
+
+        Appelée après CHAQUE geste de calibration (chargement, effacement) :
+        les clés des maîtres ABSENTS sont d'abord RETIRÉES (un maître effacé ne
+        doit pas revenir à la session suivante), puis l'état vivant est écrit.
+        """
+        prefixes = (_calibration_mod.PREFIXE_DARK,
+                    _calibration_mod.PREFIXE_FLAT)
+        for cle in [k for k in list(CONFIG)
+                    if isinstance(k, str) and k.startswith(prefixes)]:
+            CONFIG.pop(cle, None)
+        CONFIG.update(_calibration_mod.cles_persistees(self.calib))
+        sauver_config(dict(CONFIG))
+
+    def _restaurer_calib_differe(self) -> None:
+        """Recharge les maîtres dark/flat PERSISTÉS, HORS du fil d'interface.
+
+        POURQUOI DIFFÉRÉ (règle du projet — leçon v2.98.4) : le fil d'interface
+        ne fait JAMAIS d'I/O. Un maître peut vivre sur un partage réseau, et
+        une lecture faite pendant la construction de la fenêtre la retiendrait
+        (constat du 27/09/2026 : une mesure de disque sur un NAS injoignable
+        empêchait l'application de s'ouvrir). Les CHEMINS, eux, se lisent sans
+        I/O : la lecture des fichiers part donc dans un fil DÉMON borné (5 s
+        par maître, `delais.borne`), et le résultat est appliqué par `_tick`
+        (`_appliquer_calib`), dans le fil d'interface.
+
+        Aucune exception ne remonte : un maître illisible est DIT (ligne
+        d'état + journal), les autres se chargent quand même.
+        """
+        demandes = _calibration_mod.lire_cles_persistees(CONFIG)
+        if not demandes:
+            return
+        journal.note("démarrage", "calibration : %d maître(s) à restaurer"
+                     % len(demandes))
+
+        def _fond() -> None:
+            res: list[tuple[str, str, str, Any, str]] = []
+            for famille, cible, chemin in demandes:
+                # `ch=chemin` : le lambda est lié À CETTE valeur — si la lecture
+                # dépasse le délai, son fil continue de vivre et lirait sinon le
+                # chemin SUIVANT (liaison tardive).
+                valeur, abouti = delais.borne(
+                    lambda ch=chemin: self._charger_maitre(ch),
+                    (None, ""), delais.DELAI_DEFAUT)
+                img, err = valeur if valeur is not None else (None, "")
+                if not abouti:
+                    err = "délai dépassé (disque ou réseau injoignable ?)"
+                res.append((famille, cible, chemin, img, err))
+            self._calib_q.put(res)
+
+        threading.Thread(target=_fond, daemon=True,
+                         name="calibration-restauration").start()
+
+    def _charger_maitre(self, chemin: str) -> tuple[Any, str]:
+        """Lit UN maître de calibration → (image|None, message d'erreur).
+
+        I/O : à n'appeler QUE depuis un fil démon borné — jamais le fil
+        d'interface. L'exception est rendue en TEXTE (et non levée) pour que
+        l'appelant puisse la DIRE à l'utilisateur.
+        """
+        try:
+            return load_image(chemin), ""
+        except Exception as e:                       # noqa: BLE001 (fichier absent…)
+            return None, str(e)
+
+    def _appliquer_calib(self, res: Any) -> None:
+        """Applique les maîtres restaurés (fil d'interface : AUCUNE I/O ici).
+
+        Un maître ILLISIBLE n'est PAS retiré de la config : un partage réseau
+        momentanément absent ne doit pas faire perdre le réglage. L'échec est
+        DIT (ligne d'état + journal), et « Effacer la calibration » reste le
+        geste qui retire vraiment les clés.
+        """
+        charges, echecs = 0, []
+        for famille, cible, chemin, img, err in (res or []):
+            if img is None:
+                echecs.append(f"{famille} {cible} « {os.path.basename(chemin)} » :"
+                              f" {err or 'illisible'}")
+                continue
+            role = None if cible == _calibration_mod.CIBLE_UNIQUE else cible
+            if famille == "dark":
+                self.calib.poser_dark(img, chemin, role=role)
+            else:
+                self.calib.poser_flat(img, chemin, role=role)
+            charges += 1
+        if getattr(self, "lbl_dark", None) is not None:
+            self._maj_libelles_calib()
+        if echecs:
+            journal.note("calibration", "maître(s) NON restauré(s) : "
+                         + " ; ".join(echecs))
+        if charges or echecs:
+            txt = (f"Calibration restaurée : {charges} maître(s) chargé(s)"
+                   if charges else "Calibration NON restaurée")
+            if echecs:
+                txt += "  —  " + " ; ".join(echecs)
+            self.lbl_status.config(text=txt)
 
     # ------------------------------------------------------------ traitement externe
     def _champs_outils(self) -> tuple[tuple[Any, Any, str], ...]:
@@ -6617,8 +6734,12 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 else stack)
         # v2.38.0 : même mémorisation que la boucle d'acquisition, pour l'option
         # « Rendu pleine résolution » de l'écran.
+        # AUDIT MÉMOIRE (21/10/2026) : RÉFÉRENCE, plus de COPIE — même règle
+        # qu'au worker (cf. `core/worker.py`) : l'image rendue par le stacker
+        # n'est jamais modifiée en place et le stacker la garde déjà dans ses
+        # caches. Ici `stack` n'est JAMAIS None (garde ci-dessus).
         if self._pleine_res_activee():
-            self._stack_pleine_res = np.asarray(stack, np.float32).copy()
+            self._stack_pleine_res = np.asarray(stack, np.float32)
         # v2.37.3/v2.37.4 : le rayon du flou de chroma suit la RÉSOLUTION (même
         # règle qu'à la fin de la boucle d'acquisition : l'aperçu est réduit, les
         # étoiles aussi → cf. `_poser_rayon_chroma`).
@@ -6928,6 +7049,17 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         guet = getattr(self, "guet", None)
         if guet is not None:
             guet.battement()
+        # « NOMMER LE RÉSIDUEL » (21/10/2026) : inventaire des tableaux de
+        # l'APPLICATION, rangés par attribut de premier niveau. Cadence LENTE
+        # (20 s) : c'est un état de régime, pas un événement — et le parcours
+        # coûte quelques millisecondes. Coût NUL hors `--perf` (premier test).
+        if _perf.actif():
+            _t_p = time.monotonic()
+            if _t_p - getattr(self, "_postes_t0", 0.0) >= 20.0:
+                self._postes_t0 = _t_p
+                _t_mes_p = _perf.t0()
+                _perf.jauger_postes(self)
+                _perf.duree("tick_postes", _t_mes_p)
         # Mise à jour automatique du nom de cible depuis l'en-tête FITS
         # Seulement si camera.last_file a changé (nouvelle brute reçue)
         chemin = getattr(self.camera, "last_file", "") or ""
@@ -6949,6 +7081,16 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             _t_mes = _perf.t0()                  # Phase 0 ter
             self._appliquer_mesures(msg)
             _perf.duree("tick_mesures", _t_mes)
+        # v2.98.7 : maîtres de calibration RESTAURÉS (fil démon borné → ici).
+        # Le fil n'a touché AUCUN widget : il n'a posé qu'une liste de
+        # (famille, cible, chemin, image, erreur) ; c'est ce fil d'interface qui
+        # pose les maîtres dans `self.calib` et rafraîchit les libellés.
+        while getattr(self, "_calib_q", None) is not None:
+            try:
+                res = self._calib_q.get_nowait()
+            except queue.Empty:
+                break
+            self._appliquer_calib(res)
         # Jalon 70 : messages du TÉLÉCHARGEMENT des catalogues (thread → UI).
         # Le thread réseau ne touche AUCUN widget : il ne pose que des messages
         # ici, et c'est ce thread Tk qui les traduit en texte.

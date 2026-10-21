@@ -20,7 +20,101 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.98.4"
+AVASTACK_VERSION = "2.98.7"
+
+# v2.98.7 : DÉFAUT CORRIGÉ — LES CHEMINS DES MAÎTRES DARK/FLAT SONT PERSISTÉS
+#   (branche `OptimisationUI`, AUCUNE release, AUCUN pixel changé).
+#   Le défaut, trouvé pendant l'audit mémoire du 21/10/2026 : `_load_dark` /
+#   `_load_flat` chargeaient l'image en mémoire (`calib.darks`/`flats`) et
+#   n'écrivaient RIEN dans `config.json` — d'où une re-sélection des maîtres à
+#   CHAQUE session. Ils étaient bien APPLIQUÉS (`worker.py` → `calib.apply`),
+#   seule la trace manquait.
+#   - `processing/calibration.py` : `poser_dark()`/`poser_flat()` (poser un
+#     maître DÉJÀ lu — aucune I/O) et deux fonctions PURES, testables sans
+#     écran : `cles_persistees()` (état vivant → clés `calib_dark_unique` /
+#     `calib_dark_<rôle>`, idem `calib_flat_*`) et `lire_cles_persistees()`
+#     (lecture TOLÉRANTE : toute entrée qui n'est pas une chaîne non vide est
+#     ignorée).
+#   - `ui/app.py` : `_persister_calib()` écrit les CHEMINS après chaque geste
+#     (chargement, effacement — les clés des maîtres absents sont d'abord
+#     retirées, sinon un maître effacé reviendrait). La RESTAURATION est
+#     DIFFÉRÉE (`_restaurer_calib_differe` + `_charger_maitre` +
+#     `_appliquer_calib`, file `_calib_q` drainée par `_tick_corps`) : les
+#     chemins se lisent sans I/O, les FICHIERS sont lus dans un fil DÉMON borné
+#     (5 s par maître) — le fil d'interface ne fait JAMAIS d'I/O (leçon
+#     v2.98.4 : un maître peut vivre sur un NAS injoignable, et une lecture au
+#     démarrage empêcherait l'application de s'ouvrir). Un maître illisible est
+#     DIT (ligne d'état + journal), les autres se chargent quand même.
+#   - `ui/config_ui.py` : appel depuis `_restaurer_config` (après la
+#     composition, pour que les rôles soient connus).
+#   - Banc NEUF `bancs/_test_calib_persistance.py` : aller-retour des clés,
+#     tolérance, `apply()` inchangé au bit, persistance par les gestes de
+#     l'interface, restauration réelle (rôles + sources), fichier manquant
+#     sans échec, et PREUVE que la lecture se fait HORS du fil d'interface.
+#   VALIDÉ EN RÉEL (21/10/2026, `perf-9.json`) : Alain confirme « la sauvegarde
+#   fonctionne, on retrouve bien les dark quand on réouvre » (3 clés dans
+#   `config.json` : `calib_dark_unique` = MasterDark_60, `calib_dark_B` = 120,
+#   `calib_dark_Ha` = 180). La jauge `postes` NOMME alors le poste **`calib`
+#   : 96,2 Mio** (3 × 32,07 — maîtres PLEINE FRAME 3856×2180 float32) : le
+#   résiduel n'est plus aveugle sur les maîtres. Bilan `perf-9` (683,2 s,
+#   67 frames, VeraLux + chroma) : `ui_tick` **22,7 s = 3,3 %** du mur
+#   (0,70 ms/tour, max 92 ms), `tick_postes` 4,9 ms (la jauge coûte ~0,02 %),
+#   RSS max **4 252,2 Mo** (inchangé), stackers 3 095,7 (72,8 % du RSS), hors
+#   stackers 1 156,5 = `disp` 226,1 + `rendu` 206,2 + `calib` 96,2 + aligneurs
+#   24,6 + base 148,0 ⇒ **455,3 Mio sans tableau nommé** (dont **193 Mio de
+#   fragmentation**). La CHAÎNE DE RENDU (`disp` + `rendu` = 432,3 Mio) est
+#   **47,8 % du hors-stackers** : c'est le prochain poste à instruire.
+
+# v2.98.6 : MÉMOIRE — « NOMMER LE RÉSIDUEL » (branche `OptimisationUI`, AUCUNE
+#   release, AUCUN pixel changé). Le relevé `perf-8.json` (945,5 s, 72 frames,
+#   v2.98.5) VALIDE le lot précédent en réel : RSS max 4 458,9 → 4 247,1 Mo
+#   (**−211,8**), pic 4 563,5 → 4 541,4, l'interface et l'empilement inchangés.
+#   - `perf.py` : jauge NEUVE `postes` — inventaire des tableaux de
+#     l'APPLICATION rangés par attribut de premier niveau (`aligner`, `calib`,
+#     `disp`, `_hist_*`…), **dédupliqué par `id()`**, seuil 64 Kio, aucun
+#     parcours de Tk/PIL/astropy (coût maîtrisé). `postes_memoire()` (PURE) +
+#     `jauger_postes()`. Coût NUL hors `--perf` (premier test).
+#   - `ui/app.py` : échantillonnage à cadence LENTE (20 s) dans `_tick_corps` —
+#     un état de régime, pas un événement.
+#   - `bancs/_mesure_memoire_stackers.py` : `--perf-json` sert aussi à LIRE (le
+#     millésime est comparé à v2.98.5 : un relevé antérieur gonfle le résiduel
+#     de 96,2 Mio), la chaîne [3 bis] est RAMENÉE à la géométrie du run
+#     (`source_px`, ×0,882), section **[6]** (postes + candidats vérifiés),
+#     section **[7]** `--app` (App réelle) et **mesure de FRAGMENTATION** (RSS
+#     gardé après libération de tous les tableaux).
+#   MESURES (perf-8) : résiduel **555,6 Mio** — dont **fragmentation mesurée
+#   +193 Mio** après UN SEUL rendu VeraLux (temporaires ~1,5 Go, tout le reste
+#   libéré : ce n'est pas une fuite, c'est l'allocateur) ; maîtres de
+#   calibration **0 Mio** (aucun dark/flat dans la config), archive FITS
+#   **0 Mio** (elle ne garde que des chemins), 3 références d'alignement
+#   **21,2 Mio** max (`ref_gray` uint8). Le reste se nomme avec la jauge
+#   `postes` sur un relevé réel : `python AVAStack.py --perf --perf-json perf-9.json`.
+
+# v2.98.5 : MÉMOIRE — la COPIE de l'empilement pleine résolution devient une
+#   RÉFÉRENCE (branche `OptimisationUI`, AUCUNE release, AUCUN pixel changé).
+#   `App._stack_pleine_res` (option « Rendu pleine résolution ») était posé par
+#   `np.asarray(stack, np.float32).copy()`. Or `stack` sort de
+#   `LiveStacker.mean()` / `CompositeStacker.mean_avec_canaux()`, qui ne rendent
+#   que des tableaux JAMAIS modifiés en place (recadrages = VUES ; corrections =
+#   copie ou image elle-même, `appliquer_gains*`) et que le STACKER garde DÉJÀ
+#   (`_memo_moy`, `_memo_compo`, `_fit_cache`) : la copie était un doublon de
+#   **96,2 Mio** à la géométrie native (3856×2180×3 float32) et **85,0 Mio** à la
+#   géométrie RECADRÉE du run M33 (7 425 000 px).
+#   - `core/worker.py` + `ui/app.py` : référence au lieu de copie. Le REPLI
+#     « rien d'empilé » (`stack is None`, `show` = la brute) garde, LUI, une
+#     copie défensive : ce tampon est réutilisé à la frame suivante.
+#   - `processing/display.py` : `_vl_src` RETIRÉ — écrit et JAMAIS lu (vérifié
+#     sur tout le dépôt), il retenait l'image soumise : décocher l'option ne
+#     libérait donc pas réellement l'image. Gain nul en régime établi, mais la
+#     libération annoncée est enfin vraie.
+#   BANC NEUF `bancs/_test_p1_memoire_reference.py` (30 vérifications) : contrat
+#   d'immuabilité VÉRIFIÉ sur les vraies classes, chemin RÉEL `_pousser_rendu`
+#   (identité de l'image + rendu IDENTIQUE AU BIT, SHA-256), garde de source
+#   (plus de `.copy()` sur la branche `stack`), écart mémoire MESURÉ (comptage
+#   dédupliqué = nbytes) et RSS (96 Mo rendus à la libération, taille réelle).
+#   `bancs/_mesure_memoire_stackers.py` mis à jour : chaîne de rendu **376,8 →
+#   280,6 Mio** ; le RÉSIDUEL affiché est gonflé de 96,2 Mio tant qu'il est lu
+#   contre `perf-7` (relevé ANTÉRIEUR au lot) — à re-mesurer par un `--perf`.
 
 # v2.98.4 : `tick_avant` — LA CAUSE ÉTAIT LE RÉSEAU, PAS LE CPU (branche
 #   `OptimisationUI`, AUCUNE release). Correctif de TROIS LIGNES, comportement

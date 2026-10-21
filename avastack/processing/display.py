@@ -593,7 +593,13 @@ class DisplayProcessor:
         # `_vl_worker`, pour LES DEUX moteurs. `sh_msg`/`sh_new` restent
         # publiés par ce worker et lus par l'UI (message de la netteté).
         # cache + solveur (thread dédié, jamais le thread UI)
-        self._vl_src = None           # dernière image soumise (comparaison d'objet)
+        # AUDIT MÉMOIRE (21/10/2026) : `_vl_src` est RETIRÉ. Il mémorisait la
+        # dernière image soumise sans que PERSONNE ne la lise (vérifié sur tout
+        # le dépôt) et, en rendu pleine résolution, il la GARDAIT vivante :
+        # décocher l'option libérait `_stack_pleine_res`… pour rien, l'image
+        # restait attachée ici. Aucun gain en régime établi (l'image est de
+        # toute façon tenue par le stacker), mais la libération annoncée à la
+        # décoche est enfin RÉELLE.
         self._vl_key = None           # clé des réglages du dernier calcul lancé
         self._vl_result = None        # (clé, image étirée) du dernier calcul TERMINÉ
         # JALON 128 : MOTEUR du dernier résultat publié (« veralux » ou « stf »).
@@ -1315,7 +1321,7 @@ class DisplayProcessor:
                                     # si le chemin VeraLux est RÉELLEMENT utilisé)
                                     "veralux" if self._veralux_actif() else "stf")
                     self._vl_wake.set()
-            self._vl_src, self._vl_key = img, key
+            self._vl_key = key
         return key
 
     def demander_chaine(self, img: np.ndarray) -> None:
