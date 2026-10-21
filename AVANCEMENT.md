@@ -38,8 +38,10 @@ démarrer le lot suivant** ; ne jamais déduire l'état d'une case de `config.js
   goulot**) ; l'interface répond (**3,3 %** du mur) ; **aucun défaut n'est
   ouvert**. Les leviers chiffrés restent documentés plus bas **POUR MÉMOIRE** —
   **ne pas les reprendre sans demande explicite**.
-- **`OptimisationUI` est FUSIONNÉE dans `master`** (merge `--no-ff` : la trace du
-  lot est gardée) ; `master` passe de **v2.96.1 → v2.98.9**.
+- **`OptimisationUI` est FUSIONNÉE dans `master`** — merge `--no-ff` **`20755bf`**
+  (la trace du lot est gardée), `master` passe de **v2.96.1 → v2.98.9** et est
+  **poussé** (`efb2911..20755bf`) ; contenu **identique** à `OptimisationUI`
+  (`git diff` vide), arbre de travail propre, branche active = **`master`**.
 - **PROCHAINE SESSION : LA RELEASE** (tag + notes GitHub depuis `master`) — c'est
   la SEULE chose qui reste, et elle est **autorisée par Alain**. **Aucun code à
   écrire avant.**
