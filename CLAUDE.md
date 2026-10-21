@@ -4181,6 +4181,15 @@ du code, piège rencontré sur un outil externe. Cible : section « Pièges »
   le fil d'acquisition, et la propriété ne lit qu'un attribut. Garde-fou :
   `bancs/_test_multifolder_last_file.py` (détection live intacte + **0 appel**
   système espionné + comparaison à l'ancienne formule).
+  **RÉSULTAT RÉEL (`perf-7`, 556 s, 47 frames, même session) : `ui_tick`
+  456,5 s → 18,6 s, soit 3,3 % du mur** (contre 77 %), **1,23 ms par tour**
+  (contre 134,7), **74 ms de maximum** (contre 5 952 ms), et la boucle remonte à
+  **27 tours/s** (contre 5,7). `empilement` 2 865 → 2 751 ms (moins de
+  contention) ; `fil_rendu` inchangé (1 360 ms).
+  **LEÇON DE LECTURE** : une fois le plancher atteint, `part_attente` RESTE
+  élevé (0,87) parce que le travail par tour est minuscule (0,39 ms) et que le
+  coût incompressible d'un tour le dépasse — c'est alors le **TOTAL** qui
+  compte (18,6 s), pas le ratio. Ne pas « optimiser » un ratio à ce niveau.
 - **Banc** : `bancs/_test_phase0_perf.py` (**110 vérifications**, SANS écran :
   coût nul inactif, exactitude sous 4 fils, RSS/CPU, comptage des tableaux,
   écriture atomique ET périodique, lancement `--perf`, câblage vérifié par AST,

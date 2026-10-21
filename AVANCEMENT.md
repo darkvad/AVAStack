@@ -61,14 +61,19 @@ démarrer le lot suivant** ; ne jamais déduire l'état d'une case de `config.js
   **110 vérifications** exécutées (section **[2 bis]** : sommeil ⇒ part ≈ 1,
   CPU publié comparé à une mesure DIRECTE, calcul pur ⇒ attente nettement
   moindre — **pas de seuil absolu**, il mesurait la charge machine).
-- **CORRIGÉ (v2.98.4, accord d'Alain « zéro changement »)** : `last_file` ne fait
-  plus AUCUNE I/O — le calcul identique (corps recopié verbatim) est fait par
-  `read()`, une fois par image, dans le fil d'ACQUISITION. Banc neuf
-  `bancs/_test_multifolder_last_file.py` (**24 vérifications**) : détection live
-  intacte (fichiers déposés un par un dans 2 dossiers), fichier en cours
-  d'écriture toujours ignoré puis pris, aucun fichier relu, **0 appel système**
-  espionné sur 200 lectures, valeur identique à l'ancienne formule.
-  **Reste à MESURER le gain** (`perf-7`).
+- **RÉSULTAT `perf-7` (21/10, 556 s, 47 frames, v2.98.4) — LE CORRECTIF PAIE** :
+  `ui_tick` **456,5 s → 18,6 s** (**77 % → 3,3 %** du mur), **1,23 ms/tour**
+  (contre 134,7), **max 74,1 ms** (contre 5 952), **27 tours/s** (contre 5,7),
+  attente du fil 440,7 → **15,3 s**. `empilement` 2 865 → 2 751 ms ;
+  `fil_rendu` inchangé (1 360 ms) ; `cores_moyens` 0,98 → 1,12 ; mémoire
+  inchangée (stackers 2 935,7 Mo, RSS 3 163 Mo).
+  **Lecture** : `part_attente` reste à 0,87 mais c'est le PLANCHER (0,39 ms de
+  travail par tour) — l'indicateur devient le TOTAL, pas le ratio.
+- **Prochain sujet, dans l'ordre** : ① **mémoire** (stackers 2 935 Mo = 61 % du
+  RSS, float64 + fenêtre de 8 frames × 5 canaux) ; ② **`empilement`**
+  2 751 ms/frame (alignement vs rejet kappa-sigma, à décomposer AVANT de
+  toucher) ; ③ **`lecture_frame` 6 697 ms/frame** — le scan réseau
+  (326 ms/dossier/passe) et l'attente des fichiers, sujet SÉPARÉ de l'interface.
 
 
 ### Les trois relevés qui commandent la suite (M33, 5 canaux, pleine résolution)
@@ -188,7 +193,9 @@ au bit** (bancs), pas d'aperçu réduit, pas de calcul pendant un geste (P5 livr
 | 1a — un seul rendu par frame | **LIVRÉE** (v2.98.1) | `perf-4`, banc 40 |
 | 1b — rendu hors fil Tk | **LIVRÉE** (v2.98.2) | `perf-5`, banc 41 |
 | **`tick_avant` ① — MESURER** | **LIVRÉE** (v2.98.3) | `t0_cpu`/`duree_attente`, banc 75 |
-| **`tick_avant` ② — AGIR** | **LIVRÉE** (v2.98.4) | `last_file` sans I/O, banc 24 |
+| **`tick_avant` ② — AGIR** | **VALIDÉE EN RÉEL** (perf-7 : 77 % → 3,3 %) | `last_file` sans I/O, banc 24 |
+| **mémoire** | à instruire (accord d'abord) | stackers 2 935 Mo = 61 % du RSS |
+| **`empilement`** | après | 2 751 ms/frame |
 | mémoire | après | `stackers_mo` 2 935 Mo |
 | `empilement` | après | 4 503 ms/frame |
 
@@ -210,16 +217,22 @@ au bit** (bancs), pas d'aperçu réduit, pas de calcul pendant un geste (P5 livr
   aucune I/O ; le calcul identique est fait par `read()`, une fois par image,
   dans le fil d'acquisition. Banc `_test_multifolder_last_file.py` (22
   vérifications) : détection live intacte, **0 appel système** espionné.
-- **ACTION UNIQUE : relever `perf-7.json`** (même protocole que `perf-6` :
-  `python AVAStack.py --perf`, 3-5 min d'empilement actif VeraLux + chroma,
-  fermeture, puis renommer `perf.json` en `perf-7.json`). À vérifier :
-  `ui_tick` **< 10 %** du mur et `attente.tick_avant.part_attente` ≈ **0,03**.
-  Si `ui_tick` reste haut, la cause est AILLEURS : lire `attente` ET la pile du
-  Guet de gel avant de toucher quoi que ce soit.
-- **Ensuite** : **mémoire** (float32 + somme compensée + stackers paresseux,
-  2 935 Mo → ~1,4 Go) puis **décomposition d'`empilement`** (2 865 ms/frame :
-  alignement vs rejet) ; et le **coût du scan réseau** (326 ms par dossier et par
-  passe, `lecture_frame` = 7 s/frame) — sujet SÉPARÉ, latence d'acquisition.
+- **`perf-7` RELEVÉ ET GAGNÉ le 21/10** : `ui_tick` 456,5 s → **18,6 s**
+  (77 % → **3,3 %** du mur), 1,23 ms/tour, max 74,1 ms, 27 tours/s.
+  La mesure du fil (`t0_cpu` + `duree_attente`) et le correctif `last_file`
+  sont **validés en réel** ; plus aucune I/O sur le fil d'interface.
+- **ACTION UNIQUE SUIVANTE (accord d'Alain AVANT de coder) : MESURER la
+  mémoire.** Les stackers pèsent **2 935,7 Mo** pour un RSS de 3 163 Mo (pic
+  4 563 Mo) : 5 canaux × accumulateurs **float64** + fenêtre de 8 frames.
+  Ordre : (a) **mesurer** la répartition exacte (`perf.taille_tableaux` existe
+  déjà : `stackers_nb_tableaux` = 49, `stackers_octets` = 3,08 Go) et confirmer
+  le format des accumulateurs AVANT toute conversion ; (b) seulement ensuite
+  envisager **float32 + somme compensée** (Kahan/Neumaier) avec **preuve au bit
+  près sur les bancs d'empilement** — une conversion non prouvée est un
+  changement d'image, pas une optimisation.
+- **Ensuite** : **`empilement`** (2 751 ms/frame) — décomposer alignement vs
+  rejet kappa-sigma AVANT de toucher ; et **`lecture_frame`** (6 697 ms/frame,
+  scan réseau 326 ms/dossier/passe) — sujet séparé, latence d'acquisition.
 - **ÉCARTÉ, à ne pas réintroduire sans mesure** : `cv2.setNumThreads`,
   `sys.setswitchinterval`, priorité OS du fil Tk — le CPU n'était pas le
   problème (0,98 cœur utilisé sur 14).
@@ -229,13 +242,13 @@ au bit** (bancs), pas d'aperçu réduit, pas de calcul pendant un geste (P5 livr
 - Aucune release ; `master` reste à v2.96.1 ; le Store à v2.71.1.
 
 ### Contexte de reprise (à coller — 2 phrases)
-Branche **`OptimisationUI`, v2.98.4** : Phase 0 + 1a + 1b validées en réel, et
-`tick_avant` **instruit** — la mesure a prouvé **96,9 % d'attente** avec
-**0,98 cœur**, la pile du Guet de gel a désigné `MultiFolderCamera.last_file`
-(`getmtime` réseau : 178 ms/tour, 439,6 s sur la session), et le correctif
-« zéro changement » est **livré** (calcul déplacé dans `read()`, banc 24 vert).
-Prochaine action **unique** : relever `perf-7.json` (`python AVAStack.py
---perf`, 3-5 min d'empilement actif) et vérifier `ui_tick` **< 10 %** du mur.
+Branche **`OptimisationUI`, v2.98.4** : Phase 0 + 1a + 1b + `tick_avant`
+**livrés et validés en réel** — `perf-7` prouve `ui_tick` **456,5 s → 18,6 s**
+(3,3 % du mur), **1,23 ms/tour**, max **74 ms**, après suppression de l'I/O
+réseau (`os.path.getmtime`) que le fil Tk faisait à chaque tour. Prochaine action
+**unique** (accord d'abord) : **mesurer la mémoire** (stackers 2 935,7 Mo = 61 %
+du RSS) — répartition exacte d'abord, conversion float32 avec preuve au bit
+seulement ensuite.
 
 ---
 
