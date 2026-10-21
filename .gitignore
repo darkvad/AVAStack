@@ -9,6 +9,20 @@ __pycache__/
 *_LAST_DIAG.json
 astrolivestack_*/
 avastack_*/
+# Mesures de performance (Phase 0, v2.98.0) : écrites à côté du programme par
+# `python AVAStack.py --perf` — un relevé local, jamais suivi. Le motif couvre
+# aussi les relevés nommés à la main (`--perf-json perf-1.json`).
+perf.json
+perf.json.part
+perf-*.json
+perf-*.json.part
+
+# Relevés de la DÉCOMPOSITION de `empilement` (v2.98.9) : sortie de
+# `bancs/_mesure_empilement.py` (`--sortie`, défaut
+# `bancs/_mesure_empilement.json`) — un relevé local, jamais suivi, comme les
+# `perf-*.json`.
+bancs/_mesure_empilement*.json
+bancs/_mesure_empilement*.json.part
 
 # Compteur d executions du test jalon 4 (genere par le test, jamais suivi)
 _gx_jalon4_compteur.txt

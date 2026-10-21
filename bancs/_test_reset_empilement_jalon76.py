@@ -152,6 +152,9 @@ images.CFA_MODE = "Non"               # brutes mono
 root = tk.Tk()
 root.withdraw()
 app = ui.App(root)
+# 1b (20/10/2026) : le banc vérifie l'écran VIDÉ juste après le reset → rendu
+# IMMÉDIAT (aucun résultat ne peut arriver après coup d'un fil de rendu).
+app.rendu.immediat = True
 app.rejeter_flou = False              # test déterministe (pas de filtre flou)
 app.ref_refresh = 0                   # pas de rafraîchissement de référence
 

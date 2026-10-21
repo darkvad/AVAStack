@@ -1,0 +1,320 @@
+{
+ "horodatage": "2026-10-20 13:45:06",
+ "seuil_s": 0.25,
+ "rep": 5,
+ "budget_tick_ms": 30.0,
+ "construction_ms": 1869.3,
+ "fenetre": "plein écran",
+ "apercu_taille": "1600x1200",
+ "apercu_mpx": 1.92,
+ "canvas": "1548x744",
+ "curseurs": [
+  {
+   "curseur": "Gamma (les 2 moteurs)",
+   "pas_glissement_ms": 0.034,
+   "apercu_relachement_ms": 247.229,
+   "glissement_200px_ms": 254.0
+  },
+  {
+   "curseur": "Saturation (globale)",
+   "pas_glissement_ms": 0.036,
+   "apercu_relachement_ms": 223.308,
+   "glissement_200px_ms": 230.5
+  },
+  {
+   "curseur": "Saturation rouge",
+   "pas_glissement_ms": 0.032,
+   "apercu_relachement_ms": 274.509,
+   "glissement_200px_ms": 280.9
+  },
+  {
+   "curseur": "Luminosité du fond du ciel",
+   "pas_glissement_ms": 0.03,
+   "apercu_relachement_ms": 310.207,
+   "glissement_200px_ms": 316.2
+  },
+  {
+   "curseur": "Coupure du bruit (k·σ sous le fond)",
+   "pas_glissement_ms": 0.03,
+   "apercu_relachement_ms": 317.613,
+   "glissement_200px_ms": 323.6
+  },
+  {
+   "curseur": "Black point",
+   "pas_glissement_ms": 0.033,
+   "apercu_relachement_ms": 317.261,
+   "glissement_200px_ms": 323.9
+  }
+ ],
+ "apercu": {
+  "avec_hist_ms": 251.908,
+  "sans_hist_ms": 203.885,
+  "histogrammes_ms": 45.1,
+  "dessin_ms": 12.4
+ },
+ "echelle": [
+  {
+   "taille": "560x360",
+   "mpx": 0.2,
+   "med_ms": 51.432
+  },
+  {
+   "taille": "1280x720",
+   "mpx": 0.92,
+   "med_ms": 129.289
+  },
+  {
+   "taille": "1600x1200",
+   "mpx": 1.92,
+   "med_ms": 251.046
+  }
+ ],
+ "tick": {
+  "med_ms": 0.063,
+  "max_ms": 1.303,
+  "budget_pct": 0.2
+ },
+ "cases": [
+  {
+   "case": "Neutraliser la couleur du fond (après étirement)",
+   "set_nu_ms": 0.001,
+   "invoke_ms": 186.706,
+   "previews_set_nu": 0.0,
+   "previews_invoke": 1.0
+  },
+  {
+   "case": "Auto-stretch STF (fond calé sur la cible)",
+   "set_nu_ms": 0.001,
+   "invoke_ms": 235.715,
+   "previews_set_nu": 0.0,
+   "previews_invoke": 2.33
+  },
+  {
+   "case": "PNG annoté à côté du FITS",
+   "set_nu_ms": 0.001,
+   "invoke_ms": 247.484,
+   "previews_set_nu": 0.0,
+   "previews_invoke": 1.0
+  }
+ ],
+ "listes": [
+  {
+   "liste": "spcc:capteur",
+   "n_valeurs": 15,
+   "repeuplement_ms": 0.026,
+   "selection_ms": 0.025,
+   "spcc_active": false
+  },
+  {
+   "liste": "spcc:fr",
+   "n_valeurs": 50,
+   "repeuplement_ms": 0.051,
+   "selection_ms": 0.019,
+   "spcc_active": false
+  },
+  {
+   "liste": "spcc:fg",
+   "n_valeurs": 50,
+   "repeuplement_ms": 0.048,
+   "selection_ms": 0.018,
+   "spcc_active": false
+  },
+  {
+   "liste": "spcc:fb",
+   "n_valeurs": 50,
+   "repeuplement_ms": 0.047,
+   "selection_ms": 0.018,
+   "spcc_active": false
+  },
+  {
+   "liste": "spcc:blanc",
+   "n_valeurs": 147,
+   "repeuplement_ms": 0.12,
+   "selection_ms": 0.02,
+   "spcc_active": false
+  },
+  {
+   "liste": "Fréquence de référence",
+   "n_valeurs": 5,
+   "selection_ms": 0.011
+  },
+  {
+   "liste": "Fenêtre de rejet",
+   "n_valeurs": 5,
+   "selection_ms": 0.023
+  }
+ ],
+ "spinners": [
+  {
+   "spinner": "sp_fusion_ha_poids",
+   "set_nu_ms": 0.01,
+   "avec_commande_ms": 252.137,
+   "previews": 1.0
+  },
+  {
+   "spinner": "sp_fusion_ha_alpha",
+   "set_nu_ms": 0.01,
+   "avec_commande_ms": 251.027,
+   "previews": 1.0
+  },
+  {
+   "spinner": "sp_fusion_ha_q",
+   "set_nu_ms": 0.01,
+   "avec_commande_ms": 250.017,
+   "previews": 1.0
+  },
+  {
+   "spinner": "sp_lissage_halos",
+   "set_nu_ms": 0.01,
+   "avec_commande_ms": 247.721,
+   "previews": 1.0
+  }
+ ],
+ "visibilite": [
+  {
+   "source": "Simulée (démo)",
+   "med_ms": 0.184,
+   "max_ms": 0.352,
+   "pack": 0,
+   "forget": 3
+  },
+  {
+   "source": "Dossier surveillé (brutes FITS/PNG/TIFF…)",
+   "med_ms": 0.185,
+   "max_ms": 1.289,
+   "pack": 12,
+   "forget": 6
+  },
+  {
+   "source": "Composition multi-dossiers (RGB/HOO/SHO/LRGB)",
+   "med_ms": 0.248,
+   "max_ms": 0.426,
+   "pack": 12,
+   "forget": 8
+  },
+  {
+   "source": "Stacks (fichiers FITS)",
+   "med_ms": 0.314,
+   "max_ms": 0.363,
+   "pack": 12,
+   "forget": 9
+  },
+  {
+   "source": "OpenCV 0",
+   "med_ms": 0.156,
+   "max_ms": 0.174,
+   "pack": 1,
+   "forget": 9
+  },
+  {
+   "source": "OpenCV 1",
+   "med_ms": 0.159,
+   "max_ms": 0.165,
+   "pack": 0,
+   "forget": 3
+  },
+  {
+   "source": "ZWO ASI (SDK)",
+   "med_ms": 0.157,
+   "max_ms": 0.161,
+   "pack": 0,
+   "forget": 3
+  },
+  {
+   "source": "QHY (SDK)",
+   "med_ms": 0.158,
+   "max_ms": 0.162,
+   "pack": 0,
+   "forget": 3
+  },
+  {
+   "source": "Player One (SDK)",
+   "med_ms": 0.156,
+   "max_ms": 0.159,
+   "pack": 0,
+   "forget": 3
+  },
+  {
+   "source": "Touptek/Altair (SDK)",
+   "med_ms": 0.159,
+   "max_ms": 0.16,
+   "pack": 0,
+   "forget": 3
+  },
+  {
+   "source": "SVBONY (SDK)",
+   "med_ms": 0.155,
+   "max_ms": 0.159,
+   "pack": 0,
+   "forget": 3
+  }
+ ],
+ "rafale": {
+  "duree_s": 1.35,
+  "pas": 60,
+  "pas_ms": 22.4,
+  "apercus": 1,
+  "ticks_obtenus": 31,
+  "ticks_attendus": 44,
+  "ecart_max_ms": 253.7
+ },
+ "blocages": [
+  {
+   "operation": "Coupure du bruit (k·σ sous le fond) (glissement + relâchement)",
+   "max_ms": 325.799
+  },
+  {
+   "operation": "Luminosité du fond du ciel (glissement + relâchement)",
+   "max_ms": 323.357
+  },
+  {
+   "operation": "Black point (glissement + relâchement)",
+   "max_ms": 319.776
+  },
+  {
+   "operation": "Auto-stretch STF (fond calé sur la cible)",
+   "max_ms": 313.478
+  },
+  {
+   "operation": "Gamma (les 2 moteurs) (glissement + relâchement)",
+   "max_ms": 313.269
+  },
+  {
+   "operation": "Saturation rouge (glissement + relâchement)",
+   "max_ms": 278.482
+  },
+  {
+   "operation": "sp_fusion_ha_poids (set + commande)",
+   "max_ms": 253.24
+  },
+  {
+   "operation": "sp_fusion_ha_q (set + commande)",
+   "max_ms": 252.916
+  },
+  {
+   "operation": "Neutraliser la couleur du fond (après étirement)",
+   "max_ms": 252.778
+  },
+  {
+   "operation": "sp_fusion_ha_alpha (set + commande)",
+   "max_ms": 252.763
+  }
+ ],
+ "au_dela_seuil": 12,
+ "operations_au_dela": [
+  "Coupure du bruit (k·σ sous le fond) (glissement + relâchement)",
+  "Luminosité du fond du ciel (glissement + relâchement)",
+  "Black point (glissement + relâchement)",
+  "Auto-stretch STF (fond calé sur la cible)",
+  "Gamma (les 2 moteurs) (glissement + relâchement)",
+  "Saturation rouge (glissement + relâchement)",
+  "sp_fusion_ha_poids (set + commande)",
+  "sp_fusion_ha_q (set + commande)",
+  "Neutraliser la couleur du fond (après étirement)",
+  "sp_fusion_ha_alpha (set + commande)",
+  "PNG annoté à côté du FITS",
+  "_refresh_preview(hist=True)"
+ ],
+ "charge_souris_60hz_pct": 0.22,
+ "glissement_200px_pire_ms": 323.9
+}

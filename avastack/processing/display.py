@@ -593,7 +593,13 @@ class DisplayProcessor:
         # `_vl_worker`, pour LES DEUX moteurs. `sh_msg`/`sh_new` restent
         # publiés par ce worker et lus par l'UI (message de la netteté).
         # cache + solveur (thread dédié, jamais le thread UI)
-        self._vl_src = None           # dernière image soumise (comparaison d'objet)
+        # AUDIT MÉMOIRE (21/10/2026) : `_vl_src` est RETIRÉ. Il mémorisait la
+        # dernière image soumise sans que PERSONNE ne la lise (vérifié sur tout
+        # le dépôt) et, en rendu pleine résolution, il la GARDAIT vivante :
+        # décocher l'option libérait `_stack_pleine_res`… pour rien, l'image
+        # restait attachée ici. Aucun gain en régime établi (l'image est de
+        # toute façon tenue par le stacker), mais la libération annoncée à la
+        # décoche est enfin RÉELLE.
         self._vl_key = None           # clé des réglages du dernier calcul lancé
         self._vl_result = None        # (clé, image étirée) du dernier calcul TERMINÉ
         # JALON 128 : MOTEUR du dernier résultat publié (« veralux » ou « stf »).
@@ -608,6 +614,17 @@ class DisplayProcessor:
         self._vl_lock = threading.Lock()
         self._vl_wake = threading.Event()
         self.vl_new = False           # un résultat vient d'arriver (lu par l'UI)
+        # 1a (20/10/2026) : le DERNIER `process()` a-t-il rendu l'IMAGE
+        # D'ATTENTE (repli STF, pas le résultat de la chaîne) ? L'interface s'en
+        # sert pour NE PAS remplacer l'image affichée : Alain ne veut jamais voir
+        # d'image « bâchée » entre deux images finales.
+        self.dernier_etait_attente = False
+        # v2.98.8 : MOTEUR du dernier rendu de `process()` (« veralux » / « stf »,
+        # "" avant le premier). Sert au GARDE-FOU de MÉMOIRE du STF : la mémoire
+        # d'étirement (stats lissées) ne doit pas traverser une période VeraLux —
+        # elle ne décrit alors plus l'image courante (défaut « STF = image
+        # blanche » du 21/10/2026, cf. `process()`).
+        self._dernier_moteur_rendu = ""
         self.vl_stage = ""            # étape COURANTE du calcul (jalon 40 :
                                       # "préparation"/"composition"/"GraXpert"…/
                                       # "étirement"), écrite par le thread
@@ -640,6 +657,7 @@ class DisplayProcessor:
         self.dernier_brut_niveaux = None
         self.gains_etirement = None   # jalon 136 : rien à garder d'une autre vue
         self._memo_moteur = None      # jalon 79 : rien à réutiliser d'une autre vue
+        self._dernier_moteur_rendu = ""   # v2.98.8 : mémoire STF neuve elle aussi
         self.niveaux_new = True
         with self._vl_lock:
             self._vl_result = None
@@ -653,6 +671,27 @@ class DisplayProcessor:
         self.fige = False
         self._stats = None
         self._memo_moteur = None      # jalon 79 : la clé contient les stats
+
+    def oublier_memoire_stf(self) -> None:
+        """Jette la MÉMOIRE d'étirement du STF/manuel : stats lissées ET mémoire
+        de la sortie du moteur (jalon 79).
+
+        POURQUOI (défaut du 21/10/2026, « basculer sur STF après VeraLux donne une
+        IMAGE BLANCHE ») : `_stats` est un lissage TEMPOREL de l'empilement — il
+        n'est réutilisé en `live=False` que parce qu'il décrit l'image COURANTE.
+        Pendant une période VERA LUX, le STF ne rend plus l'empilement (la chaîne
+        est attendue : le rendu de frame n'existe plus depuis l'étape 1a) : la
+        mémoire peut donc dater de N'IMPORTE QUEL moment de la session, et une
+        image d'attente suffit à la poser. La réutiliser ensuite à la bascule
+        revient à étirer l'image d'aujourd'hui avec le point noir d'hier :
+        mesuré — mémoire `(0,000882, 0,000345, 0,001972)` contre un empilement à
+        0,048 ⇒ `hi` 11 fois sous le fond ⇒ **tout écrête à 1, médiane 255**.
+
+        Appelée par le GARDE-FOU de `process()` (changement de moteur) ; c'est
+        l'équivalent « mémoire » de `reprendre_auto()` (qui, lui, repart aussi de
+        l'auto et rend la main à l'utilisateur)."""
+        self._stats = None
+        self._memo_moteur = None
 
     @staticmethod
     def _mtf(x: Any, m: float) -> np.ndarray:
@@ -1249,18 +1288,18 @@ class DisplayProcessor:
         `vl_en_cours()` / `vl_stage`, qui couvrent les deux moteurs)."""
         return False
 
-    def _process_chaine(self, img: np.ndarray,
-                        live: bool = True) -> np.ndarray:
-        """CHAÎNE PRÉ-ÉTIREMENT (vol. A, jalon 125) : rend le dernier résultat
-        terminé du worker (ou l'image d'attente STF) et soumet un calcul si
-        l'image ou les réglages ont changé. Jamais bloquant : aucun calcul ici,
-        seulement une copie. Pour VeraLux la sortie est l'image ÉTIRÉE ; pour
-        STF/manuel c'est l'image PRÉ-ÉTIRÉE (GraXpert → débruitage → netteté),
-        l'étirement STF/manuel étant appliqué ensuite par `process()`.
-        v2.55.3 : la FORME de la source entre dans la clé — sans elle, le
-        résultat PLEINE RÉSOLUTION en cache resservait après décochage de
-        « Rendu pleine résolution » (même clé de réglages) : l'écran gardait
-        l'ancienne image et ses étiquettes minuscules, constat d'Alain."""
+    def _soumettre_chaine(self, img: np.ndarray) -> Any:
+        """[Interne] SOUMET un job à la chaîne pré-étirement si nécessaire.
+
+        Étape 1a (20/10/2026) — factorisé depuis `_process_chaine` : quand la
+        chaîne est active, l'interface ne rend plus la pile brute et laisse
+        l'image FINALE arriver par `vl_new`. `process()` n'étant alors plus
+        appelé pour cette frame, c'est `demander_chaine()` qui alimente le
+        worker par CE MÊME code — mêmes clés, mêmes paramètres, même ordre :
+        aucun pixel ne change.
+
+        Rend la clé de réglages courante (celle du cache de résultat).
+        """
         key = self._vl_params() + (img.shape,)
         with self._vl_lock:
             force = self._vl_force
@@ -1310,7 +1349,55 @@ class DisplayProcessor:
                                     # si le chemin VeraLux est RÉELLEMENT utilisé)
                                     "veralux" if self._veralux_actif() else "stf")
                     self._vl_wake.set()
-            self._vl_src, self._vl_key = img, key
+            self._vl_key = key
+        return key
+
+    def demander_chaine(self, img: np.ndarray) -> None:
+        """Demande le calcul de `img` par la chaîne, SANS RIEN RENDRE.
+
+        Étape 1a (20/10/2026) : quand la chaîne est active, la pile brute n'est
+        plus rendue (son image serait remplacée ~2 s plus tard par l'image
+        finale). Mais `process()` était le SEUL point qui soumettait le job au
+        worker : sans cet appel, la chaîne ne calculerait jamais. Cette méthode
+        fait donc exactement la SOUMISSION de `process()` — aucun calcul, aucun
+        résultat lu, aucune variable Tk touchée.
+        """
+        self._soumettre_chaine(img)
+
+    def chaine_sollicitee(self) -> bool:
+        """True si `process()` va SOUMETTRE la chaîne pré-étirement.
+
+        C'est la condition EXACTE du `vl_new` attendu par l'interface (étape 1a,
+        20/10/2026) : le worker n'est sollicité que par le chemin VeraLux (qui
+        étire DANS le worker) ou par une étape active de la chaîne pré-étirement
+        en STF/manuel. Les cases couleur d'APRÈS étirement (SCNR, démagenta,
+        boost) ne déclenchent AUCUN calcul en STF/manuel : elles s'appliquent
+        dans `process()`. Les confondre ferait différer un rendu qui n'arrive-
+        rait jamais — l'interface attendrait un `vl_new` en vain.
+        """
+        return bool(self._veralux_actif() or self.vl_graxpert
+                    or self.vl_denoise or self.vl_sharp or self.vl_chroma)
+
+    def _process_chaine(self, img: np.ndarray,
+                        live: bool = True) -> np.ndarray:
+        """CHAÎNE PRÉ-ÉTIREMENT (vol. A, jalon 125) : rend le dernier résultat
+        terminé du worker (ou l'image d'attente STF) et soumet un calcul si
+        l'image ou les réglages ont changé. Jamais bloquant : aucun calcul ici,
+        seulement une copie. Pour VeraLux la sortie est l'image ÉTIRÉE ; pour
+        STF/manuel c'est l'image PRÉ-ÉTIRÉE (GraXpert → débruitage → netteté),
+        l'étirement STF/manuel étant appliqué ensuite par `process()`.
+        v2.55.3 : la FORME de la source entre dans la clé — sans elle, le
+        résultat PLEINE RÉSOLUTION en cache resservait après décochage de
+        « Rendu pleine résolution » (même clé de réglages) : l'écran gardait
+        l'ancienne image et ses étiquettes minuscules, constat d'Alain.
+
+        Étape 1a (20/10/2026) : la SOUMISSION est déléguée à `_soumettre_chaine`
+        (partagée avec `demander_chaine`) ; cette méthode ne garde que la
+        LECTURE du cache et l'image d'attente.
+        """
+        key = self._soumettre_chaine(img)
+        self.dernier_etait_attente = False
+
         with self._vl_lock:
             res = self._vl_result \
                 if (self._vl_result is not None
@@ -1350,6 +1437,9 @@ class DisplayProcessor:
         # utilisateur black/white/gamma — on ne lit que les stats lissées).
         # En STF/manuel : l'image LINÉAIRE telle quelle — c'est `process()`
         # qui l'étire, et la rendre déjà étirée la ferait étirer DEUX FOIS.
+        # 1a : on SIGNALE que ce n'est pas un résultat final — l'interface
+        # gardera l'image précédente au lieu d'afficher ce repli « bâché ».
+        self.dernier_etait_attente = True
         # Elle n'est pas nette (transitoire, quelques dixièmes de seconde).
         if self._veralux_actif():
             # JALON 136 : même neutralisation par canal que `_moteur_stf` —
@@ -1395,6 +1485,11 @@ class DisplayProcessor:
 
     def process(self, img: np.ndarray, live: bool = True) -> np.ndarray:
         img = img.astype(np.float32, copy=False)
+        # 1a (20/10/2026) : ce drapeau dit à l'interface si le rendu qui suit est
+        # un RÉSULTAT ou seulement l'image d'attente. Remis à False à CHAQUE
+        # appel (tous les chemins), pour qu'un ancien « attente » ne fasse pas
+        # sauter un rendu légitime.
+        self.dernier_etait_attente = False
         # JALON 125 (VOLET A) : plus de solveur de netteté dédié — la chaîne
         # pré-étirement (GraXpert → débruitage → netteté) tourne dans le worker
         # UNIQUE `_vl_worker`, pour LES DEUX moteurs (décision d'Alain,
@@ -1404,7 +1499,13 @@ class DisplayProcessor:
         # n'est plus appliquée AVANT l'étirement — elle suit le moteur, juste
         # après. En mode VeraLux, comme la chaîne pré-étirement, elle est
         # appliquée par le worker : ne pas la refaire ici.
-        if self._veralux_actif():
+        # v2.98.8 : le MOTEUR est lu UNE SEULE FOIS pour tout l'appel — la
+        # branche d'affichage et la mémoire publiée en fin d'appel décrivent
+        # ainsi le MÊME rendu, même si l'utilisateur bascule le moteur pendant
+        # le calcul (une bascule en vol ne peut plus mélanger les deux moteurs
+        # dans un seul rendu).
+        veralux = self._veralux_actif()
+        if veralux:
             x = self._process_chaine(img, live=live)
         else:
             if self.stretch == "veralux" and not self.vl_error:
@@ -1415,11 +1516,28 @@ class DisplayProcessor:
             # chroma — jalon 127 pour la chroma). AUCUNE étape active → l'image
             # brute, à l'identique : le rendu STF reste INSTANTANÉ (aucun
             # détour par le worker), comme avant.
-            if (self.vl_graxpert or self.vl_denoise or self.vl_sharp
-                    or self.vl_chroma):
+            if self.chaine_sollicitee():
                 img_chaine = self._process_chaine(img, live=live)
             else:
                 img_chaine = img
+            # v2.98.8 : GARDE-FOU DE MÉMOIRE — la mémoire d'étirement du STF
+            # (`_stats`, `_memo_moteur`) ne TRAVERSE PAS une période VeraLux.
+            # POURQUOI : elle n'est réutilisée en `live=False` que parce qu'elle
+            # décrit l'image COURANTE ; pendant une période VeraLux le STF ne
+            # rend plus l'empilement (le rendu de frame n'existe plus depuis
+            # l'étape 1a, la chaîne étant attendue), donc elle peut dater de
+            # n'importe quel moment de la session — une simple image d'attente
+            # suffit à la poser. La reprendre à la bascule étirait l'image
+            # d'aujourd'hui avec le point noir d'hier : MESURÉ le 21/10/2026 sur
+            # la séquence réelle (VeraLux rendu → bascule STF sans nouvelle
+            # frame) — mémoire `(0,000882, 0,000345, 0,001972)` contre un
+            # empilement à 0,048 ⇒ `hi` 11 fois SOUS le fond ⇒ tout écrête à 1 :
+            # **image blanche, médiane 255, 100 % des pixels ≥ 250** (défaut
+            # signalé par Alain, écart 180,3 niveaux avec le STF de référence).
+            # Jeter la mémoire coûte UNE mesure de stats (sous-échantillonnée,
+            # ~ms) et rend exactement l'image du STF sain.
+            if self._dernier_moteur_rendu not in ("", "stf"):
+                self.oublier_memoire_stf()
             # Jalon 79 : l'étirement passe par une MÉMOIRE (`_moteur_stf`) —
             # un réglage d'APRÈS étirement (gamma, saturations, barres de
             # niveaux) retrouve l'image déjà étirée au lieu de la recalculer.
@@ -1452,6 +1570,11 @@ class DisplayProcessor:
         x = self._neutraliser_fond(x)
         x = self._finition(x, img.ndim == 3, self.gamma, self.saturation,
                            self.sat_canaux)
+        # v2.98.8 : MÉMOIRE DU MOTEUR DU RENDU — lue au prochain appel pour
+        # savoir si la mémoire d'étirement du STF est encore d'actualité
+        # (cf. le GARDE-FOU ci-dessus). Écrite ici, en fin d'appel : `process()`
+        # est le seul écrivain de cet attribut (fil de rendu).
+        self._dernier_moteur_rendu = "veralux" if veralux else "stf"
         return (x * 255).astype(np.uint8)
 
     def _neutraliser_fond(self, x: Any) -> Any:

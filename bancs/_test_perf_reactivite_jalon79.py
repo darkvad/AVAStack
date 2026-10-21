@@ -35,6 +35,15 @@ Vérifie :
   [7] coût d'un geste : mesure indicative avec garde-fou généreux (ce n'est pas
       un objectif de performance, c'est un filet anti-absurdité).
 
+P5 (lot 5, 20/10/2026) — le banc est ÉTENDU aux trois autres commandes de la
+colonne, avec le même esprit (mesurer le chemin RÉEL, pas un appel du banc) :
+  [8] CASES À COCHER : `var.set` nu n'appelle RIEN (piège Tk) ; `invoke()`
+      (clic réel) = UN seul aperçu complet, sous le garde-fou ;
+  [9] LISTES : `cb.set()` ne rappelle pas le gestionnaire, `<<ComboboxSelected>>`
+      (vrai choix) si — et la liste n'est pas reconstruite au passage ;
+  [10] SPINNERS : `set()` ne rappelle pas la commande (différent d'un Scale),
+      l'appel de la commande = UN aperçu complet et l'instantané du worker suit.
+
 Exécution : python bancs/_test_perf_reactivite_jalon79.py   (nécessite un affichage)
 """
 # Racine du projet (celle qui porte AVAStack.py) dans sys.path : les bancs
@@ -68,7 +77,14 @@ def verifie(cond, msg):
 
 
 def image_factice(h=360, w=560, seed=7):
-    """Aperçu linéaire RVB factice [0..1] : fond + nébulosité + étoiles."""
+    """Aperçu linéaire RVB factice [0..1] : fond + nébulosité + étoiles.
+
+    TAILLE VOLONTAIREMENT PETITE (360×560) : ce banc verrouille le CÂBLAGE des
+    commandes (quel étage recalcule quoi), pas le coût absolu. L'aperçu RÉEL de
+    l'application est plafonné à 1600 px de côté (1600×1200 en 4/3) : les
+    chiffres de réactivité se mesurent avec `bancs/_mesure_p5_reactivite.py`
+    (section [2 bis] pour la courbe coût/taille), pas ici.
+    """
     rng = np.random.default_rng(seed)
     img = rng.normal(0.02, 0.006, (h, w, 3))
     yy, xx = np.mgrid[0:h, 0:w]
@@ -146,12 +162,20 @@ def curseur(app, texte):
 def geste(app, texte, valeur):
     """Déclenche le curseur COMME UN GESTE DE SOURIS : Tk appelle la commande
     du curseur quand sa valeur change → c'est bien le câblage de l'interface
-    qui est éprouvé, pas un appel écrit par le banc. True si le curseur existe."""
+    qui est éprouvé, pas un appel écrit par le banc. True si le curseur existe.
+
+    P5 (lot 5, 20/10/2026) : depuis le RENDU AU RELÂCHEMENT, un `s.set()` seul
+    ne fait que la variable et l'étiquette — le calcul part au minuteur (150 ms)
+    ou au `<ButtonRelease-1>`. Le banc FORCE donc le rendu en attente : il
+    éprouve le même `onchange` qu'un geste, sans attendre un relâchement qu'il
+    ne simule pas.
+    """
     s = curseur(app, texte)
     if s is None:
         verifie(False, f"curseur « {texte} » INTROUVABLE")
         return False
     s.set(float(valeur))
+    app._forcer_rendu_curseur(s)          # P5 : le rendu attendu MAINTENANT
     app.root.update()
     return True
 
@@ -164,6 +188,9 @@ ui.CONFIG = {}                       # état initial DÉTERMINÉ (moteur STF)
 ui.sauver_config = lambda d: None
 root = tk.Tk()
 app = ui.App(root)
+# 1b (20/10/2026) : ce banc chronomètre le rendu lui-même → rendu IMMÉDIAT
+# (sinon il mesurerait une mise en file ; c'est le banc 1b qui teste le fil).
+app.rendu.immediat = True
 root.update()
 instrumenter()
 rgb = image_factice()
@@ -263,6 +290,109 @@ print(f"    geste gamma mesuré : {dt:.1f} ms (avant le jalon 79 : ~103 ms "
 verifie(dt < 250.0,
         f"un geste reste sous le garde-fou ({dt:.1f} ms < 250 ms) — un geste "
         "ne bloque jamais l'interface")
+
+print("\n[8] CASES À COCHER — un CLIC réel (invoke), pas un var.set")
+# P5 (lot 5) : la réactivité d'une case ne se juge pas sur `var.set` — Tk
+# n'appelle alors AUCUNE commande (piège mesuré ici, pas supposé) — mais sur
+# le clic : `invoke()` exécute exactement ce que fait l'utilisateur.
+
+
+def widget_texte(texte, classe):
+    """Le widget de classe `classe` portant exactement ce texte."""
+    for w in parcours(app.root):
+        if not isinstance(w, classe):
+            continue
+        try:
+            if str(w.cget("text")) == texte:
+                return w
+        except Exception:                              # noqa: BLE001
+            continue
+    return None
+
+
+chk_neutre = widget_texte("Neutraliser la couleur du fond (après étirement)",
+                          ttk.Checkbutton)
+if chk_neutre is None:
+    verifie(False, "case « Neutraliser la couleur du fond » INTROUVABLE")
+else:
+    var = app.var_vl_neutre
+    etat = bool(var.get())
+    COMPTES["hist"], COMPTES["affichees"] = 0, []
+    var.set(not etat)                  # voie PROGRAMMATIQUE
+    root.update()
+    verifie(COMPTES["hist"] == 0 and not COMPTES["affichees"],
+            "var.set nu sur une case : AUCUN rappel (piège Tk mesuré : ni "
+            "étirement, ni image, ni histogramme)")
+    var.set(etat)
+    root.update()
+    COMPTES["hist"], COMPTES["affichees"] = 0, []
+    t0 = time.perf_counter()
+    chk_neutre.invoke()                # clic RÉEL
+    root.update()
+    dt = (time.perf_counter() - t0) * 1000.0
+    verifie(COMPTES["hist"] == 1 and len(COMPTES["affichees"]) == 1,
+            f"un clic = UN SEUL aperçu complet (histogrammes "
+            f"{COMPTES['hist']}, images {len(COMPTES['affichees'])})")
+    verifie(dt < 250.0,
+            f"un clic de case reste sous le garde-fou ({dt:.1f} ms < 250 ms)")
+    chk_neutre.invoke()                # état RENDU
+    root.update()
+
+print("\n[9] LISTES DÉROULANTES — set nu contre sélection réelle")
+cb = app.cb_ref_refresh
+valeurs = list(cb.cget("values") or [])
+etat_cb = str(cb.get())
+autre = "30" if etat_cb != "30" else "50"
+COMPTES["hist"], COMPTES["affichees"] = 0, []
+cb.set(autre)                          # ce que fait un set programmatique
+root.update()
+verifie(str(app.var_ref_refresh.get()) == autre and COMPTES["hist"] == 0,
+        "cb.set() change la VALEUR sans rappeler le gestionnaire (piège Tk)")
+t0 = time.perf_counter()
+cb.event_generate("<<ComboboxSelected>>")   # ce que fait un vrai choix
+root.update()
+dt = (time.perf_counter() - t0) * 1000.0
+verifie(app.ref_refresh == int(autre),
+        f"la sélection a bien posé le réglage ({app.ref_refresh})")
+verifie(list(cb.cget("values") or []) == valeurs,
+        "la liste n'est PAS reconstruite par une sélection")
+verifie(dt < 250.0,
+        f"une sélection de liste reste sous le garde-fou ({dt:.1f} ms)")
+cb.set(etat_cb)                        # état RENDU
+cb.event_generate("<<ComboboxSelected>>")
+root.update()
+
+print("\n[10] SPINNERS — un cran de flèche")
+# P5 (lot 5) : contrairement à un `ttk.Scale`, le `command` d'un `ttk.Spinbox`
+# ne part JAMAIS sur `set()` (mesuré) — la flèche, elle, l'appelle. Le banc
+# éprouve donc les DEUX chemins et vérifie qu'un cran = UN aperçu complet.
+sp = app.sp_fusion_ha_poids
+hi = float(sp.cget("to"))
+poids_avant = float(sp.get())
+poids_cible = poids_avant + 0.2 if poids_avant + 0.2 <= hi else poids_avant - 0.2
+COMPTES["hist"], COMPTES["affichees"] = 0, []
+sp.set(poids_cible)
+root.update()
+verifie(abs(float(app.var_fusion_ha_poids.get()) - poids_cible) < 1e-9
+        and COMPTES["hist"] == 0 and not COMPTES["affichees"],
+        "sp.set() change la VALEUR sans rappeler la commande (piège Tk mesuré, "
+        "différent d'un Scale)")
+COMPTES["hist"], COMPTES["affichees"] = 0, []
+t0 = time.perf_counter()
+app._on_fusion_ha()                    # ce que fait la FLÈCHE (`command=`)
+root.update()
+dt = (time.perf_counter() - t0) * 1000.0
+verifie(COMPTES["hist"] == 1 and len(COMPTES["affichees"]) == 1,
+        f"un cran = UN aperçu complet (histogrammes {COMPTES['hist']}, "
+        f"images {len(COMPTES['affichees'])})")
+verifie(abs(float((app._compo_fusion_ha or {}).get("poids", -1))
+            - poids_cible) < 1e-6,
+        "l'instantané du worker (`_compo_fusion_ha`) suit le cran")
+verifie(dt < 250.0,
+        f"un cran de spinner reste sous le garde-fou ({dt:.1f} ms < 250 ms)")
+sp.set(poids_avant)                    # état RENDU
+app._on_fusion_ha()
+root.update()
 
 root.destroy()
 print()

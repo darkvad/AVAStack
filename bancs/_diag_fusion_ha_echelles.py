@@ -2,7 +2,8 @@
 """Diagnostic — échelles comparées du Ha (`s`) et du rouge du composite (`R`)
 AVANT de réécrire les opérateurs de fusion du Ha (J3bis).
 
-CONTEXTE (test réel du 19/10/2026, M33, branche `LRGBHa`) : les quatre modes
+CONTEXTE (test réel du 19/10/2026, M33, branche `LRGBHa` — fermée depuis, fusionnée
+dans `master` au commit `efb2911`) : les quatre modes
 `fondu_rouge`, `ecran_rouge`, `eclaircir_rouge` et `ha_luminance` ont été
 condamnés À L'ÉCRAN (fondu bleui, écran cyan, éclaircir inerte, luminance
 blanchit). Hypothèse à VÉRIFIER, pas à supposer : `composer()` normalise

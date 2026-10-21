@@ -14,12 +14,519 @@ AVAStack.py) :
   avastack.core         — worker d'acquisition (mixin) + config (WorkerConfig)
   avastack.external     — détection + enchaînement des outils CLI (GraXpert/BXT)
   avastack.fiche        — fiche de rendu (JSON compagnon <image>.ava.json)
+  avastack.perf         — instrumentation performance/mémoire (Phase 0, opt-in)
   avastack.ui           — interface Tkinter
 Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.96.1"
+AVASTACK_VERSION = "2.98.9"
+
+# v2.98.9 : DÉCOMPOSER `empilement` EN MESURANT D'ABORD (branche `OptimisationUI`,
+#   AUCUNE release, AUCUN pixel changé). Dernier point du chantier : `perf-9`
+#   mesure `empilement` à 2 938 ms/frame — le premier poste de CPU restant — mais
+#   c'est un TOTAL, et rien ne disait qui pèse quoi.
+#   - `core/worker.py` (`_worker_empiler_frame`) : DIX sous-chronos `perf`
+#     OPT-IN, sous le contrat de la Phase 0 (`perf.t0()` rend None et
+#     `perf.duree()` ne fait rien quand l'instrumentation est inactive : coût
+#     nul hors `--perf`, résultat identique AU BIT) — `empilement_flou`,
+#     `_canal`, `_archive`, `_score`, `_creation`, `_rejeu`, `_align`, `_warp`,
+#     `_rejet`, `_moyenne`. Seule une horloge est lue en plus : aucun tableau
+#     alloué, aucun calcul déplacé, aucun pixel ne change.
+#   - Banc NEUF `bancs/_mesure_empilement.py` (MESURE seule, aucun pixel) :
+#     arme l'instrumentation, construit la VRAIE `App` (config HERMÉTIQUE),
+#     rejoue de VRAIES brutes — dossier surveillé RÉEL, composition `--racine`
+#     (sous-dossiers nommés par rôle) ou `--role ROLE=DOSSIER` (arborescences
+#     IMBRIQUÉES, cas réel de N.I.N.A.) — à travers la VRAIE
+#     `_worker_empiler_frame`, dans le MÊME bloc que le worker
+#     (`perf.occupe` + `perf.chrono("empilement")`). Il publie le tableau de
+#     décomposition, le RÉSIDUEL non nommé et le POSTE DOMINANT, et écrit un
+#     relevé JSON rejouable. `--autotest` vérifie la MÉCANIQUE sans aucune
+#     donnée (étages présents, somme ≤ total, au moins une frame empilée).
+#     Tous les postes sont ramenés à la MÊME base (le nombre d'appels de
+#     `empilement`) : un poste qui n'arrive qu'une fois (création, rejeu) est
+#     réparti sur toutes les frames — la somme des postes égale donc le total,
+#     et le résiduel devient interprétable (1,0 à 1,3 % mesuré).
+#   - MESURE DE RÉFÉRENCE (8 brutes RÉELLES OSC, 8,4 Mpx, rejet `kappa` fenêtre
+#     8) : `empilement` 2 704,6 ms/frame — du même ordre que les 2 938 ms/frame
+#     du `perf-9`. Répartition : ALIGNEMENT (ORB+RANSAC) 1 105,3 ms (40,9 %) ·
+#     ARCHIVAGE FITS 483,8 (17,9 %) · MOYENNE 415,2 (15,4 %) · FILTRE
+#     ANTI-FLOUES 291,5 (10,8 %) · création 133,7 (4,9 %) · REJET 127,6 (4,7 %)
+#     · SCORE 91,1 (3,4 %) · warp 20,5 (0,8 %) · canal et rejeu 0,0 · résiduel
+#     35,8 (1,3 %). ⇒ le levier attendu par l'audit (le REJET) n'est PAS le
+#     poste dominant : c'est l'ALIGNEMENT.
+#   - LEVIER n°5 CHIFFRÉ sur le MÊME jeu de brutes : `winsorized` fenêtre 4
+#     porte `empilement` à 5 369,9 ms/frame (×1,99) — le REJET passe de 127,6 à
+#     2 167,9 ms/frame (×17) et DEVIENT le poste dominant (40,4 %). Choisir
+#     `kappa` n'est donc pas un confort : c'est la moitié du mur.
+#   - Aucun fichier de l'application touché hors de cette instrumentation :
+#     non-régression rejouée (garde-fou, banc J5 qui pilote la VRAIE
+#     `_worker_empiler_frame`, bancs du worker).
+
+# v2.98.8 : DÉFAUT CORRIGÉ — BASCULER SUR L'ÉTIREMENT STF APRÈS DU VERALUX
+#   DONNAIT UNE IMAGE BLANCHE (branche `OptimisationUI`, AUCUNE release,
+#   **VALIDÉ EN RÉEL par Alain le 21/10/2026 : « Testé OK »**).
+#   Le défaut, SEUL point qui bloquait la fusion vers `master` (test complet
+#   d'Alain du 21/10/2026) : « après avoir joué en fin d'empilement avec un peu
+#   tous les paramètres EN ÉTIREMENT VERALUX, basculer sur l'étirement STF
+#   donne une image blanche ».
+#   - CAUSE, MESURÉE AVANT TOUTE CORRECTION (outil NEUF
+#     `bancs/_diag_bascule_stf_blanc.py`, vraie `App` + vraie `DisplayProcessor`,
+#     séquence réelle, 7 scénarios) : la MÉMOIRE d'étirement du STF
+#     (`DisplayProcessor._stats`, un lissage TEMPOREL de l'empilement) était
+#     POSÉE pendant la phase VeraLux — une simple IMAGE D'ATTENTE suffit : le
+#     STF y calcule ses stats sur la pile du moment (c'est le chemin qu'emprunte
+#     un geste de l'utilisateur, `_pousser_rendu`, ou le filet anti-écran figé)
+#     — puis JAMAIS rafraîchie, parce que depuis l'étape 1a le rendu de frame
+#     n'existe plus quand la chaîne est attendue. À la bascule,
+#     `_moteur_stf(live=False)` RÉUTILISAIT cette mémoire (`_auto_params` la
+#     garde dès qu'elle existe) : l'image d'aujourd'hui était étirée avec le
+#     point noir d'hier. MESURÉ sur la séquence : mémoire
+#     `(0,000882, 0,000345, 0,001972)` (la 1re pile de la session) contre un
+#     empilement à 0,048 ⇒ `lo` −0,000084, `hi` 0,004335 — **`hi` 11 fois SOUS
+#     le fond** ⇒ tout écrête à 1 : **médiane 255, 100 % des pixels ≥ 250,
+#     écart 180,3 niveaux** avec le STF sain. Le niveau de l'empilement change
+#     dans une vraie session (maître dark/flat chargé ou retiré — test v2.98.7
+#     —, dossier qui mélange plusieurs nuits ou filtres, Lune qui se couche…) :
+#     l'écrêtage est alors TOTAL.
+#   - CORRECTIF (deux volets, `processing/display.py`, `ui/renderer.py`,
+#     `ui/app.py`) :
+#     ① **la mémoire du STF ne traverse pas une période VeraLux** — dans
+#       `process()`, si le dernier rendu n'était PAS un rendu STF
+#       (`_dernier_moteur_rendu`, écrit en fin d'appel, seul écrivain = le fil
+#       de rendu), elle est JETÉE (`oublier_memoire_stf()`) : le STF repart de
+#       la MESURE de l'image courante. C'est le correctif du défaut signalé.
+#       Le MOTEUR est désormais lu UNE SEULE FOIS par appel (branche d'affichage
+#       ET mémoire publiée décrivent le même rendu : une bascule en vol ne peut
+#       plus mélanger les deux moteurs dans un rendu).
+#     ② **la mémoire AVANCE au rendu d'une NOUVELLE pile même quand la chaîne
+#       est attendue** : `_maj_lbl_vl` passe `live=True` au rendu du `vl_new`
+#       d'une pile confiée à la chaîne (`_refresh_preview(live=...)`, nouveau
+#       paramètre — `False` par défaut, donc les gestes ne changent pas).
+#       Sans ce volet, le STF auto restait GELÉ sur la première pile de la
+#       session dans les modes à chaîne (STF + chroma/GraXpert/débruitage/
+#       netteté) : même famille de défaut, même risque de blanc.
+#   - PREUVES : banc NEUF `bancs/_test_bascule_stf_blanc.py` (5 volets) —
+#     TÉMOIN INVERSÉ (même séquence, garde-fou neutralisé : médiane 255,
+#     100 % ≥ 250 — la reproduction est la bonne), CORRECTIF (l'image de la
+#     bascule est IDENTIQUE AU BIT au STF de référence), NON-RÉGRESSION (bascule
+#     à niveau stable : écart 0,00), la mémoire AVANCE (`live=True`) sans être
+#     touchée par un geste (`live=False`, jalon 79 intact), et l'INTERFACE passe
+#     bien `live=True` à ce rendu-là. Non-régression rejouée : 1a (banc 1a),
+#     fil de rendu au bit (banc 41), chaîne pré-étirement (banc 125), P7 (banc
+#     P7), conservation VeraLux (banc 128), VeraLux 2/3, histogramme 75, fond
+#     bleu 62, couleurs immédiates 39, moteur 41 — TOUS VERTS. (Le banc 79 garde
+#     ses 4 échecs PRÉEXISTANTS de l'étape 1b, identiques sans ce lot.)
+# v2.98.7 : DÉFAUT CORRIGÉ — LES CHEMINS DES MAÎTRES DARK/FLAT SONT PERSISTÉS
+#   (branche `OptimisationUI`, AUCUNE release, AUCUN pixel changé).
+#   Le défaut, trouvé pendant l'audit mémoire du 21/10/2026 : `_load_dark` /
+#   `_load_flat` chargeaient l'image en mémoire (`calib.darks`/`flats`) et
+#   n'écrivaient RIEN dans `config.json` — d'où une re-sélection des maîtres à
+#   CHAQUE session. Ils étaient bien APPLIQUÉS (`worker.py` → `calib.apply`),
+#   seule la trace manquait.
+#   - `processing/calibration.py` : `poser_dark()`/`poser_flat()` (poser un
+#     maître DÉJÀ lu — aucune I/O) et deux fonctions PURES, testables sans
+#     écran : `cles_persistees()` (état vivant → clés `calib_dark_unique` /
+#     `calib_dark_<rôle>`, idem `calib_flat_*`) et `lire_cles_persistees()`
+#     (lecture TOLÉRANTE : toute entrée qui n'est pas une chaîne non vide est
+#     ignorée).
+#   - `ui/app.py` : `_persister_calib()` écrit les CHEMINS après chaque geste
+#     (chargement, effacement — les clés des maîtres absents sont d'abord
+#     retirées, sinon un maître effacé reviendrait). La RESTAURATION est
+#     DIFFÉRÉE (`_restaurer_calib_differe` + `_charger_maitre` +
+#     `_appliquer_calib`, file `_calib_q` drainée par `_tick_corps`) : les
+#     chemins se lisent sans I/O, les FICHIERS sont lus dans un fil DÉMON borné
+#     (5 s par maître) — le fil d'interface ne fait JAMAIS d'I/O (leçon
+#     v2.98.4 : un maître peut vivre sur un NAS injoignable, et une lecture au
+#     démarrage empêcherait l'application de s'ouvrir). Un maître illisible est
+#     DIT (ligne d'état + journal), les autres se chargent quand même.
+#   - `ui/config_ui.py` : appel depuis `_restaurer_config` (après la
+#     composition, pour que les rôles soient connus).
+#   - Banc NEUF `bancs/_test_calib_persistance.py` : aller-retour des clés,
+#     tolérance, `apply()` inchangé au bit, persistance par les gestes de
+#     l'interface, restauration réelle (rôles + sources), fichier manquant
+#     sans échec, et PREUVE que la lecture se fait HORS du fil d'interface.
+#   VALIDÉ EN RÉEL (21/10/2026, `perf-9.json`) : Alain confirme « la sauvegarde
+#   fonctionne, on retrouve bien les dark quand on réouvre » (3 clés dans
+#   `config.json` : `calib_dark_unique` = MasterDark_60, `calib_dark_B` = 120,
+#   `calib_dark_Ha` = 180). La jauge `postes` NOMME alors le poste **`calib`
+#   : 96,2 Mio** (3 × 32,07 — maîtres PLEINE FRAME 3856×2180 float32) : le
+#   résiduel n'est plus aveugle sur les maîtres. Bilan `perf-9` (683,2 s,
+#   67 frames, VeraLux + chroma) : `ui_tick` **22,7 s = 3,3 %** du mur
+#   (0,70 ms/tour, max 92 ms), `tick_postes` 4,9 ms (la jauge coûte ~0,02 %),
+#   RSS max **4 252,2 Mo** (inchangé), stackers 3 095,7 (72,8 % du RSS), hors
+#   stackers 1 156,5 = `disp` 226,1 + `rendu` 206,2 + `calib` 96,2 + aligneurs
+#   24,6 + base 148,0 ⇒ **455,3 Mio sans tableau nommé** (dont **193 Mio de
+#   fragmentation**). La CHAÎNE DE RENDU (`disp` + `rendu` = 432,3 Mio) est
+#   **47,8 % du hors-stackers** : c'est le prochain poste à instruire.
+
+# v2.98.6 : MÉMOIRE — « NOMMER LE RÉSIDUEL » (branche `OptimisationUI`, AUCUNE
+#   release, AUCUN pixel changé). Le relevé `perf-8.json` (945,5 s, 72 frames,
+#   v2.98.5) VALIDE le lot précédent en réel : RSS max 4 458,9 → 4 247,1 Mo
+#   (**−211,8**), pic 4 563,5 → 4 541,4, l'interface et l'empilement inchangés.
+#   - `perf.py` : jauge NEUVE `postes` — inventaire des tableaux de
+#     l'APPLICATION rangés par attribut de premier niveau (`aligner`, `calib`,
+#     `disp`, `_hist_*`…), **dédupliqué par `id()`**, seuil 64 Kio, aucun
+#     parcours de Tk/PIL/astropy (coût maîtrisé). `postes_memoire()` (PURE) +
+#     `jauger_postes()`. Coût NUL hors `--perf` (premier test).
+#   - `ui/app.py` : échantillonnage à cadence LENTE (20 s) dans `_tick_corps` —
+#     un état de régime, pas un événement.
+#   - `bancs/_mesure_memoire_stackers.py` : `--perf-json` sert aussi à LIRE (le
+#     millésime est comparé à v2.98.5 : un relevé antérieur gonfle le résiduel
+#     de 96,2 Mio), la chaîne [3 bis] est RAMENÉE à la géométrie du run
+#     (`source_px`, ×0,882), section **[6]** (postes + candidats vérifiés),
+#     section **[7]** `--app` (App réelle) et **mesure de FRAGMENTATION** (RSS
+#     gardé après libération de tous les tableaux).
+#   MESURES (perf-8) : résiduel **555,6 Mio** — dont **fragmentation mesurée
+#   +193 Mio** après UN SEUL rendu VeraLux (temporaires ~1,5 Go, tout le reste
+#   libéré : ce n'est pas une fuite, c'est l'allocateur) ; maîtres de
+#   calibration **0 Mio** (aucun dark/flat dans la config), archive FITS
+#   **0 Mio** (elle ne garde que des chemins), 3 références d'alignement
+#   **21,2 Mio** max (`ref_gray` uint8). Le reste se nomme avec la jauge
+#   `postes` sur un relevé réel : `python AVAStack.py --perf --perf-json perf-9.json`.
+
+# v2.98.5 : MÉMOIRE — la COPIE de l'empilement pleine résolution devient une
+#   RÉFÉRENCE (branche `OptimisationUI`, AUCUNE release, AUCUN pixel changé).
+#   `App._stack_pleine_res` (option « Rendu pleine résolution ») était posé par
+#   `np.asarray(stack, np.float32).copy()`. Or `stack` sort de
+#   `LiveStacker.mean()` / `CompositeStacker.mean_avec_canaux()`, qui ne rendent
+#   que des tableaux JAMAIS modifiés en place (recadrages = VUES ; corrections =
+#   copie ou image elle-même, `appliquer_gains*`) et que le STACKER garde DÉJÀ
+#   (`_memo_moy`, `_memo_compo`, `_fit_cache`) : la copie était un doublon de
+#   **96,2 Mio** à la géométrie native (3856×2180×3 float32) et **85,0 Mio** à la
+#   géométrie RECADRÉE du run M33 (7 425 000 px).
+#   - `core/worker.py` + `ui/app.py` : référence au lieu de copie. Le REPLI
+#     « rien d'empilé » (`stack is None`, `show` = la brute) garde, LUI, une
+#     copie défensive : ce tampon est réutilisé à la frame suivante.
+#   - `processing/display.py` : `_vl_src` RETIRÉ — écrit et JAMAIS lu (vérifié
+#     sur tout le dépôt), il retenait l'image soumise : décocher l'option ne
+#     libérait donc pas réellement l'image. Gain nul en régime établi, mais la
+#     libération annoncée est enfin vraie.
+#   BANC NEUF `bancs/_test_p1_memoire_reference.py` (30 vérifications) : contrat
+#   d'immuabilité VÉRIFIÉ sur les vraies classes, chemin RÉEL `_pousser_rendu`
+#   (identité de l'image + rendu IDENTIQUE AU BIT, SHA-256), garde de source
+#   (plus de `.copy()` sur la branche `stack`), écart mémoire MESURÉ (comptage
+#   dédupliqué = nbytes) et RSS (96 Mo rendus à la libération, taille réelle).
+#   `bancs/_mesure_memoire_stackers.py` mis à jour : chaîne de rendu **376,8 →
+#   280,6 Mio** ; le RÉSIDUEL affiché est gonflé de 96,2 Mio tant qu'il est lu
+#   contre `perf-7` (relevé ANTÉRIEUR au lot) — à re-mesurer par un `--perf`.
+
+# v2.98.4 : `tick_avant` — LA CAUSE ÉTAIT LE RÉSEAU, PAS LE CPU (branche
+#   `OptimisationUI`, AUCUNE release). Correctif de TROIS LIGNES, comportement
+#   IDENTIQUE (choix d'Alain : « zéro changement »).
+#   MESURE (`perf-6.json`, 590 s, 47 frames, VeraLux + chroma) : `tick_avant` =
+#   453,6 s dont **439,6 s d'ATTENTE** (`part_attente` **0,969**) pour **14,3 s**
+#   de CPU, `cores_moyens` **0,98** ⇒ ce n'était PAS un manque de cœurs :
+#   l'hypothèse « famine par les 14 fils natifs d'OpenCV » est **ÉCARTÉE** (et
+#   corrigée dans CLAUDE.md, qui l'affirmait).
+#   LA PILE DU GUET DE GEL a nommé le coupable (rapports identiques du 21/10) :
+#   `app.py:6933` (`_tick_corps` lit `camera.last_file`) → `multifolder.py:131`
+#   → `genericpath.getmtime`. `MultiFolderCamera.last_file` était une PROPRIÉTÉ
+#   qui faisait `os.path.exists` + `os.path.getmtime` sur le dernier fichier des
+#   5 dossiers de canaux, à CHAQUE tour d'interface. Mesuré sur le partage SMB
+#   des canaux : `exists` seul **0,8 ms/tour**, `exists` + `getmtime`
+#   **178 ms/tour** (10 requêtes réseau par tour, ~5,7 tours/s, 3 388 tours).
+#   - `cameras/multifolder.py` : le calcul est EXTRAIT **tel quel** dans
+#     `_calculer_dernier_fichier()` (corps reproduit VERBATIM — c'est ce qui
+#     garantit le zéro-changement) et appelé par `read()`, **une fois par image
+#     lue**, dans le fil d'ACQUISITION ; `last_file` devient une simple lecture
+#     d'attribut (`_dernier_fichier`). ÉQUIVALENCE : les entrées du calcul (les
+#     `cam.last_file` des dossiers) ne changent QUE lors d'une lecture réussie et
+#     `read()` recalcule juste après ⇒ la valeur publiée est, à chaque instant,
+#     celle que l'ancienne propriété aurait rendue.
+#   - RIEN d'autre n'est touché : la DÉTECTION des nouvelles images (« taille
+#     stable + mtime ancien ⇒ fichier complet », file `_pending`, marquage par
+#     nom) vit dans `FolderCamera._scan` / `read` et n'appelle JAMAIS `last_file`.
+#   - BANC NEUF `bancs/_test_multifolder_last_file.py` (24 vérifications) :
+#     fichiers déposés UN PAR UN dans 2 dossiers (comme NINA en direct) ⇒ lus une
+#     fois chacun, dans le bon rôle et dans l'ordre ; fichier encore en cours
+#     d'écriture IGNORÉ puis pris dès qu'il est stable ; aucun fichier relu ;
+#     `last_file` comparé à l'ANCIENNE formule (témoin recopié verbatim) ;
+#     **0 appel** à `os.path.exists`/`getmtime` espionnés sur 200 lectures ; la
+#     valeur SUIT les lectures ; `stats()` inchangé.
+#   - ATTENDU au prochain relevé (`perf-7.json`) : `ui_tick` 456 s → **~17-20 s**
+#     (3 % du mur au lieu de 77 %), `part_attente` ≈ 0,03.
+
+# v2.98.3 : PHASE 1 — INSTRUIRE `tick_avant` : MESURER L'ATTENTE (branche
+#   `OptimisationUI`, AUCUNE release). Étape ① du lot : MESURE SEULE — aucun
+#   pixel, aucune optimisation, aucun changement de comportement.
+#   CONSTAT À TRANCHER (`perf-5.json`, 637 s, 75 frames) : après 1b le fil Tk
+#   n'applique plus qu'un rendu déjà calculé (`ui_rendu` 102 s → 2,2 s) et
+#   pourtant `ui_tick` reste à 61 % du mur, avec `tick_avant` DOUBLÉ
+#   (24,5 → 64,0 ms/tour) pour ~6 ms de travail mesuré dans la fenêtre (FITS
+#   38 ms, mesures 3,1 s, réglages 2,8 s sur toute la session). Deux causes
+#   OPPOSÉES restaient possibles — `_tick` devenu plus lourd, ou le fil Tk privé
+#   de cœur par les fils NATIFS d'OpenCV (14, jamais bornés ; `cpu_s` 1 270 s
+#   pour ~550 s de travail mesuré) — et elles n'appellent PAS le même correctif.
+#   - `avastack/perf.py` : `t0_cpu()` (jumeau de `t0()` pour le CPU du FIL
+#     APPELANT, `time.thread_time()` : Python 3.7+ sous Windows/Linux, 3.13+
+#     sous macOS) et `duree_attente(base, depart_mur, depart_cpu)` qui pose
+#     `<base>_cpu` et `<base>_attente` = mur − CPU, borné à 0. Le mur n'est pas
+#     recompté (il garde son chrono) : `duree_attente` se pose À CÔTÉ.
+#     `cpu_fil_disponible()` + `contexte.cpu_fil` disent si la plateforme sait
+#     le mesurer — une attente INCONNUE ne doit jamais devenir un zéro.
+#     `instantane()` publie en plus le bilan `attente` (mur_ms, cpu_ms,
+#     attente_ms, `part_attente`) et `resume()` l'écrit en clair.
+#     COÛT NUL hors `--perf` : `t0_cpu()` rend None sans appeler d'horloge et
+#     `duree_attente()` ne pose rien (même contrat que `chrono()`).
+#   - `ui/app.py` : DEUX points seulement — `_tick` (tour complet : `ui_tick`)
+#     et `_tick_corps` (`tick_avant`). Aucun calcul déplacé, aucun pixel.
+#   - BANC `bancs/_test_phase0_perf.py` : section **[2 bis] NEUVE** — inactif =
+#     no-op, `sleep` de 20 ms ⇒ part d'attente ≈ 1, `mur = cpu + attente` à 1 ms
+#     près, CPU publié comparé à une mesure DIRECTE de `time.thread_time()`,
+#     calcul pur ⇒ attente NETTEMENT moindre que le sommeil, `resume()` qui
+#     publie la part, absence de départ CPU ⇒ RIEN de posé, et repli
+#     plateforme-sans-horloge vérifié au lieu d'être déclaré en régression ;
+#     câblage AST des trois nouveaux appels ; section [8] : `attente` et
+#     `contexte.cpu_fil` présents dans le JSON (110 vérifications exécutées).
+#     LEÇON : un seuil ABSOLU (« calcul pur ⇒ part < 0,2 ») est FLAKY — il
+#     mesure la CHARGE DE LA MACHINE (constaté : part 0,48, CPU 15,6 ms pour
+#     30 ms de mur sur un poste occupé). Les assertions sont donc RELATIVES
+#     (calcul vs sommeil dans la même exécution) ou ancrées sur une mesure
+#     directe.
+#   - SUITE (étape ②, sur accord) : relever `perf-6.json` en réel. Si
+#     `part_attente` de `tick_avant` est proche de 1, la famine est PROUVÉE et
+#     le levier est `cv2.setNumThreads(N)` borné au démarrage (repli
+#     multiplateforme), pas un dégraissage de `_tick`.
+
+# v2.98.2 : PHASE 1 / ÉTAPE 1b de l'audit PERFORMANCE — RENDU HORS FIL Tk
+#   (branche `OptimisationUI`, AUCUNE release).
+#   CONSTAT MESURÉ (`perf-4.json`, 637 s, 48 frames) : après l'étape 1a il ne
+#   restait plus QU'UN rendu par frame, mais ce rendu pesait encore 102 s sur
+#   le fil Tk (51 × ~2 000 ms d'étirement à pleine résolution) — `ui_tick` à
+#   48 % du temps mural, fenêtre immobile deux secondes à chaque image.
+#   - `ui/rendu.py` (NEUF, typé) : `FilRendu` — fil DÉMON unique, UN SEUL job
+#     en attente (« le dernier gagne », aucune backpressure : une nouvelle
+#     demande ÉCRASE la précédente), résultat publié avec l'image uint8, les
+#     DEUX jeux de bacs et l'image d'avant les barres de niveaux. C'est le SEUL
+#     ÉCRIVAIN de l'état de `DisplayProcessor` (stats EMA du STF comprises).
+#     Jeton de GÉNÉRATION : un résultat calculé avant un reset est JETÉ
+#     (`rendus_perimes`), jamais affiché. Mode `immediat` pour les bancs et les
+#     mesures qui lisent l'image juste après l'avoir demandée.
+#   - `ui/renderer.py` : `_rendre_et_afficher()` ne fait plus que PRÉPARER la
+#     demande (la SEULE lecture Tk qui reste : `_src_rendu` → `var_view`) et la
+#     confier au fil ; `_appliquer_rendu()` affiche un résultat déjà calculé
+#     (`_show_image` + `_draw_hist` sur des bacs tout prêts) ;
+#     `_appliquer_rendus_disponibles()` est appelé par `_tick` ;
+#     `attendre_rendu()` sert aux bancs ; `_vider_ecran()` purge le fil.
+#     `_refresh_preview()` devient une DEMANDE : un geste ne bloque plus la
+#     fenêtre pendant les ~2 s du rendu.
+#   - `ui/app.py` : création du fil, application des résultats dans
+#     `_tick_corps` (dans la fenêtre `tick_conso`), `tick_traitee` passe par le
+#     fil (le `process()` de 2 008 ms qui vivait dans `tick_apres` disparaît),
+#     purge sur session neuve (`_reinit_etat_session`), arrêt du fil à la
+#     fermeture (`_on_close`).
+#   - `ui/widgets/histogram.py` : `_histogrammes_purs()` — fonction PURE, sans
+#     Tk, qui rend les deux jeux de bacs ; `_maj_histogrammes()` la réutilise
+#     (une seule implémentation, aucun écart possible entre les deux chemins).
+#   - MESURE : `fil_rendu` / `fil_etirement` / `fil_histogrammes` mesurent le
+#     CALCUL (hors fil Tk) ; `ui_rendu` / `ui_histogrammes` / `ui_dessin` ne
+#     mesurent plus que l'APPLICATION. Compteurs `rendus_demandes`,
+#     `rendus_ecrases`, `rendus_perimes`, `rendus_erreur` ; jauge `rendu_q`.
+#   - BANC `bancs/_test_render_worker_bit_exact.py` : 41 vérifications (image
+#     et bacs au bit, UN SEUL écrivain de l'EMA par espion, fil Tk qui continue
+#     de tourner pendant un calcul BLOQUÉ, « le dernier gagne », purge, fil
+#     arrêté, `_on_close`). Bancs 1a, Phase 0, P5, histogramme, reset et
+#     garde-fou : verts.
+
+# v2.98.1 : PHASE 1 / ÉTAPE 1a de l'audit PERFORMANCE — NE PLUS RENDRE DEUX FOIS
+#   PAR FRAME (branche `OptimisationUI`, AUCUNE release).
+#   CONSTAT MESURÉ (Phase 0, `perf-3.json`, 13 min, 5 canaux M33) : `rendus` =
+#   132 pour 71 frames — un rendu COMPLET de la pile brute à l'arrivée de la
+#   frame, puis un SECOND rendu complet sur `vl_new` (`_maj_lbl_vl` →
+#   `_refresh_preview`), soit 127 s de fil Tk pour 61 rendus dont l'image était
+#   identique quand aucune étape de chaîne n'était cochée EN MODE STF. NUANCE
+#   mesurée le 20/10 (`perf-4.json`, config réelle) : sous **VeraLux** (ou avec
+#   chroma cochée) le SECOND rendu est LÉGITIME (l'image est étirée dans le
+#   worker) — c'est alors le PREMIER (pile brute en repli STF, transitoire) que
+#   1a supprime. Les deux régimes sont couverts par le banc.
+#   - `processing/display.py` : la SOUMISSION de la chaîne est factorisée dans
+#     `_soumettre_chaine()` (mêmes clés, mêmes paramètres, même ordre — aucun
+#     pixel ne change) ; `_process_chaine()` n'en garde que la lecture du cache.
+#     NOUVEAU `demander_chaine(img)` : soumet le MÊME job SANS rendu —
+#     INDISPENSABLE, car `process()` était le SEUL point de soumission : ne plus
+#     rendre la frame aurait GELÉ la chaîne. NOUVEAU `chaine_sollicitee()` :
+#     condition EXACTE du `vl_new` attendu (GraXpert / débruitage / netteté /
+#     chroma, ou VeraLux qui étire dans le worker).
+#   - `ui/app.py` : à l'arrivée d'une frame en vue « pile », si la chaîne est
+#     active ET que CETTE pile vient d'être annoncée (`notify_new_stack`), la
+#     frame est confiée à `demander_chaine()` et N'EST PAS RENDUE ; le `vl_new`
+#     rend l'image FINALE une seule fois. FILET anti-écran figé :
+#     `RENDU_FINAL_DELAI_S` (15 s ≈ 3× le pire `vl_new` mesuré) → rendu forcé de
+#     la frame en attente (`rendus_filet`). En RAFALE DE DOSSIER, le
+#     déclenchement de la chaîne est déjà différé (jalon 80) : la frame reste
+#     rendue immédiatement (volet [6] du banc). Compteurs `rendus_differe` /
+#     `rendus_evites` / `rendus_filet`. `_reinit_etat_session` vide l'attente
+#     (aucun rendu fantôme).
+#   - DÉFAUT DE JAUGE corrigé (le second du même genre) : OR-er les NEUF cases
+#     `var_vl_*` ne suffisait pas — `var_vl_neutre` (neutralisation du fond) est
+#     cochée PAR DÉFAUT et ne sollicite AUCUN calcul en STF/manuel (elle
+#     s'applique dans `process()`), donc `vl_actif` était TOUJOURS vrai. La jauge
+#     vaut désormais `disp.chaine_sollicitee()` ; `vl_couleurs` sépare les cases
+#     d'APRÈS étirement, `vl_gains` garde les gains mesurés.
+#   - `ui/renderer.py` : `_refresh_preview` marque la pile courante comme rendue
+#     (l'attente est satisfaite) — un réglage qui rend l'aperçu ne provoque pas
+#     un second rendu au `vl_new` suivant.
+#   - IMAGE D'ATTENTE JAMAIS AFFICHÉE (constat d'Alain : « une image blanche
+#     entre deux images ») : `DisplayProcessor.dernier_etait_attente` dit si le
+#     rendu qui suit est un RÉSULTAT ou le repli transitoire ; `_rendre_et_afficher`
+#     garde alors l'image PRÉCÉDENTE (compteur `rendus_gardes`). Au tout premier
+#     rendu (aucune image), l'attente s'affiche pour ne pas laisser l'écran vide.
+#   - BANC NEUF : `bancs/_test_1a_rendu_final.py` (40 vérifications) — jauge,
+#     1 rendu/frame sans case, AUCUN rendu de la pile brute avec chaîne active,
+#     filet vérifié, rattrapage multi-frames, rafale de dossier inchangée, image
+#     finale IDENTIQUE AU BIT. Non-régression : Phase 0 (58 vérifications),
+#     VeraLux 128, garde-fou (pyright 0 sur 55 fichiers, hashes au bit).
+#   - RÉSULTAT RÉEL (`perf-4.json`, 637 s, VeraLux + chroma, 48 frames) :
+#     `rendus` **51 (1,06/frame)** contre 132 (2,75), `rendus_differe` 48/48,
+#     `rendus_filet` 0, `rendus_gardes` 17 (image d'attente bloquée),
+#     `tick_conso` 151,6 s → **0,67 s**, `ui_rendu` 276 s → **102 s**,
+#     `ui_tick` 61 % → **48 %** du mur. Restent `ui_rendu` (1b) puis
+#     `tick_avant` (200 s, 24,5 ms/tour).
+
+# v2.98.0 : PHASE 0 de l'audit PERFORMANCE/MÉMOIRE (branche `OptimisationUI`).
+#   MESURER D'ABORD, DANS L'APPLICATION. La réponse d'audit du 20/10 (conservée
+#   dans `AUDIT_PERF_REPONSE.md`) classe le vrai goulot : ① le RENDU COMPLET est
+#   fait sur le fil Tk À CHAQUE FRAME reçue (250–320 ms, budget de 30 ms violé
+#   ×10) ; ② les accumulateurs du `LiveStacker` sont en `float64` (≈2,2 Go par
+#   canal à 26 Mpx, >11 Go à 5 canaux). Mais les chiffres par étage venaient d'un
+#   BANC (image factice), pas du produit : ce jalon INSTRUMENTE — il n'optimise
+#   RIEN, ne change AUCUN pixel et n'ajoute AUCUNE dépendance.
+#   - `avastack/perf.py` (NEUF, typé) : `chrono()` par catégorie (n, total,
+#     maximum, dernière durée), `compter()`, `poser_gauge()`, `memoire_mo()` sans
+#     `psutil` (ctypes/psapi sous Windows, `/proc/self/statm` + `VmHWM` sous
+#     Linux, `ru_maxrss` sous macOS), `taille_tableaux()` (octets des buffers
+#     d'empilement, tableau PARTAGÉ compté une fois), `jauger_empileur()`,
+#     `instantane()`, `ecrire_json()` ATOMIQUE et tolérant (`.part` +
+#     `os.replace`, motif de `fiche.py`). ACTIVATION OPT-IN : `AVASTACK_PERF=1`
+#     ou `--perf` ; INACTIF, `chrono()` rend un objet PARTAGÉ qui ne fait RIEN —
+#     coût nul, donc aucun risque pour la course du banc 76 ni pour les hashes
+#     au bit des bancs d'empilement.
+#   - Câblage MESURE SEULE : `ui/renderer.py` (`ui_rendu`, `ui_etirement`,
+#     `ui_histogrammes`, `ui_dessin`), `ui/app.py` (`ui_tick`, frames reçues,
+#     file pleine, profondeur de file, écriture à la fermeture — import PRIVÉ
+#     `_perf`, la surface publique de `app.py` reste FIGÉE), `core/worker.py`
+#     (`lecture_frame`, `empilement`, file pleine, RSS, octets des stackers).
+#     Les deux `except queue.Full: pass` (worker et `_pousser_rendu`) sont
+#     désormais COMPTÉS : c'étaient des pertes SILENCIEUSES.
+#   - DÉFAUT RÉEL corrigé le 20/10 (Alain : « je ne vois pas de perf.json alors
+#     que l'empilement de M33 est en cours ») : la première version n'écrivait
+#     qu'à la FERMETURE et dans le dossier de travail (`%TEMP%`). Trois
+#     correctifs : ① `ecrire_periodique()` — le JSON est réécrit (ATOMIQUEMENT)
+#     toutes les 5 s depuis `_tick`, donc lisible PENDANT la session ; ②
+#     `chemin_defaut()` — le fichier va À CÔTÉ du programme (repli sur le dossier
+#     de travail si l'installation est en lecture seule) ; ③
+#     `python AVAStack.py --perf` (`--perf-json CHEMIN`) arme les mesures SANS
+#     variable d'environnement et IMPRIME le chemin ; `note_etat()` note au
+#     journal, au démarrage, si les mesures tournent et OÙ est le fichier.
+#     `perf.json` est ignoré par git.
+#   - PHASE 0 bis (20/10/2026, après la PREMIÈRE session réelle de 3 h 26 sur
+#     5 canaux M33) — la mesure a montré ① 1 015 rendus pour 523 frames (≈2 par
+#     frame) dont la moitié SANS nouvelle donnée (`_pousser_rendu` recalculait
+#     le composite pleine résolution puis forçait la chaîne), ② `ui_rendu` à
+#     1 157 ms dont 1 087 ms d'ÉTIREMENT (le banc disait 250 ms : la source
+#     étirée n'est donc pas l'aperçu 1600 px), ③ `ui_tick` à 66 ms alors que le
+#     budget est de 30 ms et que le worker n'est occupé que ~10 % du temps — deux
+#     causes OPPOSÉES (travail Tk ou attente du GIL) qu'il faut séparer. Ajouts :
+#     `ui_tick_libre` / `ui_tick_occupe` (drapeau `perf.occupe()` posé par le
+#     worker autour de `_worker_empiler_frame`), découpage du corps de `_tick` en
+#     `tick_avant` / `tick_conso` / `tick_apres` (par `duree()`, SANS réindenter
+#     les 350 lignes), `rendu_pousse` (coût d'un rendu poussé côté worker),
+#     compteurs `rendus` / `pousse_rendu`, et la jauge `source_px` (taille
+#     RÉELLEMENT étirée) — c'est elle qui tranchera « pleine résolution ».
+#   - PHASE 0 ter (20/10/2026, après le 2e relevé) — VERDICTS : ① `ui_tick_libre`
+#     (163,6 ms) est PLUS LENT que `ui_tick_occupe` (92,1 ms) ⇒ la contention
+#     GIL est **ÉLIMINÉE** : le coût est dans le fil Tk lui-même ; ② `tick_avant`
+#     pèse **91 ms/tour (51 % de la session)** avec un maximum de **11,95 s** —
+#     une telle durée, AVANT la file, ne peut être que de l'entrée/sortie : la
+#     seule I/O de cette zone est `fits.open()` dans
+#     `_mettre_a_jour_nom_depuis_fits()` (une fois par nouvelle brute) ;
+#     ③ `source_px` = **7 286 100** ⇒ l'étirement se fait sur **7,29 Mpx**, pas
+#     sur l'aperçu 1,92 Mpx (option « Rendu pleine résolution »), d'où 1 166 ms ;
+#     ④ `pousse_rendu` = 49 seulement (`rendu_pousse` 172 ms) ⇒ l'hypothèse
+#     « rendus poussés en trop » est MINEURE (8 s sur 43 min) ; ⑤ la vue
+#     « traitée » faisait un `process()` COMPLET hors `_rendre_et_afficher`
+#     (donc invisible dans `ui_rendu` : c'est le max de 2 008 ms de
+#     `tick_apres`). Ajouts : `tick_fits`, `tick_mesures`, `tick_reglages`,
+#     `tick_vues`, `tick_traitee`.
+#   - PHASE 0 quater (20/10/2026, 3e relevé `perf-2.json`) — l'hypothèse FITS est
+#     **RÉFUTÉE** : `tick_fits` = **0,74 ms** (26 appels, 19 ms au total).
+#     Ce qui reste : ① `ui_rendu` = **2 591 ms × 271 = 51 % du temps mural**
+#     (`ui_etirement` 2 426 ms sur `source_px` = 7,41 Mpx) ; ② `tick_apres` ≈
+#     `tick_vues` (47 ms) avec un max de 4,57 s = un rendu COMPLET déclenché par
+#     `disp.vl_new` → `_refresh_preview` (d'où **1,83 rendu par frame**) ;
+#     ③ `tick_avant` = 55 ms/tour SANS I/O (fits 0,74 ms, mesures 60,9 ms × 126,
+#     réglages 0,57 ms) ; ④ le MÊME travail NumPy coûte **2× plus cher** que dans
+#     le relevé précédent (étirement 1 166 → 2 426 ms, empilement 2 656 →
+#     5 360 ms) ⇒ saturation CPU ou charge externe. Ajouts : sonde **CPU du
+#     processus** (`cpu_s` par `GetProcessTimes`/`getrusage`) et le rapport
+#     `cores_moyens` dans l'instantané, jauges `vl_actif` / `vl_stage` /
+#     `threads`, compteur `vl_new`. La leçon « GIL éliminé » de la Phase 0 ter
+#     est NUANCÉE : le drapeau `occupe()` ne couvre QUE l'empilement, pas la
+#     chaîne pré-étirement.
+#   - VERDICTS DU 3e RELEVÉ (`perf-3.json`, 13 min, 5 canaux, pleine résolution
+#     cochée) — la mesure TRANCHAIT : ① `cpu.cores_moyens` = **1,59** ⇒ le
+#     processus n'utilise PAS la machine (nous ne la saturons pas : le 2× de
+#     `perf-2` venait d'ailleurs) ; ② `rendus` = **132 = 71 rendus de frame +
+#     61 rendus `vl_new`** ⇒ **DEUX rendus complets par frame** (légitimes : la
+#     chaîne était active, `vl_actif`=true, mais c'est le prix) ; ③ `ui_rendu` =
+#     2 093 ms × 132 = **276 s = 35 % du mur**, `ui_tick` = **61 % du mur**,
+#     `tick_apres` ≈ `tick_vues` = **127 s de rendus `vl_new`** (max 4,55 s) ;
+#     ④ `tick_fits` = 2,4 ms, `tick_etat` = 9,9 ms ⇒ FITS et ligne d'état
+#     INNOCENTÉS ; ⑤ `source_px` = 7 410 000 = la PLEINE RÉSOLUTION **choisie**
+#     (« Rendu pleine résolution » cochée dans tous les relevés) ⇒ la réponse est
+#     ARCHITECTURALE (Phase 1 : rendu hors fil Tk), pas une réduction d'aperçu.
+#   - Banc : `bancs/_test_phase0_perf.py` (NEUF, 51 vérifications, SANS écran :
+#     coût nul inactif, exactitude sous 4 fils, sonde mémoire, comptage des
+#     tableaux, écriture atomique ET périodique, lancement `--perf`, CÂBLAGE
+#     vérifié par AST, surface publique intacte).
+#     `bancs/_test_refactoring_garde_fou.py` : `perf.py` entre dans la liste
+#     typée (pyright 0 erreur) ; hashes d'empilement toujours verts.
+
+# v2.97.0 : P5 (lot 5) — RENDU AU RELÂCHEMENT des curseurs (`OptimisationUI`).
+#   MESURER D'ABORD, CORRIGER ENSUITE : les chiffres du 20/10 (outil
+#   `bancs/_mesure_p5_reactivite.py`, aperçu RÉEL 1600×1200 en plein écran) ont
+#   montré qu'un aperçu coûte ~300 ms et qu'un GLISSEMENT en déclenchait UN PAR
+#   PIXEL de souris — 50 à 76 s pour 200 px, 2 284 % d'un cœur à 60 Hz. ARBITRAGE
+#   D'ALAIN : pendant un glissement on ne calcule RIEN, UN SEUL aperçu au
+#   relâchement ; l'aperçu RÉDUIT pendant le geste n'est PAS retenu (il ne sera
+#   ajouté que si le test réel le réclame). EN ATTENTE DE VALIDATION EN RÉEL ;
+#   AUCUNE RELEASE.
+#   - `ui/app.py` (`_add_slider`) : `cmd` ne fait plus que la VARIABLE et
+#     l'ÉTIQUETTE quand un glissement est en cours (`<ButtonPress-1>` arme,
+#     `<ButtonRelease-1>` clôt et rend UNE fois, par `after_idle` pour laisser
+#     passer les liaisons de CLASSE du ttk.Scale). Hors glissement, un MINUTEUR
+#     DE SECOURS (`DELAI_SECOURS_CURSEUR_MS` = 150 ms, `after`/`after_cancel`,
+#     remis à zéro à chaque pose) ramasse flèches clavier et `s.set()`
+#     programmatique : une RAFALE de poses = UN aperçu. FILET
+#     (`DELAI_SECOURS_GLISSE_MS` = 600 ms) pour un geste ARRÊTÉ sans relâchement
+#     (grab perdu) : jamais d'image périmée. Les gestes DISCRETS (« - »/« + »,
+#     zone de saisie, `_poser_curseur`) appellent `_forcer_rendu_curseur` : ils
+#     restent IMMÉDIATS (la restauration de config doit être complète en sortant,
+#     le banc du jalon 120 lit `disp.*` juste après la construction).
+#   - `App._forcer_rendu_curseur` / `App._rendre_curseurs` : « applique tout de
+#     suite » (un seul chemin de rendu différé, donc jamais deux aperçus pour un
+#     même changement). `_on_auto` et le 🔒 logD les appellent AVANT leur rendu
+#     explicite, sinon celui-ci partirait avec les `disp.*` de l'état précédent.
+#   - CRITÈRES DE SORTIE, MESURÉS PAR LE MÊME OUTIL (20/10) : un pas de
+#     glissement **0,036 ms** (au lieu de ~300 ms), glissement de 200 px
+#     **230–324 ms** (au lieu de 50 à 76 s), **1 aperçu** par glissement complet,
+#     rafale de 60 pas **1,35 s** avec **1 aperçu** (au lieu de 20,15 s et 60
+#     aperçus), charge pour suivre 60 Hz **0,22 %** d'un cœur (au lieu de
+#     2 284 %). Case et spinner INCHANGÉS (~250–300 ms).
+#   - Bancs : `bancs/_test_p5_rendu_relachement.py` (NEUF, 20 vérifications :
+#     câblage des évènements, zéro calcul pendant le geste, image du relâchement
+#     IDENTIQUE AU BIT à un rendu direct, filet, gestes discrets, coalescence du
+#     minuteur) ; `_test_perf_reactivite_jalon79` adapté (il force le rendu après
+#     son `s.set`) ; `_mesure_p5_reactivite` éprouve désormais le VRAI geste
+#     (sections [1] et [8] passent par les gestionnaires de glissement et
+#     comptent les aperçus). Non-régressions vertes : jalon 6 (boutons ±),
+#     jalon 120 (restauration), jalon 79 (29 vérifications), garde-fou
+#     (pyright 0 sur 54 fichiers typés).
+#   - PIÈGE MESURÉ PENDANT LES BANCS : `event_generate("<Return>")` sur une
+#     `ttk.Entry` ne déclenche RIEN si le widget n'a pas le FOCUS — un banc qui
+#     « teste » une zone de saisie sans `focus_force()` ne teste que le silence.
+
 
 # v2.96.1 : P6 — PISTE A : les DEUX DÉFAUTS D'INTERFACE du test réel du 19/10
 #   sont corrigés (accord d'Alain, 20/10/2026) ET **VALIDÉS EN RÉEL le 20/10**

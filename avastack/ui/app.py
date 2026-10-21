@@ -29,6 +29,10 @@ from .. import delais
 from .. import journal
 from .. import ressources
 from .. import travail
+# Phase 0 de l'audit performance (20/10/2026) : instrumentation de MESURE
+# seulement. L'import est PRIVÉ (`_perf`) pour ne pas ajouter un symbole à la
+# surface publique FIGÉE d'`app.py` (banc garde-fou du jalon 100).
+from .. import perf as _perf
 from ..config import CONFIG, sauver_config
 from ..images import lire_filtre_fits, load_image
 # Jalon 108 : `borner_lineaire`, `save_image`, `find_output` et `auto_unflip`
@@ -58,6 +62,11 @@ from ..cameras import SOURCES                            # noqa: F401 (ré-expor
 from ..cameras.base import FILTRES_ROUE
 from ..cameras.qhy import lister_via_sous_processus, tracer_evt  # noqa: F401 (ré-export)
 from ..processing import Calibrator, StarAligner, LiveStacker, DisplayProcessor
+# v2.98.7 : la persistance des maîtres de calibration (clés `calib_dark_*` /
+# `calib_flat_*` et leur lecture tolérante) vit dans le module de calibration.
+# Import PRIVÉ : la surface publique d'`app.py` est FIGÉE (banc garde-fou du
+# jalon 100) et n'a aucune raison d'exposer ces helpers.
+from ..processing import calibration as _calibration_mod
 # P1 (lot 2) : la politique de cadence est importée SOUS UN NOM PRIVÉ — la
 # surface publique de `app.py` est FIGÉE (banc garde-fou du jalon 100) et
 # n'a aucune raison d'exposer `CadenceMesure` / `suffixe_etat`.
@@ -68,6 +77,10 @@ from ..processing import alignment as align_mod
 # ici pour ne pas rompre la surface publique figée de `app.py` (surveillée par
 # le banc garde-fou, qui compte les noms importés du paquet `avastack`).
 from ..processing import display as display_mod           # noqa: F401 (ré-export)
+# 1b (20/10/2026) : le FIL DE RENDU. Importé sous un nom PRIVÉ — la surface
+# publique d'`app.py` est FIGÉE (banc garde-fou du jalon 100) et n'a aucune
+# raison d'exposer le fil ; le banc 1b l'atteint par `app.rendu`.
+from . import rendu as _rendu_mod
 from ..processing.composition import (COMPOSITIONS, CompositeStacker,
                                       extraire_canal, composition_pour_roles,
                                       role_de_filtre, roles_de)
@@ -313,9 +326,32 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
     RAFALE_MAX = _const.RAFALE_MAX
     RAFALE_QUIET_S = _const.RAFALE_QUIET_S
 
+    # --- 1a (20/10/2026) : NE PLUS RENDRE DEUX FOIS par frame --------------
+    # Quand la chaîne pré-étirement est active, la pile brute n'est plus rendue :
+    # son image serait remplacée ~2 s plus tard par l'image FINALE (`vl_new`).
+    # FILET : si `vl_new` n'arrive pas dans ce délai (worker muet, exception
+    # silencieuse), la frame en attente est rendue QUAND MÊME — jamais d'écran
+    # figé. 15 s ≈ 3× le pire `vl_new` mesuré (4,55 s) et couvre une passe
+    # GraXpert live (~10 s chez le mainteneur) sans se déclencher à tort.
+    RENDU_FINAL_DELAI_S = 15.0
+
     DN_EXT_METHODES = _const.DN_EXT_METHODES
     DN_EXT_LABELS = _const.DN_EXT_LABELS
     DN_EXT_CODES = _const.DN_EXT_CODES
+
+    # --- P5 (lot 5, 20/10/2026) : RENDU AU RELÂCHEMENT des curseurs --------
+    # Pendant un GLISSEMENT, `_add_slider` ne calcule plus rien (la variable et
+    # l'étiquette suivent) : l'aperçu part UNE fois au `<ButtonRelease-1>`.
+    # Un changement SANS relâchement (flèches clavier, `s.set()` programmatique)
+    # passe par un minuteur remis à zéro à chaque pose : une RAFALE de poses
+    # (restauration de config, correction de borne…) donne UN aperçu.
+    DELAI_SECOURS_CURSEUR_MS = 150
+    # FILET du glissement : un geste ARRÊTÉ depuis ce délai rend quand même, au
+    # cas où l'évènement de relâchement se perdrait (grab, changement de focus).
+    # Il ne se déclenche jamais pendant un geste qui bouge (chaque pas de
+    # souris le remet à zéro) : « rien pendant le glissement », mais JAMAIS
+    # d'image périmée à l'écran.
+    DELAI_SECOURS_GLISSE_MS = 600
 
     def __init__(self, root: tk.Tk) -> None:
         self.root: tk.Tk = root
@@ -368,7 +404,23 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._ha_ref_bad = 0
         self.calib = Calibrator()
         self.disp = DisplayProcessor()
+        # 1b (20/10/2026) : FIL DE RENDU — le calcul d'image (étirement,
+        # niveaux, gamma, histogrammes) quitte le fil Tk, qui ne garde que le
+        # choix de la source et l'affichage (cf. `avastack/ui/rendu.py`).
+        # C'est le SEUL écrivain de l'état de `disp` (stats EMA du STF
+        # comprises) : tout rendu passe par lui.
+        self.rendu = _rendu_mod.FilRendu(self)
         self._vl_frames = None        # nb de frames du dernier empilement affiché
+        # 1a (20/10/2026) : rendu d'une frame DIFFÉRÉ à l'image finale de la
+        # chaîne. `_rendu_attente` = pile non rendue (None = rien en attente),
+        # `_rendu_attente_t` = instant de la dernière frame confiée à la chaîne,
+        # `_rendu_attente_frames` = son compteur de frames (diagnostic), et
+        # `_rendu_fait_frames` = dernier compteur de frames réellement RENDU
+        # (sert à ne pas rendre un `vl_new` qui redonnerait la même image).
+        self._rendu_attente: Any = None
+        self._rendu_attente_t: float = 0.0
+        self._rendu_attente_frames: Any = None
+        self._rendu_fait_frames: Any = None
         self.kappa = 3.0
         self.rejet_methode = "kappa"     # "kappa" ou "winsorized" (satellites)
         self.rejet_fenetre = 8           # frames de la fenêtre glissante
@@ -688,6 +740,11 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # l'interface : `_restaurer_config` (appelée juste après la construction)
         # peut déjà en demander une, et elle doit rester BORNÉE.
         self._mesures: queue.Queue[Any] = queue.Queue()
+        # v2.98.7 : file des maîtres de calibration RESTAURÉS au démarrage. Le
+        # fil démon qui lit les fichiers (I/O) ne touche à AUCUN widget : il
+        # pose ici [(famille, cible, chemin, image|None, erreur)] et `_tick`
+        # applique, dans le fil d'interface (motif de `_mesures`).
+        self._calib_q: queue.Queue[Any] = queue.Queue()
         self._mesure_en_cours: bool = False
         # v2.48.1 (retour macOS du 30/09/2026) : identifiant de la
         # replanification de `_tick` (ANNULABLE à la fermeture — un `after` en
@@ -1456,7 +1513,17 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         une grande plage sans cliquer 200 fois. Clamps aux bornes frm/to.
         saisie=True (jalon 27, demande d'Alain) : le label de valeur devient
         une ZONE DE SAISIE (nombre acceptant la virgule ; Return ou sortie
-        de champ applique et borne ; le curseur suit)."""
+        de champ applique et borne ; le curseur suit).
+
+        P5 (lot 5, 20/10/2026) — RENDU AU RELÂCHEMENT : `cmd` ne fait plus que
+        la VARIABLE et l'ÉTIQUETTE pendant un glissement (`<ButtonPress-1>` →
+        `<ButtonRelease-1>`) ; l'aperçu part UNE fois au relâchement. Hors
+        glissement, un minuteur de secours (`DELAI_SECOURS_CURSEUR_MS`, remis à
+        zéro à chaque pose) ramasse les changements sans relâchement (flèches
+        clavier, `s.set()` programmatique). Les gestes DISCRETS (« - »/« + »,
+        zone de saisie, `_poser_curseur`) forcent le rendu : ils restent
+        immédiats.
+        """
         row = ttk.Frame(parent)
         row.pack(fill="x", pady=1)
         head = ttk.Frame(row)
@@ -1476,7 +1543,9 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                     return
                 v = min(max(v, frm), to)
                 v = frm + round((v - frm) / res) * res
-                s.set(round(v, 6))   # rappelle cmd() → var + texte + onchange
+                s.set(round(v, 6))   # rappelle cmd() → var + texte
+                # P5 : une saisie validée est un geste DISCRET → immédiat.
+                self._forcer_rendu_curseur(s)
                 var_txt.set(fmt.format(var.get()))
 
             lab_val.bind("<Return>", valider)
@@ -1485,24 +1554,88 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             lab_val = ttk.Label(head, text=fmt.format(var.get()))
             lab_val.pack(side="right")
 
+        # --- P5 (lot 5, 20/10/2026) : RENDU AU RELÂCHEMENT -------------------
+        # ARBITRAGE D'ALAIN (mesuré : un aperçu coûte ~300 ms sur l'aperçu RÉEL
+        # 1600×1200, et un glissement en déclenchait un PAR PIXEL de souris) :
+        # pendant un glissement on ne calcule RIEN — la variable et l'étiquette
+        # suivent (≈ 0 ms) et l'aperçu part UNE fois au `<ButtonRelease-1>`.
+        # PRIX ASSUMÉ : pendant le geste, l'image ne correspond plus à la
+        # valeur affichée.
+        etat: dict[str, Any] = {"glisse": False, "job": None, "sale": False}
+
         def cmd(v: str) -> None:
             var.set(float(v))
             if saisie:
                 var_txt.set(fmt.format(float(v)))   # Entry (StringVar)
             else:
                 lab_val.config(text=fmt.format(float(v)))  # pyright: ignore[reportCallIssue]
-            if onchange:
-                onchange()
+            # Le CALCUL dépend du GESTE en cours (voir `_armer` / `_rendre`).
+            etat["sale"] = True
+            if etat["glisse"]:
+                _armer(self.DELAI_SECOURS_GLISSE_MS)   # rien pendant le geste
+            else:
+                _armer(self.DELAI_SECOURS_CURSEUR_MS)  # minuteur (rafale = 1)
 
         ligne = ttk.Frame(row)
         ligne.pack(fill="x")
         job: list[Any] = [None]                     # after() de la répétition en cours
 
+        def _rendre(*_a: Any) -> bool:
+            """Rend UNE fois le réglage en attente (ne fait rien s'il n'y en a
+            pas). Seul chemin de rendu différé : minuteur de secours,
+            `<ButtonRelease-1>` ET « forcer maintenant » passent par ici — deux
+            déclencheurs pour un même changement ne peuvent donc pas produire
+            deux aperçus."""
+            attente = etat["job"]
+            etat["job"] = None
+            if attente is not None:
+                try:
+                    ligne.after_cancel(attente)
+                except tk.TclError:          # fenêtre détruite
+                    pass
+            if not etat["sale"]:
+                return False
+            etat["sale"] = False
+            if onchange:
+                onchange()
+            return True
+
+        def _armer(delai: int) -> None:
+            """(Re)programme le minuteur de secours — REMIS À ZÉRO à chaque
+            changement : une rafale de poses ne rend qu'UNE fois."""
+            if etat["job"] is not None:
+                try:
+                    ligne.after_cancel(etat["job"])
+                except tk.TclError:          # fenêtre détruite
+                    pass
+            try:
+                etat["job"] = ligne.after(delai, _rendre)
+            except tk.TclError:              # fenêtre détruite
+                etat["job"] = None
+
+        def _debut_glissement(_e: Any=None) -> None:
+            """`<ButtonPress-1>` sur le curseur : le geste commence (P5)."""
+            etat["glisse"] = True
+
+        def _fin_glissement(_e: Any=None) -> None:
+            """`<ButtonRelease-1>` : le geste est fini, l'aperçu part UNE fois.
+            `after_idle` (et non l'appel direct) : les liaisons de CLASSE du
+            `ttk.Scale`, qui posent la valeur finale du clic, passent AVANT —
+            le rendu voit donc toujours la valeur définitive."""
+            etat["glisse"] = False
+            try:
+                ligne.after_idle(_rendre)
+            except tk.TclError:              # fenêtre détruite
+                pass
+
         def pas(delta: float) -> None:
             v = var.get() + delta * res
             v = min(max(v, frm), to)                 # bornes
             v = frm + round((v - frm) / res) * res   # grille du curseur
-            s.set(round(v, 6))   # s.set rappelle cmd() → var + label + onchange
+            s.set(round(v, 6))   # s.set rappelle cmd() → var + label
+            # P5 : un clic « - »/« + » est un geste DISCRET (une intention, un
+            # pas) → effet IMMÉDIAT, jamais au minuteur.
+            self._forcer_rendu_curseur(s)
 
         def repeter(delta: float) -> None:
             try:
@@ -1537,6 +1670,14 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         s._boutons = (b_moins, b_plus)  # pyright: ignore[reportAttributeAccessIssue]
         s._row = row                 # reconstruction dynamique (jalon 31)  # pyright: ignore[reportAttributeAccessIssue]
         s._lbl_txt = label           # texte d'origine (idem)  # pyright: ignore[reportAttributeAccessIssue]
+        # P5 (lot 5) : le geste de souris borne le CALCUL, et un « forcer
+        # maintenant » est offert aux gestes discrets (`_forcer_rendu_curseur`)
+        # comme aux bancs qui posent un curseur par `set()`.
+        s._debut_glissement = _debut_glissement   # pyright: ignore[reportAttributeAccessIssue]
+        s._fin_glissement = _fin_glissement       # pyright: ignore[reportAttributeAccessIssue]
+        s._rendre_en_attente = _rendre            # pyright: ignore[reportAttributeAccessIssue]
+        s.bind("<ButtonPress-1>", _debut_glissement, add="+")
+        s.bind("<ButtonRelease-1>", _fin_glissement, add="+")
         # v2.72.1 (jalon 120) : enregistre le curseur sous sa variable — la
         # DERNIÈRE ligne créée pour une variable donnée est la vivante (les
         # lignes reconstruites dynamiquement, ex. gain/offset caméra, réécrivent
@@ -1544,10 +1685,40 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._curseurs[str(var)] = s
         return s
 
+    def _forcer_rendu_curseur(self, s: tk.Misc) -> bool:
+        """Applique TOUT DE SUITE ce qu'un curseur a posé et qui attend encore
+        (P5, lot 5) : annule son minuteur et exécute son `onchange` une fois.
+
+        `ttk.Scale` ne porte pas ce nom dans son TYPE : l'attribut est posé par
+        `_add_slider` (même style que `_pas` / `_boutons`, lus par les bancs).
+        Rend True si un rendu a effectivement eu lieu — False si rien n'était en
+        attente (appel inoffensif, jamais deux aperçus pour un même changement).
+        """
+        f = getattr(s, "_rendre_en_attente", None)
+        if f is None:
+            return False
+        try:
+            return bool(f())
+        except tk.TclError:              # curseur détruit (ligne reconstruite)
+            return False
+
+    def _rendre_curseurs(self) -> None:
+        """Force le rendu de TOUS les curseurs qui attendent leur minuteur (P5).
+
+        Sert aux endroits qui enchaînent une pose de curseur et un rendu
+        EXPLICITE (`_on_auto`, 🔒 logD) : sans cela, le rendu explicite partirait
+        avec les `disp.*` de l'état PRÉCÉDENT (150 ms de mensonge à l'écran).
+        """
+        for s in list(self._curseurs.values()):
+            self._forcer_rendu_curseur(s)
+
     def _poser_curseur(self, var: Any, valeur: float) -> None:
         """Pose `valeur` sur le curseur lié à `var` par le CHEMIN D'UN GESTE
         (`s.set(v)` → `cmd` : variable + étiquette + callback), et NON par un
-        `var.set()` nu.
+        `var.set()` nu. Depuis P5, le callback est en plus FORCÉ : `s.set` seul
+        ne fait que la variable et l'étiquette (le calcul part au minuteur, ou
+        au relâchement), or une restauration doit être COMPLÈTE en sortant d'ici
+        (le banc du jalon 120 lit `disp.*` juste après la construction).
 
         POURQUOI (v2.72.1, jalon 120) : Tk n'appelle JAMAIS le `command` d'un
         `ttk.Scale` sur un `var.set()` programmatique — MESURÉ, ni la position
@@ -1567,7 +1738,8 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         s = self._curseurs.get(str(var))
         if s is not None:
             try:
-                s.set(round(float(valeur), 6))   # var + étiquette + callback
+                s.set(round(float(valeur), 6))   # var + étiquette
+                self._forcer_rendu_curseur(s)    # + callback, TOUT DE SUITE (P5)
                 return
             except (tk.TclError, ValueError, TypeError):
                 pass                    # curseur détruit / valeur non numérique
@@ -2759,6 +2931,10 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self.var_white.set(round(self.disp.last_hi, 4))
             self.scl_black.set(self.var_black.get())
             self.scl_white.set(self.var_white.get())
+            # P5 : les deux poses ci-dessus attendent leur minuteur ; le rendu
+            # qui suit est EXPLICITE → on applique d'abord, sinon il partirait
+            # avec les anciens `disp.black`/`white`.
+            self._rendre_curseurs()
         self._refresh_preview()
 
     def _on_target_auto(self) -> None:
@@ -2845,6 +3021,9 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # Le curseur met à jour la variable, le label de valeur ET
         # disp.vl_log_d via son callback (_add_slider) :
         self.scl_vl_logd.set(round(self.disp.vl_log_d_resolu, 3))
+        # P5 : la pose attend son minuteur → on l'applique AVANT le rendu
+        # explicite qui suit (sinon il partirait avec l'ancien logD).
+        self._rendre_curseurs()
         self.var_vl_mode_res.set("logD forcé")
         self._sync_vl_mode()
         self._refresh_preview()
@@ -3242,6 +3421,52 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # l'état, en STF/manuel comme en VeraLux. Plus de solveur de netteté
         # dédié : ses étapes (GraXpert / débruitage / netteté) défilent ici.
         en_cours_vl = self.disp.vl_en_cours()
+        # Phase 0 quater (20/10/2026) : ÉTAT de la chaîne pré-étirement.
+        # DÉFAUT CORRIGÉ le 20/10 (Alain : « la chaîne tournait : NON ») : la
+        # première version OR-ait les attributs `disp.vl_*`, dont
+        # `vl_neutre_gains` — qui est un RÉSULTAT de mesure PERSISTANT, pas une
+        # case. Elle annonçait donc « chaîne active » alors qu'aucune étape
+        # n'était cochée.
+        # 1a (20/10/2026) — SECOND défaut du même genre : OR-er les NEUF cases
+        # ne suffit pas, car `var_vl_neutre` (neutralisation du fond) est cochée
+        # PAR DÉFAUT et ne soumet AUCUN calcul en STF/manuel (elle s'applique
+        # dans `process()`). La jauge était donc TOUJOURS vraie. Elle mesure
+        # désormais ce que le worker est RÉELLEMENT chargé de faire
+        # (`chaine_sollicitee()` : GraXpert / débruitage / netteté / chroma, ou
+        # VeraLux qui étire dans le worker) — la même condition que le `vl_new`
+        # attendu par le rendu différé. `vl_couleurs` garde l'information des
+        # cases d'APRÈS étirement, `vl_gains` celle des gains mesurés.
+        try:
+            _vl_actif: Any = bool(self.disp.chaine_sollicitee())
+        except (AttributeError, tk.TclError):
+            _vl_actif = None
+        try:
+            _cases_coul = (self.var_vl_scnr, self.var_vl_scnr_doux,
+                           self.var_vl_demagenta, self.var_vl_boost,
+                           self.var_vl_neutre)
+            _vl_couleurs: Any = any(bool(c.get()) for c in _cases_coul)
+        except (tk.TclError, AttributeError):
+            _vl_couleurs = None
+        _perf.poser_gauge("vl_actif", _vl_actif)
+        _perf.poser_gauge("vl_couleurs", _vl_couleurs)
+        # 1a : POURQUOI `vl_actif` est vrai — sans ces deux jauges, un relevé
+        # « vl_actif = true » reste ininterprétable (étape cochée ? VeraLux ?).
+        try:
+            _etapes = "".join(code for code, actif in (
+                ("GX", bool(self.var_vl_graxpert.get())),
+                ("DN", bool(self.var_vl_dn.get())),
+                ("SH", bool(self.var_vl_sharp.get())),
+                ("CH", bool(self.var_vl_chroma.get()))) if actif)
+        except (tk.TclError, AttributeError):
+            _etapes = ""
+        _perf.poser_gauge("vl_etapes", _etapes)
+        try:
+            _perf.poser_gauge("moteur", self.var_moteur.get())
+        except (tk.TclError, AttributeError):
+            _perf.poser_gauge("moteur", "?")
+        _perf.poser_gauge("vl_gains", self.disp.vl_neutre_gains is not None)
+        _perf.poser_gauge("vl_stage", self.disp.vl_stage or "")
+        _perf.poser_gauge("threads", threading.active_count())
         en_cours = en_cours_vl
         # Curseur de calcul : apparaît au DÉBUT d'un job, disparaît à la FIN
         # (transitions seulement — pas de reconfiguration à chaque tick).
@@ -3255,10 +3480,29 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 self.pb_vl.pack_forget()
         if self.disp.vl_new:          # un calcul vient de se TERMINER
             self.disp.vl_new = False
+            # Phase 0 quater : combien de fois la chaîne a-t-elle rendu la main ?
+            # Chaque `vl_new` déclenche un rendu COMPLET ici — deux rendus par
+            # frame quand la chaîne tourne (et deux rendus POUR RIEN quand elle
+            # est inactive mais publie quand même).
+            _perf.compter("vl_new")
             # JALON 125 (VOLET A) : les DEUX moteurs publient par ce MÊME
             # worker — un rafraîchissement immédiat s'impose dans les deux cas
             # (en STF/manuel, l'étirement se recalcule sur la sortie de chaîne).
-            self._refresh_preview()
+            # 1a (20/10/2026) : SEULEMENT si l'image a une raison de changer. Un
+            # `vl_new` publié sans case cochée redonnait la MÊME image que le
+            # rendu de frame déjà fait — 61 rendus complets pour rien (perf-3).
+            if self._vl_rendu_necessaire():
+                # v2.98.8 : ce rendu est celui de l'image FINALE d'une NOUVELLE
+                # pile (la frame a été confiée à la chaîne au lieu d'être
+                # rendue) : c'est donc LE moment où le STF doit faire AVANCER sa
+                # mémoire d'étirement (`live=True`), comme le faisait le rendu
+                # de frame avant l'étape 1a. Sans cela la mémoire restait figée
+                # sur la première pile de la session (auto gelé, puis étirement
+                # faux — voire blanc — dès que le niveau de l'empilement
+                # changeait : calibration, autre nuit, Lune…).
+                self._refresh_preview(live=self._rendu_attente is not None)
+            else:
+                _perf.compter("rendus_evites")
             if veralux:
                 if self.disp.vl_error:
                     self._lbl_vl_texte(self.disp.vl_error, "#d04040")
@@ -4815,6 +5059,17 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self.disp.reset()                      # stats d'affichage repartent de zéro
         self._vl_frames = None                 # le 1er empilement relancera le solveur
         self._rendu_differ = None              # jalon 80 : aucun rendu en attente
+        # 1a (20/10/2026) : une session neuve n'a AUCUNE image finale en attente
+        # (sinon le filet rendrait une pile de la session précédente).
+        self._rendu_attente = None
+        self._rendu_attente_t = 0.0
+        self._rendu_attente_frames = None
+        self._rendu_fait_frames = None
+        # 1b (20/10/2026) : une image en cours de calcul pour la cible
+        # précédente ne doit JAMAIS arriver après ce reset — la demande et le
+        # résultat en attente sont purgés, et le calcul en vol sera jeté
+        # (génération). `_vider_ecran` purge aussi (il vide `_last_disp`).
+        self.rendu.purger()
         self.bad_frames, self.fps = 0, 0.0
         self.bad_frames_par_role = {}          # jalon 129b : refus PAR RÔLE
         self.floues_rejetees = 0              # jalon 17 : compteur de session
@@ -5223,6 +5478,19 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             except Exception:
                 pass
             self._spcc_correction_after = None
+        # 1b (20/10/2026) : le FIL DE RENDU s'arrête AVANT la destruction de la
+        # fenêtre — il ne touche aucun widget, mais un calcul en vol n'a plus
+        # d'objet et un instrument doit se taire quand l'écran disparaît
+        # (même raison que le guet ci-dessus). Borné : `arreter()` joint 2 s.
+        try:
+            self.rendu.arreter()
+        except Exception:
+            pass
+        # Phase 0 de l'audit performance (20/10/2026) : dernière photographie
+        # des mesures AVANT la destruction de la fenêtre. `ecrire_json` est
+        # atomique et TOLÉRANT : sans `AVASTACK_PERF`, il n'écrit rien ; avec,
+        # un échec disque ne retarde ni n'empêche jamais la fermeture.
+        _perf.ecrire_json()
         self.root.destroy()
 
     # `_save`, `_gx_live_prete`, `_reglages_rendu`, `_save_asseen`,
@@ -5244,6 +5512,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             try:
                 role = None if cible == "unique" else cible
                 self.calib.load_dark(p, role=role)
+                self._persister_calib()
                 self._maj_libelles_calib()
                 msg = (f"Dark{' pour « ' + role + ' »' if role else ''} "
                        f"chargé : {p}")
@@ -5265,6 +5534,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             try:
                 role = None if cible == "unique" else cible
                 self.calib.load_flat(p, role=role)
+                self._persister_calib()
                 self._maj_libelles_calib()
                 msg = (f"Flat{' pour « ' + role + ' »' if role else ''} "
                        f"chargé : {p}")
@@ -5276,7 +5546,112 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
 
     def _clear_calib(self) -> None:
         self.calib.clear()
+        self._persister_calib()
         self._maj_libelles_calib()
+
+    # ------------------------------------------- persistance des maîtres (v2.98.7)
+    def _persister_calib(self) -> None:
+        """Écrit les CHEMINS des maîtres dans `config.json` — tolérant, IMMÉDIAT.
+
+        DÉFAUT CORRIGÉ (21/10/2026) : `_load_dark`/`_load_flat` chargeaient
+        l'image en mémoire et n'écrivaient RIEN — les maîtres étaient donc à
+        re-sélectionner à CHAQUE session. Ce qui est persisté est le CHEMIN
+        (jamais l'image, qui reste une allocation de session).
+
+        Appelée après CHAQUE geste de calibration (chargement, effacement) :
+        les clés des maîtres ABSENTS sont d'abord RETIRÉES (un maître effacé ne
+        doit pas revenir à la session suivante), puis l'état vivant est écrit.
+        """
+        prefixes = (_calibration_mod.PREFIXE_DARK,
+                    _calibration_mod.PREFIXE_FLAT)
+        for cle in [k for k in list(CONFIG)
+                    if isinstance(k, str) and k.startswith(prefixes)]:
+            CONFIG.pop(cle, None)
+        CONFIG.update(_calibration_mod.cles_persistees(self.calib))
+        sauver_config(dict(CONFIG))
+
+    def _restaurer_calib_differe(self) -> None:
+        """Recharge les maîtres dark/flat PERSISTÉS, HORS du fil d'interface.
+
+        POURQUOI DIFFÉRÉ (règle du projet — leçon v2.98.4) : le fil d'interface
+        ne fait JAMAIS d'I/O. Un maître peut vivre sur un partage réseau, et
+        une lecture faite pendant la construction de la fenêtre la retiendrait
+        (constat du 27/09/2026 : une mesure de disque sur un NAS injoignable
+        empêchait l'application de s'ouvrir). Les CHEMINS, eux, se lisent sans
+        I/O : la lecture des fichiers part donc dans un fil DÉMON borné (5 s
+        par maître, `delais.borne`), et le résultat est appliqué par `_tick`
+        (`_appliquer_calib`), dans le fil d'interface.
+
+        Aucune exception ne remonte : un maître illisible est DIT (ligne
+        d'état + journal), les autres se chargent quand même.
+        """
+        demandes = _calibration_mod.lire_cles_persistees(CONFIG)
+        if not demandes:
+            return
+        journal.note("démarrage", "calibration : %d maître(s) à restaurer"
+                     % len(demandes))
+
+        def _fond() -> None:
+            res: list[tuple[str, str, str, Any, str]] = []
+            for famille, cible, chemin in demandes:
+                # `ch=chemin` : le lambda est lié À CETTE valeur — si la lecture
+                # dépasse le délai, son fil continue de vivre et lirait sinon le
+                # chemin SUIVANT (liaison tardive).
+                valeur, abouti = delais.borne(
+                    lambda ch=chemin: self._charger_maitre(ch),
+                    (None, ""), delais.DELAI_DEFAUT)
+                img, err = valeur if valeur is not None else (None, "")
+                if not abouti:
+                    err = "délai dépassé (disque ou réseau injoignable ?)"
+                res.append((famille, cible, chemin, img, err))
+            self._calib_q.put(res)
+
+        threading.Thread(target=_fond, daemon=True,
+                         name="calibration-restauration").start()
+
+    def _charger_maitre(self, chemin: str) -> tuple[Any, str]:
+        """Lit UN maître de calibration → (image|None, message d'erreur).
+
+        I/O : à n'appeler QUE depuis un fil démon borné — jamais le fil
+        d'interface. L'exception est rendue en TEXTE (et non levée) pour que
+        l'appelant puisse la DIRE à l'utilisateur.
+        """
+        try:
+            return load_image(chemin), ""
+        except Exception as e:                       # noqa: BLE001 (fichier absent…)
+            return None, str(e)
+
+    def _appliquer_calib(self, res: Any) -> None:
+        """Applique les maîtres restaurés (fil d'interface : AUCUNE I/O ici).
+
+        Un maître ILLISIBLE n'est PAS retiré de la config : un partage réseau
+        momentanément absent ne doit pas faire perdre le réglage. L'échec est
+        DIT (ligne d'état + journal), et « Effacer la calibration » reste le
+        geste qui retire vraiment les clés.
+        """
+        charges, echecs = 0, []
+        for famille, cible, chemin, img, err in (res or []):
+            if img is None:
+                echecs.append(f"{famille} {cible} « {os.path.basename(chemin)} » :"
+                              f" {err or 'illisible'}")
+                continue
+            role = None if cible == _calibration_mod.CIBLE_UNIQUE else cible
+            if famille == "dark":
+                self.calib.poser_dark(img, chemin, role=role)
+            else:
+                self.calib.poser_flat(img, chemin, role=role)
+            charges += 1
+        if getattr(self, "lbl_dark", None) is not None:
+            self._maj_libelles_calib()
+        if echecs:
+            journal.note("calibration", "maître(s) NON restauré(s) : "
+                         + " ; ".join(echecs))
+        if charges or echecs:
+            txt = (f"Calibration restaurée : {charges} maître(s) chargé(s)"
+                   if charges else "Calibration NON restaurée")
+            if echecs:
+                txt += "  —  " + " ; ".join(echecs)
+            self.lbl_status.config(text=txt)
 
     # ------------------------------------------------------------ traitement externe
     def _champs_outils(self) -> tuple[tuple[Any, Any, str], ...]:
@@ -6348,6 +6723,12 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         nouvelle frame ne poussait pas son texte → le libellé restait sur
         l'ancienne valeur, cf. constat d'Alain du 25/09/2026)."""
         canaux = None
+        # Phase 0 bis (audit 20/10/2026) : ce chemin RECALCULE le composite
+        # pleine résolution (`mean_avec_canaux`), le réduit à 1600 px et FORCE
+        # la chaîne d'affichage — sans nouvelle frame. C'est le suspect n°1 des
+        # rendus « en trop » (une ligne d'état qui change suffisait à en coûter
+        # un). On le chronomètre côté worker.
+        _t_pousse = _perf.t0()
         if self._mode_compo and hasattr(self.stacker, "mean_avec_canaux"):
             stack, canaux = self.stacker.mean_avec_canaux()
         else:
@@ -6361,8 +6742,12 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 else stack)
         # v2.38.0 : même mémorisation que la boucle d'acquisition, pour l'option
         # « Rendu pleine résolution » de l'écran.
+        # AUDIT MÉMOIRE (21/10/2026) : RÉFÉRENCE, plus de COPIE — même règle
+        # qu'au worker (cf. `core/worker.py`) : l'image rendue par le stacker
+        # n'est jamais modifiée en place et le stacker la garde déjà dans ses
+        # caches. Ici `stack` n'est JAMAIS None (garde ci-dessus).
         if self._pleine_res_activee():
-            self._stack_pleine_res = np.asarray(stack, np.float32).copy()
+            self._stack_pleine_res = np.asarray(stack, np.float32)
         # v2.37.3/v2.37.4 : le rayon du flou de chroma suit la RÉSOLUTION (même
         # règle qu'à la fin de la boucle d'acquisition : l'aperçu est réduit, les
         # étoiles aussi → cf. `_poser_rayon_chroma`).
@@ -6416,7 +6801,12 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             if getattr(self, "disp", None) is not None:
                 self.disp.notify_new_stack()
         except queue.Full:
-            pass
+            # Phase 0 (audit 20/10) : CETTE perte était SILENCIEUSE — on la
+            # compte. Une valeur non nulle dit que le fil d'interface n'a pas
+            # suivi et qu'un rendu calculé a été jeté.
+            _perf.compter("file_pleine_ui")
+        _perf.compter("pousse_rendu")
+        _perf.duree("rendu_pousse", _t_pousse)       # Phase 0 bis
 
     def _servir_demandes_sans_frame(self) -> None:
         """v2.37.0 — demandes de l'utilisateur qui NE dépendent PAS d'une
@@ -6516,10 +6906,37 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         .!… ») tuait la boucle POUR DE BON et l'interface restait GELÉE — c'est
         exactement ce que montrait le journal du testeur. Désormais une erreur
         est ÉCRITE au journal (une fois par épisode, jamais 33 fois par seconde)
-        et la boucle CONTINUE : un rafraîchissement raté n'est plus un gel."""
+        et la boucle CONTINUE : un rafraîchissement raté n'est plus un gel.
+
+        Phase 0 de l'audit performance (20/10/2026) : le TOUR complet est
+        chronométré (`ui_tick`) — c'est la mesure qui dit si le fil d'interface
+        dépasse son budget de 30 ms, et de combien. Hors `AVASTACK_PERF=1`, le
+        chrono est un objet partagé sans effet (coût nul).
+        """
         try:
-            self._tick_corps()
-            self._tick_err_sig = None          # épisode clos
+            # Phase 0 (audit 20/10) : réécriture PÉRIODIQUE du `perf.json` (au
+            # plus toutes les 5 s) — sans cela le fichier n'apparaissait qu'à la
+            # fermeture, donc jamais pendant l'empilement qu'on voulait mesurer.
+            _perf.ecrire_periodique()
+            # Phase 0 bis : la MÊME durée est classée selon qu'un empilement
+            # tournait ou non — c'est ce qui sépare « travail Tk » (durée élevée
+            # même au repos) de « attente du GIL » (durée élevée SEULEMENT
+            # pendant l'empilement). Le drapeau est lu AVANT le corps.
+            _occupe = _perf.est_occupe()
+            _t_tick = _perf.t0()
+            # v2.98.3 (21/10) : départ du CPU DU FIL, jumeau de `_t_tick`. Le
+            # mur seul ne dit pas si le fil TRAVAILLE ou ATTEND — c'est l'écart
+            # des deux qui tranche (cf. `perf.duree_attente`). Coût nul hors
+            # `--perf` (aucun appel d'horloge).
+            _t_tick_cpu = _perf.t0_cpu()
+            try:
+                with _perf.chrono("ui_tick"):
+                    self._tick_corps()
+                self._tick_err_sig = None          # épisode clos
+            finally:
+                _perf.duree("ui_tick_occupe" if _occupe else "ui_tick_libre",
+                            _t_tick)
+                _perf.duree_attente("ui_tick", _t_tick, _t_tick_cpu)
         except tk.TclError:
             self._journal_erreur_tick("boucle d'interface (widget détruit ?)")
         except Exception:
@@ -6539,18 +6956,129 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         self._tick_err_sig = sig
         journal.erreur(titre)
 
+    # ------------------- 1a (20/10/2026) : UN SEUL RENDU PAR FRAME ----------
+    # Le défaut mesuré (Phase 0, 13 min) : `rendus` = 132 pour 71 frames — un
+    # rendu complet de la pile brute à l'arrivée de la frame, puis un SECOND
+    # rendu complet sur `vl_new`, identique quand aucune case n'était cochée.
+    def _chaine_attendue(self) -> bool:
+        """True si la chaîne pré-étirement va publier un `vl_new`.
+
+        Condition EXACTE de `DisplayProcessor.chaine_sollicitee()` : une étape
+        pré-étirement active, ou VeraLux (qui étire DANS le worker). Elle ne
+        confond PAS les cases couleur d'APRÈS étirement, qui ne soumettent rien
+        en STF/manuel : les prendre pour la chaîne ferait attendre un `vl_new`
+        qui n'arriverait jamais.
+        """
+        try:
+            return bool(self.disp.chaine_sollicitee())
+        except (AttributeError, tk.TclError):
+            return False
+
+    def _differe_rendu_frame(self, st: Any, show: Any,
+                             demander: bool = True) -> bool:
+        """Confie la pile à la chaîne SANS la rendre ; rend True si différé.
+
+        Étape 1a : `process()` était le SEUL point de soumission du worker — ne
+        plus rendre la frame aurait donc GELÉ la chaîne. `demander=True` soumet
+        le job immédiatement (`demander_chaine`). `demander=False` est le cas
+        d'une RAFALE DE DOSSIER : le jalon 80 a déjà différé le déclenchement de
+        la chaîne à la fin de la rafale ; on se contente donc de garder la pile
+        en attente et c'est le bloc « rafale tue » qui appellera la chaîne.
+        """
+        if not self._chaine_attendue():
+            return False
+        if demander:
+            self.disp.demander_chaine(show)
+        self._rendu_attente = show
+        self._rendu_attente_t = time.perf_counter()
+        self._rendu_attente_frames = st.get("frames")
+        _perf.compter("rendus_differe")
+        return True
+
+    def _vl_rendu_necessaire(self) -> bool:
+        """True si le `vl_new` qui arrive doit produire un rendu.
+
+        Trois cas légitimes : ① une frame attend son image finale ; ② la chaîne
+        est active (réglage changé, ou premier résultat) ; ③ aucune case active
+        mais la pile courante n'a pas encore été rendue (premier affichage,
+        reprise après reset). Le cas qui était du GASPILLAGE — aucune case
+        active ET pile déjà rendue — rend False.
+        """
+        if self._rendu_attente is not None:
+            return True
+        if self._chaine_attendue():
+            return True
+        return self._rendu_fait_frames != self._vl_frames
+
+    def _verifier_filet_rendu(self) -> None:
+        """FILET (1a) : rend la frame en attente si `vl_new` ne vient pas.
+
+        Appelé à CHAQUE tour de `_tick_corps`, même file vide : c'est le seul
+        endroit qui garantit qu'un worker muet (exception silencieuse, moteur
+        absent) ne laisse pas l'écran figé sur l'image précédente. Une vue
+        « traitée » abandonne l'attente — le rendu différé ne concerne que la
+        vue « pile ».
+        """
+        if self._rendu_attente is None:
+            return
+        try:
+            if self.var_view.get() != "pile":
+                self._rendu_attente = None
+                return
+        except tk.TclError:
+            self._rendu_attente = None
+            return
+        if time.perf_counter() - self._rendu_attente_t < self.RENDU_FINAL_DELAI_S:
+            return
+        pile = self._rendu_attente
+        rid = self._rendu_attente_frames
+        # Attente vidée AVANT le rendu : le filet ne peut pas rendre en boucle.
+        self._rendu_attente = None
+        _perf.compter("rendus_filet")
+        self._rendre_et_afficher(pile)
+        self._rendu_fait_frames = rid
+
     def _tick_corps(self) -> None:
+        # Phase 0 bis (audit 20/10/2026) : le corps est découpé en TROIS durées
+        # (avant la file / consommation de la file / après), mesurées par
+        # `duree()` pour ne PAS réindenter ce bloc de 350 lignes. Ce que
+        # `tick_conso` contient en plus de `ui_rendu` est du travail Tk pur
+        # (ligne d'état, file) ; `tick_avant` et `tick_apres` sont les suspects
+        # quand un tour coûte 60 ms SANS rendu.
+        _t_debut = _perf.t0()
+        # v2.98.3 (21/10) : le CPU DU FIL sur la MÊME fenêtre. Motif mesuré :
+        # `tick_avant` = 98 % de `ui_tick` avec 6 ms de travail mesuré dedans
+        # (FITS 38 ms, mesures 3,1 s, réglages 2,8 s sur toute une session) —
+        # c'est l'écart mur − CPU qui dit si le fil ATTEND (famine des fils
+        # natifs d'OpenCV) ou s'il travaille. Coût nul hors `--perf`.
+        _cpu_debut = _perf.t0_cpu()
         # Jalon 84 : BATTEMENT pour le guet de gel — la PREUVE que le fil
         # d'interface rend la main (deux affectations, aucun coût mesurable).
         guet = getattr(self, "guet", None)
         if guet is not None:
             guet.battement()
+        # « NOMMER LE RÉSIDUEL » (21/10/2026) : inventaire des tableaux de
+        # l'APPLICATION, rangés par attribut de premier niveau. Cadence LENTE
+        # (20 s) : c'est un état de régime, pas un événement — et le parcours
+        # coûte quelques millisecondes. Coût NUL hors `--perf` (premier test).
+        if _perf.actif():
+            _t_p = time.monotonic()
+            if _t_p - getattr(self, "_postes_t0", 0.0) >= 20.0:
+                self._postes_t0 = _t_p
+                _t_mes_p = _perf.t0()
+                _perf.jauger_postes(self)
+                _perf.duree("tick_postes", _t_mes_p)
         # Mise à jour automatique du nom de cible depuis l'en-tête FITS
         # Seulement si camera.last_file a changé (nouvelle brute reçue)
         chemin = getattr(self.camera, "last_file", "") or ""
         if chemin != self._dernier_last_file:
             self._dernier_last_file = chemin
+            # Phase 0 ter (20/10/2026) : la SEULE entrée/sortie disque de
+            # `tick_avant` — `fits.open()` sur le fil Tk, une fois par nouvelle
+            # brute. C'est le suspect n°1 des gels observés (max 11,95 s).
+            _t_fits = _perf.t0()
             self._mettre_a_jour_nom_depuis_fits()
+            _perf.duree("tick_fits", _t_fits)
         # v2.38.11 : résultats des MESURES DE DISQUE différées (fil démon borné ;
         # le fil ne touche AUCUN widget — il ne pose qu'un dictionnaire ici).
         while getattr(self, "_mesures", None) is not None:
@@ -6558,7 +7086,19 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 msg = self._mesures.get_nowait()
             except queue.Empty:
                 break
+            _t_mes = _perf.t0()                  # Phase 0 ter
             self._appliquer_mesures(msg)
+            _perf.duree("tick_mesures", _t_mes)
+        # v2.98.7 : maîtres de calibration RESTAURÉS (fil démon borné → ici).
+        # Le fil n'a touché AUCUN widget : il n'a posé qu'une liste de
+        # (famille, cible, chemin, image, erreur) ; c'est ce fil d'interface qui
+        # pose les maîtres dans `self.calib` et rafraîchit les libellés.
+        while getattr(self, "_calib_q", None) is not None:
+            try:
+                res = self._calib_q.get_nowait()
+            except queue.Empty:
+                break
+            self._appliquer_calib(res)
         # Jalon 70 : messages du TÉLÉCHARGEMENT des catalogues (thread → UI).
         # Le thread réseau ne touche AUCUN widget : il ne pose que des messages
         # ici, et c'est ce thread Tk qui les traduit en texte.
@@ -6716,6 +7256,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # lus CÔTÉ THREAD PRINCIPAL (variables Tk interdites dans le worker,
         # cf. piège) et poussés vers la façade si modifiés → appliqués au
         # composite dès la prochaine frame, sans redémarrer la session.
+        _t_regl = _perf.t0()                     # Phase 0 ter
         gains = self._lire_gains()
         mode_l = self.var_compo_mode_l.get()
         # Jalon 117d : lissage du combine LRGB (halos) et son seuil de masque
@@ -6724,6 +7265,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         seuil_halos = self._lire_seuil_halos()
         # Jalon J2 : fusion du Ha (mode + poids) — même règle que les gains.
         fusion_ha = self._lire_fusion_ha()
+        _perf.duree("tick_reglages", _t_regl)
         if (gains != self._compo_gains or mode_l != self._compo_mode_l
                 or lissage_halos != self._compo_lissage_halos
                 or seuil_halos != self._compo_seuil_halos
@@ -6798,12 +7340,23 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                 self._tec_info = None
                 self.lbl_tec.config(text=txt, foreground=coul)
         try:
+            _perf.duree("tick_avant", _t_debut)      # Phase 0 bis
+            # v2.98.3 : CPU du fil et ATTENTE (mur − CPU) sur la même fenêtre —
+            # le mur seul ne distingue pas « plus lourd » de « affamé ».
+            _perf.duree_attente("tick_avant", _t_debut, _cpu_debut)
+            _t_conso = _perf.t0()
             while True:
                 # Jalon 75 : le tuple ne porte plus d'histogramme — il est
                 # calculé dans le thread d'affichage, sur ce qui est
                 # RÉELLEMENT affiché (vue « empilement » comme vue « traitée »).
                 show, st = self.q.get_nowait()
+                # Phase 0 (audit 20/10) : une frame de PLUS arrive à l'interface
+                # (compté ici, pas dans le worker : c'est bien la frame REÇUE).
+                _perf.compter("ui_frames")
                 self.show_stack = show
+                # 1a : `True` si CETTE pile vient d'être annoncée à la chaîne
+                # (`notify_new_stack`) — un `vl_new` est alors attendu pour elle.
+                _chaine_notifiee = False
                 if st["frames"] != self._vl_frames:
                     # Jalon 3 : un NOUVEL empilement vient d'être produit —
                     # le solveur VeraLux relance la résolution (le rythme des
@@ -6827,6 +7380,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                         self._vl_frames = st["frames"]
                         self._rendu_differ = None
                         self.disp.notify_new_stack()
+                        _chaine_notifiee = True
                     # `_vl_frames` peut être None (aucun rendu encore dans cette
                     # session) : la borne compte alors depuis le début de session.
                     elif (self._rendu_differ is None
@@ -6838,12 +7392,41 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                         self._vl_frames = st["frames"]       # borne atteinte
                         self._rendu_differ = None
                         self.disp.notify_new_stack()
+                        _chaine_notifiee = True
+                _t_etat = _perf.t0()             # Phase 0 quater
                 self._update_status(st)
+                _perf.duree("tick_etat", _t_etat)
                 if self.var_view.get() == "pile":     # la vue traitée garde son instantané
                     self.last_show = show
-                    self._rendre_et_afficher(show)
+                    # 1a (20/10/2026) : si la chaîne est attendue, la pile brute
+                    # n'est JAMAIS rendue. Hors rafale, elle est confiée TOUT DE
+                    # SUITE à la chaîne ; en rafale de dossier, le jalon 80 a
+                    # déjà différé ce déclenchement et il ne faut PAS rendre la
+                    # frame entre-temps — c'est le cas RÉEL mesuré (39 rendus
+                    # pour 20 frames). L'image FINALE est rendue une seule fois,
+                    # sur `vl_new` (`_maj_lbl_vl`).
+                    _differe = (self._chaine_attendue()
+                                and self._differe_rendu_frame(
+                                    st, show, demander=_chaine_notifiee))
+                    if not _differe:
+                        self._rendre_et_afficher(show)
+                        self._rendu_fait_frames = st["frames"]
         except queue.Empty:
             pass
+        # 1a : FILET anti-écran figé — même file vide, une frame confiée à la
+        # chaîne ne doit jamais rester sans image au-delà du délai borné.
+        self._verifier_filet_rendu()
+        # 1b (20/10/2026) : APPLICATION des images déjà calculées par le fil de
+        # rendu — le calcul (`process()` + les deux histogrammes) n'est plus
+        # dans ce tour-ci : il ne reste que `_show_image` et `_draw_hist` sur
+        # des bacs tout prêts. C'est ce qui fait chuter `tick_conso`.
+        self._appliquer_rendus_disponibles()
+        _perf.duree("tick_conso", _t_conso)          # Phase 0 bis
+        _t_fin = _perf.t0()
+        # Phase 0 (audit 20/10) : profondeur de la file APRÈS consommation — 2
+        # veut dire que le worker a dû attendre, et que la frame suivante est
+        # déjà en retard sur l'affichage.
+        _perf.poser_gauge("file_q", self.q.qsize())
         # Jalon 80 : la rafale s'est TUE (plus aucun empilement depuis
         # `RAFALE_QUIET_S`) → le rendu différé part MAINTENANT, une seule fois,
         # sur la pile la plus PROFONDE. Ce contrôle est ICI (et pas seulement à
@@ -6856,6 +7439,14 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self._vl_frames = self._rendu_differ
             self._rendu_differ = None
             self.disp.notify_new_stack()
+            # 1a (20/10/2026) : la rafale est FINIE. La pile en attente n'ayant
+            # pas été rendue, `process()` n'a PAS soumis le job : on le soumet
+            # ici (même code de soumission), SANS rendu. Le `vl_new` rendra
+            # l'image finale. Le filet repart de la fin de la rafale.
+            if self._rendu_attente is not None and self._chaine_attendue():
+                self.disp.demander_chaine(self._rendu_attente)
+                self._rendu_attente_t = time.perf_counter()
+                self._rendu_attente_frames = self._vl_frames
         # Jalon 75 : une remise à zéro de l'affichage (nouvelle session) a pu
         # avoir lieu dans le worker — les barres doivent revenir à l'auto À
         # L'ÉCRAN aussi (sinon l'utilisateur croirait son réglage conservé).
@@ -6878,6 +7469,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         # Jalon 5/9/12 : GraXpert, débruitage ET netteté live = vue
         # « empilement » uniquement (synchro permanente : les cases peuvent
         # être cochées même en vue « traitée »)
+        _t_vues = _perf.t0()                     # Phase 0 ter
         self._sync_vl_graxpert_vue()
         self._sync_vl_denoise_vue()
         self._sync_vl_couleur_vue()
@@ -6897,6 +7489,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self._maj_lbl_sharp()
         self._maj_lbl_vl()        # état du solveur VeraLux (jalon 40) :
                                   # ⏳ étape courante + curseur, puis résultat
+        _perf.duree("tick_vues", _t_vues)        # Phase 0 ter
         if self.proc_new:
             self.proc_new = False
             # v2.48.3 (jalon 95, retour macOS du 01/10/2026) : la zone
@@ -6911,8 +7504,18 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
             self.btn_save_proc.config(state="normal")
             if self.var_view.get() == "traitée" and self.proc_show is not None:
                 self.last_show = self.proc_show
-                self._show_image(self.disp.process(
-                    self._src_rendu(self.proc_show), live=False))
+                # 1b (20/10/2026) : ce chemin faisait un `process()` COMPLET
+                # (pleine résolution si l'option est cochée) DANS le fil
+                # d'interface — mesuré jusqu'à 2 008 ms, c'était le maximum de
+                # `tick_apres`. Il passe désormais par le fil de rendu, comme
+                # tous les autres : `tick_traitee` ne mesure plus que la
+                # DEMANDE (et `fil_rendu` le calcul).
+                # `hist=False` : la vue « traitée » ne recalculait pas les
+                # histogrammes (comportement inchangé).
+                _t_traitee = _perf.t0()
+                self._rendre_et_afficher(self.proc_show, live=False,
+                                         hist=False, motif="traitee")
+                _perf.duree("tick_traitee", _t_traitee)
         if self.ext_msg != self._ext_shown:
             self._ext_shown = self.ext_msg
             if not self._widget_vivant(getattr(self, "lbl_ext", None)):
@@ -6968,6 +7571,7 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                     + (f"\n\nCorrections écrites dans le fichier (AVAAPPLI) :"
                        f"\n{corr}" if corr else "")
                     + (f"\n\nOutils : {outils}" if outils else ""))
+        _perf.duree("tick_apres", _t_fin)            # Phase 0 bis
         # v2.48.1 : la replanification de la boucle est faite par `_tick`, dans
         # un `finally` — elle ne doit PAS être répétée ici (sinon la boucle
         # serait planifiée DEUX fois, et le travail doublerait à chaque tour).
@@ -7212,6 +7816,10 @@ def main() -> None:
     root = tk.Tk()
     ressources.poser_icone_fenetre(root)   # barre de titres + barre des tâches
     root.report_callback_exception = journal.rapport_callback
+    # Phase 0 de l'audit performance (v2.98.0) : UNE ligne qui dit si les mesures
+    # tournent et OÙ est le fichier (un `perf.json` absent n'a que ces deux
+    # causes — instrumentation inactive, ou fichier écrit ailleurs).
+    _perf.note_etat()
     try:
         journal.note("démarrage",
                      "Tcl/Tk %s" % root.tk.call("info", "patchlevel"))

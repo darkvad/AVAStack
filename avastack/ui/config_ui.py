@@ -215,6 +215,10 @@ class ConfigUI:
     _on_wb: Callable[..., Any]
     _poser_curseur: Callable[..., Any]
     _poser_rayon_chroma: Callable[..., Any]
+    # v2.98.7 : restauration des maîtres dark/flat persistés — DÉFINIE dans
+    # `app.py` (section calibration), appelée ici après le reste de la config
+    # (la composition doit être en place pour que les rôles soient connus).
+    _restaurer_calib_differe: Callable[..., Any]
     _seuil_mag: Callable[..., Any]
     _sync_vl_mode: Callable[..., Any]
 
@@ -678,6 +682,11 @@ class ConfigUI:
         # Jalon 47 : source connue → montrer uniquement les cadres utiles
         # (no-op si la source n'a pas changé depuis la construction).
         self._maj_visibilite_cadres()
+        # v2.98.7 : les CHEMINS des maîtres dark/flat sont restaurés APRÈS le
+        # reste de la configuration (la composition doit être en place pour que
+        # les rôles soient connus). Aucune I/O ici : les fichiers sont lus dans
+        # un fil démon borné, le résultat est appliqué par `_tick`.
+        self._restaurer_calib_differe()
 
     def _sauver_config_app(self):
         """Persiste les réglages de l'interface dans config.json (appelé à la
