@@ -15,10 +15,10 @@ travail futur se fait sur `master`**.
 > **RÈGLE FERME** : `master` est la branche de travail ET de release.
 > **`LRGBHa` est FERMÉE** — ne pas la recréer.
 
-Versions : **`master` = v2.100.0, NON publiée** (dernier publié : **v2.98.9**,
-release GitHub du 21/10/2026, les quatre installateurs) · **Store publié =
-v2.71.1** (inchangé ; le MSIX v2.98.9 est construit et signé **localement**,
-jamais joint à la release).
+Versions : **`master` = v2.100.0, PUBLIÉE** (release GitHub du 01/11/2026, les
+quatre installateurs + `INSTALLATION.md`) · **Store publié = v2.71.1** (inchangé ;
+le MSIX **v2.100.0** est construit avec l'**identité Store** et signé
+**localement**, jamais joint à la release — **prêt à soumettre**).
 
 **Gouvernance** : **aucun lot de code sans demande explicite** ; ne jamais
 déduire l'état d'une case de `config.json` — on MESURE le fichier produit.
@@ -28,11 +28,16 @@ déduire l'état d'une case de `config.json` — on MESURE le fichier produit.
 ## Session du 01/11/2026 — Stacks (FITS), palette « HSS » + 6 permutations ①b
 
 ### État actuel
-- **v2.100.0 (NON publiée)** empile TROIS livraisons du même jour : ① la source
-  « Stacks (fichiers FITS) » ne bloque plus le démarrage sur une ligne
+- **v2.100.0 PUBLIÉE (01/11/2026)** empile TROIS livraisons du même jour : ① la
+  source « Stacks (fichiers FITS) » ne bloque plus le démarrage sur une ligne
   incomplète ; ② une **NOUVELLE palette « HSS »** (R=Ha, G=S2, B=S2) ; ③ le
   chantier **①b** — les **6 permutations narrowband** (l'ORDRE DES LIGNES fait
   R/G/B : Ha, SII, OIII → **HSO**). ① et ② sont la v2.99.0, ③ la v2.100.0.
+- **Release GitHub v2.100.0** (tag + release) : les **quatre installateurs**
+  (`avastack-setup-2.100.0.exe` / `-windows.zip` / `-linux.tar.gz` /
+  `-macos.tar.gz`) + `INSTALLATION.md` réédité (tailles + SHA-256 **MESURÉS**).
+  **MSIX v2.100.0** construit avec l'**identité Store** et **signé localement**
+  — hors release, **prêt à soumettre** au Store.
 - **① Constat réel d'Alain** : TROIS fichiers pour un SHO étaient refusés par
   « Stacks, rôle B : choisissez le fichier de l'empilement (…) » — les lignes 4
   et 5 portaient un RÔLE resté en place dans `config.json`
@@ -139,13 +144,14 @@ déduire l'état d'une case de `config.json` — on MESURE le fichier produit.
   (l'étape 1b a déplacé l'instrumentation `_maj_histogrammes` → `_draw_hist`).
 
 ### Prochaines étapes
-- **PROCHAINE ACTION — test réel** : valider la **v2.100.0** (elle porte v2.99.0
-  ET ①b). Recette dans « En attente / prochaine session ». C'est le test qui
-  déclenchera la publication (tag + release + `INSTALLATION.md`).
-- **Décision séparée** : soumettre (ou non) le MSIX au Store — il faudra alors
-  le **reconstruire avec l'identité Partner Center** (`--nom` / `--publisher`,
-  cf. `installer/windows/msix/SOUMISSION.md`) ; le paquet local est un paquet
-  d'ESSAI.
+- **v2.100.0 est PUBLIÉE** (tag + release GitHub, 4 installateurs +
+  `INSTALLATION.md`). Rien en attente côté code.
+- **PROCHAINE ACTION — décision d'Alain** : **soumettre (ou non) le MSIX
+  v2.100.0 au Store**. Le paquet est **construit avec l'identité Store et
+  signé** ; la soumission se fait dans **Partner Center** (fiche, images, notes
+  de certification : `installer/windows/msix/SOUMISSION.md`). La signature
+  locale (certificat auto-signé) ne sert qu'à l'ESSAI ; celle du Store n'existe
+  qu'APRÈS soumission. Cadence SÉPARÉE (Store publié = v2.71.1).
 
 ### Points d'attention
 - **Un rôle laissé sans fichier n'est PAS un oubli signalé** : c'est une ligne
@@ -162,13 +168,13 @@ déduire l'état d'une case de `config.json` — on MESURE le fichier produit.
   mettre à jour AVEC la table, jamais après.
 
 ### Contexte de reprise (à coller — 2 phrases)
-**`master` = v2.100.0 (NON publiée)** : la source « Stacks (fichiers FITS) »
-ignore les lignes incomplètes et accepte un rôle en double, la palette **HSS**
-(R=Ha, G=S2, B=S2) existe, et les **6 permutations narrowband** suivent
-l'ORDRE DES LIGNES (Ha, SII, OIII → **HSO**) ; bancs du domaine verts
-(64 vérifications pour `_test_lot5_p6_stacks`), garde-fou vert.
-**Prochaine action : le test réel de la v2.100.0** (recette ci-dessous), puis
-publication (tag + release + `INSTALLATION.md`).
+**`master` = v2.100.0 PUBLIÉE** (release GitHub du 01/11/2026, 4 installateurs +
+`INSTALLATION.md`) : la source « Stacks (fichiers FITS) » ignore les lignes
+incomplètes et accepte un rôle en double, la palette **HSS** (R=Ha, G=S2, B=S2)
+existe, et les **6 permutations narrowband** suivent l'ORDRE DES LIGNES
+(Ha, SII, OIII → **HSO**).
+**Prochaine action : décider de la soumission du MSIX v2.100.0 au Store**
+(paquet construit avec l'identité Store et signé, hors release).
 
 ---
 
@@ -183,18 +189,19 @@ l'ORDRE DES LIGNES fait R/G/B (Ha, SII, OIII → **HSO**). Détail : changelog
 
 ## En attente / prochaine session
 
-- **PROCHAINE ACTION — test réel de la v2.100.0** (elle porte v2.99.0 ET ①b) :
-  aucun tag, aucune release. Recette vérifiée ici (config hermétique) :
+- **v2.100.0 PUBLIÉE** : release GitHub (4 installateurs + `INSTALLATION.md`).
+- **PROCHAINE ACTION — décision d'Alain** : **soumettre (ou non) le MSIX
+  v2.100.0 au Store**. Le paquet est **construit avec l'identité Store et signé
+  localement** (hors release). La soumission se fait dans **Partner Center**
+  (fiche, images, notes de certification) : `installer/windows/msix/SOUMISSION.md`.
+  Rappel : la version Store est une **cadence SÉPARÉE** (Store publié = v2.71.1).
+- **Recette de la v2.100.0** (déjà couverte par le banc et l'App réelle) :
   · source **« Stacks (fichiers FITS) »** — HOO = lignes Ha + O3 ; **HSS** =
-  lignes Ha + S2 ; et l'ORDRE fait R/G/B : Ha + S2 + O3 → **HSO**, O3 + S2 + Ha
-  → OSH… (le menu est verrouillé : la composition se DÉDUIT des fichiers) ;
-  · source **« Composition multi-dossiers »** — le menu a **13 entrées** : choisir
+  lignes Ha + S2 ; l'ORDRE fait R/G/B : Ha + S2 + O3 → **HSO**, O3 + S2 + Ha
+  → OSH… (menu verrouillé : la composition se DÉDUIT des fichiers) ;
+  · source **« Composition multi-dossiers »** — menu à **13 entrées** : choisir
   HOO, HSS ou une permutation (HSO…) ; les rôles se pré-remplissent, puis les
   dossiers.
-- **Le MSIX v2.98.9 est PRÊT À SOUMETTRE** : identité Partner Center (relue dans
-  le MSIX v2.71.1) + signé localement. Seule manque la **décision d'Alain** sur
-  une soumission au Store — hors périmètre de la release GitHub. Marche à suivre
-  (fiche Store, images, notes de certification) : `installer/windows/msix/SOUMISSION.md`.
 
 ---
 
