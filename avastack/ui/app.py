@@ -4262,8 +4262,11 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         if key.startswith("Stacks"):
             # P6 (lot 5) : empilements DÉJÀ faits, un FICHIER par rôle (ou un
             # seul fichier = empilement direct). Les erreurs de remplissage
-            # (rôle sans fichier, rôle en double, fichier absent) sortent avec
-            # un message clair AVANT toute lecture.
+            # (fichier sans rôle, fichier absent, aucune ligne complète)
+            # sortent avec un message clair AVANT toute lecture. Une ligne
+            # incomplète est IGNORÉE, et un MÊME rôle peut revenir sur deux
+            # lignes (01/11/2026) : leurs fichiers s'empilent dans la même
+            # couche.
             return _StackFilesCamera(self._lire_roles_fichiers_stacks())
         if key.startswith("OpenCV"):
                         return OpenCVCamera(int(key.split()[-1]))
@@ -4441,14 +4444,35 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         return pairs
     # --- P6 (lot 5) : source « Stacks (fichiers FITS) » ---------------------
     def _lire_roles_fichiers_stacks(self) -> Any:
-        """Couples (rôle, fichier) des lignes remplies du panneau « Stacks ».
+        """Couples (rôle, fichier) des lignes REMPLIES du panneau « Stacks ».
 
-        Lève une erreur CLAIRE sur un remplissage incohérent — rôle sans
-        fichier, fichier sans rôle, rôle en double, fichier introuvable, tout
-        vide — AVANT d'ouvrir quoi que ce soit. Le rôle est celui INDIQUÉ :
-        aucun contrôle ne le déduit du nom ni de l'en-tête du fichier.
+        Une ligne ne compte que si elle porte un RÔLE **et** un FICHIER. Une
+        ligne incomplète est IGNORÉE — jamais refusée : le panneau propose
+        `NB_LIGNES_COMPO` lignes (le plus grand nombre de rôles d'une
+        composition) et rien n'oblige à les remplir toutes. CONSTAT RÉEL
+        d'Alain (01/11/2026) : trois fichiers pour un SHO étaient refusés au
+        démarrage — « Stacks, rôle B : choisissez le fichier de l'empilement
+        (…) » — parce qu'un RÔLE resté en place d'une session précédente
+        (`config.json`) occupait une ligne sans fichier. La ligne d'aide du
+        panneau (`_maj_stacks_info`) DIT désormais « ligne ignorée » : rien
+        n'est perdu en silence.
+
+        DEUX lignes peuvent porter le MÊME rôle — donc le même fichier
+        (demande d'Alain, 01/11/2026 : « mettre 2 fois le même fichier et même
+        filtre »). Les fichiers d'un même rôle s'empilent dans la MÊME couche
+        (`CompositeStacker` indexe ses stackers PAR RÔLE) : c'est ainsi qu'on
+        réunit deux empilements d'un même filtre, ou qu'on écrit un HOO
+        explicite (O3 sur les lignes G et B). La composition déduite ne change
+        pas : au-delà de la correspondance exacte, `composition_pour_roles`
+        compare des ENSEMBLES de rôles.
+
+        Restent des erreurs CLAIRES, levées AVANT d'ouvrir quoi que ce soit :
+        un fichier choisi sans rôle (le rôle n'est JAMAIS deviné), un fichier
+        introuvable, et un panneau dont AUCUNE ligne n'est complète. Le rôle
+        est celui INDIQUÉ : aucun contrôle ne le déduit du nom ni de l'en-tête
+        du fichier.
         """
-        pairs, vus = [], {}
+        pairs = []
         for i in range(composition_mod.NB_LIGNES_COMPO):
             role = self.var_stacks_roles[i].get().strip()
             fic = self.var_stacks_fichiers[i].get().strip()
@@ -4459,17 +4483,10 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                         "rôle (menu déroulant de la ligne)")
                 continue
             if not fic:
-                raise RuntimeError(
-                    f"Stacks, rôle {role} : choisissez le fichier de "
-                    "l'empilement (…)")
-            if role in vus:
-                raise RuntimeError(
-                    f"Stacks : rôle {role} présent sur les lignes "
-                    f"{vus[role] + 1} et {i + 1} — un rôle = un seul fichier")
+                continue      # ligne incomplète : IGNORÉE (le panneau le dit)
             if not os.path.isfile(fic):
                 raise RuntimeError(
                     f"Stacks, rôle {role} : fichier introuvable — {fic}")
-            vus[role] = i
             pairs.append((role, fic))
         if not pairs:
             raise RuntimeError("Stacks : remplissez au moins une ligne "
@@ -4547,12 +4564,27 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
         FILTER qui contredit le rôle (le rôle indiqué fait foi) et un fichier
         DÉJÀ ÉTIRÉ d'après notre propre en-tête AVAStack (celui-là sera refusé
         au démarrage, par `StackFilesCamera.open()`, avec le remède).
+
+        Depuis le 01/11/2026, la ligne dit aussi ce qui est IGNORÉ (ligne
+        incomplète : rôle sans fichier, ou fichier sans rôle) et quand DEUX
+        lignes portent le même rôle (leurs fichiers s'empilent dans la même
+        couche). Ce sont des CONSTATS sur la saisie, pas des refus : le seul
+        refus de saisie reste le panneau sans aucune ligne complète.
         """
         paires, roles, avert = [], [], []
         for i in range(composition_mod.NB_LIGNES_COMPO):
             role = self.var_stacks_roles[i].get().strip()
             fic = self.var_stacks_fichiers[i].get().strip()
-            if not role or not fic:
+            if not role and not fic:
+                continue
+            if not role:
+                avert.append(
+                    f"Ligne {i + 1} : fichier choisi sans rôle — ligne "
+                    "IGNORÉE (le rôle n'est jamais deviné).")
+                continue
+            if not fic:
+                avert.append(f"Ligne {i + 1} : rôle {role} sans fichier — "
+                             "ligne IGNORÉE.")
                 continue
             paires.append((role, fic))
             roles.append(role)
@@ -4585,6 +4617,14 @@ class App(_SectionsPliables, _PanneauHistogramme, _ConfigUI,
                           if nom else
                           "Rôles sans composition connue : "
                           + ", ".join(roles))
+        # 01/11/2026 : un MÊME rôle sur deux lignes est permis — le dire, parce
+        # que le résultat n'est pas celui qu'on imagine (deux fichiers, UNE
+        # couche : `CompositeStacker` indexe ses stackers par rôle).
+        for r in dict.fromkeys(roles):
+            n = roles.count(r)
+            if n > 1:
+                lignes.append(f"Rôle {r} fourni {n} fois : ces fichiers "
+                              "s'empilent dans la MÊME couche.")
         lignes.extend(avert)
         self.lbl_stacks_info.config(text="\n".join(lignes))
 

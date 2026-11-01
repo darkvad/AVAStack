@@ -13,12 +13,19 @@ M33 quand elles sont présentes) et sur des FITS synthétiques temporaires :
       refus) ; fichier sans en-tête AVAStack ACCEPTÉ + avertissement MESURÉ ;
   [3] composition : les 5 rôles M33 donnent LRGB+Ha ; un seul fichier ne
       compose rien (« Mono ») ; rôles inconnus → composition None ;
+      Ha + S2 → HSS (palette SII, 01/11/2026), même si le S2 est écrit deux
+      fois ; l'ORDRE DES LIGNES des 3 narrowband fait R/G/B (Ha, SII, OIII →
+      HSO ; chantier ①b, 01/11/2026) ;
   [4] worker RÉEL : les deux fichiers sont empilés par rôle, lus une fois,
       CALIBRATION IGNORÉE (un dark énorme ne change rien), seuil de profondeur
       = 1, message « empilement fourni (profondeur non vérifiée) », fin de
       source armée, `relire()` + seuil de cadence au démarrage suivant ;
   [5] interface : panneau à 5 lignes, visibilité par source, ligne d'aide
-      (composition déduite + FILTER contradictoire), validation des lignes,
+      (composition déduite + FILTER contradictoire + lignes ignorées + même
+      rôle sur deux lignes), validation des lignes (01/11/2026 : une ligne
+      INCOMPLÈTE est IGNORÉE et le panneau le dit, un même rôle — donc le
+      même fichier — sur deux lignes est ACCEPTÉ ; restent refusés le fichier
+      sans rôle, le fichier introuvable et le panneau sans ligne complète),
       persistance `stacks_role_i` / `stacks_fichier_i` ;
   [6] PISTE A (v2.96.1) : avec 5 FICHIERS, la composition AFFICHÉE est déduite
       des fichiers, la composition est VISIBLE (donc les réglages du composite
@@ -175,6 +182,23 @@ print("[3] Composition déduite des RÔLES (jamais du nom de fichier)")
 verifie(composition_pour_roles(("Ha", "O3")) == "HOO"
         and composition_pour_roles(("L", "R", "G", "B", "Ha")) == "LRGB+Ha",
         "composition_pour_roles : HOO et LRGB+Ha (rappel)")
+# 01/11/2026 : palette SII « HSS » — Ha + S2 (le S2 alimente G ET B), y
+# compris quand le MÊME rôle est écrit deux fois (deux fichiers S2).
+verifie(composition_pour_roles(("Ha", "S2")) == "HSS"
+        and composition_pour_roles(("Ha", "S2", "S2")) == "HSS",
+        "composition_pour_roles : HSS (palette SII) — avec ou sans le S2 "
+        "écrit deux fois")
+# 01/11/2026 (chantier ①b) : l'ORDRE DES LIGNES fait R/G/B — les 6 permutations
+# narrowband se déduisent du TUPLE des rôles (Ha, SII, OIII → HSO). L'ordre
+# historique SHO reste servi par sa PROPRE permutation.
+verifie(composition_pour_roles(("S2", "Ha", "O3")) == "SHO"
+        and composition_pour_roles(("Ha", "S2", "O3")) == "HSO"
+        and composition_pour_roles(("Ha", "O3", "S2")) == "HOS"
+        and composition_pour_roles(("S2", "O3", "Ha")) == "SOH"
+        and composition_pour_roles(("O3", "Ha", "S2")) == "OHS"
+        and composition_pour_roles(("O3", "S2", "Ha")) == "OSH",
+        "composition_pour_roles : les 6 permutations narrowband suivent "
+        "l'ORDRE des lignes (Ha, SII, OIII → HSO)")
 cinq = [("L", f_ha), ("R", f_ha), ("G", f_o3), ("B", f_o3), ("Ha", f_o3)]
 cam5 = StackFilesCamera(cinq)
 verifie(composition_pour_roles(cam5.roles) == "LRGB+Ha"
@@ -371,21 +395,50 @@ def _erreur(fn):
         return str(e)
 
 
+# ① 01/11/2026 — un RÔLE SANS FICHIER n'est plus un refus : la ligne est
+# IGNORÉE (le panneau propose 5 lignes, rien n'oblige à les remplir toutes).
+# Constat réel d'Alain : un SHO de TROIS fichiers était refusé au démarrage
+# (« Stacks, rôle B : choisissez le fichier de l'empilement (…) ») parce que
+# deux rôles restés en place depuis `config.json` occupaient des lignes vides.
 app.var_stacks_roles[0].set("Ha")
 app.var_stacks_fichiers[0].set("")
-verifie("choisissez le fichier" in str(_erreur(app._lire_roles_fichiers_stacks)),
-        "rôle sans fichier → erreur claire")
+app.var_stacks_roles[1].set("O3")
+app.var_stacks_fichiers[1].set(f_o3)
+verifie(app._lire_roles_fichiers_stacks() == [("O3", f_o3)],
+        "rôle sans fichier → ligne IGNORÉE (les autres lignes démarrent)")
+app._maj_stacks_info()
+_txt = app.lbl_stacks_info.cget("text")
+verifie("Ligne 1" in _txt and "IGNORÉE" in _txt,
+        "ligne d'aide : la ligne incomplète est dite IGNORÉE (rien en silence)")
+
+# …mais un panneau sans AUCUNE ligne complète reste refusé.
+app.var_stacks_roles[1].set("")
+app.var_stacks_fichiers[1].set("")
+verifie("remplissez au moins une ligne"
+        in str(_erreur(app._lire_roles_fichiers_stacks)),
+        "aucune ligne complète → erreur claire")
+
+# ② Fichier sans rôle : TOUJOURS une erreur (le rôle n'est jamais deviné).
 app.var_stacks_roles[0].set("")
 app.var_stacks_fichiers[0].set(f_ha)
 verifie("aucun rôle" in str(_erreur(app._lire_roles_fichiers_stacks)),
         "fichier sans rôle → erreur claire (le rôle n'est jamais deviné)")
+
+# ③ 01/11/2026 — MÊME rôle ET même fichier sur deux lignes : AUTORISÉ (demande
+# d'Alain : « mettre 2 fois le même fichier et même filtre »). Les fichiers
+# d'un même rôle s'empilent dans la MÊME couche (`CompositeStacker`).
 app.var_stacks_roles[0].set("Ha")
 app.var_stacks_fichiers[0].set(f_ha)
 app.var_stacks_roles[1].set("Ha")
-app.var_stacks_fichiers[1].set(f_o3)
-verifie("un rôle = un seul fichier"
-        in str(_erreur(app._lire_roles_fichiers_stacks)),
-        "rôle en double → erreur claire")
+app.var_stacks_fichiers[1].set(f_ha)
+verifie(app._lire_roles_fichiers_stacks() == [("Ha", f_ha), ("Ha", f_ha)],
+        "même rôle ET même fichier sur deux lignes → acceptés")
+app._maj_stacks_info()
+verifie("MÊME couche" in app.lbl_stacks_info.cget("text"),
+        "ligne d'aide : les deux fichiers d'un même rôle vont dans la MÊME "
+        "couche")
+
+# ④ Fichier inexistant : toujours une erreur claire.
 app.var_stacks_roles[1].set("O3")
 app.var_stacks_fichiers[1].set(os.path.join(racine, "nulle_part.fit"))
 verifie("introuvable" in str(_erreur(app._lire_roles_fichiers_stacks)),

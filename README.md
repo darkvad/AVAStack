@@ -56,7 +56,7 @@ l'utilisateur**, sans droits administrateur.
 | Source | À quoi ça sert |
 |---|---|
 | **Dossier surveillé** | le cas courant : le logiciel de capture écrit, AVAStack empile |
-| **Composition multi-dossiers** | un dossier par filtre → composite temps réel (mono, RGB, LRGB, HOO, SHO, **RGB+Ha**, **LRGB+Ha**) |
+| **Composition multi-dossiers** | un dossier par filtre → composite temps réel (mono, RGB, LRGB, HOO, HSS, SHO, **RGB+Ha**, **LRGB+Ha**, permutations narrowband **HSO/HOS/SOH/OHS/OSH** — l'ordre des dossiers fait R/G/B) |
 | **Caméra (SDK constructeur)** | ZWO ASI, QHY, Player One, Touptek/Altair, SVBONY — flux direct, roue à filtres et refroidissement (TEC) |
 | **Webcam / carte d'acquisition** | tests, suivi en direct (OpenCV) |
 | **Ciel simulé** | démonstration et essais **sans aucun matériel** |

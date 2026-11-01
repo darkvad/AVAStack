@@ -20,7 +20,101 @@ Le point d'entrée reste AVAStack.py à la racine (python AVAStack.py),
 ou python -m avastack.
 """
 
-AVASTACK_VERSION = "2.98.9"
+AVASTACK_VERSION = "2.100.0"
+
+# v2.100.0 : LES 6 PERMUTATIONS NARROWBAND — L'ORDRE DES LIGNES FAIT R/G/B
+#   (chantier ①b, 01/11/2026). Demande d'Alain : Ha, SII, OIII tapés dans cet
+#   ordre doivent donner HSO, et non SHO. C'est désormais le cas : l'ordre des
+#   lignes est lu dans la table, plus aucun rattrapage.
+#   - `processing/composition.py` : les 6 permutations de {S2, Ha, O3} sont des
+#     entrées de `COMPOSITIONS`. SHO reste LITTÉRAL et PREMIER de la famille ;
+#     les 5 autres (HSO, HOS, SOH, OHS, OSH) sont GÉNÉRÉES après les entrées
+#     littérales par `_generer_permutations_narrowband()` (nom = l'ordre R/G/B,
+#     `canaux_rgb` = un rôle par canal, lettre du filtre S2→S, Ha→H, O3→O).
+#   - AUCUN moteur ni interface changé : `composition_pour_roles` comparait DÉJÀ
+#     le TUPLE des rôles (passe EXACTE) ; la passe par ENSEMBLE (ajoutée pour
+#     HSS) puis le repli par SOUS-ENSEMBLE RATTRAPAIENT les permutations. Le
+#     menu passe à 13 entrées (`values=list(COMPOSITIONS)`) ; la ligne d'aide et
+#     le pré-remplissage se construisent depuis `canaux_rgb` / `roles`.
+#   - ⚠ L'ordre n'est SÉLECTIF que si les 3 lignes sont remplies et les rôles
+#     DISTINCTS : une ligne vide ou un rôle en double retombe sur SHO (premier
+#     de la famille) via la passe par ensemble, et la ligne d'aide dit alors le
+#     mapping réellement appliqué. (« Ha », « S2 », « O3 ») valait SHO AVANT ce
+#     lot et vaut désormais HSO — c'est l'objet même du chantier.
+#   - `README.md` (ligne des compositions) et `CLAUDE.md` (section « Palette
+#     « HSS » ») : les 6 noms inscrits. Banc `_test_compo_5roles_jalon129.py`
+#     (table à 13 entrées, les 6 déductions par ordre, non-régression du repli)
+#     et `_test_lot5_p6_stacks.py` volet [3] (déduction par l'ordre des lignes).
+#
+# v2.99.0 : DEUX LIVRAISONS DU 01/11/2026 — (A) la source « Stacks (fichiers
+#   FITS) » ne bloque plus le démarrage sur une ligne incomplète, (B) NOUVELLE
+#   PALETTE « HSS » (R=Ha, G=S2, B=S2).
+#
+#   (A) LA SAISIE NE BLOQUE PLUS LE DÉMARRAGE (constat réel d'Alain). Il
+#   choisit la source, remplit TROIS lignes (Ha, O3, S2 — un SHO) et le
+#   démarrage est refusé par
+#   « Stacks, rôle B : choisissez le fichier de l'empilement (…) » : les lignes
+#   4 et 5 portaient un RÔLE resté en place (`config.json` :
+#   `stacks_role_3 = "B"`, `stacks_role_4 = "L"`) sans aucun fichier. Le
+#   panneau propose `NB_LIGNES_COMPO` (5) lignes pour TOUTES les compositions —
+#   rien n'oblige à les remplir toutes.
+#   - `ui/app.py` (`_lire_roles_fichiers_stacks`) : une ligne ne compte que si
+#     elle porte un RÔLE **et** un FICHIER ; une ligne incomplète est IGNORÉE
+#     au lieu d'être refusée. Restent des refus CLAIRS, avant toute ouverture :
+#     fichier choisi sans rôle (le rôle n'est jamais deviné), fichier
+#     introuvable, et panneau dont AUCUNE ligne n'est complète.
+#   - DEUX lignes peuvent désormais porter le MÊME rôle — donc le même fichier
+#     (demande d'Alain : « mettre 2 fois le même fichier et même filtre »).
+#     Les fichiers d'un même rôle s'empilent dans la MÊME couche
+#     (`CompositeStacker` indexe ses stackers PAR RÔLE) : deux empilements d'un
+#     même filtre se réunissent, et un HOO s'écrit explicitement (O3 sur les
+#     lignes G et B). La composition déduite ne change pas
+#     (`composition_pour_roles` compare des ENSEMBLES au-delà de l'exact).
+#   - `ui/app.py` (`_maj_stacks_info`) : la ligne d'aide du panneau DIT ce qui
+#     est ignoré (« Ligne 3 : rôle B sans fichier — ligne IGNORÉE. ») et quand
+#     un même rôle est fourni deux fois (« Rôle O3 fourni 2 fois : ces
+#     fichiers s'empilent dans la MÊME couche. ») — rien n'est perdu en
+#     silence. Aucune sonde disque nouvelle : la restauration de `config.json`
+#     reste sans lecture (`verifier_fichiers=False`).
+#   - Documentation de la source mise à jour (`cameras/stacks.py`,
+#     `ui/panels/stacks.py`, texte de l'aide « ⓘ ») ; banc
+#     `bancs/_test_lot5_p6_stacks.py` volet [5] réécrit (ligne incomplète
+#     IGNORÉE, même rôle deux fois ACCEPTÉ).
+#
+#   (B) PALETTE « HSS » — R=Ha, G=S2, B=S2 (demande d'Alain : « pour faire une
+#   compo HOO ou HSS »). C'est le PENDANT SII DU HOO : le MÊME filtre alimente
+#   DEUX canaux (G et B), deux rôles seulement. L'application ne la connaissait
+#   PAS : avec Ha + S2 la composition déduite était SHO et le canal bleu (O3)
+#   restait neutre — un SHO tronqué, pas un HSS.
+#   - `processing/composition.py` : entrée `"HSS"` dans `COMPOSITIONS`
+#     (rôles (Ha, S2), `canaux_rgb` R=Ha / G=S2 / B=S2, aucun rôle optionnel,
+#     AUCUNE fusion au rouge — le Ha y est un CANAL) ; elle apparaît dans le
+#     menu du panneau Composition (`values=list(COMPOSITIONS)`), dans la ligne
+#     d'aide (mapping construit depuis `canaux_rgb`) et dans le pré-remplissage
+#     des rôles (`_on_compo`). Deux rôles → deux dossiers OU deux fichiers.
+#   - `composition_pour_roles` : une DEUXIÈME passe compare des ENSEMBLES de
+#     rôles, pour qu'un rôle fourni DEUX FOIS (le même filtre sur deux lignes de
+#     la source « Stacks », désormais accepté) trouve quand même sa composition
+#     — (« Ha », « S2 », « S2 ») → HSS, comme (« Ha », « S2 »). Les ensembles de
+#     rôles des compositions sont TOUS DISTINCTS : cette passe ne peut rendre
+#     qu'un nom que la passe EXACTE aurait déjà donné (même jeu, ordre ou
+#     doublon près) ou HSS. HSS n'entre PAS dans le repli par sous-ensemble,
+#     volontairement : (« S2 »,) y renvoie SHO depuis le jalon 19 et HSS, plus
+#     petit, l'aurait emporté — un comportement historique ne se change pas.
+#   - `README.md` : HSS citée dans la ligne des compositions.
+#   - NON-RÉGRESSION PROUVÉE PAR BANC : `_test_compo_5roles_jalon129.py` (table,
+#     mapping HSS, déduction exacte/ensemble, et le repli qui NE bouge pas :
+#     (« S2 »,) → SHO, (« Ha »,) → HOO), `_test_lot5_p6_stacks.py` (Ha + S2 →
+#     HSS avec ou sans S2 en double), plus `_test_composition_jalon19`,
+#     `_test_compo_worker_jalon19`, `_test_calib_compo_jalon53`,
+#     `_test_restack_compo_jalon20`, `_test_narrowband_ha_jalon21`,
+#     `_test_fusion_ha_jalon2` et `_test_voie_a_ha_jalon129b` — tous verts, et
+#     garde-fou au vert (empilement simulé IDENTIQUE AU BIT, `pyright` 0 erreur).
+#
+#   AUCUN pixel changé pour les compositions EXISTANTES : la palette HSS est une
+#   ENTRÉE de plus dans la table (le composite LRGB+Ha sans Ha reste égal au
+#   LRGB AU BIT, vérifié) ; côté « Stacks », seules les LIGNES retenues changent,
+#   exactement comme avant pour les lignes complètes.
 
 # v2.98.9 : DÉCOMPOSER `empilement` EN MESURANT D'ABORD (branche `OptimisationUI`,
 #   AUCUNE release, AUCUN pixel changé). Dernier point du chantier : `perf-9`

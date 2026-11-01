@@ -10,7 +10,13 @@ TROIS RÈGLES NON NÉGOCIABLES, écrites ici parce qu'elles sont le contrat :
 1. **Ce sont des FICHIERS, pas un dossier.** Chaque ligne est un couple
    « rôle → fichier » ; les fichiers peuvent venir de dossiers différents (un
    stack peut sortir de Siril, PixInsight, ASTAP…). `NB_LIGNES_COMPO` (5)
-   lignes au maximum, comme la composition multi-dossiers.
+   lignes au maximum, comme la composition multi-dossiers — mais RIEN
+   n'oblige à les remplir toutes : une ligne n'est PRISE EN COMPTE que si
+   elle porte un rôle ET un fichier (une ligne incomplète est ignorée, le
+   panneau le dit — `App._lire_roles_fichiers_stacks`). Deux lignes peuvent
+   porter le MÊME rôle (donc le même fichier, demande d'Alain du 01/11/2026) :
+   leurs fichiers s'empilent dans la MÊME couche, `CompositeStacker` indexant
+   ses stackers PAR RÔLE.
 
 2. **Le RÔLE est celui que l'utilisateur INDIQUE, jamais un rôle deviné.**
    `canal_<rôle>.fit` n'est PAS un contrat (c'est le nom que NOTRE sauvegarde
@@ -140,8 +146,12 @@ class StackFilesCamera(CameraBase):
     """Source « Stacks (fichiers FITS) » : N fichiers choisis, un rôle chacun.
 
     `roles_fichiers` : liste de couples (rôle, chemin), 1 à
-    `composition.NB_LIGNES_COMPO`. Le rôle est celui INDIQUÉ (jamais déduit du
-    nom ni de l'en-tête) ; les fichiers peuvent venir de dossiers différents.
+    `composition.NB_LIGNES_COMPO` (seules les lignes COMPLÈTES — rôle **et**
+    fichier — arrivent ici : les lignes laissées vides sont filtrées en
+    amont). Le rôle est celui INDIQUÉ (jamais déduit du nom ni de l'en-tête) ;
+    les fichiers peuvent venir de dossiers différents. Deux couples peuvent
+    porter le MÊME rôle (même fichier compris) : les fichiers d'un rôle
+    s'empilent dans la même couche.
     """
 
     def __init__(self, roles_fichiers: Any) -> None:

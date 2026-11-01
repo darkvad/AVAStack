@@ -11,6 +11,12 @@ déduire la composition et construire la caméra `StackFilesCamera`. Le RÔLE es
 celui que l'utilisateur choisit : rien n'est deviné à partir du nom du fichier
 ni de son en-tête (un `FILTER` contradictoire n'est qu'un avertissement).
 
+Deux règles de SAISIE (01/11/2026, constat réel : trois fichiers pour un SHO
+étaient refusés à cause d'un rôle resté sans fichier) : ① une ligne ne compte
+que si elle porte un rôle **et** un fichier — les autres sont IGNORÉES, et la
+ligne d'aide le dit ; ② deux lignes peuvent porter le MÊME rôle (donc le même
+fichier) — les fichiers d'un rôle s'empilent dans la MÊME couche.
+
 `App` hérite de ce mixin : `self` reste l'instance `App`, donc la pose des
 widgets et le comportement suivent les autres panneaux. Les attributs
 d'interface sont DÉCLARÉS ici pour le typage statique (`pyright`).
@@ -89,7 +95,11 @@ class PanneauStacks:
             "UNE fois par session, sans calibration (un empilement n'a plus de "
             "signal brut à corriger) ; un seul fichier = empilement direct, "
             "plusieurs = composition déduite des rôles (comme le mode "
-            "« Composition multi-dossiers »). La profondeur (nombre de brutes "
+            "« Composition multi-dossiers »). Une ligne ne compte que si elle "
+            "porte un rôle ET un fichier : une ligne laissée vide est ignorée "
+            "(le panneau le dit). Deux lignes peuvent porter le MÊME filtre, "
+            "même fichier : les fichiers d'un rôle s'empilent alors dans la "
+            "MÊME couche. La profondeur (nombre de brutes "
             "derrière le stack) n'est PAS lue : les mesures partent dès qu'un "
             "fichier par rôle est là, et l'état dit « empilement fourni "
             "(profondeur non vérifiée) ». Un fichier DÉJÀ ÉTIRÉ est refusé si "

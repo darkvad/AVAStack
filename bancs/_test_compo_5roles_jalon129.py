@@ -5,9 +5,11 @@ chantier Ha, 15/10/2026).
 Vérifie :
   [1] TABLE : les deux compositions nouvelles (rôles, `optionnels`, `canaux_rgb`
       SANS le Ha, luminance), `COMPOSITIONS_HA`, `composition_avec_ha()`, et
-      `NB_LIGNES_COMPO` == plus grand nombre de rôles (5) ;
-  [2] `composition_pour_roles` : les cas nominaux EXACTS des deux +Ha, et la
-      NON-RÉGRESSION du repli par sous-ensemble (« Ha » → HOO, « L,R,G » →
+      `NB_LIGNES_COMPO` == plus grand nombre de rôles (5) ; plus, depuis le
+      chantier ①b (01/11/2026), les 6 PERMUTATIONS narrowband (13 entrées) ;
+  [2] `composition_pour_roles` : les cas nominaux EXACTS des deux +Ha, les 6
+      permutations narrowband par l'ORDRE des lignes (Ha, SII, OIII → HSO), et
+      la NON-RÉGRESSION du repli par sous-ensemble (« Ha » → HOO, « L,R,G » →
       LRGB, « L » → Mono) — les compositions +Ha sont testées EN DERNIER ;
   [3] FAÇADE : « LRGB+Ha » empile bien une couche Ha, et depuis le jalon J2
       (v2.88.0) cette couche ENTRE dans l'image — ajout au rouge PAR DÉFAUT
@@ -80,9 +82,11 @@ def _roles_des_canaux(spec):
 
 # ================================================== [1] table des compositions
 print("[1] table : compositions +Ha, COMPOSITIONS_HA, NB_LIGNES_COMPO")
-verifie(set(COMPOSITIONS) == {"Mono", "HOO", "SHO", "RGB", "LRGB",
-                              "RGB+Ha", "LRGB+Ha"},
-        "table : les 5 compositions d'origine + les 2 nouvelles")
+verifie(set(COMPOSITIONS) == {"Mono", "HOO", "HSS", "SHO", "RGB", "LRGB",
+                              "RGB+Ha", "LRGB+Ha",
+                              "HSO", "HOS", "SOH", "OHS", "OSH"},
+        "table : les 5 compositions d'origine + les 2 +Ha + HSS + les 6 "
+        "permutations narrowband (01/11/2026) = 13 entrées")
 verifie(COMPOSITIONS_HA == ("RGB+Ha", "LRGB+Ha")
         and composition_avec_ha("RGB+Ha") and composition_avec_ha("LRGB+Ha"),
         "COMPOSITIONS_HA / composition_avec_ha : les deux +Ha sont reconnues")
@@ -105,6 +109,37 @@ verifie(COMPOSITIONS["LRGB+Ha"]["canaux_rgb"]
 verifie("Ha" not in _roles_des_canaux(COMPOSITIONS["RGB+Ha"])
         and "Ha" not in _roles_des_canaux(COMPOSITIONS["LRGB+Ha"]),
         "le Ha des compositions +Ha n'alimente AUCUN canal (il sera FUSIONNÉ)")
+# 01/11/2026 : palette SII « HSS » (demande d'Alain) — le pendant SII du HOO,
+# le MÊME filtre alimentant DEUX canaux, deux rôles seulement.
+verifie(roles_de("HSS") == ("Ha", "S2") and roles_optionnels("HSS") == (),
+        "HSS : rôles (Ha, S2), aucun rôle optionnel")
+verifie(COMPOSITIONS["HSS"]["canaux_rgb"]
+        == {"R": ("Ha",), "G": ("S2",), "B": ("S2",)},
+        "HSS : canaux R=Ha, G=S2, B=S2 (le S2 alimente DEUX canaux)")
+verifie(not composition_avec_ha("HSS")
+        and "Ha" in _roles_des_canaux(COMPOSITIONS["HSS"]),
+        "HSS : le Ha est un CANAL (aucune fusion au rouge)")
+# 01/11/2026 (chantier ①b) : les 6 PERMUTATIONS narrowband. SHO est LITTÉRAL et
+# reste le PREMIER de la famille (c'est lui que la passe par ENSEMBLE rend) ;
+# les 5 autres sont GÉNÉRÉES après les entrées littérales (nom = l'ordre R/G/B).
+for _nom_perm, _perm in (("HSO", ("Ha", "S2", "O3")),
+                         ("HOS", ("Ha", "O3", "S2")),
+                         ("SOH", ("S2", "O3", "Ha")),
+                         ("OHS", ("O3", "Ha", "S2")),
+                         ("OSH", ("O3", "S2", "Ha"))):
+    verifie(roles_de(_nom_perm) == _perm
+            and COMPOSITIONS[_nom_perm]["canaux_rgb"]
+            == {"R": (_perm[0],), "G": (_perm[1],), "B": (_perm[2],)}
+            and roles_optionnels(_nom_perm) == ()
+            and not composition_avec_ha(_nom_perm),
+            f"{_nom_perm} : rôles {_perm} = R/G/B dans l'ordre des lignes")
+_noms_comp = list(COMPOSITIONS)
+verifie(all(n in COMPOSITIONS for n in ("HSO", "HOS", "SOH", "OHS", "OSH")),
+        "les 5 permutations générées sont dans la table")
+verifie(_noms_comp.index("SHO") < min(_noms_comp.index(n)
+                                      for n in ("HSO", "HOS", "SOH",
+                                                "OHS", "OSH")),
+        "SHO reste AVANT les permutations générées (premier de la famille)")
 verifie(roles_optionnels("LRGB+Ha") == ("L",)
         and roles_optionnels("RGB+Ha") == (),
         "optionnels : L vide toléré en LRGB+Ha, AUCUN rôle optionnel en RGB+Ha")
@@ -127,6 +162,35 @@ verifie(composition_pour_roles(("Ha", "O3")) == "HOO"
         and composition_pour_roles(("L", "R", "G", "B")) == "LRGB"
         and composition_pour_roles(("L",)) == "Mono",
         "NON-RÉGRESSION : HOO, SHO, RGB, LRGB, Mono inchangés")
+# 01/11/2026 : HSS (palette SII) — correspondance EXACTE, dans les deux ordres,
+# et par ENSEMBLE de rôles quand un rôle est fourni DEUX fois (source
+# « Stacks » : le même filtre sur deux lignes).
+verifie(composition_pour_roles(("Ha", "S2")) == "HSS"
+        and composition_pour_roles(("S2", "Ha")) == "HSS",
+        "HSS : correspondance EXACTE (les deux ordres)")
+verifie(composition_pour_roles(("Ha", "S2", "S2")) == "HSS"
+        and composition_pour_roles(("S2", "S2", "Ha")) == "HSS",
+        "HSS : un rôle fourni DEUX fois trouve la composition par ENSEMBLE")
+verifie(composition_pour_roles(("S2",)) == "SHO"
+        and composition_pour_roles(("Ha",)) == "HOO",
+        "NON-RÉGRESSION : HSS n'entre PAS dans le repli par sous-ensemble "
+        "(S2 seul reste SHO, Ha seul reste HOO)")
+# ⚠ (« Ha », « S2 », « O3 ») valait SHO par ce repli AVANT le chantier ①b ; il
+# vaut désormais HSO (permutation par l'ORDRE des lignes) — vérifié ci-dessous.
+# 01/11/2026 (chantier ①b) : les 6 permutations narrowband se déduisent de
+# l'ORDRE DES LIGNES (Ha, SII, OIII → HSO). C'est la passe EXACTE de TUPLE qui
+# porte l'ordre ; la passe par ENSEMBLE (ajoutée pour HSS) rendrait sinon
+# TOUJOURS SHO. Attention : (« Ha », « S2 », « O3 ») était SHO AVANT ce lot.
+verifie(composition_pour_roles(("S2", "Ha", "O3")) == "SHO"
+        and composition_pour_roles(("Ha", "S2", "O3")) == "HSO"
+        and composition_pour_roles(("Ha", "O3", "S2")) == "HOS"
+        and composition_pour_roles(("S2", "O3", "Ha")) == "SOH"
+        and composition_pour_roles(("O3", "Ha", "S2")) == "OHS"
+        and composition_pour_roles(("O3", "S2", "Ha")) == "OSH",
+        "les 6 permutations narrowband suivent l'ORDRE des lignes (R/G/B)")
+verifie(composition_pour_roles(("Ha", "S2", "O3", "O3")) == "SHO",
+        "l'ordre n'est SÉLECTIF que si les rôles sont DISTINCTS : un rôle en "
+        "double retombe sur SHO (premier de la famille, via la passe ensemble)")
 verifie(composition_pour_roles(("L", "R", "G")) == "LRGB"
         and composition_pour_roles(("R", "G")) == "RGB",
         "NON-RÉGRESSION du repli par sous-ensemble (sans Ha)")

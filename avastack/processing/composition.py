@@ -1,5 +1,6 @@
 ﻿# -*- coding: utf-8 -*-
-"""Compositions multi-filtres (jalon 19) : RGB, HOO, SHO, LRGB, Mono, *+Ha.
+"""Compositions multi-filtres (jalon 19) : RGB, HOO, HSS, SHO, LRGB, Mono, *+Ha,
+et les 6 permutations narrowband (chantier ①b, 01/11/2026).
 
 Rôles et mapping
 ----------------
@@ -9,7 +10,14 @@ comment ils alimentent les canaux R/G/B du composite :
 
   Mono  (1 dossier)  → composite monochrome (le rôle L)
   HOO   (2 dossiers) → R=Ha, G=O3, B=O3
+  HSS   (2 dossiers) → R=Ha, G=S2, B=S2 (le pendant SII du HOO, 01/11/2026)
   SHO   (3 dossiers) → R=S2, G=Ha, B=O3 (palette Hubble)
+  HSO   (3 dossiers) → R=Ha, G=S2, B=O3 — l'ORDRE DES LIGNES fait R/G/B
+        (Ha, SII, OIII tapés dans cet ordre → HSO ; chantier ①b, 01/11/2026).
+        Les 5 autres permutations de {S2, Ha, O3} (HOS, SOH, OHS, OSH) sont
+        GÉNÉRÉES après les entrées littérales — SHO reste le PREMIER de la
+        famille (c'est lui que la passe par ensemble rend quand l'ordre n'est
+        pas exact, cf. `composition_pour_roles`).
   RGB   (3 dossiers) → R=R, G=G, B=B
   LRGB  (4 dossiers) → R=R, G=G, B=B + luminance L (rôle OPTIONNEL)
   RGB+Ha   (4 dossiers) → RGB + Ha FUSIONNÉ (jalon 129)
@@ -98,6 +106,15 @@ COMPOSITIONS: dict[str, dict[str, Any]] = {
     "Mono": {"roles": ("L",), "optionnels": ()},
     "HOO":  {"roles": ("Ha", "O3"), "optionnels": (),
              "canaux_rgb": {"R": ("Ha",), "G": ("O3",), "B": ("O3",)}},
+    # --- 01/11/2026 : palette SII « HSS » (demande d'Alain) ----------------
+    # Le PENDANT SII du HOO : le MÊME filtre alimente DEUX canaux (G et B).
+    # Deux rôles seulement — donc deux dossiers (source « Composition
+    # multi-dossiers ») ou deux fichiers (source « Stacks (fichiers FITS) » :
+    # Ha + S2, ou S2 écrit deux fois depuis que le rôle en double est accepté).
+    # Aucun rôle Ha FUSIONNÉ ici : le Ha est le CANAL ROUGE (`COMPOSITIONS_HA`
+    # ne la cite pas).
+    "HSS":  {"roles": ("Ha", "S2"), "optionnels": (),
+             "canaux_rgb": {"R": ("Ha",), "G": ("S2",), "B": ("S2",)}},
     "SHO":  {"roles": ("S2", "Ha", "O3"), "optionnels": (),
              "canaux_rgb": {"R": ("S2",), "G": ("Ha",), "B": ("O3",)}},
     "RGB":  {"roles": ("R", "G", "B"), "optionnels": (),
@@ -117,6 +134,38 @@ COMPOSITIONS: dict[str, dict[str, Any]] = {
                 "canaux_rgb": {"R": ("R",), "G": ("G",), "B": ("B",)},
                 "luminance": ("L",)},
 }
+
+
+# --- 01/11/2026 : les 6 PERMUTATIONS narrowband (chantier ①b, v2.100.0) ------
+# Objectif d'Alain : que l'ORDRE DES LIGNES fasse R/G/B — Ha, SII, OIII tapés
+# dans cet ordre donnent HSO (et non SHO). `composition_pour_roles` commence
+# par une correspondance EXACTE de TUPLE : inscrire une permutation dans la
+# table suffit donc à rendre l'ordre SÉLECTIF, sans toucher au moteur ni à
+# l'interface (le menu lit `values=list(COMPOSITIONS)`, la ligne d'aide et le
+# pré-remplissage se construisent depuis `canaux_rgb` / `roles`).
+#
+# SHO est écrit en LITTÉRAL ci-dessus et doit rester le PREMIER de la famille :
+# c'est lui que la passe par ENSEMBLE de `composition_pour_roles` rend quand
+# l'ordre n'est PAS exact (une ligne vide, un rôle en double…). Les 5
+# permutations MANQUANTES sont donc GÉNÉRÉES ICI, APRÈS les entrées littérales,
+# depuis la lettre du filtre (S2→S, Ha→H, O3→O) : nom = l'ordre des canaux
+# R/G/B, `roles` = (R, G, B) dans cet ordre, un rôle par canal.
+#
+# Limite ASSUMÉE : l'ordre n'est significatif que si les 3 lignes sont remplies
+# et les rôles DISTINCTS ; sinon la passe par ensemble retombe sur SHO (premier
+# de la famille) et la ligne d'aide dit le mapping réellement appliqué.
+def _generer_permutations_narrowband() -> None:
+    """Ajoute à `COMPOSITIONS` les 5 permutations narrowband autres que SHO."""
+    lettre = {"S2": "S", "Ha": "H", "O3": "O"}
+    for perm in (("Ha", "S2", "O3"), ("Ha", "O3", "S2"), ("S2", "O3", "Ha"),
+                 ("O3", "Ha", "S2"), ("O3", "S2", "Ha")):
+        nom = "".join(lettre[f] for f in perm)
+        COMPOSITIONS[nom] = {"roles": perm, "optionnels": (),
+                             "canaux_rgb": {"R": (perm[0],), "G": (perm[1],),
+                                            "B": (perm[2],)}}
+
+
+_generer_permutations_narrowband()
 
 # Compositions dont le rôle Ha est FUSIONNÉ au composite (et non un canal) :
 # seule source de vérité pour « cette composition a-t-elle un Ha à fusionner ? »
@@ -1530,7 +1579,19 @@ def composition_pour_roles(roles: Any) -> str | None:
     (« Ha »,) ⊂ LRGB+Ha renverrait « LRGB+Ha » au lieu du HOO d'origine (le
     repli à 1 rôle est un usage HISTORIQUE et documenté). Les cas nominaux
     (« R,G,B,Ha » et « L,R,G,B,Ha ») sont servis par la correspondance EXACTE,
-    qui court-circuite ce repli. → nom, ou None si vide."""
+    qui court-circuite ce repli.
+
+    01/11/2026 (palette HSS) : une DEUXIÈME passe compare des ENSEMBLES de
+    rôles. Un rôle fourni DEUX FOIS — le même filtre sur deux lignes de la
+    source « Stacks (fichiers FITS) », désormais accepté — doit encore trouver
+    sa composition : (« Ha », « S2 », « S2 ») → HSS, comme (« Ha », « S2 »).
+    Les ensembles de rôles des compositions sont TOUS DISTINCTS : cette passe
+    ne peut donc rendre qu'un nom que la passe exacte aurait déjà donné (même
+    jeu, ordre ou doublon près) ou HSS — aucune régression possible. HSS n'est
+    PAS ajouté au repli par sous-ensemble, et c'est volontaire : (« S2 »,) y
+    renvoie SHO depuis le jalon 19 et HSS, plus petit, l'aurait emporté
+    (« S2 » → HSS) — un comportement HISTORIQUE ne se change pas sans demande.
+    → nom, ou None si vide."""
     roles = tuple(roles)
     if not roles:
         return None
@@ -1538,6 +1599,9 @@ def composition_pour_roles(roles: Any) -> str | None:
         if COMPOSITIONS[nom]["roles"] == roles:
             return nom
     ens = set(roles)
+    for nom in COMPOSITIONS:
+        if ens == set(COMPOSITIONS[nom]["roles"]):
+            return nom
     for nom in ("HOO", "SHO", "RGB", "LRGB", "RGB+Ha", "LRGB+Ha"):
         if ens <= set(COMPOSITIONS[nom]["roles"]):
             return nom
